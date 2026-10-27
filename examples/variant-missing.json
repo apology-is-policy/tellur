@@ -1,0 +1,5 @@
+{
+  "entry": "variant_file",
+  "arguments": [{"kind":"string","value":"settings.json"}],
+  "calls": [{"operation":"open","outcome":"NotFound","fields":[]}]
+}

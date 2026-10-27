@@ -1,0 +1,13 @@
+node_modules/**
+test/**
+scripts/**
+extension.cjs
+package-lock.json
+*.vsix
+**/*.map
+
+build.cjs
+
+extensions.json
+
+configuration.cjs

@@ -1,0 +1,31 @@
+// A borrowed lookup becomes an owned, completed result.
+// The lookup happens now; handling the stored result happens after the emit.
+control main() exits auto {
+    vector<string> words = ["hello from a stored adapter"];
+    auto saved = delta vector_get(borrow words, 0) {
+        found { ref string word } => [available]: ready { clone(word) },
+        out_of_bounds         => [empty]: empty {}
+    };
+
+    emit("The lookup is complete; its result is still unhandled.");
+
+    // An explicit target contract makes this result usable by another control.
+    // Each mapping is visible; no implicit renaming or payload conversion occurs.
+    message_result message = delta saved {
+        ready { string text } => ready { text },
+        empty                 => empty {}
+    };
+    exit delta display(message) {
+        ready { string text } => done { text },
+        empty                 => done { "no first word" }
+    };
+}
+
+control display(message_result message) exits message_result {
+    exit message;
+}
+
+outcome message_result {
+    ready { string text },
+    empty
+}

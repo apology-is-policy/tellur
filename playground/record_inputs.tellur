@@ -1,0 +1,41 @@
+// A carrier owns its caption, but its two references point outside it.
+struct page_view['heading, 'content] {
+    string caption;
+    ref string heading <- 'heading;
+    ref string content <- 'content;
+}
+
+// The returned reference comes from a contained origin, not the carrier's storage.
+control heading_of(ref page_view input)
+    exits found { ref string text from input['heading] }
+{
+    exit found { input.heading };
+}
+
+// Moving the carrier transfers its contained references. Its caption is destroyed.
+control into_content(page_view input)
+    exits found { ref string text from input['content] }
+{
+    exit found { input.content };
+}
+
+control main() exits done {
+    mutable string heading = "A borrowed heading";
+    mutable string content = "Content survives its carrier";
+    page_view page = page_view {
+        caption: "Temporary carrier",
+        heading: borrow heading,
+        content: borrow content,
+    };
+
+    delta heading_of(borrow page) { found { ref string title } => heading_ready }
+    [heading_ready]: delta into_content(page) { found { ref string body } => content_ready }
+    [heading_ready & content_ready]:
+        emit(title);
+        heading = "Heading is available again";
+        emit(body);
+        content = "Content is available again";
+        emit(borrow heading);
+        emit(borrow content);
+        exit done;
+}

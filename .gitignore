@@ -1,0 +1,15 @@
+/target/
+
+/editors/vscode/node_modules/
+/editors/vscode/dist/
+/editors/vscode/server/
+/editors/vscode/*.vsix
+**/build/
+**/.path-cache/
+**/*.path-build/
+**/.tellur-cache/
+**/*.tellur-build/
+
+/bin/
+/*.vsix
+.DS_Store

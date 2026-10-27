@@ -1,0 +1,31 @@
+struct message {
+    string text;
+}
+
+struct message_view {
+    ref message source;
+    string label;
+}
+
+struct message_editor {
+    ref mutable string text;
+}
+
+control main() exits done {
+    mutable message original = message { text: "Hello through a stored reference" };
+
+    message_view first = message_view {
+        source: borrow original,
+        label: "A borrowed view"
+    };
+    message_view second = first;
+    emit(borrow second.source.text);
+    emit(second.label);
+
+    // The view's last use releases its borrow. The original can now be edited.
+    message_editor editor = message_editor { text: borrow mutable original.text };
+    ref mutable string text = editor.text;
+    deref text = "Changed through a moved reference field";
+    emit(borrow original.text);
+    exit done;
+}

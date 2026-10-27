@@ -1,0 +1,5 @@
+[
+  {"entry":"main","arguments":[],"calls":[]},
+  {"entry":"greeting","arguments":[{"kind":"bool","value":false}],"calls":[]},
+  {"entry":"greeting","arguments":[{"kind":"bool","value":true}],"calls":[]}
+]

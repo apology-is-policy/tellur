@@ -1,0 +1,602 @@
+{
+  "name": "Tellur",
+  "scopeName": "source.tellur",
+  "patterns": [
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#strings"
+    },
+    {
+      "include": "#imports"
+    },
+    {
+      "include": "#struct_declaration"
+    },
+    {
+      "include": "#outcome_contract"
+    },
+    {
+      "include": "#declarations"
+    },
+    {
+      "include": "#modern_arms"
+    },
+    {
+      "include": "#arms"
+    },
+    {
+      "include": "#origins"
+    },
+    {
+      "include": "#selector"
+    },
+    {
+      "include": "#expressions"
+    }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.tellur",
+          "begin": "//",
+          "end": "$"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.tellur",
+          "begin": "(bytes)?(\")",
+          "beginCaptures": {
+            "1": {
+              "name": "storage.type.tellur"
+            },
+            "2": {
+              "name": "punctuation.definition.string.begin.tellur"
+            }
+          },
+          "end": "\"",
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.definition.string.end.tellur"
+            }
+          },
+          "patterns": [
+            {
+              "name": "constant.character.escape.tellur",
+              "match": "\\\\[nrt\\\\\"]"
+            },
+            {
+              "name": "invalid.illegal.escape.tellur",
+              "match": "\\\\."
+            }
+          ]
+        }
+      ]
+    },
+    "declarations": {
+      "patterns": [
+        {
+          "name": "storage.type.tellur",
+          "match": "\\bref\\b"
+        },
+        {
+          "name": "keyword.operator.tellur",
+          "match": "\\b(?:borrow|deref)\\b"
+        },
+        {
+          "match": "\\b(trait)\\s+([a-z_][a-z_0-9]*)",
+          "captures": {
+            "1": {
+              "name": "keyword.declaration.tellur"
+            },
+            "2": {
+              "name": "entity.name.type.trait.tellur"
+            }
+          }
+        },
+        {
+          "match": "\\b(implement|impl)\\s+([a-z_][a-z_0-9.]*)\\s+(for)\\b",
+          "captures": {
+            "1": {
+              "name": "keyword.declaration.tellur"
+            },
+            "2": {
+              "name": "entity.name.type.trait.tellur"
+            },
+            "3": {
+              "name": "keyword.declaration.tellur"
+            }
+          }
+        },
+        {
+          "match": "\\b(type)\\s+([a-z_][a-z_0-9]*)(?:\\s*:\\s*((?:copy|clone|drop)(?:\\s*\\+\\s*(?:copy|clone|drop))*))?",
+          "captures": {
+            "1": {
+              "name": "keyword.declaration.tellur"
+            },
+            "2": {
+              "name": "entity.name.type.associated.tellur"
+            },
+            "3": {
+              "name": "support.type.capability.tellur"
+            }
+          }
+        },
+        {
+          "match": "\\b(control|region|loop)\\s+([A-Za-z_][A-Za-z0-9_]*)(?:\\s*(<[^>]+>))?",
+          "captures": {
+            "1": {
+              "name": "keyword.control.tellur"
+            },
+            "2": {
+              "name": "entity.name.function.tellur"
+            },
+            "3": {
+              "name": "meta.type.parameters.tellur",
+              "patterns": [
+                {
+                  "name": "support.type.capability.tellur",
+                  "match": "\\b(copy|clone|drop)\\b"
+                },
+                {
+                  "match": "(?<=[:+])\\s*((?!(?:copy|clone|drop)\\b)[a-z_][a-z_0-9.]*)",
+                  "captures": {
+                    "1": {
+                      "name": "entity.name.type.trait.tellur"
+                    }
+                  }
+                },
+                {
+                  "name": "entity.name.type.parameter.tellur",
+                  "match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b"
+                },
+                {
+                  "name": "punctuation.separator.capability.tellur",
+                  "match": "[:+]"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "match": "\\b(path)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "keyword.declaration.tellur"
+            },
+            "2": {
+              "name": "constant.other.tellur"
+            }
+          }
+        },
+        {
+          "match": "\\b(exit)\\s+((?!delta\\b)[A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "keyword.control.tellur"
+            },
+            "2": {
+              "name": "entity.name.type.outcome.tellur"
+            }
+          }
+        },
+        {
+          "match": "\\b(from)\\s+([a-z_][a-z_0-9]*)",
+          "captures": {
+            "1": {
+              "name": "keyword.control.tellur"
+            },
+            "2": {
+              "name": "variable.other.tellur"
+            }
+          }
+        },
+        {
+          "match": "\\b((?!(?:mutable|borrow|deref|from|ref)\\b)(?:auto|[a-z_][a-z_0-9]*)(?:\\.[a-z_][a-z_0-9]*)*(?:<[^;{}\\n]*>(?:\\.[a-z_][a-z_0-9]*)?)?)\\s+([a-z_][a-z_0-9]*)(?=\\s*(?:from\\b|<-|=|[,)};]))",
+          "captures": {
+            "1": {
+              "name": "storage.type.tellur"
+            },
+            "2": {
+              "name": "variable.other.definition.tellur"
+            }
+          }
+        }
+      ]
+    },
+    "arms": {
+      "name": "meta.decision.arms.tellur",
+      "begin": "(->)\\s*(\\[)?",
+      "beginCaptures": {
+        "1": {
+          "name": "keyword.operator.tellur"
+        },
+        "2": {
+          "name": "punctuation.section.brackets.begin.tellur"
+        }
+      },
+      "end": "\\]",
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.section.brackets.end.tellur"
+        }
+      },
+      "patterns": [
+        {
+          "match": "\\[",
+          "name": "punctuation.section.brackets.begin.tellur"
+        },
+        {
+          "include": "#comments"
+        },
+        {
+          "match": "(=>)\\s*([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "keyword.operator.tellur"
+            },
+            "2": {
+              "name": "constant.other.tellur"
+            }
+          }
+        },
+        {
+          "name": "entity.name.type.outcome.tellur",
+          "match": "\\b[A-Za-z_][A-Za-z0-9_]*(?=\\s*(?:\\(|=>))"
+        },
+        {
+          "include": "#expressions"
+        }
+      ]
+    },
+    "selector": {
+      "name": "meta.selector.tellur",
+      "begin": "\\[(?=[^\\[\\]\";=]*\\]\\s*(?::|over\\b))",
+      "beginCaptures": {
+        "0": {
+          "name": "punctuation.section.brackets.begin.tellur"
+        }
+      },
+      "end": "\\]",
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.section.brackets.end.tellur"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#comments"
+        },
+        {
+          "name": "constant.other.tellur",
+          "match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b"
+        },
+        {
+          "name": "keyword.operator.logical.tellur",
+          "match": "[&|]"
+        },
+        {
+          "name": "punctuation.section.parens.tellur",
+          "match": "[()]"
+        }
+      ]
+    },
+    "expressions": {
+      "patterns": [
+        {
+          "include": "#origins"
+        },
+        {
+          "match": "\\b([A-Za-z_][A-Za-z0-9_]*)(\\.\\.\\.)",
+          "captures": {
+            "1": {
+              "name": "entity.name.type.outcome.tellur"
+            },
+            "2": {
+              "name": "keyword.operator.tellur"
+            }
+          }
+        },
+        {
+          "name": "storage.type.tellur",
+          "match": "\\bref\\b"
+        },
+        {
+          "name": "keyword.operator.tellur",
+          "match": "\\b(?:borrow|deref)\\b"
+        },
+        {
+          "include": "#comments"
+        },
+        {
+          "include": "#strings"
+        },
+        {
+          "include": "#list"
+        },
+        {
+          "name": "variable.other.property.tellur",
+          "match": "\\b[A-Za-z_][A-Za-z0-9_]*(?=\\s*:(?![=:]))"
+        },
+        {
+          "name": "storage.modifier.tellur",
+          "match": "\\b(mutable|pub)\\b"
+        },
+        {
+          "name": "keyword.control.tellur",
+          "match": "\\b(?:control|region|exits|from|exit|again|loop|over|path|delta|capture)\\b|\u0394|\\bforward\\b(?!\\s*[({])"
+        },
+        {
+          "name": "support.function.tellur",
+          "match": "\\b(?:emit|clone|drop)\\b"
+        },
+        {
+          "name": "constant.language.tellur",
+          "match": "\\b(?:true|false|unit)\\b"
+        },
+        {
+          "name": "constant.numeric.tellur",
+          "match": "\\b[0-9]+(?:u32)?\\b"
+        },
+        {
+          "name": "storage.type.tellur",
+          "match": "\\b(?:self|auto|bool|u32|string|bytes|unit|option|array|vector|map|slice|outcome|Bool|U32|String|Bytes|Unit|Option)\\b"
+        },
+        {
+          "name": "entity.name.type.tellur",
+          "match": "\\b[A-Z][A-Za-z0-9_]*\\b"
+        },
+        {
+          "name": "variable.other.definition.tellur",
+          "match": "\\b[A-Za-z_][A-Za-z0-9_]*(?=\\s*:=)"
+        },
+        {
+          "name": "entity.name.function.tellur",
+          "match": "\\b[A-Za-z_][A-Za-z0-9_]*(?=\\s*<[^;{}\\n]*>\\s*\\()"
+        },
+        {
+          "name": "entity.name.function.tellur",
+          "match": "\\b[A-Za-z_][A-Za-z0-9_]*(?=\\s*\\()"
+        },
+        {
+          "name": "keyword.operator.tellur",
+          "match": ":=|=>|->|&&|\\|\\||==|!=|<=|>=|[&|!<>=*]"
+        },
+        {
+          "name": "punctuation.terminator.statement.tellur",
+          "match": ";"
+        },
+        {
+          "name": "punctuation.separator.tellur",
+          "match": "[,:.]"
+        },
+        {
+          "name": "punctuation.section.tellur",
+          "match": "[(){}]"
+        },
+        {
+          "name": "variable.other.tellur",
+          "match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b"
+        }
+      ]
+    },
+    "modern_arms": {
+      "patterns": [
+        {
+          "match": "(=>)\\s*((?!(?:delta|forward)\\b)[A-Za-z_][A-Za-z0-9_]*)\\b(?!\\s*[({])",
+          "captures": {
+            "1": {
+              "name": "keyword.operator.tellur"
+            },
+            "2": {
+              "name": "constant.other.tellur"
+            }
+          }
+        },
+        {
+          "match": "\\b[A-Za-z_][A-Za-z0-9_.]*(?=\\s*(?:\\{[^{}]*\\}\\s*)?=>)",
+          "name": "entity.name.type.outcome.tellur"
+        }
+      ]
+    },
+    "list": {
+      "name": "meta.collection.literal.tellur",
+      "begin": "\\[",
+      "end": "\\]",
+      "beginCaptures": {
+        "0": {
+          "name": "punctuation.section.brackets.begin.tellur"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.section.brackets.end.tellur"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#expressions"
+        }
+      ]
+    },
+    "outcome_contract": {
+      "name": "meta.outcome.contract.tellur",
+      "begin": "\\b(outcome|variant)\\s+([a-z_][a-z_0-9]*)\\s*(<[^>]+>\\s*)?(\\[[^\\]]+\\]\\s*)?(\\{)",
+      "beginCaptures": {
+        "1": {
+          "name": "keyword.declaration.tellur"
+        },
+        "2": {
+          "name": "entity.name.type.tellur"
+        },
+        "3": {
+          "name": "meta.type.parameters.tellur",
+          "patterns": [
+            {
+              "name": "entity.name.type.parameter.tellur",
+              "match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b"
+            },
+            {
+              "name": "punctuation.section.tellur",
+              "match": "[<>,]"
+            }
+          ]
+        },
+        "4": {
+          "name": "meta.origin.parameters.tellur",
+          "patterns": [
+            {
+              "include": "#origins"
+            }
+          ]
+        },
+        "5": {
+          "name": "punctuation.section.tellur"
+        }
+      },
+      "end": "\\}",
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.section.tellur"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#comments"
+        },
+        {
+          "begin": "\\{",
+          "end": "\\}",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.section.tellur"
+            }
+          },
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.section.tellur"
+            }
+          },
+          "patterns": [
+            {
+              "include": "#origins"
+            },
+            {
+              "include": "#declarations"
+            },
+            {
+              "include": "#expressions"
+            }
+          ]
+        },
+        {
+          "name": "entity.name.type.outcome.tellur",
+          "match": "\\b[a-z_][a-z_0-9]*\\b"
+        },
+        {
+          "name": "punctuation.separator.tellur",
+          "match": ","
+        }
+      ]
+    },
+    "struct_declaration": {
+      "name": "meta.struct.declaration.tellur",
+      "begin": "\\b(struct)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(<[^>]+>\\s*)?(\\[[^\\]]+\\]\\s*)?(\\{)",
+      "beginCaptures": {
+        "1": {
+          "name": "keyword.declaration.tellur"
+        },
+        "2": {
+          "name": "entity.name.type.tellur"
+        },
+        "3": {
+          "name": "meta.type.parameters.tellur",
+          "patterns": [
+            {
+              "name": "entity.name.type.parameter.tellur",
+              "match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b"
+            },
+            {
+              "name": "punctuation.section.tellur",
+              "match": "[<>,]"
+            }
+          ]
+        },
+        "4": {
+          "name": "meta.origin.parameters.tellur",
+          "patterns": [
+            {
+              "include": "#origins"
+            }
+          ]
+        },
+        "5": {
+          "name": "punctuation.section.tellur"
+        }
+      },
+      "end": "\\}",
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.section.tellur"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#comments"
+        },
+        {
+          "include": "#declarations"
+        },
+        {
+          "include": "#expressions"
+        }
+      ]
+    },
+    "imports": {
+      "name": "meta.import.tellur",
+      "begin": "\\b(import)\\b",
+      "beginCaptures": {
+        "1": {
+          "name": "keyword.declaration.tellur"
+        }
+      },
+      "end": ";",
+      "patterns": [
+        {
+          "include": "#comments"
+        },
+        {
+          "include": "#strings"
+        },
+        {
+          "match": "\\b(as)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "keyword.declaration.tellur"
+            },
+            "2": {
+              "name": "entity.name.namespace.tellur"
+            }
+          }
+        }
+      ]
+    },
+    "origins": {
+      "patterns": [
+        {
+          "name": "entity.name.type.origin.tellur",
+          "match": "'[A-Za-z_][A-Za-z0-9_]*"
+        },
+        {
+          "name": "keyword.operator.tellur",
+          "match": "<-"
+        }
+      ]
+    }
+  }
+}

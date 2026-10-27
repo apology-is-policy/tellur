@@ -1,0 +1,34 @@
+region load(path: String)
+    exits Loaded(bytes: Bytes), Missing, Failed(error: LoadError)
+{
+    [Entry]:
+        Δ open(path) -> [
+            Opened(handle) => Open,
+            NotFound => MissingFile,
+            Denied => CannotOpen
+        ];
+
+    [MissingFile]: exit Missing;
+    [CannotOpen]: exit Failed(PermissionDenied);
+
+    [Open]:
+        Δ read(handle) -> [Data(bytes) => ReadOK, Failed(re) => ReadBad];
+
+    [Open]:
+        Δ close(handle) -> [Closed => CloseOK, Failed(ce) => CloseBad];
+
+    [ReadBad | CloseBad]: emit("File load failed");
+
+    [ReadOK & CloseOK]: exit Loaded(bytes);
+    [ReadBad & CloseOK]: exit Failed(ReadOnly(re));
+    [ReadOK & CloseBad]: exit Failed(CloseOnly(ce));
+    [ReadBad & CloseBad]: exit Failed(Both(re, ce));
+}
+
+region refresh(path: String) exits Done {
+    [Entry]: config = delta load(path) -> [
+        Loaded(bytes) => Updated, Missing => Absent, Failed(error) => Warn
+    ];
+    [Warn]: emit("Keep current configuration");
+    [Updated | Absent | Warn]: exit Done;
+}

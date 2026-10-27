@@ -1,0 +1,39 @@
+// Helpers can mutate a caller's value and return a borrow of an input.
+control main() exits auto {
+    [entry]:
+        mutable string message = "hello";
+        delta rewrite(borrow mutable message) {
+            rewritten { ref mutable string edited } => rewritten,
+        }
+    [rewritten]:
+        emit(edited);
+        // edited has no later uses, so its loan ends here.
+        message = "ready for another edit";
+        string fallback = "fallback";
+        delta choose(true, borrow message, borrow fallback) {
+            selected { ref string text } => selected,
+        }
+    [selected]:
+        string saved = clone(text);
+        // text may refer to either input; both loans end after its last use.
+        message = "owner is available again";
+        emit(saved);
+        emit(message);
+        exit done;
+}
+
+control rewrite(ref mutable string text) exits auto {
+    [entry]:
+        deref text = concat(clone(text), " from a helper");
+        exit rewritten { text };
+}
+
+control choose(bool first, ref string left, ref string right) exits auto {
+    [entry]: delta first { true => first, false => second }
+    [first]: exit selected { left };
+    [second]: exit selected { right };
+}
+
+// Try using edited after the message assignment: the assignment conflicts.
+// Try returning borrow local from a helper: a local owner cannot outlive that call.
+// Hover over choose to see the inferred result and both possible borrow sources.

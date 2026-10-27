@@ -1,0 +1,35 @@
+region fetch_retry(url: String)
+    exits Done(response: Response), Failed(error: NetworkError),
+          Cancelled, ArithmeticFault
+{
+    loop Attempt(number: U32 = 1u32) {
+        [Entry]:
+            Δ fetch(url) -> [
+                Received(response) => Received,
+                Unavailable(error) => Unavailable,
+                Cancelled => FetchCancelled
+            ];
+
+        [Unavailable]:
+            Δ (number < 3u32) -> [true => Retryable, false => Exhausted];
+
+        [Retryable]:
+            Δ checked_mul(number, 100u32) -> [
+                Product(delay) => DelayReady, Overflow => DelayOverflow
+            ];
+
+        [DelayReady]:
+            Δ pause(delay) -> [Elapsed => Waited, Cancelled => WaitCancelled];
+
+        [Waited]:
+            Δ checked_add(number, 1u32) -> [
+                Sum(next) => NextReady, Overflow => CounterOverflow
+            ];
+
+        [Received]: exit Done(response);
+        [Exhausted]: exit Failed(error);
+        [FetchCancelled | WaitCancelled]: exit Cancelled;
+        [DelayOverflow | CounterOverflow]: exit ArithmeticFault;
+        [NextReady]: again Attempt(next);
+    }
+}

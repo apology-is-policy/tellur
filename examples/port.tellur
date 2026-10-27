@@ -1,0 +1,25 @@
+region port(text: Option<String>)
+    exits Ready(port: U32), Invalid(message: String)
+{
+    [Entry]:
+        Δ text -> [None => Default, Some(source) => Supplied];
+
+    [Default]: port := 8080u32;
+
+    [Supplied]:
+        Δ parse_u32(source) -> [
+            Number(n) => Parsed,
+            Malformed => BadSyntax,
+            Overflow => TooLarge
+        ];
+
+    [Parsed]:
+        Δ (1u32 <= n && n <= 65535u32) -> [
+            true => InRange, false => OutOfRange
+        ];
+
+    [InRange]: port := n;
+    [BadSyntax]: exit Invalid("Expected a decimal integer");
+    [TooLarge | OutOfRange]: exit Invalid("Port must be between 1 and 65535");
+    [Default | InRange]: exit Ready(port);
+}

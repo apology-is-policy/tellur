@@ -1,0 +1,58 @@
+// Lists construct a typed array or vector. Calls use parentheses;
+// delta arms and exit payloads use braces.
+control first(ref vector<string> words) exits auto {
+    exit delta vector_get(words, 0) {
+        found { ref string word } => [available]: found { word },
+        out_of_bounds         => [empty]: empty {}
+    };
+}
+
+control main() exits done {
+    [entry]:
+        mutable vector<string> words = ["hello", "path"];
+        delta first(borrow words) {
+            found { ref string word } => readable,
+            empty => no_words
+        }
+    [readable]: emit(word);
+    // The borrowed word's last use is above; mutation is now allowed.
+    [readable | no_words]:
+        delta vector_push(borrow mutable words, "collections") { pushed => extended }
+    [extended]:
+        emit(u32_text(vector_length(borrow words)));
+        array<u32, 3> numbers = [10, 20, 30];
+        delta array_get(borrow numbers, 1) {
+            found { ref u32 number } => numbered,
+            out_of_bounds => outside
+        }
+    [numbered]: emit(u32_text(deref number));
+    [outside]: emit("index was outside the array");
+
+    [numbered | outside]:
+        mutable map<string, u32> counts = map {};
+        delta map_insert(borrow mutable counts, "words", vector_length(borrow words)) {
+            inserted => inserted,
+            replaced { u32 previous } => replaced
+        }
+    [replaced]: emit(u32_text(previous));
+    [inserted | replaced]:
+        delta map_get(borrow counts, borrow "words") {
+            found { ref u32 count } => counted,
+            missing => missing
+        }
+    [counted]: emit(u32_text(deref count));
+    [missing]: emit("no word count");
+
+    // Consuming iteration transfers each element and the remaining vector.
+    [counted | missing] over &: {
+        loop drain(vector<string> remaining = words) {
+            [entry]:
+                delta vector_take(remaining) {
+                    item { string next_word, vector<string> rest } => next,
+                    empty => finished
+                }
+            [next]: emit(next_word); again drain(rest);
+            [finished]: exit done;
+        }
+}
+}

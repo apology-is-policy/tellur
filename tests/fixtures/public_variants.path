@@ -1,0 +1,48 @@
+// Origin groups now cross control boundaries on owned variants as well as records.
+struct text_views['title, 'body] {
+    ref mutable string title <- 'title;
+    ref mutable string body <- 'body;
+}
+
+variant lookup['title, 'body] {
+    found { text_views['title, 'body] fields },
+    missing
+}
+
+struct envelope['title, 'body] {
+    lookup['title, 'body] result;
+}
+
+control lookup_text(ref mutable string title, ref mutable string body, bool present)
+    exits ready { envelope[title, body] result }
+{
+    exit delta present {
+        true => ready { envelope { lookup.found { text_views { title, body } } } },
+        false => ready { envelope { lookup.missing {} } }
+    };
+}
+
+control relay(envelope input) exits ready... {
+    exit ready { input };
+}
+
+control main() exits done { string title, string body } {
+    mutable string title = "original title";
+    mutable string body = "original body";
+    delta lookup_text(borrow mutable title, borrow mutable body, true) {
+        ready { auto first } => looked_up
+    }
+    [looked_up]: delta relay(first) { ready { auto second } => relayed }
+    [relayed]: delta second.result {
+        found { auto fields } => available,
+        missing => absent
+    }
+    [available]:
+        deref fields.title = "edited title";
+        emit(fields.title);
+        title = "title released independently";
+        deref fields.body = "edited body";
+        emit(fields.body);
+    [absent]: emit("No borrowed payload.");
+    [entry]: exit done { title, body };
+}

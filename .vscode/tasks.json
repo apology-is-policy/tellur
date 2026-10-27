@@ -1,0 +1,83 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Tellur: Build active file",
+      "type": "process",
+      "command": "${workspaceFolder}/bin/tellurc",
+      "args": [
+        "build",
+        "${file}",
+        "--entry",
+        "${config:tellurLanguage.entryRegion}"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": {
+        "owner": "tellur",
+        "fileLocation": "absolute",
+        "pattern": {
+          "regexp": "^(.*):(\\d+):(\\d+): (E_[A-Z_]+): (.*)$",
+          "file": 1,
+          "line": 2,
+          "column": 3,
+          "code": 4,
+          "message": 5
+        }
+      }
+    },
+    {
+      "label": "Build Tellur tools",
+      "type": "process",
+      "command": "cargo",
+      "args": [
+        "build",
+        "--locked",
+        "--bins"
+      ],
+      "problemMatcher": [
+        "$rustc"
+      ]
+    },
+    {
+      "label": "Build Tellur extension",
+      "type": "process",
+      "command": "npm",
+      "args": [
+        "run",
+        "build"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/editors/vscode"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Prepare Tellur extension host",
+      "dependsOn": [
+        "Build Tellur tools",
+        "Build Tellur extension"
+      ],
+      "dependsOrder": "sequence",
+      "problemMatcher": []
+    },
+    {
+      "label": "Test Tellur compiler",
+      "type": "process",
+      "command": "cargo",
+      "args": [
+        "test",
+        "--locked"
+      ],
+      "group": "test",
+      "problemMatcher": [
+        "$rustc"
+      ]
+    }
+  ]
+}

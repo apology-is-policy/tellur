@@ -1,0 +1,233 @@
+{
+  "name": "tellur-language",
+  "displayName": "Tellur Language (Experimental)",
+  "description": "Tellur controls, inline adapters, owned outcomes, diagnostics and native build/run",
+  "version": "0.40.0",
+  "publisher": "tellur-language-local",
+  "license": "Apache-2.0",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onLanguage:tellur",
+    "onLanguage:path"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "Syntax highlighting works; the compiler server runs only in trusted workspaces."
+    }
+  },
+  "contributes": {
+    "languages": [
+      {
+        "id": "tellur",
+        "aliases": [
+          "Tellur",
+          "tellur"
+        ],
+        "extensions": [
+          ".tellur",
+          ".path"
+        ],
+        "configuration": "./language-configuration.json"
+      },
+      {
+        "id": "path",
+        "aliases": [
+          "Path (legacy language ID)"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "tellur",
+        "scopeName": "source.tellur",
+        "path": "./syntaxes/tellur.tmLanguage.json"
+      },
+      {
+        "language": "path",
+        "scopeName": "source.tellur",
+        "path": "./syntaxes/tellur.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "tellur",
+        "path": "./snippets/tellur.json"
+      },
+      {
+        "language": "path",
+        "path": "./snippets/tellur.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "tellur.restartServer",
+        "title": "Tellur: Restart Language Server"
+      },
+      {
+        "command": "tellur.build",
+        "title": "Tellur: Build Native Program",
+        "icon": "$(tools)"
+      },
+      {
+        "command": "tellur.buildAndRun",
+        "title": "Tellur: Build and Run",
+        "icon": "$(play)"
+      }
+    ],
+    "configuration": {
+      "title": "Tellur Language",
+      "properties": {
+        "tellurLanguage.serverPath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine-overridable",
+          "description": "Path to tellur-lsp. Empty uses the bundled server or the compiler checkout's target/debug/tellur-lsp."
+        },
+        "tellurLanguage.manifestPath": {
+          "type": "string",
+          "default": "",
+          "scope": "window",
+          "description": "Primitive manifest file, absolute or relative to the workspace folder. Empty discovers the nearest manifest.json for each source file."
+        },
+        "tellurLanguage.trace.server": {
+          "type": "string",
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
+          "default": "off",
+          "description": "Trace communication with the Tellur language server."
+        },
+        "tellurLanguage.compilerPath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine-overridable",
+          "description": "Path to tellurc. Empty uses the bundled compiler."
+        },
+        "tellurLanguage.entryRegion": {
+          "type": "string",
+          "default": "main",
+          "description": "Control to run when building the active file (setting name retained for compatibility)."
+        },
+        "tellurLanguage.programArguments": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Native program arguments. Each item is passed as one argument, without shell expansion."
+        },
+        "tellurLanguage.releaseBuild": {
+          "type": "boolean",
+          "default": false,
+          "description": "Optimize native programs with LLVM at level 2."
+        },
+        "pathLanguage.serverPath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine-overridable",
+          "description": "Path to tellur-lsp. Empty uses the bundled server or the compiler checkout's target/debug/tellur-lsp.",
+          "deprecationMessage": "Use tellurLanguage.serverPath instead."
+        },
+        "pathLanguage.manifestPath": {
+          "type": "string",
+          "default": "",
+          "scope": "window",
+          "description": "Primitive manifest file, absolute or relative to the workspace folder. Empty discovers the nearest manifest.json for each source file.",
+          "deprecationMessage": "Use tellurLanguage.manifestPath instead."
+        },
+        "pathLanguage.trace.server": {
+          "type": "string",
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
+          "default": "off",
+          "description": "Trace communication with the Tellur language server.",
+          "deprecationMessage": "Use tellurLanguage.trace.server instead."
+        },
+        "pathLanguage.compilerPath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine-overridable",
+          "description": "Path to tellurc. Empty uses the bundled compiler.",
+          "deprecationMessage": "Use tellurLanguage.compilerPath instead."
+        },
+        "pathLanguage.entryRegion": {
+          "type": "string",
+          "default": "main",
+          "description": "Control to run when building the active file (setting name retained for compatibility).",
+          "deprecationMessage": "Use tellurLanguage.entryRegion instead."
+        },
+        "pathLanguage.programArguments": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Native program arguments. Each item is passed as one argument, without shell expansion.",
+          "deprecationMessage": "Use tellurLanguage.programArguments instead."
+        },
+        "pathLanguage.releaseBuild": {
+          "type": "boolean",
+          "default": false,
+          "description": "Optimize native programs with LLVM at level 2.",
+          "deprecationMessage": "Use tellurLanguage.releaseBuild instead."
+        }
+      }
+    },
+    "keybindings": [
+      {
+        "command": "tellur.build",
+        "key": "ctrl+alt+b",
+        "mac": "cmd+alt+b",
+        "when": "editorLangId == tellur || editorLangId == path"
+      },
+      {
+        "command": "tellur.buildAndRun",
+        "key": "ctrl+alt+r",
+        "mac": "cmd+alt+r",
+        "when": "editorLangId == tellur || editorLangId == path"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "tellur.buildAndRun",
+          "when": "resourceLangId == tellur || resourceLangId == path",
+          "group": "navigation@90"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "build": "node scripts/build.cjs",
+    "test": "node --test test/grammar.test.cjs test/configuration.test.cjs",
+    "package": "npm run build && vsce package --no-dependencies",
+    "vscode:prepublish": "npm run build"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "esbuild": "^0.26.0",
+    "@vscode/vsce": "^3.6.0",
+    "vscode-textmate": "^9.2.0",
+    "vscode-oniguruma": "^2.0.1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/apology-is-policy/tellur.git",
+    "directory": "editors/vscode"
+  }
+}

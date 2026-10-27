@@ -1,0 +1,452 @@
+//! Checked graph -> explicit Rust control flow -> verified LLVM IR -> native code.
+//! Rust is a portable implementation bridge; the emitted program has no graph interpreter.
+use crate::{Diagnostic, Result, Span, ir::*};
+use std::{
+    collections::BTreeMap,
+    fmt::Write as _,
+    fs,
+    hash::{Hash, Hasher},
+    path::{Path, PathBuf},
+    process::Command,
+};
+const SUPPORT: &str = include_str!("native/runtime.rs");
+const CARGO: &str = include_str!("native/Cargo.template");
+const LOCK: &str = include_str!("native/Cargo.lock");
+fn error(message: impl Into<String>) -> Diagnostic {
+    Diagnostic::new("E_BACKEND", Span::default(), message)
+}
+fn string(s: &str) -> String {
+    format!("{s:?}")
+}
+fn value(v: &Value) -> String {
+    match v {
+        Value::Reference { .. } => unreachable!("references are never embedded literals"),
+        Value::Bool(b) => format!("V::Bool({b})"),
+        Value::U32(n) => format!("V::U32({n})"),
+        Value::Unit => "V::Unit".into(),
+        Value::String(s) => format!("V::String({}.into())", string(s)),
+        Value::Bytes(b) => format!("V::Bytes(vec!{b:?})"),
+        Value::Opaque { ty, token } => format!(
+            "V::Opaque{{ty:{}.into(),token:{}.into()}}",
+            string(ty),
+            string(token)
+        ),
+        Value::Construct { ty, name, fields } => format!(
+            "V::Construct{{ty:{}.into(),name:{}.into(),fields:vec![{}]}}",
+            string(ty),
+            string(name),
+            fields.iter().map(value).collect::<Vec<_>>().join(",")
+        ),
+    }
+}
+fn expression(e: &Expr) -> String {
+    match e {
+        Expr::Length(e) => format!(
+            "{{ let value={}; collection_length(value,v)? }}",
+            expression(e)
+        ),
+        Expr::Value(v) => value(v),
+        Expr::Pure(name, args) => format!("pure({}, {})?", string(name), expressions(args)),
+        Expr::Reference(p, ty) => format!(
+            "reference(&v, {}, &{:?}, {}, {})?",
+            p.root,
+            p.fields,
+            p.indirect,
+            string(ty)
+        ),
+        Expr::Move(p) => format!(
+            "take_place(&mut v, {}, &{:?}, {})?",
+            p.root, p.fields, p.indirect
+        ),
+        Expr::Place(p) => format!(
+            "read_place(&v, {}, &{:?}, {})?",
+            p.root, p.fields, p.indirect
+        ),
+        Expr::Project(e, i) => format!("project(&({}), &[{i}])?", expression(e)),
+        Expr::Construct(t, n, args) => format!(
+            "V::Construct{{ty:{}.into(),name:{}.into(),fields:{}}}",
+            string(t),
+            string(n),
+            expressions(args)
+        ),
+        Expr::Record(ty, fields) => {
+            let assignments = fields
+                .iter()
+                .map(|(i, e)| format!("let value={}; fields[{i}]=value;", expression(e)))
+                .collect::<String>();
+            format!(
+                "{{let mut fields=vec![V::Unit;{}];{assignments}V::Construct{{ty:{}.into(),name:{}.into(),fields}}}}",
+                fields.len(),
+                string(ty),
+                string(ty)
+            )
+        }
+        Expr::Not(e) => format!("V::Bool(!boolean({})?)", expression(e)),
+        Expr::Binary(op, a, b) if op == "&&" || op == "||" => format!(
+            "V::Bool(boolean({})? {op} boolean({})?)",
+            expression(a),
+            expression(b)
+        ),
+        Expr::Binary(op, a, b) => format!(
+            "binary({}, {}, {})?",
+            string(op),
+            expression(a),
+            expression(b)
+        ),
+    }
+}
+fn expressions(args: &[Expr]) -> String {
+    format!(
+        "vec![{}]",
+        args.iter().map(expression).collect::<Vec<_>>().join(",")
+    )
+}
+fn guard(g: &Guard) -> String {
+    match g {
+        Guard::True => "true".into(),
+        Guard::Atom(id) => format!("a[{id}]"),
+        Guard::And(x, y) => format!("({} && {})", guard(x), guard(y)),
+        Guard::Or(x, y) => format!("({} || {})", guard(x), guard(y)),
+    }
+}
+struct Generator<'a> {
+    names: BTreeMap<&'a str, usize>,
+    code: String,
+    slots: Vec<Id>,
+}
+impl Generator<'_> {
+    fn instructions(&mut self, code: &[Instruction]) {
+        for i in code {
+            let p = &i.provenance;
+            let _ = writeln!(
+                self.code,
+                "// {}:{}:{} definition {} calls {:?}\nhost.tick({}, {})?;\nif {} {{",
+                p.region,
+                p.span.line,
+                p.span.column,
+                p.definition,
+                p.call_sites,
+                p.span.line,
+                p.span.column,
+                guard(&i.guard)
+            );
+            match &i.action {
+                Action::Bind(id, e) => {
+                    let _ = writeln!(self.code, "let x = {}; v[{id}] = Some(x);", expression(e));
+                }
+                Action::Assign(p, e) => {
+                    let _ = writeln!(
+                        self.code,
+                        "let x = {}; assign_place(&mut v, {}, &{:?}, {}, x)?;",
+                        expression(e),
+                        p.root,
+                        p.fields,
+                        p.indirect
+                    );
+                }
+                Action::Drop(e) => {
+                    let _ = writeln!(self.code, "drop({});", expression(e));
+                }
+                Action::Release(ids) => {
+                    for id in ids {
+                        let _ = writeln!(self.code, "v[{id}] = None;");
+                    }
+                }
+                Action::Emit(e) => {
+                    let _ = writeln!(self.code, "host.emit({})?;", expression(e));
+                }
+                Action::Exit(name, args) => {
+                    let _ = writeln!(self.code, "let fields = {};", expressions(args));
+                    for id in &self.slots {
+                        let _ = writeln!(self.code, "v[{id}] = None;");
+                    }
+                    let _ = writeln!(self.code, "return Ok(({}.into(), fields));", string(name));
+                }
+                Action::Again { target, args } => {
+                    let _ = writeln!(
+                        self.code,
+                        "next_{target} = {}; continue 'loop_{target};",
+                        expressions(args)
+                    );
+                }
+                Action::Loop {
+                    id,
+                    parameters,
+                    local_slots,
+                    local_atoms,
+                    body,
+                } => {
+                    let _ = writeln!(
+                        self.code,
+                        "let mut next_{id}:Vec<V> = {};\n'loop_{id}: loop {{",
+                        expressions(
+                            &parameters
+                                .iter()
+                                .map(|(_, e)| e.clone())
+                                .collect::<Vec<_>>()
+                        )
+                    );
+                    for s in local_slots {
+                        let _ = writeln!(self.code, "v[{s}] = None;");
+                    }
+                    for atom in local_atoms {
+                        let _ = writeln!(self.code, "a[{atom}] = false;");
+                    }
+                    let _ = writeln!(
+                        self.code,
+                        "let mut initial_{id} = std::mem::take(&mut next_{id}).into_iter();"
+                    );
+                    for (s, _) in parameters {
+                        let _ = writeln!(self.code, "v[{s}] = initial_{id}.next();");
+                    }
+                    self.instructions(body);
+                    let _ = writeln!(
+                        self.code,
+                        "return Err(\"E_NATIVE: checked loop fell through\".into());\n}}"
+                    );
+                }
+                Action::Complete {
+                    atom,
+                    bindings,
+                    unwind,
+                    release,
+                } => {
+                    let _ = writeln!(
+                        self.code,
+                        "let mut fields:std::vec::IntoIter<V> = {}.into_iter();",
+                        expressions(&bindings.iter().map(|(_, e)| e.clone()).collect::<Vec<_>>())
+                    );
+                    for (id, _) in bindings {
+                        let _ = writeln!(self.code, "v[{id}] = fields.next();");
+                    }
+                    for id in release {
+                        let _ = writeln!(self.code, "v[{id}] = None;");
+                    }
+                    let _ = writeln!(self.code, "a[{atom}] = true;");
+                    if let Some(target) = unwind {
+                        let _ = writeln!(self.code, "break 'loop_{target};");
+                    }
+                }
+                Action::Decide {
+                    operation,
+                    args,
+                    arms,
+                } => {
+                    let call = match operation {
+                        Operation::Collection(name) => format!(
+                            "{{ let args={}; collection({},args,v)? }}",
+                            expressions(args),
+                            string(name)
+                        ),
+                        Operation::Variant(e) => format!("variant({})?", expression(e)),
+                        Operation::BorrowedVariant(e) => {
+                            format!("borrowed_variant(&v, {})?", expression(e))
+                        }
+                        Operation::Primitive(name) => {
+                            format!("host.primitive({}, {})?", string(name), expressions(args))
+                        }
+                        Operation::Region(name) => format!(
+                            "{{ let args = {}; region_{}(host, &mut v, args)? }}",
+                            expressions(args),
+                            self.names[name.as_str()]
+                        ),
+                    };
+                    let _ = writeln!(
+                        self.code,
+                        "let (outcome, fields) = {call};\nmatch outcome.as_str() {{"
+                    );
+                    for arm in arms {
+                        let _ = writeln!(
+                            self.code,
+                            "{} => {{ a[{}] = true; let mut fields = fields.into_iter();",
+                            string(&arm.outcome),
+                            arm.atom
+                        );
+                        for id in &arm.slots {
+                            let _ = writeln!(self.code, "v[{id}] = fields.next();");
+                        }
+                        self.code.push_str("},\n");
+                    }
+                    self.code.push_str(
+                        "_ => return Err(\"E_NATIVE: unmatched declared outcome\".into()),\n}\n",
+                    );
+                }
+            }
+            self.code.push_str("}\n");
+        }
+    }
+}
+#[derive(Debug)]
+pub struct NativeBuild {
+    pub executable: PathBuf,
+    pub llvm: PathBuf,
+    pub generated: PathBuf,
+}
+impl CheckedProgram {
+    pub fn native_source(&self, entry: &str) -> Result<String> {
+        self.verify()?;
+        if self.region(entry).is_none() {
+            return Err(error(format!("unknown entry region {entry}")));
+        }
+        let mut g = Generator {
+            slots: vec![],
+            names: self
+                .regions()
+                .enumerate()
+                .map(|(i, r)| (r.name.as_str(), i))
+                .collect(),
+            code: String::from("#![allow(unused,unreachable_code,unused_labels)]\nmod support {\n"),
+        };
+        g.code.push_str("mod collection_support {\n");
+        g.code.push_str(include_str!("collection_support.rs"));
+        g.code.push_str("\n}\n");
+        g.code.push_str(SUPPORT);
+        g.code.push_str("\n}\nuse support::*;\n");
+        for r in self.regions() {
+            g.slots = r.slots.keys().copied().collect();
+            let size = r
+                .slots
+                .keys()
+                .chain(r.atoms.keys())
+                .max()
+                .map(|id| id + 1)
+                .unwrap_or(0);
+            let _ = writeln!(
+                g.code,
+                "fn region_{}(host:&mut Host, mut v:&mut Vec<Option<V>>, args:Vec<V>)->R<Outcome> {{\nlet mut a = vec![false; {size}];\nlet mut args = args.into_iter();",
+                g.names[r.name.as_str()]
+            );
+            for p in &r.parameters {
+                let _ = writeln!(g.code, "v[{}] = args.next();", p.id);
+            }
+            g.instructions(&r.code);
+            g.code
+                .push_str("Err(\"E_NATIVE: checked region fell through\".into())\n}\n");
+        }
+        for r in self.regions() {
+            let id = g.names[r.name.as_str()];
+            if r.parameters.iter().any(|p| p.ty.starts_with('&')) {
+                let _ = writeln!(
+                    g.code,
+                    "fn entry_{id}(_: &mut Host, _: Vec<V>)->R<Outcome> {{ Err(\"E_ENTRY: entry controls cannot require borrowed arguments\".into()) }}"
+                );
+            } else {
+                let _ = writeln!(
+                    g.code,
+                    "fn entry_{id}(host: &mut Host, args: Vec<V>)->R<Outcome> {{ let mut v=vec![None; {}]; region_{id}(host, &mut v, args) }}",
+                    self.next_id
+                );
+            }
+        }
+        let manifest = serde_json::to_string(self.manifest()).map_err(|e| error(e.to_string()))?;
+        let _ = writeln!(
+            g.code,
+            "fn main() {{\nlet entries:Vec<(&str,EntryFn,Vec<String>)> = vec!["
+        );
+        for r in self.regions() {
+            let _ = writeln!(
+                g.code,
+                "({},entry_{},vec![{}]),",
+                string(&r.name),
+                g.names[r.name.as_str()],
+                r.parameters
+                    .iter()
+                    .map(|p| format!("{}.into()", string(&p.ty)))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            );
+        }
+        let _ = writeln!(
+            g.code,
+            "];\nif let Err(error) = launch({}, {}, &entries) {{ eprintln!(\"{{error}}\"); std::process::exit(1); }}\n}}",
+            string(&manifest),
+            string(entry)
+        );
+        Ok(g.code)
+    }
+    pub fn build_native(&self, entry: &str, output: &Path, opt: u8) -> Result<NativeBuild> {
+        if opt > 3 {
+            return Err(error("optimization level must be 0..3"));
+        }
+        let output = if output.is_absolute() {
+            output.to_owned()
+        } else {
+            std::env::current_dir()
+                .map_err(|e| error(e.to_string()))?
+                .join(output)
+        };
+        let directory = PathBuf::from(format!("{}.tellur-build", output.display()));
+        let mut hasher = std::hash::DefaultHasher::new();
+        directory.hash(&mut hasher);
+        let package = format!("path_generated_{:016x}", hasher.finish());
+        fs::create_dir_all(directory.join("src")).map_err(|e| error(e.to_string()))?;
+        let generated = directory.join("src/main.rs");
+        fs::write(&generated, self.native_source(entry)?).map_err(|e| error(e.to_string()))?;
+        fs::write(
+            directory.join("Cargo.toml"),
+            CARGO.replace("path_generated", &package),
+        )
+        .map_err(|e| error(e.to_string()))?;
+        fs::write(
+            directory.join("Cargo.lock"),
+            LOCK.replace("path_generated", &package),
+        )
+        .map_err(|e| error(e.to_string()))?;
+        let llvm = PathBuf::from(format!("{}.ll", output.display()));
+        let target = std::env::var_os("TELLUR_NATIVE_TARGET_DIR")
+            .or_else(|| std::env::var_os("PATH_NATIVE_TARGET_DIR"))
+            .map(PathBuf::from)
+            .unwrap_or_else(|| output.parent().unwrap().join(".tellur-cache"));
+        let cargo = std::env::var_os("CARGO").unwrap_or_else(|| {
+            std::env::var_os("HOME")
+                .map(PathBuf::from)
+                .map(|p| p.join(".cargo/bin/cargo"))
+                .filter(|p| p.is_file())
+                .map(|p| p.into_os_string())
+                .unwrap_or_else(|| "cargo".into())
+        });
+        let result = Command::new(cargo)
+            .arg("rustc")
+            .arg("--locked")
+            .arg("--manifest-path")
+            .arg(directory.join("Cargo.toml"))
+            .arg("--target-dir")
+            .arg(target)
+            .arg("--message-format=json-render-diagnostics")
+            .arg("--")
+            .arg("-C")
+            .arg(format!("opt-level={opt}"))
+            .arg("-C")
+            .arg("codegen-units=1")
+            .arg("-C")
+            .arg("debuginfo=0")
+            .arg("-C")
+            .arg("passes=verify")
+            .arg(format!("--emit=link,llvm-ir={}", llvm.display()))
+            .output()
+            .map_err(|e| error(format!("could not start Cargo/Rust toolchain: {e}")))?;
+        let messages = String::from_utf8_lossy(&result.stdout);
+        if !result.status.success() {
+            let diagnostics = messages
+                .lines()
+                .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
+                .filter_map(|v| v["message"]["rendered"].as_str().map(str::to_owned))
+                .collect::<String>();
+            return Err(error(format!(
+                "native build failed:\n{}\n{diagnostics}",
+                String::from_utf8_lossy(&result.stderr)
+            )));
+        }
+        let executable = messages
+            .lines()
+            .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
+            .find_map(|v| v["executable"].as_str().map(PathBuf::from))
+            .ok_or_else(|| error("toolchain did not report an executable"))?;
+        fs::copy(executable, &output).map_err(|e| error(e.to_string()))?;
+        Ok(NativeBuild {
+            executable: output,
+            llvm,
+            generated,
+        })
+    }
+}

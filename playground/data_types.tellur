@@ -1,0 +1,30 @@
+// Types live in Tellur source. A wrapper gives an ID its own nominal identity.
+struct user_id {
+    u32 value;
+}
+
+struct person {
+    user_id id;
+    string name;
+}
+
+variant contact {
+    known { person identity },
+    anonymous
+}
+
+control main() exits done {
+    person ada = person { user_id { 7 }, "Ada" };
+    contact selected = contact.known { ada };
+    forward display(selected);
+}
+
+control display(contact selected) exits done {
+    delta selected {
+        known { person identity } => available,
+        anonymous => missing
+    }
+    [available]: emit(identity.name);
+    [missing]: emit("Anonymous");
+    [entry]: exit done;
+}

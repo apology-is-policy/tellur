@@ -1,0 +1,30 @@
+// Run with no arguments. Change 5 to try another limit.
+control main() exits done, arithmetic_fault {
+    [entry]:
+        delta count(5) {
+            done => finished,
+            arithmetic_fault => fault,
+        }
+    [finished]: exit done;
+    [fault]: exit arithmetic_fault;
+}
+
+control count(u32 limit) exits auto {
+    loop count_up(u32 number = 1) {
+        [entry]:
+            delta (number <= limit) {
+                true => more,
+                false => finished,
+            }
+        [more]:
+            string text = u32_text(number);
+            emit(text);
+            delta checked_add(number, 1) {
+                sum { u32 next } => advanced,
+                overflow => too_large,
+            }
+        [advanced]: again count_up(next);
+        [finished]: exit done;
+        [too_large]: exit arithmetic_fault;
+    }
+}

@@ -1,0 +1,17 @@
+// Generic bodies receive exactly their declared permissions.
+struct box<item> { item value; }
+
+control duplicate<item: clone>(ref item value) exits ready { item value } {
+    exit ready { clone(value) };
+}
+
+control discard<item: drop>(item value) exits done {
+    exit done;
+}
+
+control main() exits done {
+    box<string> original = box<string> { value: "Ada" };
+    delta duplicate<box<string>>(borrow original) { ready { auto copied } => copied }
+    [copied]: emit(copied.value);
+    [copied]: forward discard<box<string>>(original);
+}

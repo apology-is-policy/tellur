@@ -1,0 +1,161 @@
+{
+  "Control": {
+    "prefix": "control",
+    "body": [
+      "control ${1:name}(${2}) exits ${3:done} {",
+      "    ${0:exit done;}",
+      "}"
+    ],
+    "description": "Control with an explicit exit contract"
+  },
+  "Inferred control": {
+    "prefix": "control_auto",
+    "body": [
+      "control ${1:name}(${2}) exits auto {",
+      "    ${0:exit done;}",
+      "}"
+    ],
+    "description": "Control with a checked inferred exit contract"
+  },
+  "Decision": {
+    "prefix": "delta",
+    "body": [
+      "delta ${1:operation}(${2}) {",
+      "    ${3:success} { ${4:auto} ${5:value} } => ${6:ready},",
+      "    ${7:failed} { ${8:auto} ${9:error} } => ${10:failure},",
+      "}"
+    ],
+    "description": "Exhaustive decision with declared payload bindings"
+  },
+  "Guard": {
+    "prefix": "guard",
+    "body": [
+      "[${1:entry}]: ${0}"
+    ],
+    "description": "Path-selected statement"
+  },
+  "Binding": {
+    "prefix": "bind",
+    "body": "${1:auto} ${2:value} = ${0:expression};",
+    "description": "Type-first immutable binding"
+  },
+  "Intersection group": {
+    "prefix": "over",
+    "body": [
+      "[${1:path}] over &: {",
+      "    [${2:entry}]: ${0}",
+      "}"
+    ],
+    "description": "Factor a shared intersection"
+  },
+  "Tail loop": {
+    "prefix": "loop",
+    "body": [
+      "loop ${1:attempt}(u32 ${2:number} = ${3:1}) {",
+      "    ${0:again attempt(number);}",
+      "}"
+    ],
+    "description": "Explicit tail loop"
+  },
+  "Shared reference": {
+    "prefix": "reference",
+    "body": [
+      "ref ${1:string} ${2:view} = borrow ${3:owner};"
+    ],
+    "description": "Shared borrow; ends at last use or explicit drop(view)"
+  },
+  "Mutable binding": {
+    "prefix": "mutable",
+    "body": [
+      "mutable ${1:string} ${2:value} = ${3:\"initial\"};"
+    ],
+    "description": "Declare an explicitly mutable owned binding"
+  },
+  "Outcome adapter": {
+    "prefix": "exit_delta",
+    "body": [
+      "exit delta ${1:operation}(${2}) {",
+      "    ${3:ready} { ${4:auto} ${5:value} } => ${6:done} { ${5:value} },",
+      "    ${7:failed} => ${8:failed} {}",
+      "};"
+    ],
+    "description": "Return a closed outcome from an inline exhaustive adapter"
+  },
+  "Capture outcome": {
+    "prefix": "capture",
+    "body": "auto ${1:result} = capture ${2:operation}(${3});",
+    "description": "Invoke now and save a completed outcome that must be handled or transferred"
+  },
+  "Stored outcome adapter": {
+    "prefix": "store_delta",
+    "body": [
+      "auto ${1:result} = delta ${2:operation}(${3:arguments}) {",
+      "    ${4:ready} { ${5:auto value} } => ${6:ready} { ${7:value} },",
+      "    ${8:empty} => ${9:empty} {}",
+      "};"
+    ],
+    "description": "Adapt and store an owned, must-handle outcome"
+  },
+  "Named outcome contract": {
+    "prefix": "outcome_contract",
+    "body": [
+      "outcome ${1:message} {",
+      "    ${2:ready} { ${3:string text} },",
+      "    ${4:empty}",
+      "}"
+    ],
+    "description": "Declare a reusable, must-handle outcome type"
+  },
+  "Forward call": {
+    "prefix": "forward",
+    "body": "forward ${1:operation}(${2});",
+    "description": "Invoke now and return its compatible outcomes unchanged"
+  },
+  "Forward adapter arm": {
+    "prefix": "forward_arm",
+    "body": "${1:ready} => forward",
+    "description": "Preserve this selected outcome and its entire payload"
+  },
+  "Struct": {
+    "prefix": "struct",
+    "body": [
+      "struct ${1:name} {",
+      "    ${2:string} ${3:field};",
+      "}"
+    ],
+    "description": "Nominal product type"
+  },
+  "Variant": {
+    "prefix": "variant",
+    "body": [
+      "variant ${1:name} {",
+      "    ${2:present} { ${3:string} ${4:value} },",
+      "    ${5:empty}",
+      "}"
+    ],
+    "description": "Ordinary sum type (no intrinsic outcome handling obligation)"
+  },
+  "Import": {
+    "prefix": "import",
+    "body": [
+      "import \"${1:module.tellur}\" as ${2:module};"
+    ],
+    "description": "Import a file through an explicit namespace"
+  },
+  "Exclusive reference": {
+    "prefix": "ref_mutable",
+    "body": [
+      "ref mutable ${1:string} ${2:view} = borrow mutable ${3:owner};"
+    ],
+    "description": "Exclusive borrow of a mutable owner"
+  },
+  "Trait implementation": {
+    "prefix": "implement",
+    "body": [
+      "implement ${1:trait_name} for ${2:type_name} {",
+      "    ${0}",
+      "}"
+    ],
+    "description": "Implement a trait for an explicit type"
+  }
+}

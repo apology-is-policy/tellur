@@ -1,0 +1,25 @@
+// Opening transfers the handle into an option; absence owns no payload.
+region find_file(path: String)
+    exits Found(file: Option<Handle>), Denied
+{
+    [Entry]: delta open(path) -> [Opened(h) => Open, NotFound => Missing, Denied => Blocked];
+    [Open]: exit Found(Some(h));
+    [Missing]: exit Found(None);
+    [Blocked]: exit Denied;
+}
+
+region optional_file(path: String)
+    exits Done, Failed(error: CloseError), Denied
+{
+    [Entry]: delta find_file(path) -> [Found(file) => Available, Denied => Blocked];
+
+    // This consumes file. The handle exists only on Present.
+    [Available]: delta file -> [None => Absent, Some(handle) => Present];
+    // Try `[Available]: duplicate := file;` here: file has moved.
+    // Try `[Absent]: duplicate := handle;`: the payload is unavailable.
+    [Present]: delta close(handle) -> [Closed => Closed, Failed(error) => CloseFailed];
+
+    [Absent | Closed]: exit Done;
+    [CloseFailed]: exit Failed(error);
+    [Blocked]: exit Denied;
+}

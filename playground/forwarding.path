@@ -1,0 +1,28 @@
+outcome message {
+    ready { string text },
+    empty
+}
+
+control main() exits done {
+    message first = ready { "first" };
+    auto second = capture relay(message.ready { "second" });
+
+    // Continue after a single, payload-free outcome.
+    display(first);
+    // Invoke and forward the completion out of main.
+    forward display(second);
+}
+
+control relay(message saved) exits message {
+    // Keep the whole payload without introducing and repacking a variable.
+    exit delta saved {
+        ready => forward,
+        empty => forward
+    };
+}
+
+control display(message saved) exits done {
+    delta saved { ready { string text } => available, empty => missing }
+    [available]: emit(text);
+    [available | missing]: exit done;
+}

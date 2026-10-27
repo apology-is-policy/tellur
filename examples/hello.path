@@ -1,0 +1,5 @@
+region main() exits Done {
+    [Entry]:
+        emit("Hello from Path!");
+        exit Done;
+}

@@ -1,0 +1,36 @@
+struct box<item> {
+    item value;
+}
+
+variant optional<item> {
+    some { item value },
+    none
+}
+
+outcome lookup<item, error> {
+    found { item value },
+    missing,
+    failed { error cause }
+}
+
+control first(ref vector<string> words) exits lookup<string, u32> {
+    exit delta vector_get(words, 0) {
+        found { auto word } => found { clone(word) },
+        out_of_bounds => missing {}
+    };
+}
+
+control main() exits done {
+    vector<string> words = ["Ada", "Grace"];
+    lookup<string, u32> result = capture first(borrow words);
+    delta result {
+        found { string word } => available,
+        missing => empty,
+        failed { u32 cause } => failed
+    }
+    [available]: box<string> selected = box<string> { value: word };
+    [available]: emit(selected.value);
+    [empty]: emit("No words");
+    [failed]: emit(u32_text(cause));
+    [entry]: exit done;
+}

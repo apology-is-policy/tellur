@@ -1,0 +1,4 @@
+[
+  {"kind":"primitive","operation":"open","outcome":"opened"},
+  {"kind":"primitive","operation":"read","outcome":"failed"}
+]

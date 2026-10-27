@@ -1,0 +1,19 @@
+outcome message { ready { string text }, empty }
+
+control main(bool available) exits message {
+    auto saved = capture choose(available);
+    emit("after invocation");
+    forward identity(saved);
+}
+
+control identity(message saved) exits message {
+    exit delta saved { ready => forward, empty => forward };
+}
+
+control choose(bool available) exits message {
+    emit("producer");
+    exit delta available {
+        true => ready { "hello" },
+        false => empty {}
+    };
+}

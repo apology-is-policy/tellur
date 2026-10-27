@@ -1,0 +1,15 @@
+control lookup(bool available) exits ready..., missing {
+    exit delta available {
+        true => ready { "Hello through an inferred payload" },
+        false => missing {}
+    };
+}
+
+control main() exits done {
+    delta lookup(true) {
+        ready { string text } => available,
+        missing => absent
+    }
+    [available]: emit(text); exit done;
+    [absent]: emit("Nothing found"); exit done;
+}

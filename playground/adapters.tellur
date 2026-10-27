@@ -1,0 +1,19 @@
+// A compact adapter. Change "41" to "abc", "4294967295" or "4294967296".
+control main() exits auto {
+    exit delta successor("41") {
+        ready { u32 value } => done { value },
+        invalid            => bad_input {},
+        too_large          => bad_input {}
+    };
+}
+
+control successor(string input) exits auto {
+    exit delta parse_u32(input) {
+        number { u32 number } => [parsed]: delta checked_add(number, 1) {
+            sum { u32 next } => ready { next },
+            overflow         => [addition_overflow]: too_large {}
+        },
+        malformed => invalid {},
+        overflow  => [parse_overflow]: too_large {}
+    };
+}

@@ -1,0 +1,491 @@
+{
+  "version": "0.1",
+  "types": [
+    {
+      "name": "handle",
+      "kind": "opaque",
+      "linear": true
+    },
+    {
+      "name": "read_error",
+      "kind": "opaque",
+      "linear": false
+    },
+    {
+      "name": "close_error",
+      "kind": "opaque",
+      "linear": false
+    },
+    {
+      "name": "response",
+      "kind": "opaque",
+      "linear": false
+    },
+    {
+      "name": "network_error",
+      "kind": "opaque",
+      "linear": false
+    },
+    {
+      "name": "load_error",
+      "kind": "variant",
+      "constructors": [
+        {
+          "name": "permission_denied",
+          "fields": []
+        },
+        {
+          "name": "read_only",
+          "fields": [
+            {
+              "name": "value0",
+              "type": "read_error"
+            }
+          ]
+        },
+        {
+          "name": "close_only",
+          "fields": [
+            {
+              "name": "value0",
+              "type": "close_error"
+            }
+          ]
+        },
+        {
+          "name": "both",
+          "fields": [
+            {
+              "name": "value0",
+              "type": "read_error"
+            },
+            {
+              "name": "value1",
+              "type": "close_error"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "handle_pair",
+      "kind": "record",
+      "fields": [
+        {
+          "name": "left",
+          "type": "handle"
+        },
+        {
+          "name": "right",
+          "type": "handle"
+        },
+        {
+          "name": "label",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "pair_close_error",
+      "kind": "variant",
+      "constructors": [
+        {
+          "name": "left_close_failure",
+          "fields": [
+            {
+              "name": "error",
+              "type": "close_error"
+            }
+          ]
+        },
+        {
+          "name": "right_close_failure",
+          "fields": [
+            {
+              "name": "error",
+              "type": "close_error"
+            }
+          ]
+        },
+        {
+          "name": "two_close_failures",
+          "fields": [
+            {
+              "name": "left",
+              "type": "close_error"
+            },
+            {
+              "name": "right",
+              "type": "close_error"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "file_state",
+      "kind": "variant",
+      "constructors": [
+        {
+          "name": "missing",
+          "fields": []
+        },
+        {
+          "name": "present",
+          "fields": [
+            {
+              "name": "handle",
+              "type": "handle"
+            }
+          ]
+        },
+        {
+          "name": "blocked",
+          "fields": [
+            {
+              "name": "reason",
+              "type": "string"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "primitives": [
+    {
+      "name": "open",
+      "parameters": [
+        {
+          "name": "path",
+          "type": "string",
+          "mode": "value"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "opened",
+          "fields": [
+            {
+              "name": "value0",
+              "type": "handle"
+            }
+          ]
+        },
+        {
+          "name": "not_found",
+          "fields": []
+        },
+        {
+          "name": "denied",
+          "fields": []
+        }
+      ],
+      "effects": [
+        "file.open"
+      ],
+      "returns": true
+    },
+    {
+      "name": "read",
+      "parameters": [
+        {
+          "name": "handle",
+          "type": "handle",
+          "mode": "borrow"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "data",
+          "fields": [
+            {
+              "name": "value0",
+              "type": "bytes"
+            }
+          ]
+        },
+        {
+          "name": "failed",
+          "fields": [
+            {
+              "name": "value0",
+              "type": "read_error"
+            }
+          ]
+        }
+      ],
+      "effects": [
+        "file.read"
+      ],
+      "returns": true
+    },
+    {
+      "name": "close",
+      "parameters": [
+        {
+          "name": "handle",
+          "type": "handle",
+          "mode": "consume"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "closed",
+          "fields": []
+        },
+        {
+          "name": "failed",
+          "fields": [
+            {
+              "name": "value0",
+              "type": "close_error"
+            }
+          ]
+        }
+      ],
+      "effects": [
+        "file.close"
+      ],
+      "returns": true
+    },
+    {
+      "name": "parse_u32",
+      "parameters": [
+        {
+          "name": "text",
+          "type": "string",
+          "mode": "value"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "number",
+          "fields": [
+            {
+              "name": "value0",
+              "type": "u32"
+            }
+          ]
+        },
+        {
+          "name": "malformed",
+          "fields": []
+        },
+        {
+          "name": "overflow",
+          "fields": []
+        }
+      ],
+      "effects": [],
+      "returns": true
+    },
+    {
+      "name": "checked_add",
+      "parameters": [
+        {
+          "name": "a",
+          "type": "u32",
+          "mode": "value"
+        },
+        {
+          "name": "b",
+          "type": "u32",
+          "mode": "value"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "sum",
+          "fields": [
+            {
+              "name": "value0",
+              "type": "u32"
+            }
+          ]
+        },
+        {
+          "name": "overflow",
+          "fields": []
+        }
+      ],
+      "effects": [],
+      "returns": true
+    },
+    {
+      "name": "checked_mul",
+      "parameters": [
+        {
+          "name": "a",
+          "type": "u32",
+          "mode": "value"
+        },
+        {
+          "name": "b",
+          "type": "u32",
+          "mode": "value"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "product",
+          "fields": [
+            {
+              "name": "value0",
+              "type": "u32"
+            }
+          ]
+        },
+        {
+          "name": "overflow",
+          "fields": []
+        }
+      ],
+      "effects": [],
+      "returns": true
+    },
+    {
+      "name": "checked_sub",
+      "parameters": [
+        {
+          "name": "a",
+          "type": "u32",
+          "mode": "value"
+        },
+        {
+          "name": "b",
+          "type": "u32",
+          "mode": "value"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "difference",
+          "fields": [
+            {
+              "name": "value0",
+              "type": "u32"
+            }
+          ]
+        },
+        {
+          "name": "underflow",
+          "fields": []
+        }
+      ],
+      "effects": [],
+      "returns": true
+    },
+    {
+      "name": "checked_div",
+      "parameters": [
+        {
+          "name": "a",
+          "type": "u32",
+          "mode": "value"
+        },
+        {
+          "name": "b",
+          "type": "u32",
+          "mode": "value"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "quotient",
+          "fields": [
+            {
+              "name": "value0",
+              "type": "u32"
+            }
+          ]
+        },
+        {
+          "name": "zero_divisor",
+          "fields": []
+        }
+      ],
+      "effects": [],
+      "returns": true
+    },
+    {
+      "name": "u32_text",
+      "parameters": [
+        {
+          "name": "number",
+          "type": "u32",
+          "mode": "value"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "text",
+          "fields": [
+            {
+              "name": "value0",
+              "type": "string"
+            }
+          ]
+        }
+      ],
+      "effects": [],
+      "returns": true,
+      "pure": true
+    },
+    {
+      "name": "concat",
+      "parameters": [
+        {
+          "name": "left",
+          "type": "string",
+          "mode": "value"
+        },
+        {
+          "name": "right",
+          "type": "string",
+          "mode": "value"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "text",
+          "fields": [
+            {
+              "name": "value0",
+              "type": "string"
+            }
+          ]
+        }
+      ],
+      "effects": [],
+      "returns": true,
+      "pure": true
+    },
+    {
+      "name": "decode_utf8",
+      "parameters": [
+        {
+          "name": "bytes",
+          "type": "bytes",
+          "mode": "value"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "text",
+          "fields": [
+            {
+              "name": "value0",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "invalid",
+          "fields": []
+        }
+      ],
+      "effects": [],
+      "returns": true
+    }
+  ]
+}

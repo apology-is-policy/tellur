@@ -1,0 +1,32 @@
+// Edit the input to "abc", "0", or "4294967296".
+// Or invoke parse_port as the entry with a string argument.
+control main() exits done, invalid {
+    [entry]:
+        delta parse_port("8080") {
+            ready { u32 port } => valid,
+            invalid { string message } => bad,
+        }
+    [valid]:
+        string text = u32_text(port);
+        emit(text);
+        exit done;
+    [bad]: emit(message); exit invalid;
+}
+
+control parse_port(string input) exits ready { u32 port }, invalid { string message } {
+    [entry]:
+        delta parse_u32(input) {
+            number { auto n } => parsed,
+            malformed => bad_syntax,
+            overflow => too_large,
+        }
+    [parsed]:
+        delta (1 <= n && n <= 65535) {
+            true => in_range,
+            false => out_of_range,
+        }
+    [in_range]: exit ready { n };
+    [bad_syntax]: exit invalid { "Use decimal digits." };
+    [too_large]: exit invalid { "The number does not fit u32." };
+    [out_of_range]: exit invalid { "A port must be between 1 and 65535." };
+}

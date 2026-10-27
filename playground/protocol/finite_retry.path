@@ -1,0 +1,9 @@
+// Concrete execution finishes after two iterations. The protocol abstraction
+// forgets the Boolean value, so it also admits endless silent retries.
+control main() exits done {
+    loop retry(bool repeat = true) {
+        delta repeat { true => again, false => finished }
+        [again]: again retry(false);
+        [finished]: emit("finished"); exit done;
+    }
+}

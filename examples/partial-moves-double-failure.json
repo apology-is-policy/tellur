@@ -1,0 +1,47 @@
+{
+  "entry": "close_pair",
+  "arguments": [
+    {
+      "kind": "opaque",
+      "value": {
+        "ty": "Handle",
+        "token": "left-file"
+      }
+    },
+    {
+      "kind": "opaque",
+      "value": {
+        "ty": "Handle",
+        "token": "right-file"
+      }
+    }
+  ],
+  "calls": [
+    {
+      "operation": "close",
+      "outcome": "Failed",
+      "fields": [
+        {
+          "kind": "opaque",
+          "value": {
+            "ty": "CloseError",
+            "token": "left close failed"
+          }
+        }
+      ]
+    },
+    {
+      "operation": "close",
+      "outcome": "Failed",
+      "fields": [
+        {
+          "kind": "opaque",
+          "value": {
+            "ty": "CloseError",
+            "token": "right close failed"
+          }
+        }
+      ]
+    }
+  ]
+}

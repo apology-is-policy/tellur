@@ -1,0 +1,27 @@
+outcome read_result<item> { received { item value }, end }
+
+trait reader {
+    type item: clone;
+    control read(ref self input) exits read_result<item>;
+}
+
+implement reader for string {
+    type item = string;
+    control read(ref self input) exits read_result<item> {
+        exit received { clone(input) };
+    }
+}
+
+control read_one<r: reader>(ref r input) exits read_result<reader<r>.item> {
+    forward reader<r>.read(input);
+}
+
+control main() exits done {
+    string source = "Hello through a generic trait";
+    delta read_one<string>(borrow source) {
+        received { auto text } => received,
+        end => empty
+    }
+    [received]: emit(text); exit done;
+    [empty]: exit done;
+}

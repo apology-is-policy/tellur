@@ -1,0 +1,39 @@
+// One reusable result type, independent of any producer.
+outcome message {
+    ready { string text },
+    empty
+}
+
+control main() exits auto {
+    // Capture infers message because greeting declares that contract.
+    auto first = capture greeting(true);
+    message second = capture fallback();
+    emit("Both producers have finished.");
+
+    exit delta display(first) { done => [first_displayed]: delta display(second) { done => done {} } };
+
+    //delta display(first) { done => first_displayed }
+    //[first_displayed]: exit delta display(second) { done => done {} };
+}
+
+control greeting(bool available) exits message {
+    exit delta available {
+        true  => ready { "hello from a named outcome" },
+        false => empty {}
+    };
+}
+
+control fallback() exits message {
+    // Explicit construction creates an owned result with a handling obligation.
+    message saved = ready { "a second producer, the same contract" };
+    exit saved;
+}
+
+control display(message saved) exits done {
+    delta saved {
+        ready { string text } => available,
+        empty                 => missing
+    }
+    [available]: emit(text);
+    [available | missing]: exit done;
+}

@@ -1,0 +1,17 @@
+outcome greeting_result { ready { string text }, empty }
+
+control main() exits done {
+    delta greeting(true) { ready { string text } => available, empty => missing }
+    [available]: emit(text);
+    [entry]: exit done;
+}
+
+control greeting(bool available) exits greeting_result {
+    emit("Preparing greeting");
+    mutable string text = "Hello";
+    text = concat(text, ", Tellur!");
+    exit delta available {
+        true => ready {text},
+        false => empty {}
+    };
+}

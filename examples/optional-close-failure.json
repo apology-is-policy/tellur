@@ -1,0 +1,8 @@
+{
+  "entry": "optional_file",
+  "arguments": [{"kind":"string","value":"settings.json"}],
+  "calls": [
+    {"operation":"open","outcome":"Opened","fields":[{"kind":"opaque","value":{"ty":"Handle","token":"settings"}}]},
+    {"operation":"close","outcome":"Failed","fields":[{"kind":"opaque","value":{"ty":"CloseError","token":"close failed"}}]}
+  ]
+}

@@ -1,0 +1,34 @@
+// The brackets describe contained sources; `from input` describes storage.
+struct text_view['source] {
+    ref mutable string text <- 'source;
+}
+
+control lend(ref mutable text_view input)
+    exits ready { ref mutable text_view[input['source]] value from input }
+{
+    exit ready { input };
+}
+
+control lend_optional(ref mutable option<ref mutable string> input)
+    exits ready...
+{
+    exit ready { input };
+}
+
+control main() exits done { string final_text } {
+    mutable string owner = "before";
+    mutable text_view saved = text_view { borrow mutable owner };
+    delta lend(borrow mutable saved) { ready { auto view } => editing }
+    [editing]: deref view.text = "edited through returned view";
+    emit(view.text);
+    // The last use of view releases the borrow of saved.
+    drop(saved);
+
+    mutable option<ref mutable string> optional = some { borrow mutable owner };
+    delta lend_optional(borrow mutable optional) { ready { auto returned } => received }
+    [received]: delta returned { some { auto text } => present, none => absent }
+    [present]: deref text = "edited through returned option";
+    emit(text);
+    [entry]: drop(optional);
+    exit done { owner };
+}

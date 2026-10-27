@@ -1,0 +1,30 @@
+// Ordinary values move. References let us work with an owner without moving it.
+control main() exits auto {
+    [entry]:
+        mutable string message = "before";
+        ref mutable string edit = borrow mutable message;
+        deref edit = "after";
+        emit(edit);
+        drop(edit);
+
+        ref string view = borrow message;
+        delta duplicate(view) {
+            copied { string copy } => copied,
+        }
+    [copied]:
+        drop(view);
+        string moved = message;
+        message = "reinitialized";
+        emit(moved);
+        emit(copy);
+        emit(message);
+        exit done;
+}
+
+control duplicate(ref string text) exits auto {
+    [entry]: exit copied { clone(text) };
+}
+
+// Explicit drop is optional when the reference has no later uses.
+// Try moving message before duplicate(view): view still needs its owner.
+// Try adding emit(message) after the final emit: message has already moved.

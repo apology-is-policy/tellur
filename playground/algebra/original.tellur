@@ -1,0 +1,15 @@
+outcome message { ready { string text }, empty }
+
+control main(bool available) exits message {
+    auto saved = capture choose(available);
+    emit("after invocation");
+    exit saved;
+}
+
+control choose(bool available) exits message {
+    emit("producer");
+    exit delta available {
+        true => ready { "hello" },
+        false => empty {}
+    };
+}

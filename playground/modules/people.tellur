@@ -1,0 +1,17 @@
+pub struct person {
+    string name;       // Private representation: construct through create.
+    pub u32 age;
+}
+
+pub control create(string name, u32 age) exits ready { person value } {
+    exit ready { person { name, age } };
+}
+
+pub control name(ref person value) exits found { ref string text } {
+    exit found { borrow value.name };
+}
+
+control internal_note() exits done {
+    emit("This helper is private to people.tellur");
+    exit done;
+}

@@ -1,0 +1,28 @@
+struct box<item> {
+    item value;
+}
+
+outcome delivered<item> {
+    delivered { item value }
+}
+
+control identity<item>(item value) exits delivered<item> {
+    exit delivered { value };
+}
+
+control box_value<item>(item value) exits delivered<box<item>> {
+    exit delta identity<item>(value) {
+        delivered { auto received } => delivered { box<item> { value: received } }
+    };
+}
+
+control view<item>(ref item value) exits viewed { ref item value } {
+    exit viewed { value };
+}
+
+control main() exits done {
+    delta box_value<string>("Ada") { delivered { auto boxed } => available }
+    [available]: delta view<string>(borrow boxed.value) { viewed { auto text } => viewed }
+    [viewed]: emit(text);
+    [entry]: exit done;
+}

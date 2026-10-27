@@ -1,0 +1,9 @@
+import "people.path" as people;
+
+control main() exits done {
+    delta people.create("Ada", 37) { ready { people.person value } => created }
+    [created]: delta people.name(borrow value) { found { ref string text } => named }
+    [named]: emit(text);
+    [named]: emit(u32_text(value.age));
+    [named]: exit done;
+}

@@ -1,0 +1,34 @@
+struct document {
+    string title;
+    string body;
+}
+
+// Both children keep the document borrowed. The body proves they access
+// different fields; the public contract does not expose those field paths.
+control edit(ref mutable document input)
+    exits ready {
+        ref mutable string title from input,
+        ref mutable string body from input
+    }
+{
+    exit ready { borrow mutable input.title, borrow mutable input.body };
+}
+
+control replace(ref mutable string first, ref mutable string second) exits done {
+    deref first = "A new title";
+    deref second = "A new body";
+    exit done;
+}
+
+control main() exits done { string title, string body } {
+    mutable document draft = document { title: "Old title", body: "Old body" };
+    delta edit(borrow mutable draft) { ready { auto title, auto body } => editing }
+    [editing]:
+        // Independent children can be passed together, or borrowed again.
+        replace(title, body);
+        emit(title);
+        emit(body);
+        // Both children have reached their last use: the owner is available.
+        draft.title = "Final title";
+        exit done { draft.title, draft.body };
+}

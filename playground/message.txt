@@ -1,0 +1,2 @@
+This text was read by a native Path program.
+The handle is closed on both the successful and unsuccessful read paths.

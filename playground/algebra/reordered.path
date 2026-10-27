@@ -1,0 +1,15 @@
+// Same result contract, different effect order. The comparison must report it.
+outcome message { ready { string text }, empty }
+
+control main(bool available) exits message {
+    emit("after invocation");
+    forward choose(available);
+}
+
+control choose(bool available) exits message {
+    emit("producer");
+    exit delta available {
+        true => ready { "hello" },
+        false => empty {}
+    };
+}

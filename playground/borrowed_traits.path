@@ -1,0 +1,26 @@
+struct message {
+    string text;
+}
+
+trait reader {
+    type t_item: clone;
+    control peek(ref self input) exits found { ref t_item value from input };
+}
+
+implement reader for message {
+    type t_item = string;
+    control peek(ref message input) exits found { ref string value from input } {
+        exit found { borrow input.text };
+    }
+}
+
+control peek<r: reader>(ref r input)
+    exits found { ref reader<r>.t_item value from input } {
+    forward reader<r>.peek(input);
+}
+
+control main() exits done {
+    message source = message { text: "Hello through a borrowed trait" };
+    delta peek<message>(borrow source) { found { auto text } => available }
+    [available]: emit(text); exit done;
+}

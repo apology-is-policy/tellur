@@ -1,0 +1,22 @@
+// capture invokes now. It saves the completed outcome, not deferred work.
+control main() exits auto {
+    outcome<choose> saved = capture choose(true);
+    emit("The producer has finished; its result is still unhandled.");
+    exit delta saved {
+        ready { string message } => done { message },
+        empty                    => empty {}
+    };
+}
+
+control choose(bool available) exits auto {
+    emit("Running the producer.");
+    exit delta available {
+        true  => ready { "a completed result" },
+        false => empty {}
+    };
+}
+
+// Passing an outcome moves its handling obligation. This forwards every alternative.
+control forward(outcome<choose> saved) exits auto {
+    exit saved;
+}

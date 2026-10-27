@@ -1,0 +1,29 @@
+outcome read_result<item> {
+    received { item value },
+    end
+}
+
+struct text_source { string text; }
+
+trait reader {
+    type item;
+    control read(ref self input) exits read_result<item>;
+}
+
+implement reader for text_source {
+    type item = string;
+
+    control read(ref self input) exits read_result<item> {
+        exit received { clone(borrow input.text) };
+    }
+}
+
+control main() exits done {
+    text_source source = text_source { text: "Hello through a trait" };
+    delta reader<text_source>.read(borrow source) {
+        received { reader<text_source>.item text } => received,
+        end => empty
+    }
+    [received]: emit(text); exit done;
+    [empty]: exit done;
+}

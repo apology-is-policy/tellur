@@ -1,0 +1,23 @@
+// A record owns both handles. Moving one field leaves the other usable.
+region close_pair(left: Handle, right: Handle)
+    exits Closed, Failed(error: PairCloseError)
+{
+    [Entry]:
+        pair := HandlePair(left, right, "Closing paired files");
+        first := pair.left;
+
+        // Reading an unmoved, non-linear field is still valid.
+        emit(pair.label);
+
+        // Try inserting `duplicate := pair;` here: pair is partially moved.
+        // Try inserting `duplicate := pair.left;`: that field has moved.
+        delta close(first) -> [Closed => LeftClosed, Failed(le) => LeftFailed];
+
+    [Entry]:
+        delta close(pair.right) -> [Closed => RightClosed, Failed(re) => RightFailed];
+
+    [LeftClosed & RightClosed]: exit Closed;
+    [LeftFailed & RightClosed]: exit Failed(LeftCloseFailure(le));
+    [LeftClosed & RightFailed]: exit Failed(RightCloseFailure(re));
+    [LeftFailed & RightFailed]: exit Failed(TwoCloseFailures(le, re));
+}

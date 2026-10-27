@@ -1,0 +1,16 @@
+// FileState is declared in manifest.json. Only Present owns a handle.
+region classify(path: String) exits Classified(state: FileState) {
+    [Entry]: delta open(path) -> [Opened(h) => Open, NotFound => Missing, Denied => Blocked];
+    [Open]: exit Classified(FileState.Present(h));
+    [Missing]: exit Classified(FileState.Missing);
+    [Blocked]: exit Classified(FileState.Blocked("Permission denied"));
+}
+
+region variant_file(path: String) exits Done, Failed(error: CloseError) {
+    [Entry]: delta classify(path) -> [Classified(state) => Ready];
+    [Ready]: delta state -> [Missing => Absent, Present(handle) => Present, Blocked(reason) => Denied];
+    [Present]: delta close(handle) -> [Closed => Closed, Failed(error) => CloseFailed];
+    [Denied]: emit(reason);
+    [Absent | Denied | Closed]: exit Done;
+    [CloseFailed]: exit Failed(error);
+}

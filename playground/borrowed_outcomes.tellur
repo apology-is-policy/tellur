@@ -1,0 +1,36 @@
+// The outcome carries a reference, and still has to be handled exactly once.
+outcome first_word {
+    ready { ref string text },
+    empty
+}
+
+control first(ref vector<string> words)
+    exits found { ref string text from words }, empty
+{
+    exit delta vector_get(words, 0) {
+        found { auto text } => found { text },
+        out_of_bounds => empty {}
+    };
+}
+
+control main() exits done { u32 count } {
+    mutable vector<string> words = ["A borrowed word"];
+    auto pending = capture first(borrow words);
+    emit("The lookup has completed; its result is waiting.");
+
+    first_word message = delta pending {
+        found { auto text } => ready { text },
+        empty => empty {}
+    };
+    delta message {
+        ready { ref string text } => available,
+        empty => missing
+    }
+    [available]: emit(text);
+    [missing]: emit("No first word");
+
+    // The result has been handled and its reference has reached its last use.
+    [entry]:
+        vector_push(borrow mutable words, "The vector is available again");
+        exit done { vector_length(borrow words) };
+}

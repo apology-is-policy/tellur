@@ -1,0 +1,24 @@
+struct user_id {
+    u32 value;
+}
+
+struct person {
+    user_id id;
+    string name;
+    string display_name;
+}
+
+control create(string name) exits ready { person value } {
+    // Initializers execute in the order written: clone before moving name.
+    exit ready { person {
+        display_name: clone(borrow name),
+        id: user_id { value: 7 },
+        name: name,
+    } };
+}
+
+control main() exits done {
+    delta create("Ada") { ready { person value } => available }
+    [available]: emit(value.display_name);
+    [available]: exit done;
+}

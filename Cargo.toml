@@ -1,0 +1,31 @@
+[package]
+name = "tellur"
+version = "0.40.0"
+edition = "2024"
+license = "Apache-2.0"
+repository = "https://github.com/apology-is-policy/tellur"
+description = "Experimental Tellur language and reference interpreter"
+default-run = "tellurc"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+lsp-server = "0.10"
+url = "2"
+
+[[bin]]
+name = "tellurc"
+path = "src/main.rs"
+
+[[bin]]
+name = "tellur-lsp"
+path = "src/bin/tellur-lsp.rs"
+
+# Compatibility commands for existing scripts.
+[[bin]]
+name = "pathc"
+path = "src/bin/pathc.rs"
+
+[[bin]]
+name = "path-lsp"
+path = "src/bin/path-lsp.rs"

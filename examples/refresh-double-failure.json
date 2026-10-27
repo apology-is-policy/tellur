@@ -1,0 +1,50 @@
+{
+  "entry": "refresh",
+  "arguments": [
+    {
+      "kind": "string",
+      "value": "config.txt"
+    }
+  ],
+  "calls": [
+    {
+      "operation": "open",
+      "outcome": "Opened",
+      "fields": [
+        {
+          "kind": "opaque",
+          "value": {
+            "ty": "Handle",
+            "token": "h1"
+          }
+        }
+      ]
+    },
+    {
+      "operation": "read",
+      "outcome": "Failed",
+      "fields": [
+        {
+          "kind": "opaque",
+          "value": {
+            "ty": "ReadError",
+            "token": "read failed"
+          }
+        }
+      ]
+    },
+    {
+      "operation": "close",
+      "outcome": "Failed",
+      "fields": [
+        {
+          "kind": "opaque",
+          "value": {
+            "ty": "CloseError",
+            "token": "close failed"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,100 @@
+{
+  "entry": "fetch_retry",
+  "arguments": [
+    {
+      "kind": "string",
+      "value": "https://example.test/config"
+    }
+  ],
+  "calls": [
+    {
+      "operation": "fetch",
+      "outcome": "Unavailable",
+      "fields": [
+        {
+          "kind": "opaque",
+          "value": {
+            "ty": "NetworkError",
+            "token": "temporary"
+          }
+        }
+      ]
+    },
+    {
+      "operation": "checked_mul",
+      "outcome": "Product",
+      "fields": [
+        {
+          "kind": "u32",
+          "value": 100
+        }
+      ]
+    },
+    {
+      "operation": "pause",
+      "outcome": "Elapsed",
+      "fields": []
+    },
+    {
+      "operation": "checked_add",
+      "outcome": "Sum",
+      "fields": [
+        {
+          "kind": "u32",
+          "value": 2
+        }
+      ]
+    },
+    {
+      "operation": "fetch",
+      "outcome": "Unavailable",
+      "fields": [
+        {
+          "kind": "opaque",
+          "value": {
+            "ty": "NetworkError",
+            "token": "temporary"
+          }
+        }
+      ]
+    },
+    {
+      "operation": "checked_mul",
+      "outcome": "Product",
+      "fields": [
+        {
+          "kind": "u32",
+          "value": 200
+        }
+      ]
+    },
+    {
+      "operation": "pause",
+      "outcome": "Elapsed",
+      "fields": []
+    },
+    {
+      "operation": "checked_add",
+      "outcome": "Sum",
+      "fields": [
+        {
+          "kind": "u32",
+          "value": 3
+        }
+      ]
+    },
+    {
+      "operation": "fetch",
+      "outcome": "Received",
+      "fields": [
+        {
+          "kind": "opaque",
+          "value": {
+            "ty": "Response",
+            "token": "ok"
+          }
+        }
+      ]
+    }
+  ]
+}

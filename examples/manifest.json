@@ -1,0 +1,409 @@
+{
+  "version": "0.1",
+  "types": [
+    {
+      "name": "Handle",
+      "kind": "opaque",
+      "linear": true
+    },
+    {
+      "name": "ReadError",
+      "kind": "opaque",
+      "linear": false
+    },
+    {
+      "name": "CloseError",
+      "kind": "opaque",
+      "linear": false
+    },
+    {
+      "name": "Response",
+      "kind": "opaque",
+      "linear": false
+    },
+    {
+      "name": "NetworkError",
+      "kind": "opaque",
+      "linear": false
+    },
+    {
+      "name": "LoadError",
+      "kind": "variant",
+      "constructors": [
+        {
+          "name": "PermissionDenied",
+          "fields": []
+        },
+        {
+          "name": "ReadOnly",
+          "fields": [
+            {
+              "name": "value0",
+              "type": "ReadError"
+            }
+          ]
+        },
+        {
+          "name": "CloseOnly",
+          "fields": [
+            {
+              "name": "value0",
+              "type": "CloseError"
+            }
+          ]
+        },
+        {
+          "name": "Both",
+          "fields": [
+            {
+              "name": "value0",
+              "type": "ReadError"
+            },
+            {
+              "name": "value1",
+              "type": "CloseError"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "HandlePair",
+      "kind": "record",
+      "fields": [
+        {
+          "name": "left",
+          "type": "Handle"
+        },
+        {
+          "name": "right",
+          "type": "Handle"
+        },
+        {
+          "name": "label",
+          "type": "String"
+        }
+      ]
+    },
+    {
+      "name": "PairCloseError",
+      "kind": "variant",
+      "constructors": [
+        {
+          "name": "LeftCloseFailure",
+          "fields": [
+            {
+              "name": "error",
+              "type": "CloseError"
+            }
+          ]
+        },
+        {
+          "name": "RightCloseFailure",
+          "fields": [
+            {
+              "name": "error",
+              "type": "CloseError"
+            }
+          ]
+        },
+        {
+          "name": "TwoCloseFailures",
+          "fields": [
+            {
+              "name": "left",
+              "type": "CloseError"
+            },
+            {
+              "name": "right",
+              "type": "CloseError"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "FileState",
+      "kind": "variant",
+      "constructors": [
+        {
+          "name": "Missing",
+          "fields": []
+        },
+        {
+          "name": "Present",
+          "fields": [
+            {
+              "name": "handle",
+              "type": "Handle"
+            }
+          ]
+        },
+        {
+          "name": "Blocked",
+          "fields": [
+            {
+              "name": "reason",
+              "type": "String"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "primitives": [
+    {
+      "name": "open",
+      "parameters": [
+        {
+          "name": "path",
+          "type": "String",
+          "mode": "value"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "Opened",
+          "fields": [
+            {
+              "name": "value0",
+              "type": "Handle"
+            }
+          ]
+        },
+        {
+          "name": "NotFound",
+          "fields": []
+        },
+        {
+          "name": "Denied",
+          "fields": []
+        }
+      ],
+      "effects": [
+        "file.open"
+      ],
+      "returns": true
+    },
+    {
+      "name": "read",
+      "parameters": [
+        {
+          "name": "handle",
+          "type": "Handle",
+          "mode": "borrow"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "Data",
+          "fields": [
+            {
+              "name": "value0",
+              "type": "Bytes"
+            }
+          ]
+        },
+        {
+          "name": "Failed",
+          "fields": [
+            {
+              "name": "value0",
+              "type": "ReadError"
+            }
+          ]
+        }
+      ],
+      "effects": [
+        "file.read"
+      ],
+      "returns": true
+    },
+    {
+      "name": "close",
+      "parameters": [
+        {
+          "name": "handle",
+          "type": "Handle",
+          "mode": "consume"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "Closed",
+          "fields": []
+        },
+        {
+          "name": "Failed",
+          "fields": [
+            {
+              "name": "value0",
+              "type": "CloseError"
+            }
+          ]
+        }
+      ],
+      "effects": [
+        "file.close"
+      ],
+      "returns": true
+    },
+    {
+      "name": "parse_u32",
+      "parameters": [
+        {
+          "name": "text",
+          "type": "String",
+          "mode": "value"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "Number",
+          "fields": [
+            {
+              "name": "value0",
+              "type": "U32"
+            }
+          ]
+        },
+        {
+          "name": "Malformed",
+          "fields": []
+        },
+        {
+          "name": "Overflow",
+          "fields": []
+        }
+      ],
+      "effects": [],
+      "returns": true
+    },
+    {
+      "name": "fetch",
+      "parameters": [
+        {
+          "name": "url",
+          "type": "String",
+          "mode": "value"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "Received",
+          "fields": [
+            {
+              "name": "value0",
+              "type": "Response"
+            }
+          ]
+        },
+        {
+          "name": "Unavailable",
+          "fields": [
+            {
+              "name": "value0",
+              "type": "NetworkError"
+            }
+          ]
+        },
+        {
+          "name": "Cancelled",
+          "fields": []
+        }
+      ],
+      "effects": [
+        "network.fetch"
+      ],
+      "returns": true
+    },
+    {
+      "name": "pause",
+      "parameters": [
+        {
+          "name": "delay",
+          "type": "U32",
+          "mode": "value"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "Elapsed",
+          "fields": []
+        },
+        {
+          "name": "Cancelled",
+          "fields": []
+        }
+      ],
+      "effects": [
+        "time.pause"
+      ],
+      "returns": true
+    },
+    {
+      "name": "checked_add",
+      "parameters": [
+        {
+          "name": "a",
+          "type": "U32",
+          "mode": "value"
+        },
+        {
+          "name": "b",
+          "type": "U32",
+          "mode": "value"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "Sum",
+          "fields": [
+            {
+              "name": "value0",
+              "type": "U32"
+            }
+          ]
+        },
+        {
+          "name": "Overflow",
+          "fields": []
+        }
+      ],
+      "effects": [],
+      "returns": true
+    },
+    {
+      "name": "checked_mul",
+      "parameters": [
+        {
+          "name": "a",
+          "type": "U32",
+          "mode": "value"
+        },
+        {
+          "name": "b",
+          "type": "U32",
+          "mode": "value"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "Product",
+          "fields": [
+            {
+              "name": "value0",
+              "type": "U32"
+            }
+          ]
+        },
+        {
+          "name": "Overflow",
+          "fields": []
+        }
+      ],
+      "effects": [],
+      "returns": true
+    }
+  ]
+}

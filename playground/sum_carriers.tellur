@@ -1,0 +1,48 @@
+// Borrow a whole outcome, inspect it, edit its reference payload, then handle it.
+outcome text_result['source] {
+    found { ref mutable string text <- 'source },
+    missing
+}
+
+control inspect(ref text_result input)
+    exits found { ref string text from input['source] }, missing
+{
+    exit delta input {
+        found { auto text } => found { text },
+        missing => missing {}
+    };
+}
+
+control edit(ref mutable text_result input)
+    exits found { ref mutable string text from input['source] }, missing
+{
+    exit delta input {
+        found { auto text } => found { text },
+        missing => missing {}
+    };
+}
+
+control main() exits done { string final_text } {
+    mutable string owner = "before";
+    mutable text_result saved = text_result.found { borrow mutable owner };
+
+    delta inspect(borrow saved) {
+        found { auto preview } => previewed,
+        missing => absent
+    }
+    [previewed]: emit(preview);
+
+    [entry]: delta edit(borrow mutable saved) {
+        found { auto editable } => editing,
+        missing => missing
+    }
+    [editing]: deref editable = "after";
+
+    // Borrowing did not discharge the outcome's handling obligation.
+    [entry]: delta saved {
+        found { auto text } => handled,
+        missing => handled_empty
+    }
+    [handled]: emit(text);
+    [entry]: exit done { owner };
+}

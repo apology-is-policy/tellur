@@ -1,0 +1,49 @@
+// A completed outcome can carry a record containing another borrowed outcome.
+// Each delta unwraps one layer; each reference keeps its own source protected.
+struct editors {
+    ref mutable string title;
+    ref mutable string body;
+}
+
+outcome selection {
+    found { editors values },
+    empty
+}
+
+struct envelope {
+    string label;
+    selection selected;
+}
+
+outcome delivery {
+    received { envelope message },
+    missing
+}
+
+control main() exits done { string title, string body } {
+    mutable string title = "draft title";
+    mutable string body = "draft body";
+    selection selected = found { editors {
+        title: borrow mutable title,
+        body: borrow mutable body
+    } };
+    delivery pending = received { envelope { label: "Editing", selected: selected } };
+
+    delta pending {
+        received { auto message } => received,
+        missing => missing
+    }
+    [received]:
+        emit(message.label);
+        delta message.selected {
+            found { auto values } => found,
+            empty => empty
+        }
+    [found]:
+        deref values.title = "revised title";
+        // The title borrow has reached its last use; body remains borrowed.
+        title = "published title";
+        deref values.body = "revised body";
+        exit done { title, body };
+    [empty | missing]: exit done { title, body };
+}

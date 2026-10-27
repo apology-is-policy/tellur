@@ -1,0 +1,8 @@
+// Build and Run compiles this file and invokes its main control.
+control main() exits auto {
+    [entry]:
+        string greeting = "Hello from Path!";
+        emit(greeting);
+        emit("Try changing a message, then build and run again.");
+        exit done;
+}

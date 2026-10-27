@@ -1,0 +1,46 @@
+// Named outcomes and options carry separate owner dependencies across calls.
+struct text_views['title, 'body] {
+    ref mutable string title <- 'title;
+    ref mutable string body <- 'body;
+}
+
+outcome text_result['title, 'body] {
+    found { text_views['title, 'body] fields },
+    missing
+}
+
+control lookup_text(ref mutable string title, ref mutable string body, bool present)
+    exits text_result[title, body]
+{
+    exit delta present {
+        true => found { text_views { title, body } },
+        false => missing {}
+    };
+}
+
+// The option inherits text_result's 'title and 'body groups.
+// Handling missing satisfies the named outcome's completion obligation.
+control optional(text_result input)
+    exits ready { option<text_result>[input['title], input['body]] value }
+{
+    delta input { found { auto fields } => found, missing => missing }
+    [found]: exit ready { some { text_result.found { fields } } };
+    [missing]: exit ready { none {} };
+}
+
+control main() exits done { string title, string body } {
+    mutable string title = "original title";
+    mutable string body = "original body";
+    text_result saved = capture lookup_text(borrow mutable title, borrow mutable body, true);
+    delta optional(saved) { ready { auto pending } => received }
+    [received]: delta pending { some { auto result } => available, none => absent }
+    [available]: delta result { found { auto fields } => found, missing => missing }
+    [found]:
+        deref fields.title = "edited title";
+        emit(fields.title);
+        title = "title released independently";
+        deref fields.body = "edited body";
+        emit(fields.body);
+    [absent | missing]: emit("No borrowed payload.");
+    [entry]: exit done { title, body };
+}

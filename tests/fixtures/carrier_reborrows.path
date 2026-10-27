@@ -1,0 +1,43 @@
+// Each field carries an exclusive permission to a different string.
+struct text_editors['first, 'second] {
+    ref mutable string first <- 'first;
+    ref mutable string second <- 'second;
+}
+
+// A shared carrier allows reading the strings, but cannot grant mutation.
+control inspect(ref text_editors input) exits done {
+    emit(input.first);
+    emit(input.second);
+    exit done;
+}
+
+// These children borrow the existing permissions. They do not move them out.
+// Their contracts also retain the carrier that authorizes the reborrows.
+control reborrow(ref mutable text_editors input)
+    exits ready { text_editors[input['first], input['second]] children }
+{
+    exit ready { text_editors {
+        first: borrow mutable deref input.first,
+        second: borrow mutable deref input.second,
+    } };
+}
+
+control main() exits done { string first, string second } {
+    mutable string first = "First original";
+    mutable string second = "Second original";
+    mutable text_editors parents = text_editors {
+        first: borrow mutable first,
+        second: borrow mutable second,
+    };
+    inspect(borrow parents);
+
+    delta reborrow(borrow mutable parents) { ready { text_editors children } => editing }
+    [editing]:
+        deref children.first = "First child edit";
+        emit(children.first);
+        deref parents.first = "First parent restored";
+        deref children.second = "Second child edit";
+        emit(children.second);
+        deref parents.second = "Second parent restored";
+        exit done { first, second };
+}

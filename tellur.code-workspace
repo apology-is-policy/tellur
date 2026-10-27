@@ -1,0 +1,26 @@
+{
+  "folders": [
+    {
+      "name": "Tellur language",
+      "path": "."
+    }
+  ],
+  "settings": {
+    "[tellur]": {
+      "editor.tabSize": 4,
+      "editor.insertSpaces": true,
+      "editor.wordWrap": "off",
+      "editor.minimap.enabled": false
+    },
+    "files.exclude": {
+      "**/target": true,
+      "**/node_modules": true,
+      "**/.path-cache": true,
+      "**/*.path-build": true,
+      "**/build": true,
+      "**/.tellur-cache": true,
+      "**/*.tellur-build": true
+    },
+    "tellurLanguage.entryRegion": "main"
+  }
+}

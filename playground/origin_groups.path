@@ -1,0 +1,34 @@
+struct text_pair['a, 'b] {
+    ref mutable string left <- 'a;
+    ref string right <- 'b;
+}
+
+control pair(ref mutable string a, ref string b) exits auto
+{
+    deref a = "2";
+    exit ready { text_pair { left: a, right: b } };
+}
+
+// The same result contract can be inferred, including its borrowing dependencies.
+control inferred_pair(ref mutable string a, ref string b) exits ready... {
+    forward pair(a, b);
+}
+
+control main() exits done {
+    mutable auto first = "left";
+    mutable auto second = "right";
+    ref mutable auto first_b = borrow mutable first;
+
+    delta inferred_pair(first_b, borrow second) {
+        ready { text_pair words } => available
+    }
+
+    [available]:
+        emit(words.left);
+        first = "The left source is available again";
+        emit(first);
+        emit(words.right);
+        second = "The right source is available again";
+        emit(second);
+        exit done;
+}
