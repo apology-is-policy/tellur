@@ -199,8 +199,81 @@ impl SumLeaf {
         }
     }
 }
+/// A projection to a stored reference, followed by one dereference. Keeping
+/// these steps separate prevents conflating carrier storage and its contents.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+pub struct ReferenceStep {
+    pub fields: Vec<usize>,
+    pub sum_leaf: Option<SumLeaf>,
+}
+impl ReferenceStep {
+    pub(crate) fn reference_type(&self, ty: &str, m: &crate::manifest::Manifest) -> Option<String> {
+        let mut ty = ty.to_owned();
+        for field in &self.fields {
+            ty = m.field_at(&ty, *field)?.ty.clone();
+        }
+        match &self.sum_leaf {
+            Some(tag) => tag.reference_type(&ty, m),
+            None => Some(ty),
+        }
+    }
+}
+pub(crate) fn reference_leaves(
+    ty: &str,
+    m: &crate::manifest::Manifest,
+) -> Vec<(Vec<ReferenceStep>, ReferenceStep, String)> {
+    fn walk(
+        ty: &str,
+        m: &crate::manifest::Manifest,
+        through: Vec<ReferenceStep>,
+        fields: Vec<usize>,
+        out: &mut Vec<(Vec<ReferenceStep>, ReferenceStep, String)>,
+    ) {
+        if let Some((_, inner)) = crate::manifest::reference_inner(ty) {
+            let step = ReferenceStep {
+                fields,
+                sum_leaf: None,
+            };
+            out.push((through.clone(), step.clone(), ty.into()));
+            let mut through = through;
+            through.push(step);
+            walk(inner, m, through, vec![], out);
+        } else if let Some(crate::manifest::TypeDef::Record { fields: fs, .. }) = m.type_def(ty) {
+            for (i, f) in fs.iter().enumerate() {
+                let mut path = fields.clone();
+                path.push(i);
+                walk(&f.ty, m, through.clone(), path, out);
+            }
+        } else if let Some(outcomes) = m.outcomes(ty) {
+            for o in outcomes {
+                for (payload, f) in o.fields.iter().enumerate() {
+                    let mut nested = vec![];
+                    walk(&f.ty, m, vec![], vec![], &mut nested);
+                    for (mut prefix, mut step, ty) in nested {
+                        let first = prefix.first_mut().unwrap_or(&mut step);
+                        first.sum_leaf = Some(SumLeaf {
+                            outcome: o.name.clone(),
+                            payload,
+                            fields: std::mem::take(&mut first.fields),
+                            nested: first.sum_leaf.take().map(Box::new),
+                        });
+                        first.fields = fields.clone();
+                        let mut path = through.clone();
+                        path.extend(prefix);
+                        out.push((path, step, ty));
+                    }
+                }
+            }
+        }
+    }
+    let mut out = vec![];
+    walk(ty, m, vec![], vec![], &mut out);
+    out
+}
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ContainedOrigin {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub through: Vec<ReferenceStep>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sum_leaf: Option<SumLeaf>,
     pub group: String,
@@ -222,12 +295,15 @@ pub struct BorrowSource {
     pub opaque: bool,
 }
 /// A stored reference leaf has its own dependency contract. Paths use nominal
-/// record layout indices, followed by optional guarded constructor steps. For a
+/// record layout indices and guarded constructor steps within each reference
+/// layer. `through` contains the preceding reference/dereference steps. For a
 /// reference result, these paths start in the referenced carrier; borrow_returns
 /// separately describes the carrier storage lifetime.
 /// Neither is an alias for a public origin-group name.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct StoredReturn {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub through: Vec<ReferenceStep>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sum_leaf: Option<SumLeaf>,
     pub group: String,

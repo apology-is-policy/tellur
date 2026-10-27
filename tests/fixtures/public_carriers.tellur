@@ -1,0 +1,33 @@
+// Two public groups: the view's storage, and the text referenced inside it.
+struct text_view['text] {
+    ref mutable string text <- 'text;
+}
+
+struct edit_job['storage, 'text] {
+    ref mutable text_view['text] target <- 'storage;
+}
+
+control prepare(ref mutable text_view input)
+    exits ready { edit_job[input, input['text]] job }
+{
+    exit ready { edit_job { input } };
+}
+
+control relay(edit_job input)
+    exits ready { edit_job[input['storage], input['text]] job }
+{
+    exit ready { input };
+}
+
+control main() exits done { string text } {
+    mutable string owner = "before";
+    mutable text_view saved = text_view { borrow mutable owner };
+    auto pending = capture prepare(borrow mutable saved);
+    delta pending { ready { auto packed } => packed }
+    [packed]: delta relay(packed) { ready { auto job } => ready }
+    [ready]: deref job.target.text = "edited through public contract";
+    emit(job.target.text);
+    drop(job);
+    drop(saved);
+    exit done { owner };
+}

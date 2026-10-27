@@ -1,13 +1,17 @@
 # Tellur language revision: controls, values, outcomes, and tasks
 
 27 October 2026. This is the working revision plan, not a claim that all proposed
-features are implemented. Compiler **0.40.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
+features are implemented. Compiler **0.41.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
 lifetime checkpoints of milestone 2, the array/vector/map core of milestone 3,
 and implicit entry, inline/stored adapters, owned capture, named outcome contracts
 and checked forwarding in milestone 4. A first [semantic foundation](semantic-foundation.md)
 now accompanies executable algebra-law tests and finite scenario comparison. The original
 v0.1 documents remain unchanged; the old syntax and conformance fixtures remain
 supported. See [the current reference](language-reference.md) for executable syntax.
+
+Release 0.41 adds public nested-reference contracts: separate storage arrows and
+referent brackets, reference-indirection paths, whole owned/borrowed boundaries,
+retained authorization chains, checked native execution and editor coverage.
 
 Release 0.40 adds local stored carrier references: recursive retained dependencies,
 capture/adapters, nested reference fields, local borrowed inspection and native/editor
@@ -76,7 +80,8 @@ ordinary language usability. No dates or unimplemented syntax are promised.
 | C1b.3b.2c | Borrowed sum carriers | **Delivered in 0.38**: shared/exclusive whole-sum inputs, active payload reborrows, authorizing carrier guards, nested/generic/module/native/editor checks |
 | C1b.3b.2d | Whole carrier reference results | **Delivered in 0.39**: direct references to grouped records/sums, inferred/declared contained origins, storage guards, forwarding and verifier/native/editor checks |
 | C1b.3b.2e.1 | Local stored carrier references | **Delivered in 0.40**: capture/adapters, recursive referent dependencies, nested/borrowed unpacking, local generic/module/loop support and native/editor checks |
-| C1b.3b.2e.2 | Public stored-carrier contracts | **Next**: distinguish outer storage from nested contained origin groups; propagate multiple reference layers across whole-container inputs/results |
+| C1b.3b.2e.2 | Public stored-carrier contracts | **Delivered in 0.41**: separate storage/contained mappings, reference-layer paths, whole owned/borrowed boundaries, guarded sums, native/editor checks |
+| C1b.3b.2f | Aggregate trait origin contracts | **Next**: explicit grouped borrowed inputs/results, implementation conformance and abstract witnesses |
 | C1b.3c | Borrowed collection elements | Queued: insertion/removal transfer, element origins, storage invalidation and dynamic index conservatism |
 | C1c | Generic loan propagation and reference state | Queued: contained loans across generic calls, assignments and adapters; rebinding/reborrowing |
 | C2 | Slices and non-consuming iteration | Queued: invalidation rules and library interfaces built on C1b/C1c |

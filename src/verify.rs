@@ -495,49 +495,20 @@ impl CheckedProgram {
                 }
             }
             let mut expected_stored = BTreeSet::new();
-            fn record_leaves(
-                m: &crate::manifest::Manifest,
-                ty: &str,
-                path: Vec<usize>,
-                out: &mut Vec<(Vec<usize>, Option<SumLeaf>, String)>,
-            ) {
-                if crate::manifest::reference_inner(ty).is_some() {
-                    out.push((path, None, ty.into()));
-                } else if let Some(TypeDef::Record { fields, .. }) = m.type_def(ty) {
-                    for (i, f) in fields.iter().enumerate() {
-                        let mut p = path.clone();
-                        p.push(i);
-                        record_leaves(m, &f.ty, p, out);
-                    }
-                } else if let Some(outcomes) = m.outcomes(ty) {
-                    for outcome in outcomes {
-                        for (payload, field) in outcome.fields.iter().enumerate() {
-                            let mut nested = vec![];
-                            record_leaves(m, &field.ty, vec![], &mut nested);
-                            for (fields, next, ty) in nested {
-                                out.push((
-                                    path.clone(),
-                                    Some(SumLeaf {
-                                        outcome: outcome.name.clone(),
-                                        payload,
-                                        fields,
-                                        nested: next.map(Box::new),
-                                    }),
-                                    ty,
-                                ));
-                            }
-                        }
-                    }
-                }
-            }
             for o in &r.exits {
                 for (payload, field) in o.fields.iter().enumerate() {
                     let reference = crate::manifest::reference_inner(&field.ty);
                     let storage = reference.map_or(field.ty.as_str(), |(_, t)| t);
-                    let mut leaves = vec![];
-                    record_leaves(&self.manifest, storage, vec![], &mut leaves);
-                    for (fields, sum_leaf, ty) in leaves {
-                        let key = (o.name.clone(), payload, fields.clone(), sum_leaf.clone());
+                    for (through, step, ty) in reference_leaves(storage, &self.manifest) {
+                        let fields = step.fields;
+                        let sum_leaf = step.sum_leaf;
+                        let key = (
+                            o.name.clone(),
+                            payload,
+                            through.clone(),
+                            fields.clone(),
+                            sum_leaf.clone(),
+                        );
                         expected_stored.insert(key);
                         let contracts = r
                             .stored_returns
@@ -545,6 +516,7 @@ impl CheckedProgram {
                             .filter(|c| {
                                 c.outcome == o.name
                                     && c.payload == payload
+                                    && c.through == through
                                     && c.fields == fields
                                     && c.sum_leaf == sum_leaf
                             })
@@ -554,7 +526,17 @@ impl CheckedProgram {
                                 "missing or duplicate stored return lifetime contract",
                             ));
                         }
-                        let (mutable, inner) = crate::manifest::reference_inner(&ty).unwrap();
+                        let (mut mutable, inner) = crate::manifest::reference_inner(&ty).unwrap();
+                        let mut carrier = storage.to_owned();
+                        for step in &through {
+                            let reference = step
+                                .reference_type(&carrier, &self.manifest)
+                                .ok_or_else(|| error("invalid stored reference layer"))?;
+                            let (mode, next) = crate::manifest::reference_inner(&reference)
+                                .ok_or_else(|| error("stored layer is not a reference"))?;
+                            mutable &= mode;
+                            carrier = next.into();
+                        }
                         for source in &contracts[0].sources {
                             verify_source(
                                 &self.manifest,
@@ -572,6 +554,7 @@ impl CheckedProgram {
                     !expected_stored.contains(&(
                         c.outcome.clone(),
                         c.payload,
+                        c.through.clone(),
                         c.fields.clone(),
                         c.sum_leaf.clone(),
                     ))
@@ -664,8 +647,20 @@ fn verify_source(
         if (c.fields.is_empty() && c.sum_leaf.is_none()) || c.group.is_empty() {
             return Err(error("invalid contained origin"));
         }
-        let mut ty = crate::manifest::reference_inner(&parameter.ty)
-            .map_or(parameter.ty.as_str(), |(_, t)| t);
+        let mut storage = crate::manifest::reference_inner(&parameter.ty)
+            .map_or(parameter.ty.as_str(), |(_, t)| t)
+            .to_owned();
+        let mut exclusive = true;
+        for step in &c.through {
+            let reference = step
+                .reference_type(&storage, m)
+                .ok_or_else(|| error("invalid contained reference layer"))?;
+            let (mutable, inner) = crate::manifest::reference_inner(&reference)
+                .ok_or_else(|| error("origin layer does not end at a reference"))?;
+            exclusive &= mutable;
+            storage = inner.into();
+        }
+        let mut ty = storage.as_str();
         for field in &c.fields {
             ty = &m
                 .field_at(ty, *field)
@@ -682,7 +677,7 @@ fn verify_source(
             .transpose()?;
         let (mutable, inner) = crate::manifest::reference_inner(tagged.as_deref().unwrap_or(ty))
             .ok_or_else(|| error("contained input origin is not a reference"))?;
-        (mutable, inner.to_owned())
+        (mutable && exclusive, inner.to_owned())
     } else {
         let (mutable, inner) = crate::manifest::reference_inner(&parameter.ty)
             .ok_or_else(|| error("return borrows owned input storage"))?;
@@ -703,7 +698,7 @@ fn verify_source(
             .1;
     }
     if source.guard {
-        if source.contained.is_some() || !source.opaque || !m.contains_exclusive_references(&ty) {
+        if !source.opaque || !m.contains_exclusive_references(&ty) {
             return Err(error("invalid carrier guard source"));
         }
     } else if !source.opaque {
@@ -798,6 +793,35 @@ mod tests {
                 }
                 assert_eq!(p.verify().unwrap_err().code, "E_IR");
             }
+        }
+    }
+    #[test]
+    fn nested_reference_contract_paths_are_verified_independently() {
+        let source = "struct view['text] {ref mutable string text <- 'text;} struct job['storage,'text] {ref mutable view['text] target <- 'storage;} control pass(job input) exits ready... {exit ready {input};}";
+        let m = crate::manifest::Manifest::from_json(include_str!("../playground/manifest.json"))
+            .unwrap();
+        let original = crate::compile(source, m).unwrap();
+        for mutation in 0..5 {
+            let mut p = original.clone();
+            let r = p.regions.get_mut("pass").unwrap();
+            let contract = r
+                .stored_returns
+                .iter_mut()
+                .find(|c| !c.through.is_empty())
+                .unwrap();
+            match mutation {
+                0 => contract.through.clear(),
+                1 => contract.through[0].fields[0] = 99,
+                2 => contract.sources[0]
+                    .contained
+                    .as_mut()
+                    .unwrap()
+                    .through
+                    .clear(),
+                3 => contract.sources[0].contained.as_mut().unwrap().through[0].fields[0] = 99,
+                _ => contract.sources.clear(),
+            }
+            assert_eq!(p.verify().unwrap_err().code, "E_IR");
         }
     }
     #[test]

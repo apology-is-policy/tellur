@@ -122,11 +122,11 @@ fn nested_options_move_the_stored_reference_and_release_empty_branches() {
     same(&source);
 }
 #[test]
-fn public_containers_of_carrier_references_remain_gated() {
+fn public_containers_require_both_origin_layers() {
     rejects(
         r#"struct view['a] {ref string text <- 'a;} struct envelope['a] {ref view value <- 'a;}
  control pass(envelope input) exits ready... {exit ready {input};}"#,
-        "E_MANIFEST",
+        "E_ORIGIN",
     );
 }
 
@@ -438,7 +438,7 @@ fn inferred_public_results_cannot_bypass_nested_origin_contract_gates() {
     rejects(
         r#"struct view['a] {ref string text <- 'a;} struct holder['storage] {ref view value <- 'storage;}
  control wrap(ref view input) exits ready... {exit ready {holder {input}};}"#,
-        "E_MANIFEST",
+        "E_ORIGIN",
     );
 }
 

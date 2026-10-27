@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.40.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.41.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -891,3 +891,60 @@ Logs: `work/tellur-0.40-tests.log`, `tellur-0.40-stored-records.log`,
 `tellur-0.40-examples.log`, `tellur-0.40-editor.log`,
 `tellur-0.40-release.log`, `tellur-0.40-package.log`,
 `tellur-0.40-install.log` and `tellur-0.40-installed-integrity.log`.
+
+
+## 0.41 — public nested-reference contracts
+
+C1b.3b.2e.2 adds separate storage and referent mappings on reference fields:
+`ref mutable view['text] target <- 'storage`. Public schemas retain reference-layer
+steps independently of record indices and guarded sum alternatives. Whole owned and
+borrowed record/variant/outcome/option inputs and results compose these mappings;
+capture, forwarding, inference and nested decisions preserve them. Option reference
+schemas expose `source` plus `referent_`-prefixed contained groups.
+
+The checker reconstructs nested permissions without projecting inactive alternatives.
+Holder access retains its full authorization chain; contained storage guards authorize
+their own carrier while detached exclusive reborrows continue to freeze it. Declared
+guards may conservatively cover a deeper field. The independent IR verifier checks
+all reference layers, payload shapes, source projections and effective shared access.
+Runtime pointer representation and native lowering remain unchanged.
+
+`tests/public_carriers.rs` covers explicit/inferred contracts, owned and borrowed
+boundaries, shared/exclusive restrictions, detached children and copies, empty tags,
+named contracts, option selectors, three reference layers, generic layouts, private
+imports, source unions and storage/source escape. Native tests compare original and
+expanded O0/O2 execution with the interpreter. An IR regression corrupts both result
+and source reference-layer paths. LSP and real VS Code coverage verify declaration
+and auto hover, unsaved loan diagnostics, repair and native execution.
+
+The maintained reference documents the syntax and remaining boundaries. Aggregate
+trait contracts are next. Abstract type-parameter origin-shape bounds, reference type
+arguments, reference-bearing collections, rebinding and reference loop state remain
+separate work. Calls selecting nested origins from constructor arguments currently
+require a local binding first. Try [public_carriers.tellur](../playground/public_carriers.tellur).
+
+
+Final verification: all **671 Rust tests** passed. The final focused rerun covered
+carrier results/storage, public carriers, named/option origins and LSP. The completed
+public-carrier suite passed all **18** tests, including an added forwarding case and
+**24** native comparisons: captured public records, plain records, populated/empty
+outer variants, and references to populated/empty variant referents, each original
+and expanded at O0/O2. Clippy passed with warnings denied. All **32** Node
+syntax/configuration tests and the real VS Code integration suite passed, including
+the public-carrier milestone.
+
+Manual validation accepted **50** complete examples, required **14** diagnostics,
+classified **14** context fragments and resolved **133** local links. All **50**
+canonical playground/example sources checked with the release CLI. The 0.41.0
+darwin-arm64 VSIX was verified against all release payload files, installed, and
+its installed metadata, client, language assets, license and executable compiler/
+server were checked. Local canonical and compatibility binaries were updated.
+Source snapshot: `work/revision-backups/tellur-0.41-source.tar.gz` (258 files,
+all archived bytes verified against the checkout).
+
+Logs: `work/tellur-0.41-tests.log`, `tellur-0.41-final-feature.log`,
+`tellur-0.41-public-carriers.log`, `tellur-0.41-clippy.log`,
+`tellur-0.41-grammar.log`, `tellur-0.41-reference.log`,
+`tellur-0.41-examples.log`, `tellur-0.41-editor.log`,
+`tellur-0.41-release.log`, `tellur-0.41-package.log`,
+`tellur-0.41-install.log` and `tellur-0.41-installed-integrity.log`.

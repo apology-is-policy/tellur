@@ -2,7 +2,7 @@
 
 The user accepted parameter-based `from input` origins on 26 October 2026.
 Compiler 0.25 implements C1a: declared reference results, borrowed trait contracts,
-implementation conformance and abstract generic witnesses. Compiler 0.27 delivers local struct storage (C1b.1), and 0.29 adds grouped struct results (C1b.2a) and field-sensitive last use. Whole-record inputs and contained reborrowing arrived in 0.30–0.31; 0.32 adds checked opaque splits. Local borrowed sums arrived in 0.33, public sum schemas in 0.35/0.37, and whole-sum borrowed inputs in 0.38. Direct whole-carrier reference results arrived in 0.39; local aggregate/captured storage follows in 0.40. Public contracts for containers of those references, aggregate trait contracts and borrowed collection elements remain ahead. See [precise origins](precise-origins.md). Examples use the reference words introduced in 0.26. Existing direct-control results may still infer origins from their bodies.
+implementation conformance and abstract generic witnesses. Compiler 0.27 delivers local struct storage (C1b.1), and 0.29 adds grouped struct results (C1b.2a) and field-sensitive last use. Whole-record inputs and contained reborrowing arrived in 0.30–0.31; 0.32 adds checked opaque splits. Local borrowed sums arrived in 0.33, public sum schemas in 0.35/0.37, and whole-sum borrowed inputs in 0.38. Direct whole-carrier reference results arrived in 0.39; local aggregate/captured storage follows in 0.40. Public contracts for containers of those references follow in 0.41; aggregate trait contracts and borrowed collection elements remain ahead. See [precise origins](precise-origins.md). Examples use the reference words introduced in 0.26. Existing direct-control results may still infer origins from their bodies.
 
 ## Accepted surface
 
@@ -125,3 +125,20 @@ remaining carrier-input, trait, permission, collection and coroutine work. Direc
 `from input` contracts retain their semantics. Different group names do not establish
 disjointness. Compiler 0.32 supports opaque splits checked from their implementations;
 see the guide for the separation between access permissions and lifetime anchors.
+
+
+## Public nested-reference contracts — delivered in 0.41
+
+`ref mutable view['text] target <- 'storage` maps the referent's contained group
+separately from its storage. Each public dependency path records reference-indirection
+steps as well as record fields and guarded alternatives. Owned/borrowed container
+inputs and results preserve all layers, including captured and forwarded results.
+The checker reconstructs the authorization chain without reading inactive payloads;
+shared outer authority cannot grant exclusive inner access. Public group selectors
+retain storage guards where needed. The independent IR verifier checks every layer.
+See [the reference](language-reference.md#public-nested-reference-contracts) and
+[the example](../playground/public_carriers.tellur).
+
+Aggregate trait origin contracts are the next checkpoint. Reference-bearing
+collections, abstract generic origin-shape bounds, reference rebinding and loop state
+remain separate work.

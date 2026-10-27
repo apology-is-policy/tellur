@@ -537,6 +537,25 @@ exports.run = async function () {
     assert.equal(storedCarrierRun.code, 0, storedCarrierRun.stderr);
     assert.ok(storedCarrierRun.stdout.includes('edited after capture') && storedCarrierRun.stdout.includes('edited through stored job'));
     console.log('TELLUR_STORED_CARRIERS_EDITOR_TESTS_PASSED: capture and nested reference hover, retained storage, repair and native execution');
+    const publicCarriers = await fs.readFile(path.join(__dirname, '../../../tests/fixtures/public_carriers.tellur'), 'utf8');
+    await replace(buildDocument, publicCarriers);
+    await waitFor(() => revisedDiagnostics().length === 0, 'public carrier source');
+    for (const [binding, expected] of [['auto job', 'edit_job job'], ['struct edit_job', "ref mutable text_view['text] target <- 'storage"]]) {
+      const line = publicCarriers.split('\n').findIndex(l => l.includes(binding));
+      const column = publicCarriers.split('\n')[line].indexOf(binding) + (binding.startsWith('struct') ? 8 : 1);
+      await waitFor(async () => {
+        const hovers = await vscode.commands.executeCommand('vscode.executeHoverProvider', buildUri, new vscode.Position(line, column));
+        return hovers?.some(h => h.contents.some(c => c.value.includes(expected)));
+      }, `public carrier hover: ${expected}`);
+    }
+    await replace(buildDocument, publicCarriers.replace('deref job.target.text =', 'drop(saved); deref job.target.text ='));
+    await waitFor(() => revisedDiagnostics().some(d => code(d) === 'E_LOAN'), 'public carrier storage conflict');
+    await replace(buildDocument, publicCarriers);
+    await waitFor(() => revisedDiagnostics().length === 0, 'public carrier repair');
+    const publicCarrierRun = await vscode.commands.executeCommand('tellur.buildAndRun', {output:path.join(root, 'native output', 'public-carriers')});
+    assert.equal(publicCarrierRun.code, 0, publicCarrierRun.stderr);
+    assert.ok(publicCarrierRun.stdout.includes('edited through public contract'));
+    console.log('TELLUR_PUBLIC_CARRIERS_EDITOR_TESTS_PASSED: public schemas, nested reference hover, retained storage, repair and native execution');
     const publicSource=await fs.readFile(path.join(__dirname,'../../../tests/fixtures/public_variants.tellur'),'utf8');
     await replace(buildDocument,publicSource);
     const publicLine=publicSource.split('\n').findIndex(l=>l.startsWith('variant lookup'));

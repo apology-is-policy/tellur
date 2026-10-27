@@ -30,6 +30,8 @@ pub struct Field {
     /// Start of the source type, retained for editor inference information.
     pub type_span: Span,
     pub origins: Vec<OriginArgument>,
+    /// Bracket mappings on a schema reference field with a separate storage arrow.
+    pub referent_origins: Vec<OriginArgument>,
     pub name: String,
     pub ty: String,
 }
@@ -500,6 +502,7 @@ impl Parser {
             name,
             ty,
             origins,
+            referent_origins: vec![],
             type_span,
         })
     }
@@ -736,9 +739,12 @@ impl Parser {
         while !self.at("}") {
             let mut field = self.field()?;
             if self.eat("<-") {
-                if !field.origins.is_empty() {
-                    return Err(self.error("use one origin mapping per field"));
+                if !field.origins.is_empty()
+                    && crate::manifest::reference_inner(&field.ty).is_none()
+                {
+                    return Err(self.error("arrow origins require a reference field"));
                 }
+                field.referent_origins = std::mem::take(&mut field.origins);
                 self.need("'")?;
                 field.origins.push(OriginArgument::Group(self.id()?));
             }
@@ -1204,6 +1210,7 @@ impl Parser {
                                 bindings.push(Field {
                                     type_span: Span::default(),
                                     origins: vec![],
+                                    referent_origins: vec![],
                                     name: self.id()?,
                                     ty: "auto".into(),
                                 });
@@ -1418,9 +1425,12 @@ pub fn parse_unit(source: &str) -> Result<Unit> {
                     let visible = p.eat("pub");
                     let mut field = p.field()?;
                     if p.eat("<-") {
-                        if !field.origins.is_empty() {
-                            return Err(p.error("use one origin mapping per field"));
+                        if !field.origins.is_empty()
+                            && crate::manifest::reference_inner(&field.ty).is_none()
+                        {
+                            return Err(p.error("arrow origins require a reference field"));
                         }
+                        field.referent_origins = std::mem::take(&mut field.origins);
                         p.need("'")?;
                         field.origins.push(OriginArgument::Group(p.id()?));
                     }

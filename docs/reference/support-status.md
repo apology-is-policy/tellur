@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.40.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.41.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -38,7 +38,8 @@ The linked regression suites give more detailed acceptance and rejection evidenc
 | Collections | Arrays/vectors/maps, explicit bounds outcomes, resources, borrowed element access | Stored reference-bearing elements, slices and iterators remain queued | [Collection tests](../../tests/collections.rs) |
 | Borrowed sum carriers | Whole shared/exclusive inputs, active payload reborrows, nested carriers, retained handling obligations | Complete schemas required at public boundaries; local borrows use concrete provenance | [Sum carrier tests](../../tests/sum_carriers.rs) |
 | Carrier reference results | Direct shared/exclusive results, inferred/declared contained origins, storage retention and forwarding | Local capture and aggregate storage work; aggregate trait results remain queued | [Carrier result tests](../../tests/carrier_results.rs), [example](../../playground/carrier_results.tellur) |
-| Stored carrier references | Local recursive dependency trees, capture/adapters, shared retainers, nested/borrowed unpacking and last use | Public containers of carrier references remain gated | [Stored carrier tests](../../tests/stored_carriers.rs), [example](../../playground/stored_carriers.tellur) |
+| Stored carrier references | Local recursive dependency trees, capture/adapters, shared retainers, nested/borrowed unpacking and last use | Public schemas map each storage and contained-origin layer; aggregate trait contracts remain queued | [Stored carrier tests](../../tests/stored_carriers.rs), [example](../../playground/stored_carriers.tellur) |
+| Public nested references | Separate storage arrows and referent brackets; owned/borrowed boundaries, nested tags, capture and forwarding | Bind constructor arguments before selecting nested origins; abstract type-parameter origin shapes remain unsupported | [Public carrier tests](../../tests/public_carriers.rs), [example](../../playground/public_carriers.tellur) |
 | Resources | Must-complete obligations through aggregates, replacement and explicit draining | No implicit fallible cleanup or abandoned outcome disposal | [Completion tests](../../tests/completion.rs), [ownership tests](../../tests/ownership.rs) |
 
 “Borrowed element access” means obtaining a reference into an owning collection.
@@ -47,8 +48,8 @@ collection elements. The former works; the latter does not yet. Grouped source v
 Grouped variants, named outcomes and builtin options also support whole borrowed
 inputs and non-consuming decisions. Direct controls may return selected references
 or references to whole reference-bearing aggregates. The latter can be stored
-inside local aggregates and captured outcomes. Public container contracts for those
-nested reference layers remain unsupported.
+inside local aggregates and captured outcomes, or cross public container boundaries
+with complete schemas for every nested reference layer.
 
 ## Tools, analyses and planned execution features
 

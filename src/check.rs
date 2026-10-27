@@ -6,6 +6,7 @@ use crate::{
     syntax::{self, Item, Mask, Statement},
 };
 use std::collections::{BTreeMap, BTreeSet};
+mod public;
 mod stored;
 mod sums;
 
@@ -467,7 +468,12 @@ impl Checker<'_> {
             })
             .copied();
         Some(ResolvedPlace {
-            carriers: vec![],
+            carriers: place
+                .carriers
+                .iter()
+                .copied()
+                .take_while(|id| Some(*id) != via)
+                .collect(),
             scope,
             name: name.clone(),
             place: holder.clone(),
@@ -586,6 +592,19 @@ impl Checker<'_> {
             ignored = loan.parents;
             ignored.push(id);
         }
+        // A reconstructed carrier authorizes the guards of the contained
+        // permissions it received. Detached reborrows are not in this tree.
+        fn contained_permissions(loan: &Loan, out: &mut Vec<Id>) {
+            for (_, child) in &loan.contents {
+                out.push(child.id);
+                out.extend(&child.parents);
+                contained_permissions(child, out);
+            }
+        }
+        let mut contained = vec![];
+        if let Some(id) = place.via {
+            contained_permissions(self.loan(id), &mut contained);
+        }
         let origins = self.origins(place);
         for loan in self.retained_loans() {
             if ignored.contains(&loan.id) {
@@ -603,7 +622,7 @@ impl Checker<'_> {
                                 && h.indirect == place.place.indirect
                                 && h.fields.starts_with(&place.place.fields)
                         });
-                        !(b.guard && own_holder) && a.overlaps(b)
+                        !(b.guard && (own_holder || contained.contains(&loan.id))) && a.overlaps(b)
                     })
                 })
             {
@@ -2149,6 +2168,7 @@ impl Checker<'_> {
                     .map(|(j, f)| syntax::Field {
                         type_span: Span::default(),
                         origins: vec![],
+                        referent_origins: vec![],
                         name: format!("$identity_{serial}_{i}_{j}"),
                         ty: f.ty.clone(),
                     })
@@ -2218,6 +2238,7 @@ impl Checker<'_> {
                     .map(|(j, f)| syntax::Field {
                         type_span: Span::default(),
                         origins: vec![],
+                        referent_origins: vec![],
                         name: format!("$payload_{serial}_{i}_{j}"),
                         ty: f.ty.clone(),
                     })
@@ -2491,7 +2512,7 @@ impl Checker<'_> {
         // checked loan intact, rebasing only the payload's storage holder.
         let mut nested_loans = vec![];
         let mut retained_contents = vec![];
-        let mut tagged_returns = vec![];
+        let mut public_returns = vec![];
         if let syntax::Expr::Call(callee, call_args) = operand
             && let Some(sig) = self.signature(callee, call_args, span)?
         {
@@ -2501,31 +2522,32 @@ impl Checker<'_> {
             let returns = sig
                 .borrow_returns
                 .iter()
-                .map(|((o, i), sources)| ((o.clone(), *i, vec![]), sources, None))
+                .map(|((o, i), sources)| ((o.clone(), *i, vec![]), sources, None, None))
                 .chain(sig.stored_returns.iter().map(|r| {
                     (
                         (r.outcome.clone(), r.payload, r.fields.clone()),
                         &r.sources,
                         r.sum_leaf.as_ref(),
+                        Some(r.through.clone()),
                     )
                 }));
             // The checked exit construction guarantees that distinct reference
             // leaves coexist without exclusive aliasing, even if their lifetime
             // anchors are identical or unioned across different control paths.
             let family = self.fresh();
-            for (member, (key, sources, tag)) in returns.enumerate() {
+            for (member, (key, sources, tag, through)) in returns.enumerate() {
                 let mut origins = vec![];
                 let mut parents = vec![];
                 for source in sources {
-                    let targets = self.call_origin_targets(
+                    let dependencies = self.call_origin_dependencies(
                         source,
                         &call_args[source.parameter],
                         &sig.parameters[source.parameter],
                         domain,
                         span,
                     )?;
-                    for target in targets {
-                        for mut origin in self.origins(&target) {
+                    for (target_origins, target_parents) in dependencies {
+                        for mut origin in target_origins {
                             origin.project(&source.fields);
                             origin.guard |= source.guard;
                             origin.opaque |= source.opaque;
@@ -2536,15 +2558,27 @@ impl Checker<'_> {
                                 origins.push(origin);
                             }
                         }
-                        for id in self.parents(&target) {
+                        for id in target_parents {
                             if !parents.contains(&id) {
                                 parents.push(id);
                             }
                         }
                     }
                 }
-                if let Some(tag) = tag {
-                    tagged_returns.push((key, tag.clone(), origins, parents));
+                if let Some(through) = through {
+                    public_returns.push((
+                        key.0,
+                        key.1,
+                        (
+                            through,
+                            ReferenceStep {
+                                fields: key.2,
+                                sum_leaf: tag.cloned(),
+                            },
+                            origins,
+                            parents,
+                        ),
+                    ));
                 } else {
                     return_loans.insert(key, (origins, parents));
                 }
@@ -2707,6 +2741,7 @@ impl Checker<'_> {
                         .map(|(j, f)| syntax::Field {
                             type_span: Span::default(),
                             origins: vec![],
+                            referent_origins: vec![],
                             name: format!("$identity_{serial}_{index}_{j}"),
                             ty: f.ty.clone(),
                         })
@@ -2811,20 +2846,6 @@ impl Checker<'_> {
                         mutable,
                         selected,
                     );
-                    for ((o, i, fields), leaf, origins, parents) in &tagged_returns {
-                        if o == &arm.outcome && *i == field_index {
-                            self.receive_tagged(
-                                id,
-                                inner,
-                                fields,
-                                leaf,
-                                origins.clone(),
-                                parents.clone(),
-                                selected,
-                                span,
-                            )?;
-                        }
-                    }
                     for ((o, i, fields), (origins, parents)) in &return_loans {
                         if o == &arm.outcome && *i == field_index && !fields.is_empty() {
                             let (address, expr) = self.receive_stored(
@@ -2880,20 +2901,6 @@ impl Checker<'_> {
                         ));
                     }
                     let root = self.define(&binding.name, &field.ty, selected, span)?;
-                    for ((o, i, fields), leaf, origins, parents) in &tagged_returns {
-                        if o == &arm.outcome && *i == field_index {
-                            self.receive_tagged(
-                                root,
-                                &field.ty,
-                                fields,
-                                leaf,
-                                origins.clone(),
-                                parents.clone(),
-                                selected,
-                                span,
-                            )?;
-                        }
-                    }
                     for (leaf, loan) in &nested_loans {
                         if leaf.outcome == arm.outcome && leaf.payload == field_index {
                             let active = self.bdd.and(selected, loan.active);
@@ -2954,6 +2961,20 @@ impl Checker<'_> {
                         }
                     }
                     slots.push(root);
+                }
+                let entries = public_returns
+                    .iter()
+                    .filter(|(o, i, _)| *o == arm.outcome && *i == field_index)
+                    .map(|(_, _, e)| e.clone())
+                    .collect::<Vec<_>>();
+                if !entries.is_empty() {
+                    let root = *slots.last().unwrap();
+                    let ty =
+                        manifest::reference_inner(&field.ty).map_or(field.ty.as_str(), |(_, t)| t);
+                    let (bindings, _) =
+                        self.receive_public_contents(root, ty, &entries, selected, span)?;
+                    stored_bindings
+                        .extend(bindings.into_iter().map(|(id, value)| (atom, id, value)));
                 }
             }
             if inline.is_some() {
@@ -3407,6 +3428,7 @@ pub(crate) fn compile_concrete_unit(
                         .map(|f| syntax::Field {
                             type_span: Span::default(),
                             origins: vec![],
+                            referent_origins: vec![],
                             name: f.name.clone(),
                             ty: f.ty.clone(),
                         })

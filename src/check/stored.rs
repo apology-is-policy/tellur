@@ -162,6 +162,7 @@ impl Checker<'_> {
                     .extend(self.restore_carrier_contents(address, &inner, &nested, domain, span)?);
             }
         }
+        self.attach_received_contents(root);
         Ok(bindings)
     }
 
@@ -663,6 +664,19 @@ impl Checker<'_> {
         loan: &Loan,
         span: Span,
     ) -> Result<()> {
+        self.record_nested_return(name, payload, ty, &[], fields, loan, span)
+    }
+    #[allow(clippy::too_many_arguments)]
+    fn record_nested_return(
+        &mut self,
+        name: &str,
+        payload: usize,
+        ty: &str,
+        through: &[ReferenceStep],
+        fields: &[usize],
+        loan: &Loan,
+        span: Span,
+    ) -> Result<()> {
         let mut sources = vec![];
         for origin in &loan.origins {
             let source = self.return_source(origin, span)?;
@@ -673,6 +687,7 @@ impl Checker<'_> {
         if let Some(declared) = self.declared_stored.iter().find(|r| {
             r.outcome == name
                 && r.payload == payload
+                && r.through == through
                 && r.fields == fields
                 && r.sum_leaf == loan.sum_leaf
         }) {
@@ -693,6 +708,7 @@ impl Checker<'_> {
         if let Some(previous) = self.result.stored_returns.iter_mut().find(|r| {
             r.outcome == name
                 && r.payload == payload
+                && r.through == through
                 && r.fields == fields
                 && r.sum_leaf == loan.sum_leaf
         }) {
@@ -706,12 +722,13 @@ impl Checker<'_> {
             let group = schema.groups[schema
                 .leaves
                 .iter()
-                .find(|l| l.fields == fields && l.sum_leaf == loan.sum_leaf)
+                .find(|l| l.through == through && l.fields == fields && l.sum_leaf == loan.sum_leaf)
                 .unwrap()
                 .group
                 .unwrap()]
             .clone();
             self.result.stored_returns.push(StoredReturn {
+                through: through.to_vec(),
                 group,
                 outcome: name.into(),
                 payload,
@@ -719,6 +736,14 @@ impl Checker<'_> {
                 sum_leaf: loan.sum_leaf.clone(),
                 sources,
             });
+        }
+        let mut nested = through.to_vec();
+        nested.push(ReferenceStep {
+            fields: fields.to_vec(),
+            sum_leaf: loan.sum_leaf.clone(),
+        });
+        for (fields, child) in &loan.contents {
+            self.record_nested_return(name, payload, ty, &nested, fields, child, span)?;
         }
         Ok(())
     }
@@ -908,29 +933,40 @@ impl Checker<'_> {
             let Some(schema) = self.origin_schemas.get(ty).filter(|s| !s.groups.is_empty()) else {
                 continue;
             };
+            let entries = schema
+                .leaves
+                .iter()
+                .map(|leaf| {
+                    (
+                        leaf.through.clone(),
+                        ReferenceStep {
+                            fields: leaf.fields.clone(),
+                            sum_leaf: leaf.sum_leaf.clone(),
+                        },
+                        vec![],
+                        vec![],
+                    )
+                })
+                .collect::<Vec<_>>();
+            let (bindings, addresses) =
+                self.receive_public_contents(slot.id, ty, &entries, TRUE, span)?;
+            for (id, expr) in bindings {
+                self.emit(Guard::True, Action::Bind(id, expr), span);
+            }
             let mut initialized = vec![];
             for leaf in &schema.leaves {
-                let address = if let Some(tag) = &leaf.sum_leaf {
-                    self.receive_tagged(slot.id, ty, &leaf.fields, tag, vec![], vec![], TRUE, span)?
-                } else {
-                    let (address, expr) = self.receive_stored(
-                        &slot.name,
-                        slot.id,
-                        ty,
-                        &leaf.fields,
-                        vec![],
-                        vec![],
-                        TRUE,
-                        span,
-                    )?;
-                    self.emit(Guard::True, Action::Bind(address, expr), span);
-                    address
-                };
+                let mut path = leaf.through.clone();
+                path.push(ReferenceStep {
+                    fields: leaf.fields.clone(),
+                    sum_leaf: leaf.sum_leaf.clone(),
+                });
+                let address = addresses.iter().find(|(p, _)| *p == path).unwrap().1;
                 self.contained_inputs.insert(
                     address,
                     (
                         parameter,
                         ContainedOrigin {
+                            through: leaf.through.clone(),
                             group: schema.groups[leaf.group.unwrap()].clone(),
                             sum_leaf: leaf.sum_leaf.clone(),
                             fields: leaf.fields.clone(),
@@ -968,6 +1004,8 @@ impl Checker<'_> {
                     .unwrap();
                 loan.origins = origins;
             }
+            self.refresh_public_contents(&addresses);
+            self.attach_received_contents(slot.id);
         }
         Ok(())
     }

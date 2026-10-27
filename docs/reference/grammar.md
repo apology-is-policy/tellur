@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Lexical structure](lexical-structure.md)
 
-This is a reading grammar for the modern compiler 0.40.0 profile, not a replacement
+This is a reading grammar for the modern compiler 0.41.0 profile, not a replacement
 for its type, ownership, origin or coverage rules. It omits legacy spellings and
 parser recovery details. `name`, `integer` and `string_literal` are lexical tokens.
 Quoted text denotes source tokens; `?` means optional, `*` repetition, `+` one or
@@ -46,8 +46,9 @@ implementation   = "implement" qualified_name "for" type
 associated_assignment = "type" name "=" type ";" ;
 ```
 
-A struct field uses either a grouped nested type mapping before its name or a
-reference field's `<- 'group` mapping after it, not both. Variant payload fields use
+A struct field maps a grouped nested type before its name. A reference field uses
+`<- 'group` after its name for storage; if its referent has origin groups, its
+bracket mapping and storage arrow are both required. Variant payload fields use
 the same origin mappings, as do named outcome payload fields. All layouts must be finite and
 nonrecursive. Visibility applies to declarations and individual struct fields.
 Implementations do not use `pub`; trait/type visibility determines their availability.

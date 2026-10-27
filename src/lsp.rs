@@ -641,7 +641,7 @@ impl Server {
                 for result in checked
                     .stored_returns
                     .iter()
-                    .filter(|r| r.outcome == outcome.name)
+                    .filter(|r| r.outcome == outcome.name && r.through.is_empty())
                 {
                     let field_type = outcome.fields[result.payload].ty.as_str();
                     // The carrier and its contents are not distinct result
@@ -1082,7 +1082,20 @@ fn source_field(field: &syntax::Field, declaration: bool) -> String {
     {
         format!(
             "{} {} <- {}",
-            display_type(&field.ty),
+            if field.referent_origins.is_empty() {
+                display_type(&field.ty)
+            } else {
+                format!(
+                    "{}[{}]",
+                    display_type(&field.ty),
+                    field
+                        .referent_origins
+                        .iter()
+                        .map(syntax::OriginArgument::display)
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            },
             field.name,
             field.origins[0].display()
         )

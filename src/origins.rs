@@ -7,6 +7,7 @@ use crate::{
 use std::collections::{BTreeMap, BTreeSet};
 #[derive(Clone, Debug)]
 pub(crate) struct Leaf {
+    pub through: Vec<crate::ir::ReferenceStep>,
     pub fields: Vec<usize>,
     pub sum_leaf: Option<crate::ir::SumLeaf>,
     pub group: Option<usize>,
@@ -29,7 +30,11 @@ impl Schemas {
         }
         if let Some(inner) = manifest::option_inner(ty) {
             let nested = if manifest::reference_inner(inner).is_some() {
-                reference_schema(inner)
+                reference_schema(
+                    inner,
+                    self.lookup(manifest::reference_inner(inner)?.1, depth + 1)
+                        .unwrap_or_else(empty_schema),
+                )
             } else {
                 self.lookup(inner, depth + 1)?
             };
@@ -38,25 +43,59 @@ impl Schemas {
         self.0.get(ty).cloned()
     }
 }
-fn reference_schema(ty: &str) -> Schema {
+fn empty_schema() -> Schema {
     Schema {
+        groups: vec![],
+        leaves: vec![],
+    }
+}
+fn reference_schema(ty: &str, mut nested: Schema) -> Schema {
+    let mut schema = Schema {
         groups: vec!["source".into()],
         leaves: vec![Leaf {
+            through: vec![],
             fields: vec![],
             sum_leaf: None,
             group: Some(0),
             ty: ty.into(),
         }],
+    };
+    schema
+        .groups
+        .extend(nested.groups.iter().map(|g| format!("referent_{g}")));
+    for leaf in &mut nested.leaves {
+        leaf.through.insert(
+            0,
+            crate::ir::ReferenceStep {
+                fields: vec![],
+                sum_leaf: None,
+            },
+        );
+        leaf.group = leaf.group.map(|g| g + 1);
+    }
+    schema.leaves.extend(nested.leaves);
+    schema
+}
+fn wrap_leaf(leaf: &mut Leaf, index: usize, outcome: Option<&str>) {
+    let (fields, sum_leaf) = if let Some(step) = leaf.through.first_mut() {
+        (&mut step.fields, &mut step.sum_leaf)
+    } else {
+        (&mut leaf.fields, &mut leaf.sum_leaf)
+    };
+    if let Some(outcome) = outcome {
+        *sum_leaf = Some(crate::ir::SumLeaf {
+            outcome: outcome.into(),
+            payload: index,
+            fields: std::mem::take(fields),
+            nested: sum_leaf.take().map(Box::new),
+        });
+    } else {
+        fields.insert(0, index);
     }
 }
 fn option_schema(mut nested: Schema) -> Schema {
     for leaf in &mut nested.leaves {
-        leaf.sum_leaf = Some(crate::ir::SumLeaf {
-            outcome: "Some".into(),
-            payload: 0,
-            fields: std::mem::take(&mut leaf.fields),
-            nested: leaf.sum_leaf.take().map(Box::new),
-        });
+        wrap_leaf(leaf, 0, Some("Some"));
     }
     nested
 }
@@ -94,7 +133,15 @@ pub(crate) fn schemas(unit: &syntax::Unit) -> Result<Schemas> {
                 ));
             }
             let nested = if manifest::reference_inner(inner).is_some() {
-                reference_schema(inner)
+                reference_schema(
+                    inner,
+                    visit(
+                        manifest::reference_inner(inner).unwrap().1,
+                        data,
+                        done,
+                        active,
+                    )?,
+                )
             } else {
                 visit(inner, data, done, active)?
             };
@@ -145,21 +192,24 @@ pub(crate) fn schemas(unit: &syntax::Unit) -> Result<Schemas> {
             leaves: vec![],
         };
         for (outcome, index, field) in fields {
-            let direct = manifest::reference_inner(&field.ty).is_some();
-            let nested = if direct {
-                Schema {
-                    groups: vec!["source".into()],
-                    leaves: vec![Leaf {
-                        fields: vec![],
-                        sum_leaf: None,
-                        group: Some(0),
-                        ty: field.ty.clone(),
-                    }],
-                }
+            let nested = if let Some((_, inner)) = manifest::reference_inner(&field.ty) {
+                reference_schema(&field.ty, visit(inner, data, done, active)?)
             } else {
                 visit(&field.ty, data, done, active)?
             };
-            if schema.groups.is_empty() && !field.origins.is_empty() {
+            if manifest::reference_inner(&field.ty).is_some()
+                && nested.groups.len() > 1
+                && !field.origins.is_empty()
+                && field.referent_origins.is_empty()
+            {
+                return Err(error(
+                    d.span,
+                    "carrier reference fields require both referent bracket mappings and a storage arrow origin",
+                ));
+            }
+            if schema.groups.is_empty()
+                && (!field.origins.is_empty() || !field.referent_origins.is_empty())
+            {
                 return Err(error(
                     d.span,
                     "field origins require declared type origin parameters",
@@ -168,6 +218,7 @@ pub(crate) fn schemas(unit: &syntax::Unit) -> Result<Schemas> {
             let mapped = field
                 .origins
                 .iter()
+                .chain(&field.referent_origins)
                 .map(|a| {
                     let OriginArgument::Group(n) = a else {
                         return Err(error(d.span, "field origins must name apostrophe groups"));
@@ -201,28 +252,10 @@ pub(crate) fn schemas(unit: &syntax::Unit) -> Result<Schemas> {
             if schema.leaves.len() + nested.leaves.len() > 4096 {
                 return Err(error(d.span, "origin schema exceeds 4096 reference leaves"));
             }
-            for leaf in nested.leaves {
-                let (fields, sum_leaf) = if let Some(outcome) = outcome {
-                    (
-                        vec![],
-                        Some(crate::ir::SumLeaf {
-                            outcome: outcome.into(),
-                            payload: index,
-                            fields: leaf.fields,
-                            nested: leaf.sum_leaf.map(Box::new),
-                        }),
-                    )
-                } else {
-                    let mut fields = vec![index];
-                    fields.extend(leaf.fields);
-                    (fields, leaf.sum_leaf)
-                };
-                schema.leaves.push(Leaf {
-                    fields,
-                    sum_leaf,
-                    group: leaf.group.and_then(|g| mapped.get(g).copied()),
-                    ty: leaf.ty,
-                });
+            for mut leaf in nested.leaves {
+                wrap_leaf(&mut leaf, index, outcome);
+                leaf.group = leaf.group.and_then(|g| mapped.get(g).copied());
+                schema.leaves.push(leaf);
             }
         }
 
@@ -290,7 +323,7 @@ fn check_boundary_storage(
     at: Span,
 ) -> Result<()> {
     if let Some((_, inner)) = manifest::reference_inner(ty) {
-        return m.check_type(inner);
+        return borrowed_input_type(inner, schemas, m, at);
     }
     if !m.contains_references(ty) {
         return m.check_type(ty);
@@ -321,6 +354,20 @@ fn check_boundary_storage(
         return m.check_type(ty);
     }
     Ok(())
+}
+fn leaf_exclusive(schema: &Schema, leaf: &Leaf) -> bool {
+    manifest::reference_inner(&leaf.ty).is_some_and(|(m, _)| m)
+        && leaf.through.iter().enumerate().all(|(index, step)| {
+            schema
+                .leaves
+                .iter()
+                .find(|l| {
+                    l.through == leaf.through[..index]
+                        && l.fields == step.fields
+                        && l.sum_leaf == step.sum_leaf
+                })
+                .is_some_and(|l| manifest::reference_inner(&l.ty).is_some_and(|(m, _)| m))
+        })
 }
 pub(crate) fn declared(
     r: &syntax::Region,
@@ -354,7 +401,7 @@ pub(crate) fn declared(
                 .collect::<Result<Vec<_>>>()?;
             for leaf in &schema.leaves {
                 let sources = inputs[leaf.group.expect("complete grouped schema")].clone();
-                let (mutable, _) = manifest::reference_inner(&leaf.ty).unwrap();
+                let mutable = leaf_exclusive(&schema, leaf);
                 for source in &sources {
                     if mutable
                         && !manifest::reference_inner(&f.ty).is_some_and(|(m, _)| !m)
@@ -367,6 +414,7 @@ pub(crate) fn declared(
                     }
                 }
                 returns.push(crate::ir::StoredReturn {
+                    through: leaf.through.clone(),
                     group: schema.groups[leaf.group.unwrap()].clone(),
                     outcome: o.name.clone(),
                     payload,
@@ -400,6 +448,7 @@ pub(crate) fn normalize(
                 if !r.stored_returns.iter().any(|c| {
                     c.outcome == o.name
                         && c.payload == payload
+                        && c.through == leaf.through
                         && c.fields == leaf.fields
                         && c.sum_leaf == leaf.sum_leaf
                         && !c.sources.is_empty()
@@ -415,13 +464,13 @@ pub(crate) fn normalize(
                     .leaves
                     .iter()
                     .filter(|l| l.group == Some(group))
-                    .map(|l| (&l.fields, &l.sum_leaf))
+                    .map(|l| (&l.through, &l.fields, &l.sum_leaf))
                     .collect::<Vec<_>>();
                 let mut sources = vec![];
                 for result in r.stored_returns.iter().filter(|r| {
                     r.outcome == o.name
                         && r.payload == payload
-                        && paths.contains(&(&r.fields, &r.sum_leaf))
+                        && paths.contains(&(&r.through, &r.fields, &r.sum_leaf))
                 }) {
                     for s in &result.sources {
                         if !sources.contains(s) {
@@ -432,7 +481,7 @@ pub(crate) fn normalize(
                 for result in r.stored_returns.iter_mut().filter(|r| {
                     r.outcome == o.name
                         && r.payload == payload
-                        && paths.contains(&(&r.fields, &r.sum_leaf))
+                        && paths.contains(&(&r.through, &r.fields, &r.sum_leaf))
                 }) {
                     result.sources = sources.clone();
                 }
@@ -493,18 +542,47 @@ pub(crate) fn input_sources(
                 fields: vec![],
                 opaque: true,
                 contained: Some(crate::ir::ContainedOrigin {
+                    through: leaf.through.clone(),
                     group: group.into(),
                     sum_leaf: leaf.sum_leaf.clone(),
                     fields: leaf.fields.clone(),
                 }),
             });
+            if manifest::reference_inner(&leaf.ty).is_some_and(|(m, _)| m) {
+                for (index, step) in leaf.through.iter().enumerate() {
+                    let parent = schema
+                        .leaves
+                        .iter()
+                        .find(|l| {
+                            l.through == leaf.through[..index]
+                                && l.fields == step.fields
+                                && l.sum_leaf == step.sum_leaf
+                        })
+                        .unwrap();
+                    sources.push(crate::ir::BorrowSource {
+                        guard: true,
+                        parameter,
+                        fields: vec![],
+                        opaque: true,
+                        contained: Some(crate::ir::ContainedOrigin {
+                            through: parent.through.clone(),
+                            fields: parent.fields.clone(),
+                            sum_leaf: parent.sum_leaf.clone(),
+                            group: schema.groups[parent.group.unwrap()].clone(),
+                        }),
+                    });
+                }
+            }
             if manifest::reference_inner(&r.parameters[parameter].ty).is_some()
                 && manifest::reference_inner(&leaf.ty).is_some_and(|(m, _)| m)
             {
                 sources.push(crate::ir::BorrowSource {
                     guard: true,
                     parameter,
-                    fields: leaf.fields.clone(),
+                    fields: leaf
+                        .through
+                        .first()
+                        .map_or_else(|| leaf.fields.clone(), |s| s.fields.clone()),
                     opaque: true,
                     contained: None,
                 });
@@ -541,23 +619,25 @@ pub(crate) fn source_mutable(
     }
     if let Some(c) = &source.contained {
         let ty = manifest::reference_inner(ty).map_or(ty.as_str(), |(_, ty)| ty);
-        schemas
-            .get(ty)
-            .and_then(|s| {
-                s.leaves
-                    .into_iter()
-                    .find(|l| l.fields == c.fields && l.sum_leaf == c.sum_leaf)
-            })
-            .is_some_and(|l| manifest::reference_inner(&l.ty).is_some_and(|(m, _)| m))
+        schemas.get(ty).is_some_and(|s| {
+            s.leaves
+                .iter()
+                .find(|l| {
+                    l.through == c.through && l.fields == c.fields && l.sum_leaf == c.sum_leaf
+                })
+                .is_some_and(|l| leaf_exclusive(&s, l))
+        })
     } else {
         manifest::reference_inner(ty).is_some_and(|(m, _)| m)
     }
 }
+/// A declared guard may retain a whole carrier instead of a narrower actual field.
+/// The first argument is the declared source, the second the body-derived source.
 pub(crate) fn same_root(a: &crate::ir::BorrowSource, b: &crate::ir::BorrowSource) -> bool {
     a.parameter == b.parameter
         && a.contained == b.contained
         && a.guard == b.guard
-        && (!a.guard || a.fields == b.fields)
+        && (!a.guard || b.fields.starts_with(&a.fields))
 }
 
 pub(crate) fn borrowed_input_type(
@@ -627,7 +707,35 @@ pub(crate) fn bind_contract(r: &mut syntax::Region, c: &syntax::OutcomeContract)
                     r.return_origins
                         .insert((o.name.clone(), index), origin.display());
                 }
-                f.origins.clear();
+                f.origins = if r.exit_origins.is_empty() {
+                    vec![]
+                } else {
+                    f.referent_origins
+                        .iter()
+                        .map(|origin| {
+                            let OriginArgument::Group(group) = origin else {
+                                return Err(error(
+                                    r.span,
+                                    "named outcome schemas use apostrophe groups",
+                                ));
+                            };
+                            let position = c
+                                .origin_parameters
+                                .iter()
+                                .position(|g| g == group)
+                                .ok_or_else(|| {
+                                    error(r.span, "unknown named outcome origin group")
+                                })?;
+                            r.exit_origins.get(position).cloned().ok_or_else(|| {
+                                error(
+                                    r.span,
+                                    "nested named outcome results require explicit origin bindings",
+                                )
+                            })
+                        })
+                        .collect::<Result<Vec<_>>>()?
+                };
+                f.referent_origins.clear();
             } else {
                 f.origins = mapped;
             }

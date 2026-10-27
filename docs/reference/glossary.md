@@ -88,3 +88,7 @@ to a variant, option or named outcome. It borrows the active payloads and preser
 the owner's tag and handling obligations. Existing reference payloads are reborrowed
 directly; ordinary payloads are borrowed in place. See
 [borrowing whole sums](../language-reference.md#borrowing-whole-sums).
+
+A **reference layer** is one stored reference and the carrier reached through it.
+A public nested schema maps its storage with `<-` and its referent groups with
+brackets. The compiler keeps these dependency paths distinct across calls.

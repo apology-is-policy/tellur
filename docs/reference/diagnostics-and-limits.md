@@ -315,8 +315,17 @@ control main() exits done {
 ```
 
 Local containers of carrier references are supported. Public input/result contracts
-for those containers still require multi-layer origin schemas and remain gated;
-local support does not enable reference rebinding or references to references.
+require a complete mapping of storage and contained groups. Neither permits
+reference rebinding or references to references.
+
+<!-- tellur:reject E_ORIGIN -->
+```tellur
+struct view['text] { ref string text <- 'text; }
+// Missing the inner text mapping: storage alone cannot describe this field.
+struct job['storage] { ref view target <- 'storage; }
+control main() exits done { exit done; }
+```
+
 
 ## Other diagnostic families
 

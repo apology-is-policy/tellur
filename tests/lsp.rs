@@ -1406,3 +1406,41 @@ fn stored_carrier_hovers_and_unsaved_release_errors_survive_repair() {
     f.change(source, 3);
     assert_eq!(f.diagnostics(), json!([]));
 }
+
+#[test]
+fn public_carrier_hovers_show_storage_and_nested_group_maps() {
+    let mut f = Fixture::new();
+    let source = include_str!("fixtures/public_carriers.tellur");
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    auto_hover(&f, source, "auto pending", "outcome<prepare> pending");
+    auto_hover(&f, source, "auto job", "edit_job job");
+    let line = source
+        .lines()
+        .position(|l| l.starts_with("struct edit_job"))
+        .unwrap();
+    let hover = f.server.hover(&f.uri, line as u64, 8).to_string();
+    assert!(
+        hover.contains("ref mutable text_view['text] target <- 'storage"),
+        "{hover}"
+    );
+    let line = source
+        .lines()
+        .position(|l| l.starts_with("control relay"))
+        .unwrap();
+    let hover = f.server.hover(&f.uri, line as u64, 9).to_string();
+    assert!(
+        hover.contains("input['storage]") && hover.contains("input['text]"),
+        "{hover}"
+    );
+    f.change(
+        &source.replace(
+            "deref job.target.text =",
+            "drop(saved);deref job.target.text =",
+        ),
+        2,
+    );
+    assert_eq!(f.diagnostics()[0]["code"], "E_LOAN");
+    f.change(source, 3);
+    assert_eq!(f.diagnostics(), json!([]));
+}

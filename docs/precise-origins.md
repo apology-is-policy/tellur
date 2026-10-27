@@ -1,14 +1,14 @@
 # Precise origins for stored references
 
-27 October 2026. Compiler **0.40** implements grouped declarations and results,
+27 October 2026. Compiler **0.41** implements grouped declarations and results,
 whole-record inputs, contained-origin selectors, field-sensitive last use, and
 shared/exclusive reborrowing of contained exclusive references, and checked opaque
 owner splits. Local borrowed sums arrived in 0.33 and nested local storage in 0.34;
 grouped source variants cross owned call boundaries in 0.35. Named-outcome/option
 schemas arrived in 0.37; whole-sum borrowed inputs and payload reborrows in 0.38.
 Direct whole-carrier reference results arrived in 0.39, and local nested storage of
-those references in 0.40. Public multi-layer contracts and borrowed collection elements
-remain planned.
+those references in 0.40. Public contracts for these nested layers arrived in 0.41;
+aggregate trait contracts and borrowed collection elements remain planned.
 
 ## Executable surface
 
@@ -321,3 +321,20 @@ C1b.3b.2e.2 is next: public mappings for containers of carrier references, prese
 outer storage separately from nested contained groups. Local success is not evidence
 that whole-container input/result contracts or reference type arguments are supported.
 See [the reference](language-reference.md#storing-references-to-reference-bearing-aggregates).
+
+
+## Public nested-reference contracts — delivered in 0.41
+
+`ref mutable view['text] target <- 'storage` maps the referent's contained group
+separately from its storage. Each public dependency path records reference-indirection
+steps as well as record fields and guarded alternatives. Owned/borrowed container
+inputs and results preserve all layers, including captured and forwarded results.
+The checker reconstructs the authorization chain without reading inactive payloads;
+shared outer authority cannot grant exclusive inner access. Public group selectors
+retain storage guards where needed. The independent IR verifier checks every layer.
+See [the reference](language-reference.md#public-nested-reference-contracts) and
+[the example](../playground/public_carriers.tellur).
+
+Aggregate trait origin contracts are the next checkpoint. Reference-bearing
+collections, abstract generic origin-shape bounds, reference rebinding and loop state
+remain separate work.

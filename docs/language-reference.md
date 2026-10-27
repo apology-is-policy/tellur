@@ -1,8 +1,8 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.40.0 -->
+<!-- tellur-reference-version: 0.41.0 -->
 
-This manual describes **compiler 0.40.0**, including the current ownership model,
+This manual describes **compiler 0.41.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -1029,7 +1029,7 @@ When a call returns borrowed data derived from a variant parameter, first bind t
 argument to a local value; direct constructor arguments at this boundary are not
 supported yet. The same locally bound argument restriction applies to named outcomes
 and options. Whole reference-bearing aggregate references can be returned directly
-and stored locally. Public containers of those references, borrowed aggregate
+and stored locally or in public containers with complete nested schemas. Borrowed aggregate
 trait results, collection storage and rebinding remain separate checkpoints. Grouped named outcomes and builtin
 options now compose with these variant schemas across owned boundaries.
 
@@ -1278,9 +1278,9 @@ an exclusive-field reborrow retains its authorizing carrier. External sources re
 protected until their last dependent reference ends.
 
 These references may also be stored in local aggregates and captured outcomes, as
-described below. Public containers with nested reference layers, aggregate trait
-result contracts, reference rebinding and reference-bearing loop state remain
-separate work.
+described below. Public containers use explicit schemas for each reference layer.
+Aggregate trait result contracts, reference rebinding and reference-bearing loop
+state remain separate work.
 
 Try [carrier_results.tellur](../playground/carrier_results.tellur). Declaration hover
 shows the storage origin and contained origin groups; hover on `auto` shows the
@@ -1350,15 +1350,86 @@ Generic wrappers can declare `ref t` or `ref mutable t` fields; direct reference
 type arguments remain gated. Loop-local containers are recreated per iteration;
 reference-bearing loop state and reference rebinding are not included.
 
-The local support does not add public origin contracts for containers of these
-references. Such containers cannot yet be whole control inputs or results, including
-through a borrowed outer parameter. A direct reference to an already supported
-grouped carrier can still cross a call and then be stored locally. Public contracts
-must eventually distinguish the storage and each nested contained origin layer.
+Public containers also work when their declarations map every reference layer,
+as described in [public nested-reference contracts](#public-nested-reference-contracts).
 
 Try [stored_carriers.tellur](../playground/stored_carriers.tellur) for capture, a
 nested local record, borrowed inspection and final consumption. Hover on `auto`
 shows the inferred container or reference type.
+
+### Public nested-reference contracts
+
+A reference field has two distinct lifetimes when its referent itself contains
+references. Brackets on the referent map its contained origins; the arrow after
+the field names the referent's storage. Neither mapping replaces the other.
+
+<!-- tellur:check -->
+```tellur
+struct text_view['text] { ref mutable string text <- 'text; }
+struct edit_job['storage, 'text] {
+    ref mutable text_view['text] target <- 'storage;
+}
+control prepare(ref mutable text_view input)
+    exits ready { edit_job[input, input['text]] job }
+{
+    exit ready { edit_job { input } };
+}
+control relay(edit_job input)
+    exits ready { edit_job[input['storage], input['text]] job }
+{
+    exit ready { input };
+}
+control main() exits done {
+    mutable string owner = "before";
+    mutable text_view saved = text_view { borrow mutable owner };
+    delta prepare(borrow mutable saved) { ready { auto packed } => packed }
+    [packed]: delta relay(packed) { ready { auto job } => ready }
+    [ready]: deref job.target.text = "after";
+    emit(job.target.text);
+    drop(job);
+    drop(saved);
+    exit done;
+}
+```
+
+- `edit_job['storage, 'text]` declares two independently mapped public groups.
+- `text_view['text]` maps the view's inner text reference to the job's `'text` group.
+- `target <- 'storage` separately maps the view object's storage lifetime.
+- `edit_job[input, input['text]]` borrows the input view's storage and its external
+  text source. `input['storage]` on an owned job selects the external view storage;
+  it does not refer to the job's own allocation.
+
+The same notation works in variant and named-outcome payload schemas. Multiple
+finite reference layers compose by mapping each intermediate carrier's groups.
+Whole owned and borrowed inputs/results, capture, forwarding and nested decisions
+preserve all layers. An exit can use `ready...` to infer its payload and mappings;
+the public data declaration still needs its complete schema. Empty alternatives
+never cause reads of inactive reference payloads. Explicit mappings are required
+when a result's origins cannot be inferred, including unproduced alternatives.
+
+Shared outer access restricts inner access to shared reborrows, even when an inner
+field's declared type is exclusive. A detached exclusive child retains every
+carrier that authorizes it; an independent shared field may outlive its carrier.
+Every surviving shared copy keeps its external sources borrowed. Lifetime unions
+remain conservative and do not establish disjointness between unrelated calls.
+
+`option<ref carrier>` has an implicit outer group `'source`. Its inner groups are
+named by prefixing the carrier's groups with `referent_`, in declaration order.
+For example, `option<ref text_view>` has `['source, 'referent_text]`; a returned
+mapping uses `option<ref text_view>[input, input['text]]`, and an owned parameter
+can expose them as `value['source]` and `value['referent_text]`. Further option
+wrapping preserves these groups. Explicit named wrappers can give them domain
+specific names instead.
+
+When a call returns nested contained origins from a constructed aggregate argument,
+bind that aggregate to a local variable first. Reference-bearing type arguments,
+abstract origin-shape requirements on generic type parameters, aggregate trait
+contracts, reference rebinding and reference-bearing loop state remain separate
+work. Generic layouts with statically known carrier schemas do work. This feature
+does not add `ref ref` types.
+
+Try [public_carriers.tellur](../playground/public_carriers.tellur). Declaration hover
+shows both mappings; `auto` hover reports the resulting container/reference type.
 
 ### Grouped struct results: `['a]`, `<-` and `[input]`
 
@@ -1664,8 +1735,7 @@ take owned/Copy values, not references. Stable local aliases can still be erased
 lowering. The current address storage supports the sequential, nonrecursive language;
 concurrent invocations will require separate coroutine activation storage.
 
-Remaining restrictions include public input/result contracts for containers of
-references to reference-bearing aggregates, aggregate trait results, reference-bearing
+Remaining restrictions include aggregate trait results, reference-bearing
 collection elements, reference rebinding, reference loop parameters and references
 to references. Local reference-bearing records and nested tagged values are supported. Reference binding names must be unique within a lexical scope,
 including declarations on disjoint paths. These limitations are diagnosed; this is not the full Rust
@@ -2146,7 +2216,7 @@ bindings/contracts. It does not yet provide general expression or call-site type
 
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
-described here. Borrowed slices, borrowed collection elements and async tasks remain planned; they are not executable features of 0.40.0.
+described here. Borrowed slices, borrowed collection elements and async tasks remain planned; they are not executable features of 0.41.0.
 ## Compare supplied scenarios
 
 ```sh

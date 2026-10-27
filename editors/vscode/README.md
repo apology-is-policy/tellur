@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-0.40.0-darwin-arm64.vsix` using **Extensions:
+1. Install the supplied `tellur-language-0.41.0-darwin-arm64.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -91,7 +91,7 @@ migration notes in `docs/language-reference.md` in the compiler checkout.
 
 `tellurLanguage.serverPath` overrides the server executable. Otherwise the extension
 uses its bundled server, then `target/debug/tellur-lsp` from a development checkout,
-then `tellur-lsp` on PATH. The packaged server matches the 0.40.0 compiler; rebuild or
+then `tellur-lsp` on PATH. The packaged server matches the 0.41.0 compiler; rebuild or
 override it when experimenting with compiler changes.
 
 For another platform, build the Rust server and set the executable path. The source
@@ -409,3 +409,12 @@ outcome, then edits through it after unpacking. It also stores a reference in a 
 job record inside an option and borrows that option before consuming it. Hover on
 `auto` shows container and nested reference types; premature carrier release is an
 unsaved `E_LOAN` diagnostic. Capture still executes synchronously.
+
+
+## Public nested-reference contracts in 0.41.0
+
+Hover on a data declaration shows both the referent's bracket mapping and the
+reference field's storage arrow. Control hover reports the independently mapped
+result groups; `auto` hover reports captured outcomes and returned containers.
+The integration suite checks unsaved premature-drop errors, repair and native
+execution using `playground/public_carriers.tellur`.
