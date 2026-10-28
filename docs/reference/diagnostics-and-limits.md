@@ -34,14 +34,46 @@ need explicit bracket mappings as well; references to such aggregates need both
 storage and contained-origin contracts. An unused generic public declaration must
 satisfy the same rule. See [explicit public contracts](../language-reference.md#explicit-public-contracts).
 
-For incompatible `forward` calls (`E_OUTCOME`, `E_ARITY` or `E_TYPE`) and missing direct-call arms
-(`E_ARMS`), CLI notes and VS Code related information can show the producing exit
-and direct forwarding helpers. The diagnostic includes only contributors to the
-incompatible or missing alternatives. A declared but unproduced alternative points
-to its declaration. Each outcome summary and diagnostic is limited to 32 notes,
-plus an omission note when necessary. These are structural source locations, not a
-feasible-input witness. Stored-outcome lineage, full expression ranges, JSON
-output and independent-error recovery remain future work.
+For incompatible `forward` calls and missing delta arms, CLI notes and VS Code
+related information can show producing exits, calls, captures and adapters. A
+private helper can absorb several input alternatives into one result: the result's
+notes retain those structural contributors. Notes also accompany incompatible
+inline adapter results.
+
+Since 0.46 this includes moved completed values, delayed `exit saved`, nested
+adapters, local record fields and nested sum payloads, direct borrowed decisions,
+and merged path labels. Different fields and alternatives stay separate. Disjoint
+writes are filtered by the selected path; overwriting a value removes its old
+lineage on that path. This analysis does **not** narrow a value's type: every
+contract alternative still needs an arm, even if its only known construction was
+overwritten. A declared but unproduced control outcome points to its declaration.
+
+<!-- tellur:reject E_ARMS -->
+```tellur
+control lookup() exits auto {
+    exit missing;
+}
+control main() exits done {
+    auto saved = capture lookup();
+    auto adapted = delta saved { missing => unavailable {} };
+    delta adapted {}
+    exit done;
+}
+```
+
+The missing `unavailable` arm points back to its adapter construction, the capture,
+and `lookup`'s `missing` exit. Several source contributors do not prove that all
+paths can run for real inputs. Summaries and diagnostics retain at most 32 notes
+plus an omission note.
+
+Coverage is deliberately incomplete: loop-carried values, indirect reference
+aliases, dynamic collection elements, and payload dependencies across calls are
+not traced. Calls summarize their result alternatives rather than substituting
+caller argument histories. Unknown indirect writes, calls with exclusive-reference
+parameters and collection operations conservatively forget stored-value lineage
+on the affected histories. Their actual ownership, typing and exhaustiveness
+checks still run normally. Full expression ranges, JSON output and independent-error
+recovery remain future work.
 
 ## Type context: E_TYPE and E_INFER
 

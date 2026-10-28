@@ -890,3 +890,33 @@ fn forwarding_contributors_resolve_to_original_module_locations() {
     );
     assert!(!e.to_string().contains("_path_m_"), "{e}");
 }
+
+#[test]
+fn stored_adapter_contributors_resolve_across_module_boundaries() {
+    let f = Fixture::new();
+    f.write(
+        "leaf.tellur",
+        "pub control source() exits missing {exit missing;}",
+    );
+    f.write(
+        "adapter.tellur",
+        r#"import "leaf.tellur" as leaf;
+control adapt() exits auto {
+ auto saved=capture leaf.source();
+ auto mapped=delta saved {missing=>unavailable {}};
+ exit mapped;}
+pub control run() exits unavailable {forward adapt();}"#,
+    );
+    f.write("main.tellur", r#"import "adapter.tellur" as adapter;control main() exits done {auto saved=capture adapter.run();delta saved {}exit done;}"#);
+    let e = f.reject("E_ARMS");
+    for file in ["leaf.tellur", "adapter.tellur", "main.tellur"] {
+        assert!(
+            e.diagnostic
+                .notes
+                .iter()
+                .any(|n| n.path.as_ref() == Some(&f.root.join(file))),
+            "{e}"
+        );
+    }
+    assert!(!e.to_string().contains("_path_m_"), "{e}");
+}

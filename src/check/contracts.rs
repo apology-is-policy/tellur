@@ -1,7 +1,8 @@
-//! Stable public interfaces and bounded diagnostic contributors for direct forwarding.
+//! Stable public interfaces and bounded diagnostic contributor summaries.
 use super::*;
 use crate::DiagnosticNote;
-const NOTE_LIMIT: usize = 32;
+pub(super) const NOTE_LIMIT: usize = 32;
+pub(super) const OMITTED: &str = "additional outcome contributors omitted (diagnostic limit)";
 
 pub(super) fn public_shape(region: &syntax::Region) -> Result<()> {
     if region.public && (region.infer_exits || !region.infer_payloads.is_empty()) {
@@ -52,41 +53,26 @@ pub(super) fn public_origins(
     }
     Ok(())
 }
-fn append(notes: &mut Vec<DiagnosticNote>, note: DiagnosticNote) {
+pub(super) fn append(notes: &mut Vec<DiagnosticNote>, note: DiagnosticNote) {
     if notes.contains(&note) {
         return;
     }
-    if notes.len() < NOTE_LIMIT {
-        notes.push(note);
-    } else if notes.len() == NOTE_LIMIT {
+    let omission = notes.iter().position(|n| n.message == OMITTED);
+    if note.message == OMITTED {
+        if omission.is_none() {
+            notes.push(note);
+        }
+    } else if notes.len() - usize::from(omission.is_some()) < NOTE_LIMIT {
+        notes.insert(omission.unwrap_or(notes.len()), note);
+    } else if omission.is_none() {
         notes.push(DiagnosticNote {
-            message: "additional outcome contributors omitted (diagnostic limit)".into(),
+            message: OMITTED.into(),
             ..note
         });
     }
 }
+
 impl Checker<'_> {
-    pub(super) fn record_contributor(&mut self, outcome: &str, span: Span) {
-        let notes = self
-            .forwarding
-            .as_ref()
-            .and_then(|f| f.get(outcome))
-            .cloned()
-            .unwrap_or_else(|| {
-                vec![DiagnosticNote {
-                    span,
-                    path: None,
-                    message: format!(
-                        "outcome `{outcome}` is produced by `{}` here",
-                        self.result.name
-                    ),
-                }]
-            });
-        let contributors = self.contributors.entry(outcome.into()).or_default();
-        for note in notes {
-            append(contributors, note);
-        }
-    }
     pub(super) fn forwarded_contributors(
         &self,
         callee: &str,

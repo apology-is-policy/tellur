@@ -8,6 +8,7 @@ use crate::{
 use std::collections::{BTreeMap, BTreeSet};
 mod collection_loans;
 mod contracts;
+mod contributors;
 mod public;
 mod stored;
 mod sums;
@@ -134,7 +135,7 @@ struct LoopContext {
     scope: usize,
 }
 struct Checker<'a> {
-    contributors: BTreeMap<String, Vec<crate::DiagnosticNote>>,
+    forwarded_exits: BTreeMap<Id, Vec<crate::DiagnosticNote>>,
     forwarding: Option<BTreeMap<String, Vec<crate::DiagnosticNote>>>,
     inferred_bindings: Vec<InferredBinding>,
     contained_inputs: BTreeMap<Id, (usize, ContainedOrigin)>,
@@ -1787,6 +1788,11 @@ impl Checker<'_> {
     }
     fn emit(&mut self, guard: Guard, action: Action, span: Span) {
         let id = self.fresh();
+        if let Action::Exit(name, _) = &action
+            && let Some(notes) = self.forwarding.as_ref().and_then(|f| f.get(name))
+        {
+            self.forwarded_exits.insert(id, notes.clone());
+        }
         self.result.code.push(Instruction {
             id,
             guard,
@@ -1808,7 +1814,13 @@ impl Checker<'_> {
         statement: &Statement,
         span: Span,
     ) -> Result<()> {
-        self.statement_inner(guard, domain, statement, span)?;
+        if let Err(error) = self.statement_inner(guard.clone(), domain, statement, span) {
+            return Err(if matches!(statement, Statement::Exit(..)) {
+                self.with_path_contributors(error, &guard, domain)
+            } else {
+                error
+            });
+        }
         if let Statement::Bind(name, ..)
         | Statement::Capture(name, ..)
         | Statement::BindOutcome(name, ..) = statement
@@ -2080,7 +2092,6 @@ impl Checker<'_> {
                 self.emit(guard, Action::Emit(expr), span);
             }
             Statement::Exit(name, args) => {
-                self.record_contributor(name, span);
                 if self.infer_exits || self.infer_payloads.contains(name) {
                     if self.infer_payloads.contains(name) && args.is_empty() {
                         return Err(self.error("E_INFER", span, format!("exit `{name}...` requires a nonempty payload; remove ... for a payload-free exit")));
@@ -2457,6 +2468,16 @@ impl Checker<'_> {
         domain: Formula,
         sink: Option<&mut OutcomeBinding>,
     ) -> Result<()> {
+        self.lower_outcome_inner(e, guard.clone(), domain, sink)
+            .map_err(|error| self.with_path_contributors(error, &guard, domain))
+    }
+    fn lower_outcome_inner(
+        &mut self,
+        e: &syntax::OutcomeExpr,
+        guard: Guard,
+        domain: Formula,
+        sink: Option<&mut OutcomeBinding>,
+    ) -> Result<()> {
         match e {
             syntax::OutcomeExpr::Forward(span) => Err(self.error(
                 "E_FORWARD",
@@ -2807,13 +2828,7 @@ impl Checker<'_> {
                 span,
                 format!("missing explicit outcomes: {}", missing.join(", ")),
             );
-            return Err(if let syntax::Expr::Call(name, _) = operand {
-                self.signatures.get(name).map_or(error.clone(), |sig| {
-                    self.with_contributors(error, sig, &missing)
-                })
-            } else {
-                error
-            });
+            return Err(self.with_operation_contributors(error, &operation, domain, &missing));
         }
         if let Some(inline) = inline {
             let serial = self.fresh();
@@ -3725,7 +3740,7 @@ pub(crate) fn compile_concrete_unit(
             crate::origins::result_type(&f.ty, &origin_schemas, &manifest, source.span)?;
         }
         let mut checker = Checker {
-            contributors: BTreeMap::new(),
+            forwarded_exits: BTreeMap::new(),
             forwarding: None,
             inferred_bindings: vec![],
             contained_inputs: BTreeMap::new(),
@@ -3861,7 +3876,7 @@ pub(crate) fn compile_concrete_unit(
                 ),
             ));
         }
-        let mut contributors = checker.contributors;
+        let mut contributors = checker.outcome_contributors();
         for (name, notes) in &signatures[&source.name].contributors {
             contributors
                 .entry(name.clone())

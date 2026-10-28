@@ -1,13 +1,18 @@
 # Tellur language revision: controls, values, outcomes, and tasks
 
 28 October 2026. This is the working revision plan, not a claim that all proposed
-features are implemented. Compiler **0.45.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
+features are implemented. Compiler **0.46.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
 lifetime checkpoints of milestone 2, the array/vector/map core of milestone 3,
 and implicit entry, inline/stored adapters, owned capture, named outcome contracts
 and checked forwarding in milestone 4. A first [semantic foundation](semantic-foundation.md)
 now accompanies executable algebra-law tests and finite scenario comparison. The original
 v0.1 documents remain unchanged; the old syntax and conformance fixtures remain
 supported. See [the current reference](language-reference.md) for executable syntax.
+
+Release 0.46 extends diagnostic contributors through captures, moves, local aggregate
+fields, stored/nested adapters, delayed exits and merged path labels. It filters
+disjoint writes and forgets unknown mutation or loop-carried lineage. See
+[diagnostic coverage and limits](reference/diagnostics-and-limits.md).
 
 Release 0.45 starts I1/P5: typed Rust source adapters, explicit locked dependencies
 and a persistent settings CLI with Tellur policy and host file/JSON mechanisms.
@@ -68,7 +73,7 @@ Updated after the 28 October design review and the user's clarification that
 take priority over further reference features. Delivered rows and the numbered
 milestones retain the historical feature inventory. Compiler 0.29 delivers source data declarations, file modules, named struct fields, generic data and generic controls with sealed capability bounds, plus concrete and generic trait dispatch with associated types.
 Research proceeds alongside practical checkpoints and does not indefinitely block
-ordinary language usability. P1a is delivered in 0.44; P1b/P2 continue diagnostic
+ordinary language usability. P1a is delivered in 0.44 and the bounded P1b slice in 0.46; P2 continues diagnostic
 work alongside the sustained application (P5), with small Rust adapter work (I1) supplying
 concrete library needs. It does not wait for all P2–P4 tooling. No dates or
 unimplemented syntax are promised.
@@ -104,7 +109,7 @@ unimplemented syntax are promised.
 | C1b.3b.2f | Aggregate trait origin contracts | **Delivered in 0.42**: explicit grouped inputs/results, nested references, named completions, implementation conformance and abstract generic witnesses |
 | C1b.3c.1 | Local shared-reference collection elements | **Delivered in 0.43**: arrays/vectors/maps, direct lookup, branch-sensitive insertion, removal/conversion, independent copies, conservative source unions, native/editor coverage |
 | P1a | Stable public contracts | **Delivered in 0.44**: explicit public outcome/payload/origin contracts, private inference, unused generic checks and bounded direct-forwarding contributor notes in CLI/editor |
-| P1b | Outcome contributor coverage | Next diagnostic slice: preserve lineage through stored outcomes and adapters; explain absorption and merges without pretending structural contributors prove feasible inputs |
+| P1b | Outcome contributor coverage | **Bounded slice delivered in 0.46**: captures/moves, local record/sum payloads, stored/nested adapters, delayed exits and label merges; guarded writes exclude overwritten sources. Loop-carried values, indirect aliases, dynamic collections and cross-call payload lineage remain future work |
 | P2 | Structured diagnostics | Related locations started in 0.44; next are full ranges, structured witnesses and JSON; recover independent errors without cascading or presenting stale hover as current |
 | I1a | Owned-data Rust adapters | **Delivered in 0.45**: typed wrapper/result generation, registry dependencies and explicit locking, owned scalar/collection data, shared call borrows, blocking/immediate classification and scripted/live conformance |
 | I1b | Retained host resources and broader Rust reuse | Next application-driven slice: resource handles/cleanup protocols, richer data boundaries and dependency/package ergonomics; stable binary ABI and LTO remain later layers |
@@ -149,7 +154,7 @@ Do not silently reinterpret existing trailing statements as entry-selected work.
 
 The user subsequently accepted optional braces: `[path]: { ... }` may give the
 selection an explicit end while the unbraced label form remains supported. This is
-planned syntax, not implemented in 0.45. The grouping form should intersect nested
+planned syntax, not implemented in 0.46. The grouping form should intersect nested
 selectors with its selected domain and restore the enclosing selection at `}`;
 `[entry]:` inside it refers to that group's entry selection. Grouping alone does not
 introduce a value/lifetime scope; explicit scoping remains a separate operation.

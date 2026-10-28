@@ -1,8 +1,8 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.45.0 -->
+<!-- tellur-reference-version: 0.46.0 -->
 
-This manual describes **compiler 0.45.0**, including the current ownership model,
+This manual describes **compiler 0.46.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -424,11 +424,14 @@ pub control read_setting(bool available) exits ready { string value }, missing {
 A new exit in `lookup` must be handled internally or deliberately added to
 `read_setting`'s contract. Merely forwarding it does not enlarge that contract.
 The compiler reports the incompatible forward and includes related locations for
-the producing exit and direct forwarding helpers. Missing arms on a direct call
+the producing exit and forwarding helpers. Missing arms on a direct call
 also receive these notes. A declared alternative with no producing exit points to
-the declaration. Notes are bounded; they are structural contributors, not proof
-that a concrete input reaches that exit. Tracking through stored outcomes and a
-complete explanation of adapters that absorb outcomes remain planned work.
+the declaration. Since 0.46, captures, moves, stored/nested adapters, delayed exits
+and merged labels also retain bounded contributor notes, including local record
+and sum payloads. Unknown mutation and loop-carried lineage are forgotten.
+Notes are bounded; they are structural contributors, not proof
+that a concrete input reaches that exit. See the
+[diagnostic coverage limits](reference/diagnostics-and-limits.md).
 
 Public borrowed results must also declare their origins: direct references use
 `from input` (including contained-origin selectors), and reference-bearing
@@ -2449,7 +2452,7 @@ bindings/contracts. It does not yet provide general expression or call-site type
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and async tasks remain planned; they are not executable features of 0.45.0.
+and async tasks remain planned; they are not executable features of 0.46.0.
 ## Compare supplied scenarios
 
 ```sh

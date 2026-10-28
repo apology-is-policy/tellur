@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.45.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.46.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -16,7 +16,7 @@ The linked regression suites give more detailed acceptance and rejection evidenc
 | Completed outcomes | Capture now, handle later; named and producer-indexed contracts; mandatory handling | Not futures; no implicit structural assignment across unrelated named types | [Outcome tests](../../tests/outcomes.rs), [named contracts](../../tests/named_outcomes.rs) |
 | Payload inference | Private `exits auto` and selected nonempty `label...`; local/pattern `auto` | Explicit public and trait contracts; no general signature wildcard | [Inference tests](../../tests/payload_inference.rs) |
 | Data declarations | Nominal structs, closed variants, wrappers, named/positional struct construction | No recursive layouts, inheritance, defaults or update spreads | [Data tests](../../tests/data_types.rs), [field tests](../../tests/named_fields.rs) |
-| Public control contracts | Explicit labels, payloads and borrowed-result mappings, including unused generics; bounded direct-forwarding notes | Stored-outcome contributor tracking and full adapter absorption explanations remain queued | [Public contract tests](../../tests/public_contracts.rs), [example](../../playground/public_contracts.tellur) |
+| Public control contracts | Explicit labels, payloads and borrowed-result mappings, including unused generics; bounded forwarding/stored-outcome/adapter contributor notes | Loop-carried values, indirect aliases, dynamic collections and cross-call payload dependencies are not traced | [Public contract tests](../../tests/public_contracts.rs), [example](../../playground/public_contracts.tellur) |
 | Modules | Explicit relative imports and namespaces; private by default; public declarations/fields | No package-name resolver or package manager | [Module tests](../../tests/modules.rs) |
 | Generic data | Explicit first-order type parameters and specialization | No argument inference, data bounds or higher-kinded parameters | [Generic data tests](../../tests/generic_data.rs) |
 | Generic controls | Universal definition checking, sealed/user-trait bounds, explicit specialization | No recursive calls, type-argument inference or reference types as generic arguments | [Control tests](../../tests/generic_controls.rs), [bounds](../../tests/trait_bounds.rs) |

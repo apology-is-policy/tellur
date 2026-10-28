@@ -712,6 +712,19 @@ exports.run = async function () {
     }, 'legacy language ID works after legacy restart command');
     console.log('TELLUR_MIGRATION_EDITOR_TESTS_PASSED: both extensions, legacy language ID and commands, canonical default output name');
     console.log('TELLUR_NATIVE_EDITOR_TESTS_PASSED: build, run, argument boundaries, paths with spaces, LLVM output');
+    const contributorSource = `control leaf() exits auto {exit missing;}
+control main() exits done {
+ auto saved=capture leaf();
+ auto mapped=delta saved {missing=>unavailable {}};
+ exit delta mapped {unavailable=>done {}};
+}`;
+    await replace(buildDocument, contributorSource);
+    await waitFor(() => revisedDiagnostics().length === 0, 'stored contributor baseline');
+    await replace(buildDocument, contributorSource.replace('{unavailable=>done {}}', '{}'));
+    await waitFor(() => revisedDiagnostics().some(d => code(d) === 'E_ARMS' && d.relatedInformation?.some(n => n.location.range.start.line === 0) && d.relatedInformation?.some(n => n.location.range.start.line === 3)), 'stored contributor source and adapter locations');
+    await replace(buildDocument, contributorSource);
+    await waitFor(() => revisedDiagnostics().length === 0, 'stored contributor repair');
+    console.log('TELLUR_STORED_CONTRIBUTORS_EDITOR_TESTS_PASSED: capture, adapter, related source locations, unsaved repair');
     const settingsFolder = path.join(root, 'settings-app');
     await fs.mkdir(settingsFolder, {recursive:true});
     for (const file of ['main.tellur', 'settings.tellur', 'manifest.json', 'host.rs', 'Cargo.lock']) {

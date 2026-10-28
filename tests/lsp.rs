@@ -1534,3 +1534,31 @@ fn rust_adapter_project_checks_unsaved_sources_without_loading_host_code() {
     f.change(source, 3);
     assert_eq!(f.diagnostics(), json!([]));
 }
+
+#[test]
+fn stored_outcome_contributor_locations_follow_unsaved_adapters() {
+    let mut f = Fixture::new();
+    fs::write(
+        f.root.join("manifest.json"),
+        include_str!("../playground/manifest.json"),
+    )
+    .unwrap();
+    let source = "control leaf() exits auto {exit missing;}\ncontrol main() exits done {\n auto saved=capture leaf();\n auto mapped=delta saved {missing=>unavailable {}};\n exit delta mapped {unavailable=>done {}};\n}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    f.change(&source.replace("{unavailable=>done {}}", "{}"), 2);
+    let diagnostics = f.diagnostics();
+    assert_eq!(diagnostics[0]["code"], "E_ARMS");
+    let notes = diagnostics[0]["relatedInformation"].as_array().unwrap();
+    for line in [0, 2, 3] {
+        assert!(
+            notes
+                .iter()
+                .any(|n| n["location"]["range"]["start"]["line"] == line),
+            "{diagnostics}"
+        );
+    }
+    assert!(notes.iter().all(|n| n["location"]["uri"] == f.uri));
+    f.change(source, 3);
+    assert_eq!(f.diagnostics(), json!([]));
+}

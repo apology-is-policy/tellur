@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.45.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.46.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -1143,3 +1143,36 @@ Logs: `work/tellur-0.45-tests.log`, `tellur-0.45-focused.log`,
 `tellur-0.45-reference.log`, `tellur-0.45-examples.log`, `tellur-0.45-editor.log`,
 `tellur-0.45-build.log`, `tellur-0.45-package.log`, `tellur-0.45-install.log` and
 `tellur-0.45-installed-integrity.log`.
+
+## 0.46 — Stored outcome and adapter contributors
+
+The diagnostic analysis walks checked operations without changing the executable
+IR or exhaustiveness rules. It follows captures, moves, local record fields and
+nested sum payloads, stored/nested adapters and delayed exits. Label merges retain
+contributing alternatives. Guarded writes remove old lineage on overwritten
+histories. Unknown mutation, indirect aliases, loop parameters and cross-call
+payload dependencies are explicit coverage limits.
+
+`tests/contributors.rs` covers capture/move filtering, renaming and absorption,
+merged labels, payload separation, disjoint definitions, whole/field overwrite,
+mutable calls, borrowed matching/cloning of ordinary variants, invalid adapter
+results, nested adapters, loop boundaries and bounded chains. Module/LSP and real
+editor tests cover original-file related locations, unsaved edits and repairs.
+
+All **743 Rust tests** passed in the full suite, including the new 13 contributor
+cases, module/LSP tests and the existing original/expanded native comparisons.
+Clippy passed with warnings denied. All **32** Node tests and the complete real
+VS Code integration suite passed, including contributor locations and repairs.
+
+The manual checks accepted **54** examples, required **19** diagnostics, classified
+**14** context fragments and resolved **150** local links. The release compiler
+checked all **55** maintained sources. The 0.46.0 Apple Silicon VSIX matches all nine
+staged payloads; installed files, metadata and executable permissions were verified.
+Canonical and compatibility local binaries were updated. The **282-file** source
+snapshot at `work/revision-backups/tellur-0.46-source.tar.gz` was byte-verified.
+
+Logs: `work/tellur-0.46-tests.log`, `tellur-0.46-focused.log`,
+`tellur-0.46-clippy.log`, `tellur-0.46-node.log`, `tellur-0.46-reference.log`,
+`tellur-0.46-examples.log`, `tellur-0.46-editor.log`, `tellur-0.46-build.log`,
+`tellur-0.46-package.log`, `tellur-0.46-install.log` and
+`tellur-0.46-installed-integrity.log`.
