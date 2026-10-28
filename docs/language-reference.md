@@ -1,8 +1,8 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.41.0 -->
+<!-- tellur-reference-version: 0.42.0 -->
 
-This manual describes **compiler 0.41.0**, including the current ownership model,
+This manual describes **compiler 0.42.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -1122,9 +1122,8 @@ reference-bearing result with no produced leaf needs explicit bracket bindings.
 These schemas compose through finite generic record/variant/outcome/option nesting,
 imports, capture, forwarding, borrowed sum inputs and certified expansion.
 Anonymous producer-outcome schemas, reference-bearing collection elements,
-rebinding and borrowed loop state remain unsupported. Grouped named contracts in
-trait signatures remain gated; use the supported explicit direct-reference exits
-with `from input` there. General aggregate trait contracts remain a later checkpoint.
+rebinding and borrowed loop state remain unsupported. Trait signatures support grouped named contracts and aggregate results with explicit
+origin bindings; see [trait origin contracts](#aggregate-trait-origin-contracts).
 
 See [outcome_origins.tellur](../playground/outcome_origins.tellur) for independent
 exclusive owner groups carried through a named outcome and an option.
@@ -1279,8 +1278,8 @@ protected until their last dependent reference ends.
 
 These references may also be stored in local aggregates and captured outcomes, as
 described below. Public containers use explicit schemas for each reference layer.
-Aggregate trait result contracts, reference rebinding and reference-bearing loop
-state remain separate work.
+Trait results use the same explicit contracts. Reference rebinding and
+reference-bearing loop state remain separate work.
 
 Try [carrier_results.tellur](../playground/carrier_results.tellur). Declaration hover
 shows the storage origin and contained origin groups; hover on `auto` shows the
@@ -1423,8 +1422,8 @@ specific names instead.
 
 When a call returns nested contained origins from a constructed aggregate argument,
 bind that aggregate to a local variable first. Reference-bearing type arguments,
-abstract origin-shape requirements on generic type parameters, aggregate trait
-contracts, reference rebinding and reference-bearing loop state remain separate
+abstract origin-shape requirements on generic or associated types,
+reference rebinding and reference-bearing loop state remain separate
 work. Generic layouts with statically known carrier schemas do work. This feature
 does not add `ref ref` types.
 
@@ -1478,7 +1477,8 @@ subobject. Multiple exclusive results may share that anchor when their construct
 establishes disjoint access. Inferred projections retain their existing precision.
 Origin groups describe dependencies; they do not manufacture access permissions.
 
-Borrowed-record trait results and borrowed collection elements remain unsupported.
+Borrowed-record trait results require explicit origin mappings. Borrowed collection
+elements remain unsupported.
 Local captured borrowed outcomes are supported. See [origin groups in depth](precise-origins.md)
 and [the runnable example](../playground/origin_groups.tellur).
 
@@ -1735,11 +1735,90 @@ take owned/Copy values, not references. Stable local aliases can still be erased
 lowering. The current address storage supports the sequential, nonrecursive language;
 concurrent invocations will require separate coroutine activation storage.
 
-Remaining restrictions include aggregate trait results, reference-bearing
+Remaining restrictions include abstract origin-shape bounds, reference-bearing
 collection elements, reference rebinding, reference loop parameters and references
 to references. Local reference-bearing records and nested tagged values are supported. Reference binding names must be unique within a lexical scope,
 including declarations on disjoint paths. These limitations are diagnosed; this is not the full Rust
 borrow model. See `playground/references.tellur` for a complete executable example.
+
+### Aggregate trait origin contracts
+
+Trait methods declare the origin relationships their callers may rely on. In 0.42,
+these include grouped structs, variants, named outcomes, builtin options and nested
+carrier references. A result's bracket arguments are mandatory when its type contains
+references; a direct reference also needs its storage contract, `from input` or
+`from input['group]`. Implementation bodies prove those declarations.
+
+<!-- tellur:check -->
+```tellur
+struct text_view['text] { ref string text <- 'text; }
+trait reader {
+    control view(ref string input) exits ready { text_view[input] value };
+}
+implement reader for string {
+    control view(ref string owner) exits ready { text_view[owner] result } {
+        exit ready { text_view { owner } };
+    }
+}
+control inspect<r: reader>(ref string input)
+    exits ready { text_view[input] value }
+{
+    forward reader<r>.view(input);
+}
+control main() exits done {
+    string text = "hello";
+    delta inspect<string>(borrow text) { ready { auto view } => available }
+    [available]: emit(view.text); exit done;
+}
+```
+
+Here `input` and `owner` name the same parameter position. Parameter and result
+variable names may differ, and exit labels may be reordered. Parameter ownership,
+result types, storage origins and every contained origin group must agree exactly.
+An implementation cannot swap groups, choose another input, or omit mappings and
+ask the compiler to infer its public trait contract. Ordinary controls may still
+infer these relationships from their bodies.
+
+This unused implementation is rejected because it changes the source promised by
+the trait, even though its body agrees with its own declaration:
+
+<!-- tellur:reject E_ORIGIN -->
+```tellur
+struct text_view['text] { ref string text <- 'text; }
+trait reader {
+    control view(ref string first, ref string second)
+        exits ready { text_view[first] value };
+}
+implement reader for string {
+    control view(ref string a, ref string b)
+        exits ready { text_view[b] value }
+    {
+        exit ready { text_view { b } };
+    }
+}
+```
+
+A named completion schema uses the same bindings, for example
+`exits preparation<item>[input, input['text]]`. Its mappings are resolved before
+conformance checking. A reference to a grouped carrier declares both layers:
+`exits ready { ref text_view[input['text]] value from input }`.
+The storage lifetime and the text's external source remain distinct.
+
+Generic bodies are checked against signature-only witnesses, including when never
+called. A witness carries the declared origins, not the details of today's concrete
+implementation. Concrete implementations are checked independently. Capture,
+forwarding and certified expansion preserve these contracts.
+
+Known schemas may contain associated payload types, such as `text_view<item>` with
+a declared reference field. An opaque associated type does not itself expose an
+origin schema: `type item;` alone cannot promise that `item` contains a group `'a`.
+Origin-shape bounds for associated and generic types are future work. This release
+does not add runtime dispatch, reference type arguments, borrowed collection elements
+or reference rebinding.
+
+Try [aggregate_traits.tellur](../playground/aggregate_traits.tellur) for a complete
+nested, exclusive example with an associated type, named completion, generic helper
+and captured result. Hover `auto job` to see its concrete inferred type.
 
 ## Arrays, vectors and maps
 
@@ -2017,7 +2096,9 @@ Concrete owned targets, associated assignments and static calls are implemented.
 Trait-constrained generic controls and associated sealed capability bounds are also
 implemented (below). Generic/blanket implementations, default methods and runtime
 polymorphism remain planned. Borrowed
-inputs and results are supported; borrowed results require `from input`. Associated
+inputs and results are supported. Direct reference results require a storage origin;
+grouped results require explicit bracket mappings. See
+[aggregate trait origin contracts](#aggregate-trait-origin-contracts). Associated
 reference types remain unsupported. Try [the trait example](../playground/traits.tellur).
 
 ## Generic controls
@@ -2216,7 +2297,7 @@ bindings/contracts. It does not yet provide general expression or call-site type
 
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
-described here. Borrowed slices, borrowed collection elements and async tasks remain planned; they are not executable features of 0.41.0.
+described here. Borrowed slices, borrowed collection elements and async tasks remain planned; they are not executable features of 0.42.0.
 ## Compare supplied scenarios
 
 ```sh

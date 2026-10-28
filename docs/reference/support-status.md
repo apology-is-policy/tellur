@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.41.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.42.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -19,7 +19,7 @@ The linked regression suites give more detailed acceptance and rejection evidenc
 | Modules | Explicit relative imports and namespaces; private by default; public declarations/fields | No package-name resolver or package manager | [Module tests](../../tests/modules.rs) |
 | Generic data | Explicit first-order type parameters and specialization | No argument inference, data bounds or higher-kinded parameters | [Generic data tests](../../tests/generic_data.rs) |
 | Generic controls | Universal definition checking, sealed/user-trait bounds, explicit specialization | No recursive calls, type-argument inference or reference types as generic arguments | [Control tests](../../tests/generic_controls.rs), [bounds](../../tests/trait_bounds.rs) |
-| Traits | Explicit implementations, associated types/capabilities, static qualified dispatch, borrowed results | No aggregate borrowed-result contracts, blanket implementations, default methods, associated equality/trait bounds or runtime polymorphism | [Trait tests](../../tests/traits.rs), [borrowed contracts](../../tests/lifetime_contracts.rs) |
+| Traits | Explicit implementations, associated types/capabilities, static qualified dispatch, direct/grouped borrowed results and abstract origin witnesses | No abstract associated-type origin-shape bounds, blanket implementations, default methods, associated equality/trait bounds or runtime polymorphism | [Trait tests](../../tests/traits.rs), [borrowed contracts](../../tests/lifetime_contracts.rs) |
 | Repetition | Checked tail loops and explicit state transfer | No nested source loops or reference-bearing loop state | [Loop tests](../../tests/loops.rs) |
 
 ## Ownership and reference boundaries
@@ -29,16 +29,16 @@ The linked regression suites give more detailed acceptance and rejection evidenc
 | Owning values | Copy/move/explicit clone/disposal, assignment, partial record moves | No user-defined copy/clone/drop behavior | [Value tests](../../tests/values.rs), [capabilities](../../tests/capabilities.rs) |
 | Direct references | Shared/exclusive calls and returns, reborrowing, last use, field separation | No reference rebinding or references to references | [Reference tests](../../tests/references.rs) |
 | Local reference fields | Nested structs, extraction, independent retainers and field last use | Assignment/rebinding of reference-bearing storage remains gated | [Stored record tests](../../tests/stored_records.rs) |
-| Public record origins | Ordered groups, returned mappings, whole-record inputs, `input['group]` | Grouped variants, named outcomes and options compose with records; aggregate trait contracts remain gated | [Origin records](../../tests/origin_records.rs), [record inputs](../../tests/record_inputs.rs) |
+| Public record origins | Ordered groups, returned mappings, whole-record inputs, `input['group]` | Grouped variants, named outcomes and options compose with records; aggregate trait contracts require explicit mappings | [Origin records](../../tests/origin_records.rs), [record inputs](../../tests/record_inputs.rs) |
 | Carrier reborrows | Shared/exclusive child access, preserved storage guards and last-use restoration | A shared carrier cannot grant exclusive access | [Carrier tests](../../tests/carrier_reborrows.rs) |
 | Opaque splits | Multiple checked independent result permissions from one input anchor | Public anchor remains opaque; independent calls do not imply disjointness | [Split tests](../../tests/opaque_splits.rs) |
 | Local borrowed sums | References in variants/options/outcomes, capture/adapters, arbitrary finite record/tag nesting | Ungrouped sums can be owned or borrowed locally; public boundaries require complete schemas | [Sum tests](../../tests/borrowed_sums.rs), [nested example](../../playground/nested_borrows.tellur) |
 | Public variant origins | Owned grouped variants cross calls and returns; constructor-guarded origins, contained selectors, nested/generic layouts, capture and forwarding | Direct constructor arguments returning contained borrows remain gated | [Public sum tests](../../tests/public_sums.rs), [example](../../playground/public_variants.tellur) |
-| Named-outcome and option origins | Named schemas and completion bindings, inherited option groups, owned calls/results, contained selectors, generic/module composition | Anonymous outcome schemas and grouped trait contracts remain gated | [Origin tests](../../tests/outcome_origins.rs), [example](../../playground/outcome_origins.tellur) |
+| Named-outcome and option origins | Named schemas and completion bindings, inherited option groups, owned calls/results, contained selectors, generic/module composition | Anonymous outcome schemas remain gated; grouped trait contracts require explicit mappings | [Origin tests](../../tests/outcome_origins.rs), [example](../../playground/outcome_origins.tellur) |
 | Collections | Arrays/vectors/maps, explicit bounds outcomes, resources, borrowed element access | Stored reference-bearing elements, slices and iterators remain queued | [Collection tests](../../tests/collections.rs) |
 | Borrowed sum carriers | Whole shared/exclusive inputs, active payload reborrows, nested carriers, retained handling obligations | Complete schemas required at public boundaries; local borrows use concrete provenance | [Sum carrier tests](../../tests/sum_carriers.rs) |
-| Carrier reference results | Direct shared/exclusive results, inferred/declared contained origins, storage retention and forwarding | Local capture and aggregate storage work; aggregate trait results remain queued | [Carrier result tests](../../tests/carrier_results.rs), [example](../../playground/carrier_results.tellur) |
-| Stored carrier references | Local recursive dependency trees, capture/adapters, shared retainers, nested/borrowed unpacking and last use | Public schemas map each storage and contained-origin layer; aggregate trait contracts remain queued | [Stored carrier tests](../../tests/stored_carriers.rs), [example](../../playground/stored_carriers.tellur) |
+| Carrier reference results | Direct shared/exclusive results, inferred/declared contained origins, storage retention and forwarding | Local capture and aggregate storage work; aggregate trait results require explicit mappings | [Carrier result tests](../../tests/carrier_results.rs), [example](../../playground/carrier_results.tellur) |
+| Stored carrier references | Local recursive dependency trees, capture/adapters, shared retainers, nested/borrowed unpacking and last use | Public schemas map each storage and contained-origin layer; aggregate trait contracts require explicit mappings | [Stored carrier tests](../../tests/stored_carriers.rs), [example](../../playground/stored_carriers.tellur) |
 | Public nested references | Separate storage arrows and referent brackets; owned/borrowed boundaries, nested tags, capture and forwarding | Bind constructor arguments before selecting nested origins; abstract type-parameter origin shapes remain unsupported | [Public carrier tests](../../tests/public_carriers.rs), [example](../../playground/public_carriers.tellur) |
 | Resources | Must-complete obligations through aggregates, replacement and explicit draining | No implicit fallible cleanup or abandoned outcome disposal | [Completion tests](../../tests/completion.rs), [ownership tests](../../tests/ownership.rs) |
 
@@ -67,3 +67,6 @@ with complete schemas for every nested reference layer.
 The [conformance inventory](../conformance.md) records release validation. The
 [roadmap queue](../language-revision.md#active-checkpoint-queue) remains the authority
 for execution order, not a promise that every queued syntax is settled.
+
+Trait origin coverage: [aggregate trait tests](../../tests/aggregate_traits.rs) and
+[the runnable example](../../playground/aggregate_traits.tellur).

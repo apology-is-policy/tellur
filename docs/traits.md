@@ -165,3 +165,24 @@ operations at 4,096 each, in addition to the existing concrete specialization bu
 [The generic trait example](../playground/trait_bounds.tellur) demonstrates a reader
 used through a checked generic control. Borrowed trait outputs use `from input` in
 0.25; ordinary generic controls may also infer origins from their checked bodies.
+
+
+## Aggregate origin contracts (0.42)
+
+Methods now support explicit grouped record, variant, option and named-completion
+results, including references to carriers and nested stored references. Complete
+bracket mappings are required in both trait and implementation declarations. Direct
+references additionally declare their storage origin with `from input` or a public
+group selector. Names may differ; conformance compares parameter positions and each
+public group/reference path after type substitution and named-contract binding.
+Label order does not affect conformance.
+
+Abstract generic witnesses carry the same contracts. Bodies cannot depend on a
+particular concrete implementation's narrower origins, and unused generic bodies
+are checked. Known generic schemas may use associated payload types. Unknown shapes
+of `self` or an associated type still require a future origin-shape bound; no such
+bound is inferred from current implementations.
+
+See [the reference](language-reference.md#aggregate-trait-origin-contracts),
+[the example](../playground/aggregate_traits.tellur) and
+[regression coverage](../tests/aggregate_traits.rs).

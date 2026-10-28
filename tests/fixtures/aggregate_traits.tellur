@@ -1,0 +1,46 @@
+// Traits carry public storage and contained-origin contracts through generic dispatch.
+struct text_view<t>['text] {
+    ref mutable t text <- 'text;
+}
+struct edit_job<t>['storage, 'text] {
+    ref mutable text_view<t>['text] target <- 'storage;
+}
+outcome preparation<t>['storage, 'text] {
+    ready { edit_job<t>['storage, 'text] job },
+    unavailable
+}
+trait editor {
+    type item: clone;
+    control prepare(ref mutable text_view<item> input)
+        exits preparation<item>[input, input['text]];
+}
+struct text_editor { u32 tag; }
+implement editor for text_editor {
+    type item = string;
+    control prepare(ref mutable text_view<item> owner)
+        exits preparation<item>[owner, owner['text]]
+    {
+        exit ready { edit_job<item> { owner } };
+    }
+}
+control prepare<e: editor>(ref mutable text_view<editor<e>.item> input)
+    exits preparation<editor<e>.item>[input, input['text]]
+{
+    forward editor<e>.prepare(input);
+}
+control main() exits done {
+    mutable string text = "before";
+    mutable text_view<string> saved = text_view<string> { borrow mutable text };
+    auto pending = capture prepare<text_editor>(borrow mutable saved);
+    delta pending {
+        ready { auto job } => available,
+        unavailable => unavailable
+    }
+    [available]: deref job.target.text = "edited through a trait contract";
+    [available]: emit(job.target.text);
+    [available]: drop(job);
+    [entry]: drop(saved);
+    text = "released after the job";
+    emit(borrow text);
+    exit done;
+}

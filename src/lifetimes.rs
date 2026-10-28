@@ -4,10 +4,6 @@ use std::collections::BTreeMap;
 
 pub(crate) type Returns = BTreeMap<(String, usize), Vec<BorrowSource>>;
 
-pub(crate) fn declared(region: &Region, required: bool) -> Result<Returns> {
-    declared_with_schemas(region, required, &crate::origins::Schemas::default())
-}
-
 pub(crate) fn declared_with_schemas(
     region: &Region,
     required: bool,

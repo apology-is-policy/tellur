@@ -185,10 +185,12 @@ fn named_outcome_obligations_and_exclusive_aliases_survive_options() {
     let s = "outcome edits['a,'b] {ready {ref mutable string left <- 'a,ref mutable string right <- 'b}} control invalid(ref mutable string input) exits edits[input,input] {exit ready {input,input};}";
     assert!(compile(s, manifest()).is_err());
     let s = "outcome message['a] {found {ref string text <- 'a}} trait reader {control peek(ref self input) exits message[input];}";
+    compile(s, manifest()).unwrap();
     assert_eq!(
-        compile(s, manifest()).unwrap_err().code,
-        "E_UNSUPPORTED",
-        "{s}"
+        compile(&s.replace("message[input]", "message"), manifest())
+            .unwrap_err()
+            .code,
+        "E_LIFETIME",
     );
 }
 

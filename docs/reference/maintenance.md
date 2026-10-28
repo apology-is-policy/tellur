@@ -41,7 +41,7 @@ CARGO_INCREMENTAL=0 CARGO_TARGET_DIR=../../work/path-build/target \
   cargo test --offline --test reference_manual
 ```
 
-The suite checks every `path` fence in the main reference and Markdown files in
+The suite checks every `tellur` fence in the main reference and Markdown files in
 this directory. Each needs one of these HTML comments immediately before its fence:
 
 | Annotation | Check |
@@ -63,7 +63,7 @@ the main version marker to agree with Cargo's package version. It does not fetch
 external URLs, validate shell commands, mechanically prove the EBNF, or establish
 that prose fully matches semantics. Changes still need a semantic read-through.
 
-Use `path` fences for executable examples. Use `ebnf` for grammar and ordinary
+Use `tellur` fences for executable examples. Use `ebnf` for grammar and ordinary
 inline code for short schematic forms. Do not evade checks by relabeling a complete
 Tellur example as plain text. Unsupported proposals belong in separately identified
 design notes, not in the executable manual examples.

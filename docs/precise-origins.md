@@ -1,6 +1,6 @@
 # Precise origins for stored references
 
-27 October 2026. Compiler **0.41** implements grouped declarations and results,
+28 October 2026. Compiler **0.42** implements grouped declarations and results,
 whole-record inputs, contained-origin selectors, field-sensitive last use, and
 shared/exclusive reborrowing of contained exclusive references, and checked opaque
 owner splits. Local borrowed sums arrived in 0.33 and nested local storage in 0.34;
@@ -8,7 +8,7 @@ grouped source variants cross owned call boundaries in 0.35. Named-outcome/optio
 schemas arrived in 0.37; whole-sum borrowed inputs and payload reborrows in 0.38.
 Direct whole-carrier reference results arrived in 0.39, and local nested storage of
 those references in 0.40. Public contracts for these nested layers arrived in 0.41;
-aggregate trait contracts and borrowed collection elements remain planned.
+aggregate trait contracts follow in 0.42; borrowed collection elements remain planned.
 
 ## Executable surface
 
@@ -257,8 +257,8 @@ copies and nested must-handle outcomes retain their independent obligations.
 
 Schemas on named outcomes and builtin options are delivered in 0.37, and whole-sum
 borrowed inputs in 0.38, followed by direct whole-carrier reference results in 0.39.
-Stored carrier references, reference-bearing loop state, rebinding and aggregate trait
-results remain gated.
+Stored carrier references follow in 0.40–0.41 and aggregate trait contracts in 0.42.
+Reference-bearing loop state and rebinding remain gated.
 Arguments returning contained variant borrows must currently be local bindings.
 Unproduced reference leaves require explicit result origin mappings. The independent
 IR verifier validates tagged result/source paths and rejects corrupted metadata.
@@ -297,8 +297,8 @@ whole-holder borrows have ended. Independent shared copies retain their own loan
 See [the reference](language-reference.md#returning-references-to-reference-bearing-aggregates).
 
 Nested storage of these carrier references is C1b.3b.2e: capture/aggregate layouts
-need a distinct reference-indirection step in their dependency schemas. It remains
-gated, as do aggregate trait results. This release does not add reference rebinding,
+need a distinct reference-indirection step in their dependency schemas, delivered
+in 0.40–0.41. Aggregate trait contracts follow in 0.42. This does not add reference rebinding,
 borrowed collection elements or reference-bearing loop state.
 
 

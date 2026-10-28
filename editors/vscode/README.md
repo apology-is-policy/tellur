@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-0.41.0-darwin-arm64.vsix` using **Extensions:
+1. Install the supplied `tellur-language-0.42.0-darwin-arm64.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -91,7 +91,7 @@ migration notes in `docs/language-reference.md` in the compiler checkout.
 
 `tellurLanguage.serverPath` overrides the server executable. Otherwise the extension
 uses its bundled server, then `target/debug/tellur-lsp` from a development checkout,
-then `tellur-lsp` on PATH. The packaged server matches the 0.41.0 compiler; rebuild or
+then `tellur-lsp` on PATH. The packaged server matches the 0.42.0 compiler; rebuild or
 override it when experimenting with compiler changes.
 
 For another platform, build the Rust server and set the executable path. The source
@@ -418,3 +418,12 @@ reference field's storage arrow. Control hover reports the independently mapped
 result groups; `auto` hover reports captured outcomes and returned containers.
 The integration suite checks unsaved premature-drop errors, repair and native
 execution using `playground/public_carriers.tellur`.
+
+
+## Aggregate trait origin contracts in 0.42.0
+
+Open `playground/aggregate_traits.tellur` to follow grouped lifetimes through an
+associated type, a named completion contract, generic dispatch and capture. Hover
+`auto job` to see `edit_job<string>`; editing the implementation's origin mappings
+reports conformance diagnostics immediately. The compiler and language server in
+this package both support these contracts.

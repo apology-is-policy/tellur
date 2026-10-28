@@ -89,22 +89,24 @@ fn check_decl_type(
     }
     Ok(())
 }
-fn declared_outcomes(
-    r: &Region,
-    contracts: &BTreeMap<String, OutcomeContract>,
-) -> Result<Vec<Outcome>> {
+/// Resolve named completion schemas before comparing their public origins.
+fn declared_signature(r: &Region, contracts: &BTreeMap<String, OutcomeContract>) -> Result<Region> {
+    let mut signature = r.clone();
     if let Some(c) = &r.exit_contract {
+        if let Some(contract) = contracts.get(c) {
+            if !contract.type_parameters.is_empty() {
+                return Err(signature_error(
+                    r.span,
+                    "named trait exit contract has the wrong type arity",
+                ));
+            }
+            crate::origins::bind_contract(&mut signature, contract)?;
+            return Ok(signature);
+        }
         let (base, args) = generic(c)
             .map(|(b, a)| (b, a.into_iter().map(str::to_string).collect::<Vec<_>>()))
             .unwrap_or((c.as_str(), vec![]));
         if let Some(d) = contracts.get(base) {
-            if !d.origin_parameters.is_empty() || !r.exit_origins.is_empty() {
-                return Err(Diagnostic::new(
-                    "E_UNSUPPORTED",
-                    r.span,
-                    "grouped named trait exit contracts require the aggregate trait checkpoint; use explicit direct-reference exits",
-                ));
-            }
             if d.type_parameters.len() != args.len() {
                 return Err(signature_error(
                     r.span,
@@ -112,17 +114,41 @@ fn declared_outcomes(
                 ));
             }
             let bindings = d.type_parameters.iter().cloned().zip(args).collect();
-            let mut outcomes = d.outcomes.clone();
-            for o in &mut outcomes {
+            let mut contract = d.clone();
+            for o in &mut contract.outcomes {
                 for f in &mut o.fields {
                     f.ty = substitute(&f.ty, &bindings);
                 }
             }
-            return Ok(outcomes);
+            crate::origins::bind_contract(&mut signature, &contract)?;
+        } else if !r.exit_origins.is_empty() {
+            return Err(Diagnostic::new(
+                "E_ORIGIN",
+                r.span,
+                "origin arguments require a source-declared named outcome contract",
+            ));
         }
     }
-    Ok(r.exits.clone())
+    Ok(signature)
 }
+
+/// Trait assumptions cannot infer lifetime relationships from an implementation.
+fn explicit_origins(r: &Region, schemas: &crate::origins::Schemas) -> Result<()> {
+    crate::lifetimes::declared_with_schemas(r, true, schemas)?;
+    for field in r.exits.iter().flat_map(|o| &o.fields) {
+        let ty = manifest::reference_inner(&field.ty).map_or(field.ty.as_str(), |(_, t)| t);
+        if schemas.get(ty).is_some_and(|s| !s.leaves.is_empty()) && field.origins.is_empty() {
+            return Err(Diagnostic::new(
+                "E_ORIGIN",
+                r.span,
+                "trait aggregate results require explicit bracket origin bindings",
+            ));
+        }
+    }
+    crate::origins::declared(r, schemas)?;
+    Ok(())
+}
+
 fn method_profile(r: &Region) -> Result<()> {
     if !r.modern || !r.type_parameters.is_empty() || r.infer_exits || !r.infer_payloads.is_empty() {
         return Err(signature_error(
@@ -328,6 +354,7 @@ pub(crate) fn lower(
         .iter()
         .map(|d| (d.name.clone(), d.clone()))
         .collect::<BTreeMap<_, _>>();
+    let origin_schemas = crate::origins::schemas(&unit)?;
     let mut declarations = BTreeMap::new();
     for d in &unit.traits {
         if manifest.primitives.iter().any(|p| p.name == d.name)
@@ -372,11 +399,11 @@ pub(crate) fn lower(
                     check_decl_type(c, &params, &arities, method.span)?;
                 }
             }
-            let outcomes = declared_outcomes(method, &contracts)?;
+            let signature = declared_signature(method, &contracts)?;
             for f in method
                 .parameters
                 .iter()
-                .chain(outcomes.iter().flat_map(|o| &o.fields))
+                .chain(signature.exits.iter().flat_map(|o| &o.fields))
             {
                 check_decl_type(&f.ty, &params, &arities, method.span)?;
                 if d.public
@@ -391,9 +418,7 @@ pub(crate) fn lower(
                     ));
                 }
             }
-            let mut signature = method.clone();
-            signature.exits = outcomes;
-            crate::lifetimes::declared(&signature, true)?;
+            explicit_origins(&signature, &origin_schemas)?;
             if let Some(c) = &method.exit_contract {
                 let base = generic(c).map_or(c.as_str(), |(b, _)| b);
                 if d.public
@@ -643,8 +668,14 @@ fn exits(r: &Region, m: &Manifest) -> Vec<(String, Vec<String>)> {
 pub(crate) fn check_contracts(
     checks: &[TraitCheck],
     regions: &[Region],
+    contracts: &[OutcomeContract],
+    schemas: &crate::origins::Schemas,
     m: &Manifest,
 ) -> Result<()> {
+    let contracts = contracts
+        .iter()
+        .map(|c| (c.name.clone(), c.clone()))
+        .collect();
     for c in checks {
         for (ty, bounds, at) in &c.requirements {
             for bound in bounds {
@@ -667,28 +698,21 @@ pub(crate) fn check_contracts(
             })?;
         }
         for expected in &c.expected {
-            if expected.exits.iter().flat_map(|o| &o.fields).any(|f| {
-                m.contains_references(
-                    manifest::reference_inner(&f.ty).map_or(f.ty.as_str(), |(_, t)| t),
-                )
-            }) {
-                return Err(Diagnostic::new(
-                    "E_UNSUPPORTED",
-                    expected.span,
-                    "stored-reference trait result contracts require the upcoming aggregate trait checkpoint",
-                ));
-            }
             let Some(actual) = regions.iter().find(|r| r.name == expected.name) else {
                 continue;
             }; // Symbolic generic checking includes only dependency-reachable ordinary controls.
+            let expected = declared_signature(expected, &contracts)?;
+            let actual = declared_signature(actual, &contracts)?;
+            explicit_origins(&expected, schemas)?;
+            explicit_origins(&actual, schemas)?;
             let parameters = |r: &Region| {
                 r.parameters
                     .iter()
                     .map(|p| p.ty.clone())
                     .collect::<Vec<_>>()
             };
-            if crate::lifetimes::declared(expected, true)?
-                != crate::lifetimes::declared(actual, true)?
+            if crate::lifetimes::declared_with_schemas(&expected, true, schemas)?
+                != crate::lifetimes::declared_with_schemas(&actual, true, schemas)?
             {
                 return Err(Diagnostic::new(
                     "E_LIFETIME",
@@ -696,7 +720,28 @@ pub(crate) fn check_contracts(
                     "implementation return origins must match the trait's parameter positions",
                 ));
             }
-            if parameters(expected) != parameters(actual) || exits(expected, m) != exits(actual, m)
+            let stored = |r: &Region| -> Result<_> {
+                let mut returns = crate::origins::declared(r, schemas)?;
+                returns.sort_by(|a, b| {
+                    (&a.outcome, a.payload, &a.through, &a.fields, &a.sum_leaf).cmp(&(
+                        &b.outcome,
+                        b.payload,
+                        &b.through,
+                        &b.fields,
+                        &b.sum_leaf,
+                    ))
+                });
+                Ok(returns)
+            };
+            if stored(&expected)? != stored(&actual)? {
+                return Err(Diagnostic::new(
+                    "E_ORIGIN",
+                    actual.span,
+                    "implementation contained origins must match the trait's parameter positions and public groups",
+                ));
+            }
+            if parameters(&expected) != parameters(&actual)
+                || exits(&expected, m) != exits(&actual, m)
             {
                 return Err(signature_error(
                     actual.span,

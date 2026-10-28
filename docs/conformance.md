@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.41.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.42.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -948,3 +948,61 @@ Logs: `work/tellur-0.41-tests.log`, `tellur-0.41-final-feature.log`,
 `tellur-0.41-examples.log`, `tellur-0.41-editor.log`,
 `tellur-0.41-release.log`, `tellur-0.41-package.log`,
 `tellur-0.41-install.log` and `tellur-0.41-installed-integrity.log`.
+
+
+## 0.42 — aggregate trait origin contracts
+
+28 October 2026. C1b.3b.2f extends trait signatures and implementation conformance
+to explicit grouped structs, variants, named outcomes, options, direct carrier
+references and nested stored carrier references. Named completion groups are bound
+before comparing contracts. Parameter names may differ and exit labels may be
+reordered; storage and contained origins compare by parameter position, public
+schema group and complete reference-layer path. Missing mappings are rejected even
+for unused declarations. Implementation bodies still prove each promised origin.
+
+Abstract generic witnesses carry the declared contracts. Known generic schemas may
+use associated payload types; unused generic bodies cannot acquire extra origins
+from today's concrete implementation. Unknown associated/self origin layouts still
+need a future origin-shape bound. Whole-carrier argument checking recognizes its
+own authorizing storage guards while preserving conflicts across arguments and
+within constructor expressions. Runtime representation and native lowering are
+unchanged.
+
+`tests/aggregate_traits.rs` covers grouped/direct/nested results, renamed parameters,
+reordered labels, named completion binding, associated payload types, generic
+forwarding/capture, group/input swaps, local body violations, missing mappings,
+shared/exclusive permissions, storage retention, unused invalid generic bodies,
+private imported layouts, empty/populated sums and retained alias guards. Native
+checks compare the nested exclusive fixture and independent shared fields before
+and after expansion at O0/O2. LSP and real VS Code checks cover inferred payload
+hover, unsaved conformance errors, repair and native execution.
+
+See [the new reference section](language-reference.md#aggregate-trait-origin-contracts)
+and [aggregate_traits.tellur](../playground/aggregate_traits.tellur). Borrowed
+collection elements are the next roadmap checkpoint; origin-shape bounds, rebinding,
+reference-bearing loop state and runtime polymorphism remain separate work.
+
+
+Final verification: all **686 Rust tests** passed across the completed suites.
+The full run found one legacy named-trait gate assertion; it now accepts the explicit
+contract and rejects its missing-origin form. Its corrected suite and all remaining
+targets passed. The **14** aggregate-trait tests include **8** native comparisons
+(two programs, original/expanded at O0/O2). Clippy passed with warnings denied;
+all **32** Node syntax/configuration tests and the full real VS Code integration
+suite passed, including the new aggregate-trait milestone. Doc-tests passed (none
+currently defined).
+
+Manual checks accepted **51** complete examples, required **15** diagnostics,
+classified **14** context fragments and resolved **138** local links. The release
+CLI checked all **51** canonical playground/example sources. The 0.42.0 Apple Silicon
+VSIX matches all nine staged payload files and was installed; installed metadata,
+assets, binaries and executable permissions were verified. Canonical and legacy
+local binaries were updated. Source snapshot:
+`work/revision-backups/tellur-0.42-source.tar.gz` (**261** source files,
+all archived bytes verified).
+
+Logs: `work/tellur-0.42-tests.log`, `tellur-0.42-tests-remaining.log`,
+`tellur-0.42-focused.log`, `tellur-0.42-clippy.log`, `tellur-0.42-doctests.log`,
+`tellur-0.42-grammar.log`, `tellur-0.42-reference.log`, `tellur-0.42-examples.log`,
+`tellur-0.42-editor.log`, `tellur-0.42-release.log`, `tellur-0.42-package.log`,
+`tellur-0.42-install.log` and `tellur-0.42-installed-integrity.log`.

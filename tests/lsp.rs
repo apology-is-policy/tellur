@@ -1444,3 +1444,23 @@ fn public_carrier_hovers_show_storage_and_nested_group_maps() {
     f.change(source, 3);
     assert_eq!(f.diagnostics(), json!([]));
 }
+
+#[test]
+fn aggregate_trait_hovers_and_unsaved_contract_diagnostics() {
+    let mut f = Fixture::new();
+    let source = include_str!("fixtures/aggregate_traits.tellur");
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    auto_hover(&f, source, "auto job", "edit_job<string> job");
+    auto_hover(&f, source, "auto pending", "preparation<string> pending");
+    f.change(
+        &source.replace(
+            "preparation<item>[owner, owner['text]]",
+            "preparation<item>[owner['text], owner]",
+        ),
+        2,
+    );
+    assert_eq!(f.diagnostics()[0]["code"], "E_ORIGIN");
+    f.change(source, 3);
+    assert_eq!(f.diagnostics(), json!([]));
+}

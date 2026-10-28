@@ -1,13 +1,17 @@
 # Tellur language revision: controls, values, outcomes, and tasks
 
-27 October 2026. This is the working revision plan, not a claim that all proposed
-features are implemented. Compiler **0.41.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
+28 October 2026. This is the working revision plan, not a claim that all proposed
+features are implemented. Compiler **0.42.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
 lifetime checkpoints of milestone 2, the array/vector/map core of milestone 3,
 and implicit entry, inline/stored adapters, owned capture, named outcome contracts
 and checked forwarding in milestone 4. A first [semantic foundation](semantic-foundation.md)
 now accompanies executable algebra-law tests and finite scenario comparison. The original
 v0.1 documents remain unchanged; the old syntax and conformance fixtures remain
 supported. See [the current reference](language-reference.md) for executable syntax.
+
+Release 0.42 adds aggregate trait origin contracts: explicit grouped inputs/results,
+position-based implementation conformance, named completion bindings and abstract
+generic witnesses. The existing syntax works for statically known schemas.
 
 Release 0.41 adds public nested-reference contracts: separate storage arrows and
 referent brackets, reference-indirection paths, whole owned/borrowed boundaries,
@@ -81,8 +85,8 @@ ordinary language usability. No dates or unimplemented syntax are promised.
 | C1b.3b.2d | Whole carrier reference results | **Delivered in 0.39**: direct references to grouped records/sums, inferred/declared contained origins, storage guards, forwarding and verifier/native/editor checks |
 | C1b.3b.2e.1 | Local stored carrier references | **Delivered in 0.40**: capture/adapters, recursive referent dependencies, nested/borrowed unpacking, local generic/module/loop support and native/editor checks |
 | C1b.3b.2e.2 | Public stored-carrier contracts | **Delivered in 0.41**: separate storage/contained mappings, reference-layer paths, whole owned/borrowed boundaries, guarded sums, native/editor checks |
-| C1b.3b.2f | Aggregate trait origin contracts | **Next**: explicit grouped borrowed inputs/results, implementation conformance and abstract witnesses |
-| C1b.3c | Borrowed collection elements | Queued: insertion/removal transfer, element origins, storage invalidation and dynamic index conservatism |
+| C1b.3b.2f | Aggregate trait origin contracts | **Delivered in 0.42**: explicit grouped inputs/results, nested references, named completions, implementation conformance and abstract generic witnesses |
+| C1b.3c | Borrowed collection elements | **Next**: insertion/removal transfer, element origins, storage invalidation and dynamic index conservatism |
 | C1c | Generic loan propagation and reference state | Queued: contained loans across generic calls, assignments and adapters; rebinding/reborrowing |
 | C2 | Slices and non-consuming iteration | Queued: invalidation rules and library interfaces built on C1b/C1c |
 | C3 | Remaining adapter ergonomics | Queued: arm blocks, whole-outcome binding and expression adapters |
@@ -300,11 +304,11 @@ unchanged. [The guide](extraction.md) lists conservative rejection cases. This i
 source refactoring with finite behavioral tests, not a certified inverse of lift.
 General cuts, continuations and source provenance correspondence remain ahead.
 
-**Remaining:** public stored-carrier contracts, general expression-position adapters and
+**Remaining:** abstract origin-shape bounds, general expression-position adapters and
 arm statement blocks, whole-outcome pattern binding, general lift/extract source
 transforms, and more precise static origin/correlation tracking across opaque/dynamic
-containers. Named and generic contracts currently have finite owning layouts;
-grouped aggregate trait contracts and more general lifetime state remain future work.
+containers. Named and generic contracts currently have finite, statically known layouts;
+abstract associated-type origin shapes and more general lifetime state remain future work.
 The current runtime value contains only a tag/payload; compiler provenance retains the
 invocation and internal decisions. These checkpoints do not implement async tasks.
 

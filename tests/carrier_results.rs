@@ -372,12 +372,12 @@ fn returned_named_outcome_borrows_preserve_the_owners_handling_obligation() {
 }
 
 #[test]
-fn aggregate_trait_reference_results_remain_gated() {
-    rejects(
+fn aggregate_trait_reference_results_accept_explicit_origins() {
+    compile(
         r#"struct view['a] {ref string text <- 'a;}
  trait lender {control lend(ref view input) exits ready {ref view[input['a]] value from input};}
  struct impl_type {u32 marker;}
  implement lender for impl_type {control lend(ref view input) exits ready {ref view[input['a]] value from input} {exit ready {input};}}"#,
-        "E_UNSUPPORTED",
-    );
+        manifest(),
+    ).unwrap();
 }

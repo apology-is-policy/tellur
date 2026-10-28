@@ -1549,11 +1549,32 @@ impl Checker<'_> {
     ) -> Result<()> {
         // A loan lasts through the invocation, including construction of other arguments.
         let mut uses = vec![];
-        for (arg, param) in args.iter().zip(parameters) {
-            self.accesses(arg, &self.argument_mode(param), span, &mut uses)?;
+        for (argument, (arg, param)) in args.iter().zip(parameters).enumerate() {
+            let mut accesses = vec![];
+            self.accesses(arg, &self.argument_mode(param), span, &mut accesses)?;
+            let place = match arg {
+                syntax::Expr::Borrow(inner) | syntax::Expr::BorrowMutable(inner) => inner.as_ref(),
+                _ => arg,
+            };
+            let carrier = self.reference_source(place, span)?.is_some()
+                || self.resolve_place(place, span)?.is_some();
+            uses.extend(
+                accesses
+                    .into_iter()
+                    .map(|access| (argument, carrier, access)),
+            );
         }
-        for (index, access) in uses.iter().enumerate() {
-            for other in &uses[..index] {
+        for (index, (argument, carrier, access)) in uses.iter().enumerate() {
+            for (other_argument, _, other) in &uses[..index] {
+                // A whole carrier authorizes its own contained permissions. Its
+                // storage guards still conflict with separate arguments, and
+                // constructor expressions must establish their own separation.
+                if *carrier
+                    && argument == other_argument
+                    && (access.origin.guard || other.origin.guard)
+                {
+                    continue;
+                }
                 // Ordinary use-after-move is diagnosed during evaluation. An exclusive
                 // call borrow also excludes temporary reads in later arguments.
                 if other.temporary
@@ -3377,7 +3398,13 @@ pub(crate) fn compile_concrete_unit(
     declarations.sort_by_key(|(_, span)| (span.line, span.column));
     let declaration_spans = declarations.into_iter().collect();
     manifest.validate_at(&declaration_spans)?;
-    crate::traits::check_contracts(&unit.trait_checks, &parsed, &manifest)?;
+    crate::traits::check_contracts(
+        &unit.trait_checks,
+        &parsed,
+        &unit.contracts,
+        &origin_schemas,
+        &manifest,
+    )?;
     for argument in type_arguments {
         let (ty, at) = (&argument.ty, argument.span);
         manifest.check_type(ty).map_err(|mut e| {

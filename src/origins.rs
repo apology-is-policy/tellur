@@ -40,7 +40,15 @@ impl Schemas {
             };
             return Some(option_schema(nested));
         }
-        self.0.get(ty).cloned()
+        // Declaration checking can inspect the explicit shape of a generic schema
+        // before its payload types are specialized. Concrete checks still use the
+        // fully instantiated entry, and unknown abstract shapes have no fallback.
+        self.0
+            .get(ty)
+            .or_else(|| {
+                crate::collection_support::generic(ty).and_then(|(base, _)| self.0.get(base))
+            })
+            .cloned()
     }
 }
 fn empty_schema() -> Schema {

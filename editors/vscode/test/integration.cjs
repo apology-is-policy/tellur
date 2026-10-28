@@ -537,6 +537,22 @@ exports.run = async function () {
     assert.equal(storedCarrierRun.code, 0, storedCarrierRun.stderr);
     assert.ok(storedCarrierRun.stdout.includes('edited after capture') && storedCarrierRun.stdout.includes('edited through stored job'));
     console.log('TELLUR_STORED_CARRIERS_EDITOR_TESTS_PASSED: capture and nested reference hover, retained storage, repair and native execution');
+    const aggregateTraits = await fs.readFile(path.join(__dirname, '../../../tests/fixtures/aggregate_traits.tellur'), 'utf8');
+    await replace(buildDocument, aggregateTraits);
+    await waitFor(() => revisedDiagnostics().length === 0, 'aggregate trait contracts');
+    const aggregateJobLine = aggregateTraits.split('\n').findIndex(l => l.includes('auto job'));
+    await waitFor(async () => {
+      const hovers = await vscode.commands.executeCommand('vscode.executeHoverProvider', buildUri, new vscode.Position(aggregateJobLine, aggregateTraits.split('\n')[aggregateJobLine].indexOf('auto job') + 1));
+      return hovers?.some(h => h.contents.some(c => c.value.includes('edit_job<string> job')));
+    }, 'aggregate trait inferred payload');
+    await replace(buildDocument, aggregateTraits.replace("preparation<item>[owner, owner['text]]", "preparation<item>[owner['text], owner]"));
+    await waitFor(() => revisedDiagnostics().some(d => code(d) === 'E_ORIGIN'), 'trait origin conformance');
+    await replace(buildDocument, aggregateTraits);
+    await waitFor(() => revisedDiagnostics().length === 0, 'trait contract repair');
+    const aggregateRun = await vscode.commands.executeCommand('tellur.buildAndRun', {output:path.join(root, 'native output', 'aggregate-traits')});
+    assert.equal(aggregateRun.code, 0, aggregateRun.stderr);
+    assert.ok(aggregateRun.stdout.includes('edited through a trait contract') && aggregateRun.stdout.includes('released after the job'));
+    console.log('TELLUR_AGGREGATE_TRAITS_EDITOR_TESTS_PASSED: associated generic contracts, inferred hover, conformance repair and native execution');
     const publicCarriers = await fs.readFile(path.join(__dirname, '../../../tests/fixtures/public_carriers.tellur'), 'utf8');
     await replace(buildDocument, publicCarriers);
     await waitFor(() => revisedDiagnostics().length === 0, 'public carrier source');
