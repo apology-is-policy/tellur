@@ -95,7 +95,7 @@ ordinary language usability. No dates or unimplemented syntax are promised.
 | C1b.3c.1 | Local shared-reference collection elements | **Delivered in 0.43**: arrays/vectors/maps, direct lookup, branch-sensitive insertion, removal/conversion, independent copies, conservative source unions, native/editor coverage |
 | P1 | Stable public contracts | **Next**: require explicit public outcome/payload/origin contracts; preserve private inference; explain how missing outcomes reach callers |
 | P2 | Structured diagnostics | Queued alongside P1: ranges, related locations, structured witnesses and JSON; recover independent errors without cascading or presenting stale hover as current |
-| P3 | Readable path labels and direct dispositions | Queued: preserve label semantics; canonical group layout, selected-history editor feedback, and direct arm exits without throwaway atoms; settle multi-statement arm syntax separately |
+| P3 | Readable path labels and direct dispositions | Queued: preserve label semantics with optional braced grouping; canonical layout, selected-history editor feedback, and direct arm exits without throwaway atoms; settle multi-statement arm syntax separately |
 | P4 | Explain, format and contract changes | Queued: bounded history/contributor queries, formatter, public contract snapshots/diffs and internal absorption changes; distinguish structural evidence from feasible inputs |
 | P5 | Real application and maintenance experiments | Begin alongside P3/P4: a multi-file application with failure, cleanup and retry behavior; measure reader/agent responses to local changes; add numeric, string, generic and loop capabilities as requirements emerge |
 | P6 | Faults and activation boundaries | Design before async: explicit invariant-failure disposition, transitive fault visibility, resource/isolation semantics; faulting operators and any no-fault annotation remain separate decisions |
@@ -132,6 +132,16 @@ than a branch in a nested tree. Preserve the current rule that the label applies
 until the next label or existing enclosing boundary; use `[entry]:` to return to the
 enclosing entry selection. Implicit entry at the start of a body remains supported.
 Do not silently reinterpret existing trailing statements as entry-selected work.
+
+The user subsequently accepted optional braces: `[path]: { ... }` may give the
+selection an explicit end while the unbraced label form remains supported. This is
+planned syntax, not implemented in 0.43. The grouping form should intersect nested
+selectors with its selected domain and restore the enclosing selection at `}`;
+`[entry]:` inside it refers to that group's entry selection. Grouping alone does not
+introduce a value/lifetime scope; explicit scoping remains a separate operation.
+Omitting braces retains the existing label extent, so removing them is not a
+semantics-preserving edit when trailing statements would change selection. Formatting
+must preserve the chosen extent rather than blindly adding or removing braces.
 
 The readability response should make label ownership visible: canonical layout
 with labels at one indentation level and their statements indented beneath them;
