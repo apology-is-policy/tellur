@@ -111,7 +111,7 @@ unimplemented syntax are promised.
 | D1 | Explicit runtime polymorphism | Queued: erasure rules, borrowed/owned storage, opaque graph boundaries |
 | D2 | Stateful protocols and effect contracts | Queued: sequence obligations, justified algebraic laws, groundwork for tasks |
 | E1 | Async reference execution | After P3/P6 and activation-frame work: activation identities, deterministic scheduling, task ownership, suspension, cancellation/cleanup |
-| E2 | Native coroutine lowering | Queued: pinned LLVM experiment, frame lifetime rules and schedule-based differential tests |
+| E2 | Native coroutine lowering | Preserved architectural target: direct LLVM coroutine primitives, pinned-toolchain experiment, frame lifetime rules and schedule-based differential tests; I1 must keep this route open |
 | T1 | Stronger source transformations | Hold current scope during P1–P5: extraction correspondence, continuation cuts, source-level lift and editor actions |
 | R1 | Mathematical foundations | Maintain existing evidence; defer extensions during P1–P5: preservation judgments, richer protocol abstractions, infinite/causal behavior, mechanization |
 
@@ -259,6 +259,33 @@ can be imported by decorating symbols: the Rust ABI has no stability guarantee,
 layouts are not a universal wire format, and source generics/traits still need
 Rust compilation. Measure boundary overhead before committing to direct Rust ABI
 coupling or LTO as a prerequisite for library reuse.
+
+### Preserve first-class async and LLVM coroutine lowering
+
+The user explicitly requires the Rust reuse work to keep E1/E2 open. Tellur owns
+its task/outcome distinction, suspension points, scheduling boundaries, cancellation
+and completion obligations. The checked async representation must be independent
+of generated Rust, Rust Future layouts and any particular executor. Rust library
+integration must not turn Tellur async into an alias for a foreign runtime.
+
+Initial blocking adapters must be identified as blocking, with no hidden scheduler
+or implicit suspension. Later asynchronous adapters need explicit operation lifetime,
+readiness/completion and cancellation contracts behind opaque state; their precise
+ABI is not settled. Supporting a Rust executor can be an adapter capability, not
+a requirement of every Tellur program. A future native LLVM backend must be able
+to call the same host mechanisms through the defined adapter boundary.
+
+Activation identities and stable frame storage must preserve loans and owned
+resources across suspension. Cancellation requests must complete the declared
+cleanup protocol before frame destruction; dropping a foreign future or invoking
+llvm.coro.destroy is not by itself Tellur cancellation. Keep LLVM coroutine layout
+and intrinsics internal to the backend and pin the experimental toolchain.
+
+The reference executor and controlled-schedule tests remain the semantic baseline
+for native coroutine lowering. These are constraints on near-term architecture,
+not a requirement to implement the async runtime before the first service slice.
+See [the async milestone](#milestone-5--async-reference-semantics) and
+[LLVM lowering](#milestone-6--llvm-coroutine-lowering).
 
 Primary references for these constraints:
 
