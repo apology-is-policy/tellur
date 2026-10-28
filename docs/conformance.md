@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.44.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.45.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -1097,3 +1097,49 @@ Logs: `work/tellur-0.44-tests.log`, `tellur-0.44-focused.log`,
 `tellur-0.44-examples.log`, `tellur-0.44-example-run.log`, `tellur-0.44-editor.log`,
 `tellur-0.44-build.log`, `tellur-0.44-package.log`, `tellur-0.44-install.log` and
 `tellur-0.44-installed-integrity.log`.
+
+## 0.45 — Rust source adapters and a maintained settings application
+
+I1a generates Rust result enums, exact function signatures and concrete data
+conversions from primitive contracts. The profile supports scalar/string/bytes,
+nested vectors/maps and shared call-duration inputs. Each binding classifies its
+execution; foreign pure expressions, returned references, retained resources,
+callbacks and async bindings remain gated. Project dependencies have explicit
+resolution and locked builds; manifest-relative paths work in CLI and editor.
+
+P5a supplies a persistent settings CLI with Tellur validation, defaults and failure
+mapping. Rust supplies bounded file reads, strict JSON and file replacement. The
+application exposes uncertain replacement rather than promising rollback or crash
+durability. The same program and scenarios are intended to grow into the server.
+
+`tests/rust_adapters.rs` covers supported/rejected binding contracts, checking without
+host-source access, typed signature errors, external Rust dependency reuse, stale
+lock rejection, owned/borrowed conversions, panic termination and scripted isolation.
+`tests/settings_application.rs` compares policy and injected failures before/after
+expansion, with native O0/O2 execution; live tests cover persistence/reload, invalid
+keys/files, duplicates, size limits, preparation/commit failures and cleanup.
+LSP and real editor tests exercise project-relative adapters, unsaved errors and
+repair, locked native builds, persistent updates and reads.
+
+Validation covers **728 Rust tests** (the full suite plus a corrected application
+fixture rerun). The fixture correction uses the original source manifest when
+compiling a fresh probe, rather than feeding compiler-generated internal types back
+through manifest validation. All three application tests pass after that correction.
+Adapter/library round trips and application execution run original/expanded at
+O0/O2, with additional panic and live replacement-failure cases. Clippy passes with
+warnings denied. All **32** Node tests and the complete real VS Code suite pass,
+including persistent settings updates and reads through the extension.
+
+Manual checks accepted **54** examples, required **18** diagnostics, classified
+**14** context fragments and resolved **149** local links. Release tools checked
+**55** sources: 53 canonical examples/playground files and two application files.
+The 0.45.0 Apple Silicon VSIX was verified against all nine staged payloads and
+installed; installed metadata, assets, binaries and executable permissions match.
+The **280-file** source snapshot at `work/revision-backups/tellur-0.45-source.tar.gz`
+was byte-verified. Canonical and compatibility local binaries were updated.
+
+Logs: `work/tellur-0.45-tests.log`, `tellur-0.45-focused.log`,
+`tellur-0.45-settings.log`, `tellur-0.45-clippy.log`, `tellur-0.45-node.log`,
+`tellur-0.45-reference.log`, `tellur-0.45-examples.log`, `tellur-0.45-editor.log`,
+`tellur-0.45-build.log`, `tellur-0.45-package.log`, `tellur-0.45-install.log` and
+`tellur-0.45-installed-integrity.log`.

@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-0.44.0-darwin-arm64.vsix` using **Extensions:
+1. Install the supplied `tellur-language-0.45.0-darwin-arm64.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -91,7 +91,7 @@ migration notes in `docs/language-reference.md` in the compiler checkout.
 
 `tellurLanguage.serverPath` overrides the server executable. Otherwise the extension
 uses its bundled server, then `target/debug/tellur-lsp` from a development checkout,
-then `tellur-lsp` on PATH. The packaged server matches the 0.44.0 compiler; rebuild or
+then `tellur-lsp` on PATH. The packaged server matches the 0.45.0 compiler; rebuild or
 override it when experimenting with compiler changes.
 
 For another platform, build the Rust server and set the executable path. The source
@@ -447,3 +447,12 @@ For incompatible direct forwarding and missing direct-call arms, the Problems vi
 includes related producing and forwarding locations. Notes follow unsaved buffers
 and imports; repairing the source clears the diagnostic. Stored-outcome lineage and
 full adapter explanations remain planned work. Try `playground/public_contracts.tellur`.
+
+## Rust adapter projects in 0.45.0
+
+Manifests may declare a Rust source adapter and locked dependencies. Adapter paths
+resolve beside the manifest, even when the workspace root is elsewhere. Diagnostics
+check Tellur contracts without reading or executing Rust. Build and Run compiles the
+wrappers through Cargo with the committed lockfile. Resolve dependency changes
+explicitly using `tellurc lock-native` in a terminal. Try the maintained
+`applications/settings/main.tellur`; its README describes entry and argument settings.

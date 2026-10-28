@@ -15,6 +15,16 @@ const LOCK: &str = include_str!("native/Cargo.lock");
 fn error(message: impl Into<String>) -> Diagnostic {
     Diagnostic::new("E_BACKEND", Span::default(), message)
 }
+fn cargo_command() -> Command {
+    Command::new(std::env::var_os("CARGO").unwrap_or_else(|| {
+        std::env::var_os("HOME")
+            .map(PathBuf::from)
+            .map(|p| p.join(".cargo/bin/cargo"))
+            .filter(|p| p.is_file())
+            .map(|p| p.into_os_string())
+            .unwrap_or_else(|| "cargo".into())
+    }))
+}
 fn string(s: &str) -> String {
     format!("{s:?}")
 }
@@ -302,6 +312,7 @@ impl CheckedProgram {
         g.code.push_str("\n}\n");
         g.code.push_str(SUPPORT);
         g.code.push_str("\n}\nuse support::*;\n");
+        g.code.push_str(&crate::rust_host::source(self.manifest())?);
         for r in self.regions() {
             g.slots = r.slots.keys().copied().collect();
             let size = r
@@ -358,16 +369,17 @@ impl CheckedProgram {
         }
         let _ = writeln!(
             g.code,
-            "];\nif let Err(error) = launch({}, {}, &entries) {{ eprintln!(\"{{error}}\"); std::process::exit(1); }}\n}}",
+            "];\nif let Err(error) = launch({}, {}, &entries, Some(rust_dispatch)) {{ eprintln!(\"{{error}}\"); std::process::exit(1); }}\n}}",
             string(&manifest),
             string(entry)
         );
         Ok(g.code)
     }
-    pub fn build_native(&self, entry: &str, output: &Path, opt: u8) -> Result<NativeBuild> {
-        if opt > 3 {
-            return Err(error("optimization level must be 0..3"));
-        }
+    fn native_project(
+        &self,
+        entry: &str,
+        output: &Path,
+    ) -> Result<(PathBuf, PathBuf, PathBuf, String)> {
         let output = if output.is_absolute() {
             output.to_owned()
         } else {
@@ -379,33 +391,73 @@ impl CheckedProgram {
         let mut hasher = std::hash::DefaultHasher::new();
         directory.hash(&mut hasher);
         let package = format!("path_generated_{:016x}", hasher.finish());
+        let source = self.native_source(entry)?;
         fs::create_dir_all(directory.join("src")).map_err(|e| error(e.to_string()))?;
         let generated = directory.join("src/main.rs");
-        fs::write(&generated, self.native_source(entry)?).map_err(|e| error(e.to_string()))?;
+        fs::write(&generated, source).map_err(|e| error(e.to_string()))?;
         fs::write(
             directory.join("Cargo.toml"),
-            CARGO.replace("path_generated", &package),
+            crate::rust_host::cargo(self.manifest(), CARGO).replace("path_generated", &package),
         )
         .map_err(|e| error(e.to_string()))?;
-        fs::write(
-            directory.join("Cargo.lock"),
-            LOCK.replace("path_generated", &package),
-        )
-        .map_err(|e| error(e.to_string()))?;
+        Ok((output, directory, generated, package))
+    }
+    /// Dependency resolution is an explicit action; normal builds always use --locked.
+    pub fn lock_native(&self, entry: &str, output: &Path) -> Result<PathBuf> {
+        let config = self
+            .manifest()
+            .rust
+            .as_ref()
+            .ok_or_else(|| error("lock-native requires a Rust adapter configuration"))?;
+        let (_, directory, _, package) = self.native_project(entry, output)?;
+        let result = cargo_command()
+            .arg("generate-lockfile")
+            .arg("--manifest-path")
+            .arg(directory.join("Cargo.toml"))
+            .output()
+            .map_err(|e| error(format!("could not start Cargo: {e}")))?;
+        if !result.status.success() {
+            return Err(error(format!(
+                "dependency resolution failed: {}",
+                String::from_utf8_lossy(&result.stderr)
+            )));
+        }
+        let lock =
+            fs::read_to_string(directory.join("Cargo.lock")).map_err(|e| error(e.to_string()))?;
+        let lock = lock.replace(
+            &format!("name = {package:?}"),
+            "name = \"tellur_adapter_lock\"",
+        );
+        fs::write(&config.lockfile, lock)
+            .map_err(|e| error(format!("cannot save {}: {e}", config.lockfile.display())))?;
+        Ok(config.lockfile.clone())
+    }
+    pub fn build_native(&self, entry: &str, output: &Path, opt: u8) -> Result<NativeBuild> {
+        if opt > 3 {
+            return Err(error("optimization level must be 0..3"));
+        }
+        let (output, directory, generated, package) = self.native_project(entry, output)?;
+        let lock = if let Some(config) = &self.manifest().rust {
+            let lock=fs::read_to_string(&config.lockfile).map_err(|e|error(format!("cannot read {}: {e}; run tellurc lock-native explicitly to resolve dependencies",config.lockfile.display())))?;
+            if !lock.contains("name = \"tellur_adapter_lock\"") {
+                return Err(error(
+                    "invalid adapter lockfile; regenerate with tellurc lock-native",
+                ));
+            }
+            lock.replace(
+                "name = \"tellur_adapter_lock\"",
+                &format!("name = {package:?}"),
+            )
+        } else {
+            LOCK.replace("path_generated", &package)
+        };
+        fs::write(directory.join("Cargo.lock"), lock).map_err(|e| error(e.to_string()))?;
         let llvm = PathBuf::from(format!("{}.ll", output.display()));
         let target = std::env::var_os("TELLUR_NATIVE_TARGET_DIR")
             .or_else(|| std::env::var_os("PATH_NATIVE_TARGET_DIR"))
             .map(PathBuf::from)
             .unwrap_or_else(|| output.parent().unwrap().join(".tellur-cache"));
-        let cargo = std::env::var_os("CARGO").unwrap_or_else(|| {
-            std::env::var_os("HOME")
-                .map(PathBuf::from)
-                .map(|p| p.join(".cargo/bin/cargo"))
-                .filter(|p| p.is_file())
-                .map(|p| p.into_os_string())
-                .unwrap_or_else(|| "cargo".into())
-        });
-        let result = Command::new(cargo)
+        let result = cargo_command()
             .arg("rustc")
             .arg("--locked")
             .arg("--manifest-path")

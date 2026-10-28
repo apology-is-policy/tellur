@@ -1,0 +1,212 @@
+{
+  "version": "0.1",
+  "types": [],
+  "primitives": [
+    {
+      "name": "file_read",
+      "parameters": [
+        {
+          "name": "path",
+          "type": "string",
+          "mode": "borrow"
+        },
+        {
+          "name": "limit",
+          "type": "u32",
+          "mode": "value"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "read",
+          "fields": [
+            {
+              "name": "text",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "missing",
+          "fields": []
+        },
+        {
+          "name": "too_large",
+          "fields": []
+        },
+        {
+          "name": "read_failed",
+          "fields": [
+            {
+              "name": "message",
+              "type": "string"
+            }
+          ]
+        }
+      ],
+      "effects": [
+        "file.read"
+      ],
+      "returns": true,
+      "rust": {
+        "execution": "blocking"
+      }
+    },
+    {
+      "name": "file_replace",
+      "parameters": [
+        {
+          "name": "path",
+          "type": "string",
+          "mode": "borrow"
+        },
+        {
+          "name": "text",
+          "type": "string",
+          "mode": "borrow"
+        },
+        {
+          "name": "limit",
+          "type": "u32",
+          "mode": "value"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "replaced",
+          "fields": []
+        },
+        {
+          "name": "write_failed",
+          "fields": [
+            {
+              "name": "message",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "commit_uncertain",
+          "fields": [
+            {
+              "name": "message",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "too_large",
+          "fields": []
+        }
+      ],
+      "effects": [
+        "file.replace"
+      ],
+      "returns": true,
+      "rust": {
+        "execution": "blocking"
+      }
+    },
+    {
+      "name": "json_decode",
+      "parameters": [
+        {
+          "name": "text",
+          "type": "string",
+          "mode": "consume"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "decoded",
+          "fields": [
+            {
+              "name": "values",
+              "type": "map<string,string>"
+            }
+          ]
+        },
+        {
+          "name": "invalid",
+          "fields": [
+            {
+              "name": "message",
+              "type": "string"
+            }
+          ]
+        }
+      ],
+      "effects": [],
+      "returns": true,
+      "rust": {
+        "execution": "immediate"
+      }
+    },
+    {
+      "name": "json_encode",
+      "parameters": [
+        {
+          "name": "values",
+          "type": "map<string,string>",
+          "mode": "borrow"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "encoded",
+          "fields": [
+            {
+              "name": "text",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "encode_failed",
+          "fields": [
+            {
+              "name": "message",
+              "type": "string"
+            }
+          ]
+        }
+      ],
+      "effects": [],
+      "returns": true,
+      "rust": {
+        "execution": "immediate"
+      }
+    },
+    {
+      "name": "text_trim",
+      "parameters": [
+        {
+          "name": "text",
+          "type": "string",
+          "mode": "borrow"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "trimmed",
+          "fields": [
+            {
+              "name": "text",
+              "type": "string"
+            }
+          ]
+        }
+      ],
+      "effects": [],
+      "returns": true,
+      "rust": {
+        "execution": "immediate"
+      }
+    }
+  ],
+  "rust": {
+    "source": "host.rs",
+    "lockfile": "Cargo.lock",
+    "dependencies": {}
+  }
+}

@@ -1,0 +1,40 @@
+import "settings.tellur" as settings;
+
+// The default entry prints the configuration. Other CLI entries reuse the same module.
+control main(string path) exits done, failed {
+    delta settings.load(borrow path) {
+        loaded { map<string, string> values } => loaded,
+        invalid_file { string message } => invalid_file,
+        storage_failed { string message } => storage_failed,
+        too_large => too_large
+    }
+    [invalid_file | storage_failed]: emit(message); exit failed;
+    [too_large]: emit("The settings file exceeds 1 MiB."); exit failed;
+    [loaded]:
+        delta json_encode(borrow values) {
+            encoded { string text } => encoded,
+            encode_failed { string message } => encode_failed
+        }
+    [encoded]: emit(text); exit done;
+    [encode_failed]: emit(message); exit failed;
+}
+control get(string path, string key)
+    exits done, missing, invalid_key, failed
+{
+    delta settings.get(borrow path, borrow key) {
+        found { string value } => found,
+        missing => missing,
+        invalid_key => invalid_key,
+        invalid_file { string message } => invalid_file,
+        storage_failed { string message } => storage_failed,
+        too_large => too_large
+    }
+    [found]: emit(value); exit done;
+    [missing]: emit("No setting has that key."); exit missing;
+    [invalid_key]: emit("A key must be nonempty and have no surrounding whitespace."); exit invalid_key;
+    [invalid_file | storage_failed]: emit(message); exit failed;
+    [too_large]: emit("The settings file exceeds 1 MiB."); exit failed;
+}
+control set(string path, string key, string value) exits settings.update_result {
+    forward settings.set(borrow path, key, value);
+}

@@ -342,7 +342,9 @@ unsafe extern "C" {
     fn ferror(file: *mut c_void) -> c_int;
     fn fclose(file: *mut c_void) -> c_int;
 }
+pub type RustAdapter = fn(&str, Vec<V>) -> R<Outcome>;
 pub struct Host {
+    pub rust_adapter: Option<RustAdapter>,
     pub manifest: Json,
     script: Option<Vec<ScriptCall>>,
     cursor: usize,
@@ -369,6 +371,7 @@ impl Host {
         fuel: Option<usize>,
     ) -> Self {
         Self {
+            rust_adapter: None,
             manifest,
             script,
             cursor: 0,
@@ -433,6 +436,9 @@ impl Host {
             }
             self.cursor += 1;
             (call.outcome.clone(), call.fields.clone())
+        } else if p["rust"].is_object() {
+            self.rust_adapter
+                .ok_or("E_HOST: Rust adapter is not linked")?(name, args.clone())?
         } else {
             let modern = self.check_contract(name, &p)?;
             let (mut outcome, mut values) = self.real(name, &args)?;
@@ -793,6 +799,7 @@ pub fn launch(
     manifest: &str,
     default_entry: &str,
     entries: &[(&str, EntryFn, Vec<String>)],
+    rust_adapter: Option<RustAdapter>,
 ) -> R<()> {
     let manifest: Json = serde_json::from_str(manifest).map_err(|e| e.to_string())?;
     let args = std::env::args().skip(1).collect::<Vec<_>>();
@@ -885,6 +892,7 @@ pub fn launch(
     };
     validate_args(&values, types, &manifest)?;
     let mut host = Host::new(manifest, script, json_output, fuel);
+    host.rust_adapter = rust_adapter;
     let result = run(&mut host, values)?;
     host.finish(result, json_output)
 }

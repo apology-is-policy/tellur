@@ -127,7 +127,7 @@ impl Server {
                 ),
             )
         })?;
-        Manifest::from_json(&text).map_err(|e| {
+        Manifest::from_json_at(&text, &path).map_err(|e| {
             Diagnostic::new(
                 "E_MANIFEST",
                 Span { line: 1, column: 1 },

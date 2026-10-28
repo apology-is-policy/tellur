@@ -4,7 +4,7 @@ use std::{
     process::{Command, ExitCode},
 };
 use tellur::{compile_file, manifest::Manifest, runtime::Scenario};
-const USAGE: &str = "Tellur compiler\n  tellurc check SOURCE [MANIFEST]\n  tellurc run SOURCE MANIFEST SCENARIO [--expanded]  (reference interpreter)\n  tellurc compare SOURCE MANIFEST OTHER_SOURCE SCENARIOS  (finite scenario evidence)\n  tellurc expand SOURCE MANIFEST ENTRY\n  tellurc extract-tail SOURCE MANIFEST CONTROL LINE HELPER [--report]\n  tellurc protocol SOURCE MANIFEST ENTRY [PREFIX_JSON]  (structural abstraction)\n  tellurc protocol-compare SOURCE MANIFEST OTHER_SOURCE ENTRY\n  tellurc certify-expansion SOURCE MANIFEST ENTRY  (JSON graph and correspondence)\n  tellurc verify-expansion SOURCE MANIFEST ARTIFACT\n  tellurc inspect SOURCE MANIFEST ENTRY [--expanded]\n  tellurc build SOURCE [MANIFEST] [--entry main] [--out FILE] [--release] [--expanded]\n  tellurc exec SOURCE [MANIFEST] [build options] [-- PROGRAM_ARGUMENTS]\nBuild writes a native executable, LLVM IR (.ll), and generated source (.tellur-build/).\nNative programs accept --help, --json, --scenario FILE, and --fuel N.\nRust/Cargo with its LLVM backend is required to build; executables are standalone.";
+const USAGE: &str = "Tellur compiler\n  tellurc check SOURCE [MANIFEST]\n  tellurc lock-native SOURCE [MANIFEST]  (explicitly resolve Rust adapter dependencies)\n  tellurc run SOURCE MANIFEST SCENARIO [--expanded]  (reference interpreter)\n  tellurc compare SOURCE MANIFEST OTHER_SOURCE SCENARIOS  (finite scenario evidence)\n  tellurc expand SOURCE MANIFEST ENTRY\n  tellurc extract-tail SOURCE MANIFEST CONTROL LINE HELPER [--report]\n  tellurc protocol SOURCE MANIFEST ENTRY [PREFIX_JSON]  (structural abstraction)\n  tellurc protocol-compare SOURCE MANIFEST OTHER_SOURCE ENTRY\n  tellurc certify-expansion SOURCE MANIFEST ENTRY  (JSON graph and correspondence)\n  tellurc verify-expansion SOURCE MANIFEST ARTIFACT\n  tellurc inspect SOURCE MANIFEST ENTRY [--expanded]\n  tellurc build SOURCE [MANIFEST] [--entry main] [--out FILE] [--release] [--expanded]\n  tellurc exec SOURCE [MANIFEST] [build options] [-- PROGRAM_ARGUMENTS]\nBuild writes a native executable, LLVM IR (.ll), and generated source (.tellur-build/).\nNative programs accept --help, --json, --scenario FILE, and --fuel N.\nRust/Cargo with its LLVM backend is required to build; executables are standalone.";
 fn discover(source: &Path) -> Option<PathBuf> {
     source
         .parent()?
@@ -37,9 +37,20 @@ fn run() -> std::result::Result<(), Box<dyn std::error::Error>> {
         discover(&source).ok_or("no manifest.json found; supply a manifest path")?
     };
     let manifest_text = fs::read_to_string(&manifest)?;
-    let program = compile_file(&source, Manifest::from_json(&manifest_text)?)?;
+    let program = compile_file(&source, Manifest::from_json_at(&manifest_text, &manifest)?)?;
     let rest = &args[index..];
     match args[0].as_str() {
+        "lock-native" if rest.is_empty() => {
+            let output = source
+                .parent()
+                .unwrap_or(Path::new("."))
+                .join("build")
+                .join(source.file_stem().ok_or("invalid source name")?);
+            println!(
+                "Locked native dependencies: {}",
+                program.lock_native("main", &output)?.display()
+            );
+        }
         "check" if rest.is_empty() => {
             if program.generic_controls().is_empty() {
                 println!("checked {} control(s)", program.regions().count());
@@ -54,7 +65,7 @@ fn run() -> std::result::Result<(), Box<dyn std::error::Error>> {
         "extract-tail" if rest.len() == 3 || (rest.len() == 4 && rest[3] == "--report") => {
             let extraction = tellur::extract::extract_tail(
                 &fs::read_to_string(&source)?,
-                Manifest::from_json(&manifest_text)?,
+                Manifest::from_json_at(&manifest_text, &manifest)?,
                 &rest[0],
                 rest[1].parse()?,
                 &rest[2],
@@ -66,7 +77,7 @@ fn run() -> std::result::Result<(), Box<dyn std::error::Error>> {
             }
         }
         "protocol-compare" if rest.len() == 2 => {
-            let other = compile_file(&rest[0], Manifest::from_json(&manifest_text)?)?;
+            let other = compile_file(&rest[0], Manifest::from_json_at(&manifest_text, &manifest)?)?;
             let before = program.protocol(&rest[1], 20_000)?;
             let after = other.protocol(&rest[1], 20_000)?;
             let before_in_after = before.included_in(&after, 20_000)?;
@@ -111,7 +122,7 @@ fn run() -> std::result::Result<(), Box<dyn std::error::Error>> {
             );
         }
         "compare" if rest.len() == 2 => {
-            let other = compile_file(&rest[0], Manifest::from_json(&manifest_text)?)?;
+            let other = compile_file(&rest[0], Manifest::from_json_at(&manifest_text, &manifest)?)?;
             let cases: Vec<Scenario> = serde_json::from_str(&fs::read_to_string(&rest[1])?)?;
             let report = tellur::algebra::compare_scenarios(&program, &other, &cases, 100_000)?;
             println!("{}", serde_json::to_string_pretty(&report)?);

@@ -1508,3 +1508,29 @@ fn public_contract_diagnostics_and_forwarding_locations_follow_unsaved_edits() {
     f.change(source, 4);
     assert_eq!(f.diagnostics(), json!([]));
 }
+
+#[test]
+fn rust_adapter_project_checks_unsaved_sources_without_loading_host_code() {
+    let mut f = Fixture::new();
+    fs::write(
+        f.root.join("manifest.json"),
+        include_str!("../applications/settings/manifest.json"),
+    )
+    .unwrap();
+    fs::write(
+        f.root.join("settings.tellur"),
+        include_str!("../applications/settings/settings.tellur"),
+    )
+    .unwrap();
+    // No host.rs or Cargo.lock exists: checking Tellur must not build or run Rust.
+    let source = include_str!("../applications/settings/main.tellur");
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    f.change(
+        &source.replace("found { string value }", "found { u32 value }"),
+        2,
+    );
+    assert_eq!(f.diagnostics()[0]["code"], "E_TYPE");
+    f.change(source, 3);
+    assert_eq!(f.diagnostics(), json!([]));
+}

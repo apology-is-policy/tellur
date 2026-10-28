@@ -40,6 +40,8 @@ pub struct Primitive {
     pub returns: bool,
     #[serde(default)]
     pub pure: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rust: Option<crate::rust_host::Binding>,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase", deny_unknown_fields)]
@@ -92,6 +94,8 @@ impl Capabilities {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Manifest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rust: Option<crate::rust_host::Configuration>,
     #[serde(skip)]
     pub(crate) abstract_types: BTreeMap<String, Capabilities>,
     pub version: String,
@@ -314,6 +318,21 @@ impl Manifest {
         let mut manifest: Self = serde_json::from_str(text).map_err(|e| error(e.to_string()))?;
         manifest.canonicalize_types();
         manifest.validate()?;
+        Ok(manifest)
+    }
+    /// Resolve native adapter files relative to the manifest, without reading or executing them.
+    pub fn from_json_at(text: &str, manifest_path: &std::path::Path) -> Result<Self> {
+        let mut manifest = Self::from_json(text)?;
+        if let Some(host) = &mut manifest.rust {
+            let base = std::env::current_dir()
+                .map_err(|e| error(e.to_string()))?
+                .join(manifest_path)
+                .parent()
+                .unwrap()
+                .to_owned();
+            host.source = base.join(&host.source);
+            host.lockfile = base.join(&host.lockfile);
+        }
         Ok(manifest)
     }
     pub fn canonicalize_types(&mut self) {
@@ -566,6 +585,7 @@ impl Manifest {
         }
     }
     pub fn validate(&self) -> Result<()> {
+        crate::rust_host::validate(self)?;
         self.validate_at(&BTreeMap::new())
     }
     pub(crate) fn validate_at(&self, spans: &BTreeMap<String, Span>) -> Result<()> {

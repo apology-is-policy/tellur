@@ -1,13 +1,17 @@
 # Tellur language revision: controls, values, outcomes, and tasks
 
 28 October 2026. This is the working revision plan, not a claim that all proposed
-features are implemented. Compiler **0.44.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
+features are implemented. Compiler **0.45.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
 lifetime checkpoints of milestone 2, the array/vector/map core of milestone 3,
 and implicit entry, inline/stored adapters, owned capture, named outcome contracts
 and checked forwarding in milestone 4. A first [semantic foundation](semantic-foundation.md)
 now accompanies executable algebra-law tests and finite scenario comparison. The original
 v0.1 documents remain unchanged; the old syntax and conformance fixtures remain
 supported. See [the current reference](language-reference.md) for executable syntax.
+
+Release 0.45 starts I1/P5: typed Rust source adapters, explicit locked dependencies
+and a persistent settings CLI with Tellur policy and host file/JSON mechanisms.
+Foreign retained resources, HTTP and async bindings remain later slices.
 
 Release 0.44 requires explicit public outcome/payload/origin contracts and adds
 bounded diagnostic contributors through direct forwarding. Private inference stays
@@ -102,10 +106,12 @@ unimplemented syntax are promised.
 | P1a | Stable public contracts | **Delivered in 0.44**: explicit public outcome/payload/origin contracts, private inference, unused generic checks and bounded direct-forwarding contributor notes in CLI/editor |
 | P1b | Outcome contributor coverage | Next diagnostic slice: preserve lineage through stored outcomes and adapters; explain absorption and merges without pretending structural contributors prove feasible inputs |
 | P2 | Structured diagnostics | Related locations started in 0.44; next are full ranges, structured witnesses and JSON; recover independent errors without cascading or presenting stale hover as current |
-| I1 | Rust library adapters | Early enabling work for P5: generated Rust wrappers, locked Cargo dependencies, explicit Tellur outcomes/ownership and adapter conformance; stable binary ABI and cross-language LTO are later layers |
+| I1a | Owned-data Rust adapters | **Delivered in 0.45**: typed wrapper/result generation, registry dependencies and explicit locking, owned scalar/collection data, shared call borrows, blocking/immediate classification and scripted/live conformance |
+| I1b | Retained host resources and broader Rust reuse | Next application-driven slice: resource handles/cleanup protocols, richer data boundaries and dependency/package ergonomics; stable binary ABI and LTO remain later layers |
 | P3 | Readable path labels and direct dispositions | Queued: preserve label semantics with optional braced grouping; canonical layout, selected-history editor feedback, and direct arm exits without throwaway atoms; settle multi-statement arm syntax separately |
 | P4 | Explain, format and contract changes | Queued: bounded history/contributor queries, formatter, public contract snapshots/diffs and internal absorption changes; distinguish structural evidence from feasible inputs |
-| P5 | Sustained application and standard-library foundations | Next application slice alongside P1b/P2: a local configuration/key-value service with a CLI first, then a blocking HTTP interface; keep policy in Tellur, add Rust adapters and reusable library operations as needed, and maintain failure/upgrade scenarios |
+| P5a | Sustained application: persistent CLI | **Delivered in 0.45**: settings load/get/set, validation, strict JSON, bounded input/output, replacement uncertainty and live/scripted failure scenarios |
+| P5b | Sustained application: server and library growth | Next: explicit CLI status policy, retained resources and blocking loopback HTTP; keep domain policy in Tellur and exercise disconnect/shutdown/cleanup scenarios |
 | P6 | Faults and activation boundaries | Design before async: explicit invariant-failure disposition, transitive fault visibility, resource/isolation semantics; faulting operators and any no-fault annotation remain separate decisions |
 | C1b.3c.2 | Local exclusive-reference collection elements | Deferred pending application evidence: permission transfer, direct reborrowing, dynamic removal splits and carrier invalidation |
 | C1b.3c.3 | Nested and public borrowed-collection contracts | Deferred pending application evidence: element origin schemas, nested carriers, generic/trait boundaries and stored outcomes |
@@ -143,7 +149,7 @@ Do not silently reinterpret existing trailing statements as entry-selected work.
 
 The user subsequently accepted optional braces: `[path]: { ... }` may give the
 selection an explicit end while the unbraced label form remains supported. This is
-planned syntax, not implemented in 0.44. The grouping form should intersect nested
+planned syntax, not implemented in 0.45. The grouping form should intersect nested
 selectors with its selected domain and restore the enclosing selection at `}`;
 `[entry]:` inside it refers to that group's entry selection. Grouping alone does not
 introduce a value/lifetime scope; explicit scoping remains a separate operation.
@@ -192,8 +198,9 @@ Maintain one real application across compiler releases, rather than building a n
 showcase for each feature. The initial working choice is a local configuration and
 key-value service. Start with a CLI over reusable Tellur modules, then expose the
 same operations through a blocking HTTP server bound to loopback. A sequential
-server makes useful progress before Tellur has async. This is planned work; no
-server or general Rust-binding mechanism is implemented in 0.44.
+server makes useful progress before Tellur has async. The persistent CLI and typed
+owned-data Rust adapters are delivered in 0.45; HTTP and retained host-resource
+bindings are still planned. See [the application](../applications/settings/README.md).
 
 The first useful slice loads persisted settings and supports reading and updating
 keys with validation. Subsequent slices add persistence/reload, request handling,
@@ -227,8 +234,9 @@ adding them; don't wait for complete language tooling before using the language.
 The immediate goal is source-level reuse through typed Rust adapters built by
 Cargo with the generated Tellur program. The current native pipeline already
 emits Rust and invokes Cargo, but its host adapters and dependency template are
-fixed. I1 must make bindings/dependencies explicit and reproducible rather than
-presenting this as an existing arbitrary-crate import facility.
+fixed in the 0.44 baseline. I1a in 0.45 adds explicit typed wrapper source, registry
+dependencies and a committed Cargo lock. It is a bounded source-binding facility,
+not automatic import of arbitrary Rust APIs. See [the adapter contract](rust-adapters.md).
 
 A binding should connect a Tellur contract to a concrete Rust wrapper: argument
 conversions, owned versus borrowed access, closed outcome mapping, resource

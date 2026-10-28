@@ -20,6 +20,7 @@ pub mod native;
 mod origins;
 pub mod protocol;
 pub mod runtime;
+pub mod rust_host;
 pub mod syntax;
 mod traits;
 mod verify;

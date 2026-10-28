@@ -78,6 +78,7 @@ fn manifest() -> Manifest {
             effects: vec![],
             returns: true,
             pure: false,
+            rust: None,
         });
     }
     m.validate().unwrap();

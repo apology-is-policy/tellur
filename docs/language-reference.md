@@ -1,8 +1,8 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.44.0 -->
+<!-- tellur-reference-version: 0.45.0 -->
 
-This manual describes **compiler 0.44.0**, including the current ownership model,
+This manual describes **compiler 0.45.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -2094,6 +2094,27 @@ cannot be moved or explicitly released by a repeating body. Nested source loops 
 unsupported, but a control may call another control containing a loop. Infinite
 execution is possible; there is no termination proof.
 
+## Rust adapters and host execution
+
+Since 0.45, a project manifest can bind primitive operations to typed Rust wrappers
+and explicitly locked Cargo dependencies. Tellur checks calls against the manifest;
+the native build generates Rust outcome enums and checks each wrapper signature.
+Supported data includes owned scalars, strings, bytes, vectors and maps, plus shared
+input borrows that last for the call. Returned foreign borrows, retained resources,
+callbacks and asynchronous adapters remain outside this profile.
+
+Each binding declares `immediate` or `blocking` execution. Neither suspends a Tellur
+control. This preserves a separate boundary for future tasks and LLVM coroutine
+lowering. Rust panics are not recoverable outcome alternatives. Checking and editor
+diagnostics do not execute adapters; native builds compile them, and reference or
+native scenario runs use scripts instead of live Rust dispatch.
+
+See [Rust adapter contracts and build workflow](rust-adapters.md) and the maintained
+[settings application](../applications/settings/README.md). The settings module
+contains the domain policy; Rust supplies file and JSON mechanisms. Normal builds
+require the committed dependency lock; `tellurc lock-native` is the explicit action
+for updating it. This is source interoperability, not a stable Rust binary ABI.
+
 ## File modules and private representations
 
 _Context fragment: Import syntax; see the linked modules playground for the complete file graph._
@@ -2428,7 +2449,7 @@ bindings/contracts. It does not yet provide general expression or call-site type
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and async tasks remain planned; they are not executable features of 0.44.0.
+and async tasks remain planned; they are not executable features of 0.45.0.
 ## Compare supplied scenarios
 
 ```sh

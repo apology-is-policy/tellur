@@ -712,6 +712,29 @@ exports.run = async function () {
     }, 'legacy language ID works after legacy restart command');
     console.log('TELLUR_MIGRATION_EDITOR_TESTS_PASSED: both extensions, legacy language ID and commands, canonical default output name');
     console.log('TELLUR_NATIVE_EDITOR_TESTS_PASSED: build, run, argument boundaries, paths with spaces, LLVM output');
+    const settingsFolder = path.join(root, 'settings-app');
+    await fs.mkdir(settingsFolder, {recursive:true});
+    for (const file of ['main.tellur', 'settings.tellur', 'manifest.json', 'host.rs', 'Cargo.lock']) {
+      await fs.copyFile(path.join(__dirname, '../../../applications/settings', file), path.join(settingsFolder, file));
+    }
+    const settingsUri = vscode.Uri.file(path.join(settingsFolder, 'main.tellur'));
+    const settingsDocument = await vscode.workspace.openTextDocument(settingsUri);
+    await vscode.window.showTextDocument(settingsDocument);
+    const settingsDiagnostics = () => vscode.languages.getDiagnostics(settingsUri).filter(d => d.source === 'tellur');
+    const settingsSource = settingsDocument.getText();
+    await replace(settingsDocument, settingsSource.replace('found { string value }', 'found { u32 value }'));
+    await waitFor(() => settingsDiagnostics().some(d => code(d) === 'E_TYPE'), 'settings application unsaved error');
+    await replace(settingsDocument, settingsSource);
+    await waitFor(() => settingsDiagnostics().length === 0, 'settings application repair');
+    const settingsData = path.join(settingsFolder, 'editor-data.json');
+    await fs.rm(settingsData, {force:true});
+    const settingsOutput = path.join(root, 'native output', 'settings-app');
+    const settingsSet = await vscode.commands.executeCommand('tellur.buildAndRun', {entry:'set', arguments:[settingsData, 'theme', 'dark'], output:settingsOutput});
+    assert.equal(settingsSet.code, 0, settingsSet.stderr);assert.ok(settingsSet.stdout.includes('saved'));
+    assert.deepEqual(JSON.parse(await fs.readFile(settingsData, 'utf8')), {theme:'dark'});
+    const settingsGet = await vscode.commands.executeCommand('tellur.buildAndRun', {entry:'get', arguments:[settingsData, 'theme'], output:settingsOutput});
+    assert.equal(settingsGet.code, 0, settingsGet.stderr);assert.ok(settingsGet.stdout.includes('dark'));
+    console.log('TELLUR_RUST_SETTINGS_EDITOR_TESTS_PASSED: manifest-relative Rust adapter, unsaved checking, repair, locked build, persistent update and reload');
     console.log('TELLUR_EDITOR_TESTS_PASSED: language recognition, unsaved diagnostics/repair, outline, witness, UTF-16, manifest watcher, restart, partial moves, owned variants');
   } finally {
     await replace(document, original);
