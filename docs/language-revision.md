@@ -56,9 +56,10 @@ checkpoint; the remaining language-feature queue is unchanged.
 
 ## Active checkpoint queue
 
-Updated after the accepted [data and abstraction direction](type-system.md).
-This is the execution order; the numbered milestones below retain the historical
-feature inventory. Compiler 0.29 delivers source data declarations, file modules, named struct fields, generic data and generic controls with sealed capability bounds, plus concrete and generic trait dispatch with associated types.
+Updated after the 28 October design review and the user's clarification that
+`[path]:` is a first-class label, not a braced construct. The P checkpoints below
+take priority over further reference features. Delivered rows and the numbered
+milestones retain the historical feature inventory. Compiler 0.29 delivers source data declarations, file modules, named struct fields, generic data and generic controls with sealed capability bounds, plus concrete and generic trait dispatch with associated types.
 Research proceeds alongside practical checkpoints and does not indefinitely block
 ordinary language usability. No dates or unimplemented syntax are promised.
 
@@ -92,23 +93,77 @@ ordinary language usability. No dates or unimplemented syntax are promised.
 | C1b.3b.2e.2 | Public stored-carrier contracts | **Delivered in 0.41**: separate storage/contained mappings, reference-layer paths, whole owned/borrowed boundaries, guarded sums, native/editor checks |
 | C1b.3b.2f | Aggregate trait origin contracts | **Delivered in 0.42**: explicit grouped inputs/results, nested references, named completions, implementation conformance and abstract generic witnesses |
 | C1b.3c.1 | Local shared-reference collection elements | **Delivered in 0.43**: arrays/vectors/maps, direct lookup, branch-sensitive insertion, removal/conversion, independent copies, conservative source unions, native/editor coverage |
-| C1b.3c.2 | Local exclusive-reference collection elements | **Next**: permission transfer, direct reborrowing, dynamic removal splits and carrier invalidation |
-| C1b.3c.3 | Nested and public borrowed-collection contracts | Queued: element origin schemas, nested carriers, generic/trait boundaries and stored outcomes |
-| C1c | Generic loan propagation and reference state | Queued: contained loans across generic calls, assignments and adapters; rebinding/reborrowing |
-| C2 | Slices and non-consuming iteration | Queued: invalidation rules and library interfaces built on C1b/C1c |
-| C3 | Remaining adapter ergonomics | Queued: arm blocks, whole-outcome binding and expression adapters |
+| P1 | Stable public contracts | **Next**: require explicit public outcome/payload/origin contracts; preserve private inference; explain how missing outcomes reach callers |
+| P2 | Structured diagnostics | Queued alongside P1: ranges, related locations, structured witnesses and JSON; recover independent errors without cascading or presenting stale hover as current |
+| P3 | Readable path labels and direct dispositions | Queued: preserve label semantics; canonical group layout, selected-history editor feedback, and direct arm exits without throwaway atoms; settle multi-statement arm syntax separately |
+| P4 | Explain, format and contract changes | Queued: bounded history/contributor queries, formatter, public contract snapshots/diffs and internal absorption changes; distinguish structural evidence from feasible inputs |
+| P5 | Real application and maintenance experiments | Begin alongside P3/P4: a multi-file application with failure, cleanup and retry behavior; measure reader/agent responses to local changes; add numeric, string, generic and loop capabilities as requirements emerge |
+| P6 | Faults and activation boundaries | Design before async: explicit invariant-failure disposition, transitive fault visibility, resource/isolation semantics; faulting operators and any no-fault annotation remain separate decisions |
+| C1b.3c.2 | Local exclusive-reference collection elements | Deferred pending application evidence: permission transfer, direct reborrowing, dynamic removal splits and carrier invalidation |
+| C1b.3c.3 | Nested and public borrowed-collection contracts | Deferred pending application evidence: element origin schemas, nested carriers, generic/trait boundaries and stored outcomes |
+| C1c | Generic loan propagation and reference state | Deferred pending application evidence: contained loans across generic calls, assignments and adapters; rebinding/reborrowing |
+| C2 | Slices and non-consuming iteration | Deferred pending application evidence: invalidation rules and library interfaces built on C1b/C1c |
+| C3 | Remaining adapter ergonomics | Direct arm dispositions move to P3; multi-statement arms, whole-outcome binding and expression adapters remain design work |
 | D1 | Explicit runtime polymorphism | Queued: erasure rules, borrowed/owned storage, opaque graph boundaries |
 | D2 | Stateful protocols and effect contracts | Queued: sequence obligations, justified algebraic laws, groundwork for tasks |
-| E1 | Async reference execution | Queued: activation identities, deterministic scheduling, task ownership, suspension, cancellation/cleanup |
+| E1 | Async reference execution | After P3/P6 and activation-frame work: activation identities, deterministic scheduling, task ownership, suspension, cancellation/cleanup |
 | E2 | Native coroutine lowering | Queued: pinned LLVM experiment, frame lifetime rules and schedule-based differential tests |
-| T1 | Stronger source transformations | Deferred behind A/B: extraction correspondence, continuation cuts, source-level lift and editor actions |
-| R1 | Mathematical foundations | Ongoing research: preservation judgments, richer protocol abstractions, infinite/causal behavior, mechanization |
+| T1 | Stronger source transformations | Hold current scope during P1–P5: extraction correspondence, continuation cuts, source-level lift and editor actions |
+| R1 | Mathematical foundations | Maintain existing evidence; defer extensions during P1–P5: preservation judgments, richer protocol abstractions, infinite/causal behavior, mechanization |
 
 Delivered baseline: v0.1 profile plus syntax/ownership/reference/collection/outcome
 checkpoints through 0.13; checked expansion certificates (0.14), structural protocol
 analysis (0.15), and rechecked tail extraction (0.16). These remain maintained.
 Completion evidence is recorded in [conformance](conformance.md). Every implementation
 checkpoint updates this queue, reference, examples and applicable editor support.
+
+## Review response and path labels
+
+The design review motivates a change in sequencing, not removal of the implemented
+ownership model. Maintain compiler 0.43's reference features and correctness checks;
+reconsider further expansion using application evidence. One application that does
+not store references is not sufficient evidence to remove the feature. Keep the
+ordinary ownership guide approachable and separate advanced stored-origin material.
+Existing expansion certificates, protocol analysis and extraction remain maintained.
+
+`[path]:` remains a fundamental language label selecting subsequent statements,
+not a body requiring braces. A selector may describe overlapping histories rather
+than a branch in a nested tree. Preserve the current rule that the label applies
+until the next label or existing enclosing boundary; use `[entry]:` to return to the
+enclosing entry selection. Implicit entry at the start of a body remains supported.
+Do not silently reinterpret existing trailing statements as entry-selected work.
+
+The readability response should make label ownership visible: canonical layout
+with labels at one indentation level and their statements indented beneath them;
+editor feedback for the selected history at the cursor; and a possible lint for
+indentation that visually contradicts the parsed group. Formatting does not prove
+that a selection matches the author's intent. Indentation remains presentation,
+not a new semantic delimiter. Lint details and editor presentation need evaluation.
+The existing scoped `over &:` construct retains its distinct lifetime purpose.
+
+Direct arm termination, such as `missing => exit absent`, removes names for histories
+that immediately finish. It does not require replacing `[path]:` labels with braces.
+Multi-statement arm bodies and implicit qualified atom naming are separate syntax
+questions; neither is adopted by this roadmap revision.
+
+Public contract enforcement and contract diffs must complement the contributor view:
+a new internal failure absorbed into an existing `failed` outcome may leave the
+public signature unchanged. Diagnostics should expose the origin and propagation
+chain instead of treating compatible forwarding itself as an unacknowledged outcome.
+
+Start repeated-decision correlation narrowly with immutable Boolean bindings,
+preserving separate site provenance and respecting selected domains and loop
+iterations. Borrowed-sum correlation requires additional alias/mutation analysis.
+Scenario generation and history rendering must be bounded: symbolic compression
+does not remove exponential enumeration, loop histories can be unbounded, and
+structural independence supplies no statistical independence assumption.
+
+The application work measures actual maintenance: introducing a leaf outcome,
+changing cleanup, adding retries and moving code across modules. Use those changes
+to evaluate whether humans and agents find origins and consequences without altering
+unrelated policy. A line-count target is not the success criterion. General loops,
+explicit-contract recursion and activation frames should be prioritized when the
+application needs them, accounting for native storage and analysis boundaries.
 
 ## Decisions carried forward
 
@@ -142,8 +197,8 @@ checkpoint updates this queue, reference, examples and applicable editor support
 - Calls use parentheses; payload construction and matching use braces. Decisions
   use `delta operation(...) { ... }`. Selected work retains `[path]:`.
 - `exits auto` infers a closed, checked exit contract. It does not weaken exhaustive
-  handling, coverage, or ownership. Exported contracts should be explicit once
-  export/module boundaries exist.
+  handling, coverage, or ownership. P1 will enforce explicit public contracts;
+  compiler 0.43 still accepts public inference. Private inference remains supported.
 - Pure single-value operations should work in expressions. A single exit alone
   does not establish purity.
 - Adopt Rust-style ownership foundations: Copy values, moves for owning values,
