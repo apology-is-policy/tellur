@@ -1464,3 +1464,19 @@ fn aggregate_trait_hovers_and_unsaved_contract_diagnostics() {
     f.change(source, 3);
     assert_eq!(f.diagnostics(), json!([]));
 }
+
+#[test]
+fn borrowed_collection_hovers_and_unsaved_owner_conflicts() {
+    let mut f = Fixture::new();
+    let source = include_str!("fixtures/borrowed_collections.tellur");
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    auto_hover(&f, source, "auto word", "ref string word");
+    f.change(
+        &source.replace("emit(word)", "first = \"early\"; emit(word)"),
+        2,
+    );
+    assert_eq!(f.diagnostics()[0]["code"], "E_LOAN");
+    f.change(source, 3);
+    assert_eq!(f.diagnostics(), json!([]));
+}

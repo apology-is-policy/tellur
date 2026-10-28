@@ -1,8 +1,8 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.42.0 -->
+<!-- tellur-reference-version: 0.43.0 -->
 
-This manual describes **compiler 0.42.0**, including the current ownership model,
+This manual describes **compiler 0.43.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -895,8 +895,8 @@ Local storage, grouped results, and grouped control inputs are supported. Record
 containing shared or exclusive reference fields may also be borrowed as whole
 records. Shared carrier access grants reads; exclusive carrier access can grant
 exclusive reborrows of exclusive fields. Reference-bearing records can be local
-variant/outcome payloads, including capture and adapters. Borrowed collection
-elements and reference-bearing loop parameters remain unsupported.
+variant/outcome payloads, including capture and adapters. Collections containing such records and reference-bearing loop parameters remain
+unsupported; local direct shared-reference elements are described below.
 Reference-bearing storage cannot yet be rebound or assigned, and disjoint definitions
 cannot merge into one record binding. Owned fields can be assigned normally.
 These remaining boundaries are diagnosed rather than losing contained-loan information.
@@ -957,7 +957,7 @@ variant or record. Independent exclusive references keep their own last uses.
 Variants, builtin options and completed outcomes support **local tagged
 storage**. Grouped source variants, grouped named outcomes, and options with complete
 inner schemas additionally cross owned and borrowed-input control boundaries as
-described below. Reference-bearing collection elements, assignment/rebinding and
+described below. Exclusive/nested collection elements, assignment/rebinding and
 reference-bearing loop parameters remain gated. Loop-local nested borrowed
 values are recreated on each iteration. An unproduced borrowed exit still
 needs an explicit origin when the body supplies no inference evidence.
@@ -1121,7 +1121,7 @@ reference-bearing result with no produced leaf needs explicit bracket bindings.
 
 These schemas compose through finite generic record/variant/outcome/option nesting,
 imports, capture, forwarding, borrowed sum inputs and certified expansion.
-Anonymous producer-outcome schemas, reference-bearing collection elements,
+Anonymous producer-outcome schemas, exclusive/nested collection elements,
 rebinding and borrowed loop state remain unsupported. Trait signatures support grouped named contracts and aggregate results with explicit
 origin bindings; see [trait origin contracts](#aggregate-trait-origin-contracts).
 
@@ -1213,7 +1213,7 @@ Returning a selected reference into ordinary payload storage uses `from input`;
 returning a reborrowed external reference uses the corresponding contained group.
 Returning a reference to an entire reference-bearing aggregate preserves both its
 storage and contained-source dependencies, as described below.
-Reference rebinding, stored references to references, and reference-bearing
+Reference rebinding, stored references to references, and exclusive/nested
 collection elements remain separate checkpoints.
 
 See [sum_carriers.tellur](../playground/sum_carriers.tellur) for a named outcome
@@ -1477,8 +1477,8 @@ subobject. Multiple exclusive results may share that anchor when their construct
 establishes disjoint access. Inferred projections retain their existing precision.
 Origin groups describe dependencies; they do not manufacture access permissions.
 
-Borrowed-record trait results require explicit origin mappings. Borrowed collection
-elements remain unsupported.
+Borrowed-record trait results require explicit origin mappings. Local shared-reference collection elements are supported; exclusive elements and
+public collection-origin contracts remain separate stages.
 Local captured borrowed outcomes are supported. See [origin groups in depth](precise-origins.md)
 and [the runnable example](../playground/origin_groups.tellur).
 
@@ -1735,7 +1735,7 @@ take owned/Copy values, not references. Stable local aliases can still be erased
 lowering. The current address storage supports the sequential, nonrecursive language;
 concurrent invocations will require separate coroutine activation storage.
 
-Remaining restrictions include abstract origin-shape bounds, reference-bearing
+Remaining restrictions include abstract origin-shape bounds, exclusive/nested
 collection elements, reference rebinding, reference loop parameters and references
 to references. Local reference-bearing records and nested tagged values are supported. Reference binding names must be unique within a lexical scope,
 including declarations on disjoint paths. These limitations are diagnosed; this is not the full Rust
@@ -1813,8 +1813,8 @@ Known schemas may contain associated payload types, such as `text_view<item>` wi
 a declared reference field. An opaque associated type does not itself expose an
 origin schema: `type item;` alone cannot promise that `item` contains a group `'a`.
 Origin-shape bounds for associated and generic types are future work. This release
-does not add runtime dispatch, reference type arguments, borrowed collection elements
-or reference rebinding.
+does not add runtime dispatch, general reference type arguments, public borrowed-collection
+contracts or reference rebinding.
 
 Try [aggregate_traits.tellur](../playground/aggregate_traits.tellur) for a complete
 nested, exclusive example with an associated type, named completion, generic helper
@@ -1865,6 +1865,10 @@ use `delta` and require every listed outcome to be handled:
 | `map_take` | —; consumes map | `item { k key, v value, map<k, v> rest }`, `empty` |
 | `array_into_vector` | —; consumes array | `converted { vector<t> values }` |
 
+For direct shared-reference elements (`t = ref u`), both `_get` and `_get_mut`
+return `ref u`, rather than adding another reference layer. See the local borrowed
+collection section below.
+
 `vector_pop` removes the last element; `vector_take` and `vector_remove(..., 0)`
 remove the first. `map_take` removes the smallest key. `map_insert` retains the
 existing key when replacing an equal key and returns the previous value. Replacement
@@ -1885,12 +1889,13 @@ indexing syntax with an implicit panic.
 [extended]: exit done { words };
 ```
 
-Borrowed elements conservatively borrow the **whole collection**, even for a constant
+References into owned elements conservatively borrow the **whole collection**, even for a constant
 index. Two exclusive element borrows are therefore rejected while both are live.
 Mutating, removing, inserting or moving the collection requires existing conflicting
 borrows to have ended. Shared element borrows can coexist. Helpers can return element
 borrows derived from their input references; hover describes the source as
-`values[*]`. Nested borrowed collections follow the same rules.
+`values[*]`. Borrowing through nested collections of owned values follows the same rules.
+Collections that store shared references use the direct-reference rules below.
 
 A collection containing resources is one sealed completion obligation. Removing an
 element transfers its obligation to the result; the remaining collection still needs
@@ -1906,9 +1911,81 @@ are linear in entry count. Vector removal at the front is linear too; consuming 
 loops can consequently be quadratic. These are reference-implementation costs, not
 promised permanent complexity. Allocation exhaustion is a host failure, not a
 recoverable Tellur outcome; length is limited to u32. Borrowed slices, iterators, custom
-key ordering, collection literals with inferred element types, and collections that
-store references remain future work. See `playground/collections.tellur` for a complete
+key ordering, collection literals with inferred element types, exclusive-reference
+elements and public collection-origin contracts remain future work. See `playground/collections.tellur` for a complete
 runnable example.
+
+### Local collections of shared references
+
+Since 0.43, local `array<ref t, n>`, `vector<ref t>` and `map<key, ref t>` values
+can retain references to external owners. The referent type `t` must have an owning
+layout without stored references. Map keys remain `bool`, `u32` or `string`.
+
+<!-- tellur:check -->
+```tellur
+control main() exits done {
+    mutable string owner = "hello";
+    mutable vector<ref string> views = [borrow owner];
+    delta vector_get(borrow views, 0) {
+        found { auto text } => found,
+        out_of_bounds => missing
+    }
+    [found]: drop(views); emit(text);
+    [missing]: drop(views);
+    [entry]: owner = "released"; exit done;
+}
+```
+
+`text` has type `ref string`. Lookup copies the stored shared reference; it does not
+borrow the collection's allocation or copy the string. It can therefore survive
+removal, growth or dropping the collection, provided its external owner remains live.
+`_get_mut` still requires exclusive collection access but returns the same shared
+reference: it grants no permission to change the referent or rebind the stored
+reference. Use `_replace` or `map_insert` to replace an entry explicitly.
+
+Insertion retains the supplied source on successful outcomes. Replacement returns
+the old reference; an out-of-bounds replacement returns the supplied reference.
+Removal/pop transfer the returned reference's dependencies. `vector_take`, `map_take`
+and `array_into_vector` transfer dependencies to their returned collections as well.
+Shared-reference arrays are Copy. Vectors/maps still move; explicit cloning copies
+the reference values and gives the clone its own source retainers.
+
+Indices and keys currently use a conservative union of possible sources, including
+constant indices. A removed reference may retain every candidate source, and a
+remaining collection retains its previous candidates until its last use or explicit
+`drop`. The `empty` outcome of `vector_pop` proves that collection has no elements
+and releases its retainers on that branch. Other surviving copies or returned
+references keep their own dependencies.
+
+<!-- tellur:reject E_LOAN -->
+```tellur
+control main() exits done {
+    mutable string owner = "hello";
+    mutable vector<ref string> views = [borrow owner];
+    delta vector_pop(borrow mutable views) {
+        item { auto text } => item,
+        empty => empty
+    }
+    [item]: emit(text); owner = "too soon";
+    [item]: emit(u32_text(vector_length(borrow views)));
+    [entry]: exit done;
+}
+```
+
+This is deliberately conservative even though a human can see the one-element
+vector became empty. Dropping `views` before changing `owner` makes that branch valid.
+Insertion cannot retain an owner from an inner scope in an outer collection.
+Loop-local collections work; mutating an outer borrowed collection inside a loop
+awaits loop origin state.
+
+This stage supports direct local collection values and local aliases. Exclusive
+reference elements, reference-bearing aggregate elements, collections nested inside
+other storage/outcomes, and collection parameters/results need subsequent origin
+and permission contracts. A control may use a local collection to return a selected
+reference with an ordinary `from input` contract. Generic bodies can build local
+`vector<ref t>` values without admitting reference type arguments to user generics.
+
+Try [borrowed_collections.tellur](../playground/borrowed_collections.tellur).
 
 ## Must-complete resources
 
@@ -2297,7 +2374,8 @@ bindings/contracts. It does not yet provide general expression or call-site type
 
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
-described here. Borrowed slices, borrowed collection elements and async tasks remain planned; they are not executable features of 0.42.0.
+described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
+and async tasks remain planned; they are not executable features of 0.43.0.
 ## Compare supplied scenarios
 
 ```sh

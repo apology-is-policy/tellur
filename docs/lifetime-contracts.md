@@ -2,7 +2,7 @@
 
 The user accepted parameter-based `from input` origins on 26 October 2026.
 Compiler 0.25 implements C1a: declared reference results, borrowed trait contracts,
-implementation conformance and abstract generic witnesses. Compiler 0.27 delivers local struct storage (C1b.1), and 0.29 adds grouped struct results (C1b.2a) and field-sensitive last use. Whole-record inputs and contained reborrowing arrived in 0.30–0.31; 0.32 adds checked opaque splits. Local borrowed sums arrived in 0.33, public sum schemas in 0.35/0.37, and whole-sum borrowed inputs in 0.38. Direct whole-carrier reference results arrived in 0.39; local aggregate/captured storage follows in 0.40. Public contracts for containers of those references follow in 0.41; aggregate trait contracts follow in 0.42. Borrowed collection elements remain ahead. See [precise origins](precise-origins.md). Examples use the reference words introduced in 0.26. Existing direct-control results may still infer origins from their bodies.
+implementation conformance and abstract generic witnesses. Compiler 0.27 delivers local struct storage (C1b.1), and 0.29 adds grouped struct results (C1b.2a) and field-sensitive last use. Whole-record inputs and contained reborrowing arrived in 0.30–0.31; 0.32 adds checked opaque splits. Local borrowed sums arrived in 0.33, public sum schemas in 0.35/0.37, and whole-sum borrowed inputs in 0.38. Direct whole-carrier reference results arrived in 0.39; local aggregate/captured storage follows in 0.40. Public contracts for containers of those references follow in 0.41; aggregate trait contracts follow in 0.42. Local shared-reference collection elements follow in 0.43; exclusive elements and public collection contracts remain ahead. See [precise origins](precise-origins.md). Examples use the reference words introduced in 0.26. Existing direct-control results may still infer origins from their bodies.
 
 ## Accepted surface
 
@@ -139,6 +139,6 @@ retain storage guards where needed. The independent IR verifier checks every lay
 See [the reference](language-reference.md#public-nested-reference-contracts) and
 [the example](../playground/public_carriers.tellur).
 
-Aggregate trait origin contracts are the next checkpoint. Reference-bearing
-collections, abstract generic origin-shape bounds, reference rebinding and loop state
-remain separate work.
+Aggregate trait origin contracts arrived in 0.42 and local shared-reference
+collections in 0.43. Exclusive/nested elements, public collection schemas, abstract
+generic origin-shape bounds, reference rebinding and loop state remain separate work.

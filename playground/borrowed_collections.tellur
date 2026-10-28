@@ -1,0 +1,17 @@
+// References are copied into the collection; the strings remain owned here.
+control main() exits done {
+    mutable string first = "first";
+    mutable string second = "second";
+    mutable vector<ref string> words = [borrow first];
+    vector_push(borrow mutable words, borrow second);
+    delta vector_get(borrow words, 0) {
+        found { auto word } => found,
+        out_of_bounds => missing
+    }
+    // The lookup returns ref string directly. The reference can outlive the vector.
+    [found]: drop(words); emit(word);
+    [missing]: drop(words);
+    [entry]: first = "first released"; second = "second released";
+    emit(borrow first); emit(borrow second);
+    exit done;
+}

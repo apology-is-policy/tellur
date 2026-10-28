@@ -430,6 +430,53 @@ impl Checker<'_> {
                 loans: contents,
             });
         }
+        if let Some(c) = crate::collection_support::Collection::parse(expected) {
+            let args = match e {
+                syntax::Expr::List(args)
+                    if !matches!(c, crate::collection_support::Collection::Map(..)) =>
+                {
+                    args
+                }
+                syntax::Expr::Construct(name, args)
+                    if name == "map"
+                        && args.is_empty()
+                        && matches!(c, crate::collection_support::Collection::Map(..)) =>
+                {
+                    args
+                }
+                _ => {
+                    return Err(self.error(
+                        "E_COLLECTION",
+                        span,
+                        "borrowed collections use a typed list or map {} initializer",
+                    ));
+                }
+            };
+            c.fields(args.len()).ok_or_else(|| {
+                self.error(
+                    "E_ARITY",
+                    span,
+                    "array literal length does not match its type",
+                )
+            })?;
+            let mut values = vec![];
+            let mut loans = vec![];
+            for arg in args {
+                let value = self.stored_value(arg, c.element(), domain, span, true)?;
+                values.push(value.expression);
+                loans.extend(
+                    value
+                        .loans
+                        .into_iter()
+                        .map(|(_, id)| (vec![crate::collections::ELEMENT], id)),
+                );
+            }
+            return Ok(StoredValue {
+                expression: Expr::Construct(expected.into(), c.name().into(), values),
+                ty: expected.into(),
+                loans,
+            });
+        }
         if self.manifest.outcomes(expected).is_some() {
             return self.construct_sum(e, expected, domain, span);
         }
@@ -1170,7 +1217,8 @@ impl Checker<'_> {
             target.via = Some(loan.id);
             target.carriers.extend(carrier.carriers.iter().copied());
             target.carriers.extend(carrier.via);
-            self.check_loans(&target, domain, mutable && loan.mutable, span)?;
+            let needed = self.bdd.and(domain, loan.defined);
+            self.check_loans(&target, needed, mutable && loan.mutable, span)?;
         }
         Ok(())
     }

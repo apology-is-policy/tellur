@@ -6,6 +6,7 @@ use crate::{
     syntax::{self, Item, Mask, Statement},
 };
 use std::collections::{BTreeMap, BTreeSet};
+mod collection_loans;
 mod public;
 mod stored;
 mod sums;
@@ -2527,7 +2528,33 @@ impl Checker<'_> {
         {
             return Err(self.error("E_SITE", span, format!("duplicate decision site `{site}`")));
         }
+        let collection = self.prepare_collection_loans(operand, domain, span)?;
         let mut return_loans = BTreeMap::new();
+        if let Some(plan) = &collection {
+            for outcome in &plan.outcomes {
+                for (index, field) in outcome.fields.iter().enumerate() {
+                    if manifest::reference_inner(&field.ty).is_some() {
+                        let loans = plan.result_loans(&outcome.name);
+                        let mut origins = vec![];
+                        let mut parents = vec![];
+                        for loan in loans {
+                            for origin in &loan.origins {
+                                if !origins.contains(origin) {
+                                    origins.push(origin.clone());
+                                }
+                            }
+                            for id in loan.parents.iter().copied().chain([loan.id]) {
+                                if !parents.contains(&id) {
+                                    parents.push(id);
+                                }
+                            }
+                        }
+                        return_loans
+                            .insert((outcome.name.clone(), index, vec![]), (origins, parents));
+                    }
+                }
+            }
+        }
         let mut borrowed_contents = vec![];
         // A nested tag cannot be projected until its own delta runs. Carry its
         // checked loan intact, rebasing only the payload's storage holder.
@@ -2810,6 +2837,9 @@ impl Checker<'_> {
                 .insert(arm.atom.clone(), (Guard::Atom(atom), selected));
             self.result.atoms.insert(atom, arm.atom.clone());
             self.atom_formulas.insert(atom, selected);
+            if let Some(plan) = &collection {
+                self.update_collection_loans(plan, &arm.outcome, selected);
+            }
             let mut slots = vec![];
             for (field_index, (binding, field)) in
                 arm.bindings.iter().zip(&outcome.fields).enumerate()
@@ -2922,6 +2952,15 @@ impl Checker<'_> {
                         ));
                     }
                     let root = self.define(&binding.name, &field.ty, selected, span)?;
+                    if let Some(plan) = &collection
+                        && crate::collection_support::Collection::parse(&field.ty).is_some()
+                    {
+                        self.attach_collection_loans(
+                            root,
+                            plan.result_loans(&arm.outcome),
+                            selected,
+                        );
+                    }
                     for (leaf, loan) in &nested_loans {
                         if leaf.outcome == arm.outcome && leaf.payload == field_index {
                             let active = self.bdd.and(selected, loan.active);
@@ -3098,18 +3137,17 @@ impl Checker<'_> {
                     let slot = &self.result.slots[&h.root];
                     let mut name = slot.name.clone();
                     let mut ty = if h.indirect {
-                        manifest::reference_inner(&slot.ty).unwrap().1
+                        manifest::reference_inner(&slot.ty).unwrap().1.to_owned()
                     } else {
-                        slot.ty.as_str()
+                        slot.ty.clone()
                     };
                     for index in &h.fields {
-                        let field = self
+                        let (suffix, inner) = self
                             .manifest
-                            .field_at(ty, *index)
+                            .borrow_field(&ty, *index)
                             .expect("stored reference field");
-                        name.push('.');
-                        name.push_str(&field.name);
-                        ty = &field.ty;
+                        name.push_str(&suffix);
+                        ty = inner;
                     }
                     name
                 } else {

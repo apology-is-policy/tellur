@@ -1,6 +1,6 @@
 # Precise origins for stored references
 
-28 October 2026. Compiler **0.42** implements grouped declarations and results,
+28 October 2026. Compiler **0.43** implements grouped declarations and results,
 whole-record inputs, contained-origin selectors, field-sensitive last use, and
 shared/exclusive reborrowing of contained exclusive references, and checked opaque
 owner splits. Local borrowed sums arrived in 0.33 and nested local storage in 0.34;
@@ -8,7 +8,8 @@ grouped source variants cross owned call boundaries in 0.35. Named-outcome/optio
 schemas arrived in 0.37; whole-sum borrowed inputs and payload reborrows in 0.38.
 Direct whole-carrier reference results arrived in 0.39, and local nested storage of
 those references in 0.40. Public contracts for these nested layers arrived in 0.41;
-aggregate trait contracts follow in 0.42; borrowed collection elements remain planned.
+aggregate trait contracts follow in 0.42 and local shared-reference collections in
+0.43. Exclusive/nested elements and public collection schemas remain planned.
 
 ## Executable surface
 
@@ -335,6 +336,17 @@ retain storage guards where needed. The independent IR verifier checks every lay
 See [the reference](language-reference.md#public-nested-reference-contracts) and
 [the example](../playground/public_carriers.tellur).
 
-Aggregate trait origin contracts are the next checkpoint. Reference-bearing
-collections, abstract generic origin-shape bounds, reference rebinding and loop state
-remain separate work.
+Aggregate trait origin contracts arrived in 0.42; local shared-reference collections
+follow in 0.43 below. Exclusive/nested elements, public collection schemas, abstract
+generic origin-shape bounds, reference rebinding and loop state remain separate work.
+
+
+## Local shared-reference collections — delivered in 0.43
+
+Collection holders retain a conservative union of element sources under a wildcard
+path. Successful insertions add retainers on their selected paths; returned references
+and consuming conversion/removal results keep independent dependencies. Lookup copies
+the stored shared reference directly, so its lifetime depends on the external owner.
+A proven `vector_pop` empty branch releases that holder's sources. Constant index/key
+precision, exclusive elements, nested layouts and public schemas remain future stages.
+See [the reference](language-reference.md#local-collections-of-shared-references).

@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.42.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.43.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -1006,3 +1006,51 @@ Logs: `work/tellur-0.42-tests.log`, `tellur-0.42-tests-remaining.log`,
 `tellur-0.42-grammar.log`, `tellur-0.42-reference.log`, `tellur-0.42-examples.log`,
 `tellur-0.42-editor.log`, `tellur-0.42-release.log`, `tellur-0.42-package.log`,
 `tellur-0.42-install.log` and `tellur-0.42-installed-integrity.log`.
+
+
+## 0.43 — local collections of shared references
+
+28 October 2026. C1b.3c.1 adds local arrays, vectors and maps containing direct
+shared references to owning values. Lookup returns the stored reference directly,
+including through mutable collection access. It can survive collection mutation or
+destruction while its external source remains protected. Copies and clones retain
+independent source dependencies. Insertions track successful outcome domains;
+replacement, removal, consuming take and conversion preserve returned dependencies.
+Dynamic indices and keys use a conservative union of sources. Only an explicit
+empty pop proof releases all of that collection's retainers before its last use.
+
+The checker rejects escaping inner-scope owners and outer collection mutation in
+loops. Exclusive-reference elements, nested reference-bearing elements/storage,
+public collection boundaries and stored collection outcomes await later checkpoints.
+
+`tests/borrowed_collections.rs` covers arrays, vectors, maps, alias access, independent
+retainers, branch-sensitive insertion, source release, empty pop, rejected mutation
+and escape, generic local bodies, public selected-reference returns and unsupported
+boundaries. Its native comparisons run three programs before/after expansion at
+O0/O2. LSP and actual VS Code tests cover inferred `auto` hover, unsaved owner
+conflicts, repair and native execution. See the
+[reference section](language-reference.md#local-collections-of-shared-references)
+and [borrowed_collections.tellur](../playground/borrowed_collections.tellur).
+
+
+Final verification: all **704 Rust tests** passed in the full regression run,
+including **17** borrowed-collection tests with **12** native comparisons (three
+programs, original/expanded at O0/O2). Clippy passed with warnings denied. All **32**
+Node syntax/configuration tests and the complete real VS Code integration suite
+passed, including the new borrowed-collection milestone. Doc-tests passed (none
+currently defined).
+
+Manual checks accepted **52** complete examples, required **16** diagnostics,
+classified **14** context fragments and resolved **141** local links. The release
+CLI checked all **52** canonical playground/example sources. The 0.43.0 Apple Silicon
+VSIX matches all nine staged payload files and was installed; installed metadata,
+assets, binaries and executable permissions were verified. Canonical and legacy
+local binaries were updated. Source snapshot:
+`work/revision-backups/tellur-0.43-source.tar.gz` (**265** source files,
+all archived bytes verified).
+
+Logs: `work/tellur-0.43-tests.log`, `tellur-0.43-focused.log`,
+`tellur-0.43-borrowed.log`, `tellur-0.43-clippy.log`, `tellur-0.43-node.log`,
+`tellur-0.43-reference.log`, `tellur-0.43-examples.log`, `tellur-0.43-editor.log`,
+`tellur-0.43-build.log`, `tellur-0.43-package.log`, `tellur-0.43-install.log` and
+`tellur-0.43-installed-integrity.log`.

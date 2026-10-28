@@ -623,7 +623,7 @@ impl Manifest {
                     }
                 };
                 for f in &fields {
-                    self.check_local_storage(&f.ty)?;
+                    self.check_storage(&f.ty, true)?;
                 }
                 dependencies.insert(
                     ty.name().into(),
@@ -846,27 +846,50 @@ impl Manifest {
         }
         format(self, ty, 0, &mut 512)
     }
-    /// Finite local records and tagged values may nest borrowed payloads.
-    /// Collection elements and public call boundaries keep their stricter gates.
+    /// Local collections accept direct shared references. Nesting them in other
+    /// storage and public boundaries requires collection origin schemas.
     pub(crate) fn check_local_storage(&self, name: &str) -> Result<()> {
-        fn visit(m: &Manifest, name: &str, seen: &mut BTreeSet<String>) -> Result<()> {
+        self.check_storage(name, false)
+    }
+    fn check_storage(&self, name: &str, nested: bool) -> Result<()> {
+        fn visit(
+            m: &Manifest,
+            name: &str,
+            seen: &mut BTreeSet<String>,
+            nested: bool,
+        ) -> Result<()> {
             if let Some((_, inner)) = reference_inner(name) {
                 if reference_inner(inner).is_some() {
                     return m.check_type(inner);
                 }
-                return visit(m, inner, seen);
+                return visit(m, inner, seen, nested);
+            }
+            if let Some(c) = crate::collection_support::Collection::parse(name)
+                && m.contains_references(name)
+            {
+                if nested || !c.shared_reference_element() {
+                    return Err(error(
+                        "borrowed collections currently require local, direct shared-reference elements; nested and exclusive elements need collection origin contracts",
+                    ));
+                }
+                if let crate::collection_support::Collection::Map(key, _) = &c
+                    && !["Bool", "U32", "String"].contains(&key.as_str())
+                {
+                    return Err(error("map keys must be bool, u32 or string"));
+                }
+                return m.check_type(reference_inner(c.element()).unwrap().1);
             }
             if !seen.insert(name.into()) {
                 return Ok(()); // The layout validator reports recursive types.
             }
             if let Some(TypeDef::Record { fields, .. }) = m.type_def(name) {
                 for field in fields {
-                    visit(m, &field.ty, seen)?;
+                    visit(m, &field.ty, seen, true)?;
                 }
             } else if let Some(outcomes) = m.outcomes(name) {
                 for outcome in outcomes {
                     for field in outcome.fields {
-                        visit(m, &field.ty, seen)?;
+                        visit(m, &field.ty, seen, true)?;
                     }
                 }
             } else {
@@ -874,7 +897,7 @@ impl Manifest {
             }
             Ok(())
         }
-        visit(self, name, &mut BTreeSet::new())
+        visit(self, name, &mut BTreeSet::new(), nested)
     }
     pub(crate) fn contains_exclusive_references(&self, ty: &str) -> bool {
         fn visit(m: &Manifest, ty: &str, seen: &mut BTreeSet<String>) -> bool {

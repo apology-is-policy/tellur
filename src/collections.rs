@@ -96,7 +96,11 @@ pub fn contract(name: &str, ty: &str) -> Option<Contract> {
             vec![
                 o(
                     "found",
-                    vec![format!("&{}{t}", if mutable { "mutable " } else { "" })],
+                    vec![if c.shared_reference_element() {
+                        t.into()
+                    } else {
+                        format!("&{}{t}", if mutable { "mutable " } else { "" })
+                    }],
                 ),
                 o(
                     if matches!(c, Collection::Map(..)) {
@@ -165,6 +169,10 @@ pub fn contract(name: &str, ty: &str) -> Option<Contract> {
         "into_vector" => vec![o("converted", vec![format!("vector<{t}>")])],
         _ => return None,
     };
+    if c.shared_reference_element() {
+        // Local element dependencies are instantiated from the holder's loans.
+        borrow_returns.clear();
+    }
     Some(Contract {
         parameters,
         outcomes,

@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-0.42.0-darwin-arm64.vsix` using **Extensions:
+1. Install the supplied `tellur-language-0.43.0-darwin-arm64.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -91,7 +91,7 @@ migration notes in `docs/language-reference.md` in the compiler checkout.
 
 `tellurLanguage.serverPath` overrides the server executable. Otherwise the extension
 uses its bundled server, then `target/debug/tellur-lsp` from a development checkout,
-then `tellur-lsp` on PATH. The packaged server matches the 0.42.0 compiler; rebuild or
+then `tellur-lsp` on PATH. The packaged server matches the 0.43.0 compiler; rebuild or
 override it when experimenting with compiler changes.
 
 For another platform, build the Rust server and set the executable path. The source
@@ -427,3 +427,13 @@ associated type, a named completion contract, generic dispatch and capture. Hove
 `auto job` to see `edit_job<string>`; editing the implementation's origin mappings
 reports conformance diagnostics immediately. The compiler and language server in
 this package both support these contracts.
+
+
+## Local shared-reference collections in 0.43.0
+
+Open `playground/borrowed_collections.tellur`. Arrays, vectors and maps can store
+direct shared references locally, and lookups expose the referent directly. Hover
+`auto word` to see `ref string`; editing an owner while the reference remains live
+reports a loan conflict. Removal and replacement preserve possible source dependencies.
+Exclusive elements, nested borrowed collections and public collection-origin contracts
+remain later stages.

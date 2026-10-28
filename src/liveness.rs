@@ -107,6 +107,8 @@ fn path(e: &Expr) -> Option<String> {
 }
 pub(crate) fn overlaps(a: &str, b: &str) -> bool {
     a == b
-        || a.strip_prefix(b).is_some_and(|s| s.starts_with('.'))
-        || b.strip_prefix(a).is_some_and(|s| s.starts_with('.'))
+        || a.strip_prefix(b)
+            .is_some_and(|s| s.starts_with('.') || s.starts_with('['))
+        || b.strip_prefix(a)
+            .is_some_and(|s| s.starts_with('.') || s.starts_with('['))
 }

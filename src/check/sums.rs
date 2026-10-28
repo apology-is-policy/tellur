@@ -118,6 +118,16 @@ impl Checker<'_> {
             let (e, t) = self.expr_expected(arg, domain, true, span, ty.as_deref())?;
             return Ok((e, t, vec![]));
         };
+        let inner = manifest::reference_inner(&ty).map_or(ty.as_str(), |(_, inner)| inner);
+        if crate::collection_support::Collection::parse(inner).is_some()
+            && self.manifest.contains_references(inner)
+        {
+            return Err(self.error(
+                "E_UNSUPPORTED",
+                span,
+                "borrowed collections in stored outcomes require collection origin contracts",
+            ));
+        }
         self.manifest.check_local_storage(&ty)?;
         let value = self.stored_value(arg, &ty, domain, span, true)?;
         let mut loans = vec![];

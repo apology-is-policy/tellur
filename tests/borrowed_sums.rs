@@ -165,11 +165,11 @@ fn generic_local_variants_and_scope_release_preserve_origins() {
     );
 }
 #[test]
-fn borrowed_sum_boundaries_and_collection_elements_remain_gated() {
+fn ungrouped_sum_boundaries_and_exclusive_collection_elements_remain_gated() {
     for s in [
         "variant view {found {ref string text},empty} control invalid(view value) exits done {exit done;}",
         "variant view {found {ref string text},empty} control invalid(ref string input) exits ready {view value} {exit ready {found {input}};}",
-        "control main() exits done {string x=\"x\";vector<ref string> values=[borrow x];exit done;}",
+        "control main() exits done {mutable string x=\"x\";vector<ref mutable string> values=[borrow mutable x];exit done;}",
     ] {
         rejects(s, &["E_ORIGIN", "E_MANIFEST", "E_LIFETIME"]);
     }

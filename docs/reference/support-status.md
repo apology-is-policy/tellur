@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.42.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.43.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -35,7 +35,7 @@ The linked regression suites give more detailed acceptance and rejection evidenc
 | Local borrowed sums | References in variants/options/outcomes, capture/adapters, arbitrary finite record/tag nesting | Ungrouped sums can be owned or borrowed locally; public boundaries require complete schemas | [Sum tests](../../tests/borrowed_sums.rs), [nested example](../../playground/nested_borrows.tellur) |
 | Public variant origins | Owned grouped variants cross calls and returns; constructor-guarded origins, contained selectors, nested/generic layouts, capture and forwarding | Direct constructor arguments returning contained borrows remain gated | [Public sum tests](../../tests/public_sums.rs), [example](../../playground/public_variants.tellur) |
 | Named-outcome and option origins | Named schemas and completion bindings, inherited option groups, owned calls/results, contained selectors, generic/module composition | Anonymous outcome schemas remain gated; grouped trait contracts require explicit mappings | [Origin tests](../../tests/outcome_origins.rs), [example](../../playground/outcome_origins.tellur) |
-| Collections | Arrays/vectors/maps, explicit bounds outcomes, resources, borrowed element access | Stored reference-bearing elements, slices and iterators remain queued | [Collection tests](../../tests/collections.rs) |
+| Collections | Arrays/vectors/maps, explicit bounds outcomes, resources, borrowed element access and local shared-reference elements | Exclusive/nested elements, public collection-origin contracts, slices and iterators remain queued | [Collection tests](../../tests/collections.rs) |
 | Borrowed sum carriers | Whole shared/exclusive inputs, active payload reborrows, nested carriers, retained handling obligations | Complete schemas required at public boundaries; local borrows use concrete provenance | [Sum carrier tests](../../tests/sum_carriers.rs) |
 | Carrier reference results | Direct shared/exclusive results, inferred/declared contained origins, storage retention and forwarding | Local capture and aggregate storage work; aggregate trait results require explicit mappings | [Carrier result tests](../../tests/carrier_results.rs), [example](../../playground/carrier_results.tellur) |
 | Stored carrier references | Local recursive dependency trees, capture/adapters, shared retainers, nested/borrowed unpacking and last use | Public schemas map each storage and contained-origin layer; aggregate trait contracts require explicit mappings | [Stored carrier tests](../../tests/stored_carriers.rs), [example](../../playground/stored_carriers.tellur) |
@@ -44,7 +44,9 @@ The linked regression suites give more detailed acceptance and rejection evidenc
 
 “Borrowed element access” means obtaining a reference into an owning collection.
 “Stored reference-bearing elements” means storing references to external owners as
-collection elements. The former works; the latter does not yet. Grouped source variants now work as whole owned parameters and result fields.
+collection elements. Owning-element access and local storage of direct shared
+references are supported. Exclusive and nested element types and public collection
+contracts remain queued. Grouped source variants now work as whole owned parameters and result fields.
 Grouped variants, named outcomes and builtin options also support whole borrowed
 inputs and non-consuming decisions. Direct controls may return selected references
 or references to whole reference-bearing aggregates. The latter can be stored
@@ -70,3 +72,6 @@ for execution order, not a promise that every queued syntax is settled.
 
 Trait origin coverage: [aggregate trait tests](../../tests/aggregate_traits.rs) and
 [the runnable example](../../playground/aggregate_traits.tellur).
+
+Local shared-reference collections: [tests](../../tests/borrowed_collections.rs),
+[example](../../playground/borrowed_collections.tellur).

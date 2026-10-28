@@ -78,6 +78,9 @@ impl Collection {
             Self::Array(t, _) | Self::Vector(t) | Self::Map(_, t) => t,
         }
     }
+    pub fn shared_reference_element(&self) -> bool {
+        self.element().starts_with('&') && !self.element().starts_with("&mutable ")
+    }
     pub fn types(&self) -> Vec<&str> {
         match self {
             Self::Map(k, v) => vec![k, v],
@@ -100,7 +103,7 @@ impl Collection {
         }
     }
 }
-pub trait CollectionValue: Sized {
+pub trait CollectionValue: Sized + Clone {
     fn parts(&self) -> Option<(&str, &str, &[Self])>;
     fn parts_mut(&mut self) -> Option<&mut Vec<Self>>;
     fn construct(ty: String, name: String, fields: Vec<Self>) -> Self;
@@ -163,6 +166,9 @@ pub fn operate<V: CollectionValue>(
                     .filter(|i| *i < fields.len())
             };
             match index {
+                Some(i) if c.shared_reference_element() => {
+                    ("found", vec![Owned(fields[i].clone())])
+                }
                 Some(i) => (
                     "found",
                     vec![Borrow(
