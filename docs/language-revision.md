@@ -61,7 +61,10 @@ Updated after the 28 October design review and the user's clarification that
 take priority over further reference features. Delivered rows and the numbered
 milestones retain the historical feature inventory. Compiler 0.29 delivers source data declarations, file modules, named struct fields, generic data and generic controls with sealed capability bounds, plus concrete and generic trait dispatch with associated types.
 Research proceeds alongside practical checkpoints and does not indefinitely block
-ordinary language usability. No dates or unimplemented syntax are promised.
+ordinary language usability. P1 remains the next compiler checkpoint; the sustained
+application (P5) starts alongside it, with small Rust adapter work (I1) supplying
+concrete library needs. It does not wait for all P2–P4 tooling. No dates or
+unimplemented syntax are promised.
 
 | ID | Checkpoint | Status / completion boundary |
 | --- | --- | --- |
@@ -95,9 +98,10 @@ ordinary language usability. No dates or unimplemented syntax are promised.
 | C1b.3c.1 | Local shared-reference collection elements | **Delivered in 0.43**: arrays/vectors/maps, direct lookup, branch-sensitive insertion, removal/conversion, independent copies, conservative source unions, native/editor coverage |
 | P1 | Stable public contracts | **Next**: require explicit public outcome/payload/origin contracts; preserve private inference; explain how missing outcomes reach callers |
 | P2 | Structured diagnostics | Queued alongside P1: ranges, related locations, structured witnesses and JSON; recover independent errors without cascading or presenting stale hover as current |
+| I1 | Rust library adapters | Early enabling work for P5: generated Rust wrappers, locked Cargo dependencies, explicit Tellur outcomes/ownership and adapter conformance; stable binary ABI and cross-language LTO are later layers |
 | P3 | Readable path labels and direct dispositions | Queued: preserve label semantics with optional braced grouping; canonical layout, selected-history editor feedback, and direct arm exits without throwaway atoms; settle multi-statement arm syntax separately |
 | P4 | Explain, format and contract changes | Queued: bounded history/contributor queries, formatter, public contract snapshots/diffs and internal absorption changes; distinguish structural evidence from feasible inputs |
-| P5 | Real application and maintenance experiments | Begin alongside P3/P4: a multi-file application with failure, cleanup and retry behavior; measure reader/agent responses to local changes; add numeric, string, generic and loop capabilities as requirements emerge |
+| P5 | Sustained application and standard-library foundations | Start alongside P1: a local configuration/key-value service with a CLI first, then a blocking HTTP interface; keep policy in Tellur, add Rust adapters and reusable library operations as needed, and maintain failure/upgrade scenarios |
 | P6 | Faults and activation boundaries | Design before async: explicit invariant-failure disposition, transitive fault visibility, resource/isolation semantics; faulting operators and any no-fault annotation remain separate decisions |
 | C1b.3c.2 | Local exclusive-reference collection elements | Deferred pending application evidence: permission transfer, direct reborrowing, dynamic removal splits and carrier invalidation |
 | C1b.3c.3 | Nested and public borrowed-collection contracts | Deferred pending application evidence: element origin schemas, nested carriers, generic/trait boundaries and stored outcomes |
@@ -142,6 +146,9 @@ introduce a value/lifetime scope; explicit scoping remains a separate operation.
 Omitting braces retains the existing label extent, so removing them is not a
 semantics-preserving edit when trailing statements would change selection. Formatting
 must preserve the chosen extent rather than blindly adding or removing braces.
+The default style remains unbraced labels; use optional braces only where omitting
+them would make the selection extent difficult to understand. A formatter must not
+add them routinely.
 
 The readability response should make label ownership visible: canonical layout
 with labels at one indentation level and their statements indented beneath them;
@@ -174,6 +181,92 @@ to evaluate whether humans and agents find origins and consequences without alte
 unrelated policy. A line-count target is not the success criterion. General loops,
 explicit-contract recursion and activation frames should be prioritized when the
 application needs them, accounting for native storage and analysis boundaries.
+
+## Sustained application and library foundations
+
+Maintain one real application across compiler releases, rather than building a new
+showcase for each feature. The initial working choice is a local configuration and
+key-value service. Start with a CLI over reusable Tellur modules, then expose the
+same operations through a blocking HTTP server bound to loopback. A sequential
+server makes useful progress before Tellur has async. This is planned work; no
+server or general Rust-binding mechanism is implemented in 0.43.
+
+The first useful slice loads persisted settings and supports reading and updating
+keys with validation. Subsequent slices add persistence/reload, request handling,
+explicit shutdown, and eventually concurrent requests and cancellation. Treat
+persistence guarantees precisely: replacement and crash durability are distinct,
+and report uncertainty after partial external effects instead of claiming rollback.
+Do not require a thousand lines or force every language feature into the program.
+
+Keep request validation, domain decisions, retry choices, failure mapping, resource
+completion and orchestration in Tellur. Rust adapters provide filesystem, encoding,
+HTTP and other host mechanisms; they must not hide the application in one large
+Rust primitive. Exercise invalid configuration, missing keys, failed writes,
+occupied ports, client disconnects and cleanup failures. Scripted fault injection
+must complement native integration tests. Maintain the same scenarios and program
+through future releases, including deliberate contract changes to evaluate impact
+reports and reader/agent repairs.
+
+Extract library operations when the application establishes a reusable contract.
+Likely early modules cover text/bytes, filesystem and paths, JSON, clocks and
+network I/O. Prefer existing Rust implementations behind Tellur-facing contracts
+for substantial mechanisms. Library policy and composition can themselves be
+Tellur. Keep experimental modules revisable until repeated use establishes their
+shape; this is not a promise to stabilize a large standard library immediately.
+
+General loops, numeric types, formatting and generic argument inference should
+advance when they unblock these slices. Keep an honest executable baseline while
+adding them; don't wait for complete language tooling before using the language.
+
+## Rust interoperability direction
+
+The immediate goal is source-level reuse through typed Rust adapters built by
+Cargo with the generated Tellur program. The current native pipeline already
+emits Rust and invokes Cargo, but its host adapters and dependency template are
+fixed. I1 must make bindings/dependencies explicit and reproducible rather than
+presenting this as an existing arbitrary-crate import facility.
+
+A binding should connect a Tellur contract to a concrete Rust wrapper: argument
+conversions, owned versus borrowed access, closed outcome mapping, resource
+completion and faults. Prefer a single checked binding description from which
+signatures and glue are generated. Rust checks the wrapper's use of the crate;
+Tellur checks callers against the declared contract. Neither compiler automatically
+proves arbitrary foreign behavior matches every semantic promise. Adapters remain
+an identified trust boundary with conformance and failure-injection tests.
+
+Preserve error meaning. Rust Result and enum alternatives can map to Tellur outcomes,
+but an open error type may require intentional classification and a documented
+residual outcome. Rust's non-exhaustive io::ErrorKind is one concrete example.
+Do not auto-collapse newly encountered errors into an unreviewed generic failure.
+Panics are separate from recoverable outcomes; catch_unwind catches unwinding
+panics, not aborts, and is not a blanket recovery guarantee. Initial bindings should
+favor synchronous concrete APIs, owned data and call-duration borrows; callbacks,
+returned foreign borrows, opaque retained owners and async runtimes require explicit
+lifetime/scheduling integration rather than being silently admitted.
+
+For independent native artifacts or a future direct LLVM backend, introduce a
+versioned C-compatible adapter ABI: concrete scalar/layout rules, explicit buffer
+lengths, opaque handles, matching allocation/release operations, result tags and a
+defined panic/unwind policy. Keep Rust String, Vec, traits and implementation enums
+behind that boundary. A C ABI does not require writing the adapter in C, nor does
+it mandate serialization or copying every buffer; those costs depend on the chosen
+ownership and representation contract.
+
+LLVM IR/bitcode can be linked and optimized across the adapter boundary with a
+compatible toolchain and target. That is an optimization route, not an ABI or
+contract discovery mechanism. Do not promise arbitrary precompiled Rust libraries
+can be imported by decorating symbols: the Rust ABI has no stability guarantee,
+layouts are not a universal wire format, and source generics/traits still need
+Rust compilation. Measure boundary overhead before committing to direct Rust ABI
+coupling or LTO as a prerequisite for library reuse.
+
+Primary references for these constraints:
+
+- [Rust ABI guarantees](https://doc.rust-lang.org/reference/items/external-blocks.html#abi)
+- [Rust type layout](https://doc.rust-lang.org/reference/type-layout.html)
+- [Cross-language LTO and toolchain compatibility](https://doc.rust-lang.org/rustc/linker-plugin-lto.html)
+- [Panic capture limits](https://doc.rust-lang.org/std/panic/fn.catch_unwind.html)
+- [Non-exhaustive I/O errors](https://doc.rust-lang.org/std/io/enum.ErrorKind.html)
 
 ## Decisions carried forward
 
