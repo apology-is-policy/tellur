@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Lexical structure](lexical-structure.md)
 
-This is a reading grammar for the modern compiler 0.46.0 profile, not a replacement
+This is a reading grammar for the modern compiler 0.47.0 profile, not a replacement
 for its type, ownership, origin or coverage rules. It omits legacy spellings and
 parser recovery details. `name`, `integer` and `string_literal` are lexical tokens.
 Quoted text denotes source tokens; `?` means optional, `*` repetition, `+` one or

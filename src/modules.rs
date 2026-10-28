@@ -894,6 +894,12 @@ fn locate(sources: &[SourceFile], mut diagnostic: Diagnostic) -> ModuleError {
     for source in sources {
         for (global, local) in &source.names {
             if global != local {
+                if let Some(crate::DiagnosticWitness::StructuralMayReach { control, .. }) =
+                    diagnostic.witness.as_deref_mut()
+                {
+                    *control =
+                        control.replace(global, &format!("{}::{local}", source.path.display()));
+                }
                 for note in &mut diagnostic.notes {
                     note.message = note
                         .message

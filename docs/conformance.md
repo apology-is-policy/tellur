@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.46.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.47.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -1176,3 +1176,38 @@ Logs: `work/tellur-0.46-tests.log`, `tellur-0.46-focused.log`,
 `tellur-0.46-examples.log`, `tellur-0.46-editor.log`, `tellur-0.46-build.log`,
 `tellur-0.46-package.log`, `tellur-0.46-install.log` and
 `tellur-0.46-installed-integrity.log`.
+
+## 0.47 — JSON checks and structured path witnesses
+
+P2 now provides `tellurc check SOURCE [MANIFEST] --json`: one versioned stdout
+report, source points with explicit coordinate encoding, related notes and typed
+structural witnesses. LSP diagnostics expose the same witness data. Imported
+control names are restored, null locations stay explicit, and driver/manifest
+errors follow the same envelope. Textual diagnostics keep their existing meaning.
+Full expression ranges and independent-error recovery remain queued.
+
+`tests/diagnostics.rs` checks typed selected/entry histories, report counts and
+legacy CLI parity, UTF-8/CRLF coordinates, module names and related source points,
+manifest/IO/usage errors, nested-directory discovery and source symlinks. LSP tests
+check witness updates and absence after unrelated errors. The real extension test
+also checks a report through its bundled compiler.
+
+The full suite passed **752 Rust tests**. After compacting the optional witness
+storage, the final **84** CLI, LSP and contributor tests passed again; Clippy passed
+with warnings denied. All **32** Node tests and the complete real VS Code suite
+passed, including a JSON check with the bundled compiler and the persistent
+settings application's native build/run.
+
+Manual checks accepted **54** examples, required **19** diagnostics, classified
+**14** context fragments and resolved **152** local links. The release compiler
+successfully checked all **55** maintained sources through JSON reports. The
+0.47.0 Apple Silicon VSIX matches its nine staged payloads; installed metadata,
+files and executable permissions were verified. Canonical and compatibility local
+binaries were updated. The **283-file** source snapshot at
+`work/revision-backups/tellur-0.47-source.tar.gz` was byte-verified.
+
+Logs: `work/tellur-0.47-tests.log`, `tellur-0.47-focused.log`,
+`tellur-0.47-focused-final.log`, `tellur-0.47-clippy.log`, `tellur-0.47-node.log`,
+`tellur-0.47-reference.log`, `tellur-0.47-examples.log`, `tellur-0.47-editor.log`,
+`tellur-0.47-build.log`, `tellur-0.47-package.log`, `tellur-0.47-install.log` and
+`tellur-0.47-installed-integrity.log`.

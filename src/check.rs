@@ -189,28 +189,36 @@ impl Checker<'_> {
     fn error(&self, code: &'static str, span: Span, message: impl Into<String>) -> Diagnostic {
         Diagnostic::new(code, span, message)
     }
-    fn witness(&self, f: Formula) -> String {
+    fn witness_paths(&self, f: Formula) -> Vec<String> {
         let assignment = self
             .bdd
             .witness(f)
             .expect("witness is requested only for nonempty domains");
-        let names: Vec<_> = self
-            .atom_formulas
+        self.atom_formulas
             .iter()
             .filter(|(_, f)| self.bdd.evaluate(**f, &assignment))
-            .map(|(id, _)| self.result.atoms[id].as_str())
-            .collect();
-        format!(
-            "structural witness (may reach; not a proven feasible input): {}",
-            if names.is_empty() {
-                "Entry".into()
-            } else {
-                names.join(" & ")
-            }
-        )
+            .map(|(id, _)| self.result.atoms[id].clone())
+            .collect()
     }
     fn fail_domain(&self, code: &'static str, span: Span, message: &str, f: Formula) -> Diagnostic {
-        self.error(code, span, format!("{message}; {}", self.witness(f)))
+        let paths = self.witness_paths(f);
+        let display = if paths.is_empty() {
+            "Entry".into()
+        } else {
+            paths.join(" & ")
+        };
+        let mut diagnostic = self.error(
+            code,
+            span,
+            format!(
+                "{message}; structural witness (may reach; not a proven feasible input): {display}"
+            ),
+        );
+        diagnostic.witness = Some(Box::new(crate::DiagnosticWitness::StructuralMayReach {
+            control: self.result.name.clone(),
+            selected_paths: paths,
+        }));
+        diagnostic
     }
     fn path(&self, name: &str) -> Option<(Guard, Formula)> {
         let name = if name == "entry" { "Entry" } else { name };

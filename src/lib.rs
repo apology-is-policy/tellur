@@ -41,12 +41,22 @@ pub struct DiagnosticNote {
     pub path: Option<std::path::PathBuf>,
     pub message: String,
 }
+/// A satisfying structural history, not evidence of a feasible concrete input.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum DiagnosticWitness {
+    StructuralMayReach {
+        control: String,
+        selected_paths: Vec<String>,
+    },
+}
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Diagnostic {
     pub code: &'static str,
     pub span: Span,
     pub message: String,
     pub notes: Vec<DiagnosticNote>,
+    pub witness: Option<Box<DiagnosticWitness>>,
 }
 impl Diagnostic {
     pub fn new(code: &'static str, span: Span, message: impl Into<String>) -> Self {
@@ -55,6 +65,7 @@ impl Diagnostic {
             span,
             message: message.into(),
             notes: vec![],
+            witness: None,
         }
     }
 }

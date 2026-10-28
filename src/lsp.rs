@@ -63,7 +63,11 @@ pub fn diagnostic_range(text: &str, span: Span) -> Value {
     json!({"start":start,"end":{"line":start["line"],"character":start["character"].as_u64().unwrap_or(0) + width as u64}})
 }
 fn diagnostic(text: &str, error: Diagnostic, severity: u8) -> Value {
-    json!({"range":diagnostic_range(text,error.span),"severity":severity,"code":error.code,"source":"tellur","message":error.message})
+    let mut result = json!({"range":diagnostic_range(text,error.span),"severity":severity,"code":error.code,"source":"tellur","message":error.message});
+    if let Some(witness) = error.witness {
+        result["data"] = json!({"schema":"tellur.diagnostic.v1","witness":witness});
+    }
+    result
 }
 impl Server {
     pub fn initialize(&mut self, params: &Value) {

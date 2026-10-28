@@ -72,8 +72,60 @@ not traced. Calls summarize their result alternatives rather than substituting
 caller argument histories. Unknown indirect writes, calls with exclusive-reference
 parameters and collection operations conservatively forget stored-value lineage
 on the affected histories. Their actual ownership, typing and exhaustiveness
-checks still run normally. Full expression ranges, JSON output and independent-error
-recovery remain future work.
+checks still run normally. Full expression ranges and independent-error recovery
+remain future work.
+
+## Machine-readable checking
+
+Since 0.47, use:
+
+```sh
+./bin/tellurc check playground/count.tellur --json
+./bin/tellurc check main.tellur manifest.json --json
+```
+
+The command writes **one JSON object to stdout**, with no normal progress text,
+and returns OS status 0 for a successful check or 1 for a failed check. This is
+compiler status; executable outcome-to-status mapping is a separate launcher
+policy. The legacy `pathc` command accepts the same option.
+
+| Field | Meaning |
+| --- | --- |
+| `schema` | `tellur.check.v1`; consumers should check this identifier and allow additional fields |
+| `ok` | Whether the check succeeded |
+| `position_encoding` | `one_based_unicode_scalars`; columns count Unicode scalar values, not bytes or UTF-16 units |
+| `diagnostics` | Empty on success; currently one diagnostic on failure |
+| `summary` | Counts `controls` and `generic_definitions` on success; null on failure |
+
+Each diagnostic contains `code`, `message`, `path`, `position`, `notes` and
+`witness`. A position is `{ "line": 2, "column": 7 }`; it is a source **point**,
+not an expression range. A missing position is null, as with a manifest error
+that has no checked source location. A missing path is null, as with command
+usage errors. Notes have their own `path`, `position` and `message`; imported
+source locations refer to their original files. Message wording is for humans
+and can change; consumers should use codes and structured fields.
+
+Path-related errors such as `E_UNCOVERED`, `E_UNAVAILABLE` and ownership conflicts
+can carry a witness:
+
+```json
+{
+  "kind": "structural_may_reach",
+  "control": "main",
+  "selected_paths": ["read_failed", "close_failed"]
+}
+```
+
+These are selected path **display names** in one satisfying structural history.
+They are not concrete input values or a proof that the history is feasible.
+An empty list represents the entry history. `witness` is null when the error has
+no path witness; there is no need to parse the explanatory message.
+
+The LSP supplies the same witness through diagnostic `data`, with schema
+`tellur.diagnostic.v1`. Its normal ranges retain the LSP's zero-based UTF-16
+coordinates. These formats do not yet provide full expression ranges or report
+multiple independent errors. JSON checking includes usage, configuration,
+manifest and file-read failures; it does not build or execute Rust adapters.
 
 ## Type context: E_TYPE and E_INFER
 

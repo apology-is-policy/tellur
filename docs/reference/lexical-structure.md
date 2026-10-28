@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Core grammar](grammar.md)
 
-This chapter describes modern source accepted by compiler 0.46.0. Compatibility
+This chapter describes modern source accepted by compiler 0.47.0. Compatibility
 spellings are listed separately in the main reference.
 
 ## Source and identifiers

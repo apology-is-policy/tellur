@@ -4,16 +4,20 @@ use std::{
     process::{Command, ExitCode},
 };
 use tellur::{compile_file, manifest::Manifest, runtime::Scenario};
-const USAGE: &str = "Tellur compiler\n  tellurc check SOURCE [MANIFEST]\n  tellurc lock-native SOURCE [MANIFEST]  (explicitly resolve Rust adapter dependencies)\n  tellurc run SOURCE MANIFEST SCENARIO [--expanded]  (reference interpreter)\n  tellurc compare SOURCE MANIFEST OTHER_SOURCE SCENARIOS  (finite scenario evidence)\n  tellurc expand SOURCE MANIFEST ENTRY\n  tellurc extract-tail SOURCE MANIFEST CONTROL LINE HELPER [--report]\n  tellurc protocol SOURCE MANIFEST ENTRY [PREFIX_JSON]  (structural abstraction)\n  tellurc protocol-compare SOURCE MANIFEST OTHER_SOURCE ENTRY\n  tellurc certify-expansion SOURCE MANIFEST ENTRY  (JSON graph and correspondence)\n  tellurc verify-expansion SOURCE MANIFEST ARTIFACT\n  tellurc inspect SOURCE MANIFEST ENTRY [--expanded]\n  tellurc build SOURCE [MANIFEST] [--entry main] [--out FILE] [--release] [--expanded]\n  tellurc exec SOURCE [MANIFEST] [build options] [-- PROGRAM_ARGUMENTS]\nBuild writes a native executable, LLVM IR (.ll), and generated source (.tellur-build/).\nNative programs accept --help, --json, --scenario FILE, and --fuel N.\nRust/Cargo with its LLVM backend is required to build; executables are standalone.";
+const USAGE: &str = "Tellur compiler\n  tellurc check SOURCE [MANIFEST] [--json]\n  tellurc lock-native SOURCE [MANIFEST]  (explicitly resolve Rust adapter dependencies)\n  tellurc run SOURCE MANIFEST SCENARIO [--expanded]  (reference interpreter)\n  tellurc compare SOURCE MANIFEST OTHER_SOURCE SCENARIOS  (finite scenario evidence)\n  tellurc expand SOURCE MANIFEST ENTRY\n  tellurc extract-tail SOURCE MANIFEST CONTROL LINE HELPER [--report]\n  tellurc protocol SOURCE MANIFEST ENTRY [PREFIX_JSON]  (structural abstraction)\n  tellurc protocol-compare SOURCE MANIFEST OTHER_SOURCE ENTRY\n  tellurc certify-expansion SOURCE MANIFEST ENTRY  (JSON graph and correspondence)\n  tellurc verify-expansion SOURCE MANIFEST ARTIFACT\n  tellurc inspect SOURCE MANIFEST ENTRY [--expanded]\n  tellurc build SOURCE [MANIFEST] [--entry main] [--out FILE] [--release] [--expanded]\n  tellurc exec SOURCE [MANIFEST] [build options] [-- PROGRAM_ARGUMENTS]\nBuild writes a native executable, LLVM IR (.ll), and generated source (.tellur-build/).\nNative programs accept --help, --json, --scenario FILE, and --fuel N.\nRust/Cargo with its LLVM backend is required to build; executables are standalone.";
 fn discover(source: &Path) -> Option<PathBuf> {
+    let source = if source.is_absolute() {
+        source.to_owned()
+    } else {
+        env::current_dir().ok()?.join(source)
+    };
     source
         .parent()?
         .ancestors()
         .map(|p| p.join("manifest.json"))
         .find(|p| p.is_file())
 }
-fn run() -> std::result::Result<(), Box<dyn std::error::Error>> {
-    let args = env::args().skip(1).collect::<Vec<_>>();
+fn run(args: Vec<String>) -> std::result::Result<(), Box<dyn std::error::Error>> {
     if args.is_empty() || args[0] == "--help" || args[0] == "help" {
         println!("{USAGE}");
         return Ok(());
@@ -205,11 +209,130 @@ fn run() -> std::result::Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 fn main() -> ExitCode {
-    match run() {
+    let args = env::args().skip(1).collect::<Vec<_>>();
+    if args.first().is_some_and(|a| a == "check") && args[1..].iter().any(|a| a == "--json") {
+        return json_check(&args[1..]);
+    }
+    match run(args) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("{e}");
             ExitCode::FAILURE
         }
+    }
+}
+
+/// The check envelope deliberately reports point locations. Full expression
+/// ranges and independent-error recovery are separate diagnostic increments.
+fn json_check(args: &[String]) -> ExitCode {
+    use serde_json::{Value, json};
+    use tellur::{Diagnostic, Span};
+    struct Failure {
+        path: Option<PathBuf>,
+        diagnostic: Diagnostic,
+    }
+    fn failure(code: &'static str, path: Option<PathBuf>, message: impl Into<String>) -> Failure {
+        Failure {
+            path,
+            diagnostic: Diagnostic::new(code, Span::default(), message),
+        }
+    }
+    fn absolute(path: &Path) -> PathBuf {
+        // Keep the caller's spelling: a source/manifest symlink must discover and
+        // resolve configuration exactly as a normal textual check does.
+        if path.is_absolute() {
+            path.to_owned()
+        } else {
+            env::current_dir().map_or_else(|_| path.to_owned(), |cwd| cwd.join(path))
+        }
+    }
+    fn position(span: Span) -> Value {
+        if span.line == 0 || span.column == 0 {
+            Value::Null
+        } else {
+            json!({"line":span.line,"column":span.column})
+        }
+    }
+    let checked = (|| {
+        let mut files = vec![];
+        let mut flags = 0;
+        for arg in args {
+            if arg == "--json" {
+                flags += 1;
+            } else if arg.starts_with("--") {
+                return Err(failure(
+                    "E_USAGE",
+                    None,
+                    format!("unknown check option {arg}"),
+                ));
+            } else {
+                files.push(PathBuf::from(arg));
+            }
+        }
+        if flags != 1 || !(1..=2).contains(&files.len()) {
+            return Err(failure(
+                "E_USAGE",
+                None,
+                "tellurc check SOURCE [MANIFEST] --json",
+            ));
+        }
+        let source = absolute(&files[0]);
+        let manifest = files
+            .get(1)
+            .cloned()
+            .or_else(|| discover(&source))
+            .ok_or_else(|| {
+                failure(
+                    "E_CONFIG",
+                    Some(source.clone()),
+                    "no manifest.json found; supply a manifest path",
+                )
+            })?;
+        let manifest = absolute(&manifest);
+        let text = fs::read_to_string(&manifest)
+            .map_err(|e| failure("E_IO", Some(manifest.clone()), e.to_string()))?;
+        let manifest = Manifest::from_json_at(&text, &manifest).map_err(|diagnostic| Failure {
+            path: Some(manifest.clone()),
+            diagnostic,
+        })?;
+        let program = compile_file(&source, manifest).map_err(|e| Failure {
+            path: Some(e.path),
+            diagnostic: e.diagnostic,
+        })?;
+        Ok((program.regions().count(), program.generic_controls().len()))
+    })();
+    let mut report = json!({
+        "schema":"tellur.check.v1", "ok":checked.is_ok(),
+        "position_encoding":"one_based_unicode_scalars",
+        "diagnostics":[], "summary":null,
+    });
+    let success = match checked {
+        Ok((controls, generic_definitions)) => {
+            report["summary"] =
+                json!({"controls":controls,"generic_definitions":generic_definitions});
+            true
+        }
+        Err(Failure { path, diagnostic }) => {
+            let notes: Vec<_> = diagnostic.notes.iter().map(|note| {
+                let path = note.path.as_ref().or(path.as_ref());
+                json!({"path":path.map(|p| p.to_string_lossy()),"position":position(note.span),"message":note.message})
+            }).collect();
+            report["diagnostics"] = json!([{
+                "code":diagnostic.code, "message":diagnostic.message,
+                "path":path.map(|p| p.to_string_lossy().into_owned()),
+                "position":position(diagnostic.span), "notes":notes,
+                "witness":diagnostic.witness,
+            }]);
+            false
+        }
+    };
+    println!(
+        "{}",
+        serde_json::to_string(&report).expect("JSON report values are serializable")
+    );
+    if success {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
     }
 }

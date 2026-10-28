@@ -725,6 +725,14 @@ control main() exits done {
     await replace(buildDocument, contributorSource);
     await waitFor(() => revisedDiagnostics().length === 0, 'stored contributor repair');
     console.log('TELLUR_STORED_CONTRIBUTORS_EDITOR_TESTS_PASSED: capture, adapter, related source locations, unsaved repair');
+    await buildDocument.save();
+    const jsonCheck = await require('node:util').promisify(require('node:child_process').execFile)(path.join(__dirname, '../server/tellurc'), ['check', buildUri.fsPath, '--json']);
+    const checkReport = JSON.parse(jsonCheck.stdout);
+    assert.equal(checkReport.schema, 'tellur.check.v1');
+    assert.equal(checkReport.ok, true);
+    assert.deepEqual(checkReport.diagnostics, []);
+    assert.equal(jsonCheck.stderr, '');
+    console.log('TELLUR_JSON_CHECK_EDITOR_TESTS_PASSED: bundled compiler versioned report and clean stdout');
     const settingsFolder = path.join(root, 'settings-app');
     await fs.mkdir(settingsFolder, {recursive:true});
     for (const file of ['main.tellur', 'settings.tellur', 'manifest.json', 'host.rs', 'Cargo.lock']) {

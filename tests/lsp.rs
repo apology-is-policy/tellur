@@ -1562,3 +1562,39 @@ fn stored_outcome_contributor_locations_follow_unsaved_adapters() {
     f.change(source, 3);
     assert_eq!(f.diagnostics(), json!([]));
 }
+
+#[test]
+fn structural_witness_data_is_current_and_distinct_from_message_text() {
+    let mut f = Fixture::new();
+    fs::write(
+        f.root.join("manifest.json"),
+        include_str!("../playground/manifest.json"),
+    )
+    .unwrap();
+    let source =
+        "control main(bool flag) exits done {delta flag {true=>yes,false=>no}[yes]:exit done;}";
+    f.open(source);
+    let diagnostics = f.diagnostics();
+    assert_eq!(diagnostics[0]["code"], "E_UNCOVERED");
+    assert_eq!(diagnostics[0]["data"]["schema"], "tellur.diagnostic.v1");
+    assert_eq!(
+        diagnostics[0]["data"]["witness"]["kind"],
+        "structural_may_reach"
+    );
+    assert_eq!(
+        diagnostics[0]["data"]["witness"]["selected_paths"],
+        json!(["no"])
+    );
+    assert!(
+        diagnostics[0]["data"]["witness"]["control"]
+            .as_str()
+            .unwrap()
+            .ends_with("main")
+    );
+    f.change(&source.replace("[yes]:", "[yes | no]:"), 2);
+    assert_eq!(f.diagnostics(), json!([]));
+    f.change("control main() exits done {u32 n=true;exit done;}", 3);
+    let diagnostics = f.diagnostics();
+    assert_eq!(diagnostics[0]["code"], "E_TYPE");
+    assert!(diagnostics[0].get("data").is_none());
+}

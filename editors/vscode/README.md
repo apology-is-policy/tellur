@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-0.46.0-darwin-arm64.vsix` using **Extensions:
+1. Install the supplied `tellur-language-0.47.0-darwin-arm64.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -91,7 +91,7 @@ migration notes in `docs/language-reference.md` in the compiler checkout.
 
 `tellurLanguage.serverPath` overrides the server executable. Otherwise the extension
 uses its bundled server, then `target/debug/tellur-lsp` from a development checkout,
-then `tellur-lsp` on PATH. The packaged server matches the 0.46.0 compiler; rebuild or
+then `tellur-lsp` on PATH. The packaged server matches the 0.47.0 compiler; rebuild or
 override it when experimenting with compiler changes.
 
 For another platform, build the Rust server and set the executable path. The source
@@ -457,7 +457,7 @@ wrappers through Cargo with the committed lockfile. Resolve dependency changes
 explicitly using `tellurc lock-native` in a terminal. Try the maintained
 `applications/settings/main.tellur`; its README describes entry and argument settings.
 
-## Stored outcome diagnostics (0.46.0)
+## Stored outcome diagnostics (since 0.46.0)
 
 Missing delta arms and incompatible adapter results can link to their producing
 exit, capture and intervening adapters. Moving a completed value or placing it in
@@ -465,3 +465,12 @@ a local record/sum retains known lineage; merged labels retain their contributin
 alternatives. Notes update with unsaved changes and clear after repair. These are
 bounded structural locations, not feasible-input proofs. See the
 [coverage limits](https://github.com/apology-is-policy/tellur/blob/main/docs/reference/diagnostics-and-limits.md).
+
+## Structured checking (0.47.0)
+
+The bundled compiler supports `tellurc check SOURCE [MANIFEST] --json`. It prints
+one versioned JSON result to stdout and exits with 0 for success or 1 for failure.
+Source points use one-based Unicode scalar columns; LSP ranges keep their standard
+zero-based UTF-16 encoding. Path-related LSP diagnostics additionally carry a
+`structural_may_reach` witness in diagnostic data. See the
+[report format](https://github.com/apology-is-policy/tellur/blob/main/docs/reference/diagnostics-and-limits.md#machine-readable-checking).
