@@ -20,7 +20,7 @@ control first(ref vector<string> words) exits lookup<string, u32> {
     };
 }
 
-control main() exits done {
+control main() exits process_result {
     vector<string> words = ["Ada", "Grace"];
     lookup<string, u32> result = capture first(borrow words);
     delta result {
@@ -34,3 +34,6 @@ control main() exits done {
     [failed]: emit(u32_text(cause));
     [entry]: exit done;
 }
+
+// Process status policy for this runnable example.
+outcome process_result { @exit 0 done }

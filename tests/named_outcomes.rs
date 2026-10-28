@@ -1,3 +1,4 @@
+mod support;
 use tellur::{compile, ir::Value, manifest::Manifest, runtime::Scenario};
 fn manifest() -> Manifest {
     Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
@@ -195,7 +196,9 @@ fn native_named_contracts_match_original_and_expanded_graphs() {
     for (index, program) in [p.clone(), p.expanded("main").unwrap()].iter().enumerate() {
         for opt in [0, 2] {
             let binary = root.join(format!("named-{index}-{opt}"));
-            program.build_native("main", &binary, opt).unwrap();
+            support::scenario_executable(program)
+                .build_native("main", &binary, opt)
+                .unwrap();
             for flag in [true, false] {
                 let actual = std::process::Command::new(&binary)
                     .args(["--json", "--", if flag { "true" } else { "false" }])

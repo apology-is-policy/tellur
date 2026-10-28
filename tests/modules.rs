@@ -1,3 +1,4 @@
+mod support;
 use std::{
     fs,
     path::PathBuf,
@@ -329,7 +330,9 @@ fn native_modules_preserve_borrows_and_effect_order_before_and_after_expansion()
     for (name, p) in [("original", original), ("expanded", expanded)] {
         for opt in [0, 2] {
             let binary = f.root.join(format!("{name}-{opt}"));
-            p.build_native("main", &binary, opt).unwrap();
+            support::scenario_executable(&p)
+                .build_native("main", &binary, opt)
+                .unwrap();
             let scenario_file = f.root.join("case.json");
             fs::write(&scenario_file, serde_json::to_vec(&scenario()).unwrap()).unwrap();
             let output = std::process::Command::new(binary)

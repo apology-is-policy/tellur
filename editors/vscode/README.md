@@ -474,3 +474,11 @@ Source points use one-based Unicode scalar columns; LSP ranges keep their standa
 zero-based UTF-16 encoding. Path-related LSP diagnostics additionally carry a
 `structural_may_reach` witness in diagnostic data. See the
 [report format](https://github.com/apology-is-policy/tellur/blob/main/docs/reference/diagnostics-and-limits.md#machine-readable-checking).
+
+## Process status contracts in 0.48
+
+Named outcome alternatives support `@exit N` highlighting, annotation diagnostics,
+and declaration hover listing status defaults. Build and Run propagates the final
+entry's configured status. Migrated `.tellur` playgrounds declare their entry policy;
+older programs need explicit annotations or manifest mappings before native build.
+See [process entry contracts](https://github.com/apology-is-policy/tellur/blob/main/docs/reference/process-entry.md).

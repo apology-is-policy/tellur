@@ -11,7 +11,7 @@ struct message_editor {
     ref mutable string text;
 }
 
-control main() exits done {
+control main() exits process_result {
     mutable message original = message { text: "Hello through a stored reference" };
 
     message_view first = message_view {
@@ -29,3 +29,6 @@ control main() exits done {
     emit(borrow original.text);
     exit done;
 }
+
+// Process status policy for this runnable example.
+outcome process_result { @exit 0 done }

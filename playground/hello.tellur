@@ -1,8 +1,11 @@
 // Build and Run compiles this file and invokes its main control.
-control main() exits auto {
+control main() exits process_result {
     [entry]:
         string greeting = "Hello from Tellur!";
         emit(greeting);
         emit("Try changing a message, then build and run again.");
         exit done;
 }
+
+// Process status policy for this runnable example.
+outcome process_result { @exit 0 done }

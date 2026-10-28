@@ -17,17 +17,17 @@ fn discover(source: &Path) -> Option<PathBuf> {
         .map(|p| p.join("manifest.json"))
         .find(|p| p.is_file())
 }
-fn run(args: Vec<String>) -> std::result::Result<(), Box<dyn std::error::Error>> {
+fn run(args: Vec<String>) -> std::result::Result<ExitCode, Box<dyn std::error::Error>> {
     if args.is_empty() || args[0] == "--help" || args[0] == "help" {
         println!("{USAGE}");
-        return Ok(());
+        return Ok(ExitCode::SUCCESS);
     }
     if args[0] == "--version" {
         println!(
             "tellurc {} (v0.1 core, v0.2 syntax preview)",
             env!("CARGO_PKG_VERSION")
         );
-        return Ok(());
+        return Ok(ExitCode::SUCCESS);
     }
     if args.len() < 2 {
         return Err(USAGE.into());
@@ -192,9 +192,10 @@ fn run(args: Vec<String>) -> std::result::Result<(), Box<dyn std::error::Error>>
                 let status = Command::new(&build.executable)
                     .args(runtime_args)
                     .status()?;
-                if !status.success() {
-                    return Err(format!("program exited with {status}").into());
-                }
+                let code = status
+                    .code()
+                    .ok_or_else(|| format!("program terminated with {status}"))?;
+                return Ok(ExitCode::from(u8::try_from(code)?));
             } else {
                 println!(
                     "Built {}\nLLVM IR: {}\nGenerated source: {}",
@@ -206,7 +207,7 @@ fn run(args: Vec<String>) -> std::result::Result<(), Box<dyn std::error::Error>>
         }
         _ => return Err(USAGE.into()),
     }
-    Ok(())
+    Ok(ExitCode::SUCCESS)
 }
 fn main() -> ExitCode {
     let args = env::args().skip(1).collect::<Vec<_>>();
@@ -214,7 +215,7 @@ fn main() -> ExitCode {
         return json_check(&args[1..]);
     }
     match run(args) {
-        Ok(()) => ExitCode::SUCCESS,
+        Ok(code) => code,
         Err(e) => {
             eprintln!("{e}");
             ExitCode::FAILURE

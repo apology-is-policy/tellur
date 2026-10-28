@@ -37,10 +37,21 @@ cross-process locking, compare-and-swap, permission preservation, or transaction
 coordination between reads and writes. A forced process exit may leave a temporary
 file. These limitations are application work, not promises hidden in `saved`.
 
-The launcher prints the final outcome. Currently a normally completed outcome
-still gives OS exit code 0, including application failure alternatives; execution
-faults give a nonzero code. Use `--json` to inspect the exact outcome in automation.
-Explicit process-status mapping is a separate launcher design decision.
+The launcher prints the final outcome and returns its configured OS status:
+
+| Completion | Status |
+| --- | --- |
+| `done`, `saved` | 0 |
+| `failed`, `invalid_file`, `storage_failed`, `too_large` | 1 |
+| `invalid_key` | 2 |
+| `missing` | 3 |
+| `commit_uncertain` | 4 |
+
+`main` and `get` use annotated entry contracts in `main.tellur`. `set` uses a
+manifest entry mapping, keeping the reusable domain contract free of terminal
+policy. `--json` preserves the complete outcome/payload; scripts must still inspect
+it when distinguishing failure details. Execution faults report stderr and status 1.
+See [process entry semantics](../../docs/reference/process-entry.md).
 
 In VS Code, open `main.tellur` and use **Tellur: Build and Run**. Set the entry and
 arguments in workspace settings, for example:

@@ -1,8 +1,8 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.47.0 -->
+<!-- tellur-reference-version: 0.48.0 -->
 
-This manual describes **compiler 0.47.0**, including the current ownership model,
+This manual describes **compiler 0.48.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -95,16 +95,21 @@ control greeting() exits found { string text } {
     exit found { message };
 }
 
-control main() exits done {
+control main() exits process_result {
     delta greeting() { found { string received } => available }
     [available]: emit(received); exit done;
 }
+
+outcome process_result { @exit 0 done }
 ```
 
 In this program `text` names a contract field, `message` is the producer's local
 owner, and `received` is the caller's local owner after transfer. `available` is a
 path atom, not a value. No implicit cloning occurs. A `capture` can instead store a
 completed outcome for later handling; the producer still runs immediately.
+`@exit 0` gives this entry a successful process status when built as an executable.
+Most later examples focus on library semantics: native entry points additionally
+need a complete [status policy](reference/process-entry.md).
 
 The current execution model is sequential. Statements execute in source order on
 their selected histories. Arguments and construction fields evaluate left to right;
@@ -455,6 +460,10 @@ and pattern inference are unaffected. See [public-contract diagnostics](referenc
 and [the runnable example](../playground/public_contracts.tellur).
 
 ## Named outcome contracts
+
+Named alternatives can carry `@exit N` defaults for executable status. See
+[process entry contracts](reference/process-entry.md) for annotations, per-entry
+overrides, completeness checking, and final-contract semantics.
 
 Borrowed named outcomes can declare [origin groups and completion bindings](#named-outcome-and-option-origin-schemas), including dependencies inherited through options.
 
@@ -2433,8 +2442,9 @@ and caches are left in place. The Rust library crate is now `tellur`.
 ```
 
 Native executables accept `--json`, `--entry`, `--scenario FILE`, `--fuel N`, and `--`
-before positional arguments. All declared completion outcomes use exit status 0;
-host errors use nonzero status. An optional fuel budget bounds host execution; normal
+before positional arguments. Declared completion outcomes use their explicit
+[process-status mapping](reference/process-entry.md); host faults report nonzero status.
+An optional fuel budget bounds host execution; normal
 native execution has no default instruction limit. Aggregates use the JSON value
 format in the historical scenarios. Wire/IR builtin type names retain their v0.1
 capitalized spelling for compatibility; source and new manifests use lowercase.
@@ -2452,7 +2462,7 @@ bindings/contracts. It does not yet provide general expression or call-site type
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and async tasks remain planned; they are not executable features of 0.47.0.
+and async tasks remain planned; they are not executable features of 0.48.0.
 ## Compare supplied scenarios
 
 ```sh

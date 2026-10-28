@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.47.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.48.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -1211,3 +1211,51 @@ Logs: `work/tellur-0.47-tests.log`, `tellur-0.47-focused.log`,
 `tellur-0.47-reference.log`, `tellur-0.47-examples.log`, `tellur-0.47-editor.log`,
 `tellur-0.47-build.log`, `tellur-0.47-package.log`, `tellur-0.47-install.log` and
 `tellur-0.47-installed-integrity.log`.
+
+
+## 0.48 — Explicit executable outcome status
+
+Named outcome alternatives accept `@exit N` defaults. Final-entry mappings are
+exhaustive, permit per-entry manifest overrides, and never inherit hidden policy
+from a captured result or producer. Normal outcome compatibility is unchanged.
+Native execution, JSON output and scripted scenarios preserve outcome/payload
+reporting while returning the mapped status; `tellurc exec` propagates it exactly.
+Only controls with complete mappings and supported entry parameters are exposed
+by the generated launcher. Library checks remain independent of launcher policy.
+
+`tests/exit_codes.rs` covers declaration/range/duplicate validation, missing and
+unknown mappings, borrowed-entry rejection, partial defaults and explicit overrides,
+module identity, generic contracts, destination-contract forwarding/capture,
+certified expansion, every maintained executable playground, and native O0/O2
+status/payload behavior including 0, 23, 255, hidden entries and runtime faults.
+The settings application exercises meaningful live and scripted failure statuses.
+LSP and TextMate checks cover annotation errors, repair, highlighting and contract
+hover. The real VS Code suite also checks nonzero Build and Run status with intact
+JSON output.
+
+Validation covers **762 distinct Rust tests**. The full 761-test run exposed two
+migration assumptions in fixtures (anonymous main inference and concatenated
+contracts sharing a name). Both were corrected; all **66 LSP/native tests** passed
+again. The final **9 exit-contract tests** include the additional playground
+completeness regression. The consolidated last-result inventory contains no failed
+tests. Clippy passed for all targets with warnings denied. All **33 Node tests**
+and the full real VS Code suite passed.
+
+The manual accepts **55** examples, requires **20** diagnostics, classifies **14**
+context fragments and resolves **161** local links. All **55** maintained sources
+pass release JSON checking. The documented alternate `parse_port` entry also builds
+and executes. Canonical `.tellur` playgrounds were migrated; preserved `.path`
+snapshots remain unchanged and need explicit launch policy for native builds.
+
+The local compiler and language server report 0.48.0. All nine VSIX payloads were
+compared byte-for-byte against staging, and installed files, metadata and executable
+permissions were verified. The source snapshot is
+`work/revision-backups/tellur-0.48-source.tar.gz`.
+
+Evidence: `work/tellur-0.48-validation.json`, `tellur-0.48-tests.log`,
+`tellur-0.48-final-focused.log`, `tellur-0.48-migration-regressions.log`,
+`tellur-0.48-clippy.log`, `tellur-0.48-reference.log`, `tellur-0.48-examples.log`,
+`tellur-0.48-node.log`, `tellur-0.48-editor.log`, `tellur-0.48-build.log`,
+`tellur-0.48-port.log`, `tellur-0.48-package.log`,
+`tellur-0.48-package-integrity.log`, `tellur-0.48-install.log` and
+`tellur-0.48-installed-integrity.log`.

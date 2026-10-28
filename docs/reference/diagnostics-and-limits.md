@@ -493,3 +493,9 @@ additional analysis budgets described in [protocol analysis](../protocol-analysi
 and [semantic foundations](../semantic-foundation.md). See the main reference for
 [expansion certification](../language-reference.md#validate-expansion), which proves
 a permitted rewrite correspondence rather than arbitrary equivalence or termination.
+
+## Process status diagnostics (`E_EXIT_CODE`)
+
+Invalid source annotations report their source position. Native generation rejects
+missing or unknown entry mappings and borrowed entry parameters. Library checking
+does not require complete mappings. See [process entry contracts](process-entry.md).

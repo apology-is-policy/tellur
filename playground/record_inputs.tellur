@@ -19,7 +19,7 @@ control into_content(page_view input)
     exit found { input.content };
 }
 
-control main() exits done {
+control main() exits process_result {
     mutable string heading = "A borrowed heading";
     mutable string content = "Content survives its carrier";
     page_view page = page_view {
@@ -39,3 +39,6 @@ control main() exits done {
         emit(borrow content);
         exit done;
 }
+
+// Process status policy for this runnable example.
+outcome process_result { @exit 0 done }

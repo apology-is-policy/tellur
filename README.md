@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.47.0** implements the v0.1 checked core and the current language
+Compiler release **0.48.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -24,6 +24,9 @@ first-class async and direct LLVM coroutine lowering remain architectural target
 Release 0.46 adds [outcome contributor diagnostics](docs/reference/diagnostics-and-limits.md)
 through stored values, adapters and merged path labels. Release 0.47 adds
 `tellurc check SOURCE --json` and structured path witnesses for tools.
+Release 0.48 adds [explicit process exit contracts](docs/reference/process-entry.md):
+`@exit N` on named alternatives, checked entry overrides, and exact status propagation
+through `tellurc exec`. Runnable playgrounds now declare their status policy.
 
 The [semantic foundation](docs/semantic-foundation.md) distinguishes compatibility,
 ownership transfer, behavioral equivalence and provenance. Executable law tests and
@@ -96,7 +99,7 @@ companion chapters cover [grammar](docs/reference/grammar.md),
 [diagnostics](docs/reference/diagnostics-and-limits.md),
 [terminology](docs/reference/glossary.md) and [feature status](docs/reference/support-status.md).
 Complete manual examples are checked with `cargo test --offline --test reference_manual`.
-The local `tellur-language-0.47.0-darwin-arm64.vsix` contains the compiler and language
+The local `tellur-language-0.48.0-darwin-arm64.vsix` contains the compiler and language
 server for Apple Silicon macOS. It is installed on this machine; elsewhere use
 **Extensions: Install from VSIX…**. Native builds need Rust/Cargo; the current
 machine's toolchain and dependencies have been prepared. The resulting binaries

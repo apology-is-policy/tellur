@@ -1,6 +1,6 @@
 outcome greeting_result { ready { string text }, empty }
 
-control main() exits done {
+control main() exits process_result {
     delta greeting(true) { ready { string text } => available, empty => missing }
     [available]: emit(text);
     [entry]: exit done;
@@ -15,3 +15,6 @@ control greeting(bool available) exits greeting_result {
         false => empty {}
     };
 }
+
+// Process status policy for this runnable example.
+outcome process_result { @exit 0 done }

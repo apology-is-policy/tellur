@@ -1,3 +1,4 @@
+mod support;
 use tellur::{compile, ir::Value, manifest::Manifest, runtime::Scenario};
 fn m() -> Manifest {
     Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
@@ -202,7 +203,9 @@ fn native_opaque_splits_match_interpreter_and_expansion() {
         assert_eq!(p.run(&scenario()).unwrap(), expected);
         for opt in [0, 2] {
             let binary = root.join(format!("split-{expanded}-{opt}"));
-            p.build_native("main", &binary, opt).unwrap();
+            support::scenario_executable(&p)
+                .build_native("main", &binary, opt)
+                .unwrap();
             let output = std::process::Command::new(binary)
                 .arg("--json")
                 .output()

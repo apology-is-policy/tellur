@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Core grammar](grammar.md)
 
-This chapter describes modern source accepted by compiler 0.47.0. Compatibility
+This chapter describes modern source accepted by compiler 0.48.0. Compatibility
 spellings are listed separately in the main reference.
 
 ## Source and identifiers
@@ -137,3 +137,9 @@ Braces on an inline outcome expression are mandatory even for a nullary result:
 optional; `exit delta ...;` and a declaration initialized with delta require one.
 Trailing commas are accepted in parameter, payload, constructor and arm lists;
 do not assume they are accepted in every angle-bracket or origin list.
+
+## Process status annotations
+
+`@` introduces the `@exit N` annotation on named outcome alternatives. `N` is an
+unsuffixed decimal integer in 0..255. This is not a general annotation framework.
+See [process entry contracts](process-entry.md).

@@ -20,7 +20,7 @@ control replace(ref mutable string first, ref mutable string second) exits done 
     exit done;
 }
 
-control main() exits done { string title, string body } {
+control main() exits process_result {
     mutable document draft = document { title: "Old title", body: "Old body" };
     delta edit(borrow mutable draft) { ready { auto title, auto body } => editing }
     [editing]:
@@ -32,3 +32,6 @@ control main() exits done { string title, string body } {
         draft.title = "Final title";
         exit done { draft.title, draft.body };
 }
+
+// Process status policy for this runnable example.
+outcome process_result { @exit 0 done { string title, string body } }

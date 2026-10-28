@@ -120,7 +120,8 @@ unimplemented syntax are promised.
 | P3 | Readable path labels and direct dispositions | Queued: preserve label semantics with optional braced grouping; canonical layout, selected-history editor feedback, and direct arm exits without throwaway atoms; settle multi-statement arm syntax separately |
 | P4 | Explain, format and contract changes | Queued: bounded history/contributor queries, formatter, public contract snapshots/diffs and internal absorption changes; distinguish structural evidence from feasible inputs |
 | P5a | Sustained application: persistent CLI | **Delivered in 0.45**: settings load/get/set, validation, strict JSON, bounded input/output, replacement uncertainty and live/scripted failure scenarios |
-| P5b | Sustained application: server and library growth | Next: explicit CLI status policy, retained resources and blocking loopback HTTP; keep domain policy in Tellur and exercise disconnect/shutdown/cleanup scenarios |
+| P5a.1 | Executable outcome status contracts | **Delivered in 0.48**: alternative annotations, exhaustive entry mappings, final-contract policy, exact exec status propagation, and settings/editor migration |
+| P5b | Sustained application: server and library growth | Next: retained resources and blocking loopback HTTP; keep domain policy in Tellur and exercise disconnect/shutdown/cleanup scenarios |
 | P6 | Faults and activation boundaries | Design before async: explicit invariant-failure disposition, transitive fault visibility, resource/isolation semantics; faulting operators and any no-fault annotation remain separate decisions |
 | C1b.3c.2 | Local exclusive-reference collection elements | Deferred pending application evidence: permission transfer, direct reborrowing, dynamic removal splits and carrier invalidation |
 | C1b.3c.3 | Nested and public borrowed-collection contracts | Deferred pending application evidence: element origin schemas, nested carriers, generic/trait boundaries and stored outcomes |

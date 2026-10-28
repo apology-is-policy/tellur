@@ -532,7 +532,20 @@ impl Server {
                         .join(", ");
                     (format!("{name}[{groups}]"), alternatives)
                 };
-                return json!({"contents":{"kind":"markdown","value":format!("```tellur\noutcome {} {{ {} }}\n```\n\nA named closed contract. Every stored value must be handled or transferred, even with an empty payload.",name,description)},"range":range});
+                let statuses = if contract.exit_codes.is_empty() {
+                    String::new()
+                } else {
+                    format!(
+                        "\n\nProcess exit defaults (only at the executable boundary): {}.",
+                        contract
+                            .exit_codes
+                            .iter()
+                            .map(|(name, code)| format!("`{name}` → `{code}`"))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )
+                };
+                return json!({"contents":{"kind":"markdown","value":format!("```tellur\noutcome {} {{ {} }}\n```\n\nA named closed contract. Every stored value must be handled or transferred, even with an empty payload.{}",name,description,statuses)},"range":range});
             }
         }
         let auto_exits = syntax::auto_exit_spans(&doc.text).unwrap_or_default();

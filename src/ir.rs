@@ -343,6 +343,8 @@ pub(crate) struct InferredBinding {
 }
 #[derive(Clone, Debug)]
 pub struct CheckedProgram {
+    /// Defaults from each control's final named contract, not from its callees.
+    pub(crate) outcome_exit_codes: BTreeMap<String, BTreeMap<String, u8>>,
     pub(crate) inferred_bindings: Vec<InferredBinding>,
     pub(crate) manifest: Manifest,
     pub(crate) regions: BTreeMap<String, Region>,

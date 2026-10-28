@@ -1,3 +1,4 @@
+mod support;
 use tellur::{
     compile,
     ir::Value,
@@ -205,7 +206,9 @@ control borrowed() exits auto {
     for (name, program) in [("original", original), ("expanded", expanded)] {
         for opt in [0, 2] {
             let bin = root.join(format!("{name}-{opt}"));
-            program.build_native("main", &bin, opt).unwrap();
+            support::scenario_executable(&program)
+                .build_native("main", &bin, opt)
+                .unwrap();
             for (s, expected) in scenarios.iter().zip(&expected) {
                 let file = root.join("scenario.json");
                 fs::write(&file, serde_json::to_vec(s).unwrap()).unwrap();

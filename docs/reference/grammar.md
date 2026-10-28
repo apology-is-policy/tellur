@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Lexical structure](lexical-structure.md)
 
-This is a reading grammar for the modern compiler 0.47.0 profile, not a replacement
+This is a reading grammar for the modern compiler 0.48.0 profile, not a replacement
 for its type, ownership, origin or coverage rules. It omits legacy spellings and
 parser recovery details. `name`, `integer` and `string_literal` are lexical tokens.
 Quoted text denotes source tokens; `?` means optional, `*` repetition, `+` one or
@@ -32,7 +32,9 @@ variant          = "variant" name data_parameters? origin_groups?
 variant_alternatives = trailing_list(name ("{" trailing_list(variant_field)? "}")?) ;
 variant_field    = type origin_mapping? name ("<-" "'" name)? ;
 outcome          = "outcome" name data_parameters? origin_groups?
-                   "{" variant_alternatives "}" ";"? ;
+                   "{" outcome_alternatives "}" ";"? ;
+outcome_alternatives = trailing_list(exit_annotation? name ("{" trailing_list(variant_field)? "}")?) ;
+exit_annotation  = "@" "exit" decimal_integer ;
 alternatives     = trailing_list(name payload_declaration?) ;
 payload_declaration = "{" trailing_list(field)? "}" ;
 field            = type name ;
@@ -187,3 +189,7 @@ the option a single builtin group named `'source`. These are dependency annotati
 not type arguments or runtime fields. `delta borrow value`, `delta borrow mutable value`
 and `delta reference` inspect a sum without consuming it; see the
 [borrowed payload typing rules](../language-reference.md#borrowing-whole-sums).
+
+`@exit N` is limited to named outcome alternatives and integer statuses 0..255.
+See [process entry contracts](process-entry.md); these annotations do not change
+ordinary payload grammar or outcome assignability.

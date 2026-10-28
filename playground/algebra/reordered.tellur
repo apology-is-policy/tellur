@@ -1,5 +1,5 @@
 // Same result contract, different effect order. The comparison must report it.
-outcome message { ready { string text }, empty }
+outcome message { @exit 0 ready { string text }, @exit 1 empty }
 
 control main(bool available) exits message {
     emit("after invocation");

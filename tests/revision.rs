@@ -1,3 +1,4 @@
+mod support;
 use tellur::{
     compile,
     ir::Value,
@@ -274,7 +275,9 @@ control format(bool flag) exits auto {
         };
         for opt in [0, 2] {
             let binary = root.join(format!("program-{expanded}-{opt}"));
-            program.build_native("main", &binary, opt).unwrap();
+            support::scenario_executable(&program)
+                .build_native("main", &binary, opt)
+                .unwrap();
             for flag in [false, true] {
                 let expected = p
                     .run(&Scenario {

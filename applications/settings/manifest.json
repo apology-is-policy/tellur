@@ -208,5 +208,17 @@
     "source": "host.rs",
     "lockfile": "Cargo.lock",
     "dependencies": {}
+  },
+  "launch": {
+    "set": {
+      "exit_codes": {
+        "saved": 0,
+        "invalid_key": 2,
+        "invalid_file": 1,
+        "storage_failed": 1,
+        "commit_uncertain": 4,
+        "too_large": 1
+      }
+    }
   }
 }

@@ -795,12 +795,18 @@ fn contract(name: &str) -> Option<Contract> {
     })
 }
 pub type EntryFn = fn(&mut Host, Vec<V>) -> R<Outcome>;
+pub struct Entry {
+    pub name: &'static str,
+    pub run: EntryFn,
+    pub arguments: Vec<String>,
+    pub exit_codes: &'static [(&'static str, u8)],
+}
 pub fn launch(
     manifest: &str,
     default_entry: &str,
-    entries: &[(&str, EntryFn, Vec<String>)],
+    entries: &[Entry],
     rust_adapter: Option<RustAdapter>,
-) -> R<()> {
+) -> R<u8> {
     let manifest: Json = serde_json::from_str(manifest).map_err(|e| e.to_string())?;
     let args = std::env::args().skip(1).collect::<Vec<_>>();
     let mut positional = vec![];
@@ -842,10 +848,14 @@ pub fn launch(
             }
             "--help" => {
                 println!(
-                    "Usage: program [--entry REGION] [--json] [--fuel N] [--scenario FILE] [--] ARGUMENTS\nScalar arguments: String, U32, Bool, Unit. Aggregates use a JSON Value argument.\nAvailable regions: {}",
-                    entries.iter().map(|e| e.0).collect::<Vec<_>>().join(", ")
+                    "Usage: program [--entry CONTROL] [--json] [--fuel N] [--scenario FILE] [--] ARGUMENTS\nScalar arguments: String, U32, Bool, Unit. Aggregates use a JSON Value argument.\nAvailable executable entries: {}",
+                    entries
+                        .iter()
+                        .map(|e| e.name)
+                        .collect::<Vec<_>>()
+                        .join(", ")
                 );
-                return Ok(());
+                return Ok(0);
             }
             s if s.starts_with("--") => return Err(format!("unknown option {s}")),
             _ => positional.push(args[i].clone()),
@@ -858,10 +868,10 @@ pub fn launch(
             return Err("positional arguments cannot accompany --scenario".into());
         }
     }
-    let (_, run, types) = entries
-        .iter()
-        .find(|e| e.0 == entry)
-        .ok_or_else(|| format!("unknown entry region {entry}"))?;
+    let selected = entries.iter().find(|e| e.name == entry).ok_or_else(|| {
+        format!("E_ENTRY: `{entry}` is not a configured executable entry; use --help")
+    })?;
+    let types = &selected.arguments;
     let (values, script) = if let Some(s) = scenario {
         (s.arguments, Some(s.calls))
     } else {
@@ -893,8 +903,15 @@ pub fn launch(
     validate_args(&values, types, &manifest)?;
     let mut host = Host::new(manifest, script, json_output, fuel);
     host.rust_adapter = rust_adapter;
-    let result = run(&mut host, values)?;
-    host.finish(result, json_output)
+    let result = (selected.run)(&mut host, values)?;
+    let code = selected
+        .exit_codes
+        .iter()
+        .find(|(name, _)| *name == result.0)
+        .ok_or_else(|| format!("E_EXIT_CODE: no status for {}.{}", selected.name, result.0))?
+        .1;
+    host.finish(result, json_output)?;
+    Ok(code)
 }
 
 impl collection_support::CollectionValue for V {

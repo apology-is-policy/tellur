@@ -1,6 +1,6 @@
 // Edit the input to "abc", "0", or "4294967296".
 // Or invoke parse_port as the entry with a string argument.
-control main() exits done, invalid {
+control main() exits process_result {
     [entry]:
         delta parse_port("8080") {
             ready { u32 port } => valid,
@@ -13,7 +13,7 @@ control main() exits done, invalid {
     [bad]: emit(message); exit invalid;
 }
 
-control parse_port(string input) exits ready { u32 port }, invalid { string message } {
+control parse_port(string input) exits port_result {
     [entry]:
         delta parse_u32(input) {
             number { auto n } => parsed,
@@ -30,3 +30,8 @@ control parse_port(string input) exits ready { u32 port }, invalid { string mess
     [too_large]: exit invalid { "The number does not fit u32." };
     [out_of_range]: exit invalid { "A port must be between 1 and 65535." };
 }
+
+// Process status policy for this runnable example.
+outcome process_result { @exit 0 done, @exit 2 invalid }
+
+outcome port_result { @exit 0 ready { u32 port }, @exit 2 invalid { string message } }

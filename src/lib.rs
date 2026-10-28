@@ -11,6 +11,7 @@ mod generic_controls;
 mod generics;
 mod inference;
 pub mod ir;
+pub mod launch;
 mod lifetimes;
 mod liveness;
 pub mod lsp;

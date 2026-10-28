@@ -130,6 +130,8 @@ pub struct Region {
 }
 #[derive(Clone, Debug)]
 pub struct OutcomeContract {
+    /// Host-boundary defaults; deliberately separate from alternative shapes.
+    pub exit_codes: std::collections::BTreeMap<String, u8>,
     pub origin_parameters: Vec<String>,
     pub type_parameters: Vec<String>,
     pub public: bool,
@@ -350,7 +352,7 @@ fn lex(source: &str) -> Result<Vec<Token>> {
             i += 2;
             column += 2;
             pair
-        } else if "(){}[],:;=&|!<>.*+Δ'".contains(c) {
+        } else if "(){}[],:;=&|!<>.*+Δ'@".contains(c) {
             i += 1;
             column += 1;
             c.to_string()
@@ -1486,8 +1488,41 @@ pub fn parse_unit(source: &str) -> Result<Unit> {
                 .collect::<Result<Vec<_>>>()?;
             p.need("{")?;
             let mut outcomes = vec![];
+            let mut exit_codes = std::collections::BTreeMap::new();
             while !p.at("}") {
+                let annotation = if p.at("@") {
+                    let at = p.here();
+                    p.need("@")?;
+                    let invalid = || {
+                        Diagnostic::new(
+                            "E_EXIT_CODE",
+                            at,
+                            "an outcome alternative annotation must be `@exit N`, with a decimal status from 0 through 255",
+                        )
+                    };
+                    if !p.eat("exit") {
+                        return Err(invalid());
+                    }
+                    let Kind::Number(number) = &p.tokens[p.pos].kind else {
+                        return Err(invalid());
+                    };
+                    let code = number.parse::<u8>().map_err(|_| invalid())?;
+                    p.pos += 1;
+                    if p.at("@") {
+                        return Err(Diagnostic::new(
+                            "E_EXIT_CODE",
+                            p.here(),
+                            "an outcome alternative can have only one @exit annotation",
+                        ));
+                    }
+                    Some(code)
+                } else {
+                    None
+                };
                 let name = p.id()?;
+                if let Some(code) = annotation {
+                    exit_codes.insert(name.clone(), code);
+                }
                 let fields = if p.at("{") {
                     p.schema_fields()?
                 } else {
@@ -1500,6 +1535,7 @@ pub fn parse_unit(source: &str) -> Result<Unit> {
             }
             p.need("}")?;
             contracts.push(OutcomeContract {
+                exit_codes,
                 origin_parameters,
                 type_parameters,
                 public,

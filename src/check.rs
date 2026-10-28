@@ -3947,7 +3947,18 @@ pub(crate) fn compile_concrete_unit(
     for name in regions.keys() {
         visit(name, &regions, &mut BTreeSet::new(), &mut done)?;
     }
+    let outcome_exit_codes = parsed
+        .iter()
+        .filter_map(|r| {
+            let contract = unit
+                .contracts
+                .iter()
+                .find(|c| Some(&c.name) == r.exit_contract.as_ref())?;
+            Some((r.name.clone(), contract.exit_codes.clone()))
+        })
+        .collect();
     let program = ir::CheckedProgram {
+        outcome_exit_codes,
         inferred_bindings,
         manifest,
         regions,

@@ -22,7 +22,7 @@ control reborrow(ref mutable text_editors input)
     } };
 }
 
-control main() exits done { string first, string second } {
+control main() exits process_result {
     mutable string first = "First original";
     mutable string second = "Second original";
     mutable text_editors parents = text_editors {
@@ -41,3 +41,6 @@ control main() exits done { string first, string second } {
         deref parents.second = "Second parent restored";
         exit done { first, second };
 }
+
+// Process status policy for this runnable example.
+outcome process_result { @exit 0 done { string first, string second } }

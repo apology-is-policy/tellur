@@ -1,3 +1,4 @@
+mod support;
 use tellur::{
     compile,
     ir::Value,
@@ -172,7 +173,9 @@ fn native_capture_and_delayed_handling_preserve_effect_order_after_expansion() {
     for (i, program) in [p.clone(), p.expanded("main").unwrap()].iter().enumerate() {
         for opt in [0, 2] {
             let binary = root.join(format!("outcome-{i}-{opt}"));
-            program.build_native("main", &binary, opt).unwrap();
+            support::scenario_executable(program)
+                .build_native("main", &binary, opt)
+                .unwrap();
             for flag in [true, false] {
                 let expected = run(&source, flag);
                 let actual = std::process::Command::new(&binary)

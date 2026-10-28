@@ -1,6 +1,6 @@
 // A borrowed lookup becomes an owned, completed result.
 // The lookup happens now; handling the stored result happens after the emit.
-control main() exits auto {
+control main() exits process_result {
     vector<string> words = ["hello from a stored adapter"];
     auto saved = delta vector_get(borrow words, 0) {
         found { ref string word } => [available]: ready { clone(word) },
@@ -29,3 +29,6 @@ outcome message_result {
     ready { string text },
     empty
 }
+
+// Process status policy for this runnable example.
+outcome process_result { @exit 0 done { string value_0 } }

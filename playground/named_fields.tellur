@@ -17,8 +17,11 @@ control create(string name) exits ready { person value } {
     } };
 }
 
-control main() exits done {
+control main() exits process_result {
     delta create("Ada") { ready { person value } => available }
     [available]: emit(value.display_name);
     [available]: exit done;
 }
+
+// Process status policy for this runnable example.
+outcome process_result { @exit 0 done }

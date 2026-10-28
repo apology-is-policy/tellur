@@ -94,6 +94,12 @@ impl Capabilities {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Manifest {
+    #[serde(
+        default,
+        skip_serializing_if = "BTreeMap::is_empty",
+        deserialize_with = "crate::launch::unique_map"
+    )]
+    pub launch: BTreeMap<String, crate::launch::EntryConfiguration>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rust: Option<crate::rust_host::Configuration>,
     #[serde(skip)]

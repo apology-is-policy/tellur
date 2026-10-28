@@ -26,7 +26,7 @@ control relay(envelope input) exits ready... {
     exit ready { input };
 }
 
-control main() exits done { string title, string body } {
+control main() exits process_result {
     mutable string title = "original title";
     mutable string body = "original body";
     delta lookup_text(borrow mutable title, borrow mutable body, true) {
@@ -46,3 +46,6 @@ control main() exits done { string title, string body } {
     [absent]: emit("No borrowed payload.");
     [entry]: exit done { title, body };
 }
+
+// Process status policy for this runnable example.
+outcome process_result { @exit 0 done { string title, string body } }

@@ -13,7 +13,7 @@ control first(ref vector<string> words)
     };
 }
 
-control main() exits done { u32 count } {
+control main() exits process_result {
     mutable vector<string> words = ["A borrowed word"];
     auto pending = capture first(borrow words);
     emit("The lookup has completed; its result is waiting.");
@@ -34,3 +34,6 @@ control main() exits done { u32 count } {
         vector_push(borrow mutable words, "The vector is available again");
         exit done { vector_length(borrow words) };
 }
+
+// Process status policy for this runnable example.
+outcome process_result { @exit 0 done { u32 count } }

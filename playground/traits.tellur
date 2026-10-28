@@ -18,7 +18,7 @@ implement reader for text_source {
     }
 }
 
-control main() exits done {
+control main() exits process_result {
     text_source source = text_source { text: "Hello through a trait" };
     delta reader<text_source>.read(borrow source) {
         received { reader<text_source>.item text } => received,
@@ -27,3 +27,6 @@ control main() exits done {
     [received]: emit(text); exit done;
     [empty]: exit done;
 }
+
+// Process status policy for this runnable example.
+outcome process_result { @exit 0 done }

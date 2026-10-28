@@ -1,3 +1,4 @@
+mod support;
 use serde_json::{Value as Json, json};
 use std::{
     fs,
@@ -80,7 +81,8 @@ fn checking_does_not_read_or_execute_rust_and_paths_follow_the_manifest() {
     );
     let p = compile("control main() exits done {exit done;}", manifest).unwrap();
     assert!(
-        p.native_source("main")
+        support::scenario_executable(&p)
+            .native_source("main")
             .unwrap_err()
             .message
             .contains("cannot read Rust adapter")
@@ -91,7 +93,7 @@ fn checking_does_not_read_or_execute_rust_and_paths_follow_the_manifest() {
     )
     .unwrap();
     assert!(
-        unbased
+        support::scenario_executable(&unbased)
             .native_source("main")
             .unwrap_err()
             .message
@@ -107,7 +109,7 @@ fn native_rust_signature_mismatch_is_a_build_error() {
         f.manifest(&config()),
     )
     .unwrap();
-    let e = p
+    let e = support::scenario_executable(&p)
         .build_native("main", &f.root.join("wrong"), 0)
         .unwrap_err();
     assert_eq!(e.code, "E_BACKEND");
@@ -125,11 +127,15 @@ fn native_dependencies_are_locked_and_rust_library_calls_round_trip() {
     )
     .unwrap();
     let locked = fs::read(f.root.join("Cargo.lock")).unwrap();
-    let e = p.build_native("main", &f.root.join("out"), 0).unwrap_err();
+    let e = support::scenario_executable(&p)
+        .build_native("main", &f.root.join("out"), 0)
+        .unwrap_err();
     assert_eq!(e.code, "E_BACKEND");
     assert!(e.message.contains("locked"), "{e}");
     assert_eq!(fs::read(f.root.join("Cargo.lock")).unwrap(), locked);
-    p.lock_native("main", &f.root.join("out")).unwrap();
+    support::scenario_executable(&p)
+        .lock_native("main", &f.root.join("out"))
+        .unwrap();
     let new_lock = fs::read(f.root.join("Cargo.lock")).unwrap();
     assert_ne!(locked, new_lock);
     for expanded in [false, true] {
@@ -140,7 +146,9 @@ fn native_dependencies_are_locked_and_rust_library_calls_round_trip() {
         };
         for opt in [0, 2] {
             let binary = f.root.join(format!("out-{expanded}-{opt}"));
-            p.build_native("main", &binary, opt).unwrap();
+            support::scenario_executable(&p)
+                .build_native("main", &binary, opt)
+                .unwrap();
             let result = Command::new(binary)
                 .args(["--json", "--", "hello!"])
                 .output()
@@ -177,7 +185,9 @@ fn native_owned_and_borrowed_collections_use_concrete_rust_types() {
     fs::write(f.root.join("host.rs"),"pub fn inspect(data:&[u8],items:&[u32],map:std::collections::BTreeMap<bool,Vec<String>>,unit:())->crate::rust_api::inspect_outcome {crate::rust_api::inspect_outcome::ready(data.to_vec(),items.to_vec(),map,unit)}").unwrap();
     let p=compile("control main(bytes data) exits auto {vector<u32> items=[1,2];mutable map<bool,vector<string>> values=map {};delta map_insert(borrow mutable values,true,[\"hi\"]) {inserted=>inserted,replaced {vector<string> previous}=>replaced}[inserted | replaced]:forward inspect(borrow data,borrow items,values,unit);}",f.manifest(&m)).unwrap();
     let binary = f.root.join("out");
-    p.build_native("main", &binary, 0).unwrap();
+    support::scenario_executable(&p)
+        .build_native("main", &binary, 0)
+        .unwrap();
     let result = Command::new(binary)
         .args(["--json", "--", r#"{"kind":"bytes","value":[1,255]}"#])
         .output()
@@ -217,7 +227,9 @@ fn native_panics_are_not_recoverable_outcomes_and_scripts_do_not_execute_adapter
     )
     .unwrap();
     let binary = f.root.join("panic");
-    p.build_native("main", &binary, 0).unwrap();
+    support::scenario_executable(&p)
+        .build_native("main", &binary, 0)
+        .unwrap();
     let result = Command::new(&binary).arg("--json").output().unwrap();
     assert!(!result.status.success());
     assert!(String::from_utf8_lossy(&result.stderr).contains("host failure"));

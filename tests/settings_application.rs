@@ -107,18 +107,28 @@ fn settings_policy_keeps_failures_and_uncertain_effects_explicit() {
         assert_eq!(result, expanded.run(&scenario).unwrap());
     }
 }
+fn status(outcome: &str) -> i32 {
+    match outcome {
+        "done" | "saved" | "replaced" => 0,
+        "invalid_key" => 2,
+        "missing" => 3,
+        "commit_uncertain" => 4,
+        _ => 1,
+    }
+}
 fn run(binary: &Path, entry: &str, args: &[&str]) -> Json {
     let output = Command::new(binary)
         .args(["--json", "--entry", entry, "--"])
         .args(args)
         .output()
         .unwrap();
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
+    let report: Json = serde_json::from_slice(&output.stdout)
+        .unwrap_or_else(|_| panic!("{}", String::from_utf8_lossy(&output.stderr)));
+    assert_eq!(
+        output.status.code(),
+        Some(status(report["outcome"].as_str().unwrap()))
     );
-    serde_json::from_slice(&output.stdout).unwrap()
+    report
 }
 #[test]
 fn native_settings_persists_reloads_and_matches_scripted_failures() {
@@ -171,7 +181,7 @@ fn native_settings_persists_reloads_and_matches_scripted_failures() {
                 );
                 assert_eq!(fs::read_to_string(&data).unwrap(), invalid);
             }
-            for (i, (scenario, _)) in failure_cases().iter().enumerate() {
+            for (i, (scenario, expected)) in failure_cases().iter().enumerate() {
                 let file = root.join(format!("case-{i}.json"));
                 fs::write(&file, serde_json::to_vec(scenario).unwrap()).unwrap();
                 let output = Command::new(&binary)
@@ -179,7 +189,7 @@ fn native_settings_persists_reloads_and_matches_scripted_failures() {
                     .arg(file)
                     .output()
                     .unwrap();
-                assert!(output.status.success());
+                assert_eq!(output.status.code(), Some(status(expected)));
                 assert_eq!(
                     serde_json::from_slice::<Json>(&output.stdout).unwrap(),
                     serde_json::to_value(p.run(scenario).unwrap()).unwrap()
@@ -206,7 +216,23 @@ fn native_file_replacement_reports_size_preparation_and_uncertain_commit_failure
         &directory.join("manifest.json"),
     )
     .unwrap();
+    let mut manifest = manifest;
+    manifest.launch.clear();
     let p=tellur::compile("control main(string path,string text) exits auto {forward file_replace(borrow path,borrow text,4);}",manifest).unwrap();
+    let p = p
+        .with_entry_exit_codes(
+            "main",
+            [
+                ("replaced", 0),
+                ("write_failed", 1),
+                ("too_large", 1),
+                ("commit_uncertain", 4),
+            ]
+            .into_iter()
+            .map(|(n, c)| (n.into(), c))
+            .collect(),
+        )
+        .unwrap();
     let binary = root.join("write");
     p.build_native("main", &binary, 0).unwrap();
     let data = root.join("data.json");

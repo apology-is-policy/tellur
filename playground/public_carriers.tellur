@@ -19,7 +19,7 @@ control relay(edit_job input)
     exit ready { input };
 }
 
-control main() exits done { string text } {
+control main() exits process_result {
     mutable string owner = "before";
     mutable text_view saved = text_view { borrow mutable owner };
     auto pending = capture prepare(borrow mutable saved);
@@ -31,3 +31,6 @@ control main() exits done { string text } {
     drop(saved);
     exit done { owner };
 }
+
+// Process status policy for this runnable example.
+outcome process_result { @exit 0 done { string text } }

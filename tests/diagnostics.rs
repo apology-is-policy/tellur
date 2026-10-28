@@ -110,7 +110,7 @@ fn successful_json_checks_report_counts_and_no_diagnostics() {
 #[test]
 fn json_positions_use_unicode_scalars_and_preserve_crlf_lines() {
     let f = Fixture::new();
-    let line = "emit(\"😀\"); @";
+    let line = "emit(\"😀\"); #";
     f.write(
         "main.tellur",
         &format!("control main() exits done {{\r\n{line}\r\nexit done;}}"),
@@ -120,7 +120,7 @@ fn json_positions_use_unicode_scalars_and_preserve_crlf_lines() {
     assert_eq!(e["code"], "E_LEX");
     assert_eq!(
         e["position"],
-        json!({"line":2,"column":line.chars().position(|c| c=='@').unwrap()+1})
+        json!({"line":2,"column":line.chars().position(|c| c=='#').unwrap()+1})
     );
     assert_eq!(e["path"], f.root.join("main.tellur").to_str().unwrap());
     assert_eq!(e["witness"], Value::Null);

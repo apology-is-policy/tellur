@@ -1,4 +1,4 @@
-outcome message { ready { string text }, empty }
+outcome message { @exit 0 ready { string text }, @exit 1 empty }
 
 control main(bool available) exits message {
     auto saved = capture choose(available);

@@ -13,7 +13,7 @@ pub control read_setting(bool valid) exits ready { u32 value }, invalid {
     forward middle(valid);
 }
 
-control main() exits done {
+control main() exits process_result {
     delta read_setting(true) {
         ready { auto value } => ready,
         invalid => invalid
@@ -21,3 +21,6 @@ control main() exits done {
     [ready]: emit(u32_text(value)); exit done;
     [invalid]: emit("Invalid setting"); exit done;
 }
+
+// Process status policy for this runnable example.
+outcome process_result { @exit 0 done }

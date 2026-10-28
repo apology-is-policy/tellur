@@ -1,5 +1,5 @@
 // References are copied into the collection; the strings remain owned here.
-control main() exits done {
+control main() exits process_result {
     mutable string first = "first";
     mutable string second = "second";
     mutable vector<ref string> words = [borrow first];
@@ -15,3 +15,6 @@ control main() exits done {
     emit(borrow first); emit(borrow second);
     exit done;
 }
+
+// Process status policy for this runnable example.
+outcome process_result { @exit 0 done }

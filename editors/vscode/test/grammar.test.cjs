@@ -234,3 +234,11 @@ test('named outcome origin groups and optional result maps remain distinct from 
   has(ts, 'produce', 'entity.name.function.tellur');
   has(ts, 'relay', 'entity.name.function.tellur');
 });
+
+test('process statuses are annotations on alternatives, outside payloads', () => {
+  const ts = tokens('outcome command_result {\n @exit 0 done,\n @exit 2 failed { string message }\n}');
+  has(ts, '@exit', 'storage.modifier.annotation.tellur');
+  has(ts, '0', 'constant.numeric.tellur'); has(ts, '2', 'constant.numeric.tellur');
+  has(ts, 'done', 'entity.name.type.outcome.tellur');
+  assert.ok(!tokens('// @exit 0\n"@exit 1"').some(t => t.scopes.includes('storage.modifier.annotation.tellur')));
+});

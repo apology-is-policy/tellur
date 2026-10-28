@@ -58,6 +58,22 @@ impl Drop for Fixture {
 }
 const VALID: &str = "region main() exits Done { [Entry]: exit Done; }";
 #[test]
+fn outcome_status_hover_and_unsaved_annotation_errors() {
+    let mut f = Fixture::new();
+    let source = "outcome result {\n @exit 0 done,\n @exit 23 missing\n}\ncontrol main() exits result {exit done;}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let hover = f.server.hover(&f.uri, 0, 9).to_string();
+    assert!(hover.contains("Process exit defaults"), "{hover}");
+    assert!(hover.contains("23"), "{hover}");
+    f.change(&source.replace("23", "256"), 2);
+    let errors = f.diagnostics();
+    assert_eq!(errors[0]["code"], "E_EXIT_CODE");
+    assert_eq!(errors[0]["range"]["start"]["line"], 2);
+    f.change(source, 3);
+    assert_eq!(f.diagnostics(), json!([]));
+}
+#[test]
 fn ellipsis_payload_hover_and_unsaved_diagnostics_follow_the_checked_body() {
     let mut f = Fixture::new();
     let source = include_str!("../playground/inferred_payloads.tellur");
@@ -202,9 +218,9 @@ fn utf16_positions_and_crlf() {
         json!({"start":{"line":1,"character":5},"end":{"line":1,"character":9}})
     );
     let mut f = Fixture::new();
-    let text = "region main() exits Done { [Entry]: emit(\"😀\"); @ }";
+    let text = "region main() exits Done { [Entry]: emit(\"😀\"); # }";
     f.open(text);
-    let position = text[..text.find('@').unwrap()].encode_utf16().count();
+    let position = text[..text.find('#').unwrap()].encode_utf16().count();
     assert_eq!(f.diagnostics()[0]["range"]["start"]["character"], position);
     assert_eq!(f.diagnostics()[0]["code"], "E_LEX");
 }
@@ -1116,7 +1132,10 @@ fn auto_hover_covers_captures_inline_adapters_and_regular_payload_bindings() {
     assert_eq!(f.diagnostics(), json!([]));
     auto_hover(&f, source, "auto pending", "outcome<first> pending");
     auto_hover(&f, source, "auto text", "ref string text");
-    let source = include_str!("../playground/stored_adapters.tellur");
+    // Exercise inference independently of the runnable example's process contract.
+    let inferred = include_str!("../playground/stored_adapters.tellur")
+        .replace("exits process_result", "exits auto");
+    let source = inferred.as_str();
     f.change(source, 2);
     assert_eq!(f.diagnostics(), json!([]));
     auto_hover(&f, source, "auto saved", "outcome { ready { string");

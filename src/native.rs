@@ -298,6 +298,7 @@ impl CheckedProgram {
         if self.region(entry).is_none() {
             return Err(error(format!("unknown entry region {entry}")));
         }
+        let launch_entries = self.executable_entries(entry)?;
         let mut g = Generator {
             slots: vec![],
             names: self
@@ -352,24 +353,32 @@ impl CheckedProgram {
         let manifest = serde_json::to_string(self.manifest()).map_err(|e| error(e.to_string()))?;
         let _ = writeln!(
             g.code,
-            "fn main() {{\nlet entries:Vec<(&str,EntryFn,Vec<String>)> = vec!["
+            "fn main() -> std::process::ExitCode {{\nlet entries:Vec<Entry> = vec!["
         );
         for r in self.regions() {
+            let Some(codes) = launch_entries.get(&r.name) else {
+                continue;
+            };
             let _ = writeln!(
                 g.code,
-                "({},entry_{},vec![{}]),",
+                "Entry {{ name: {}, run: entry_{}, arguments: vec![{}], exit_codes: &[{}] }},",
                 string(&r.name),
                 g.names[r.name.as_str()],
                 r.parameters
                     .iter()
                     .map(|p| format!("{}.into()", string(&p.ty)))
                     .collect::<Vec<_>>()
+                    .join(","),
+                codes
+                    .iter()
+                    .map(|(name, code)| format!("({}, {code})", string(name)))
+                    .collect::<Vec<_>>()
                     .join(",")
             );
         }
         let _ = writeln!(
             g.code,
-            "];\nif let Err(error) = launch({}, {}, &entries, Some(rust_dispatch)) {{ eprintln!(\"{{error}}\"); std::process::exit(1); }}\n}}",
+            "];\nmatch launch({}, {}, &entries, Some(rust_dispatch)) {{ Ok(code) => std::process::ExitCode::from(code), Err(error) => {{ eprintln!(\"{{error}}\"); std::process::ExitCode::FAILURE }} }}\n}}",
             string(&manifest),
             string(entry)
         );

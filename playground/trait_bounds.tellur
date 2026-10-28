@@ -16,7 +16,7 @@ control read_one<r: reader>(ref r input) exits read_result<reader<r>.item> {
     forward reader<r>.read(input);
 }
 
-control main() exits done {
+control main() exits process_result {
     string source = "Hello through a generic trait";
     delta read_one<string>(borrow source) {
         received { auto text } => received,
@@ -25,3 +25,6 @@ control main() exits done {
     [received]: emit(text); exit done;
     [empty]: exit done;
 }
+
+// Process status policy for this runnable example.
+outcome process_result { @exit 0 done }

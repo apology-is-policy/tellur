@@ -1,3 +1,4 @@
+mod support;
 use serde_json::{Value as Json, json};
 use std::{fs, path::Path, process::Command};
 use tellur::{
@@ -231,7 +232,9 @@ fn native_and_llvm_match_reference_before_and_after_expansion_and_optimization()
     for (expanded_flag, p) in [(false, &program), (true, &expanded)] {
         for opt in [0, 2] {
             let binary = root.join(format!("program-{expanded_flag}-{opt}"));
-            let build = p.build_native("refresh", &binary, opt).unwrap();
+            let build = support::scenario_executable(p)
+                .build_native("refresh", &binary, opt)
+                .unwrap();
             let llvm = fs::read_to_string(build.llvm).unwrap();
             assert!(llvm.contains("target triple") && llvm.contains("define"));
             for (s, expected) in scenarios.iter().zip(&expected) {
@@ -270,16 +273,18 @@ fn live_adapters_execute_real_inputs_and_enforce_contracts() {
     fs::create_dir_all(&root).unwrap();
     let manifest = Manifest::from_json(include_str!("../playground/manifest.json")).unwrap();
     let source=[
-        include_str!("../playground/count.tellur").replace("control main()","control count_main()"),
-        include_str!("../playground/port.tellur").replace("control main()","control port_main()"),
-        include_str!("../playground/read_file.tellur").replace("control main()","control file_main()"),
+        include_str!("../playground/count.tellur").replace("control main()","control count_main()").replace("process_result","count_process_result"),
+        include_str!("../playground/port.tellur").replace("control main()","control port_main()").replace("process_result","port_process_result"),
+        include_str!("../playground/read_file.tellur").replace("control main()","control file_main()").replace("process_result","file_process_result"),
         "region divide(a: U32,b: U32) exits done(n: U32), Zero { [Entry]: delta checked_div(a,b) -> [quotient(n) => Q,zero_divisor => Z]; [Q]: exit done(n); [Z]: exit Zero; }".into(),
         "region arithmetic(a: U32,b: U32) exits sum(n: U32), overflow { [Entry]: delta checked_add(a,b) -> [sum(n) => S,overflow => O]; [S]: exit sum(n); [O]: exit overflow; }".into(),
         "region text() exits done(text: String), Bad { [Entry]: delta concat(\"é\",\"😀\") -> [text(s) => T]; delta decode_utf8(bytes\"ff\") -> [text(unused) => V,invalid => I]; [T & I]: exit done(s); [V]: exit Bad; }".into(),
     ].join("\n");
     let p = compile(&source, manifest).unwrap();
     let executable = root.join("live");
-    p.build_native("count_main", &executable, 2).unwrap();
+    support::scenario_executable(&p)
+        .build_native("count_main", &executable, 2)
+        .unwrap();
     let run = |entry: &str, args: &[&str]| {
         let output = Command::new(&executable)
             .args(["--json", "--entry", entry, "--"])

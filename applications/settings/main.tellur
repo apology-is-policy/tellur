@@ -1,7 +1,7 @@
 import "settings.tellur" as settings;
 
 // The default entry prints the configuration. Other CLI entries reuse the same module.
-control main(string path) exits done, failed {
+control main(string path) exits display_result {
     delta settings.load(borrow path) {
         loaded { map<string, string> values } => loaded,
         invalid_file { string message } => invalid_file,
@@ -19,7 +19,7 @@ control main(string path) exits done, failed {
     [encode_failed]: emit(message); exit failed;
 }
 control get(string path, string key)
-    exits done, missing, invalid_key, failed
+    exits lookup_result
 {
     delta settings.get(borrow path, borrow key) {
         found { string value } => found,
@@ -37,4 +37,16 @@ control get(string path, string key)
 }
 control set(string path, string key, string value) exits settings.update_result {
     forward settings.set(borrow path, key, value);
+}
+
+// Terminal policy belongs to these entry contracts; nested controls return normally.
+outcome display_result {
+    @exit 0 done,
+    @exit 1 failed
+}
+outcome lookup_result {
+    @exit 0 done,
+    @exit 3 missing,
+    @exit 2 invalid_key,
+    @exit 1 failed
 }

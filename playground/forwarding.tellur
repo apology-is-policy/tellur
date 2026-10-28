@@ -3,7 +3,7 @@ outcome message {
     empty
 }
 
-control main() exits done {
+control main() exits process_result {
     message first = ready { "first" };
     auto second = capture relay(message.ready { "second" });
 
@@ -26,3 +26,6 @@ control display(message saved) exits done {
     [available]: emit(text);
     [available | missing]: exit done;
 }
+
+// Process status policy for this runnable example.
+outcome process_result { @exit 0 done }

@@ -1,5 +1,5 @@
 // capture invokes now. It saves the completed outcome, not deferred work.
-control main() exits auto {
+control main() exits process_result {
     outcome<choose> saved = capture choose(true);
     emit("The producer has finished; its result is still unhandled.");
     exit delta saved {
@@ -20,3 +20,6 @@ control choose(bool available) exits auto {
 control forward(outcome<choose> saved) exits auto {
     exit saved;
 }
+
+// Process status policy for this runnable example.
+outcome process_result { @exit 0 done { string value_0 }, @exit 1 empty }

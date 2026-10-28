@@ -1,3 +1,4 @@
+mod support;
 use tellur::{
     compile,
     ir::{Action, Value},
@@ -187,7 +188,9 @@ fn native_forwarding_preserves_effects_at_o0_o2_and_after_expansion() {
     for (index, program) in [p.clone(), p.expanded("main").unwrap()].iter().enumerate() {
         for opt in [0, 2] {
             let binary = root.join(format!("forward-{index}-{opt}"));
-            program.build_native("main", &binary, opt).unwrap();
+            support::scenario_executable(program)
+                .build_native("main", &binary, opt)
+                .unwrap();
             let actual = std::process::Command::new(&binary)
                 .arg("--json")
                 .output()

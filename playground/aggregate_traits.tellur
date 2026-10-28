@@ -28,7 +28,7 @@ control prepare<e: editor>(ref mutable text_view<editor<e>.item> input)
 {
     forward editor<e>.prepare(input);
 }
-control main() exits done {
+control main() exits process_result {
     mutable string text = "before";
     mutable text_view<string> saved = text_view<string> { borrow mutable text };
     auto pending = capture prepare<text_editor>(borrow mutable saved);
@@ -44,3 +44,6 @@ control main() exits done {
     emit(borrow text);
     exit done;
 }
+
+// Process status policy for this runnable example.
+outcome process_result { @exit 0 done }

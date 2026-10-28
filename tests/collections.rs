@@ -1,3 +1,4 @@
+mod support;
 use tellur::{
     compile,
     ir::Value,
@@ -355,7 +356,9 @@ fn native_collections_match_interpreter_and_expansion_at_o0_o2() {
         };
         for opt in [0, 2] {
             let binary = root.join(format!("collections-{expanded}-{opt}"));
-            program.build_native("main", &binary, opt).unwrap();
+            support::scenario_executable(&program)
+                .build_native("main", &binary, opt)
+                .unwrap();
             for index in [0, 1, 5] {
                 let expected = p
                     .run(&Scenario {

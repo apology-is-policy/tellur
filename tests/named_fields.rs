@@ -1,3 +1,4 @@
+mod support;
 use tellur::{
     compile,
     ir::{Action, Expr, Value},
@@ -160,7 +161,9 @@ fn native_named_fields_match_reference_before_and_after_expansion_at_o0_o2() {
     ] {
         for opt in [0, 2] {
             let bin = root.join(format!("{name}-{opt}"));
-            program.build_native("main", &bin, opt).unwrap();
+            support::scenario_executable(&program)
+                .build_native("main", &bin, opt)
+                .unwrap();
             let out = Command::new(bin)
                 .arg("--scenario")
                 .arg(&s)

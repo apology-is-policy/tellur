@@ -92,3 +92,7 @@ directly; ordinary payloads are borrowed in place. See
 A **reference layer** is one stored reference and the carrier reached through it.
 A public nested schema maps its storage with `<-` and its referent groups with
 brackets. The compiler keeps these dependency paths distinct across calls.
+
+**Process status** — A numeric interpretation of the final executable outcome.
+Declaration defaults use `@exit N`; entry mappings can override them. It is not
+part of an outcome payload or its ordinary compatibility. See [process entry](process-entry.md).

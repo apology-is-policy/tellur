@@ -1,5 +1,5 @@
 // Helpers can mutate a caller's value and return a borrow of an input.
-control main() exits auto {
+control main() exits process_result {
     [entry]:
         mutable string message = "hello";
         delta rewrite(borrow mutable message) {
@@ -37,3 +37,6 @@ control choose(bool first, ref string left, ref string right) exits auto {
 // Try using edited after the message assignment: the assignment conflicts.
 // Try returning borrow local from a helper: a local owner cannot outlive that call.
 // Hover over choose to see the inferred result and both possible borrow sources.
+
+// Process status policy for this runnable example.
+outcome process_result { @exit 0 done }

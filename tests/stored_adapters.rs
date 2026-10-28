@@ -1,3 +1,4 @@
+mod support;
 use tellur::{compile, ir::Value, manifest::Manifest, runtime::Scenario};
 fn manifest() -> Manifest {
     Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
@@ -176,7 +177,9 @@ fn native_and_expanded_storage_match_at_both_optimization_levels() {
     for (index, program) in [p.clone(), p.expanded("main").unwrap()].iter().enumerate() {
         for opt in [0, 2] {
             let binary = root.join(format!("adapter-{index}-{opt}"));
-            program.build_native("main", &binary, opt).unwrap();
+            support::scenario_executable(program)
+                .build_native("main", &binary, opt)
+                .unwrap();
             for flag in [true, false] {
                 let expected = run(NESTED, flag);
                 let actual = std::process::Command::new(&binary)

@@ -1,5 +1,5 @@
 // A compact adapter. Change "41" to "abc", "4294967295" or "4294967296".
-control main() exits auto {
+control main() exits process_result {
     exit delta successor("41") {
         ready { u32 value } => done { value },
         invalid            => bad_input {},
@@ -17,3 +17,6 @@ control successor(string input) exits auto {
         overflow  => [parse_overflow]: too_large {}
     };
 }
+
+// Process status policy for this runnable example.
+outcome process_result { @exit 0 done { u32 value_0 }, @exit 2 bad_input }

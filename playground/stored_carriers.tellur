@@ -11,7 +11,7 @@ control lend(ref mutable text_view input) exits ready... {
     exit ready { input };
 }
 
-control main() exits done { string final_text } {
+control main() exits process_result {
     mutable string owner = "before";
     mutable text_view saved = text_view { borrow mutable owner };
 
@@ -32,3 +32,6 @@ control main() exits done { string final_text } {
     [entry]: drop(saved);
     exit done { owner };
 }
+
+// Process status policy for this runnable example.
+outcome process_result { @exit 0 done { string final_text } }

@@ -1,3 +1,4 @@
+mod support;
 use tellur::{compile, ir::Value, manifest::Manifest, runtime::Scenario};
 
 fn manifest() -> Manifest {
@@ -319,7 +320,9 @@ fn native_record_loans_match_interpreter_and_certified_expansion() {
         };
         for opt in [0, 2] {
             let binary = root.join(format!("records-{expanded}-{opt}"));
-            p.build_native("main", &binary, opt).unwrap();
+            support::scenario_executable(&p)
+                .build_native("main", &binary, opt)
+                .unwrap();
             let actual = std::process::Command::new(binary)
                 .arg("--json")
                 .output()

@@ -1,3 +1,4 @@
+mod support;
 use tellur::{compile, manifest::Manifest, runtime::Scenario};
 fn manifest() -> Manifest {
     Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
@@ -335,7 +336,9 @@ fn native_carrier_results_match_interpreter_and_expansion() {
             };
             for opt in [0, 2] {
                 let binary = root.join(format!("result-{expanded}-{opt}"));
-                program.build_native("main", &binary, opt).unwrap();
+                support::scenario_executable(&program)
+                    .build_native("main", &binary, opt)
+                    .unwrap();
                 let output = std::process::Command::new(binary)
                     .arg("--json")
                     .output()

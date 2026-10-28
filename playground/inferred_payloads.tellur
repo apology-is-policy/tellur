@@ -5,7 +5,7 @@ control lookup(bool available) exits ready..., missing {
     };
 }
 
-control main() exits done {
+control main() exits process_result {
     delta lookup(true) {
         ready { string text } => available,
         missing => absent
@@ -13,3 +13,6 @@ control main() exits done {
     [available]: emit(text); exit done;
     [absent]: emit("Nothing found"); exit done;
 }
+
+// Process status policy for this runnable example.
+outcome process_result { @exit 0 done }

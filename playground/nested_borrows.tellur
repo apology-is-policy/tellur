@@ -20,7 +20,7 @@ outcome delivery {
     missing
 }
 
-control main() exits done { string title, string body } {
+control main() exits process_result {
     mutable string title = "draft title";
     mutable string body = "draft body";
     selection selected = found { editors {
@@ -47,3 +47,6 @@ control main() exits done { string title, string body } {
         exit done { title, body };
     [empty | missing]: exit done { title, body };
 }
+
+// Process status policy for this runnable example.
+outcome process_result { @exit 0 done { string title, string body } }

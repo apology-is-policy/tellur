@@ -1,3 +1,4 @@
+mod support;
 use tellur::{compile, manifest::Manifest, runtime::Scenario};
 fn m() -> Manifest {
     Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
@@ -155,7 +156,9 @@ fn native_public_boundary_preserves_execution_and_expansion() {
         };
         for opt in [0, 2] {
             let output = root.join(format!("program-{expanded}-{opt}"));
-            program.build_native("main", &output, opt).unwrap();
+            support::scenario_executable(&program)
+                .build_native("main", &output, opt)
+                .unwrap();
             let result = std::process::Command::new(output)
                 .arg("--json")
                 .output()

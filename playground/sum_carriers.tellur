@@ -22,7 +22,7 @@ control edit(ref mutable text_result input)
     };
 }
 
-control main() exits done { string final_text } {
+control main() exits process_result {
     mutable string owner = "before";
     mutable text_result saved = text_result.found { borrow mutable owner };
 
@@ -46,3 +46,6 @@ control main() exits done { string final_text } {
     [handled]: emit(text);
     [entry]: exit done { owner };
 }
+
+// Process status policy for this runnable example.
+outcome process_result { @exit 0 done { string final_text } }

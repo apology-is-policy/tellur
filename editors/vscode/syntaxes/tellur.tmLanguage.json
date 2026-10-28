@@ -467,6 +467,17 @@
       },
       "patterns": [
         {
+          "match": "(@exit)\\s+([0-9]+)\\b",
+          "captures": {
+            "1": {
+              "name": "storage.modifier.annotation.tellur"
+            },
+            "2": {
+              "name": "constant.numeric.tellur"
+            }
+          }
+        },
+        {
           "include": "#comments"
         },
         {

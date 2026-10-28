@@ -12,6 +12,17 @@ async function replace(document, text) {
   edit.replace(document.uri, new vscode.Range(document.positionAt(0), document.positionAt(document.getText().length)), text);
   assert.ok(await vscode.workspace.applyEdit(edit));
 }
+// The editor fixtures that exercise anonymous inference supply explicit launcher policy.
+async function buildWithStatus(command, options, exitCodes) {
+  const root = vscode.workspace.workspaceFolders[0].uri.fsPath;
+  const file = path.join(root, 'manifest.json');
+  const before = await fs.readFile(file, 'utf8');
+  const config = JSON.parse(before);
+  config.launch = { main: { exit_codes: exitCodes } };
+  await fs.writeFile(file, JSON.stringify(config));
+  try { return await vscode.commands.executeCommand(command, options); }
+  finally { await fs.writeFile(file, before); }
+}
 exports.run = async function () {
   const root = vscode.workspace.workspaceFolders[0].uri.fsPath;
   const uri = vscode.Uri.file(path.join(root, 'load.path'));
@@ -54,10 +65,10 @@ exports.run = async function () {
     assert.ok(symbols.some(s => s.name === 'load'));
     await replace(document, original.replace('[ReadBad & CloseBad]: exit Failed(Both(re, ce));', ''));
     await waitFor(() => diagnostics().some(d => code(d) === 'E_UNCOVERED' && /ReadBad.*CloseBad/.test(d.message)), 'uncovered family witness');
-    const unicode = 'region test() exits Done { [Entry]: emit("😀"); @ }';
+    const unicode = 'region test() exits Done { [Entry]: emit("😀"); # }';
     await replace(document, unicode);
     await waitFor(() => diagnostics().some(d => code(d) === 'E_LEX'), 'Unicode source diagnostic');
-    assert.equal(diagnostics()[0].range.start.character, unicode.indexOf('@'));
+    assert.equal(diagnostics()[0].range.start.character, unicode.indexOf('#'));
     await replace(document, original);
     await waitFor(() => diagnostics().length === 0, 'repair after Unicode error');
     const manifestPath = path.join(root, 'manifest.json');
@@ -123,7 +134,7 @@ exports.run = async function () {
     await waitFor(() => revisedDiagnostics().some(d => code(d) === 'E_MOVED'), 'exclusive reference move diagnostic');
     await replace(buildDocument, owned);
     await waitFor(() => revisedDiagnostics().length === 0, 'reference diagnostic repair');
-    const ownedRun = await vscode.commands.executeCommand('tellur.buildAndRun', { output: path.join(root, 'native output', 'ownership') });
+    const ownedRun = await buildWithStatus('tellur.buildAndRun', { output: path.join(root, 'native output', 'ownership') }, {"done": 0});
     assert.equal(ownedRun.code, 0, ownedRun.stderr);
     assert.ok(ownedRun.stdout.includes('after'));
     const referenceSource = 'control main() exits auto { [entry]: mutable string owner="before"; delta rewrite(&mutable owner) {view {auto ref}=>ready} [ready]: emit(ref); owner="after last use"; exit done {owner}; }\ncontrol rewrite(&mutable string text) exits auto { [entry]: *text="from helper"; exit view {text}; }';
@@ -138,7 +149,7 @@ exports.run = async function () {
     await waitFor(() => revisedDiagnostics().some(d => code(d) === 'E_LIFETIME'), 'local reference escape rejected');
     await replace(buildDocument, referenceSource);
     await waitFor(() => revisedDiagnostics().length === 0, 'return lifetime repair');
-    const referenceRun = await vscode.commands.executeCommand('tellur.buildAndRun', { output: path.join(root, 'native output', 'references') });
+    const referenceRun = await buildWithStatus('tellur.buildAndRun', { output: path.join(root, 'native output', 'references') }, {"done": 0});
     assert.equal(referenceRun.code, 0, referenceRun.stderr);
     assert.ok(referenceRun.stdout.includes('from helper'));
     const collectionSource = 'control main() exits auto { [entry]: mutable vector<string> words=["before"]; delta vector_get(&words,0) {found {auto word}=>read,out_of_bounds=>empty} [read]: emit(word); delta vector_push(&mutable words,"after") {pushed=>added} [added]: exit done {words}; [empty]: exit empty; }';
@@ -146,7 +157,7 @@ exports.run = async function () {
     await waitFor(() => revisedDiagnostics().some(d => code(d) === 'E_LOAN'), 'collection element loan prevents insertion');
     await replace(buildDocument, collectionSource);
     await waitFor(() => revisedDiagnostics().length === 0, 'collection loan repair');
-    const collectionRun = await vscode.commands.executeCommand('tellur.buildAndRun', { output: path.join(root, 'native output', 'collections') });
+    const collectionRun = await buildWithStatus('tellur.buildAndRun', { output: path.join(root, 'native output', 'collections') }, {"done": 0, "empty": 1});
     assert.equal(collectionRun.code, 0, collectionRun.stderr);
     assert.ok(collectionRun.stdout.includes('before'));
     const adapterSource = 'control main() exits auto {auto saved=capture choose(true);emit("between");exit delta saved {ready {string value}=>done {value},empty=>empty {}};}\ncontrol choose(bool flag) exits auto {emit("producer");exit delta flag {true=>[available]:ready {"result"},false=>empty {}};}';
@@ -159,7 +170,7 @@ exports.run = async function () {
     await waitFor(() => revisedDiagnostics().some(d => code(d) === 'E_OUTCOME'), 'unhandled captured outcome diagnostic');
     await replace(buildDocument, adapterSource);
     await waitFor(() => revisedDiagnostics().length === 0, 'captured outcome repair');
-    const adapterRun = await vscode.commands.executeCommand('tellur.buildAndRun', {output:path.join(root,'native output','adapters')});
+    const adapterRun = await buildWithStatus('tellur.buildAndRun', {output:path.join(root,'native output','adapters')}, {"done": 0, "empty": 1});
     assert.equal(adapterRun.code,0,adapterRun.stderr);
     assert.ok(adapterRun.stdout.indexOf('producer') < adapterRun.stdout.indexOf('between'));
     assert.ok(adapterRun.stdout.includes('result'));
@@ -176,7 +187,7 @@ exports.run = async function () {
     await waitFor(() => revisedDiagnostics().some(d => code(d) === 'E_MOVED'), 'duplicate move in stored adapter');
     await replace(buildDocument, storedSource);
     await waitFor(() => revisedDiagnostics().length === 0, 'stored adapter repair');
-    const storedRun = await vscode.commands.executeCommand('tellur.buildAndRun', {output:path.join(root,'native output','stored-adapters')});
+    const storedRun = await buildWithStatus('tellur.buildAndRun', {output:path.join(root,'native output','stored-adapters')}, {"ready": 0, "empty": 1});
     assert.equal(storedRun.code,0,storedRun.stderr);
     assert.ok(storedRun.stdout.indexOf('producer') < storedRun.stdout.indexOf('between'));
     assert.ok(storedRun.stdout.includes('stored result'));
@@ -194,7 +205,7 @@ exports.run = async function () {
     await waitFor(()=>revisedDiagnostics().some(d=>code(d)==='E_TYPE'),'named contract payload mismatch');
     await replace(buildDocument,namedSource);
     await waitFor(()=>revisedDiagnostics().length===0,'named outcome repair');
-    const namedRun=await vscode.commands.executeCommand('tellur.buildAndRun',{output:path.join(root,'native output','named-outcomes')});
+    const namedRun=await buildWithStatus('tellur.buildAndRun',{output:path.join(root,'native output','named-outcomes')}, {"ready": 0, "empty": 1});
     assert.equal(namedRun.code,0,namedRun.stderr);
     assert.ok(namedRun.stdout.includes('named result'));
     console.log('TELLUR_NAMED_OUTCOMES_EDITOR_TESTS_PASSED: declaration hover, outline, obligation, payload typing, repair, native execution');
@@ -211,7 +222,7 @@ exports.run = async function () {
     await waitFor(()=>revisedDiagnostics().some(d=>code(d)==='E_TYPE'),'nominal payload mismatch');
     await replace(buildDocument,dataSource);
     await waitFor(()=>revisedDiagnostics().length===0,'source data repair');
-    const dataRun=await vscode.commands.executeCommand('tellur.buildAndRun',{output:path.join(root,'native output','data-types')});
+    const dataRun=await buildWithStatus('tellur.buildAndRun',{output:path.join(root,'native output','data-types')}, {"done": 0});
     assert.equal(dataRun.code,0,dataRun.stderr);assert.ok(dataRun.stdout.includes('Ada'));
     console.log('TELLUR_DATA_EDITOR_TESTS_PASSED: structs, variants, wrapper hover, outline, unsaved nominal/layout errors, repair, native execution');
     const namedFieldsSource='struct pair {string first;string second;} control main() exits done {string owner="Named Ada";auto value=pair {second:clone(&owner),first:owner};emit(value.first);emit(value.second);exit done;}';
@@ -223,7 +234,7 @@ exports.run = async function () {
     await waitFor(()=>revisedDiagnostics().some(d=>code(d)==='E_MOVED'),'named initializer move order');
     await replace(buildDocument,namedFieldsSource);
     await waitFor(()=>revisedDiagnostics().length===0,'named field repair');
-    const namedFieldsRun=await vscode.commands.executeCommand('tellur.buildAndRun',{output:path.join(root,'native output','named-fields')});
+    const namedFieldsRun=await buildWithStatus('tellur.buildAndRun',{output:path.join(root,'native output','named-fields')}, {"done": 0});
     assert.equal(namedFieldsRun.code,0,namedFieldsRun.stderr);assert.equal(namedFieldsRun.stdout.trim(),'Named Ada\nNamed Ada\ndone');
     console.log('TELLUR_NAMED_FIELDS_EDITOR_TESTS_PASSED: field errors, move order, repair, native execution');
 
@@ -240,7 +251,7 @@ exports.run = async function () {
     await waitFor(()=>revisedDiagnostics().some(d=>code(d)==='E_GENERIC'),'generic argument arity');
     await replace(buildDocument,genericSource);
     await waitFor(()=>revisedDiagnostics().length===0,'generic repair');
-    const genericRun=await vscode.commands.executeCommand('tellur.buildAndRun',{output:path.join(root,'native output','generic-data')});
+    const genericRun=await buildWithStatus('tellur.buildAndRun',{output:path.join(root,'native output','generic-data')}, {"done": 0});
     assert.equal(genericRun.code,0,genericRun.stderr);assert.ok(genericRun.stdout.includes('Generic Ada'));
     console.log('TELLUR_GENERIC_DATA_EDITOR_TESTS_PASSED: template hover, type and arity errors, repair, native execution');
 
@@ -254,7 +265,7 @@ exports.run = async function () {
     await waitFor(()=>revisedDiagnostics().some(d=>code(d)==='E_RESOURCE' && d.message.includes('generic definition check')),'generic definition ownership error');
     await replace(buildDocument,genericControlSource);
     await waitFor(()=>revisedDiagnostics().length===0,'generic definition repair');
-    const genericControlRun=await vscode.commands.executeCommand('tellur.buildAndRun',{output:path.join(root,'native output','generic-controls')});
+    const genericControlRun=await buildWithStatus('tellur.buildAndRun',{output:path.join(root,'native output','generic-controls')}, {"done": 0});
     assert.equal(genericControlRun.code,0,genericControlRun.stderr);assert.ok(genericControlRun.stdout.includes('Generic control Ada'));
     console.log('TELLUR_GENERIC_CONTROLS_EDITOR_TESTS_PASSED: parametric hover, universal ownership diagnostic, repair, native execution');
     const bounded = await fs.readFile(path.join(__dirname, '../../../playground/capabilities.tellur'), 'utf8');
@@ -359,7 +370,7 @@ exports.run = async function () {
     await waitFor(()=>revisedDiagnostics().some(d=>code(d)==='E_TYPE'),'reference auto mode mismatch');
     await replace(buildDocument,referenceAutoSource);
     await waitFor(()=>revisedDiagnostics().length===0,'reference auto repair');
-    const referenceAutoRun=await vscode.commands.executeCommand('tellur.buildAndRun',{output:path.join(root,'native output','reference-auto')});
+    const referenceAutoRun=await buildWithStatus('tellur.buildAndRun',{output:path.join(root,'native output','reference-auto')}, {"done": 0});
     assert.equal(referenceAutoRun.code,0,referenceAutoRun.stderr);assert.ok(referenceAutoRun.stdout.includes('inferred mutable reference'));
     console.log('TELLUR_REFERENCE_AUTO_EDITOR_TESTS_PASSED: inferred referent, mode mismatch, repair, native execution');
 
@@ -389,7 +400,7 @@ exports.run = async function () {
     await waitFor(()=>revisedDiagnostics().some(d=>code(d)==='E_LOAN'),'still-live field owner protected');
     await replace(buildDocument,originGroupSource);
     await waitFor(()=>revisedDiagnostics().length===0,'origin group repair');
-    const originGroupRun=await vscode.commands.executeCommand('tellur.buildAndRun',{output:path.join(root,'native output','origin-groups')});
+    const originGroupRun=await buildWithStatus('tellur.buildAndRun',{output:path.join(root,'native output','origin-groups')}, {"done": 0});
     assert.equal(originGroupRun.code,0,originGroupRun.stderr);assert.ok(originGroupRun.stdout.includes('The left source is available again'));assert.ok(originGroupRun.stdout.includes('The right source is available again'));
     console.log('TELLUR_ORIGIN_GROUPS_EDITOR_TESTS_PASSED: grouped hover, contract and loan diagnostics, field last use, repair, native execution');
 
@@ -406,7 +417,7 @@ exports.run = async function () {
     await waitFor(()=>revisedDiagnostics().some(d=>d.message.includes('unknown public origin group')),'record input unknown public group');
     await replace(buildDocument,recordInputSource);
     await waitFor(()=>revisedDiagnostics().length===0,'record input repair');
-    const recordInputRun=await vscode.commands.executeCommand('tellur.buildAndRun',{output:path.join(root,'native output','record-inputs')});
+    const recordInputRun=await buildWithStatus('tellur.buildAndRun',{output:path.join(root,'native output','record-inputs')}, {"done": 0});
     assert.equal(recordInputRun.code,0,recordInputRun.stderr);assert.ok(recordInputRun.stdout.includes('Content survives its carrier'));assert.ok(recordInputRun.stdout.includes('Heading is available again'));
     console.log('TELLUR_RECORD_INPUTS_EDITOR_TESTS_PASSED: contained-origin hover, unsaved errors, repair, native execution');
 
@@ -423,7 +434,7 @@ exports.run = async function () {
     await waitFor(()=>revisedDiagnostics().some(d=>code(d)==='E_LOAN'),'live child retains carrier');
     await replace(buildDocument,carrierSource);
     await waitFor(()=>revisedDiagnostics().length===0,'carrier permission repair');
-    const carrierRun=await vscode.commands.executeCommand('tellur.buildAndRun',{output:path.join(root,'native output','carrier-reborrows')});
+    const carrierRun=await buildWithStatus('tellur.buildAndRun',{output:path.join(root,'native output','carrier-reborrows')}, {"done": 0});
     assert.equal(carrierRun.code,0,carrierRun.stderr);assert.ok(carrierRun.stdout.includes('First child edit'));assert.ok(carrierRun.stdout.includes('Second child edit'));
     console.log('TELLUR_CARRIER_REBORROWS_EDITOR_TESTS_PASSED: authorization hover, mode and carrier diagnostics, repair, native execution');
 
@@ -440,7 +451,7 @@ exports.run = async function () {
     await waitFor(()=>revisedDiagnostics().some(d=>code(d)==='E_LOAN'),'opaque split retains owner');
     await replace(buildDocument,splitSource);
     await waitFor(()=>revisedDiagnostics().length===0,'opaque split repair');
-    const splitRun=await vscode.commands.executeCommand('tellur.buildAndRun',{output:path.join(root,'native output','opaque-splits')});
+    const splitRun=await buildWithStatus('tellur.buildAndRun',{output:path.join(root,'native output','opaque-splits')}, {"done": 0});
     assert.equal(splitRun.code,0,splitRun.stderr);assert.ok(splitRun.stdout.includes('A new body'));assert.ok(splitRun.stdout.includes('Final title'));
     console.log('TELLUR_OPAQUE_SPLITS_EDITOR_TESTS_PASSED: permissions hover, alias and owner diagnostics, repair, native execution');
 
@@ -457,7 +468,7 @@ exports.run = async function () {
     await waitFor(()=>revisedDiagnostics().some(d=>code(d)==='E_OUTCOME'),'borrowed capture still requires handling');
     await replace(buildDocument,borrowedSource);
     await waitFor(()=>revisedDiagnostics().length===0,'borrowed outcome repair');
-    const borrowedRun=await vscode.commands.executeCommand('tellur.buildAndRun',{output:path.join(root,'native output','borrowed-outcomes')});
+    const borrowedRun=await buildWithStatus('tellur.buildAndRun',{output:path.join(root,'native output','borrowed-outcomes')}, {"done": 0});
     assert.equal(borrowedRun.code,0,borrowedRun.stderr);assert.ok(borrowedRun.stdout.includes('A borrowed word'));assert.ok(borrowedRun.stdout.includes('"value":2'));
     console.log('TELLUR_BORROWED_OUTCOMES_EDITOR_TESTS_PASSED: payload hover, owner and obligation diagnostics, repair, native execution');
 
@@ -475,7 +486,7 @@ exports.run = async function () {
     await waitFor(() => revisedDiagnostics().some(d => code(d) === 'E_LOAN'), 'named outcome/option owner conflict');
     await replace(buildDocument, outcomeOrigins);
     await waitFor(() => revisedDiagnostics().length === 0, 'named outcome/option repair');
-    const outcomeRun = await vscode.commands.executeCommand('tellur.buildAndRun', {output:path.join(root, 'native output', 'outcome-origins')});
+    const outcomeRun = await buildWithStatus('tellur.buildAndRun', {output:path.join(root, 'native output', 'outcome-origins')}, {done: 0});
     assert.equal(outcomeRun.code, 0, outcomeRun.stderr);
     assert.ok(outcomeRun.stdout.includes('title released independently') && outcomeRun.stdout.includes('edited body'));
     console.log('TELLUR_OUTCOME_ORIGINS_EDITOR_TESTS_PASSED: schemas, completion bindings, owner conflicts, repair and native execution');
@@ -494,7 +505,7 @@ exports.run = async function () {
     await waitFor(() => revisedDiagnostics().some(d => code(d) === 'E_LOAN'), 'borrowed sum owner conflict');
     await replace(buildDocument, sumCarriers);
     await waitFor(() => revisedDiagnostics().length === 0, 'borrowed sum repair');
-    const sumRun = await vscode.commands.executeCommand('tellur.buildAndRun', {output:path.join(root, 'native output', 'sum-carriers')});
+    const sumRun = await buildWithStatus('tellur.buildAndRun', {output:path.join(root, 'native output', 'sum-carriers')}, {done: 0});
     assert.equal(sumRun.code, 0, sumRun.stderr);
     assert.ok(sumRun.stdout.includes('before') && sumRun.stdout.includes('after'));
     console.log('TELLUR_SUM_CARRIERS_EDITOR_TESTS_PASSED: reborrow mode hover, owner conflicts, repair and native execution');
@@ -514,7 +525,7 @@ exports.run = async function () {
     await waitFor(() => revisedDiagnostics().some(d => code(d) === 'E_LOAN'), 'returned carrier storage protection');
     await replace(buildDocument, carrierResults);
     await waitFor(() => revisedDiagnostics().length === 0, 'returned carrier repair');
-    const resultRun = await vscode.commands.executeCommand('tellur.buildAndRun', {output:path.join(root, 'native output', 'carrier-results')});
+    const resultRun = await buildWithStatus('tellur.buildAndRun', {output:path.join(root, 'native output', 'carrier-results')}, {done: 0});
     assert.equal(resultRun.code, 0, resultRun.stderr);
     assert.ok(resultRun.stdout.includes('edited through returned view') && resultRun.stdout.includes('edited through returned option'));
     console.log('TELLUR_CARRIER_RESULTS_EDITOR_TESTS_PASSED: both lifetime layers, auto hover, storage conflict, repair and native execution');
@@ -533,7 +544,7 @@ exports.run = async function () {
     await waitFor(() => revisedDiagnostics().some(d => code(d) === 'E_LOAN'), 'captured carrier storage conflict');
     await replace(buildDocument, storedCarriers);
     await waitFor(() => revisedDiagnostics().length === 0, 'stored carrier repair');
-    const storedCarrierRun = await vscode.commands.executeCommand('tellur.buildAndRun', {output:path.join(root, 'native output', 'stored-carriers')});
+    const storedCarrierRun = await buildWithStatus('tellur.buildAndRun', {output:path.join(root, 'native output', 'stored-carriers')}, {done: 0});
     assert.equal(storedCarrierRun.code, 0, storedCarrierRun.stderr);
     assert.ok(storedCarrierRun.stdout.includes('edited after capture') && storedCarrierRun.stdout.includes('edited through stored job'));
     console.log('TELLUR_STORED_CARRIERS_EDITOR_TESTS_PASSED: capture and nested reference hover, retained storage, repair and native execution');
@@ -554,7 +565,7 @@ exports.run = async function () {
       await waitFor(() => revisedDiagnostics().some(d => code(d) === 'E_OUTCOME' && d.relatedInformation?.some(n => n.message.includes('produced by')) && d.relatedInformation?.some(n => n.message.includes('forwarded from'))), 'outcome origin and forwarding locations');
       await replace(buildDocument, publicContracts);
       await waitFor(() => revisedDiagnostics().length === 0, 'public contract repair');
-      const publicContractRun = await vscode.commands.executeCommand('tellur.buildAndRun', {output:path.join(root, 'native output', 'public-contracts')});
+      const publicContractRun = await buildWithStatus('tellur.buildAndRun', {output:path.join(root, 'native output', 'public-contracts')}, {done: 0});
       assert.equal(publicContractRun.code, 0, publicContractRun.stderr);
       assert.ok(publicContractRun.stdout.includes('42'));
       console.log('TELLUR_PUBLIC_CONTRACTS_EDITOR_TESTS_PASSED: explicit public contracts, contributor locations, repair and native execution');
@@ -571,7 +582,7 @@ exports.run = async function () {
     await waitFor(() => revisedDiagnostics().some(d => code(d) === 'E_LOAN'), 'collection source retained after holder drop');
     await replace(buildDocument, borrowedCollections);
     await waitFor(() => revisedDiagnostics().length === 0, 'borrowed collection repair');
-    const borrowedCollectionRun = await vscode.commands.executeCommand('tellur.buildAndRun', {output:path.join(root, 'native output', 'borrowed-collections')});
+    const borrowedCollectionRun = await buildWithStatus('tellur.buildAndRun', {output:path.join(root, 'native output', 'borrowed-collections')}, {done: 0});
     assert.equal(borrowedCollectionRun.code, 0, borrowedCollectionRun.stderr);
     assert.ok(borrowedCollectionRun.stdout.includes('first released') && borrowedCollectionRun.stdout.includes('second released'));
     console.log('TELLUR_BORROWED_COLLECTIONS_EDITOR_TESTS_PASSED: direct reference hover, retained sources, repair and native execution');
@@ -587,7 +598,7 @@ exports.run = async function () {
     await waitFor(() => revisedDiagnostics().some(d => code(d) === 'E_ORIGIN'), 'trait origin conformance');
     await replace(buildDocument, aggregateTraits);
     await waitFor(() => revisedDiagnostics().length === 0, 'trait contract repair');
-    const aggregateRun = await vscode.commands.executeCommand('tellur.buildAndRun', {output:path.join(root, 'native output', 'aggregate-traits')});
+    const aggregateRun = await buildWithStatus('tellur.buildAndRun', {output:path.join(root, 'native output', 'aggregate-traits')}, {done: 0});
     assert.equal(aggregateRun.code, 0, aggregateRun.stderr);
     assert.ok(aggregateRun.stdout.includes('edited through a trait contract') && aggregateRun.stdout.includes('released after the job'));
     console.log('TELLUR_AGGREGATE_TRAITS_EDITOR_TESTS_PASSED: associated generic contracts, inferred hover, conformance repair and native execution');
@@ -606,7 +617,7 @@ exports.run = async function () {
     await waitFor(() => revisedDiagnostics().some(d => code(d) === 'E_LOAN'), 'public carrier storage conflict');
     await replace(buildDocument, publicCarriers);
     await waitFor(() => revisedDiagnostics().length === 0, 'public carrier repair');
-    const publicCarrierRun = await vscode.commands.executeCommand('tellur.buildAndRun', {output:path.join(root, 'native output', 'public-carriers')});
+    const publicCarrierRun = await buildWithStatus('tellur.buildAndRun', {output:path.join(root, 'native output', 'public-carriers')}, {done: 0});
     assert.equal(publicCarrierRun.code, 0, publicCarrierRun.stderr);
     assert.ok(publicCarrierRun.stdout.includes('edited through public contract'));
     console.log('TELLUR_PUBLIC_CARRIERS_EDITOR_TESTS_PASSED: public schemas, nested reference hover, retained storage, repair and native execution');
@@ -621,7 +632,7 @@ exports.run = async function () {
     await waitFor(()=>revisedDiagnostics().some(d=>code(d)==='E_LOAN'),'public variant owner retention');
     await replace(buildDocument,publicSource);
     await waitFor(()=>revisedDiagnostics().length===0,'public variant repair');
-    const publicRun=await vscode.commands.executeCommand('tellur.buildAndRun',{output:path.join(root,'native output','public-variants')});
+    const publicRun=await buildWithStatus('tellur.buildAndRun',{output:path.join(root,'native output','public-variants')}, {"done": 0});
     assert.equal(publicRun.code,0,publicRun.stderr);assert.ok(publicRun.stdout.includes('edited body'));assert.ok(publicRun.stdout.includes('title released independently'));
     console.log('TELLUR_PUBLIC_VARIANTS_EDITOR_TESTS_PASSED: grouped schema hover, owner conflict, repair, native execution');
     const nestedSource=await fs.readFile(path.join(__dirname,'../../../tests/fixtures/nested_borrows.tellur'),'utf8');
@@ -640,7 +651,7 @@ exports.run = async function () {
     await waitFor(()=>revisedDiagnostics().some(d=>code(d)==='E_RESOURCE'),'nested outcome still requires handling');
     await replace(buildDocument,nestedSource);
     await waitFor(()=>revisedDiagnostics().length===0,'nested borrowed storage repair');
-    const nestedRun=await vscode.commands.executeCommand('tellur.buildAndRun',{output:path.join(root,'native output','nested-borrows')});
+    const nestedRun=await buildWithStatus('tellur.buildAndRun',{output:path.join(root,'native output','nested-borrows')}, {"done": 0});
     assert.equal(nestedRun.code,0,nestedRun.stderr);assert.ok(nestedRun.stdout.includes('published title'));assert.ok(nestedRun.stdout.includes('revised body'));
     console.log('TELLUR_NESTED_BORROWS_EDITOR_TESTS_PASSED: inferred hover, owner and field lifetime diagnostics, mandatory handling, repair, native execution');
 
@@ -662,7 +673,7 @@ exports.run = async function () {
     await waitFor(()=>revisedDiagnostics().length===0,'unsaved dependency repair');
     await moduleDocument.save();
     await vscode.window.showTextDocument(buildDocument);
-    const moduleRun=await vscode.commands.executeCommand('tellur.buildAndRun',{output:path.join(root,'native output','modules')});
+    const moduleRun=await buildWithStatus('tellur.buildAndRun',{output:path.join(root,'native output','modules')}, {done: 0});
     assert.equal(moduleRun.code,0,moduleRun.stderr);assert.ok(moduleRun.stdout.includes('Module Ada'));
     console.log('TELLUR_MODULE_EDITOR_TESTS_PASSED: imports, private fields, unsaved dependency diagnostics with related locations, repair, native execution');
     const forwardSource='control main() exits auto {display();forward relay();}\ncontrol display() exits done {emit("forwarding");exit done;}\ncontrol relay() exits auto {exit delta choose() {ready=>forward};}\ncontrol choose() exits ready {string text} {exit ready {"forward result"};}';
@@ -677,7 +688,7 @@ exports.run = async function () {
     await waitFor(()=>revisedDiagnostics().some(d=>code(d)==='E_OUTCOME'),'incompatible forwarding');
     await replace(buildDocument,forwardSource);
     await waitFor(()=>revisedDiagnostics().length===0,'forward repair');
-    const forwardRun=await vscode.commands.executeCommand('tellur.buildAndRun',{output:path.join(root,'native output','forwarding')});
+    const forwardRun=await buildWithStatus('tellur.buildAndRun',{output:path.join(root,'native output','forwarding')}, {"ready": 0});
     assert.equal(forwardRun.code,0,forwardRun.stderr);
     assert.ok(forwardRun.stdout.includes('forwarding'));
     assert.ok(forwardRun.stdout.includes('forward result'));
@@ -690,9 +701,9 @@ exports.run = async function () {
     console.log('TELLUR_REVISION_EDITOR_TESTS_PASSED: control syntax, inferred contract hover, typed declarations, unsaved repair');
     const message = 'Native editor test: $HOME $(false); quotes \" and 😀';
     const nativeOutput = path.join(root, 'native output', 'program with spaces');
-    const built = await vscode.commands.executeCommand('tellur.build', { output: nativeOutput });
+    const built = await buildWithStatus('tellur.build', { output: nativeOutput }, {"done": 0, "empty": 1});
     assert.equal(built.code, 0, built.stderr);
-    const ran = await vscode.commands.executeCommand('tellur.buildAndRun', { output: nativeOutput, arguments: [message] });
+    const ran = await buildWithStatus('tellur.buildAndRun', { output: nativeOutput, arguments: [message] }, {"done": 0, "empty": 1});
     assert.equal(ran.code, 0, ran.stderr);
     assert.ok(ran.stdout.includes(message));
     assert.ok(ran.stdout.includes('done'));
@@ -700,7 +711,7 @@ exports.run = async function () {
     // Existing command IDs and explicit legacy language associations still work.
     await vscode.languages.setTextDocumentLanguage(buildDocument, 'path');
     await vscode.window.showTextDocument(buildDocument);
-    const legacyRun = await vscode.commands.executeCommand('path.buildAndRun', { arguments: [message] });
+    const legacyRun = await buildWithStatus('path.buildAndRun', { arguments: [message] }, {"done": 0, "empty": 1});
     assert.equal(legacyRun.code, 0, legacyRun.stderr);
     assert.equal(path.basename(legacyRun.executable), process.platform === 'win32' ? 'editor build.exe' : 'editor build');
     assert.ok(legacyRun.stdout.includes(message));
@@ -755,6 +766,20 @@ control main() exits done {
     assert.deepEqual(JSON.parse(await fs.readFile(settingsData, 'utf8')), {theme:'dark'});
     const settingsGet = await vscode.commands.executeCommand('tellur.buildAndRun', {entry:'get', arguments:[settingsData, 'theme'], output:settingsOutput});
     assert.equal(settingsGet.code, 0, settingsGet.stderr);assert.ok(settingsGet.stdout.includes('dark'));
+    const statusLine = settingsSource.split('\n').findIndex(line => line.startsWith('outcome lookup_result'));
+    await waitFor(async () => {
+      const hovers = await vscode.commands.executeCommand('vscode.executeHoverProvider', settingsUri, new vscode.Position(statusLine, 10));
+      return hovers?.some(h => h.contents.some(c => c.value.includes('Process exit defaults') && c.value.includes('3')));
+    }, 'annotated outcome hover');
+    await replace(settingsDocument, settingsSource.replace('@exit 3 missing', '@exit 999 missing'));
+    await waitFor(() => settingsDiagnostics().some(d => code(d) === 'E_EXIT_CODE'), 'invalid exit annotation');
+    await replace(settingsDocument, settingsSource);
+    await waitFor(() => settingsDiagnostics().length === 0, 'exit annotation repair');
+    const settingsMissing = await vscode.commands.executeCommand('tellur.buildAndRun', {entry:'get', arguments:['--json', '--', settingsData, 'unknown'], output:settingsOutput});
+    assert.equal(settingsMissing.code, 3, settingsMissing.stderr);
+    assert.equal(JSON.parse(settingsMissing.stdout).outcome, 'missing');
+    assert.equal(settingsMissing.stderr, '');
+    console.log('TELLUR_EXIT_CODES_EDITOR_TESTS_PASSED: annotation hover, unsaved diagnostic, repair, exact nonzero status and JSON outcome');
     console.log('TELLUR_RUST_SETTINGS_EDITOR_TESTS_PASSED: manifest-relative Rust adapter, unsaved checking, repair, locked build, persistent update and reload');
     console.log('TELLUR_EDITOR_TESTS_PASSED: language recognition, unsaved diagnostics/repair, outline, witness, UTF-16, manifest watcher, restart, partial moves, owned variants');
   } finally {

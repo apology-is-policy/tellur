@@ -4,7 +4,7 @@ outcome message {
     empty
 }
 
-control main() exits auto {
+control main() exits process_result {
     // Capture infers message because greeting declares that contract.
     auto first = capture greeting(true);
     message second = capture fallback();
@@ -37,3 +37,6 @@ control display(message saved) exits done {
     [available]: emit(text);
     [available | missing]: exit done;
 }
+
+// Process status policy for this runnable example.
+outcome process_result { @exit 0 done }

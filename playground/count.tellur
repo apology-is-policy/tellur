@@ -1,5 +1,5 @@
 // Run with no arguments. Change 5 to try another limit.
-control main() exits done, arithmetic_fault {
+control main() exits process_result {
     [entry]:
         delta count(5) {
             done => finished,
@@ -28,3 +28,6 @@ control count(u32 limit) exits auto {
         [too_large]: exit arithmetic_fault;
     }
 }
+
+// Process status policy for this runnable example.
+outcome process_result { @exit 0 done, @exit 1 arithmetic_fault }

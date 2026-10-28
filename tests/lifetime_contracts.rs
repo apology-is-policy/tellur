@@ -1,3 +1,4 @@
+mod support;
 use tellur::{compile, ir::Value, manifest::Manifest, runtime::Scenario};
 fn m() -> Manifest {
     Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
@@ -157,7 +158,9 @@ fn native_declared_trait_borrows_match_reference_before_and_after_expansion() {
         };
         for opt in [0, 2] {
             let binary = root.join(format!("borrow-{expanded}-{opt}"));
-            p.build_native("main", &binary, opt).unwrap();
+            support::scenario_executable(&p)
+                .build_native("main", &binary, opt)
+                .unwrap();
             let result = std::process::Command::new(binary)
                 .arg("--json")
                 .output()

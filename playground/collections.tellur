@@ -7,7 +7,7 @@ control first(ref vector<string> words) exits auto {
     };
 }
 
-control main() exits done {
+control main() exits process_result {
     [entry]:
         mutable vector<string> words = ["hello", "path"];
         delta first(borrow words) {
@@ -56,3 +56,6 @@ control main() exits done {
         }
 }
 }
+
+// Process status policy for this runnable example.
+outcome process_result { @exit 0 done }
