@@ -7,7 +7,7 @@ pub control create(string name, u32 age) exits ready { person value } {
     exit ready { person { name, age } };
 }
 
-pub control name(ref person value) exits found { ref string text } {
+pub control name(ref person value) exits found { ref string text from value } {
     exit found { borrow value.name };
 }
 

@@ -1,0 +1,23 @@
+// Private helpers may infer; the exported boundary stays explicit.
+control leaf(bool valid) exits auto {
+    delta valid { true => valid, false => invalid }
+    [valid]: exit ready { 42 };
+    [invalid]: exit invalid;
+}
+
+control middle(bool valid) exits auto {
+    forward leaf(valid);
+}
+
+pub control read_setting(bool valid) exits ready { u32 value }, invalid {
+    forward middle(valid);
+}
+
+control main() exits done {
+    delta read_setting(true) {
+        ready { auto value } => ready,
+        invalid => invalid
+    }
+    [ready]: emit(u32_text(value)); exit done;
+    [invalid]: emit("Invalid setting"); exit done;
+}

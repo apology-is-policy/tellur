@@ -35,10 +35,17 @@ pub struct Span {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DiagnosticNote {
+    pub span: Span,
+    pub path: Option<std::path::PathBuf>,
+    pub message: String,
+}
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Diagnostic {
     pub code: &'static str,
     pub span: Span,
     pub message: String,
+    pub notes: Vec<DiagnosticNote>,
 }
 impl Diagnostic {
     pub fn new(code: &'static str, span: Span, message: impl Into<String>) -> Self {
@@ -46,6 +53,7 @@ impl Diagnostic {
             code,
             span,
             message: message.into(),
+            notes: vec![],
         }
     }
 }
@@ -55,7 +63,19 @@ impl std::fmt::Display for Diagnostic {
             f,
             "{}:{}: {}: {}",
             self.span.line, self.span.column, self.code, self.message
-        )
+        )?;
+        for note in &self.notes {
+            write!(f, "\n  note: ")?;
+            if let Some(path) = &note.path {
+                write!(f, "{}:", path.display())?;
+            }
+            write!(
+                f,
+                "{}:{}: {}",
+                note.span.line, note.span.column, note.message
+            )?;
+        }
+        Ok(())
     }
 }
 impl std::error::Error for Diagnostic {}

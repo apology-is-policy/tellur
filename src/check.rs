@@ -7,6 +7,7 @@ use crate::{
 };
 use std::collections::{BTreeMap, BTreeSet};
 mod collection_loans;
+mod contracts;
 mod public;
 mod stored;
 mod sums;
@@ -19,6 +20,7 @@ struct Access {
 }
 #[derive(Clone)]
 struct Signature {
+    contributors: BTreeMap<String, Vec<crate::DiagnosticNote>>,
     stored_returns: Vec<StoredReturn>,
     parameters: Vec<manifest::Parameter>,
     outcomes: Vec<manifest::Outcome>,
@@ -132,6 +134,8 @@ struct LoopContext {
     scope: usize,
 }
 struct Checker<'a> {
+    contributors: BTreeMap<String, Vec<crate::DiagnosticNote>>,
+    forwarding: Option<BTreeMap<String, Vec<crate::DiagnosticNote>>>,
     inferred_bindings: Vec<InferredBinding>,
     contained_inputs: BTreeMap<Id, (usize, ContainedOrigin)>,
     origin_schemas: &'a crate::origins::Schemas,
@@ -1103,6 +1107,7 @@ impl Checker<'_> {
                 )
             })?;
             return Ok(Some(Signature {
+                contributors: BTreeMap::new(),
                 stored_returns: vec![],
                 parameters: c.parameters,
                 outcomes: c.outcomes,
@@ -1860,15 +1865,42 @@ impl Checker<'_> {
                     self.error("E_FORWARD", span, "forward requires a declared operation")
                 })?;
                 if !self.infer_exits && self.infer_payloads.is_empty() {
-                    crate::algebra::outcome_embedding(&sig.outcomes, &self.result.exits)
-                        .map_err(|e| self.error(e.code(), span, e.to_string()))?;
+                    crate::algebra::outcome_embedding(&sig.outcomes, &self.result.exits).map_err(
+                        |e| {
+                            let labels = sig
+                                .outcomes
+                                .iter()
+                                .filter(|o| {
+                                    !self.result.exits.iter().any(|target| {
+                                        target.name == o.name
+                                            && target
+                                                .fields
+                                                .iter()
+                                                .map(|f| &f.ty)
+                                                .eq(o.fields.iter().map(|f| &f.ty))
+                                    })
+                                })
+                                .map(|o| o.name.clone())
+                                .collect::<Vec<_>>();
+                            self.with_contributors(
+                                self.error(e.code(), span, e.to_string()),
+                                &sig,
+                                &labels,
+                            )
+                        },
+                    )?;
                 }
                 let arms = self.identity_arms(&sig.outcomes, span);
-                self.exit_outcome(
+                let previous = self
+                    .forwarding
+                    .replace(self.forwarded_contributors(callee, &sig, span));
+                let checked = self.exit_outcome(
                     &syntax::OutcomeExpr::Delta(span, operand.clone(), arms),
                     guard,
                     domain,
-                )?;
+                );
+                self.forwarding = previous;
+                checked?;
             }
             Statement::Invoke(operand) => {
                 let syntax::Expr::Call(callee, args) = operand else {
@@ -2048,6 +2080,7 @@ impl Checker<'_> {
                 self.emit(guard, Action::Emit(expr), span);
             }
             Statement::Exit(name, args) => {
+                self.record_contributor(name, span);
                 if self.infer_exits || self.infer_payloads.contains(name) {
                     if self.infer_payloads.contains(name) && args.is_empty() {
                         return Err(self.error("E_INFER", span, format!("exit `{name}...` requires a nonempty payload; remove ... for a payload-free exit")));
@@ -2769,11 +2802,18 @@ impl Checker<'_> {
             .map(|o| o.name.clone())
             .collect::<Vec<_>>();
         if !missing.is_empty() {
-            return Err(self.error(
+            let error = self.error(
                 "E_ARMS",
                 span,
                 format!("missing explicit outcomes: {}", missing.join(", ")),
-            ));
+            );
+            return Err(if let syntax::Expr::Call(name, _) = operand {
+                self.signatures.get(name).map_or(error.clone(), |sig| {
+                    self.with_contributors(error, sig, &missing)
+                })
+            } else {
+                error
+            });
         }
         if let Some(inline) = inline {
             let serial = self.fresh();
@@ -3359,6 +3399,9 @@ pub(crate) fn compile_unit(
     manifest: Manifest,
     visibility: &crate::modules::Visibility,
 ) -> Result<CheckedProgram> {
+    for region in &unit.regions {
+        contracts::public_shape(region)?;
+    }
     let mut visibility = visibility.clone();
     let unit = crate::traits::lower(unit, &manifest, &mut visibility)?;
     crate::generic_controls::compile(unit, manifest, &visibility)
@@ -3537,6 +3580,7 @@ pub(crate) fn compile_concrete_unit(
         signatures.insert(
             p.name.clone(),
             Signature {
+                contributors: BTreeMap::new(),
                 stored_returns: vec![],
                 parameters: p.parameters.clone(),
                 outcomes: p.outcomes.clone(),
@@ -3547,6 +3591,7 @@ pub(crate) fn compile_concrete_unit(
         );
     }
     for region in &parsed {
+        contracts::public_origins(region, &origin_schemas)?;
         if signatures.contains_key(&region.name)
             || crate::collections::is_operation(&region.name)
             || crate::collections::is_length(&region.name)
@@ -3598,6 +3643,23 @@ pub(crate) fn compile_concrete_unit(
         signatures.insert(
             region.name.clone(),
             Signature {
+                contributors: region
+                    .exits
+                    .iter()
+                    .map(|o| {
+                        (
+                            o.name.clone(),
+                            vec![crate::DiagnosticNote {
+                                span: region.name_span,
+                                path: None,
+                                message: format!(
+                                    "outcome `{}` is declared by `{}` here",
+                                    o.name, region.name
+                                ),
+                            }],
+                        )
+                    })
+                    .collect(),
                 stored_returns: crate::origins::declared(region, &origin_schemas)?,
                 parameters: region
                     .parameters
@@ -3663,6 +3725,8 @@ pub(crate) fn compile_concrete_unit(
             crate::origins::result_type(&f.ty, &origin_schemas, &manifest, source.span)?;
         }
         let mut checker = Checker {
+            contributors: BTreeMap::new(),
+            forwarding: None,
             inferred_bindings: vec![],
             contained_inputs: BTreeMap::new(),
             origin_schemas: &origin_schemas,
@@ -3797,6 +3861,12 @@ pub(crate) fn compile_concrete_unit(
                 ),
             ));
         }
+        let mut contributors = checker.contributors;
+        for (name, notes) in &signatures[&source.name].contributors {
+            contributors
+                .entry(name.clone())
+                .or_insert_with(|| notes.clone());
+        }
         inferred_bindings.extend(checker.inferred_bindings);
         let mut result = checker.result;
         crate::origins::normalize(&mut result, &origin_schemas, &manifest, source.span)?;
@@ -3807,6 +3877,7 @@ pub(crate) fn compile_concrete_unit(
         {
             *constructors = result.exits.clone();
         }
+        signatures.get_mut(&source.name).unwrap().contributors = contributors;
         signatures.get_mut(&source.name).unwrap().outcomes = result.exits.clone();
         signatures.get_mut(&source.name).unwrap().borrow_returns = result.borrow_returns.clone();
         signatures.get_mut(&source.name).unwrap().stored_returns = result.stored_returns.clone();

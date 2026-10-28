@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-0.43.0-darwin-arm64.vsix` using **Extensions:
+1. Install the supplied `tellur-language-0.44.0-darwin-arm64.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -91,7 +91,7 @@ migration notes in `docs/language-reference.md` in the compiler checkout.
 
 `tellurLanguage.serverPath` overrides the server executable. Otherwise the extension
 uses its bundled server, then `target/debug/tellur-lsp` from a development checkout,
-then `tellur-lsp` on PATH. The packaged server matches the 0.43.0 compiler; rebuild or
+then `tellur-lsp` on PATH. The packaged server matches the 0.44.0 compiler; rebuild or
 override it when experimenting with compiler changes.
 
 For another platform, build the Rust server and set the executable path. The source
@@ -437,3 +437,13 @@ direct shared references locally, and lookups expose the referent directly. Hove
 reports a loan conflict. Removal and replacement preserve possible source dependencies.
 Exclusive elements, nested borrowed collections and public collection-origin contracts
 remain later stages.
+
+## Explicit public contracts in 0.44.0
+
+Public controls require explicit exit labels, payload types and borrowed-result
+origins; `exits auto` and `label...` remain available on private helpers. A missing
+public annotation produces `E_PUBLIC_CONTRACT`, including in unused generic controls.
+For incompatible direct forwarding and missing direct-call arms, the Problems view
+includes related producing and forwarding locations. Notes follow unsaved buffers
+and imports; repairing the source clears the diagnostic. Stored-outcome lineage and
+full adapter explanations remain planned work. Try `playground/public_contracts.tellur`.

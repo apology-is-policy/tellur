@@ -589,7 +589,7 @@ pub(crate) fn compile(
         let symbolic=Expander::new(symbolic_unit).finish(&seeds)?;
         crate::check::compile_concrete_unit(symbolic.unit,symbolic_manifest,visibility,&symbolic.arguments)
     })().map_err(|mut e|{
-        for (internal,name) in &parameters {e.message=e.message.replace(internal,name);}
+        for (internal,name) in &parameters {e.message=e.message.replace(internal,name);for note in &mut e.notes {note.message=note.message.replace(internal,name);}}
         // Keep the precise diagnostic code while making the universal-check context explicit.
         if templates.iter().any(|t| (e.span.line, e.span.column) >= (t.span.line, t.span.column) && (e.span.line, e.span.column) <= (t.end.line, t.end.column)) { e.message=format!("generic definition check: {} (type parameters have only their declared capabilities)",e.message); } e
     })?;

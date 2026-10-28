@@ -5,10 +5,10 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.43.0** implements the v0.1 checked core and the current language
+Compiler release **0.44.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
-brace outcome patterns, `exits auto`, selected payload inference (`ready...`), pure conversion expressions, move-by-default
+brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
 owned values, mutation, shared/exclusive references with checked borrowed results and explicit `from input` origins,
 source structs and nested variants/outcomes with local reference fields, checked opaque owner splits, exclusive contained reborrows, whole-record inputs and contained origins (`input['a]`), grouped record results (`text_pair[a, b]`) and field-sensitive last use, ordinary variants, generic data and controls with explicit copy/clone/drop bounds, concrete and generic trait dispatch with associated types, named struct fields, file modules with private representations, arrays, vectors and maps, implicit entry statements, nested tail and stored adapters,
 named outcome contracts, checked `forward` routing, and single-completion call statements. It includes
@@ -18,8 +18,9 @@ delivered features from the remaining reference, slice, outcome-expression and a
 fluid; this is an experimental implementation, not a production compiler.
 
 The [active checkpoint queue](docs/language-revision.md#active-checkpoint-queue) now
-continues from [source data types, generics and traits](docs/type-system.md) into
-stored borrowed values, protocols and async.
+prioritizes stable public interfaces, diagnostics, readable paths and a sustained
+application with Rust library adapters. Further reference expansion is deferred;
+first-class async and direct LLVM coroutine lowering remain architectural targets.
 
 The [semantic foundation](docs/semantic-foundation.md) distinguishes compatibility,
 ownership transfer, behavioral equivalence and provenance. Executable law tests and
@@ -27,7 +28,8 @@ ownership transfer, behavioral equivalence and provenance. Executable law tests 
 Expansion now also carries [independently checked rewrite certificates](docs/expansion-certificates.md).
 Every expanded execution/build passes this validator; artifacts can be exported and checked separately.
 The [simulation argument](docs/expansion-simulation.md) records its semantic premises.
-Try [local shared-reference collections](playground/borrowed_collections.tellur),
+Try [explicit public contracts and private forwarding](playground/public_contracts.tellur),
+[local shared-reference collections](playground/borrowed_collections.tellur),
 [aggregate trait origin contracts](playground/aggregate_traits.tellur),
 [public nested-reference contracts](playground/public_carriers.tellur),
 [stored carrier references](playground/stored_carriers.tellur),
@@ -85,7 +87,7 @@ companion chapters cover [grammar](docs/reference/grammar.md),
 [diagnostics](docs/reference/diagnostics-and-limits.md),
 [terminology](docs/reference/glossary.md) and [feature status](docs/reference/support-status.md).
 Complete manual examples are checked with `cargo test --offline --test reference_manual`.
-The local `tellur-language-0.43.0-darwin-arm64.vsix` contains the compiler and language
+The local `tellur-language-0.44.0-darwin-arm64.vsix` contains the compiler and language
 server for Apple Silicon macOS. It is installed on this machine; elsewhere use
 **Extensions: Install from VSIX…**. Native builds need Rust/Cargo; the current
 machine's toolchain and dependencies have been prepared. The resulting binaries

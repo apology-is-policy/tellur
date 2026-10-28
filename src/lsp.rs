@@ -191,7 +191,22 @@ impl Server {
     fn module_diagnostic(&self, uri: &str, mut error: crate::modules::ModuleError) -> Value {
         let doc = &self.documents[uri];
         let root = file_path(uri).map(|p| crate::modules::source_identity(&p).unwrap_or(p));
-        if root.as_ref().is_some_and(|p| p != &error.path) {
+        let mut related = error.diagnostic.notes.iter().filter_map(|note| {
+            let (target_uri, text) = if let Some(path) = &note.path {
+                let target_uri = if root.as_ref() == Some(path) {
+                    uri.to_owned()
+                } else {
+                    self.documents.keys().find(|open_uri| {
+                        file_path(open_uri).is_some_and(|p| crate::modules::source_identity(&p).unwrap_or(p) == *path)
+                    }).cloned().or_else(|| Url::from_file_path(path).ok().map(|u| u.to_string()))?
+                };
+                (target_uri, self.source_text(path).unwrap_or_default())
+            } else {
+                (uri.to_owned(), doc.text.clone())
+            };
+            Some(json!({"location":{"uri":target_uri,"range":diagnostic_range(&text,note.span)},"message":note.message}))
+        }).collect::<Vec<_>>();
+        let mut result = if root.as_ref().is_some_and(|p| p != &error.path) {
             let target_uri = Url::from_file_path(&error.path).ok().map(|u| u.to_string());
             let text = self.source_text(&error.path).unwrap_or_default();
             let target_range = diagnostic_range(&text, error.diagnostic.span);
@@ -207,15 +222,20 @@ impl Server {
                 .and_then(|u| u.imports.first().map(|i| i.span))
                 .unwrap_or(Span { line: 1, column: 1 });
             error.diagnostic.message = message.clone();
-            let mut result = diagnostic(&doc.text, error.diagnostic, 1);
             if let Some(target_uri) = target_uri {
-                result["relatedInformation"] =
-                    json!([{"location":{"uri":target_uri,"range":target_range},"message":message}]);
+                related.insert(
+                    0,
+                    json!({"location":{"uri":target_uri,"range":target_range},"message":message}),
+                );
             }
-            result
+            diagnostic(&doc.text, error.diagnostic, 1)
         } else {
             diagnostic(&doc.text, error.diagnostic, 1)
+        };
+        if !related.is_empty() {
+            result["relatedInformation"] = json!(related);
         }
+        result
     }
     pub fn diagnostics(&self, uri: &str) -> Value {
         let Some(doc) = self.documents.get(uri) else {

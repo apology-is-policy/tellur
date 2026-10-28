@@ -882,9 +882,23 @@ fn locate(sources: &[SourceFile], mut diagnostic: Diagnostic) -> ModuleError {
         .line
         .saturating_sub(file.start_line - 1)
         .max(1);
+    for note in &mut diagnostic.notes {
+        let source = sources
+            .iter()
+            .rev()
+            .find(|s| s.start_line <= note.span.line)
+            .unwrap_or(&sources[0]);
+        note.path = Some(source.path.clone());
+        note.span.line = note.span.line.saturating_sub(source.start_line - 1).max(1);
+    }
     for source in sources {
         for (global, local) in &source.names {
             if global != local {
+                for note in &mut diagnostic.notes {
+                    note.message = note
+                        .message
+                        .replace(global, &format!("{}::{local}", source.path.display()));
+                }
                 diagnostic.message = diagnostic
                     .message
                     .replace(global, &format!("{}::{local}", source.path.display()));

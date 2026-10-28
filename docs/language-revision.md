@@ -1,7 +1,7 @@
 # Tellur language revision: controls, values, outcomes, and tasks
 
 28 October 2026. This is the working revision plan, not a claim that all proposed
-features are implemented. Compiler **0.43.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
+features are implemented. Compiler **0.44.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
 lifetime checkpoints of milestone 2, the array/vector/map core of milestone 3,
 and implicit entry, inline/stored adapters, owned capture, named outcome contracts
 and checked forwarding in milestone 4. A first [semantic foundation](semantic-foundation.md)
@@ -9,10 +9,13 @@ now accompanies executable algebra-law tests and finite scenario comparison. The
 v0.1 documents remain unchanged; the old syntax and conformance fixtures remain
 supported. See [the current reference](language-reference.md) for executable syntax.
 
+Release 0.44 requires explicit public outcome/payload/origin contracts and adds
+bounded diagnostic contributors through direct forwarding. Private inference stays
+available; stored-outcome lineage and complete adapter explanations remain queued.
 Release 0.43 adds local shared-reference elements in arrays, vectors and maps,
 including lookup, insertion/removal, conversion, copying/cloning, conservative source
-unions and checked native/editor behavior. Exclusive elements and public contracts
-remain separate stages.
+unions and checked native/editor behavior. Exclusive elements and public collection
+contracts remain separate stages.
 
 Release 0.42 adds aggregate trait origin contracts: explicit grouped inputs/results,
 position-based implementation conformance, named completion bindings and abstract
@@ -61,8 +64,8 @@ Updated after the 28 October design review and the user's clarification that
 take priority over further reference features. Delivered rows and the numbered
 milestones retain the historical feature inventory. Compiler 0.29 delivers source data declarations, file modules, named struct fields, generic data and generic controls with sealed capability bounds, plus concrete and generic trait dispatch with associated types.
 Research proceeds alongside practical checkpoints and does not indefinitely block
-ordinary language usability. P1 remains the next compiler checkpoint; the sustained
-application (P5) starts alongside it, with small Rust adapter work (I1) supplying
+ordinary language usability. P1a is delivered in 0.44; P1b/P2 continue diagnostic
+work alongside the sustained application (P5), with small Rust adapter work (I1) supplying
 concrete library needs. It does not wait for all P2–P4 tooling. No dates or
 unimplemented syntax are promised.
 
@@ -96,12 +99,13 @@ unimplemented syntax are promised.
 | C1b.3b.2e.2 | Public stored-carrier contracts | **Delivered in 0.41**: separate storage/contained mappings, reference-layer paths, whole owned/borrowed boundaries, guarded sums, native/editor checks |
 | C1b.3b.2f | Aggregate trait origin contracts | **Delivered in 0.42**: explicit grouped inputs/results, nested references, named completions, implementation conformance and abstract generic witnesses |
 | C1b.3c.1 | Local shared-reference collection elements | **Delivered in 0.43**: arrays/vectors/maps, direct lookup, branch-sensitive insertion, removal/conversion, independent copies, conservative source unions, native/editor coverage |
-| P1 | Stable public contracts | **Next**: require explicit public outcome/payload/origin contracts; preserve private inference; explain how missing outcomes reach callers |
-| P2 | Structured diagnostics | Queued alongside P1: ranges, related locations, structured witnesses and JSON; recover independent errors without cascading or presenting stale hover as current |
+| P1a | Stable public contracts | **Delivered in 0.44**: explicit public outcome/payload/origin contracts, private inference, unused generic checks and bounded direct-forwarding contributor notes in CLI/editor |
+| P1b | Outcome contributor coverage | Next diagnostic slice: preserve lineage through stored outcomes and adapters; explain absorption and merges without pretending structural contributors prove feasible inputs |
+| P2 | Structured diagnostics | Related locations started in 0.44; next are full ranges, structured witnesses and JSON; recover independent errors without cascading or presenting stale hover as current |
 | I1 | Rust library adapters | Early enabling work for P5: generated Rust wrappers, locked Cargo dependencies, explicit Tellur outcomes/ownership and adapter conformance; stable binary ABI and cross-language LTO are later layers |
 | P3 | Readable path labels and direct dispositions | Queued: preserve label semantics with optional braced grouping; canonical layout, selected-history editor feedback, and direct arm exits without throwaway atoms; settle multi-statement arm syntax separately |
 | P4 | Explain, format and contract changes | Queued: bounded history/contributor queries, formatter, public contract snapshots/diffs and internal absorption changes; distinguish structural evidence from feasible inputs |
-| P5 | Sustained application and standard-library foundations | Start alongside P1: a local configuration/key-value service with a CLI first, then a blocking HTTP interface; keep policy in Tellur, add Rust adapters and reusable library operations as needed, and maintain failure/upgrade scenarios |
+| P5 | Sustained application and standard-library foundations | Next application slice alongside P1b/P2: a local configuration/key-value service with a CLI first, then a blocking HTTP interface; keep policy in Tellur, add Rust adapters and reusable library operations as needed, and maintain failure/upgrade scenarios |
 | P6 | Faults and activation boundaries | Design before async: explicit invariant-failure disposition, transitive fault visibility, resource/isolation semantics; faulting operators and any no-fault annotation remain separate decisions |
 | C1b.3c.2 | Local exclusive-reference collection elements | Deferred pending application evidence: permission transfer, direct reborrowing, dynamic removal splits and carrier invalidation |
 | C1b.3c.3 | Nested and public borrowed-collection contracts | Deferred pending application evidence: element origin schemas, nested carriers, generic/trait boundaries and stored outcomes |
@@ -139,7 +143,7 @@ Do not silently reinterpret existing trailing statements as entry-selected work.
 
 The user subsequently accepted optional braces: `[path]: { ... }` may give the
 selection an explicit end while the unbraced label form remains supported. This is
-planned syntax, not implemented in 0.43. The grouping form should intersect nested
+planned syntax, not implemented in 0.44. The grouping form should intersect nested
 selectors with its selected domain and restore the enclosing selection at `}`;
 `[entry]:` inside it refers to that group's entry selection. Grouping alone does not
 introduce a value/lifetime scope; explicit scoping remains a separate operation.
@@ -189,7 +193,7 @@ showcase for each feature. The initial working choice is a local configuration a
 key-value service. Start with a CLI over reusable Tellur modules, then expose the
 same operations through a blocking HTTP server bound to loopback. A sequential
 server makes useful progress before Tellur has async. This is planned work; no
-server or general Rust-binding mechanism is implemented in 0.43.
+server or general Rust-binding mechanism is implemented in 0.44.
 
 The first useful slice loads persisted settings and supports reading and updating
 keys with validation. Subsequent slices add persistence/reload, request handling,
@@ -327,8 +331,8 @@ Primary references for these constraints:
 - Calls use parentheses; payload construction and matching use braces. Decisions
   use `delta operation(...) { ... }`. Selected work retains `[path]:`.
 - `exits auto` infers a closed, checked exit contract. It does not weaken exhaustive
-  handling, coverage, or ownership. P1 will enforce explicit public contracts;
-  compiler 0.43 still accepts public inference. Private inference remains supported.
+  handling, coverage, or ownership. Since 0.44, public controls require explicit
+  outcomes, payload types and borrowed-result origins. Private inference remains supported.
 - Pure single-value operations should work in expressions. A single exit alone
   does not establish purity.
 - Adopt Rust-style ownership foundations: Copy values, moves for owning values,

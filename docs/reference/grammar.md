@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Lexical structure](lexical-structure.md)
 
-This is a reading grammar for the modern compiler 0.43.0 profile, not a replacement
+This is a reading grammar for the modern compiler 0.44.0 profile, not a replacement
 for its type, ownership, origin or coverage rules. It omits legacy spellings and
 parser recovery details. `name`, `integer` and `string_literal` are lexical tokens.
 Quoted text denotes source tokens; `?` means optional, `*` repetition, `+` one or
@@ -110,6 +110,9 @@ selection, following statements stay selected until another body item starts;
 resuming the enclosing selection requires `[entry]:`. There is no arbitrary
 unselected block statement. A tail loop must be last in its scope, and nested
 source loops are not supported. Empty live fallthrough is not a completion.
+
+Public controls require `explicit_exits` and explicit borrowed-result origin
+mappings. The `auto` and `inferred_exits` forms are limited to private controls.
 
 A single bare exit name is resolved against named outcome declarations. If one
 exists, it supplies the contract. `exits { ready }` or `exits ready {}` explicitly

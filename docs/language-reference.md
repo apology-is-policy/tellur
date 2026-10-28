@@ -1,8 +1,8 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.43.0 -->
+<!-- tellur-reference-version: 0.44.0 -->
 
-This manual describes **compiler 0.43.0**, including the current ownership model,
+This manual describes **compiler 0.44.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -353,7 +353,7 @@ An exit ends the current control invocation, not its caller. Outcome labels are 
 ordinary values by themselves; `capture` produces an owned first-class completed
 outcome. Ordinary data variants remain distinct from completion obligations.
 
-`exits auto` collects explicit exits from the checked body and infers their payload
+On a private control, `exits auto` collects explicit exits from the checked body and infers their payload
 types. All sites of an outcome must have matching arity/types. Callers are checked
 against that complete contract, even when the callee appears later in the file.
 Coverage and resource checks still apply. Recursive calls remain unsupported. A body
@@ -393,11 +393,63 @@ outcome contracts retain their existing semantics; an ellipsis-marked name alway
 names an individual exit, even if a named outcome type has the same spelling.
 
 Generic control definitions are checked symbolically before their concrete uses.
-The existing trait-method profile still requires explicit contracts, including in
+Public controls and the existing trait-method profile require explicit contracts, including in
 implementations; body-free trait declarations and named outcome definitions cannot
 use payload inference. `...` is only a declaration marker, not an exit expression
 or arm-pattern marker. Existing ownership, lifetime, coverage and recursion checks
 remain in force. See [the runnable example](../playground/inferred_payloads.tellur).
+
+### Explicit public contracts
+
+Since 0.44, every `pub control` declares its complete public exit interface. Write
+explicit labels and payload types, or name a public outcome contract. `exits auto`
+and `label...` remain available on private controls. This applies even to an unused
+generic definition: an implementation edit must not silently grow its exported API.
+A private `main` remains a valid executable entry point.
+
+<!-- tellur:check -->
+```tellur
+control lookup(bool available) exits auto {
+    exit delta available {
+        true => ready { "found" },
+        false => missing {}
+    };
+}
+
+pub control read_setting(bool available) exits ready { string value }, missing {
+    forward lookup(available);
+}
+```
+
+A new exit in `lookup` must be handled internally or deliberately added to
+`read_setting`'s contract. Merely forwarding it does not enlarge that contract.
+The compiler reports the incompatible forward and includes related locations for
+the producing exit and direct forwarding helpers. Missing arms on a direct call
+also receive these notes. A declared alternative with no producing exit points to
+the declaration. Notes are bounded; they are structural contributors, not proof
+that a concrete input reaches that exit. Tracking through stored outcomes and a
+complete explanation of adapters that absorb outcomes remain planned work.
+
+Public borrowed results must also declare their origins: direct references use
+`from input` (including contained-origin selectors), and reference-bearing
+aggregates use bracket mappings for all required groups. A reference to an
+aggregate declares both its storage origin and contained-origin mapping. Named
+completion contracts bind their groups at `exits reply[input, ...]`. These are the
+same checked origin rules used by private controls; public boundaries require the
+annotations instead of inferring them from the body.
+
+<!-- tellur:check -->
+```tellur
+pub control text_view(ref string input)
+    exits ready { ref string value from input }
+{
+    exit ready { input };
+}
+```
+
+An incorrect explicit origin still fails lifetime checking. Local `auto` bindings
+and pattern inference are unaffected. See [public-contract diagnostics](reference/diagnostics-and-limits.md#public-interfaces-e_public_contract)
+and [the runnable example](../playground/public_contracts.tellur).
 
 ## Named outcome contracts
 
@@ -1776,7 +1828,7 @@ Here `input` and `owner` name the same parameter position. Parameter and result
 variable names may differ, and exit labels may be reordered. Parameter ownership,
 result types, storage origins and every contained origin group must agree exactly.
 An implementation cannot swap groups, choose another input, or omit mappings and
-ask the compiler to infer its public trait contract. Ordinary controls may still
+ask the compiler to infer its public trait contract. Private ordinary controls may still
 infer these relationships from their bodies.
 
 This unused implementation is rejected because it changes the source promised by
@@ -2055,6 +2107,7 @@ Import paths are relative to the file containing the import. Qualify public memb
 through the chosen namespace: `people.person`, `people.create(...)`. Declarations
 are private unless marked `pub`; struct fields require their own `pub` modifier.
 A public struct with private fields is constructed through its module's controls.
+Public controls require [explicit exit types and borrowed-result origins](#explicit-public-contracts).
 Public interfaces cannot expose private types. A public control naming an outcome
 contract in `exits` must expose a public contract, even when all payload types are
 public. This also applies to generic and grouped completion contracts. Variants/outcomes export their whole
@@ -2375,7 +2428,7 @@ bindings/contracts. It does not yet provide general expression or call-site type
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and async tasks remain planned; they are not executable features of 0.43.0.
+and async tasks remain planned; they are not executable features of 0.44.0.
 ## Compare supplied scenarios
 
 ```sh

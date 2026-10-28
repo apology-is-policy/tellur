@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.43.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.44.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -1054,3 +1054,46 @@ Logs: `work/tellur-0.43-tests.log`, `tellur-0.43-focused.log`,
 `tellur-0.43-reference.log`, `tellur-0.43-examples.log`, `tellur-0.43-editor.log`,
 `tellur-0.43-build.log`, `tellur-0.43-package.log`, `tellur-0.43-install.log` and
 `tellur-0.43-installed-integrity.log`.
+
+## 0.44 — explicit public contracts and forwarding diagnostics
+
+Public controls require explicit outcome labels, payload types and complete
+borrowed-result origins. Private whole-contract and selected-payload inference
+remain supported. Public named outcomes bind their origin groups explicitly;
+unused generic declarations receive the same checks before specialization.
+
+`tests/public_contracts.rs` covers inferred-public rejection, direct and nested
+origin requirements, named contracts, generic definitions, private inference,
+invalid implementation origins, changed labels and payloads, declared unproduced
+alternatives and bounded contributor notes. Its native fixture compares interpreted
+and expanded behavior with native O0/O2 execution. Module tests check source paths,
+line numbers and readable names across imports. LSP and real editor tests exercise
+unsaved public inference, forwarded outcome growth, related locations, repair and
+native execution. `playground/public_contracts.tellur` is the maintained example.
+
+Contributor coverage is deliberately bounded to producing exits and direct
+forwarding chains. Captured/stored outcomes and complete adapter-absorption
+explanations remain P1b work. Related locations are the first P2 increment; full
+ranges, JSON diagnostics and independent-error recovery are not implemented here.
+
+Final verification: all **718 Rust tests** passed, including the **12** new public
+contract tests and **four** native comparisons (original/expanded at O0/O2).
+Clippy passed with warnings denied. All **32** Node tests and the complete real
+VS Code integration suite passed. The editor test's legacy manifest now supplies
+the formatting primitive used by the new example, and its older public borrowed
+result fixture carries the required explicit origin.
+
+Manual checks accepted **54** examples, required **18** diagnostics, classified
+**14** context fragments and resolved **147** local links. The release compiler
+checked all **53** canonical playground/example sources. The 0.44.0 Apple Silicon
+VSIX matches all nine staged payload files and is installed; installed metadata,
+assets, binaries and executable permissions were verified. Canonical and legacy
+local binaries were updated. Source snapshot:
+`work/revision-backups/tellur-0.44-source.tar.gz` (**269** source files,
+all archived bytes verified).
+
+Logs: `work/tellur-0.44-tests.log`, `tellur-0.44-focused.log`,
+`tellur-0.44-clippy.log`, `tellur-0.44-node.log`, `tellur-0.44-reference.log`,
+`tellur-0.44-examples.log`, `tellur-0.44-example-run.log`, `tellur-0.44-editor.log`,
+`tellur-0.44-build.log`, `tellur-0.44-package.log`, `tellur-0.44-install.log` and
+`tellur-0.44-installed-integrity.log`.

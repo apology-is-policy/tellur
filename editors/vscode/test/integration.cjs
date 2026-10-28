@@ -537,6 +537,28 @@ exports.run = async function () {
     assert.equal(storedCarrierRun.code, 0, storedCarrierRun.stderr);
     assert.ok(storedCarrierRun.stdout.includes('edited after capture') && storedCarrierRun.stdout.includes('edited through stored job'));
     console.log('TELLUR_STORED_CARRIERS_EDITOR_TESTS_PASSED: capture and nested reference hover, retained storage, repair and native execution');
+    // The legacy fixture manifest lacks the modern formatting operation used here.
+    const publicContractManifest = JSON.parse(manifest);
+    const playgroundManifest = JSON.parse(await fs.readFile(path.join(__dirname, '../../../playground/manifest.json'), 'utf8'));
+    if (!publicContractManifest.primitives.some(p => p.name === 'u32_text')) {
+      publicContractManifest.primitives.push(playgroundManifest.primitives.find(p => p.name === 'u32_text'));
+    }
+    await fs.writeFile(manifestPath, JSON.stringify(publicContractManifest));
+    try {
+      const publicContracts = await fs.readFile(path.join(__dirname, '../../../tests/fixtures/public_contracts.tellur'), 'utf8');
+      await replace(buildDocument, publicContracts);
+      await waitFor(() => revisedDiagnostics().length === 0, 'explicit public contract');
+      await replace(buildDocument, publicContracts.replace('exits ready { u32 value }, invalid', 'exits auto'));
+      await waitFor(() => revisedDiagnostics().some(d => code(d) === 'E_PUBLIC_CONTRACT'), 'public inference diagnostic');
+      await replace(buildDocument, publicContracts.replace('exit invalid;', 'exit unexpected;'));
+      await waitFor(() => revisedDiagnostics().some(d => code(d) === 'E_OUTCOME' && d.relatedInformation?.some(n => n.message.includes('produced by')) && d.relatedInformation?.some(n => n.message.includes('forwarded from'))), 'outcome origin and forwarding locations');
+      await replace(buildDocument, publicContracts);
+      await waitFor(() => revisedDiagnostics().length === 0, 'public contract repair');
+      const publicContractRun = await vscode.commands.executeCommand('tellur.buildAndRun', {output:path.join(root, 'native output', 'public-contracts')});
+      assert.equal(publicContractRun.code, 0, publicContractRun.stderr);
+      assert.ok(publicContractRun.stdout.includes('42'));
+      console.log('TELLUR_PUBLIC_CONTRACTS_EDITOR_TESTS_PASSED: explicit public contracts, contributor locations, repair and native execution');
+    } finally { await fs.writeFile(manifestPath, manifest); }
     const borrowedCollections = await fs.readFile(path.join(__dirname, '../../../tests/fixtures/borrowed_collections.tellur'), 'utf8');
     await replace(buildDocument, borrowedCollections);
     await waitFor(() => revisedDiagnostics().length === 0, 'borrowed collection source');
@@ -624,7 +646,7 @@ exports.run = async function () {
 
     const moduleFile=path.join(root,'people.path');
     const moduleUri=vscode.Uri.file(moduleFile);
-    const moduleSource='pub struct person {string name;pub u32 age;}\npub control create(string name,u32 age) exits ready {person value} {exit ready {person {name,age}};}\npub control name(&person value) exits found {&string text} {exit found {&(*value).name};}';
+    const moduleSource='pub struct person {string name;pub u32 age;}\npub control create(string name,u32 age) exits ready {person value} {exit ready {person {name,age}};}\npub control name(&person value) exits found {&string text from value} {exit found {&(*value).name};}';
     await fs.writeFile(moduleFile,moduleSource);
     const importing='import "people.path" as people;\ncontrol main() exits done {delta people.create("Module Ada",37) {ready {auto value}=>created}[created]:delta people.name(&value) {found {auto text}=>named}[named]:emit(text);exit done;}';
     await replace(buildDocument,importing);

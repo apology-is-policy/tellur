@@ -352,8 +352,8 @@ fn private_imported_carriers_expose_groups_without_exposing_fields() {
         root.join("views.tellur"),
         r#"pub struct view['text] {ref mutable string text <- 'text;}
 pub struct job['storage,'text] {ref mutable view['text] target <- 'storage;}
-pub control make(ref mutable string input) exits ready... {exit ready {view {input}};}
-pub control pack(ref mutable view input) exits ready... {exit ready {job {input}};}
+pub control make(ref mutable string input) exits ready {view[input] value} {exit ready {view {input}};}
+pub control pack(ref mutable view input) exits ready {job[input,input['text]] value} {exit ready {job {input}};}
 pub control edit(job input) exits done {deref input.target.text="module";exit done;}
 "#,
     )

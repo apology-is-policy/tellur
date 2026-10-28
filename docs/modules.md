@@ -29,7 +29,7 @@ pub control create(string name, u32 age) exits ready { person value } {
     exit ready { person { name, age } };
 }
 
-pub control name(ref person value) exits found { ref string text } {
+pub control name(ref person value) exits found { ref string text from value } {
     exit found { borrow value.name };
 }
 ```
@@ -57,7 +57,9 @@ silently select additional manifests.
   retains normal field access and construction.
 - Exporting a variant or outcome exports its alternatives and payload shapes. Public
   parameters, exits, public fields and variant/outcome payloads cannot expose private
-  named types. Public controls with inferred exits undergo this check after inference.
+  named types. Since 0.44, public controls must declare explicit exit labels, payload
+  types and borrowed-result origins; a public named outcome contract is also supported.
+  `exits auto` and `label...` are reserved for private controls.
   Use a public named contract rather than exporting producer-indexed outcome schemas.
 - Imports must be qualified: `people.person`, `people.create(...)`, or
   `people.choice.present { ... }`. Unqualified imported constructor tags do not enter
@@ -82,7 +84,9 @@ access rule, not a promise that inspection or generated code conceals implementa
 VS Code uses unsaved buffers for open dependencies and disk contents for closed ones.
 Changing a dependency rechecks open callers. Errors originating in an imported file
 appear on the caller's import with a related location pointing to the actual file
-and line. Closing an unsaved dependency restores the disk version for subsequent
+and line. Outcome mismatches through direct forwarding and missing direct-call arms
+also include related producer/forwarder locations, mapped to their original files
+and open buffers. Closing an unsaved dependency restores the disk version for subsequent
 checks. Tellur and JSON file watchers invalidate diagnostics for disk changes inside
 the workspace. Dependencies outside watched workspace folders are read on the next
 check; automatic external-directory watching is not implemented.

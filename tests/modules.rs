@@ -60,11 +60,11 @@ fn same(p: &tellur::CheckedProgram) {
 const PEOPLE: &str = include_str!("../playground/modules/people.tellur");
 const MAIN: &str = include_str!("../playground/modules/main.tellur");
 #[test]
-fn exported_ellipsis_payloads_are_resolved_before_checking_importers() {
+fn exported_payloads_are_explicit_while_importers_can_infer() {
     let f = Fixture::new();
     f.write(
         "lookup.tellur",
-        "pub control lookup() exits ready... {exit ready {\"hello\"};}",
+        "pub control lookup() exits ready {string text} {exit ready {\"hello\"};}",
     );
     f.write(
         "main.tellur",
@@ -131,7 +131,7 @@ fn private_type_names_and_public_interface_leaks_are_rejected() {
         "import \"lib.tellur\" as lib;control main() exits done {exit done;}",
     );
     for source in [
-        "struct secret {u32 value;} pub control leak() exits auto {exit ready {secret {1}};}",
+        "struct secret {u32 value;} pub control leak() exits ready {secret value} {exit ready {secret {1}};}",
         "struct secret {u32 value;} pub struct public_box {pub secret value;}",
         "struct secret {u32 value;} pub variant public_choice {yes {secret value},no}",
         "struct secret {u32 value;} pub outcome public_result {yes {secret value},no}",
@@ -277,7 +277,7 @@ fn imported_resources_retain_ownership_and_completion_requirements() {
 #[test]
 fn public_interface_rules_also_apply_to_text_compilation() {
     let e = compile(
-        "struct secret {u32 value;} pub control leak() exits auto {exit ready {secret {7}};}",
+        "struct secret {u32 value;} pub control leak() exits ready {secret value} {exit ready {secret {7}};}",
         m(),
     )
     .unwrap_err();
@@ -455,7 +455,7 @@ fn generic_controls_keep_module_privacy_and_universal_definition_checks() {
 #[test]
 fn generic_parameter_constructor_shadowing_is_independent_of_module_prefixes() {
     let f = Fixture::new();
-    f.write("library.tellur","struct item{}pub control bad<item>(item value) exits auto {auto wrong=item{};exit ready {value};}");
+    f.write("library.tellur","struct item{}pub control bad<item>(item value) exits ready {item value} {auto wrong=item{};exit ready {value};}");
     f.write(
         "main.tellur",
         "import \"library.tellur\" as library;control main() exits done {exit done;}",
@@ -483,7 +483,10 @@ fn public_generic_can_be_used_with_private_arguments_without_exporting_them() {
     f.write(
         "main.tellur",
         &source
-            .replace("control main() exits auto", "pub control main() exits auto")
+            .replace(
+                "control main() exits auto",
+                "pub control main() exits done {hidden value}",
+            )
             .replace("done {value.value}", "done {value}"),
     );
     f.reject("E_VISIBILITY");
@@ -861,4 +864,29 @@ fn imported_sum_carriers_preserve_public_origins_and_private_payload_fields() {
             .replace("emit(text)", "emit(value.text)"),
     );
     f.reject("E_VISIBILITY");
+}
+
+#[test]
+fn forwarding_contributors_resolve_to_original_module_locations() {
+    let f = Fixture::new();
+    f.write(
+        "library.tellur",
+        include_str!("fixtures/public_contracts.tellur"),
+    );
+    f.write("main.tellur", "import \"library.tellur\" as lib;control main() exits done {delta lib.read_setting(true) {ready {auto value}=>ready}[ready]:exit done;}");
+    let e = f.reject("E_ARMS");
+    assert_eq!(e.path, f.root.join("main.tellur"));
+    assert_eq!(e.diagnostic.notes.len(), 3, "{e}");
+    for note in &e.diagnostic.notes {
+        assert_eq!(note.path.as_ref(), Some(&f.root.join("library.tellur")));
+    }
+    assert_eq!(
+        e.diagnostic
+            .notes
+            .iter()
+            .map(|n| n.span.line)
+            .collect::<Vec<_>>(),
+        vec![5, 9, 13]
+    );
+    assert!(!e.to_string().contains("_path_m_"), "{e}");
 }

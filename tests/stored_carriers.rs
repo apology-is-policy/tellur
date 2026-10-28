@@ -295,7 +295,7 @@ fn private_imported_carriers_can_be_captured_locally() {
         root.join("view.tellur"),
         r#"pub struct view['a] {ref string text <- 'a;}
  pub control make(ref string input) exits ready {view[input] value} {exit ready {view {input}};}
- pub control lend(ref view input) exits ready... {exit ready {input};}
+ pub control lend(ref view input) exits ready {ref view[input['a]] value from input} {exit ready {input};}
  pub control display(ref view input) exits done {emit(input.text);exit done;}"#,
     )
     .unwrap();

@@ -1480,3 +1480,31 @@ fn borrowed_collection_hovers_and_unsaved_owner_conflicts() {
     f.change(source, 3);
     assert_eq!(f.diagnostics(), json!([]));
 }
+
+#[test]
+fn public_contract_diagnostics_and_forwarding_locations_follow_unsaved_edits() {
+    let mut f = Fixture::new();
+    fs::write(
+        f.root.join("manifest.json"),
+        include_str!("../playground/manifest.json"),
+    )
+    .unwrap();
+    let source = include_str!("fixtures/public_contracts.tellur");
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    f.change(
+        &source.replace("exits ready { u32 value }, invalid", "exits auto"),
+        2,
+    );
+    assert_eq!(f.diagnostics()[0]["code"], "E_PUBLIC_CONTRACT");
+    f.change(&source.replacen("exit invalid;", "exit unexpected;", 1), 3);
+    let d = f.diagnostics();
+    assert_eq!(d[0]["code"], "E_OUTCOME");
+    let notes = d[0]["relatedInformation"].as_array().unwrap();
+    assert_eq!(notes.len(), 2, "{d}");
+    assert_eq!(notes[0]["location"]["range"]["start"]["line"], 4);
+    assert_eq!(notes[1]["location"]["range"]["start"]["line"], 8);
+    assert!(notes.iter().all(|n| n["location"]["uri"] == f.uri));
+    f.change(source, 4);
+    assert_eq!(f.diagnostics(), json!([]));
+}

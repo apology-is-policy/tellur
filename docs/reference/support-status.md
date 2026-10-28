@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.43.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.44.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -14,8 +14,9 @@ The linked regression suites give more detailed acceptance and rejection evidenc
 | Controls and paths | Typed parameters, exhaustive delta, selected histories, inferred contracts, aliases and scopes | No recursive calls or value-level proof of path feasibility | [Revision tests](../../tests/revision.rs) |
 | Adapters and forwarding | Nested tail adapters, stored adapters, explicit compatible forwarding, one-nullary-completion statements | No arm statement blocks or general expression-position adapters | [Adapter tests](../../tests/adapters.rs), [forwarding tests](../../tests/forward.rs) |
 | Completed outcomes | Capture now, handle later; named and producer-indexed contracts; mandatory handling | Not futures; no implicit structural assignment across unrelated named types | [Outcome tests](../../tests/outcomes.rs), [named contracts](../../tests/named_outcomes.rs) |
-| Payload inference | `exits auto` and selected nonempty `label...`; local/pattern `auto` | Explicit trait contracts; no general signature wildcard | [Inference tests](../../tests/payload_inference.rs) |
+| Payload inference | Private `exits auto` and selected nonempty `label...`; local/pattern `auto` | Explicit public and trait contracts; no general signature wildcard | [Inference tests](../../tests/payload_inference.rs) |
 | Data declarations | Nominal structs, closed variants, wrappers, named/positional struct construction | No recursive layouts, inheritance, defaults or update spreads | [Data tests](../../tests/data_types.rs), [field tests](../../tests/named_fields.rs) |
+| Public control contracts | Explicit labels, payloads and borrowed-result mappings, including unused generics; bounded direct-forwarding notes | Stored-outcome contributor tracking and full adapter absorption explanations remain queued | [Public contract tests](../../tests/public_contracts.rs), [example](../../playground/public_contracts.tellur) |
 | Modules | Explicit relative imports and namespaces; private by default; public declarations/fields | No package-name resolver or package manager | [Module tests](../../tests/modules.rs) |
 | Generic data | Explicit first-order type parameters and specialization | No argument inference, data bounds or higher-kinded parameters | [Generic data tests](../../tests/generic_data.rs) |
 | Generic controls | Universal definition checking, sealed/user-trait bounds, explicit specialization | No recursive calls, type-argument inference or reference types as generic arguments | [Control tests](../../tests/generic_controls.rs), [bounds](../../tests/trait_bounds.rs) |
@@ -58,7 +59,7 @@ with complete schemas for every nested reference layer.
 | Area | Current support | Limit |
 | --- | --- | --- |
 | CLI and native build | Check, execute, build standalone executable through Rust/Cargo and LLVM | No direct LLVM coroutine lowering |
-| VS Code | Highlighting, unsaved diagnostics, Outline, declaration contracts, inferred `auto` hover, build/run | First diagnostic per document; hover requires a successful check and is not general expression hover |
+| VS Code | Highlighting, unsaved diagnostics with related forwarding locations, Outline, declaration contracts, inferred `auto` hover, build/run | First diagnostic per document; hover requires a successful check and is not general expression hover |
 | Expansion | Checked rewrite certificates, retained invocation/decision provenance | Not arbitrary equivalence or termination checking |
 | Tail extraction | Typed helper generation and whole-candidate rechecking | Not general graph extraction or a full equivalence certificate |
 | Scenario comparison | Concrete supplied-case comparisons and counterexamples | Agreement on those cases only |

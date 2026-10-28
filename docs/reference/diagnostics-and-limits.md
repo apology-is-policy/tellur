@@ -7,6 +7,42 @@ stops at the first error for a document; fixing it may expose another. The preci
 message wording may improve between releases. The negative examples here are checked
 for their stated code, so they also serve as small regression cases.
 
+## Public interfaces: E_PUBLIC_CONTRACT
+
+A public control must spell out its exit labels, payload types and borrowed-result
+origins. Private helpers may infer these from their bodies.
+
+<!-- tellur:reject E_PUBLIC_CONTRACT -->
+```tellur
+pub control answer() exits auto {
+    exit ready { 42 };
+}
+```
+
+Write `exits ready { u32 value }` or use a public named outcome contract. Replacing
+`exits auto` with `exits ready...` still requests inference and is also rejected.
+
+<!-- tellur:reject E_PUBLIC_CONTRACT -->
+```tellur
+pub control view(ref string input) exits ready { ref string value } {
+    exit ready { input };
+}
+```
+
+Add `from input` after the result binding. Reference-bearing aggregate results
+need explicit bracket mappings as well; references to such aggregates need both
+storage and contained-origin contracts. An unused generic public declaration must
+satisfy the same rule. See [explicit public contracts](../language-reference.md#explicit-public-contracts).
+
+For incompatible `forward` calls (`E_OUTCOME`, `E_ARITY` or `E_TYPE`) and missing direct-call arms
+(`E_ARMS`), CLI notes and VS Code related information can show the producing exit
+and direct forwarding helpers. The diagnostic includes only contributors to the
+incompatible or missing alternatives. A declared but unproduced alternative points
+to its declaration. Each outcome summary and diagnostic is limited to 32 notes,
+plus an omission note when necessary. These are structural source locations, not a
+feasible-input witness. Stored-outcome lineage, full expression ranges, JSON
+output and independent-error recovery remain future work.
+
 ## Type context: E_TYPE and E_INFER
 
 An annotation constrains the initializer; it does not request a conversion.
