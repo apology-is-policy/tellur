@@ -58,6 +58,73 @@ impl Drop for Fixture {
 }
 const VALID: &str = "region main() exits Done { [Entry]: exit Done; }";
 #[test]
+fn formatting_uses_current_buffer_options_and_utf16_document_extent() {
+    let mut f = Fixture::new();
+    let original = "control main() exits done {emit(\"😀\");exit done;}//😀";
+    f.open(original);
+    let options = tellur::format::Options {
+        tab_size: 2,
+        insert_spaces: true,
+    };
+    let edits = f.server.formatting(&f.uri, options);
+    assert_eq!(
+        edits[0]["range"],
+        json!({"start":{"line":0,"character":0},"end":{"line":0,"character":original.encode_utf16().count()}})
+    );
+    let formatted = edits[0]["newText"].as_str().unwrap();
+    assert!(formatted.contains("\n  emit(\"😀\");"));
+    f.change(formatted, 2);
+    assert_eq!(f.server.formatting(&f.uri, options), json!([]));
+    f.change("control main() exits done {\r\nexit done;} //😀", 3);
+    let edits = f.server.formatting(
+        &f.uri,
+        tellur::format::Options {
+            insert_spaces: false,
+            ..options
+        },
+    );
+    assert_eq!(
+        edits[0]["range"]["end"],
+        json!({"line":1,"character":"exit done;} //😀".encode_utf16().count()})
+    );
+    assert!(
+        edits[0]["newText"]
+            .as_str()
+            .unwrap()
+            .contains("\r\n\texit done;")
+    );
+}
+
+#[test]
+fn formatting_works_without_semantics_or_manifest_and_refuses_broken_syntax() {
+    let mut server = Server::default();
+    let uri = "untitled:formatting";
+    let options = tellur::format::Options::default();
+    assert_eq!(server.formatting(uri, options), json!([]));
+    let text = "import \"missing.tellur\" as missing;control main() exits done {u32 value=\"wrong type\";exit done;}";
+    server.notification(
+        "textDocument/didOpen",
+        &json!({"textDocument":{"uri":uri,"version":1,"text":text}}),
+    );
+    assert_eq!(
+        server.formatting(uri, options)[0]["newText"],
+        tellur::format::source(text, options).unwrap()
+    );
+    server.notification("textDocument/didChange", &json!({"textDocument":{"uri":uri,"version":2},"contentChanges":[{"text":"control broken("}]}));
+    assert_eq!(server.formatting(uri, options), json!([]));
+    // Older notifications must not restore an edit for the replaced document.
+    server.notification(
+        "textDocument/didChange",
+        &json!({"textDocument":{"uri":uri,"version":1},"contentChanges":[{"text":text}]}),
+    );
+    assert_eq!(server.formatting(uri, options), json!([]));
+    server.notification(
+        "textDocument/didClose",
+        &json!({"textDocument":{"uri":uri}}),
+    );
+    assert_eq!(server.formatting(uri, options), json!([]));
+}
+#[test]
 fn independent_errors_update_together_without_stale_inferred_hover() {
     let mut f = Fixture::new();
     let source = "control main() exits done {auto value=\"current\";emit(value);exit done;}\ncontrol first() exits done {u32 value=1;exit done;}\ncontrol second() exits done {string value=\"ok\";exit done;}\ncontrol caller() exits done {forward first();}";
@@ -466,10 +533,9 @@ fn protocol_initialize_diagnostics_unknown_method_and_shutdown() {
     else {
         panic!("expected initialize response")
     };
-    assert_eq!(
-        response.response_result.unwrap()["capabilities"]["textDocumentSync"]["change"],
-        1
-    );
+    let capabilities = response.response_result.unwrap()["capabilities"].clone();
+    assert_eq!(capabilities["textDocumentSync"]["change"], 1);
+    assert_eq!(capabilities["documentFormattingProvider"], true);
     client
         .sender
         .send(Notification::new("initialized".into(), json!({})).into())
@@ -492,6 +558,35 @@ fn protocol_initialize_diagnostics_unknown_method_and_shutdown() {
         panic!("expected diagnostic")
     };
     assert_eq!(n.params["diagnostics"][0]["code"], "E_PARSE");
+    for (id, options, error) in [
+        (10, json!({"tabSize": 4, "insertSpaces": true}), false),
+        (11, json!({"tabSize": 0, "insertSpaces": true}), true),
+        (12, json!({"tabSize": 4}), true),
+    ] {
+        client
+            .sender
+            .send(
+                Request::new(
+                    id.into(),
+                    "textDocument/formatting".into(),
+                    json!({"textDocument":{"uri":"untitled:test"}, "options":options}),
+                )
+                .into(),
+            )
+            .unwrap();
+        let Message::Response(response) = client
+            .receiver
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap()
+        else {
+            panic!("expected formatting response")
+        };
+        if error {
+            assert_eq!(response.response_result.unwrap_err().code, -32602);
+        } else {
+            assert_eq!(response.response_result.unwrap(), json!([]));
+        }
+    }
     client
         .sender
         .send(Request::new(2.into(), "unsupported".into(), json!({})).into())

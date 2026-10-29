@@ -8,6 +8,7 @@ mod collections;
 pub mod diagnostics;
 mod expand;
 pub mod extract;
+pub mod format;
 mod generic_controls;
 mod generics;
 mod history;

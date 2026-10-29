@@ -1,8 +1,8 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.55.0 -->
+<!-- tellur-reference-version: 0.56.0 -->
 
-This manual describes **compiler 0.55.0**, including the current ownership model,
+This manual describes **compiler 0.56.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -35,6 +35,7 @@ The companion chapters provide quick lookup:
 - [Core grammar](reference/grammar.md): schematic syntax for modern source programs.
 - [Diagnostics and limits](reference/diagnostics-and-limits.md): rejected programs, repairs and implementation budgets.
 - [Feature status](reference/support-status.md): implemented boundaries and queued features.
+- [Formatting](reference/formatting.md): terminal commands, VS Code and layout preservation.
 - [Glossary](reference/glossary.md): precise meanings of Tellur's terminology.
 
 ## Contents
@@ -139,6 +140,12 @@ prompted. Open `playground/hello.tellur`, then use **Tellur: Build and Run** (`�
 `Ctrl+Alt+R`). **Tellur: Build Native Program** uses `⌘⌥B` / `Ctrl+Alt+B`. Output goes
 to **Tellur Build**. Hover over a control's declaration name to see its checked exit
 contract; Outline also shows inferred contracts. Diagnostics use unsaved source.
+
+Use **Format Document** to format the current buffer with your editor's indentation
+settings. The formatter preserves labels, optional braces, comments and literals.
+From the terminal, `./bin/tellurc format SOURCE` previews formatted text;
+`--write` updates the file and `--check` checks its layout without writing.
+See [formatting](reference/formatting.md) for exact behavior and limits.
 
 Try `outcome_origins.tellur`, `public_variants.tellur`, `borrowed_outcomes.tellur`, `opaque_splits.tellur`, `carrier_reborrows.tellur`, `record_inputs.tellur`, `inferred_payloads.tellur`, `stored_references.tellur`, `forwarding.tellur`, `named_outcomes.tellur`, `stored_adapters.tellur`, `adapters.tellur`, `outcomes.tellur`, `collections.tellur`, `references.tellur`, `count.tellur`, `port.tellur`, and `read_file.tellur`. Create new `.tellur` files beside
 `playground/manifest.json` to use the same library. The entry file and its explicit import graph form the program; unrelated files
@@ -2616,7 +2623,7 @@ It does not yet provide general expression or call-site type hover.
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and async tasks remain planned; they are not executable features of 0.55.0.
+and async tasks remain planned; they are not executable features of 0.56.0.
 ## Compare supplied scenarios
 
 ```sh

@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.55.0** implements the v0.1 checked core and the current language
+Compiler release **0.56.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -52,6 +52,11 @@ Release 0.55 adds [selected-history hover](docs/language-reference.md#selected-h
 hover over selected code to see resolved paths, enclosing intersections, and decision
 origins. Try [history_hover.tellur](playground/history_hover.tellur). Existing `auto`
 hover keeps showing inferred types.
+
+Release 0.56 adds [source formatting](docs/reference/formatting.md): use VS Code's
+**Format Document**, or `./bin/tellurc format SOURCE [--check | --write]`.
+Labels, explicit groups, comments and literal spelling are preserved. Formatting
+works on unsaved buffers and needs no manifest.
 
 The [semantic foundation](docs/semantic-foundation.md) distinguishes compatibility,
 ownership transfer, behavioral equivalence and provenance. Executable law tests and

@@ -12,6 +12,14 @@ async function replace(document, text) {
   edit.replace(document.uri, new vscode.Range(document.positionAt(0), document.positionAt(document.getText().length)), text);
   assert.ok(await vscode.workspace.applyEdit(edit));
 }
+function previewEdits(document, edits) {
+  if (!edits) return undefined;
+  let text = document.getText();
+  for (const edit of [...edits].sort((a, b) => document.offsetAt(b.range.start) - document.offsetAt(a.range.start))) {
+    text = text.slice(0, document.offsetAt(edit.range.start)) + edit.newText + text.slice(document.offsetAt(edit.range.end));
+  }
+  return text;
+}
 // The editor fixtures that exercise anonymous inference supply explicit launcher policy.
 async function buildWithStatus(command, options, exitCodes) {
   const root = vscode.workspace.workspaceFolders[0].uri.fsPath;
@@ -143,6 +151,34 @@ exports.run = async function () {
     await replace(buildDocument, independent.replace('u32 value=true', 'u32 value=1').replace('string value=7', 'string value="ok"'));
     await waitFor(() => revisedDiagnostics().length === 0, 'all independent errors repaired');
     console.log('TELLUR_INDEPENDENT_DIAGNOSTICS_EDITOR_TESTS_PASSED: two errors, blocked caller, partial repair and hover invalidation');
+    const dense = 'control main() exits done {emit("😀");[entry]:{emit("inside");}exit done;}// retained';
+    await replace(buildDocument, dense);
+    await waitFor(async () => {
+      const edits = await vscode.commands.executeCommand('vscode.executeFormatDocumentProvider', buildUri, { tabSize: 2, insertSpaces: true });
+      return previewEdits(buildDocument, edits)?.includes('\n  [entry]: {\n    emit("inside");');
+    }, 'format provider handles current unsaved source and indentation options');
+    const editor = await vscode.window.showTextDocument(buildDocument);
+    editor.options = { ...editor.options, tabSize: 4, insertSpaces: true };
+    await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
+    await waitFor(async () => {
+      await vscode.commands.executeCommand('editor.action.formatDocument');
+      return buildDocument.getText().includes('\n    [entry]: {\n        emit("inside");\n    }\n    exit done;');
+    }, 'Format Document applies its edit');
+    const layout = buildDocument.getText();
+    assert.ok(layout.includes('\n    [entry]: {\n        emit("inside");\n    }\n    exit done;'));
+    assert.ok(layout.endsWith('} // retained\n'));
+    assert.ok(buildDocument.isDirty, 'formatting edits the buffer without saving');
+    const again = await vscode.commands.executeCommand('vscode.executeFormatDocumentProvider', buildUri, { tabSize: 4, insertSpaces: true });
+    assert.equal(again?.length ?? 0, 0, 'formatted document needs no second edit');
+    await replace(buildDocument, 'control broken(');
+    await waitFor(() => revisedDiagnostics().some(d => code(d) === 'E_PARSE'), 'broken syntax before formatting');
+    assert.equal((await vscode.commands.executeCommand('vscode.executeFormatDocumentProvider', buildUri, { tabSize: 4, insertSpaces: true }))?.length ?? 0, 0);
+    assert.equal(buildDocument.getText(), 'control broken(');
+    await replace(buildDocument, 'control main() exits done {u32 wrong="text";exit done;}');
+    await waitFor(() => revisedDiagnostics().some(d => code(d) === 'E_TYPE'), 'type error before formatting');
+    const typeEdits = await vscode.commands.executeCommand('vscode.executeFormatDocumentProvider', buildUri, { tabSize: 4, insertSpaces: false });
+    assert.ok(previewEdits(buildDocument, typeEdits)?.includes('\n\tu32 wrong = "text";'));
+    console.log('TELLUR_FORMAT_EDITOR_TESTS_PASSED: standard Format Document, unsaved edits, spaces/tabs, labels/groups, Unicode, comments, idempotence, syntax refusal and type errors');
     const groups = await fs.readFile(path.join(__dirname, '../../../playground/path_groups.tellur'), 'utf8');
     await replace(buildDocument, groups);
     const headingLine = groups.split('\n').findIndex(line => line.includes('auto heading'));
@@ -154,6 +190,8 @@ exports.run = async function () {
     await waitFor(() => revisedDiagnostics().some(d => code(d) === 'E_EMPTY'), 'nested label cannot escape its group');
     await replace(buildDocument, groups);
     await waitFor(() => revisedDiagnostics().length === 0, 'group repair');
+    await vscode.commands.executeCommand('editor.action.formatDocument');
+    assert.ok(buildDocument.getText().includes('[present]: {'), 'formatter retains the explicit selected group');
     const groupsRun = await buildWithStatus('tellur.buildAndRun', { output: path.join(root, 'native output', 'path-groups') }, {"done": 0});
     assert.equal(groupsRun.code, 0, groupsRun.stderr);
     assert.equal(groupsRun.stdout.trim(), 'Full details\nAvailable\nDescription complete\nUnavailable\nDescription complete\ndone');

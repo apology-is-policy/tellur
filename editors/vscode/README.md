@@ -82,8 +82,24 @@ with one primary error per body and up to 32 per check. Failed callers are suppr
 to avoid cascades. Expression diagnostics select their source ranges; other
 diagnostics may point to a token, statement or declaration. Structural
 witnesses describe what *may* reach a point, not proven feasible input values.
-Declaration hover shows checked control contracts. Completion, rename, cross-file
-references and formatting are not implemented.
+Declaration hover shows checked control contracts. **Format Document** formats the
+current buffer while preserving labels, explicit groups, comments and literals.
+Completion, rename and cross-file references are not implemented.
+
+## Formatting (0.56)
+
+Use VS Code's **Format Document** command or editor context menu. The server uses
+the current unsaved source and your indentation preference (spaces/tabs, width
+1–16), including untitled Tellur buffers. Formatting needs no manifest and works
+despite type errors or missing imports. Broken syntax produces no formatting edit;
+repair the syntax diagnostic first. Formatting does not save the document.
+
+Flat labels stay distinct, with selected statements indented beneath them. The
+formatter preserves every explicit brace, comment and literal, including multiline
+strings, and retains authored wrapping in headers and payloads. It does not add
+braces, sort imports or enable format-on-save. Range formatting, on-type formatting
+and automatic width-based wrapping remain future work. If another formatter is
+active, use **Format Document With…** to select Tellur.
 
 ## Migration from Path
 

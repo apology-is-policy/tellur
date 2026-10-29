@@ -259,7 +259,7 @@ pub struct Unit {
     pub data: Vec<DataDeclaration>,
 }
 #[derive(Clone, Debug)]
-enum Kind {
+pub(crate) enum Kind {
     Word(String),
     String(String),
     Number(String),
@@ -267,10 +267,10 @@ enum Kind {
     End,
 }
 #[derive(Clone, Debug)]
-struct Token {
-    kind: Kind,
-    span: Span,
-    end: Span,
+pub(crate) struct Token {
+    pub kind: Kind,
+    pub span: Span,
+    pub end: Span,
 }
 impl Token {
     fn is(&self, text: &str) -> bool {
@@ -278,7 +278,7 @@ impl Token {
     }
 }
 
-fn lex(source: &str) -> Result<Vec<Token>> {
+pub(crate) fn lex(source: &str) -> Result<Vec<Token>> {
     let chars: Vec<char> = source.chars().collect();
     let (mut i, mut line, mut column) = (0, 1, 1);
     let mut tokens = vec![];
@@ -443,6 +443,7 @@ pub(crate) struct SelectionSite {
 }
 
 struct Parser {
+    layout: crate::format::Layout,
     selection_sites: Vec<SelectionSite>,
     tokens: Vec<Token>,
     pos: usize,
@@ -513,9 +514,11 @@ impl Parser {
         }
         let name = self.qualified()?;
         if self.eat("<") {
+            let open = self.pos - 1;
             if name == "outcome" {
                 let producer = self.ty()?;
                 self.need(">")?;
+                self.layout.angles.push((open, self.pos - 1));
                 return Ok(format!("outcome<{producer}>"));
             }
             let mut args = vec![self.ty()?];
@@ -528,6 +531,7 @@ impl Parser {
                 }
             }
             self.need(">")?;
+            self.layout.angles.push((open, self.pos - 1));
             let mut ty = format!("{name}<{}>", args.join(","));
             while self.eat(".") {
                 ty.push('.');
@@ -658,6 +662,7 @@ impl Parser {
                     self.exit_fields()?
                 } else if self.at("{") {
                     let saved = self.pos;
+                    let angles = self.layout.angles.len();
                     match self.exit_fields() {
                         Ok(fields)
                             if self.at(",")
@@ -670,6 +675,7 @@ impl Parser {
                         }
                         _ => {
                             self.pos = saved;
+                            self.layout.angles.truncate(angles);
                             (vec![], vec![])
                         }
                     }
@@ -768,6 +774,7 @@ impl Parser {
         if !self.eat("<") {
             return Ok(vec![]);
         }
+        let open = self.pos - 1;
         let mut parameters = vec![self.id()?];
         while self.eat(",") {
             parameters.push(self.id()?);
@@ -780,12 +787,14 @@ impl Parser {
             ));
         }
         self.need(">")?;
+        self.layout.angles.push((open, self.pos - 1));
         Ok(parameters)
     }
     fn control_type_parameters(&mut self) -> Result<(Vec<String>, TypeBounds)> {
         let mut parameters = vec![];
         let mut bounds = std::collections::BTreeMap::new();
         if self.eat("<") {
+            let open = self.pos - 1;
             loop {
                 let parameter = self.id()?;
                 let mut requirements = vec![];
@@ -813,6 +822,7 @@ impl Parser {
                 }
             }
             self.need(">")?;
+            self.layout.angles.push((open, self.pos - 1));
         }
         Ok((parameters, bounds))
     }
@@ -1025,6 +1035,7 @@ impl Parser {
                 // comparisons retain their existing parse, including `a < b`.
                 if self.at("<") {
                     self.pos = saved;
+                    let angles = self.layout.angles.len();
                     if let Ok(ty) = self.ty() {
                         let mut candidate = ty;
                         if self.eat(".") {
@@ -1035,10 +1046,12 @@ impl Parser {
                             name = candidate;
                         } else {
                             self.pos = saved;
+                            self.layout.angles.truncate(angles);
                             name = self.qualified()?;
                         }
                     } else {
                         self.pos = saved;
+                        self.layout.angles.truncate(angles);
                         name = self.qualified()?;
                     }
                 }
@@ -1115,6 +1128,7 @@ impl Parser {
             self.brace_expr = false;
             let operand = self.expr(0)?;
             self.brace_expr = true;
+            self.layout.blocks.insert(self.pos);
             self.need("{")?;
             let mut arms = vec![];
             while !self.at("}") {
@@ -1248,6 +1262,7 @@ impl Parser {
                     let mutable = self.eat("mutable");
                     if !mutable {
                         let saved = self.pos;
+                        let angles = self.layout.angles.len();
                         if let Ok(target) = self.expr(3) {
                             if self.eat("=") {
                                 let value = self.expr(0)?;
@@ -1259,6 +1274,7 @@ impl Parser {
                             }
                         }
                         self.pos = saved;
+                        self.layout.angles.truncate(angles);
                     }
                     let ty = self.ty()?;
                     let name = self.id()?;
@@ -1299,6 +1315,7 @@ impl Parser {
                 let operand = self.expr(0)?;
                 self.brace_expr = true;
                 let modern = !self.eat("->");
+                self.layout.blocks.insert(self.pos);
                 let end = if modern {
                     self.need("{")?;
                     "}"
@@ -1381,10 +1398,12 @@ impl Parser {
         Ok(stmt)
     }
     fn body(&mut self) -> Result<Vec<Item>> {
+        self.layout.blocks.insert(self.pos);
         self.need("{")?;
         let mut items = vec![];
         let mut initial = true;
         while !self.at("}") {
+            self.layout.starts.insert(self.pos);
             let span = self.here();
             if self.eat("path") {
                 let name = self.id()?;
@@ -1422,6 +1441,7 @@ impl Parser {
                 } else if initial {
                     let mut statements = vec![];
                     while !self.at("[") && !self.at("}") && !self.at("path") && !self.at("loop") {
+                        self.layout.starts.insert(self.pos);
                         let span = self.here();
                         statements.push((span, self.statement()?));
                     }
@@ -1447,13 +1467,16 @@ impl Parser {
                         continue;
                     }
                     let mut statements = vec![];
+                    let indent_start = self.pos;
                     while !self.at("[") && !self.at("}") && !self.at("path") && !self.at("loop") {
+                        self.layout.starts.insert(self.pos);
                         let span = self.here();
                         statements.push((span, self.statement()?));
                     }
                     if statements.is_empty() {
                         return Err(self.error("empty guarded item"));
                     }
+                    self.layout.indents.push((indent_start, self.pos));
                     self.selection_sites.push(SelectionSite {
                         range: SourceRange {
                             start: span,
@@ -1474,7 +1497,11 @@ pub fn parse(source: &str) -> Result<Vec<Region>> {
     Ok(parse_unit(source)?.regions)
 }
 pub fn parse_unit(source: &str) -> Result<Unit> {
+    Ok(parse_with_layout(source)?.0)
+}
+pub(crate) fn parse_with_layout(source: &str) -> Result<(Unit, Vec<Token>, crate::format::Layout)> {
     let mut p = Parser {
+        layout: Default::default(),
         selection_sites: vec![],
         tokens: lex(source)?,
         pos: 0,
@@ -1487,6 +1514,7 @@ pub fn parse_unit(source: &str) -> Result<Unit> {
     let mut traits = vec![];
     let mut implementations = vec![];
     while !matches!(p.tokens[p.pos].kind, Kind::End) {
+        p.layout.starts.insert(p.pos);
         let span = p.here();
         if p.eat("import") {
             let Kind::String(path) = p.tokens[p.pos].kind.clone() else {
@@ -1503,10 +1531,12 @@ pub fn parse_unit(source: &str) -> Result<Unit> {
         if p.eat("trait") {
             let name_span = p.here();
             let name = p.id()?;
+            p.layout.blocks.insert(p.pos);
             p.need("{")?;
             let mut associated = vec![];
             let mut methods = vec![];
             while !p.at("}") {
+                p.layout.starts.insert(p.pos);
                 if p.eat("type") {
                     associated.push(p.associated(false)?);
                 } else {
@@ -1536,10 +1566,12 @@ pub fn parse_unit(source: &str) -> Result<Unit> {
             let trait_name = p.qualified()?;
             p.need("for")?;
             let target = p.ty()?;
+            p.layout.blocks.insert(p.pos);
             p.need("{")?;
             let mut associated = vec![];
             let mut methods = vec![];
             while !p.at("}") {
+                p.layout.starts.insert(p.pos);
                 if p.eat("type") {
                     associated.push(p.associated(true)?);
                 } else {
@@ -1575,6 +1607,7 @@ pub fn parse_unit(source: &str) -> Result<Unit> {
                     _ => Err(p.error("origin parameters use apostrophe names, such as 'a")),
                 })
                 .collect::<Result<Vec<_>>>()?;
+            p.layout.blocks.insert(p.pos);
             p.need("{")?;
             let mut public_fields = std::collections::BTreeSet::new();
             let body = if record {
@@ -1642,6 +1675,7 @@ pub fn parse_unit(source: &str) -> Result<Unit> {
                     _ => Err(p.error("origin parameters use apostrophe names, such as 'a")),
                 })
                 .collect::<Result<Vec<_>>>()?;
+            p.layout.blocks.insert(p.pos);
             p.need("{")?;
             let mut outcomes = vec![];
             let mut exit_codes = std::collections::BTreeMap::new();
@@ -1722,17 +1756,21 @@ pub fn parse_unit(source: &str) -> Result<Unit> {
     {
         return Err(p.error("expected at least one control"));
     }
-    Ok(Unit {
-        selection_sites: p.selection_sites,
-        trait_types: Default::default(),
-        traits,
-        implementations,
-        trait_checks: vec![],
-        imports,
-        regions,
-        contracts,
-        data,
-    })
+    Ok((
+        Unit {
+            selection_sites: p.selection_sites,
+            trait_types: Default::default(),
+            traits,
+            implementations,
+            trait_checks: vec![],
+            imports,
+            regions,
+            contracts,
+            data,
+        },
+        p.tokens,
+        p.layout,
+    ))
 }
 
 /// Find the actual inference keyword in a checked declaration's type. Lexing

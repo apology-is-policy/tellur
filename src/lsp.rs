@@ -392,6 +392,22 @@ impl Server {
         json!(symbols)
     }
     /// Declaration hover exposes the checked contract, including inferred payload types.
+    /// Format the current buffer, including untitled files, without semantic checking.
+    pub fn formatting(&self, uri: &str, options: crate::format::Options) -> Value {
+        let Some(document) = self.documents.get(uri) else {
+            return json!([]);
+        };
+        let Ok(formatted) = crate::format::source(&document.text, options) else {
+            return json!([]);
+        };
+        if formatted == document.text {
+            return json!([]);
+        }
+        let mut lines = document.text.split('\n');
+        let last = lines.next_back().unwrap_or("");
+        let end = json!({"line": lines.count(), "character": last.trim_end_matches('\r').encode_utf16().count()});
+        json!([{"range":{"start":{"line":0,"character":0},"end":end},"newText":formatted}])
+    }
     pub fn hover(&self, uri: &str, line: u64, character: u64) -> Value {
         let Some(doc) = self.documents.get(uri) else {
             return Value::Null;
@@ -1006,6 +1022,28 @@ fn exit_description_with_origins(
 }
 fn request(server: &Server, request: Request) -> Response {
     match request.method.as_str() {
+        "textDocument/formatting" => match (
+            request.params["textDocument"]["uri"].as_str(),
+            request.params["options"]["tabSize"].as_u64(),
+            request.params["options"]["insertSpaces"].as_bool(),
+        ) {
+            (Some(uri), Some(tab_size @ 1..=16), Some(insert_spaces)) => Response::new_ok(
+                request.id,
+                server.formatting(
+                    uri,
+                    crate::format::Options {
+                        tab_size: tab_size as usize,
+                        insert_spaces,
+                    },
+                ),
+            ),
+            _ => Response::new_err(
+                request.id,
+                -32602,
+                "formatting needs a document URI, tabSize from 1 through 16, and insertSpaces"
+                    .into(),
+            ),
+        },
         "textDocument/documentSymbol" => match request.params["textDocument"]["uri"].as_str() {
             Some(uri) => Response::new_ok(request.id, server.symbols(uri)),
             None => Response::new_err(request.id, -32602, "missing document URI".into()),
@@ -1037,7 +1075,7 @@ pub fn serve(connection: Connection) -> std::result::Result<(), Box<dyn std::err
     server.initialize(&params);
     connection.initialize_finish(id,json!({"capabilities":{
         "positionEncoding":"utf-16", "textDocumentSync":{"openClose":true,"change":1,"save":{"includeText":false}},
-        "documentSymbolProvider":true, "hoverProvider":true
+        "documentSymbolProvider":true, "hoverProvider":true, "documentFormattingProvider":true
     },"serverInfo":{"name":"tellur-lsp","version":env!("CARGO_PKG_VERSION")}}))?;
     let mut last_publication = Instant::now();
     loop {

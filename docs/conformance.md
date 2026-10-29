@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.55.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.56.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -1600,3 +1600,61 @@ Evidence: `work/tellur-0.55-validation.json`, `tellur-0.55-tests.log`,
 `tellur-0.55-package-integrity.log`, `tellur-0.55-install.log`,
 `tellur-0.55-installed-integrity.log` and `tellur-0.55-backup.log`.
 The verified source snapshot is `work/revision-backups/tellur-0.55-source.tar.gz`.
+
+## 0.56 — Source formatting
+
+P4a supplies `tellurc format SOURCE [--check | --write]` and the language server's
+standard whole-document formatting provider. The default CLI mode writes formatted
+source to stdout; checking and explicit in-place writing are separate modes. No
+manifest discovery, import loading, semantic checking or native execution is needed
+by the formatter. Syntax failures leave source untouched; empty/comment-only files
+and syntax-valid files with semantic errors can be formatted.
+
+Parser layout metadata distinguishes control/data/trait bodies, delta arms, generic
+angles, flat labels and optional groups. Flat selected statements receive a further
+indentation level; groups retain their authored end, restoring the enclosing body's
+layout. Every token, brace, separator, literal spelling and comment stays in order.
+A raw token/comment comparison and output parse guard the returned text. This is a
+whitespace-preservation guarantee, not a proof that an input program is correct.
+
+Authored header/argument/payload wrapping and paragraph separation are retained;
+blank runs are bounded. Generated layout uses the first newline convention outside
+literals, with LF as fallback. Multiline literal bytes are unchanged. The CLI uses
+four spaces; LSP honors spaces/tabs and widths 1–16. The current buffer is used,
+including untitled and unsaved files; unchanged or syntactically broken documents
+produce no edits. No range/on-type formatting, automatic width wrapping, import
+sorting, implicit brace insertion or project-wide discovery is claimed.
+
+Eight formatter regressions cover exact label/group/adapter layout, every token
+boundary in a comment-insertion specimen, UTF-8/multiline literals, CRLF, tabs,
+authored wrapping, generic/comparison disambiguation, origin selectors, annotations,
+compatibility syntax, CLI modes and rejected writes. All **106 modern and legacy
+maintained sources** are formatted twice, reparsed and checked with formatted
+imports; accepted programs stay accepted, and rejected fixtures retain their
+primary diagnostic code/message. A selected-path example compares original,
+formatted and expanded executions for all four Boolean input combinations.
+
+Two new LSP regressions and the extended protocol test cover current buffers,
+UTF-16 replacement extents, indentation options, invalid options, missing manifests,
+syntax refusal, stale changes and closed documents. Actual VS Code integration
+checks its standard Format Document action, minimal edit handling, unsaved source,
+spaces/tabs, Unicode, comments, idempotence, syntax refusal and type-invalid source.
+The existing grouped-path example is formatted before native build/run, preserving
+its selected effects and shared continuation.
+
+Validation: **834 Rust tests**, **35 Node tests** and the full real VS Code suite
+pass, including live HTTP and retained-resource execution. The final formatter and
+LSP/manual focused runs cover the last layout refinement. Clippy passes all targets
+with warnings denied. The manual checks **58** accepted examples, **22** expected
+diagnostics, **14** context fragments and **176** local links. All **61** maintained
+Tellur sources pass release checking. Compiler and LSP report **0.56.0**; formatting
+capability, all nine packaged/installed payloads, metadata and executable permissions
+are verified.
+
+Evidence: `work/tellur-0.56-validation.json`, `tellur-0.56-tests.log`,
+`tellur-0.56-focused.log`, `tellur-0.56-format-final.log`, `tellur-0.56-clippy.log`,
+`tellur-0.56-examples.log`, `tellur-0.56-node.log`, `tellur-0.56-editor.log`,
+`tellur-0.56-build.log`, `tellur-0.56-versions.log`, `tellur-0.56-package.log`,
+`tellur-0.56-package-integrity.log`, `tellur-0.56-install.log`,
+`tellur-0.56-installed-integrity.log` and `tellur-0.56-backup.log`.
+The verified source snapshot is `work/revision-backups/tellur-0.56-source.tar.gz`.
