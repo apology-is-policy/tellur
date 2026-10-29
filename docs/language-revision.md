@@ -1,7 +1,7 @@
 # Tellur language revision: controls, values, outcomes, and tasks
 
 29 October 2026. This is the working revision plan, not a claim that all proposed
-features are implemented. Compiler **0.51.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
+features are implemented. Compiler **0.52.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
 lifetime checkpoints of milestone 2, the array/vector/map core of milestone 3,
 and implicit entry, inline/stored adapters, owned capture, named outcome contracts
 and checked forwarding in milestone 4. A first [semantic foundation](semantic-foundation.md)
@@ -22,8 +22,9 @@ as a maintained example rather than extending reference machinery speculatively.
 Release 0.47 starts P2 structured output: versioned JSON check reports, explicit
 point encodings, related locations and typed structural witnesses in CLI/LSP.
 Release 0.51 adds value-expression and parser-token ranges through imports and
-generics, including multiline/Unicode editor locations. Independent-error recovery
-without cascades or stale hover is next; P3 path readability follows.
+generics, including multiline/Unicode editor locations. Release 0.52 adds bounded
+independent-body recovery with failed-caller suppression and fresh hover. P3 path
+readability is next; within-body and preparation-phase recovery remain follow-ups.
 
 Release 0.46 extends diagnostic contributors through captures, moves, local aggregate
 fields, stored/nested adapters, delayed exits and merged path labels. It filters
@@ -127,7 +128,7 @@ unimplemented syntax are promised.
 | C1b.3c.1 | Local shared-reference collection elements | **Delivered in 0.43**: arrays/vectors/maps, direct lookup, branch-sensitive insertion, removal/conversion, independent copies, conservative source unions, native/editor coverage |
 | P1a | Stable public contracts | **Delivered in 0.44**: explicit public outcome/payload/origin contracts, private inference, unused generic checks and bounded direct-forwarding contributor notes in CLI/editor |
 | P1b | Outcome contributor coverage | **Bounded slice delivered in 0.46**: captures/moves, local record/sum payloads, stored/nested adapters, delayed exits and label merges; guarded writes exclude overwritten sources. Loop-carried values, indirect aliases, dynamic collections and cross-call payload lineage remain future work |
-| P2 | Structured diagnostics | **Reports delivered in 0.47; expression ranges in 0.51**: versioned JSON, typed structural witnesses, related source points, precise value expressions and parser tokens through modules/generics. Next: independent-error recovery without cascades or stale hover |
+| P2 | Structured diagnostics | **Reports in 0.47; ranges in 0.51; independent-body errors in 0.52**: bounded CLI/LSP batches, failed-caller suppression, source ranges, witnesses and fresh hover. Follow-ups: within-body/preparation-phase recovery and broader contract/contributor ranges |
 | I1a | Owned-data Rust adapters | **Delivered in 0.45**: typed wrapper/result generation, registry dependencies and explicit locking, owned scalar/collection data, shared call borrows, blocking/immediate classification and scripted/live conformance |
 | I1b.1 | Retained host resource foundation | **Delivered in 0.49**: opaque must-complete Rust owners, direct shared/consuming calls, explicit resource return on retry, checked runtime identities, teardown fallback and live/scripted/editor evidence |
 | I1b.2 | Broader Rust reuse | Application-driven follow-up: richer data boundaries, exclusive foreign mutation and dependency/package ergonomics; stable binary ABI and LTO remain later layers |

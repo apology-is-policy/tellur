@@ -58,6 +58,98 @@ impl Drop for Fixture {
 }
 const VALID: &str = "region main() exits Done { [Entry]: exit Done; }";
 #[test]
+fn independent_errors_update_together_without_stale_inferred_hover() {
+    let mut f = Fixture::new();
+    let source = "control main() exits done {auto value=\"current\";emit(value);exit done;}\ncontrol first() exits done {u32 value=1;exit done;}\ncontrol second() exits done {string value=\"ok\";exit done;}\ncontrol caller() exits done {forward first();}";
+    let column = source.lines().next().unwrap().find("auto").unwrap() as u64;
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    assert!(
+        f.server
+            .hover(&f.uri, 0, column)
+            .to_string()
+            .contains("string")
+    );
+    let broken = source
+        .replace("u32 value=1", "u32 value=true")
+        .replace("string value=\"ok\"", "string value=7");
+    f.change(&broken, 2);
+    let errors = f.diagnostics();
+    assert_eq!(errors.as_array().unwrap().len(), 2);
+    assert_eq!(errors[0]["range"]["start"]["line"], 1);
+    assert_eq!(errors[1]["range"]["start"]["line"], 2);
+    assert!(f.server.hover(&f.uri, 0, column).is_null());
+    f.change(&broken.replace("u32 value=true", "u32 value=1"), 3);
+    assert_eq!(f.diagnostics().as_array().unwrap().len(), 1);
+    assert!(f.server.hover(&f.uri, 0, column).is_null());
+    f.change(source, 2);
+    assert_eq!(f.diagnostics().as_array().unwrap().len(), 1);
+    f.change(
+        &source.replace("auto value=\"current\";emit(value);", "auto value=7;"),
+        4,
+    );
+    assert_eq!(f.diagnostics(), json!([]));
+    assert!(
+        f.server
+            .hover(&f.uri, 0, column)
+            .to_string()
+            .contains("u32")
+    );
+}
+
+#[test]
+fn independent_imported_errors_follow_unsaved_repairs_and_closing_buffers() {
+    let mut f = Fixture::new();
+    let path = f.root.join("library.tellur");
+    let uri = url::Url::from_file_path(&path).unwrap().to_string();
+    let source = "pub control first() exits done {u32 value=1;exit done;}\npub control second() exits done {string value=\"ok\";exit done;}";
+    fs::write(&path, source).unwrap();
+    f.open("import \"library.tellur\" as lib;\ncontrol main() exits done {forward lib.first();}");
+    assert_eq!(f.diagnostics(), json!([]));
+    let broken = source
+        .replace("u32 value=1", "u32 value=true")
+        .replace("string value=\"ok\"", "string value=7");
+    f.server.notification(
+        "textDocument/didOpen",
+        &json!({"textDocument":{"uri":uri,"languageId":"tellur","version":1,"text":broken}}),
+    );
+    let errors = f.diagnostics();
+    assert_eq!(errors.as_array().unwrap().len(), 2);
+    for (index, error) in errors.as_array().unwrap().iter().enumerate() {
+        assert_eq!(error["code"], "E_TYPE");
+        let related = &error["relatedInformation"][0]["location"];
+        assert_eq!(related["uri"], uri);
+        assert_eq!(related["range"]["start"]["line"], index);
+    }
+    f.server.notification("textDocument/didChange",&json!({"textDocument":{"uri":uri,"version":2},"contentChanges":[{"text":broken.replace("u32 value=true","u32 value=1") }]}));
+    assert_eq!(f.diagnostics().as_array().unwrap().len(), 1);
+    f.server.notification(
+        "textDocument/didClose",
+        &json!({"textDocument":{"uri":uri}}),
+    );
+    assert_eq!(f.diagnostics(), json!([]));
+}
+
+#[test]
+fn diagnostic_budget_is_visible_in_the_editor_and_clears_on_repair() {
+    let mut f = Fixture::new();
+    let source = (0..40)
+        .map(|i| format!("control broken_{i}() exits done {{u32 value=true;exit done;}}\n"))
+        .collect::<String>();
+    f.open(&source);
+    let errors = f.diagnostics();
+    let errors = errors.as_array().unwrap();
+    assert_eq!(errors.len(), 32);
+    assert!(
+        errors.last().unwrap()["message"]
+            .as_str()
+            .unwrap()
+            .contains("diagnostic limit reached")
+    );
+    f.change(VALID, 2);
+    assert_eq!(f.diagnostics(), json!([]));
+}
+#[test]
 fn expression_ranges_use_utf16_and_follow_unsaved_edits() {
     let mut f = Fixture::new();
     let valid = "control main() exits done {\r\n emit(\"😀\"); auto value = \"a 😀\r\nb\";\r\n exit done;\r\n}";
@@ -1654,6 +1746,33 @@ fn rust_adapter_project_checks_unsaved_sources_without_loading_host_code() {
     f.server.notification(
         "textDocument/didChange",
         &json!({"textDocument":{"uri":uri,"version":2},"contentChanges":[{"text":original}]}),
+    );
+    assert_eq!(f.diagnostics(), json!([]));
+    let independent = original
+        .replace(
+            "    delta map_get(headers, borrow \"content-type\")",
+            "    u32 invalid_media = true;\n    delta map_get(headers, borrow \"content-type\")",
+        )
+        .replace(
+            "control encode_value(string value) exits auto {",
+            "control encode_value(string value) exits auto {\n    string invalid_value = 7;",
+        );
+    f.server.notification(
+        "textDocument/didChange",
+        &json!({"textDocument":{"uri":uri,"version":3},"contentChanges":[{"text":independent}]}),
+    );
+    let errors = f.diagnostics();
+    assert_eq!(errors.as_array().unwrap().len(), 2, "{errors}");
+    assert!(
+        errors
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|e| e["code"] == "E_TYPE")
+    );
+    f.server.notification(
+        "textDocument/didChange",
+        &json!({"textDocument":{"uri":uri,"version":4},"contentChanges":[{"text":original}]}),
     );
     assert_eq!(f.diagnostics(), json!([]));
 }

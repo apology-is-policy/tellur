@@ -283,6 +283,13 @@ pub(crate) fn source_identity(path: &Path) -> std::io::Result<PathBuf> {
 pub fn compile_file(path: impl AsRef<Path>, manifest: Manifest) -> Result<CheckedProgram> {
     compile_with_loader(path, manifest, |p| std::fs::read_to_string(p))
 }
+/// Check an entry file and its imports, collecting independent body errors.
+pub fn check_file(
+    path: impl AsRef<Path>,
+    manifest: Manifest,
+) -> crate::CheckResult<CheckedProgram, ModuleError> {
+    check_with_loader(path, manifest, |p| std::fs::read_to_string(p))
+}
 /// Editor entry point: the loader may supply unsaved buffers for canonical paths.
 /// Import targets must already exist so aliases and symlinks have one file identity.
 pub fn compile_with_loader(
@@ -290,6 +297,14 @@ pub fn compile_with_loader(
     manifest: Manifest,
     read: impl FnMut(&Path) -> std::io::Result<String>,
 ) -> Result<CheckedProgram> {
+    check_with_loader(path, manifest, read).map_err(crate::Diagnostics::first)
+}
+/// Diagnostic entry point with the same unsaved-buffer and file identity rules.
+pub fn check_with_loader(
+    path: impl AsRef<Path>,
+    manifest: Manifest,
+    read: impl FnMut(&Path) -> std::io::Result<String>,
+) -> crate::CheckResult<CheckedProgram, ModuleError> {
     let mut loader = Loader {
         read,
         files: vec![],
@@ -689,7 +704,10 @@ fn type_leaves(ty: &str) -> Vec<String> {
     }
     vec![ty.into()]
 }
-fn resolve(files: Vec<File>, manifest: Manifest) -> Result<CheckedProgram> {
+fn resolve(
+    files: Vec<File>,
+    manifest: Manifest,
+) -> crate::CheckResult<CheckedProgram, ModuleError> {
     let mut combined = syntax::Unit {
         trait_types: Default::default(),
         traits: vec![],
@@ -719,11 +737,12 @@ fn resolve(files: Vec<File>, manifest: Manifest) -> Result<CheckedProgram> {
             ]
             .contains(&name.as_str())
             {
-                return Err(r.fail(
+                return Err((r.fail(
                     Span { line: 1, column: 1 },
                     "E_NAME",
                     format!("cannot redeclare builtin `{name}`"),
-                ));
+                ))
+                .into());
             }
         }
         for data in &mut unit.data {
@@ -764,7 +783,7 @@ fn resolve(files: Vec<File>, manifest: Manifest) -> Result<CheckedProgram> {
         }
         for declaration in &mut unit.traits {
             if ["copy", "clone", "drop", "self"].contains(&declaration.name.as_str()) {
-                return Err(r.fail(declaration.span, "E_TRAIT", "trait name is reserved"));
+                return Err((r.fail(declaration.span, "E_TRAIT", "trait name is reserved")).into());
             }
             declaration.name = file.symbols[&declaration.name].global.clone();
             declaration.module = id;
@@ -821,11 +840,12 @@ fn resolve(files: Vec<File>, manifest: Manifest) -> Result<CheckedProgram> {
             r.locals = region.parameters.iter().map(|p| p.name.clone()).collect();
             for n in &declared_locals {
                 if n.starts_with(PREFIX) || file.imports.contains_key(n) {
-                    return Err(r.fail(
+                    return Err((r.fail(
                         region.span,
                         "E_NAME",
                         format!("local `{n}` conflicts with a namespace or reserved compiler name"),
-                    ));
+                    ))
+                    .into());
                 }
             }
             region.name = file.symbols[&region.name].global.clone();
@@ -876,10 +896,11 @@ fn resolve(files: Vec<File>, manifest: Manifest) -> Result<CheckedProgram> {
             Span { line: 1, column: 1 },
             "E_NAME",
             "manifest uses a reserved module identity",
-        ));
+        )
+        .into());
     }
     let mut program = crate::check::compile_unit(combined, manifest, &visibility)
-        .map_err(|diagnostic| locate(&sources, diagnostic))?;
+        .map_err(|errors| errors.map(|diagnostic| locate(&sources, diagnostic)))?;
     program.source_files = sources;
     Ok(program)
 }

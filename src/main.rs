@@ -41,7 +41,12 @@ fn run(args: Vec<String>) -> std::result::Result<ExitCode, Box<dyn std::error::E
         discover(&source).ok_or("no manifest.json found; supply a manifest path")?
     };
     let manifest_text = fs::read_to_string(&manifest)?;
-    let program = compile_file(&source, Manifest::from_json_at(&manifest_text, &manifest)?)?;
+    let checked_manifest = Manifest::from_json_at(&manifest_text, &manifest)?;
+    let program = if args[0] == "check" {
+        tellur::check_file(&source, checked_manifest)?
+    } else {
+        compile_file(&source, checked_manifest)?
+    };
     let rest = &args[index..];
     match args[0].as_str() {
         "lock-native" if rest.is_empty() => {
@@ -223,8 +228,7 @@ fn main() -> ExitCode {
     }
 }
 
-/// The check envelope deliberately reports point locations. Full expression
-/// ranges and independent-error recovery are separate diagnostic increments.
+/// Versioned check envelope with ranges and bounded independent body diagnostics.
 fn json_check(args: &[String]) -> ExitCode {
     use serde_json::{Value, json};
     use tellur::{Diagnostic, Span};
@@ -232,11 +236,16 @@ fn json_check(args: &[String]) -> ExitCode {
         path: Option<PathBuf>,
         diagnostic: Diagnostic,
     }
-    fn failure(code: &'static str, path: Option<PathBuf>, message: impl Into<String>) -> Failure {
+    fn failure(
+        code: &'static str,
+        path: Option<PathBuf>,
+        message: impl Into<String>,
+    ) -> tellur::Diagnostics<Failure> {
         Failure {
             path,
             diagnostic: Diagnostic::new(code, Span::default(), message),
         }
+        .into()
     }
     fn absolute(path: &Path) -> PathBuf {
         // Keep the caller's spelling: a source/manifest symlink must discover and
@@ -254,7 +263,7 @@ fn json_check(args: &[String]) -> ExitCode {
             json!({"line":span.line,"column":span.column})
         }
     }
-    let checked = (|| {
+    let checked: tellur::CheckResult<_, Failure> = (|| {
         let mut files = vec![];
         let mut flags = 0;
         for arg in args {
@@ -296,16 +305,18 @@ fn json_check(args: &[String]) -> ExitCode {
             path: Some(manifest.clone()),
             diagnostic,
         })?;
-        let program = compile_file(&source, manifest).map_err(|e| Failure {
-            path: Some(e.path),
-            diagnostic: e.diagnostic,
+        let program = tellur::check_file(&source, manifest).map_err(|errors| {
+            errors.map(|e| Failure {
+                path: Some(e.path),
+                diagnostic: e.diagnostic,
+            })
         })?;
         Ok((program.regions().count(), program.generic_controls().len()))
     })();
     let mut report = json!({
         "schema":"tellur.check.v1", "ok":checked.is_ok(),
         "position_encoding":"one_based_unicode_scalars",
-        "diagnostics":[], "summary":null,
+        "diagnostics":[], "diagnostics_limited":false, "summary":null,
     });
     let success = match checked {
         Ok((controls, generic_definitions)) => {
@@ -313,19 +324,22 @@ fn json_check(args: &[String]) -> ExitCode {
                 json!({"controls":controls,"generic_definitions":generic_definitions});
             true
         }
-        Err(Failure { path, diagnostic }) => {
+        Err(errors) => {
+            report["diagnostics_limited"] = json!(errors.limit_reached);
+            report["diagnostics"] = errors.errors.into_iter().map(|Failure { path, diagnostic }| {
             let notes: Vec<_> = diagnostic.notes.iter().map(|note| {
                 let path = note.path.as_ref().or(path.as_ref());
                 json!({"path":path.map(|p| p.to_string_lossy()),"position":position(note.span),"message":note.message})
             }).collect();
-            report["diagnostics"] = json!([{
+            json!({
                 "code":diagnostic.code, "message":diagnostic.message,
                 "path":path.map(|p| p.to_string_lossy().into_owned()),
                 "position":position(diagnostic.span),
                 "range":diagnostic.end.map(|end| json!({"start":position(diagnostic.span),"end":position(*end)})),
                 "notes":notes,
                 "witness":diagnostic.witness,
-            }]);
+            })
+            }).collect::<Vec<_>>().into();
             false
         }
     };

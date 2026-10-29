@@ -3445,13 +3445,18 @@ impl Checker<'_> {
 }
 
 pub fn compile(source: &str, manifest: Manifest) -> Result<CheckedProgram> {
+    check_source(source, manifest).map_err(crate::Diagnostics::first)
+}
+/// Check independent control bodies, collecting a bounded diagnostic batch.
+pub fn check_source(source: &str, manifest: Manifest) -> crate::CheckResult<CheckedProgram> {
     let unit = syntax::parse_unit(source)?;
     if let Some(import) = unit.imports.first() {
         return Err(Diagnostic::new(
             "E_IMPORT",
             import.span,
             "imports require a source path; use compile_file or the tellurc CLI",
-        ));
+        )
+        .into());
     }
     compile_unit(unit, manifest, &crate::modules::Visibility::default())
 }
@@ -3459,7 +3464,7 @@ pub(crate) fn compile_unit(
     unit: syntax::Unit,
     manifest: Manifest,
     visibility: &crate::modules::Visibility,
-) -> Result<CheckedProgram> {
+) -> crate::CheckResult<CheckedProgram> {
     for region in &unit.regions {
         contracts::public_shape(region)?;
     }
@@ -3472,7 +3477,7 @@ pub(crate) fn compile_concrete_unit(
     mut manifest: Manifest,
     visibility: &crate::modules::Visibility,
     type_arguments: &[crate::generic_controls::TypeArgument],
-) -> Result<CheckedProgram> {
+) -> crate::CheckResult<CheckedProgram> {
     manifest.canonicalize_types();
     manifest.validate()?;
     let public_interfaces = crate::modules::PublicInterfaces::new(&unit);
@@ -3557,14 +3562,15 @@ pub(crate) fn compile_concrete_unit(
             if !manifest.has_capability(ty, bound)
                 && !crate::traits::has_witness(&unit.trait_checks, bound, ty)
             {
-                return Err(Diagnostic::new(
+                return Err((Diagnostic::new(
                     "E_BOUND",
                     at,
                     format!(
                         "type `{}` does not satisfy capability `{bound}`",
                         manifest::display_type(ty)
                     ),
-                ));
+                ))
+                .into());
             }
         }
     }
@@ -3578,11 +3584,12 @@ pub(crate) fn compile_concrete_unit(
             continue;
         }
         if !region.exit_origins.is_empty() {
-            return Err(Diagnostic::new(
+            return Err((Diagnostic::new(
                 "E_ORIGIN",
                 region.span,
                 "origin arguments require a source-declared named outcome contract",
-            ));
+            ))
+            .into());
         }
         if let Some(name) = &region.exit_contract
             && let Some(manifest::TypeDef::Outcome { constructors, .. }) = manifest.type_def(name)
@@ -3657,11 +3664,12 @@ pub(crate) fn compile_concrete_unit(
             || crate::collections::is_operation(&region.name)
             || crate::collections::is_length(&region.name)
         {
-            return Err(Diagnostic::new(
+            return Err((Diagnostic::new(
                 "E_NAME",
                 region.span,
                 format!("duplicate operation `{}`", region.name),
-            ));
+            ))
+            .into());
         }
         let mut names = BTreeSet::new();
         for f in &region.parameters {
@@ -3677,27 +3685,21 @@ pub(crate) fn compile_concrete_unit(
                 crate::origins::input_type(&f.ty, &origin_schemas, &manifest, region.span)?;
             }
             if !names.insert(&f.name) {
-                return Err(Diagnostic::new(
-                    "E_NAME",
-                    region.span,
-                    "duplicate parameter",
-                ));
+                return Err((Diagnostic::new("E_NAME", region.span, "duplicate parameter")).into());
             }
         }
         let mut names = BTreeSet::new();
         for o in &region.exits {
             if !names.insert(&o.name) {
-                return Err(Diagnostic::new("E_NAME", region.span, "duplicate exit"));
+                return Err((Diagnostic::new("E_NAME", region.span, "duplicate exit")).into());
             }
             let mut fields = BTreeSet::new();
             for f in &o.fields {
                 crate::origins::result_type(&f.ty, &origin_schemas, &manifest, region.span)?;
                 if !fields.insert(&f.name) {
-                    return Err(Diagnostic::new(
-                        "E_NAME",
-                        region.span,
-                        "duplicate exit field",
-                    ));
+                    return Err(
+                        (Diagnostic::new("E_NAME", region.span, "duplicate exit field")).into(),
+                    );
                 }
             }
         }
@@ -3767,182 +3769,221 @@ pub(crate) fn compile_concrete_unit(
     let mut regions = BTreeMap::new();
     let mut inferred_bindings = vec![];
     let mut next = 0;
-    for index in crate::inference::dependency_order(&parsed)? {
-        let source = &parsed[index];
-        for f in &source.parameters {
-            if let Some((_, inner)) = manifest::reference_inner(&f.ty) {
-                crate::origins::input_type(inner, &origin_schemas, &manifest, source.span)?;
-                crate::origins::borrowed_input_type(
-                    inner,
-                    &origin_schemas,
-                    &manifest,
-                    source.span,
-                )?;
-            } else {
-                crate::origins::input_type(&f.ty, &origin_schemas, &manifest, source.span)?;
-            }
-        }
-        for f in source.exits.iter().flat_map(|o| &o.fields) {
-            crate::origins::result_type(&f.ty, &origin_schemas, &manifest, source.span)?;
-        }
-        let mut checker = Checker {
-            forwarded_exits: BTreeMap::new(),
-            forwarding: None,
-            inferred_bindings: vec![],
-            contained_inputs: BTreeMap::new(),
-            origin_schemas: &origin_schemas,
-            declared_stored: signatures[&source.name].stored_returns.clone(),
-            declared_returns: signatures[&source.name].borrow_returns.clone(),
-            manifest: &mut manifest,
-            signatures: &signatures,
-            next: &mut next,
-            bdd: Bdd::default(),
-            dead: FALSE,
-            scopes: vec![Scope::default()],
-            atom_formulas: BTreeMap::new(),
-            loop_context: None,
-            infer_exits: source.infer_exits,
-            infer_payloads: source.infer_payloads.clone(),
-            pending_payloads: source.infer_payloads.clone(),
-            modern: source.modern,
-            future_names: BTreeSet::new(),
-            visibility,
-            type_bindings: &source.type_bindings,
-            result: Region {
-                stored_returns: signatures[&source.name].stored_returns.clone(),
-                borrow_returns: signatures[&source.name].borrow_returns.clone(),
-                name: source.name.clone(),
-                parameters: vec![],
-                exits: signatures[&source.name].outcomes.clone(),
-                slots: BTreeMap::new(),
-                atoms: BTreeMap::new(),
-                code: vec![],
-            },
-        };
-        checker.scopes[0]
-            .paths
-            .insert("Entry".into(), (Guard::True, TRUE));
-        for param in &source.parameters {
-            let borrowed = param.ty.starts_with('&');
-            let (mutable, ty) = manifest::reference_inner(&param.ty).unwrap_or((false, &param.ty));
-            let key = if borrowed {
-                format!("$borrowed_{}", param.name)
-            } else {
-                param.name.clone()
-            };
-            let id = checker.define(&key, &param.ty, TRUE, source.span)?;
-            if borrowed {
-                checker.result.slots.get_mut(&id).unwrap().name = param.name.clone();
-                let binding = checker.scopes[0].values.get_mut(&key).unwrap();
-                binding.borrowed = true;
-                binding.owned.clear();
-                let loan_id = checker.fresh();
-                checker.scopes[0].loans.insert(
-                    param.name.clone(),
-                    Loan {
-                        contents: vec![],
-                        sum_leaf: None,
-                        id: loan_id,
-                        target: ResolvedPlace {
-                            carriers: vec![],
-                            scope: 0,
-                            name: key,
-                            place: Place {
-                                indirect: true,
-                                root: id,
-                                fields: vec![],
-                            },
-                            ty: ty.into(),
-                            via: None,
-                        },
-                        origins: vec![LoanOrigin {
-                            permissions: vec![],
-                            guard: false,
-                            place: Place {
-                                root: id,
-                                fields: vec![],
-                                indirect: true,
-                            },
-                            opaque: false,
-                        }],
-                        parents: vec![],
-                        mutable,
-                        active: TRUE,
-                        defined: TRUE,
-                        holder: None,
-                    },
-                );
-            }
-            checker
-                .result
-                .parameters
-                .push(checker.result.slots[&id].clone());
-        }
-        checker.initialize_contained_inputs(source.span)?;
-        if source.abstract_signature {
-            if checker.manifest.abstract_types.is_empty() {
-                return Err(Diagnostic::new(
-                    "E_INTERNAL",
-                    source.span,
-                    "abstract trait signature escaped definition checking",
-                ));
-            }
-            regions.insert(source.name.clone(), checker.result);
+    let dependencies = crate::inference::dependency_order(&parsed, &manifest)?;
+    let mut failed = BTreeSet::new();
+    let mut errors = vec![];
+    let mut limit_reached = false;
+    for index in dependencies.order {
+        if dependencies.callees[index]
+            .iter()
+            .any(|callee| failed.contains(callee))
+        {
+            failed.insert(index);
             continue;
         }
-        checker.items(&source.body, Guard::True, TRUE)?;
-        let live = checker.bdd.not(checker.dead);
-        if live != FALSE {
-            return Err(checker.fail_domain(
-                "E_UNCOVERED",
-                source.span,
-                "region has histories with no explicit exit",
-                live,
-            ));
+        let source = &parsed[index];
+        // A failed body must not publish inferred types, bindings, or ownership state.
+        let saved_manifest = manifest.clone();
+        let saved_next = next;
+        let saved_bindings = inferred_bindings.len();
+        let checked: Result<()> = (|| {
+            for f in &source.parameters {
+                if let Some((_, inner)) = manifest::reference_inner(&f.ty) {
+                    crate::origins::input_type(inner, &origin_schemas, &manifest, source.span)?;
+                    crate::origins::borrowed_input_type(
+                        inner,
+                        &origin_schemas,
+                        &manifest,
+                        source.span,
+                    )?;
+                } else {
+                    crate::origins::input_type(&f.ty, &origin_schemas, &manifest, source.span)?;
+                }
+            }
+            for f in source.exits.iter().flat_map(|o| &o.fields) {
+                crate::origins::result_type(&f.ty, &origin_schemas, &manifest, source.span)?;
+            }
+            let mut checker = Checker {
+                forwarded_exits: BTreeMap::new(),
+                forwarding: None,
+                inferred_bindings: vec![],
+                contained_inputs: BTreeMap::new(),
+                origin_schemas: &origin_schemas,
+                declared_stored: signatures[&source.name].stored_returns.clone(),
+                declared_returns: signatures[&source.name].borrow_returns.clone(),
+                manifest: &mut manifest,
+                signatures: &signatures,
+                next: &mut next,
+                bdd: Bdd::default(),
+                dead: FALSE,
+                scopes: vec![Scope::default()],
+                atom_formulas: BTreeMap::new(),
+                loop_context: None,
+                infer_exits: source.infer_exits,
+                infer_payloads: source.infer_payloads.clone(),
+                pending_payloads: source.infer_payloads.clone(),
+                modern: source.modern,
+                future_names: BTreeSet::new(),
+                visibility,
+                type_bindings: &source.type_bindings,
+                result: Region {
+                    stored_returns: signatures[&source.name].stored_returns.clone(),
+                    borrow_returns: signatures[&source.name].borrow_returns.clone(),
+                    name: source.name.clone(),
+                    parameters: vec![],
+                    exits: signatures[&source.name].outcomes.clone(),
+                    slots: BTreeMap::new(),
+                    atoms: BTreeMap::new(),
+                    code: vec![],
+                },
+            };
+            checker.scopes[0]
+                .paths
+                .insert("Entry".into(), (Guard::True, TRUE));
+            for param in &source.parameters {
+                let borrowed = param.ty.starts_with('&');
+                let (mutable, ty) =
+                    manifest::reference_inner(&param.ty).unwrap_or((false, &param.ty));
+                let key = if borrowed {
+                    format!("$borrowed_{}", param.name)
+                } else {
+                    param.name.clone()
+                };
+                let id = checker.define(&key, &param.ty, TRUE, source.span)?;
+                if borrowed {
+                    checker.result.slots.get_mut(&id).unwrap().name = param.name.clone();
+                    let binding = checker.scopes[0].values.get_mut(&key).unwrap();
+                    binding.borrowed = true;
+                    binding.owned.clear();
+                    let loan_id = checker.fresh();
+                    checker.scopes[0].loans.insert(
+                        param.name.clone(),
+                        Loan {
+                            contents: vec![],
+                            sum_leaf: None,
+                            id: loan_id,
+                            target: ResolvedPlace {
+                                carriers: vec![],
+                                scope: 0,
+                                name: key,
+                                place: Place {
+                                    indirect: true,
+                                    root: id,
+                                    fields: vec![],
+                                },
+                                ty: ty.into(),
+                                via: None,
+                            },
+                            origins: vec![LoanOrigin {
+                                permissions: vec![],
+                                guard: false,
+                                place: Place {
+                                    root: id,
+                                    fields: vec![],
+                                    indirect: true,
+                                },
+                                opaque: false,
+                            }],
+                            parents: vec![],
+                            mutable,
+                            active: TRUE,
+                            defined: TRUE,
+                            holder: None,
+                        },
+                    );
+                }
+                checker
+                    .result
+                    .parameters
+                    .push(checker.result.slots[&id].clone());
+            }
+            checker.initialize_contained_inputs(source.span)?;
+            if source.abstract_signature {
+                if checker.manifest.abstract_types.is_empty() {
+                    return Err(Diagnostic::new(
+                        "E_INTERNAL",
+                        source.span,
+                        "abstract trait signature escaped definition checking",
+                    ));
+                }
+                regions.insert(source.name.clone(), checker.result);
+                return Ok(());
+            }
+            checker.items(&source.body, Guard::True, TRUE)?;
+            let live = checker.bdd.not(checker.dead);
+            if live != FALSE {
+                return Err(checker.fail_domain(
+                    "E_UNCOVERED",
+                    source.span,
+                    "region has histories with no explicit exit",
+                    live,
+                ));
+            }
+            if source.infer_exits && checker.result.exits.is_empty() {
+                return Err(Diagnostic::new(
+                    "E_INFER",
+                    source.span,
+                    "exits auto requires at least one explicit exit; annotate a non-returning control's contract",
+                ));
+            }
+            if !checker.pending_payloads.is_empty() {
+                return Err(Diagnostic::new(
+                    "E_INFER",
+                    source.span,
+                    format!(
+                        "cannot infer payloads for exits never produced by the checked body: {}; write their explicit payload types",
+                        checker
+                            .pending_payloads
+                            .iter()
+                            .cloned()
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ),
+                ));
+            }
+            let mut contributors = checker.outcome_contributors();
+            for (name, notes) in &signatures[&source.name].contributors {
+                contributors
+                    .entry(name.clone())
+                    .or_insert_with(|| notes.clone());
+            }
+            inferred_bindings.extend(checker.inferred_bindings);
+            let mut result = checker.result;
+            crate::origins::normalize(&mut result, &origin_schemas, &manifest, source.span)?;
+            if let Some(manifest::TypeDef::Variant { constructors, .. }) = manifest
+                .types
+                .iter_mut()
+                .find(|t| t.name() == format!("outcome<{}>", source.name))
+            {
+                *constructors = result.exits.clone();
+            }
+            signatures.get_mut(&source.name).unwrap().contributors = contributors;
+            signatures.get_mut(&source.name).unwrap().outcomes = result.exits.clone();
+            signatures.get_mut(&source.name).unwrap().borrow_returns =
+                result.borrow_returns.clone();
+            signatures.get_mut(&source.name).unwrap().stored_returns =
+                result.stored_returns.clone();
+            regions.insert(source.name.clone(), result);
+            Ok(())
+        })();
+        if let Err(error) = checked {
+            manifest = saved_manifest;
+            next = saved_next;
+            inferred_bindings.truncate(saved_bindings);
+            failed.insert(index);
+            errors.push(error);
+            if errors.len() == crate::diagnostics::MAX_DIAGNOSTICS {
+                limit_reached = true;
+                break;
+            }
         }
-        if source.infer_exits && checker.result.exits.is_empty() {
-            return Err(Diagnostic::new(
-                "E_INFER",
-                source.span,
-                "exits auto requires at least one explicit exit; annotate a non-returning control's contract",
-            ));
-        }
-        if !checker.pending_payloads.is_empty() {
-            return Err(Diagnostic::new(
-                "E_INFER",
-                source.span,
-                format!(
-                    "cannot infer payloads for exits never produced by the checked body: {}; write their explicit payload types",
-                    checker
-                        .pending_payloads
-                        .iter()
-                        .cloned()
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                ),
-            ));
-        }
-        let mut contributors = checker.outcome_contributors();
-        for (name, notes) in &signatures[&source.name].contributors {
-            contributors
-                .entry(name.clone())
-                .or_insert_with(|| notes.clone());
-        }
-        inferred_bindings.extend(checker.inferred_bindings);
-        let mut result = checker.result;
-        crate::origins::normalize(&mut result, &origin_schemas, &manifest, source.span)?;
-        if let Some(manifest::TypeDef::Variant { constructors, .. }) = manifest
-            .types
-            .iter_mut()
-            .find(|t| t.name() == format!("outcome<{}>", source.name))
-        {
-            *constructors = result.exits.clone();
-        }
-        signatures.get_mut(&source.name).unwrap().contributors = contributors;
-        signatures.get_mut(&source.name).unwrap().outcomes = result.exits.clone();
-        signatures.get_mut(&source.name).unwrap().borrow_returns = result.borrow_returns.clone();
-        signatures.get_mut(&source.name).unwrap().stored_returns = result.stored_returns.clone();
-        regions.insert(source.name.clone(), result);
+    }
+    if !errors.is_empty() {
+        errors.sort_by_key(|e| (e.span.line, e.span.column));
+        return Err(crate::Diagnostics {
+            errors,
+            limit_reached,
+        });
     }
     fn visit(
         name: &str,

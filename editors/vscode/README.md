@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-0.51.0-darwin-arm64.vsix` using **Extensions:
+1. Install the supplied `tellur-language-0.52.0-darwin-arm64.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -513,4 +513,15 @@ the affected expression. Invalid arguments select their argument; missing argume
 select the call. Multiline strings, emoji and unsaved imported files retain their
 correct editor ranges. Parser errors select the unexpected token, with an empty
 selection at end of input. Path coverage and contract errors retain their existing
-locations. The server still reports one primary error per check.
+locations. Release 0.52 extends checking to independent bodies, as described below.
+
+
+## Independent diagnostics in 0.52
+
+Problems can now show the first error from each independent control body, up to
+32 errors. Failed controls and their callers do not contribute partial inferred
+contracts or misleading follow-on errors. Repairing a helper makes its callers
+eligible for checking again. Unsaved imported files participate in the same check.
+`auto` hover is unavailable while the current program is invalid and returns after
+repair. Parsing and shared declaration failures still stop at their first error;
+recovery within a damaged body remains future work.

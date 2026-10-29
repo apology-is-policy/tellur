@@ -132,6 +132,17 @@ exports.run = async function () {
     assert.equal(buildDocument.getText(typeError.range).replace(/\r\n/g, '\n'), '"first 😀\nsecond"');
     assert.equal(typeError.range.start.character, ranged.split('\n')[1].indexOf('"first'));
     console.log('TELLUR_EXPRESSION_RANGES_EDITOR_TESTS_PASSED: multiline UTF-16 diagnostics and unsaved repair');
+    const independent = 'control first() exits done {u32 value=true;exit done;}\ncontrol second() exits done {string value=7;exit done;}\ncontrol main() exits done {auto value="fresh";emit(value);forward first();}';
+    await replace(buildDocument, independent);
+    await waitFor(() => revisedDiagnostics().filter(d => code(d) === 'E_TYPE').length === 2, 'independent body diagnostics');
+    assert.deepEqual(revisedDiagnostics().map(d => d.range.start.line), [0, 1]);
+    const invalidHover = await vscode.commands.executeCommand('vscode.executeHoverProvider', buildUri, new vscode.Position(2, independent.split('\n')[2].indexOf('auto')));
+    assert.ok(!invalidHover?.length, 'failed program must not expose inferred hover');
+    await replace(buildDocument, independent.replace('u32 value=true', 'u32 value=1'));
+    await waitFor(() => revisedDiagnostics().length === 1 && revisedDiagnostics()[0].range.start.line === 1, 'one independent repair');
+    await replace(buildDocument, independent.replace('u32 value=true', 'u32 value=1').replace('string value=7', 'string value="ok"'));
+    await waitFor(() => revisedDiagnostics().length === 0, 'all independent errors repaired');
+    console.log('TELLUR_INDEPENDENT_DIAGNOSTICS_EDITOR_TESTS_PASSED: two errors, blocked caller, partial repair and hover invalidation');
     await replace(buildDocument, revised);
     await waitFor(() => revisedDiagnostics().length === 0, 'typed declaration repair');
     const owned = 'control main() exits auto { [entry]: mutable string text="before"; auto ref=&mutable text; *ref="after"; emit(ref); drop(ref); exit done {text}; }';

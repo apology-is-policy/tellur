@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.51.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.52.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -1399,3 +1399,52 @@ Evidence: `work/tellur-0.51-validation.json`, `tellur-0.51-tests.log`,
 `tellur-0.51-package-integrity.log`, `tellur-0.51-install.log`,
 `tellur-0.51-installed-integrity.log` and `tellur-0.51-backup.log`.
 The verified source snapshot is `work/revision-backups/tellur-0.51-source.tar.gz`.
+
+## 0.52 — Independent control diagnostics
+
+The checker collects a bounded batch of errors from independent control bodies.
+A failed body restores the manifest and fresh-ID state used for checking, discards
+its inferred bindings, and publishes no checked region or inferred contract.
+Dependency ordering skips failed callers transitively, including dependencies in
+`outcome<producer>` type annotations, loop parameters and arm payload bindings.
+Errors retain their own source ranges, related notes and structural witnesses,
+then sort by source coordinates. Generic witness names use authored type parameters.
+No partial `CheckedProgram` escapes a failed check.
+
+Textual and JSON `check` commands and the LSP consume the batch APIs. The existing
+single-error compiler APIs select the first diagnostic. `tellur.check.v1` gains
+`diagnostics_limited`, and its diagnostics array may contain multiple entries.
+Collection stops at 32 errors, with a visible limit notice in textual/editor output.
+The LSP rechecks current unsaved sources and provides no inferred hover from a
+failed or previous successful version.
+
+Tests cover independent ordinary and generic bodies, failed-call chains and typed
+producer dependencies, ownership/inference isolation, distinct path witnesses,
+imported source ranges, textual/JSON parity, budget exhaustion and repair, unsaved
+import edits and closing buffers, stale-version rejection and hover invalidation.
+The settings project checks two broken leaf helpers together without executing
+host Rust code. The real editor test exercises two errors, suppressed caller
+cascades, partial repair and full repair.
+
+This is one primary error per independent body in a checking phase. Parsing,
+import/name resolution, shared declarations, generic expansion and call-graph
+cycles remain fail-fast; an unsuccessful generic phase prevents concrete checking.
+Recovery within a damaged body and broader preparation-phase recovery remain
+follow-ups. P3 path readability is the next main roadmap checkpoint.
+
+Validation: the full regression run passes **793 Rust tests**, and the final
+focused diagnostic/LSP/manual run passes all **94** tests. Clippy passes all
+targets with warnings denied. All **33 Node tests** and the complete real VS Code
+suite pass, including live HTTP and retained-resource execution. The manual checks
+**55** accepted examples, **20** expected diagnostics, **14** context fragments
+and **165** local links. All **58** maintained Tellur sources pass release checking.
+Compiler and LSP initialization report **0.52.0**; all nine packaged and installed
+payloads, package metadata and executable permissions are verified.
+
+Evidence: `work/tellur-0.52-validation.json`, `tellur-0.52-tests.log`,
+`tellur-0.52-diagnostics-final.log`, `tellur-0.52-clippy.log`,
+`tellur-0.52-examples.log`, `tellur-0.52-node.log`, `tellur-0.52-editor.log`,
+`tellur-0.52-build.log`, `tellur-0.52-versions.log`, `tellur-0.52-package.log`,
+`tellur-0.52-package-integrity.log`, `tellur-0.52-install.log`,
+`tellur-0.52-installed-integrity.log` and `tellur-0.52-backup.log`.
+The verified source snapshot is `work/revision-backups/tellur-0.52-source.tar.gz`.

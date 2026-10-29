@@ -480,7 +480,7 @@ pub(crate) fn compile(
     unit: Unit,
     manifest: Manifest,
     visibility: &crate::modules::Visibility,
-) -> Result<ir::CheckedProgram> {
+) -> crate::CheckResult<ir::CheckedProgram> {
     let templates = unit
         .regions
         .iter()
@@ -496,7 +496,7 @@ pub(crate) fn compile(
         .map(|r| r.name.clone())
         .collect::<BTreeSet<_>>();
     if names.len() != unit.regions.len() {
-        return Err(error(templates[0].span, "duplicate control declaration"));
+        return Err((error(templates[0].span, "duplicate control declaration")).into());
     }
     let mut graph = BTreeMap::new();
     for r in &unit.regions {
@@ -524,11 +524,12 @@ pub(crate) fn compile(
             || crate::collections::is_operation(&template.name)
             || crate::collections::is_length(&template.name)
         {
-            return Err(Diagnostic::new(
+            return Err((Diagnostic::new(
                 "E_NAME",
                 template.span,
                 format!("duplicate operation `{}`", template.name),
-            ));
+            ))
+            .into());
         }
         let mut seen = BTreeSet::new();
         let mut args = vec![];
@@ -540,16 +541,18 @@ pub(crate) fn compile(
                 ]
                 .contains(&manifest::canonical_type(p).as_str())
             {
-                return Err(error(
+                return Err((error(
                     template.span,
                     format!("invalid or duplicate type parameter `{p}`"),
-                ));
+                ))
+                .into());
             }
             if counter >= 4096 {
-                return Err(error(
+                return Err((error(
                     template.span,
                     "generic definition checking exceeds the 4096-abstract-type budget",
-                ));
+                ))
+                .into());
             }
             let name = loop {
                 let n = format!("_path_poly_{counter}_parameter");
@@ -587,14 +590,24 @@ pub(crate) fn compile(
             template.span,
         ));
     }
-    let checked=(|| {
-        let symbolic=Expander::new(symbolic_unit).finish(&seeds)?;
-        crate::check::compile_concrete_unit(symbolic.unit,symbolic_manifest,visibility,&symbolic.arguments)
-    })().map_err(|mut e|{
-        for (internal,name) in &parameters {e.message=e.message.replace(internal,name);for note in &mut e.notes {note.message=note.message.replace(internal,name);}}
-        // Keep the precise diagnostic code while making the universal-check context explicit.
-        if templates.iter().any(|t| (e.span.line, e.span.column) >= (t.span.line, t.span.column) && (e.span.line, e.span.column) <= (t.end.line, t.end.column)) { e.message=format!("generic definition check: {} (type parameters have only their declared capabilities)",e.message); } e
-    })?;
+    let checked = (|| {
+        let symbolic = Expander::new(symbolic_unit).finish(&seeds)?;
+        crate::check::compile_concrete_unit(symbolic.unit, symbolic_manifest, visibility, &symbolic.arguments)
+    })().map_err(|errors| errors.map(|mut error| {
+        for (internal, name) in &parameters {
+            error.message = error.message.replace(internal, name);
+            for note in &mut error.notes { note.message = note.message.replace(internal, name); }
+            if let Some(crate::DiagnosticWitness::StructuralMayReach { control, .. }) = error.witness.as_deref_mut() {
+                *control = control.replace(internal, name);
+            }
+        }
+        // Keep the code while making the universal-check context explicit.
+        if templates.iter().any(|t| (error.span.line,error.span.column) >= (t.span.line,t.span.column)
+            && (error.span.line,error.span.column) <= (t.end.line,t.end.column)) {
+            error.message = format!("generic definition check: {} (type parameters have only their declared capabilities)", error.message);
+        }
+        error
+    }))?;
     let concrete = Expander::new(unit).finish(&[])?;
     let mut result = crate::check::compile_concrete_unit(
         concrete.unit,

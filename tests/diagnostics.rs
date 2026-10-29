@@ -175,9 +175,194 @@ impl Fixture {
         assert_eq!(report["ok"], ok);
         assert_eq!(report["position_encoding"], "one_based_unicode_scalars");
         if !ok {
-            assert_eq!(report["diagnostics"].as_array().unwrap().len(), 1);
+            assert!(!report["diagnostics"].as_array().unwrap().is_empty());
         }
         report
+    }
+}
+
+fn check_errors(source: &str) -> tellur::Diagnostics {
+    tellur::check_source(
+        source,
+        Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+    )
+    .unwrap_err()
+}
+
+#[test]
+fn independent_bodies_report_in_source_order_and_skip_failed_call_chains() {
+    let source = "control caller() exits done {forward middle();}\ncontrol independent() exits done {string value = 7; exit done;}\ncontrol middle() exits auto {forward broken();}\ncontrol broken() exits auto {u32 value = true; exit ready {value};}\ncontrol typed(outcome<broken> saved) exits done {delta saved {} exit done;}";
+    let errors = check_errors(source);
+    assert!(!errors.limit_reached);
+    assert_eq!(
+        errors
+            .errors
+            .iter()
+            .map(|e| (e.code, e.span.line))
+            .collect::<Vec<_>>(),
+        vec![("E_TYPE", 2), ("E_TYPE", 4)]
+    );
+    assert!(errors.errors.iter().all(|e| e.end.is_some()));
+    let first = compile(
+        source,
+        Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+    )
+    .unwrap_err();
+    assert_eq!(first, errors.errors[0]);
+}
+
+#[test]
+fn dependencies_in_loop_and_pattern_types_also_block_recovery() {
+    let source = "control looped() exits done {loop work(vector<outcome<broken>> values=[]) {u32 bad=true;exit done;}}\ncontrol patterned(bool flag) exits done {delta flag {true {outcome<broken> pending}=>yes,false=>no}[yes|no]:exit done;}\ncontrol broken() exits auto {u32 value=true;exit ready {value};}";
+    let errors = check_errors(source);
+    assert_eq!(errors.errors.len(), 1, "{errors}");
+    assert_eq!(errors.errors[0].span.line, 3);
+    assert_eq!(errors.errors[0].code, "E_TYPE");
+}
+
+#[test]
+fn failed_ownership_and_inference_state_does_not_poison_other_bodies() {
+    let source = "control good() exits auto {exit ready {7};}\ncontrol broken() exits auto {auto saved = capture good(); string value = 1; exit saved;}\ncontrol valid() exits done {auto saved = capture good(); exit delta saved {ready {u32 number} => done {}};}\ncontrol another() exits done {mutable string owner=\"x\"; auto alias=borrow mutable owner; string value=2; emit(alias); exit done;}\ncontrol also_valid() exits done {mutable string owner=\"x\"; auto alias=borrow mutable owner; deref alias=\"y\"; emit(alias); exit done;}";
+    let errors = check_errors(source);
+    assert_eq!(
+        errors
+            .errors
+            .iter()
+            .map(|e| (e.code, e.span.line))
+            .collect::<Vec<_>>(),
+        vec![("E_TYPE", 2), ("E_TYPE", 4)]
+    );
+}
+
+#[test]
+fn independent_generic_definitions_are_reported_without_internal_type_names() {
+    let source = "control first<t>(t input) exits ready {t value} {u32 n=true;exit ready {input};}\ncontrol second<t>(t input) exits ready {t value} {string n=7;exit ready {input};}\ncontrol main() exits done {exit done;}";
+    let errors = check_errors(source);
+    assert_eq!(errors.errors.len(), 2);
+    for (i, error) in errors.errors.iter().enumerate() {
+        assert_eq!(error.code, "E_TYPE");
+        assert_eq!(error.span.line, i + 1);
+        assert!(error.message.starts_with("generic definition check:"));
+        assert!(!error.message.contains("_path_poly_"));
+    }
+}
+
+#[test]
+fn generic_witness_batches_use_authored_parameter_names() {
+    let source = "control first<t: drop>(t input,bool flag) exits done {drop(input);delta flag {true=>yes,false=>no}[yes]:exit done;}\ncontrol second<u: drop>(u input,bool flag) exits done {drop(input);delta flag {true=>left,false=>right}[right]:exit done;}";
+    let errors = check_errors(source);
+    assert_eq!(errors.errors.len(), 2);
+    for (error, (name, path)) in errors
+        .errors
+        .iter()
+        .zip([("first<t>", "no"), ("second<u>", "left")])
+    {
+        assert_eq!(
+            error.witness.as_deref(),
+            Some(&DiagnosticWitness::StructuralMayReach {
+                control: name.into(),
+                selected_paths: vec![path.into()]
+            })
+        );
+    }
+}
+
+#[test]
+fn independent_structural_witnesses_keep_their_own_controls_and_paths() {
+    let source = "control first(bool flag) exits done {delta flag {true=>yes,false=>no}[yes]:exit done;}\ncontrol second(bool flag) exits done {delta flag {true=>left,false=>right}[right]:exit done;}";
+    let errors = check_errors(source);
+    assert_eq!(errors.errors.len(), 2);
+    for (error, (name, path)) in errors
+        .errors
+        .iter()
+        .zip([("first", "no"), ("second", "left")])
+    {
+        assert_eq!(error.code, "E_UNCOVERED");
+        assert_eq!(
+            error.witness.as_deref(),
+            Some(&DiagnosticWitness::StructuralMayReach {
+                control: name.into(),
+                selected_paths: vec![path.into()]
+            })
+        );
+    }
+}
+
+#[test]
+fn json_and_text_checks_report_imported_errors_and_preserve_ranges() {
+    let f = Fixture::new();
+    let left = "pub control left() exits done {u32 value=\"😀\";exit done;}";
+    let right = "pub control right() exits done {string value=9;exit done;}";
+    f.write("left.tellur", left);
+    f.write("right.tellur", right);
+    f.write("main.tellur","import \"left.tellur\" as a;\nimport \"right.tellur\" as b;\ncontrol main() exits done {forward a.left();}\ncontrol other() exits done {forward b.right();}");
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    assert_eq!(report["diagnostics_limited"], false);
+    assert!(report["summary"].is_null());
+    let errors = report["diagnostics"].as_array().unwrap();
+    assert_eq!(errors.len(), 2);
+    for (name, source, selected) in [
+        ("left.tellur", left, "\"😀\""),
+        ("right.tellur", right, "9"),
+    ] {
+        let error = errors
+            .iter()
+            .find(|e| e["path"] == f.root.join(name).to_string_lossy().as_ref())
+            .unwrap();
+        assert_eq!(error["range"], selected_range(source, selected));
+    }
+    let output = Command::new(env!("CARGO_BIN_EXE_tellurc"))
+        .current_dir(&f.root)
+        .args(["check", "main.tellur"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stdout.is_empty());
+    let text = String::from_utf8(output.stderr).unwrap();
+    assert_eq!(text.matches("E_TYPE").count(), 2);
+    assert!(text.contains("left.tellur"));
+    assert!(text.contains("right.tellur"));
+}
+
+#[test]
+fn diagnostic_collection_is_bounded_and_explicit_about_the_limit() {
+    let f = Fixture::new();
+    let source = (0..40)
+        .map(|i| format!("control broken_{i}() exits done {{u32 value=true;exit done;}}\n"))
+        .collect::<String>();
+    f.write("main.tellur", &source);
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    assert_eq!(report["diagnostics_limited"], true);
+    assert_eq!(
+        report["diagnostics"].as_array().unwrap().len(),
+        tellur::diagnostics::MAX_DIAGNOSTICS
+    );
+    let errors = check_errors(&source);
+    assert!(errors.limit_reached);
+    assert!(errors.to_string().contains("diagnostic limit reached"));
+    assert_eq!(errors.errors.last().unwrap().span.line, 32);
+}
+
+#[test]
+fn parser_and_shared_declaration_failures_remain_single_errors() {
+    for (source, code) in [
+        (
+            "control first() exits done {u32 n=true;exit done;}\ncontrol broken() exits done {",
+            "E_PARSE",
+        ),
+        (
+            "pub control inferred() exits auto {exit done;}\ncontrol other() exits done {u32 n=true;exit done;}",
+            "E_PUBLIC_CONTRACT",
+        ),
+        (
+            "control one() exits done {u32 a=true;string b=2;exit done;}",
+            "E_TYPE",
+        ),
+    ] {
+        let errors = check_errors(source);
+        assert_eq!(errors.errors.len(), 1);
+        assert_eq!(errors.errors[0].code, code);
+        assert!(!errors.limit_reached);
     }
 }
 impl Drop for Fixture {

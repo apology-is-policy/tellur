@@ -1,7 +1,7 @@
 //! Small LSP 3.17 service sharing the compiler's parser and checker.
 //! Each document is a compilation unit, matching `tellurc check`.
 use crate::{
-    Diagnostic, Span, compile,
+    Diagnostic, Span,
     manifest::{Manifest, display_type},
     syntax,
 };
@@ -186,15 +186,25 @@ impl Server {
         uri: &str,
         manifest: Manifest,
     ) -> std::result::Result<crate::CheckedProgram, crate::modules::ModuleError> {
+        self.check_diagnostics_with_manifest(uri, manifest)
+            .map_err(crate::Diagnostics::first)
+    }
+    fn check_diagnostics_with_manifest(
+        &self,
+        uri: &str,
+        manifest: Manifest,
+    ) -> crate::CheckResult<crate::CheckedProgram, crate::modules::ModuleError> {
         let doc = &self.documents[uri];
         if let Some(path) = file_path(uri) {
-            crate::modules::compile_with_loader(&path, manifest, |requested| {
+            crate::modules::check_with_loader(&path, manifest, |requested| {
                 self.source_text(requested)
             })
         } else {
-            compile(&doc.text, manifest).map_err(|diagnostic| crate::modules::ModuleError {
-                path: PathBuf::from(uri),
-                diagnostic,
+            crate::check_source(&doc.text, manifest).map_err(|errors| {
+                errors.map(|diagnostic| crate::modules::ModuleError {
+                    path: PathBuf::from(uri),
+                    diagnostic,
+                })
             })
         }
     }
@@ -266,9 +276,22 @@ impl Server {
         } else {
             match self.manifest(uri) {
                 Ok(manifest) => self
-                    .checked_with_manifest(uri, manifest)
+                    .check_diagnostics_with_manifest(uri, manifest)
                     .err()
-                    .map(|e| vec![self.module_diagnostic(uri, e)])
+                    .map(|mut errors| {
+                        if errors.limit_reached
+                            && let Some(last) = errors.errors.last_mut()
+                        {
+                            last.diagnostic.message.push_str(
+                                " (diagnostic limit reached; remaining controls may be unchecked)",
+                            );
+                        }
+                        errors
+                            .errors
+                            .into_iter()
+                            .map(|e| self.module_diagnostic(uri, e))
+                            .collect::<Vec<_>>()
+                    })
                     .unwrap_or_default(),
                 Err(e) => vec![diagnostic(&doc.text, e, 2)],
             }

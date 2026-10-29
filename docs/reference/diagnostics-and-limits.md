@@ -2,8 +2,9 @@
 
 [Language reference](../language-reference.md) · [Feature status](support-status.md)
 
-The compiler reports a diagnostic code, source location and explanation. It usually
-stops at the first error for a document; fixing it may expose another. The precise
+The compiler reports diagnostic codes, source locations and explanations. Since
+0.52, checking collects errors from independent control bodies. Fixing an error
+may expose another within that body or a dependent control. The precise
 message wording may improve between releases. The negative examples here are checked
 for their stated code, so they also serve as small regression cases.
 
@@ -72,7 +73,7 @@ not traced. Calls summarize their result alternatives rather than substituting
 caller argument histories. Unknown indirect writes, calls with exclusive-reference
 parameters and collection operations conservatively forget stored-value lineage
 on the affected histories. Their actual ownership, typing and exhaustiveness
-checks still run normally. Independent-error recovery remains future work.
+checks still run normally. Recovery within a failed body remains future work.
 
 ## Machine-readable checking
 
@@ -93,7 +94,8 @@ policy. The legacy `pathc` command accepts the same option.
 | `schema` | `tellur.check.v1`; consumers should check this identifier and allow additional fields |
 | `ok` | Whether the check succeeded |
 | `position_encoding` | `one_based_unicode_scalars`; columns count Unicode scalar values, not bytes or UTF-16 units |
-| `diagnostics` | Empty on success; currently one diagnostic on failure |
+| `diagnostics` | Empty on success; one or more diagnostics on failure, capped at 32 |
+| `diagnostics_limited` | True when collection reached the 32-error budget; remaining controls may be unchecked |
 | `summary` | Counts `controls` and `generic_definitions` on success; null on failure |
 
 Each diagnostic contains `code`, `message`, `path`, `position`, `range`, `notes`
@@ -146,10 +148,44 @@ that location as related information and uses the current unsaved dependency tex
 This does not turn every diagnostic into an expression error. Path coverage,
 exit contracts, declaration errors, contributor notes and some specialized boundary
 checks still carry source points. Their JSON `range` is null, and VS Code uses its
-existing token-sized selection. There is still one primary error per check;
-independent-error recovery is the next diagnostic checkpoint. Hover information
-continues to come from the current checked source rather than a stale successful
-version.
+existing token-sized selection. Hover information continues to come from the
+current checked source rather than a stale successful version.
+
+## Independent body errors
+
+Since 0.52, textual `check`, `check --json` and the language server collect the
+first error from each independent control body in the current checking phase.
+They check dependencies before callers, then report errors in source order within
+the module graph. If a body fails, its partial inferred contracts, bindings and
+ownership state are discarded. Callers and controls whose types depend on that
+failed producer are skipped, transitively. This includes `outcome<producer>` in
+parameters, local annotations, loop parameters and arm payload annotations.
+
+For example, separate type errors in two leaf helpers can appear together.
+A caller of a broken helper does not also report misleading missing-arm or
+payload errors based on an unfinished inferred contract. Repairing the helper
+allows that caller to be checked again; its own errors may then become visible.
+This conservative policy also applies to helpers with explicit exit contracts.
+
+Collection stops at **32 errors**. JSON reports `diagnostics_limited: true`;
+text output and the editor display a limit notice. The count is a budget, not
+an estimate of all remaining errors. A failed report has no success summary and
+never supplies an executable or partially checked program. Inferred hover remains
+unavailable until the current program checks successfully; declared syntax can
+still appear in outline or hover.
+
+Recovery is deliberately bounded. Parsing, import/name resolution, shared type
+and contract validation, generic expansion and graph-cycle failures still stop
+at their first error. Generic definition bodies may report several errors during
+the universal checking phase; a failed phase prevents later concrete checking.
+Within a failed control, later statements and resource/coverage checks are not
+used to invent further diagnostics. Statement-level recovery and broader recovery
+across these preparation phases remain future work.
+
+Compiler integrations can use `check_source`, `check_file` or
+`modules::check_with_loader`, which return a `Diagnostics` batch on failure.
+The existing `compile`/`compile_file`/`compile_with_loader` APIs retain their
+single-error return types and select the first diagnostic from that batch.
 
 ## Type context: E_TYPE and E_INFER
 

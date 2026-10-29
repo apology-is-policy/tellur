@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.51.0** implements the v0.1 checked core and the current language
+Compiler release **0.52.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -36,6 +36,9 @@ through connection budgets or idle timeouts.
 Release 0.51 adds [precise expression diagnostics](docs/reference/diagnostics-and-limits.md#expression-locations)
 to the compiler and VS Code: bad arguments, initializers and field accesses select
 their source expressions, including multiline strings and imported generic code.
+Release 0.52 adds [independent-body error reporting](docs/reference/diagnostics-and-limits.md#independent-body-errors):
+`check` and VS Code show multiple independent errors while suppressing callers of
+failed controls. Inferred hover remains unavailable until the current program checks.
 
 The [semantic foundation](docs/semantic-foundation.md) distinguishes compatibility,
 ownership transfer, behavioral equivalence and provenance. Executable law tests and

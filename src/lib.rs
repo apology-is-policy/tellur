@@ -5,6 +5,7 @@ pub mod certificate;
 mod check;
 mod collection_support;
 mod collections;
+pub mod diagnostics;
 mod expand;
 pub mod extract;
 mod generic_controls;
@@ -26,9 +27,10 @@ pub mod syntax;
 mod traits;
 mod verify;
 
-pub use check::compile;
+pub use check::{check_source, compile};
+pub use diagnostics::{CheckResult, Diagnostics};
 pub use ir::CheckedProgram;
-pub use modules::compile_file;
+pub use modules::{check_file, compile_file};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Span {
