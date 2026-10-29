@@ -2,8 +2,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const vscode = require('vscode');
-async function waitFor(predicate, description) {
-  const until = Date.now() + 15000;
+async function waitFor(predicate, description, timeout = 15000) {
+  const until = Date.now() + timeout;
   while (Date.now() < until) { if (await predicate()) return; await new Promise(r => setTimeout(r, 50)); }
   throw new Error(`Timed out: ${description}`);
 }
@@ -746,7 +746,7 @@ control main() exits done {
     console.log('TELLUR_JSON_CHECK_EDITOR_TESTS_PASSED: bundled compiler versioned report and clean stdout');
     const settingsFolder = path.join(root, 'settings-app');
     await fs.mkdir(settingsFolder, {recursive:true});
-    for (const file of ['main.tellur', 'settings.tellur', 'manifest.json', 'host.rs', 'Cargo.lock']) {
+    for (const file of ['main.tellur', 'settings.tellur', 'server.tellur', 'http.tellur', 'manifest.json', 'host.rs', 'Cargo.lock']) {
       await fs.copyFile(path.join(__dirname, '../../../applications/settings', file), path.join(settingsFolder, file));
     }
     const settingsUri = vscode.Uri.file(path.join(settingsFolder, 'main.tellur'));
@@ -781,6 +781,36 @@ control main() exits done {
     assert.equal(settingsMissing.stderr, '');
     console.log('TELLUR_EXIT_CODES_EDITOR_TESTS_PASSED: annotation hover, unsaved diagnostic, repair, exact nonzero status and JSON outcome');
     console.log('TELLUR_RUST_SETTINGS_EDITOR_TESTS_PASSED: manifest-relative Rust adapter, unsaved checking, repair, locked build, persistent update and reload');
+    const serverUri = vscode.Uri.file(path.join(settingsFolder, 'server.tellur'));
+    const serverDocument = await vscode.workspace.openTextDocument(serverUri);
+    await vscode.window.showTextDocument(serverDocument);
+    const serverSource = serverDocument.getText();
+    await replace(serverDocument, serverSource.replace('http_listener_release(listener);', ''));
+    await waitFor(() => vscode.languages.getDiagnostics(serverUri).some(d => code(d) === 'E_RESOURCE'), 'server listener completion diagnostic');
+    await replace(serverDocument, serverSource);
+    await waitFor(() => vscode.languages.getDiagnostics(serverUri).length === 0, 'server completion repair');
+    await serverDocument.save();
+    await vscode.window.showTextDocument(settingsDocument);
+    const net = require('node:net');
+    const reservation = net.createServer();
+    await new Promise(resolve => reservation.listen(0, '127.0.0.1', resolve));
+    const port = reservation.address().port;
+    await new Promise(resolve => reservation.close(resolve));
+    const serviceRun = vscode.commands.executeCommand('tellur.buildAndRun', {entry:'serve', arguments:[settingsData, String(port), '1', '3000'], output:settingsOutput});
+    let httpBody;
+    await waitFor(() => new Promise(resolve => {
+      const request = require('node:http').get({host:'127.0.0.1', port, path:'/settings', agent:false}, response => {
+        let body = ''; response.setEncoding('utf8'); response.on('data', part => body += part);
+        response.on('end', () => { httpBody = body; resolve(response.statusCode === 200); });
+        response.on('error', () => resolve(false));
+      });
+      request.setTimeout(1000, () => request.destroy()); request.on('error', () => resolve(false));
+    }), 'settings server HTTP response', 45000);
+    assert.deepEqual(JSON.parse(httpBody), {theme:'dark'});
+    const serviceResult = await serviceRun;
+    assert.equal(serviceResult.code, 0, serviceResult.stderr);
+    assert.ok(serviceResult.stdout.includes('completed'));
+    console.log('TELLUR_HTTP_SERVER_EDITOR_TESTS_PASSED: listener obligation, unsaved repair, build/run, live HTTP and bounded shutdown');
     const resourceFolder = path.join(root, 'retained-file');
     await fs.mkdir(resourceFolder, {recursive:true});
     for (const file of ['main.tellur', 'manifest.json', 'host.rs', 'Cargo.lock']) {

@@ -2,7 +2,7 @@
   "name": "tellur-language",
   "displayName": "Tellur Language (Experimental)",
   "description": "Tellur controls, inline adapters, owned outcomes, diagnostics and native build/run",
-  "version": "0.49.0",
+  "version": "0.50.0",
   "publisher": "tellur-language-local",
   "license": "Apache-2.0",
   "engines": {

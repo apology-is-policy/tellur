@@ -1558,6 +1558,16 @@ fn rust_adapter_project_checks_unsaved_sources_without_loading_host_code() {
         include_str!("../applications/settings/settings.tellur"),
     )
     .unwrap();
+    fs::write(
+        f.root.join("server.tellur"),
+        include_str!("../applications/settings/server.tellur"),
+    )
+    .unwrap();
+    fs::write(
+        f.root.join("http.tellur"),
+        include_str!("../applications/settings/http.tellur"),
+    )
+    .unwrap();
     // No host.rs or Cargo.lock exists: checking Tellur must not build or run Rust.
     let source = include_str!("../applications/settings/main.tellur");
     f.open(source);

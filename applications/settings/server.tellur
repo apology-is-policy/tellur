@@ -1,0 +1,106 @@
+import "http.tellur" as http;
+
+pub outcome service_result {
+    @exit 0 completed,
+    @exit 0 idle,
+    @exit 1 completed_with_failures,
+    @exit 1 idle_with_failures,
+    @exit 1 failed { string message },
+    @exit 2 invalid_configuration
+}
+
+pub control start(ref string path, u32 port, u32 max_connections, u32 idle_ms) exits service_result {
+    delta (port <= 65535 && max_connections > 0 && max_connections <= 1000000 && idle_ms > 0 && idle_ms <= 60000) {
+        true => valid, false => invalid
+    }
+[invalid]: exit invalid_configuration;
+[valid]: delta http_listen(port) {
+    listening { http_listener listener, string authority } => listening,
+    failed { string listen_message } => unavailable
+}
+[unavailable]: exit failed { listen_message };
+[listening]:
+    emit(concat("http://", clone(borrow authority)));
+    auto result = capture run(path, borrow listener, borrow authority, max_connections, idle_ms);
+    http_listener_release(listener);
+    exit delta result {
+        completed => completed {},
+        idle => idle {},
+        completed_with_failures => completed_with_failures {},
+        idle_with_failures => idle_with_failures {},
+        failed { string message } => failed { message }
+    };
+}
+
+control run(ref string path, ref http_listener listener, ref string authority, u32 limit, u32 idle_ms) exits auto {
+    loop accept_next(u32 remaining = limit, bool troubled = false) {
+        delta checked_sub(remaining, 1) { difference { u32 next } => available, underflow => finished }
+    [finished]: exit delta troubled { true => completed_with_failures {}, false => completed {} };
+    [available]: delta http_accept(listener, idle_ms) {
+        accepted { http_connection connection } => accepted,
+        idle => idle,
+        failed { string message } => unavailable
+    }
+    [idle]: exit delta troubled { true => idle_with_failures {}, false => idle {} };
+    [unavailable]: exit failed { message };
+    [accepted]: delta handle(path, authority, connection) {
+        served => served,
+        disconnected => disconnected,
+        failed { string message } => failed,
+        cleanup_failed { string cleanup } => cleanup_failed,
+        both_failed { string message, string cleanup } => both_failed
+    }
+    [served | disconnected]: again accept_next(next, troubled);
+    [failed | both_failed]: emit(message);
+    [cleanup_failed | both_failed]: emit(cleanup);
+    [failed | cleanup_failed | both_failed]: again accept_next(next, true);
+    }
+}
+
+// Both operations complete before inspecting their results: a failed exchange
+// still closes the connection, and a second failure cannot replace the first.
+control handle(ref string path, ref string authority, http_connection connection) exits auto {
+    auto exchange_result = capture exchange(path, authority, borrow connection);
+    auto close_result = capture http_connection_close(connection);
+    delta exchange_result { sent => sent, disconnected => disconnected, failed { string message } => failed }
+    delta close_result { closed => closed, failed { string cleanup } => cleanup_failed }
+[sent & closed]: exit served;
+[disconnected & closed]: exit disconnected;
+[failed & closed]: exit failed { message };
+[(sent | disconnected) & cleanup_failed]: exit cleanup_failed { cleanup };
+[failed & cleanup_failed]: exit both_failed { message, cleanup };
+}
+
+control exchange(ref string path, ref string authority, ref http_connection connection)
+    exits sent, disconnected, failed { string message }
+{
+    exit delta prepare(path, authority, connection) {
+        prepared { u32 status, string body, string media, string allow } => [prepared]:
+            delta http_send(connection, status, borrow body, borrow media, borrow allow) {
+                sent => sent {}, failed { string message } => failed { message }
+            },
+        disconnected => disconnected {},
+        failed { string message } => failed { message }
+    };
+}
+
+control prepare(ref string path, ref string authority, ref http_connection connection)
+    exits prepared { u32 status, string body, string media, string allow }, disconnected, failed { string message }
+{
+    exit delta http_receive(connection) {
+        request { string method, string target, map<string, string> headers, string body } => [received]:
+            delta http.route(path, authority, method, target, headers, body) {
+                json { u32 status, string content } => prepared { status, content, "application/json", "" },
+                text { u32 status, string content } => prepared { status, content, "text/plain; charset=utf-8", "" },
+                method_not_allowed { string allow } => prepared { 405, "Method not allowed", "text/plain; charset=utf-8", allow }
+            },
+        malformed { string message } => prepared { 400, message, "text/plain; charset=utf-8", "" },
+        headers_too_large => prepared { 431, "Request headers too large", "text/plain; charset=utf-8", "" },
+        body_too_large => prepared { 413, "Request body exceeds 1 MiB", "text/plain; charset=utf-8", "" },
+        unsupported_transfer => prepared { 501, "Transfer-Encoding is unsupported", "text/plain; charset=utf-8", "" },
+        unsupported_expectation => prepared { 417, "Expect is unsupported", "text/plain; charset=utf-8", "" },
+        timed_out => prepared { 408, "Request deadline exceeded", "text/plain; charset=utf-8", "" },
+        disconnected => disconnected {},
+        failed { string message } => failed { message }
+    };
+}

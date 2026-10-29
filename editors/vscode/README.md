@@ -475,6 +475,18 @@ zero-based UTF-16 encoding. Path-related LSP diagnostics additionally carry a
 `structural_may_reach` witness in diagnostic data. See the
 [report format](https://github.com/apology-is-policy/tellur/blob/main/docs/reference/diagnostics-and-limits.md#machine-readable-checking).
 
+## Settings HTTP service in 0.50
+
+The maintained settings application now includes a bounded loopback HTTP server.
+Open `applications/settings/main.tellur`, select entry `serve`, and supply the data
+path, port, connection budget and idle timeout in milliseconds. Use a known port
+with Build and Run, which captures output until completion; launching the built
+program in the integrated terminal shows its listening URL immediately.
+
+The [service guide](https://github.com/apology-is-policy/tellur/blob/main/applications/settings/README.md#run-the-http-service)
+includes curl requests and the exact HTTP/cleanup limits. Unsaved diagnostics still
+enforce explicit resource completion across the server's imported controls.
+
 ## Retained Rust resources in 0.49
 
 The compiler now supports manifest-bound opaque Rust owners across calls, with

@@ -1,8 +1,8 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.49.0 -->
+<!-- tellur-reference-version: 0.50.0 -->
 
-This manual describes **compiler 0.49.0**, including the current ownership model,
+This manual describes **compiler 0.50.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -2108,6 +2108,13 @@ execution is possible; there is no termination proof.
 
 ## Rust adapters and host execution
 
+The [maintained settings application](../applications/settings/README.md) now
+provides both a persistent CLI and a bounded, sequential loopback HTTP service.
+Its [server](../applications/settings/server.tellur) is a larger example of tail
+loops, captures, independent failures, explicit completion and public entry contracts.
+Its [HTTP policy](../applications/settings/http.tellur) composes the same settings
+module used by the CLI. This is synchronous execution; first-class tasks remain planned.
+
 Since 0.45, a project manifest can bind primitive operations to typed Rust wrappers
 and explicitly locked Cargo dependencies. Tellur checks calls against the manifest;
 the native build generates Rust outcome enums and checks each wrapper signature.
@@ -2467,7 +2474,7 @@ bindings/contracts. It does not yet provide general expression or call-site type
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and async tasks remain planned; they are not executable features of 0.49.0.
+and async tasks remain planned; they are not executable features of 0.50.0.
 ## Compare supplied scenarios
 
 ```sh

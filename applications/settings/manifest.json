@@ -1,6 +1,17 @@
 {
   "version": "0.1",
-  "types": [],
+  "types": [
+    {
+      "name": "http_listener",
+      "kind": "opaque",
+      "linear": true
+    },
+    {
+      "name": "http_connection",
+      "kind": "opaque",
+      "linear": true
+    }
+  ],
   "primitives": [
     {
       "name": "file_read",
@@ -202,12 +213,359 @@
       "rust": {
         "execution": "immediate"
       }
+    },
+    {
+      "name": "http_listen",
+      "parameters": [
+        {
+          "name": "port",
+          "type": "u32",
+          "mode": "value"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "listening",
+          "fields": [
+            {
+              "name": "listener",
+              "type": "http_listener"
+            },
+            {
+              "name": "authority",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "failed",
+          "fields": [
+            {
+              "name": "message",
+              "type": "string"
+            }
+          ]
+        }
+      ],
+      "effects": [
+        "net.listen"
+      ],
+      "returns": true,
+      "rust": {
+        "execution": "blocking"
+      }
+    },
+    {
+      "name": "http_accept",
+      "parameters": [
+        {
+          "name": "listener",
+          "type": "http_listener",
+          "mode": "borrow"
+        },
+        {
+          "name": "idle_ms",
+          "type": "u32",
+          "mode": "value"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "accepted",
+          "fields": [
+            {
+              "name": "connection",
+              "type": "http_connection"
+            }
+          ]
+        },
+        {
+          "name": "idle",
+          "fields": []
+        },
+        {
+          "name": "failed",
+          "fields": [
+            {
+              "name": "message",
+              "type": "string"
+            }
+          ]
+        }
+      ],
+      "effects": [
+        "net.accept"
+      ],
+      "returns": true,
+      "rust": {
+        "execution": "blocking"
+      }
+    },
+    {
+      "name": "http_receive",
+      "parameters": [
+        {
+          "name": "connection",
+          "type": "http_connection",
+          "mode": "borrow"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "request",
+          "fields": [
+            {
+              "name": "method",
+              "type": "string"
+            },
+            {
+              "name": "target",
+              "type": "string"
+            },
+            {
+              "name": "headers",
+              "type": "map<string,string>"
+            },
+            {
+              "name": "body",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "malformed",
+          "fields": [
+            {
+              "name": "message",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "headers_too_large",
+          "fields": []
+        },
+        {
+          "name": "body_too_large",
+          "fields": []
+        },
+        {
+          "name": "unsupported_transfer",
+          "fields": []
+        },
+        {
+          "name": "unsupported_expectation",
+          "fields": []
+        },
+        {
+          "name": "timed_out",
+          "fields": []
+        },
+        {
+          "name": "disconnected",
+          "fields": []
+        },
+        {
+          "name": "failed",
+          "fields": [
+            {
+              "name": "message",
+              "type": "string"
+            }
+          ]
+        }
+      ],
+      "effects": [
+        "net.read"
+      ],
+      "returns": true,
+      "rust": {
+        "execution": "blocking"
+      }
+    },
+    {
+      "name": "http_send",
+      "parameters": [
+        {
+          "name": "connection",
+          "type": "http_connection",
+          "mode": "borrow"
+        },
+        {
+          "name": "status",
+          "type": "u32",
+          "mode": "value"
+        },
+        {
+          "name": "body",
+          "type": "string",
+          "mode": "borrow"
+        },
+        {
+          "name": "media",
+          "type": "string",
+          "mode": "borrow"
+        },
+        {
+          "name": "allow",
+          "type": "string",
+          "mode": "borrow"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "sent",
+          "fields": []
+        },
+        {
+          "name": "failed",
+          "fields": [
+            {
+              "name": "message",
+              "type": "string"
+            }
+          ]
+        }
+      ],
+      "effects": [
+        "net.write"
+      ],
+      "returns": true,
+      "rust": {
+        "execution": "blocking"
+      }
+    },
+    {
+      "name": "http_connection_close",
+      "parameters": [
+        {
+          "name": "connection",
+          "type": "http_connection",
+          "mode": "consume"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "closed",
+          "fields": []
+        },
+        {
+          "name": "failed",
+          "fields": [
+            {
+              "name": "message",
+              "type": "string"
+            }
+          ]
+        }
+      ],
+      "effects": [
+        "net.shutdown",
+        "net.read",
+        "net.release"
+      ],
+      "returns": true,
+      "rust": {
+        "execution": "blocking"
+      }
+    },
+    {
+      "name": "http_listener_release",
+      "parameters": [
+        {
+          "name": "listener",
+          "type": "http_listener",
+          "mode": "consume"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "released",
+          "fields": []
+        }
+      ],
+      "effects": [
+        "net.release"
+      ],
+      "returns": true,
+      "rust": {
+        "execution": "blocking"
+      }
+    },
+    {
+      "name": "checked_sub",
+      "parameters": [
+        {
+          "name": "a",
+          "type": "u32",
+          "mode": "value"
+        },
+        {
+          "name": "b",
+          "type": "u32",
+          "mode": "value"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "difference",
+          "fields": [
+            {
+              "name": "value0",
+              "type": "u32"
+            }
+          ]
+        },
+        {
+          "name": "underflow",
+          "fields": []
+        }
+      ],
+      "effects": [],
+      "returns": true
+    },
+    {
+      "name": "concat",
+      "parameters": [
+        {
+          "name": "left",
+          "type": "string",
+          "mode": "value"
+        },
+        {
+          "name": "right",
+          "type": "string",
+          "mode": "value"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "text",
+          "fields": [
+            {
+              "name": "value0",
+              "type": "string"
+            }
+          ]
+        }
+      ],
+      "effects": [],
+      "returns": true,
+      "pure": true
     }
   ],
   "rust": {
     "source": "host.rs",
     "lockfile": "Cargo.lock",
-    "dependencies": {}
+    "dependencies": {
+      "httparse": {
+        "version": "=1.10.1"
+      }
+    },
+    "resources": {
+      "http_listener": "Listener",
+      "http_connection": "Connection"
+    }
   },
   "launch": {
     "set": {

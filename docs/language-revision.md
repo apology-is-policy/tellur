@@ -1,7 +1,7 @@
 # Tellur language revision: controls, values, outcomes, and tasks
 
 29 October 2026. This is the working revision plan, not a claim that all proposed
-features are implemented. Compiler **0.49.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
+features are implemented. Compiler **0.50.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
 lifetime checkpoints of milestone 2, the array/vector/map core of milestone 3,
 and implicit entry, inline/stored adapters, owned capture, named outcome contracts
 and checked forwarding in milestone 4. A first [semantic foundation](semantic-foundation.md)
@@ -13,6 +13,11 @@ Release 0.49 delivers I1b.1 retained Rust resource owners, preparing the listene
 and connection lifetimes needed by P5b's blocking loopback service. Release 0.48
 delivers explicit executable status policies through named outcome annotations
 and exhaustive entry mappings.
+
+Release 0.50 delivers P5b.1: the settings application now serves bounded, sequential
+loopback HTTP with Tellur routing, validation, status mapping and resource completion.
+The next emphasis is P2/P3 diagnostic and path readability work, using this application
+as a maintained example rather than extending reference machinery speculatively.
 
 Release 0.47 starts P2 structured output: versioned JSON check reports, explicit
 point encodings, related locations and typed structural witnesses in CLI/LSP. Full
@@ -128,7 +133,8 @@ unimplemented syntax are promised.
 | P4 | Explain, format and contract changes | Queued: bounded history/contributor queries, formatter, public contract snapshots/diffs and internal absorption changes; distinguish structural evidence from feasible inputs |
 | P5a | Sustained application: persistent CLI | **Delivered in 0.45**: settings load/get/set, validation, strict JSON, bounded input/output, replacement uncertainty and live/scripted failure scenarios |
 | P5a.1 | Executable outcome status contracts | **Delivered in 0.48**: alternative annotations, exhaustive entry mappings, final-contract policy, exact exec status propagation, and settings/editor migration |
-| P5b | Sustained application: server and library growth | Next, on I1b.1: blocking loopback HTTP with retained listener/connection owners; keep domain policy in Tellur and exercise disconnect/shutdown/cleanup scenarios |
+| P5b.1 | Sustained application: blocking HTTP | **Delivered in 0.50**: loopback settings/lookup/update endpoints, Tellur policy, retained listeners/connections, framing/size/deadline limits, budget/idle shutdown and live/scripted cleanup evidence |
+| P5b.2 | Sustained application and library growth | Maintain CLI/server during P2–P4; extract reusable mechanisms when contracts settle. Signal-driven shutdown, richer HTTP and concurrency remain later work |
 | P6 | Faults and activation boundaries | Design before async: explicit invariant-failure disposition, transitive fault visibility, resource/isolation semantics; faulting operators and any no-fault annotation remain separate decisions |
 | C1b.3c.2 | Local exclusive-reference collection elements | Deferred pending application evidence: permission transfer, direct reborrowing, dynamic removal splits and carrier invalidation |
 | C1b.3c.3 | Nested and public borrowed-collection contracts | Deferred pending application evidence: element origin schemas, nested carriers, generic/trait boundaries and stored outcomes |
@@ -216,8 +222,8 @@ showcase for each feature. The initial working choice is a local configuration a
 key-value service. Start with a CLI over reusable Tellur modules, then expose the
 same operations through a blocking HTTP server bound to loopback. A sequential
 server makes useful progress before Tellur has async. The persistent CLI and typed
-owned-data Rust adapters are delivered in 0.45; HTTP and retained host-resource
-bindings are still planned. See [the application](../applications/settings/README.md).
+owned-data Rust adapters are delivered in 0.45, retained resources in 0.49, and
+bounded sequential HTTP in 0.50. See [the application](../applications/settings/README.md).
 
 The first useful slice loads persisted settings and supports reading and updating
 keys with validation. Subsequent slices add persistence/reload, request handling,

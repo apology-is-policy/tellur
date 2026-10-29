@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.49.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.50.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -1305,3 +1305,52 @@ Evidence: `work/tellur-0.49-validation.json`, `tellur-0.49-tests.log`,
 `tellur-0.49-versions.log`, `tellur-0.49-package.log`,
 `tellur-0.49-package-integrity.log`, `tellur-0.49-install.log`,
 `tellur-0.49-installed-integrity.log` and `tellur-0.49-backup.log`.
+
+## 0.50 — Sequential loopback settings service
+
+P5b.1 adds a real HTTP interface to the maintained settings application. The
+Tellur modules own endpoint selection, JSON shape/key validation, response status,
+independent exchange/cleanup errors, connection budgets and idle completion.
+Typed Rust adapters provide retained listeners/connections, bounded request parsing
+through pinned `httparse` 1.10.1, response framing and socket completion. The CLI
+continues to use the same settings module and persistence contracts.
+
+`tests/settings_http.rs` checks live listing, lookup, updates and persistence across
+restarts; invalid keys/JSON/files/media/methods/routes; Host/Origin restrictions;
+duplicate/conflicting framing; header count/size and body-size limits; request
+deadlines; disconnects; HEAD framing; ignored pipelined requests; occupied ports;
+budget/idle shutdown and listener release. Eighteen scripted cases preserve
+read/write/cleanup failures, both errors together, idle-after-failure and uncertain
+replacement. They agree in reference and expanded execution and native original/
+expanded O0/O2 builds. The staged connection close fixes the truncated-response
+failure exposed by an early live oversized-header test; its bounded nonblocking
+drain avoids changing socket timeouts after half-close on macOS.
+
+The final full run passed **775 Rust tests**, with no failed targets. Clippy passed
+for all targets with warnings denied. All **33 Node tests** and the full real VS
+Code suite passed, including unsaved listener-completion errors, repair, Build and
+Run, a real HTTP exchange and graceful stop. The manual checks **55** accepted
+examples, **20** expected diagnostics, **14** context fragments and **165** local
+links; all **58** maintained Tellur sources pass release checking.
+
+The rebuilt application also passed the documented curl workflow against an
+ephemeral loopback port: list, persist an update, lookup and normal budget completion.
+Compiler and LSP initialization report **0.50.0**. All nine packaged payloads match
+staging; installed files, metadata and executable permissions were verified. The
+verified source snapshot is `work/revision-backups/tellur-0.50-source.tar.gz`.
+
+This is a bounded sequential development HTTP profile, with no TLS, authentication,
+full HTTP/1.1 coverage, concurrency or signal/task cancellation. Socket deadlines
+do not bound filesystem operations. Response delivery and descriptor release do
+not imply rollback, peer receipt, observable close-error success or crash durability.
+The [application guide](../applications/settings/README.md) records exact limits.
+Async tasks and LLVM coroutine lowering remain separate roadmap checkpoints.
+
+Evidence: `work/tellur-0.50-validation.json`, `tellur-0.50-tests.log`,
+`tellur-0.50-http-tests-final.log`, `tellur-0.50-clippy.log`,
+`tellur-0.50-reference.log`, `tellur-0.50-examples.log`, `tellur-0.50-node.log`,
+`tellur-0.50-editor.log`, `tellur-0.50-build.log`,
+`tellur-0.50-application-build.log`, `tellur-0.50-http-smoke.log`,
+`tellur-0.50-versions.log`, `tellur-0.50-package.log`,
+`tellur-0.50-package-integrity.log`, `tellur-0.50-install.log`,
+`tellur-0.50-installed-integrity.log` and `tellur-0.50-backup.log`.

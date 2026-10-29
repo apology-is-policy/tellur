@@ -21,7 +21,7 @@ impl Fixture {
         fs::create_dir_all(&root).unwrap();
         fs::write(
             root.join("Cargo.lock"),
-            include_str!("../applications/settings/Cargo.lock"),
+            include_str!("../examples/retained_file/Cargo.lock"),
         )
         .unwrap();
         Self { root }

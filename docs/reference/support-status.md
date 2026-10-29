@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.49.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.50.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -60,7 +60,7 @@ with complete schemas for every nested reference layer.
 | Area | Current support | Limit |
 | --- | --- | --- |
 | Rust source adapters | Typed wrappers, closed result enums, owned scalar/collection data, direct opaque retained resources, call-duration shared borrows, explicit dependencies and locked builds | No stable binary ABI, foreign returned borrows, exclusive mutation, aggregate resource boundary or async adapters |
-| Maintained application | Local persistent settings CLI with Tellur policy and Rust file/JSON mechanisms | No HTTP, concurrency or crash-durable transaction guarantee yet |
+| Maintained application | Persistent settings CLI and bounded sequential loopback HTTP; Tellur routing/validation/cleanup and Rust mechanisms | Limited HTTP profile; no concurrency, task cancellation or crash-durable transaction guarantee |
 | CLI and native build | Check, execute, build standalone executable through Rust/Cargo and LLVM | No direct LLVM coroutine lowering |
 | VS Code | Highlighting, unsaved diagnostics with related forwarding locations, Outline, declaration contracts, inferred `auto` hover, build/run | First diagnostic per document; hover requires a successful check and is not general expression hover |
 | Expansion | Checked rewrite certificates, retained invocation/decision provenance | Not arbitrary equivalence or termination checking |

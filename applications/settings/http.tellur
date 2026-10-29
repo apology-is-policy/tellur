@@ -1,0 +1,133 @@
+import "settings.tellur" as settings;
+
+// HTTP response policy stays in Tellur; the host only frames/writes the reply.
+pub outcome response {
+    json { u32 status, string body },
+    text { u32 status, string body },
+    method_not_allowed { string allow }
+}
+
+pub control route(ref string path, ref string authority, string method, string target,
+                  map<string, string> headers, string body) exits response {
+    delta map_get(borrow headers, borrow "host") {
+        found { ref string host } => host_present, missing => no_host
+    }
+[no_host]: exit text { 400, "Host header required" };
+[host_present]:
+    delta (deref host == deref authority) { true => local_host, false => foreign_host }
+[foreign_host]: exit text { 403, "Host must match the listening address" };
+[local_host]:
+    delta map_get(borrow headers, borrow "origin") {
+        found { ref string origin } => browser_request, missing => local_request
+    }
+[browser_request]: exit text { 403, "Browser-origin requests are unsupported" };
+[local_request]:
+    delta (target == "/settings") { true => settings_route, false => other_route }
+[settings_route]:
+    delta (method == "GET") { true => list, false => maybe_update }
+[list]:
+    delta (body == "") { true => empty_body, false => unexpected_body }
+[unexpected_body]: exit text { 400, "GET must have an empty body" };
+[empty_body]: forward list_settings(path);
+[maybe_update]:
+    delta (method == "PUT") { true => update, false => settings_method }
+[update]: forward update_setting(path, borrow headers, body);
+[settings_method]: exit method_not_allowed { "GET, PUT" };
+[other_route]:
+    delta (target == "/lookup") { true => lookup_route, false => unknown_route }
+[unknown_route]: exit text { 404, "Unknown endpoint" };
+[lookup_route]:
+    delta (method == "POST") { true => lookup, false => lookup_method }
+[lookup]: forward lookup_setting(path, borrow headers, body);
+[lookup_method]: exit method_not_allowed { "POST" };
+}
+
+control list_settings(ref string path) exits auto {
+    exit delta settings.load(path) {
+        loaded { map<string, string> values } => [loaded]: delta json_encode(borrow values) {
+            encoded { string body } => json { 200, body },
+            encode_failed { string message } => text { 500, message }
+        },
+        invalid_file { string message } => text { 500, message },
+        storage_failed { string message } => text { 500, message },
+        too_large => text { 500, "Settings file exceeds 1 MiB" }
+    };
+}
+
+control object_body(ref map<string, string> headers, string body)
+    exits decoded { map<string, string> values }, invalid { string message }, wrong_media
+{
+    delta map_get(headers, borrow "content-type") {
+        found { ref string media } => present, missing => missing
+    }
+[missing]: exit wrong_media;
+[present]:
+    delta (deref media == "application/json" || deref media == "application/json; charset=utf-8") {
+        true => json_body, false => other_media
+    }
+[other_media]: exit wrong_media;
+[json_body]: forward json_decode(body);
+}
+
+control lookup_setting(ref string path, ref map<string, string> headers, string body) exits auto {
+    delta object_body(headers, body) {
+        decoded { map<string, string> values } => decoded,
+        invalid { string invalid_message } => invalid,
+        wrong_media => wrong_media
+    }
+[invalid]: exit text { 400, invalid_message };
+[wrong_media]: exit text { 415, "Content-Type must be application/json" };
+[decoded]: delta (map_length(borrow values) == 1) { true => sized, false => wrong_shape }
+[wrong_shape]: exit text { 400, "Expected exactly one string field: key" };
+[sized]: delta map_get(borrow values, borrow "key") { found { ref string key } => keyed, missing => no_key }
+[no_key]: exit text { 400, "Expected exactly one string field: key" };
+[keyed]:
+    exit delta settings.get(path, key) {
+        found { string value } => [found]: delta encode_value(value) {
+            json { u32 status, string content } => json { status, content },
+            text { u32 status, string content } => text { status, content },
+        },
+        missing => text { 404, "Setting not found" },
+        invalid_key => text { 400, "Invalid setting key" },
+        invalid_file { string message } => text { 500, message },
+        storage_failed { string message } => text { 500, message },
+        too_large => text { 500, "Settings file exceeds 1 MiB" }
+    };
+}
+
+control encode_value(string value) exits auto {
+    mutable map<string, string> result = map {};
+    delta map_insert(borrow mutable result, "value", value) {
+        inserted => inserted, replaced { string previous } => replaced
+    }
+[inserted | replaced]:
+    exit delta json_encode(borrow result) {
+        encoded { string content } => json { 200, content },
+        encode_failed { string message } => text { 500, message }
+    };
+}
+
+control update_setting(ref string path, ref map<string, string> headers, string body) exits auto {
+    delta object_body(headers, body) {
+        decoded { map<string, string> values } => decoded,
+        invalid { string invalid_message } => invalid,
+        wrong_media => wrong_media
+    }
+[invalid]: exit text { 400, invalid_message };
+[wrong_media]: exit text { 415, "Content-Type must be application/json" };
+[decoded]: delta (map_length(borrow values) == 2) { true => sized, false => wrong_shape }
+[wrong_shape]: exit text { 400, "Expected exactly two string fields: key and value" };
+[sized]: delta map_get(borrow values, borrow "key") { found { ref string key } => keyed, missing => no_key }
+[no_key]: exit text { 400, "Missing key field" };
+[keyed]: delta map_get(borrow values, borrow "value") { found { ref string value } => valued, missing => no_value }
+[no_value]: exit text { 400, "Missing value field" };
+[valued]:
+    exit delta settings.set(path, clone(key), clone(value)) {
+        saved => json { 200, "{\"saved\":true}" },
+        invalid_key => text { 400, "Invalid setting key" },
+        invalid_file { string message } => text { 500, message },
+        storage_failed { string message } => text { 500, message },
+        commit_uncertain { string message } => text { 500, concat("commit_uncertain: reload before retrying; ", message) },
+        too_large => text { 413, "Settings size limit exceeded" }
+    };
+}

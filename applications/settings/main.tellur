@@ -1,4 +1,9 @@
 import "settings.tellur" as settings;
+import "server.tellur" as server;
+
+control serve(string path, u32 port, u32 max_connections, u32 idle_ms) exits server.service_result {
+    forward server.start(borrow path, port, max_connections, idle_ms);
+}
 
 // The default entry prints the configuration. Other CLI entries reuse the same module.
 control main(string path) exits display_result {
