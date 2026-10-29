@@ -274,87 +274,167 @@ fn key(c: &Contributor) -> (Kind, &str, Option<&str>, &str, &str) {
     )
 }
 
+/// Shared source identities and occurrence numbering for snapshots and targeted queries.
+pub(crate) struct SourceIndex<'a> {
+    program: &'a CheckedProgram,
+    pub modules: Vec<String>,
+    pub names: BTreeMap<&'a str, String>,
+    sites: BTreeMap<&'a str, BTreeMap<(usize, usize), String>>,
+}
+impl<'a> SourceIndex<'a> {
+    pub fn new(program: &'a CheckedProgram) -> Result<Self> {
+        let sources = program.source_files();
+        if sources.is_empty() {
+            return Err(error("source identities are required"));
+        }
+        let base = sources[0].path.parent().unwrap();
+        let mut modules = vec![];
+        let mut names = BTreeMap::new();
+        for (i, source) in sources.iter().enumerate() {
+            let module = if i == 0 {
+                "@entry".into()
+            } else {
+                format!("file:{}", contracts::relative(&source.path, base)?)
+            };
+            for (global, local) in &source.names {
+                names.insert(global.as_str(), format!("{module}::{local}"));
+            }
+            modules.push(module);
+        }
+        fn spans(code: &[Instruction], result: &mut BTreeMap<(usize, usize), Option<String>>) {
+            for i in code {
+                if !matches!(
+                    i.action,
+                    Action::Emit(_) | Action::Drop(_) | Action::Release(_)
+                ) {
+                    let label = result
+                        .entry((i.provenance.span.line, i.provenance.span.column))
+                        .or_default();
+                    if i.provenance.site.is_some() {
+                        *label = i.provenance.site.clone();
+                    }
+                }
+                if let Action::Loop { body, .. } = &i.action {
+                    spans(body, result);
+                }
+            }
+        }
+        let sites: BTreeMap<_, _> = program
+            .regions()
+            .map(|r| {
+                let mut locations = BTreeMap::new();
+                spans(&r.code, &mut locations);
+                (
+                    r.name.as_str(),
+                    locations
+                        .into_iter()
+                        .enumerate()
+                        .map(|(i, (span, label))| {
+                            (
+                                span,
+                                match label {
+                                    Some(label) => format!("{label}@source:{}", i + 1),
+                                    None => format!("source:{}", i + 1),
+                                },
+                            )
+                        })
+                        .collect::<BTreeMap<_, _>>(),
+                )
+            })
+            .collect();
+        Ok(Self {
+            program,
+            modules,
+            names,
+            sites,
+        })
+    }
+    pub fn name(&self, value: &str) -> String {
+        fn source_name(value: &str, names: &BTreeMap<&str, String>) -> String {
+            if let Some((application, member)) = crate::collection_support::qualified_member(value)
+            {
+                return format!("{}.{member}", source_name(application, names));
+            }
+            if let Some((base, arguments)) = crate::collection_support::generic(value) {
+                return format!(
+                    "{}<{}>",
+                    source_name(base, names),
+                    arguments
+                        .iter()
+                        .map(|a| source_name(a, names))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+            }
+            names
+                .get(value)
+                .cloned()
+                .unwrap_or_else(|| crate::manifest::display_type(value))
+        }
+        source_name(value, &self.names)
+    }
+    pub fn location(&self, span: Span) -> Location {
+        let sources = self.program.source_files();
+        let index = sources
+            .iter()
+            .rposition(|s| s.start_line <= span.line)
+            .unwrap_or(0);
+        Location {
+            module: self.modules[index].clone(),
+            line: span
+                .line
+                .saturating_sub(sources[index].start_line - 1)
+                .max(1),
+            column: span.column.max(1),
+        }
+    }
+    pub fn outcomes(&self, internal: &str) -> Result<BTreeMap<String, Evidence>> {
+        let raw = self
+            .program
+            .contributors
+            .get(internal)
+            .ok_or_else(|| error("control has no checked contributor summary"))?;
+        raw.iter()
+            .map(|(outcome, notes)| {
+                let mut evidence = Evidence {
+                    contributors: vec![],
+                    truncated: false,
+                };
+                for note in notes {
+                    if note.kind == Kind::Omitted {
+                        evidence.truncated = true;
+                        continue;
+                    }
+                    let site = if note.kind == Kind::Declared {
+                        "declaration".into()
+                    } else {
+                        self.sites
+                            .get(note.control.as_str())
+                            .and_then(|m| m.get(&(note.span.line, note.span.column)))
+                            .ok_or_else(|| error("contributor source site is missing"))?
+                            .clone()
+                    };
+                    evidence.contributors.push(Contributor {
+                        kind: note.kind,
+                        control: self.name(&note.control),
+                        operation: note.operation.as_deref().map(|v| self.name(v)),
+                        outcome: note.outcome.clone(),
+                        site,
+                        location: self.location(note.span),
+                    });
+                }
+                evidence.contributors.sort_by(|a, b| key(a).cmp(&key(b)));
+                Ok((outcome.clone(), evidence))
+            })
+            .collect()
+    }
+}
+
 pub(crate) fn checked(
     program: &CheckedProgram,
     contracts: contracts::Snapshot,
 ) -> Result<Snapshot> {
-    let sources = program.source_files();
-    let base = sources[0].path.parent().unwrap();
-    let mut modules = vec![];
-    let mut names = BTreeMap::new();
-    for (i, source) in sources.iter().enumerate() {
-        let module = if i == 0 {
-            "@entry".into()
-        } else {
-            format!("file:{}", contracts::relative(&source.path, base)?)
-        };
-        for (global, local) in &source.names {
-            names.insert(global.as_str(), format!("{module}::{local}"));
-        }
-        modules.push(module);
-    }
-    fn source_name(value: &str, names: &BTreeMap<&str, String>) -> String {
-        if let Some((application, member)) = crate::collection_support::qualified_member(value) {
-            return format!("{}.{member}", source_name(application, names));
-        }
-        if let Some((base, arguments)) = crate::collection_support::generic(value) {
-            return format!(
-                "{}<{}>",
-                source_name(base, names),
-                arguments
-                    .iter()
-                    .map(|a| source_name(a, names))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            );
-        }
-        names
-            .get(value)
-            .cloned()
-            .unwrap_or_else(|| crate::manifest::display_type(value))
-    }
-    let name = |value: &str| source_name(value, &names);
-    fn spans(code: &[Instruction], result: &mut BTreeMap<(usize, usize), Option<String>>) {
-        for i in code {
-            if !matches!(
-                i.action,
-                Action::Emit(_) | Action::Drop(_) | Action::Release(_)
-            ) {
-                let label = result
-                    .entry((i.provenance.span.line, i.provenance.span.column))
-                    .or_default();
-                if i.provenance.site.is_some() {
-                    *label = i.provenance.site.clone();
-                }
-            }
-            if let Action::Loop { body, .. } = &i.action {
-                spans(body, result);
-            }
-        }
-    }
-    let sites: BTreeMap<_, _> = program
-        .regions()
-        .map(|r| {
-            let mut locations = BTreeMap::new();
-            spans(&r.code, &mut locations);
-            (
-                r.name.as_str(),
-                locations
-                    .into_iter()
-                    .enumerate()
-                    .map(|(i, (span, label))| {
-                        (
-                            span,
-                            match label {
-                                Some(label) => format!("{label}@source:{}", i + 1),
-                                None => format!("source:{}", i + 1),
-                            },
-                        )
-                    })
-                    .collect::<BTreeMap<_, _>>(),
-            )
-        })
-        .collect();
+    let index = SourceIndex::new(program)?;
     let mut controls = BTreeMap::new();
     for (module, contents) in &contracts.modules {
         for (local, declaration) in &contents.declarations {
@@ -372,59 +452,13 @@ pub(crate) fn checked(
                 );
                 continue;
             }
-            let internal = names
+            let internal = index
+                .names
                 .iter()
                 .find(|(_, n)| **n == public_name)
                 .map(|(n, _)| *n)
                 .ok_or_else(|| error("public control has no source identity"))?;
-            let raw = program
-                .contributors
-                .get(internal)
-                .ok_or_else(|| error("public control has no checked contributor summary"))?;
-            let mut outcomes = BTreeMap::new();
-            for (outcome, notes) in raw {
-                let mut evidence = Evidence {
-                    contributors: vec![],
-                    truncated: false,
-                };
-                for note in notes {
-                    if note.kind == Kind::Omitted {
-                        evidence.truncated = true;
-                        continue;
-                    }
-                    let index = sources
-                        .iter()
-                        .rposition(|s| s.start_line <= note.span.line)
-                        .unwrap_or(0);
-                    let site = if note.kind == Kind::Declared {
-                        "declaration".into()
-                    } else {
-                        sites
-                            .get(note.control.as_str())
-                            .and_then(|m| m.get(&(note.span.line, note.span.column)))
-                            .ok_or_else(|| error("contributor source site is missing"))?
-                            .clone()
-                    };
-                    evidence.contributors.push(Contributor {
-                        kind: note.kind,
-                        control: name(&note.control),
-                        operation: note.operation.as_deref().map(name),
-                        outcome: note.outcome.clone(),
-                        site,
-                        location: Location {
-                            module: modules[index].clone(),
-                            line: note
-                                .span
-                                .line
-                                .saturating_sub(sources[index].start_line - 1)
-                                .max(1),
-                            column: note.span.column.max(1),
-                        },
-                    });
-                }
-                evidence.contributors.sort_by(|a, b| key(a).cmp(&key(b)));
-                outcomes.insert(outcome.clone(), evidence);
-            }
+            let outcomes = index.outcomes(internal)?;
             controls.insert(
                 public_name,
                 Control {

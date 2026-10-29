@@ -47,6 +47,52 @@ function scheduleStart(context) {
 }
 async function activate(context) {
   registerBuildCommands(context);
+  for (const [command, selection] of [
+    ['tellur.explainSelection', true],
+    ['tellur.explainOutcome', false],
+  ]) context.subscriptions.push(vscode.commands.registerCommand(command, async (target) => {
+    const editor = vscode.window.activeTextEditor;
+    const source = editor?.document;
+    if (!source || !['tellur', 'path'].includes(source.languageId)) {
+      void vscode.window.showWarningMessage('Open a Tellur source file to request an explanation.');
+      return null;
+    }
+    const position = editor.selection.active;
+    await startQueue;
+    if (!client) {
+      void vscode.window.showWarningMessage('The Tellur language server must be running in a trusted workspace.');
+      return null;
+    }
+    try {
+      const textDocument = { uri: source.uri.toString() };
+      let query;
+      if (selection) {
+        query = { kind: 'selection', position: { line: position.line, character: position.character } };
+      } else {
+        if (!target) {
+          const targets = await client.sendRequest('tellur/explainTargets', { textDocument });
+          if (!targets.length) {
+            void vscode.window.showInformationMessage('No ordinary concrete control outcomes in this file. Generic source selections can be explained at the cursor.');
+            return null;
+          }
+          const picked = await vscode.window.showQuickPick(targets.map(t => ({ label: `${t.control} → ${t.outcome}`, target: t })), {
+            placeHolder: 'Choose an outcome to inspect (includes private controls)',
+          });
+          if (!picked) return null;
+          target = picked.target;
+        }
+        query = { kind: 'outcome', control: target.control, outcome: target.outcome };
+      }
+      // This request checks again after any picker delay and flushes unsaved edits.
+      const report = await client.sendRequest('tellur/explain', { textDocument, query });
+      const document = await vscode.workspace.openTextDocument({ language: 'markdown', content: report.markdown });
+      await vscode.window.showTextDocument(document, { preview: false });
+      return report;
+    } catch (error) {
+      void vscode.window.showErrorMessage(`Tellur explanation failed: ${error.message}`);
+      return null;
+    }
+  }));
   for (const [command, method, label] of [
     ['tellur.showContractSnapshot', 'tellur/contractSnapshot', 'contract snapshot'],
     ['tellur.showAbsorptionSnapshot', 'tellur/absorptionSnapshot', 'outcome absorption snapshot'],

@@ -649,6 +649,7 @@ fn protocol_initialize_diagnostics_unknown_method_and_shutdown() {
     assert_eq!(capabilities["documentFormattingProvider"], true);
     assert_eq!(capabilities["experimental"]["tellurContractSnapshot"], 1);
     assert_eq!(capabilities["experimental"]["tellurAbsorptionSnapshot"], 1);
+    assert_eq!(capabilities["experimental"]["tellurExplain"], 1);
     client
         .sender
         .send(Notification::new("initialized".into(), json!({})).into())
@@ -690,6 +691,40 @@ fn protocol_initialize_diagnostics_unknown_method_and_shutdown() {
         panic!("expected snapshot response")
     };
     assert_eq!(response.response_result.unwrap_err().code, -32803);
+    for (id, method, params, code) in [
+        (30, "tellur/explain", json!({}), -32602),
+        (
+            31,
+            "tellur/explain",
+            json!({"textDocument":{"uri":"untitled:test"}}),
+            -32602,
+        ),
+        (
+            32,
+            "tellur/explain",
+            json!({"textDocument":{"uri":"untitled:test"},"query":{"kind":"outcome","control":"main","outcome":"done"}}),
+            -32803,
+        ),
+        (
+            33,
+            "tellur/explainTargets",
+            json!({"textDocument":{"uri":"untitled:test"}}),
+            -32803,
+        ),
+    ] {
+        client
+            .sender
+            .send(Request::new(id.into(), method.into(), params).into())
+            .unwrap();
+        let Message::Response(response) = client
+            .receiver
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap()
+        else {
+            panic!("expected explanation response")
+        };
+        assert_eq!(response.response_result.unwrap_err().code, code);
+    }
     for (id, options, error) in [
         (10, json!({"tabSize": 4, "insertSpaces": true}), false),
         (11, json!({"tabSize": 0, "insertSpaces": true}), true),
@@ -2307,4 +2342,134 @@ fn imported_history_positions_and_unsaved_dependency_errors_are_current() {
         &json!({"textDocument":{"uri":imported}}),
     );
     assert!(!history_hover(&f, source, "[selected]").is_null());
+}
+
+fn explain_at(f: &Fixture, source: &str, marker: &str) -> Result<Value, String> {
+    let before = &source[..source.find(marker).unwrap()];
+    f.server.explain(&f.uri,&json!({"kind":"selection","position":{"line":before.bytes().filter(|&c|c==b'\n').count(),"character":before.rsplit('\n').next().unwrap().encode_utf16().count()}}))
+}
+#[test]
+fn explanation_queries_use_current_utf16_positions_and_refuse_stale_sources() {
+    let mut f = Fixture::new();
+    let source = "control main(bool flag) exits done {emit(\"😀\");delta flag {true=>yes,false=>no}[yes]:emit(\"chosen\");[entry]:exit done;}";
+    f.open(source);
+    let report = explain_at(&f, source, "chosen").unwrap();
+    assert_eq!(report["result"]["selection"]["condition"], "yes");
+    let arm = source.find("true=>").unwrap();
+    assert_eq!(
+        report["result"]["selection"]["decision_arms"][0]["location"]["column"],
+        source[..arm].chars().count() + 1
+    );
+    let emoji = source[..source.find('😀').unwrap()].encode_utf16().count();
+    assert!(
+        f.server
+            .explain(
+                &f.uri,
+                &json!({"kind":"selection","position":{"line":0,"character":emoji+1}})
+            )
+            .unwrap_err()
+            .contains("UTF-16")
+    );
+    let changed = source.replace("[yes]:", "[no]:");
+    f.change(&changed, 2);
+    assert_eq!(
+        explain_at(&f, &changed, "chosen").unwrap()["result"]["selection"]["condition"],
+        "no"
+    );
+    f.change(&changed.replace("exit done;", "exit wrong;"), 3);
+    assert!(explain_at(&f, &changed, "chosen").is_err());
+    f.change(source, 2); // rejected stale version must not repair the invalid graph
+    assert!(explain_at(&f, source, "chosen").is_err());
+    f.change(source, 4);
+    assert!(explain_at(&f, source, "chosen").is_ok());
+    for query in [
+        json!({"kind":"selection","position":{"line":0,"character":0},"extra":true}),
+        json!({"kind":"selection","line":1,"column":1}),
+        json!({"kind":"outcome","control":"main"}),
+        json!({"kind":"outcome","control":"main","outcome":"done","extra":true}),
+    ] {
+        assert!(f.server.explain(&f.uri, &query).is_err());
+    }
+}
+#[test]
+fn outcome_queries_and_target_lists_follow_unsaved_imports_and_close() {
+    let mut f = Fixture::new();
+    let library = f.root.join("library.tellur");
+    let uri = url::Url::from_file_path(&library).unwrap().to_string();
+    let text = "control leaf() exits auto {exit missing;}pub control lookup() exits failed {exit delta leaf() {missing=>failed {}};}";
+    fs::write(&library, text).unwrap();
+    f.open(
+        "import \"library.tellur\" as lib;control lookup() exits failed {forward lib.lookup();}",
+    );
+    let query = json!({"kind":"outcome","control":"lookup","outcome":"failed"});
+    assert_eq!(
+        f.server.explain_targets(&f.uri).unwrap(),
+        json!([{"control":"lookup","outcome":"failed"}])
+    );
+    let first = f.server.explain(&f.uri, &query).unwrap();
+    f.server.notification(
+        "textDocument/didOpen",
+        &json!({"textDocument":{"uri":uri,"version":1,"text":text.replace("missing","malformed")}}),
+    );
+    let second = f.server.explain(&f.uri, &query).unwrap();
+    assert!(
+        second["result"]["evidence"]["contributors"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|c| c["control"] == "file:library.tellur::leaf" && c["outcome"] == "malformed")
+    );
+    f.server.notification(
+        "textDocument/didChange",
+        &json!({"textDocument":{"uri":uri,"version":2},"contentChanges":[{"text":"broken"}]}),
+    );
+    assert!(f.server.explain(&f.uri, &query).is_err());
+    assert!(f.server.explain_targets(&f.uri).is_err());
+    f.server.notification(
+        "textDocument/didClose",
+        &json!({"textDocument":{"uri":uri}}),
+    );
+    assert_eq!(f.server.explain(&f.uri, &query).unwrap(), first);
+}
+#[test]
+fn explanation_requests_require_open_file_and_valid_manifest() {
+    let mut f = Fixture::new();
+    let query = json!({"kind":"outcome","control":"main","outcome":"done"});
+    assert!(f.server.explain(&f.uri, &query).is_err());
+    assert!(f.server.explain_targets(&f.uri).is_err());
+    f.open("control main() exits done {exit done;}");
+    fs::remove_file(f.root.join("manifest.json")).unwrap();
+    assert!(f.server.explain(&f.uri, &query).is_err());
+    f.server.notification("textDocument/didOpen",&json!({"textDocument":{"uri":"untitled:explain","version":1,"text":"control main() exits done {exit done;}"}}));
+    assert!(
+        f.server
+            .explain("untitled:explain", &query)
+            .unwrap_err()
+            .contains("save the source file")
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn explanation_serialization_errors_do_not_crash_the_server() {
+    use std::os::unix::ffi::OsStringExt;
+    let mut f = Fixture::new();
+    let path = f.root.join(std::ffi::OsString::from_vec(
+        b"invalid-\xff.tellur".to_vec(),
+    ));
+    f.uri = url::Url::from_file_path(path).unwrap().to_string();
+    f.open("control main() exits done {exit done;}");
+    assert_eq!(
+        f.server.explain_targets(&f.uri).unwrap(),
+        json!([{"control":"main","outcome":"done"}])
+    );
+    assert!(
+        f.server
+            .explain(
+                &f.uri,
+                &json!({"kind":"outcome","control":"main","outcome":"done"})
+            )
+            .is_err()
+    );
+    assert_eq!(f.diagnostics(), json!([]));
 }

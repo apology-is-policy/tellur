@@ -15,6 +15,19 @@ use std::{
 };
 use url::Url;
 
+#[derive(serde::Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+enum ExplainQuery {
+    Selection { position: ExplainPosition },
+    Outcome { control: String, outcome: String },
+}
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ExplainPosition {
+    line: u64,
+    character: u64,
+}
+
 #[derive(Clone)]
 struct Document {
     text: String,
@@ -398,6 +411,44 @@ impl Server {
     /// Export bounded source contributors alongside the public contracts.
     pub fn absorption_snapshot(&self, uri: &str) -> std::result::Result<Value, String> {
         self.snapshot(uri, true)
+    }
+    fn explanation_program(&self, uri: &str) -> std::result::Result<crate::CheckedProgram, String> {
+        if !self.documents.contains_key(uri) {
+            return Err("open the source document before requesting an explanation".into());
+        }
+        file_path(uri).ok_or("save the source file first so its modules have stable identities")?;
+        self.checked(uri).map_err(|e| e.to_string())
+    }
+    /// Targets from the current checked graph, including private entry-file controls.
+    pub fn explain_targets(&self, uri: &str) -> std::result::Result<Value, String> {
+        Ok(json!(crate::explain::targets(
+            &self.explanation_program(uri)?
+        )))
+    }
+    /// The wire selection uses LSP's zero-based UTF-16 positions. The report uses
+    /// one-based scalar positions, matching CLI diagnostics and source locations.
+    pub fn explain(&self, uri: &str, query: &Value) -> std::result::Result<Value, String> {
+        let query = serde_json::from_value(query.clone()).map_err(|e| e.to_string())?;
+        self.explain_query(uri, query)
+    }
+    fn explain_query(&self, uri: &str, query: ExplainQuery) -> std::result::Result<Value, String> {
+        let program = self.explanation_program(uri)?;
+        let doc = &self.documents[uri];
+        let query = match query {
+            ExplainQuery::Selection { position } => {
+                let at = scalar_span(&doc.text, position.line, position.character)
+                    .ok_or("invalid UTF-16 source position")?;
+                crate::explain::Query::Selection {
+                    line: at.line,
+                    column: at.column,
+                }
+            }
+            ExplainQuery::Outcome { control, outcome } => {
+                crate::explain::Query::Outcome { control, outcome }
+            }
+        };
+        let report = crate::explain::checked(&program, &doc.text, query)?;
+        serde_json::to_value(report).map_err(|e| e.to_string())
     }
     fn snapshot(&self, uri: &str, absorption: bool) -> std::result::Result<Value, String> {
         if !self.documents.contains_key(uri) {
@@ -1051,6 +1102,30 @@ fn exit_description_with_origins(
 }
 fn request(server: &Server, request: Request) -> Response {
     match request.method.as_str() {
+        "tellur/explain" | "tellur/explainTargets" => {
+            let Some(uri) = request.params["textDocument"]["uri"].as_str() else {
+                return Response::new_err(request.id, -32602, "missing document URI".into());
+            };
+            let result = if request.method == "tellur/explainTargets" {
+                server.explain_targets(uri)
+            } else {
+                let query = match serde_json::from_value(request.params["query"].clone()) {
+                    Ok(query) => query,
+                    Err(e) => {
+                        return Response::new_err(
+                            request.id,
+                            -32602,
+                            format!("invalid explanation query: {e}"),
+                        );
+                    }
+                };
+                server.explain_query(uri, query)
+            };
+            match result {
+                Ok(report) => Response::new_ok(request.id, report),
+                Err(message) => Response::new_err(request.id, -32803, message),
+            }
+        }
         "tellur/contractSnapshot" | "tellur/absorptionSnapshot" => {
             match request.params["textDocument"]["uri"].as_str() {
                 Some(uri) => {
@@ -1116,7 +1191,7 @@ pub fn serve(connection: Connection) -> std::result::Result<(), Box<dyn std::err
     connection.initialize_finish(id,json!({"capabilities":{
         "positionEncoding":"utf-16", "textDocumentSync":{"openClose":true,"change":1,"save":{"includeText":false}},
         "documentSymbolProvider":true, "hoverProvider":true, "documentFormattingProvider":true,
-        "experimental":{"tellurContractSnapshot":1,"tellurAbsorptionSnapshot":1}
+        "experimental":{"tellurContractSnapshot":1,"tellurAbsorptionSnapshot":1,"tellurExplain":1}
     },"serverInfo":{"name":"tellur-lsp","version":env!("CARGO_PKG_VERSION")}}))?;
     let mut last_publication = Instant::now();
     loop {

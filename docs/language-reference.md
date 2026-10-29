@@ -1,8 +1,8 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.58.0 -->
+<!-- tellur-reference-version: 0.59.0 -->
 
-This manual describes **compiler 0.58.0**, including the current ownership model,
+This manual describes **compiler 0.59.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -38,6 +38,7 @@ The companion chapters provide quick lookup:
 - [Formatting](reference/formatting.md): terminal commands, VS Code and layout preservation.
 - [Public contract snapshots](reference/contract-snapshots.md): portable checked interfaces, reviewable diffs and the editor JSON view.
 - [Outcome absorption](reference/outcome-absorption.md): internal contributors and changes hidden by an unchanged public contract.
+- [Explanations](reference/explanations.md): source-position histories and targeted outcome contributors, including private controls.
 - [Glossary](reference/glossary.md): precise meanings of Tellur's terminology.
 
 ## Contents
@@ -882,6 +883,8 @@ See [the runnable example](../playground/path_groups.tellur) for nested selectio
 and an entry reset inside a group.
 
 ### Selected-history hover
+
+For persistent, queryable reports, see [explaining paths and outcomes](reference/explanations.md).
 
 In VS Code, hover over a path selector, alias, delta arm, or executable statement
 to see its **resolved structural selection**. A nested `[brief]:` inside
@@ -2636,7 +2639,7 @@ It does not yet provide general expression or call-site type hover.
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and async tasks remain planned; they are not executable features of 0.58.0.
+and async tasks remain planned; they are not executable features of 0.59.0.
 ## Compare supplied scenarios
 
 ```sh

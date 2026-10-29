@@ -9,6 +9,7 @@ mod collections;
 pub mod contracts;
 pub mod diagnostics;
 mod expand;
+pub mod explain;
 pub mod extract;
 pub mod format;
 mod generic_controls;
@@ -42,7 +43,7 @@ pub struct Span {
     pub column: usize,
 }
 /// Half-open source range in one-based Unicode scalar coordinates.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize)]
 pub struct SourceRange {
     pub start: Span,
     pub end: Span,

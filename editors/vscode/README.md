@@ -599,3 +599,19 @@ contract changes separately from internal contributor changes. Try
 `playground/outcome_absorption.tellur`; its `unavailable` public outcome absorbs two
 different private outcomes. See [the reference](https://github.com/apology-is-policy/tellur/blob/main/docs/reference/outcome-absorption.md)
 for the exact scope and baseline workflow.
+
+
+## Path and outcome explanations (0.59)
+
+**Tellur: Explain Path Selection at Cursor** opens the checked selection at the
+cursor. **Tellur: Explain Outcome Contributors** offers a picker of the active
+file's ordinary concrete controls and their outcomes, including private controls.
+Both open editable Markdown reports with source links; Markdown preview renders
+the links. Rerun after editing: these are fixed reports, using current unsaved
+sources and imports. Invalid checking produces an error instead of stale evidence.
+
+Try `playground/path_explanations.tellur`. Generic/trait source selections work;
+generic/trait outcome roots remain unavailable. Conditions, decision origins and
+contributors have explicit bounds. These are structural facts, not concrete-input
+proofs. See [the query reference](https://github.com/apology-is-policy/tellur/blob/main/docs/reference/explanations.md)
+for terminal commands, JSON, coordinate conventions and remaining analysis gaps.

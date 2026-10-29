@@ -1,0 +1,35 @@
+// Try Tellur: Explain Path Selection at Cursor on [accepted].
+// Try Tellur: Explain Outcome Contributors, then choose classify -> invalid.
+control classify(bool present, bool valid) exits accepted, invalid {
+    delta present {
+        true => exists,
+        false => exit invalid
+    }
+    [exists]:
+        delta valid {
+            true => good,
+            false => exit invalid
+        }
+    [good]:
+        exit accepted;
+}
+
+control main() exits process_result {
+    delta classify(true, false) {
+        accepted => accepted,
+        invalid => rejected
+    }
+    path inspected = accepted | rejected;
+    [inspected]: {
+        emit("classification completed");
+        [accepted]:
+            emit("accepted");
+        [rejected]:
+            emit("rejected");
+    }
+    exit done;
+}
+
+outcome process_result {
+    @exit 0 done
+}

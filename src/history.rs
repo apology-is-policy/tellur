@@ -159,6 +159,44 @@ pub(crate) struct SelectedHistory {
     empty: bool,
 }
 impl SelectedHistory {
+    pub fn summary(&self, offset: usize) -> crate::explain::Selection {
+        let mut facts = BTreeMap::new();
+        let condition_truncated = self.condition.facts(&mut facts);
+        crate::explain::Selection {
+            kind: match self.kind {
+                SelectionKind::Statement => "statement",
+                SelectionKind::Outcome => "outcome",
+                SelectionKind::Arm => "arm",
+                SelectionKind::Scope => "scope",
+                SelectionKind::Alias => "alias",
+                SelectionKind::Loop => "loop",
+            }
+            .into(),
+            condition: self.condition.text(0, &facts, offset),
+            structurally_empty: self.empty,
+            iteration: self.iteration.clone(),
+            decision_arms: facts
+                .values()
+                .take(MAX_ORIGINS)
+                .map(|f| crate::explain::DecisionArm {
+                    name: f.name.clone(),
+                    outcome: f.outcome.clone(),
+                    implicit: f.implicit,
+                    location: Span {
+                        line: f.span.line.saturating_sub(offset),
+                        column: f.span.column,
+                    },
+                })
+                .collect(),
+            condition_truncated,
+            origins_truncated: facts.len() > MAX_ORIGINS,
+            limits: crate::explain::SelectionLimits {
+                condition_nodes: MAX_NODES,
+                condition_depth: MAX_DEPTH,
+                decision_arms: MAX_ORIGINS,
+            },
+        }
+    }
     pub fn capture(
         control: String,
         span: Span,

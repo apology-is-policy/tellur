@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.58.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.59.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -1782,3 +1782,72 @@ Evidence: `work/tellur-0.58-validation.json`, `tellur-0.58-tests.log`,
 `tellur-0.58-install.log`, `tellur-0.58-installed-integrity.log` and
 `tellur-0.58-backup.log`. The verified source snapshot is
 `work/revision-backups/tellur-0.58-source.tar.gz`.
+
+## 0.59 — Bounded path and outcome explanations
+
+The P4c query slice provides `tellurc explain SOURCE [MANIFEST] --at LINE:COLUMN`
+and `--control NAME --outcome NAME`, with readable Markdown by default and a
+versioned `tellur.explanation` JSON report under `--json`. Source-position queries
+reuse the selected-history metadata, including aliases, groups, local outcome
+facts, empty selections, generic/trait source bodies and one-iteration loop context.
+Outcome queries reuse the absorption source index and bounded contributor sets;
+ordinary private controls can be queried without making their declarations public.
+Imported contributors retain their module identities and source locations.
+
+The language server advertises `tellurExplain: 1` and implements checked
+`tellur/explain` and `tellur/explainTargets`. VS Code adds **Explain Path Selection
+at Cursor** and **Explain Outcome Contributors**, including an outcome picker and
+editable Markdown reports. Requests use current unsaved source graphs; the outcome
+request checks again after the picker. Invalid sources, manifests or targets do
+not produce partial/stale reports. Input positions are scalar-based in the CLI and
+UTF-16 in the editor. Markdown links navigate to source lines, with scalar columns
+in their labels, avoiding editor-dependent column encodings.
+
+The implementation preserves the analysis bounds: 96 captured condition nodes,
+depth 48, eight displayed decision origins and 32 contributors per outcome.
+Condition/origin omissions and contributor truncation are explicit. These are
+structural observations, not feasible-input proofs, complete execution histories,
+execution certificates, or behavioral equivalence judgments. Generic/trait
+outcome roots remain unavailable; source-position queries inside their bodies
+remain supported. Loop-carried values, indirect storage, dynamic collection contents
+and cross-call payload lineage remain follow-up work.
+
+The new `playground/path_explanations.tellur` example has an explicit executable
+status contract and runs both in the interpreter and natively, emitting
+`classification completed`, `rejected`, then completing with `done`. The settings
+application documents queries for private `validate_key.invalid` and public
+`set.storage_failed`; the latter retains file-read, encoding and write failure
+contributors. Its committed contract/absorption baseline remains unchanged.
+
+Validation: **879 distinct Rust tests pass**. The full all-targets run passed 878;
+the final 103-test explanation/LSP/manual run also passed, adding a Unix filename
+encoding regression after final review. The latter confirms that a report which
+cannot be serialized returns an error without terminating the server. Clippy with
+warnings denied and Rust formatting checks pass. All **63 maintained modern sources**
+check; the manual verifies **58 accepted examples, 22 expected diagnostics,
+14 declared context fragments and 197 local links**. All **35 Node tests** pass.
+
+The complete real VS Code integration suite passes, including the new cursor
+query with UTF-16 input, Markdown output and source links, the actual private-outcome
+picker, updated unsaved contributors and invalid-source refusal. The existing
+formatter test uses the real provider and applies edits to the live buffer when
+macOS leaves the isolated test window inactive. Existing native builds, LLVM output,
+retained resources and the live HTTP application remain covered. The final report
+serialization error handling is covered by the targeted LSP regression above.
+
+Compiler and language server report **0.59.0**, including the explanation capability.
+All nine packaged and installed extension payloads match staging; executable bits
+are retained. The verified extension is installed without reloading the user's
+existing editor windows. Reload VS Code to activate it in an already open window.
+
+Evidence: `work/tellur-0.59-validation.json`, `tellur-0.59-tests.log`,
+`tellur-0.59-final-regressions.log`, `tellur-0.59-clippy-final.log`,
+`tellur-0.59-examples.log`, `tellur-0.59-settings-diff.log`, `tellur-0.59-node.log`,
+`tellur-0.59-editor.log`, `tellur-0.59-example-run.log`,
+`tellur-0.59-example-native.log`, `tellur-0.59-selection.md`,
+`tellur-0.59-explanation.json`, `tellur-0.59-settings-validation.md`,
+`tellur-0.59-settings-failure.md`, `tellur-0.59-build-final.log`,
+`tellur-0.59-versions.log`, `tellur-0.59-package.log`,
+`tellur-0.59-package-integrity.log`, `tellur-0.59-install.log`,
+`tellur-0.59-installed-integrity.log` and `tellur-0.59-backup.log`.
+The verified source snapshot is `work/revision-backups/tellur-0.59-source.tar.gz`.

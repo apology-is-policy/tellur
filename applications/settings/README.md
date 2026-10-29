@@ -72,6 +72,22 @@ arguments in workspace settings, for example:
 }
 ```
 
+## Inspect decisions and failure contributors
+
+Use the compiler's explanations while changing the application policy:
+
+```sh
+./bin/tellurc explain applications/settings/settings.tellur --control validate_key --outcome invalid
+./bin/tellurc explain applications/settings/settings.tellur --control set --outcome storage_failed
+```
+
+The first query inspects a private control; the second shows the bounded contributors
+to one public failure, including file and encoding outcomes. In VS Code use **Tellur:
+Explain Outcome Contributors**, or put the cursor on a path label and use **Tellur:
+Explain Path Selection at Cursor**. Reports use current checked sources, expose
+analysis limits, and make no claim that every structural history has a feasible
+input. See [the reference](../../docs/reference/explanations.md).
+
 ## Run the HTTP service
 
 After building `main.tellur` as above, run:
