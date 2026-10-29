@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.53.0** implements the v0.1 checked core and the current language
+Compiler release **0.54.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -42,6 +42,11 @@ failed controls. Inferred hover remains unavailable until the current program ch
 Release 0.53 adds [optional path grouping](docs/language-reference.md#labels-and-optional-grouping):
 `[path]: { ... }` gives a selection an explicit end without creating a new value or
 lifetime scope. Ordinary labels stay unbraced. Try [path_groups.tellur](playground/path_groups.tellur).
+
+Release 0.54 adds [direct arm exits](docs/language-reference.md#direct-arm-exits):
+`missing => exit absent` immediately completes that history without a throwaway path
+label. The settings application now uses them for validation and storage failures.
+Try [arm_exits.tellur](playground/arm_exits.tellur).
 
 The [semantic foundation](docs/semantic-foundation.md) distinguishes compatibility,
 ownership transfer, behavioral equivalence and provenance. Executable law tests and

@@ -158,6 +158,27 @@ exports.run = async function () {
     assert.equal(groupsRun.code, 0, groupsRun.stderr);
     assert.equal(groupsRun.stdout.trim(), 'Full details\nAvailable\nDescription complete\nUnavailable\nDescription complete\ndone');
     console.log('TELLUR_PATH_GROUPS_EDITOR_TESTS_PASSED: inferred hover, selection error, repair and native shared continuation');
+    const armManifestBefore = await fs.readFile(manifestPath, 'utf8');
+    await fs.writeFile(manifestPath, await fs.readFile(path.join(__dirname, '../../../playground/manifest.json'), 'utf8'));
+    try {
+      const armExits = await fs.readFile(path.join(__dirname, '../../../playground/arm_exits.tellur'), 'utf8');
+      await replace(buildDocument, armExits);
+      const armAutoLine = armExits.split('\n').findIndex(line => line.includes('auto value'));
+      await waitFor(async () => {
+        const hover = await vscode.commands.executeCommand('vscode.executeHoverProvider', buildUri, new vscode.Position(armAutoLine, armExits.split('\n')[armAutoLine].indexOf('auto')));
+        return revisedDiagnostics().length === 0 && hover?.some(h => h.contents.some(c => /u32 value/.test(c.value)));
+      }, 'direct arm exits accepted with the playground manifest');
+      await replace(buildDocument, armExits.replace('exit ready { value }', 'exit ready { false }'));
+      await waitFor(() => revisedDiagnostics().some(d => code(d) === 'E_TYPE'), 'direct exit payload contract error');
+      const armError = revisedDiagnostics().find(d => code(d) === 'E_TYPE');
+      assert.equal(buildDocument.getText(armError.range), 'false');
+      await replace(buildDocument, armExits);
+      await waitFor(() => revisedDiagnostics().length === 0, 'direct exit repair');
+      const armRun = await buildWithStatus('tellur.buildAndRun', { output: path.join(root, 'native output', 'arm-exits') }, {"done": 0, "failed": 1});
+      assert.equal(armRun.code, 0, armRun.stderr);
+      assert.equal(armRun.stdout.trim(), '8080\ndone');
+      console.log('TELLUR_ARM_EXITS_EDITOR_TESTS_PASSED: direct exit contract, precise range, repair and native execution');
+    } finally { await fs.writeFile(manifestPath, armManifestBefore); }
     await replace(buildDocument, revised);
     await waitFor(() => revisedDiagnostics().length === 0, 'typed declaration repair');
     const owned = 'control main() exits auto { [entry]: mutable string text="before"; auto ref=&mutable text; *ref="after"; emit(ref); drop(ref); exit done {text}; }';

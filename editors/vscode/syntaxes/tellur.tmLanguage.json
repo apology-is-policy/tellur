@@ -235,7 +235,29 @@
           "include": "#comments"
         },
         {
-          "match": "(=>)\\s*([A-Za-z_][A-Za-z0-9_]*)",
+          "match": "(=>)\\s*(exit)(?=\\s*[,}\\]])",
+          "captures": {
+            "1": {
+              "name": "keyword.operator.tellur"
+            },
+            "2": {
+              "name": "constant.other.tellur"
+            }
+          }
+        },
+        {
+          "match": "\\b(exit)\\s+((?!delta\\b)[A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "keyword.control.tellur"
+            },
+            "2": {
+              "name": "entity.name.type.outcome.tellur"
+            }
+          }
+        },
+        {
+          "match": "(=>)\\s*((?!exit\\b)[A-Za-z_][A-Za-z0-9_]*)",
           "captures": {
             "1": {
               "name": "keyword.operator.tellur"
@@ -388,7 +410,18 @@
     "modern_arms": {
       "patterns": [
         {
-          "match": "(=>)\\s*((?!(?:delta|forward)\\b)[A-Za-z_][A-Za-z0-9_]*)\\b(?!\\s*[({])",
+          "match": "(=>)\\s*(exit)(?=\\s*[,}\\]])",
+          "captures": {
+            "1": {
+              "name": "keyword.operator.tellur"
+            },
+            "2": {
+              "name": "constant.other.tellur"
+            }
+          }
+        },
+        {
+          "match": "(=>)\\s*((?!(?:delta|forward|exit)\\b)[A-Za-z_][A-Za-z0-9_]*)\\b(?!\\s*[({])",
           "captures": {
             "1": {
               "name": "keyword.operator.tellur"

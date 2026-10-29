@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.53.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.54.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -12,7 +12,7 @@ The linked regression suites give more detailed acceptance and rejection evidenc
 | Area | Current support | Boundary / next work | Evidence |
 | --- | --- | --- | --- |
 | Controls and paths | Typed parameters, exhaustive delta, selected histories, inferred contracts, aliases, optional grouping and lexical scopes | No recursive calls or value-level proof of path feasibility | [Revision tests](../../tests/revision.rs), [path grouping](../../tests/path_groups.rs) |
-| Adapters and forwarding | Nested tail adapters, stored adapters, explicit compatible forwarding, one-nullary-completion statements | No arm statement blocks or general expression-position adapters | [Adapter tests](../../tests/adapters.rs), [forwarding tests](../../tests/forward.rs) |
+| Adapters and forwarding | Direct arm exits, nested tail adapters, stored adapters, explicit compatible forwarding, one-nullary-completion statements | No arm statement blocks or general expression-position adapters | [Direct exit tests](../../tests/arm_exits.rs), [Adapter tests](../../tests/adapters.rs), [forwarding tests](../../tests/forward.rs) |
 | Completed outcomes | Capture now, handle later; named and producer-indexed contracts; mandatory handling | Not futures; no implicit structural assignment across unrelated named types | [Outcome tests](../../tests/outcomes.rs), [named contracts](../../tests/named_outcomes.rs) |
 | Payload inference | Private `exits auto` and selected nonempty `label...`; local/pattern `auto` | Explicit public and trait contracts; no general signature wildcard | [Inference tests](../../tests/payload_inference.rs) |
 | Data declarations | Nominal structs, closed variants, wrappers, named/positional struct construction | No recursive layouts, inheritance, defaults or update spreads | [Data tests](../../tests/data_types.rs), [field tests](../../tests/named_fields.rs) |

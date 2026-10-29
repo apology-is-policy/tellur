@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.53.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.54.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -1492,3 +1492,57 @@ Evidence: `work/tellur-0.53-validation.json`, `tellur-0.53-tests.log`,
 `tellur-0.53-package-integrity.log`, `tellur-0.53-install.log`,
 `tellur-0.53-installed-integrity.log` and `tellur-0.53-backup.log`.
 The verified source snapshot is `work/revision-backups/tellur-0.53-source.tar.gz`.
+
+## 0.54 — Direct arm exits
+
+Ordinary delta arms may use `=> exit` with the same nullary, payload, stored-outcome
+and nested-adapter meanings as an exit statement. The arm comma/end replaces the
+statement semicolon. Continuing arms still publish their path atom and payloads;
+terminating arms use private payload scopes and publish no source path. Exhaustive
+coverage, fixed contracts, moves, borrowing and resource completion remain checked.
+Later selected work cannot overlap a terminated history. Legacy decision syntax
+and an existing path named `exit` remain accepted.
+
+The checker resolves terminating payload declarations before exporting continuing
+payloads, making sibling name/type reuse independent of arm order. This does not
+reorder runtime effects: exactly one outcome is selected. Actual outer bindings
+still cannot be shadowed. The existing decision IR and exit actions preserve
+provenance and remain subject to expansion certificates; no new runtime primitive
+or activation model is introduced.
+
+`tests/arm_exits.rs` checks mixed/all-terminal routing, private and shared sibling
+names, fixed/inferred contracts, resources, borrowed results, local escape,
+stored completions, nested adapters, legacy parsing, groups/loops, module and
+generic traversal, imported expression ranges, failed-caller suppression,
+extraction, and original/expanded native agreement at O0/O2. LSP and real VS Code
+tests check inferred payload hover, precise exit errors, repairs and native output.
+TextMate tests distinguish exit keywords, outcomes and continuing paths. The
+`delta_exit` snippet and `playground/arm_exits.tellur` make the feature available
+for experimentation.
+
+The maintained settings application now directly exits validation, loading and
+encoding failures while retaining named success paths and its existing public
+contracts. Scripted and live CLI/HTTP tests maintain the behavior. General arm
+statement blocks and direct loop restarts remain unsupported. Selected-history
+editor feedback is the next P3 checkpoint.
+
+Validation covers **816 distinct Rust tests**: the full run passed **815**, then
+final focused runs passed **84** compiler/LSP tests and **8** CLI/HTTP tests after
+the sibling-name ordering fix; the added sibling regression also passes with
+reference payloads in both arm orders. Clippy passes all targets with warnings
+denied. All **35 Node tests** and the complete real VS Code suite pass, including
+live HTTP and retained-resource execution. The manual checks **57** accepted
+examples, **22** expected diagnostics, **14** context fragments and **169** local
+links. All **60** maintained Tellur sources pass release checking. Compiler and
+LSP initialization report **0.54.0**; all nine packaged and installed payloads,
+metadata and executable permissions are verified.
+
+Evidence: `work/tellur-0.54-validation.json`, `tellur-0.54-tests.log`,
+`tellur-0.54-focused-final.log`, `tellur-0.54-application-final.log`,
+`tellur-0.54-sibling-final.log`, `tellur-0.54-manual-final.log`,
+`tellur-0.54-clippy.log`, `tellur-0.54-examples.log`, `tellur-0.54-node.log`,
+`tellur-0.54-editor.log`, `tellur-0.54-build.log`, `tellur-0.54-versions.log`,
+`tellur-0.54-package.log`, `tellur-0.54-package-integrity.log`,
+`tellur-0.54-install.log`, `tellur-0.54-installed-integrity.log` and
+`tellur-0.54-backup.log`. The verified source snapshot is
+`work/revision-backups/tellur-0.54-source.tar.gz`.

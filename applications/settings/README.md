@@ -8,6 +8,10 @@ mapping. `host.rs` implements file, JSON and text mechanisms through typed Rust
 adapters generated from `manifest.json`. The committed `Cargo.lock` makes native
 builds use the declared dependency graph.
 
+Since compiler 0.54, validation and storage failures use direct arm exits such as
+`invalid => exit invalid_key`. The continuing success paths remain labeled; the
+public contracts and host mechanisms are unchanged.
+
 `http.tellur` owns endpoint policy, request validation and HTTP response choices.
 `server.tellur` owns acceptance, connection budgets and explicit completion. Rust
 provides sockets, bounded HTTP parsing through pinned `httparse` 1.10.1, and response

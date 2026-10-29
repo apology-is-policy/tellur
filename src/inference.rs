@@ -124,44 +124,56 @@ pub(crate) fn dependency_order(
         }
         visit(ty, calls, manifest, &mut BTreeSet::new());
     }
+    fn statement_calls(
+        statement: &Statement,
+        calls: &mut BTreeSet<String>,
+        manifest: &crate::manifest::Manifest,
+    ) {
+        if let Statement::Delta(_, _, arms) = statement {
+            for arm in arms {
+                for field in &arm.bindings {
+                    type_calls(&field.ty, calls, manifest);
+                }
+                if let Some(exit) = &arm.termination {
+                    statement_calls(&exit.1, calls, manifest);
+                }
+            }
+        }
+        if let Statement::Bind(_, Some(ty), _, _)
+        | Statement::Capture(_, Some(ty), _, _)
+        | Statement::BindOutcome(_, Some(ty), _, _) = statement
+        {
+            type_calls(ty, calls, manifest);
+        }
+        match statement {
+            Statement::ExitName(_) => {}
+            Statement::Capture(_, _, e, _) | Statement::Forward(e) | Statement::Invoke(e) => {
+                expr(e, calls, manifest)
+            }
+            Statement::ExitOutcome(e) | Statement::BindOutcome(_, _, e, _) => {
+                outcome(e, calls, manifest)
+            }
+            Statement::Bind(_, _, e, _)
+            | Statement::Drop(e)
+            | Statement::Emit(e)
+            | Statement::Delta(_, e, _) => expr(e, calls, manifest),
+            Statement::Assign(a, b) => {
+                expr(a, calls, manifest);
+                expr(b, calls, manifest);
+            }
+            Statement::Exit(_, args) | Statement::Again(_, args) => {
+                for a in args {
+                    expr(a, calls, manifest);
+                }
+            }
+        }
+    }
     fn items(body: &[Item], calls: &mut BTreeSet<String>, manifest: &crate::manifest::Manifest) {
         for item in body {
             match item {
                 Item::Guard(_, statements) => {
                     for (_, statement) in statements {
-                        if let Statement::Delta(_, _, arms) = statement {
-                            for field in arms.iter().flat_map(|arm| &arm.bindings) {
-                                type_calls(&field.ty, calls, manifest);
-                            }
-                        }
-                        if let Statement::Bind(_, Some(ty), _, _)
-                        | Statement::Capture(_, Some(ty), _, _)
-                        | Statement::BindOutcome(_, Some(ty), _, _) = statement
-                        {
-                            type_calls(ty, calls, manifest);
-                        }
-                        match statement {
-                            Statement::ExitName(_) => {}
-                            Statement::Capture(_, _, e, _)
-                            | Statement::Forward(e)
-                            | Statement::Invoke(e) => expr(e, calls, manifest),
-                            Statement::ExitOutcome(e) | Statement::BindOutcome(_, _, e, _) => {
-                                outcome(e, calls, manifest)
-                            }
-                            Statement::Bind(_, _, e, _)
-                            | Statement::Drop(e)
-                            | Statement::Emit(e)
-                            | Statement::Delta(_, e, _) => expr(e, calls, manifest),
-                            Statement::Assign(a, b) => {
-                                expr(a, calls, manifest);
-                                expr(b, calls, manifest);
-                            }
-                            Statement::Exit(_, args) | Statement::Again(_, args) => {
-                                for a in args {
-                                    expr(a, calls, manifest);
-                                }
-                            }
-                        }
+                        statement_calls(statement, calls, manifest);
                     }
                 }
                 Item::Loop(_, _, params, body) => {

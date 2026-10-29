@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Core grammar](grammar.md)
 
-This chapter describes modern source accepted by compiler 0.53.0. Compatibility
+This chapter describes modern source accepted by compiler 0.54.0. Compatibility
 spellings are listed separately in the main reference.
 
 ## Source and identifiers
@@ -127,7 +127,7 @@ is no executable path complement. `&&`/`||` operate on bool; `&`/`|` combine pat
 | `[left, right]` | Grouped result type | Bind its groups to input origins |
 | `input['a]` | Origin contract | Select an external origin carried by input |
 | `<types>` | Type or generic callable | Explicit type arguments |
-| `=>` | Delta arm | Map an alternative to a path or adapter result |
+| `=>` | Delta arm | Map an alternative to a path, direct exit or adapter result |
 | `...` | Exit declaration after a label | Infer that label's fixed nonempty payload |
 | `=` | Binding, assignment, associated type | Initialize, replace, or define a type according to context |
 | `+` | Generic bound list | Require all listed capabilities/traits |
@@ -136,6 +136,7 @@ is no executable path complement. `&&`/`||` operate on bool; `&`/`|` combine pat
 Braces on an inline outcome expression are mandatory even for a nullary result:
 `empty {}`. A statement may use `exit empty;`. A flat delta's final semicolon is
 optional; `exit delta ...;` and a declaration initialized with delta require one.
+Direct arm exits use the arm comma/end delimiter, with no statement semicolon.
 Trailing commas are accepted in parameter, payload, constructor and arm lists;
 do not assume they are accepted in every angle-bracket or origin list.
 

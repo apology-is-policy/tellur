@@ -105,6 +105,8 @@ pub struct Arm {
     pub outcome: String,
     pub bindings: Vec<Field>,
     pub atom: String,
+    /// A terminating arm has a private payload scope and no exported path atom.
+    pub termination: Option<Box<(Span, Statement)>>,
 }
 #[derive(Clone, Debug)]
 pub struct InlineArm {
@@ -1100,6 +1102,7 @@ impl Parser {
                         outcome,
                         bindings,
                         atom,
+                        termination: None,
                     },
                     result,
                 });
@@ -1115,6 +1118,18 @@ impl Parser {
                 return Err(self.error("outcome expressions use braces, including empty {}"));
             }
             Ok(OutcomeExpr::Construct(span, name, self.args()?))
+        }
+    }
+    // The caller supplies the delimiter: a statement semicolon or an arm comma/end.
+    fn exit_value(&mut self) -> Result<Statement> {
+        if self.at("delta") || self.at("Δ") {
+            return Ok(Statement::ExitOutcome(self.outcome_expr()?));
+        }
+        let name = self.id()?;
+        if self.at("(") || self.at("{") {
+            Ok(Statement::Exit(name, self.args()?))
+        } else {
+            Ok(Statement::ExitName(name))
         }
     }
     fn statement(&mut self) -> Result<Statement> {
@@ -1153,19 +1168,7 @@ impl Parser {
                 }
                 Statement::Emit(args.into_iter().next().unwrap())
             } else if self.eat("exit") {
-                if self.at("delta") || self.at("Δ") {
-                    let expression = self.outcome_expr()?;
-                    self.need(";")?;
-                    return Ok(Statement::ExitOutcome(expression));
-                }
-                let name = self.id()?;
-                let args = if self.at("(") || self.at("{") {
-                    self.args()?
-                } else {
-                    self.need(";")?;
-                    return Ok(Statement::ExitName(name));
-                };
-                Statement::Exit(name, args)
+                self.exit_value()?
             } else if self.eat("again") {
                 let name = self.id()?;
                 if !self.at("(") {
@@ -1291,10 +1294,29 @@ impl Parser {
                         self.need(")")?;
                     }
                     self.need("=>")?;
+                    // Keep an existing path named `exit` valid at the arm boundary.
+                    let termination = if self.at("exit")
+                        && !self
+                            .tokens
+                            .get(self.pos + 1)
+                            .is_some_and(|t| t.is(",") || t.is(end))
+                    {
+                        let at = self.here();
+                        self.pos += 1;
+                        Some(Box::new((at, self.exit_value()?)))
+                    } else {
+                        None
+                    };
+                    let atom = if termination.is_some() {
+                        outcome.rsplit('.').next().unwrap().into()
+                    } else {
+                        self.id()?
+                    };
                     arms.push(Arm {
                         outcome,
                         bindings,
-                        atom: self.id()?,
+                        atom,
+                        termination,
                     });
                     if !self.eat(",") {
                         break;

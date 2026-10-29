@@ -1,7 +1,7 @@
 # Tellur language revision: controls, values, outcomes, and tasks
 
 29 October 2026. This is the working revision plan, not a claim that all proposed
-features are implemented. Compiler **0.53.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
+features are implemented. Compiler **0.54.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
 lifetime checkpoints of milestone 2, the array/vector/map core of milestone 3,
 and implicit entry, inline/stored adapters, owned capture, named outcome contracts
 and checked forwarding in milestone 4. A first [semantic foundation](semantic-foundation.md)
@@ -24,8 +24,9 @@ point encodings, related locations and typed structural witnesses in CLI/LSP.
 Release 0.51 adds value-expression and parser-token ranges through imports and
 generics, including multiline/Unicode editor locations. Release 0.52 adds bounded
 independent-body recovery with failed-caller suppression and fresh hover. Release
-0.53 starts P3 with optional path grouping and canonical layout guidance. Selected-history
-editor feedback and direct arm exits come next; within-body and preparation-phase
+0.53 starts P3 with optional path grouping and canonical layout guidance. Release
+0.54 adds direct arm exits and adopts them in the settings application. Selected-history
+editor feedback comes next; within-body and preparation-phase
 recovery remain follow-ups.
 
 Release 0.46 extends diagnostic contributors through captures, moves, local aggregate
@@ -134,7 +135,7 @@ unimplemented syntax are promised.
 | I1a | Owned-data Rust adapters | **Delivered in 0.45**: typed wrapper/result generation, registry dependencies and explicit locking, owned scalar/collection data, shared call borrows, blocking/immediate classification and scripted/live conformance |
 | I1b.1 | Retained host resource foundation | **Delivered in 0.49**: opaque must-complete Rust owners, direct shared/consuming calls, explicit resource return on retry, checked runtime identities, teardown fallback and live/scripted/editor evidence |
 | I1b.2 | Broader Rust reuse | Application-driven follow-up: richer data boundaries, exclusive foreign mutation and dependency/package ergonomics; stable binary ABI and LTO remain later layers |
-| P3 | Readable path labels and direct dispositions | **Optional grouping and layout guidance delivered in 0.53**: explicit selection extent without new lifetime scope. Next: selected-history editor feedback and direct arm exits without throwaway atoms; settle multi-statement arm syntax separately |
+| P3 | Readable path labels and direct dispositions | **Grouping/layout in 0.53; direct arm exits in 0.54**: explicit selection extent and immediate completion without throwaway labels, exercised in the settings application. Next: selected-history editor feedback; settle multi-statement arm syntax separately |
 | P4 | Explain, format and contract changes | Queued: bounded history/contributor queries, formatter, public contract snapshots/diffs and internal absorption changes; distinguish structural evidence from feasible inputs |
 | P5a | Sustained application: persistent CLI | **Delivered in 0.45**: settings load/get/set, validation, strict JSON, bounded input/output, replacement uncertainty and live/scripted failure scenarios |
 | P5a.1 | Executable outcome status contracts | **Delivered in 0.48**: alternative annotations, exhaustive entry mappings, final-contract policy, exact exec status propagation, and settings/editor migration |
@@ -145,7 +146,7 @@ unimplemented syntax are promised.
 | C1b.3c.3 | Nested and public borrowed-collection contracts | Deferred pending application evidence: element origin schemas, nested carriers, generic/trait boundaries and stored outcomes |
 | C1c | Generic loan propagation and reference state | Deferred pending application evidence: contained loans across generic calls, assignments and adapters; rebinding/reborrowing |
 | C2 | Slices and non-consuming iteration | Deferred pending application evidence: invalidation rules and library interfaces built on C1b/C1c |
-| C3 | Remaining adapter ergonomics | Direct arm dispositions move to P3; multi-statement arms, whole-outcome binding and expression adapters remain design work |
+| C3 | Remaining adapter ergonomics | Direct arm exits delivered in P3 (0.54); multi-statement arms, whole-outcome binding and expression adapters remain design work |
 | D1 | Explicit runtime polymorphism | Queued: erasure rules, borrowed/owned storage, opaque graph boundaries |
 | D2 | Stateful protocols and effect contracts | Queued: sequence obligations, justified algebraic laws, groundwork for tasks |
 | E1 | Async reference execution | After P3/P6 and activation-frame work: activation identities, deterministic scheduling, task ownership, suspension, cancellation/cleanup |

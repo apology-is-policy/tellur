@@ -72,6 +72,45 @@ fn rewrite_outcome(e: &mut OutcomeExpr, b: &BTreeMap<String, String>) {
         }
     }
 }
+fn rewrite_statement(s: &mut Statement, b: &BTreeMap<String, String>) {
+    match s {
+        Statement::Bind(_, ty, e, _) | Statement::Capture(_, ty, e, _) => {
+            if let Some(t) = ty {
+                *t = substitute(t, b);
+            }
+            rewrite_expr(e, b);
+        }
+        Statement::BindOutcome(_, ty, e, _) => {
+            if let Some(t) = ty {
+                *t = substitute(t, b);
+            }
+            rewrite_outcome(e, b);
+        }
+        Statement::Forward(e) | Statement::Invoke(e) | Statement::Drop(e) | Statement::Emit(e) => {
+            rewrite_expr(e, b)
+        }
+        Statement::Assign(a, c) => {
+            rewrite_expr(a, b);
+            rewrite_expr(c, b);
+        }
+        Statement::Exit(_, args) | Statement::Again(_, args) => {
+            for a in args {
+                rewrite_expr(a, b);
+            }
+        }
+        Statement::ExitOutcome(e) => rewrite_outcome(e, b),
+        Statement::ExitName(_) => (),
+        Statement::Delta(_, e, arms) => {
+            rewrite_expr(e, b);
+            for arm in arms {
+                rewrite_fields(&mut arm.bindings, b);
+                if let Some(exit) = &mut arm.termination {
+                    rewrite_statement(&mut exit.1, b);
+                }
+            }
+        }
+    }
+}
 fn rewrite_items(items: &mut [Item], b: &BTreeMap<String, String>) {
     for i in items {
         match i {
@@ -86,41 +125,7 @@ fn rewrite_items(items: &mut [Item], b: &BTreeMap<String, String>) {
             }
             Item::Guard(_, ss) => {
                 for (_, s) in ss {
-                    match s {
-                        Statement::Bind(_, ty, e, _) | Statement::Capture(_, ty, e, _) => {
-                            if let Some(t) = ty {
-                                *t = substitute(t, b);
-                            }
-                            rewrite_expr(e, b);
-                        }
-                        Statement::BindOutcome(_, ty, e, _) => {
-                            if let Some(t) = ty {
-                                *t = substitute(t, b);
-                            }
-                            rewrite_outcome(e, b);
-                        }
-                        Statement::Forward(e)
-                        | Statement::Invoke(e)
-                        | Statement::Drop(e)
-                        | Statement::Emit(e) => rewrite_expr(e, b),
-                        Statement::Assign(a, c) => {
-                            rewrite_expr(a, b);
-                            rewrite_expr(c, b);
-                        }
-                        Statement::Exit(_, args) | Statement::Again(_, args) => {
-                            for a in args {
-                                rewrite_expr(a, b);
-                            }
-                        }
-                        Statement::ExitOutcome(e) => rewrite_outcome(e, b),
-                        Statement::ExitName(_) => (),
-                        Statement::Delta(_, e, arms) => {
-                            rewrite_expr(e, b);
-                            for arm in arms {
-                                rewrite_fields(&mut arm.bindings, b);
-                            }
-                        }
-                    }
+                    rewrite_statement(s, b);
                 }
             }
         }
@@ -217,6 +222,46 @@ fn outcome_calls(e: &OutcomeExpr, v: &mut Visit<'_>) -> Result<()> {
     }
     Ok(())
 }
+fn statement_calls(s: &Statement, at: Span, v: &mut Visit<'_>) -> Result<()> {
+    match s {
+        Statement::Bind(_, ty, e, _) | Statement::Capture(_, ty, e, _) => {
+            if let Some(t) = ty {
+                type_calls(t, at, v)?;
+            }
+            expr_calls(e, at, v)?;
+        }
+        Statement::BindOutcome(_, ty, e, _) => {
+            if let Some(t) = ty {
+                type_calls(t, at, v)?;
+            }
+            outcome_calls(e, v)?;
+        }
+        Statement::Forward(e) | Statement::Invoke(e) | Statement::Drop(e) | Statement::Emit(e) => {
+            expr_calls(e, at, v)?
+        }
+        Statement::Assign(a, b) => {
+            expr_calls(a, at, v)?;
+            expr_calls(b, at, v)?;
+        }
+        Statement::Exit(_, args) | Statement::Again(_, args) => {
+            for a in args {
+                expr_calls(a, at, v)?;
+            }
+        }
+        Statement::ExitOutcome(e) => outcome_calls(e, v)?,
+        Statement::ExitName(_) => (),
+        Statement::Delta(_, e, arms) => {
+            expr_calls(e, at, v)?;
+            for a in arms {
+                field_calls(&a.bindings, at, v)?;
+                if let Some(exit) = &a.termination {
+                    statement_calls(&exit.1, exit.0, v)?;
+                }
+            }
+        }
+    }
+    Ok(())
+}
 fn item_calls(items: &[Item], v: &mut Visit<'_>) -> Result<()> {
     for i in items {
         match i {
@@ -231,41 +276,7 @@ fn item_calls(items: &[Item], v: &mut Visit<'_>) -> Result<()> {
             }
             Item::Guard(_, ss) => {
                 for (at, s) in ss {
-                    match s {
-                        Statement::Bind(_, ty, e, _) | Statement::Capture(_, ty, e, _) => {
-                            if let Some(t) = ty {
-                                type_calls(t, *at, v)?;
-                            }
-                            expr_calls(e, *at, v)?;
-                        }
-                        Statement::BindOutcome(_, ty, e, _) => {
-                            if let Some(t) = ty {
-                                type_calls(t, *at, v)?;
-                            }
-                            outcome_calls(e, v)?;
-                        }
-                        Statement::Forward(e)
-                        | Statement::Invoke(e)
-                        | Statement::Drop(e)
-                        | Statement::Emit(e) => expr_calls(e, *at, v)?,
-                        Statement::Assign(a, b) => {
-                            expr_calls(a, *at, v)?;
-                            expr_calls(b, *at, v)?;
-                        }
-                        Statement::Exit(_, args) | Statement::Again(_, args) => {
-                            for a in args {
-                                expr_calls(a, *at, v)?;
-                            }
-                        }
-                        Statement::ExitOutcome(e) => outcome_calls(e, v)?,
-                        Statement::ExitName(_) => (),
-                        Statement::Delta(_, e, arms) => {
-                            expr_calls(e, *at, v)?;
-                            for a in arms {
-                                field_calls(&a.bindings, *at, v)?;
-                            }
-                        }
-                    }
+                    statement_calls(s, *at, v)?;
                 }
             }
         }

@@ -32,18 +32,14 @@ control validate_key(ref string key) exits valid, invalid {
     };
 }
 pub control set(ref string path, string key, string value) exits update_result {
-    delta validate_key(borrow key) { valid => valid, invalid => invalid }
-    [invalid]: exit invalid_key;
+    delta validate_key(borrow key) { valid => valid, invalid => exit invalid_key }
     [valid]:
         delta load(path) {
             loaded { map<string, string> loaded_values } => loaded,
-            invalid_file { string message } => invalid_file,
-            storage_failed { string message } => storage_failed,
-            too_large => too_large
+            invalid_file { string message } => exit invalid_file { message },
+            storage_failed { string message } => exit storage_failed { message },
+            too_large => exit too_large
         }
-    [invalid_file]: exit invalid_file { message };
-    [storage_failed]: exit storage_failed { message };
-    [too_large]: exit too_large;
     [loaded]:
         mutable map<string, string> values = loaded_values;
         delta map_insert(borrow mutable values, key, value) {
@@ -53,9 +49,8 @@ pub control set(ref string path, string key, string value) exits update_result {
     [changed | replaced]:
         delta json_encode(borrow values) {
             encoded { string text } => encoded,
-            encode_failed { string message } => encode_failed
+            encode_failed { string message } => exit storage_failed { message }
         }
-    [encode_failed]: exit storage_failed { message };
     [encoded]:
         exit delta file_replace(path, borrow text, 1048576) {
             replaced => saved {},
@@ -67,8 +62,7 @@ pub control set(ref string path, string key, string value) exits update_result {
 pub control get(ref string path, ref string key)
     exits found { string value }, missing, invalid_key, invalid_file { string message }, storage_failed { string message }, too_large
 {
-    delta validate_key(key) { valid => valid, invalid => invalid }
-    [invalid]: exit invalid_key;
+    delta validate_key(key) { valid => valid, invalid => exit invalid_key }
     [valid]:
         exit delta load(path) {
             loaded { map<string, string> values } => [loaded]: delta map_get(borrow values, key) {

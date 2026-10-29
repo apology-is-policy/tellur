@@ -1,0 +1,25 @@
+control port(string input) exits ready { u32 value }, invalid, overflow {
+    delta parse_u32(input) {
+        number { u32 value } => parsed,
+        malformed => exit invalid,
+        overflow => exit overflow
+    }
+    [parsed]:
+        delta (value == 0 || value > 65535) {
+            true => exit invalid,
+            false => exit ready { value }
+        }
+}
+
+control main() exits process_result {
+    delta port("8080") {
+        ready { auto value } => accepted,
+        invalid => exit failed,
+        overflow => exit failed
+    }
+    [accepted]:
+        emit(u32_text(value));
+        exit done;
+}
+
+outcome process_result { @exit 0 done, @exit 1 failed }

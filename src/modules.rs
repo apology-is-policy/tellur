@@ -575,52 +575,60 @@ impl Resolver<'_> {
         }
         Ok(())
     }
+    fn statement(&mut self, at: &mut Span, s: &mut Statement) -> Result<()> {
+        match s {
+            Statement::Bind(name, ty, e, _) | Statement::Capture(name, ty, e, _) => {
+                if let Some(t) = ty {
+                    *t = self.ty(t, *at)?;
+                }
+                self.expr(e, *at)?;
+                self.locals.insert(name.clone());
+            }
+            Statement::BindOutcome(name, ty, e, _) => {
+                if let Some(t) = ty {
+                    *t = self.ty(t, *at)?;
+                }
+                self.outcome(e)?;
+                self.locals.insert(name.clone());
+            }
+            Statement::ExitOutcome(e) => self.outcome(e)?,
+            Statement::Forward(e)
+            | Statement::Invoke(e)
+            | Statement::Drop(e)
+            | Statement::Emit(e) => self.expr(e, *at)?,
+            Statement::Assign(a, b) => {
+                self.expr(a, *at)?;
+                self.expr(b, *at)?;
+            }
+            Statement::Delta(_, e, arms) => {
+                self.expr(e, *at)?;
+                for arm in arms {
+                    self.pattern(arm, *at)?;
+                    let outer = self.locals.clone();
+                    self.locals
+                        .extend(arm.bindings.iter().map(|f| f.name.clone()));
+                    if let Some(exit) = &mut arm.termination {
+                        self.statement(&mut exit.0, &mut exit.1)?;
+                        self.locals = outer;
+                    }
+                }
+            }
+            Statement::Exit(_, args) | Statement::Again(_, args) => {
+                for a in args {
+                    self.expr(a, *at)?;
+                }
+            }
+            Statement::ExitName(_) => (),
+        }
+        at.line += self.offset;
+        Ok(())
+    }
     fn items(&mut self, body: &mut [Item]) -> Result<()> {
         for item in body {
             match item {
                 Item::Guard(_, ss) => {
                     for (at, s) in ss {
-                        match s {
-                            Statement::Bind(name, ty, e, _)
-                            | Statement::Capture(name, ty, e, _) => {
-                                if let Some(t) = ty {
-                                    *t = self.ty(t, *at)?;
-                                }
-                                self.expr(e, *at)?;
-                                self.locals.insert(name.clone());
-                            }
-                            Statement::BindOutcome(name, ty, e, _) => {
-                                if let Some(t) = ty {
-                                    *t = self.ty(t, *at)?;
-                                }
-                                self.outcome(e)?;
-                                self.locals.insert(name.clone());
-                            }
-                            Statement::ExitOutcome(e) => self.outcome(e)?,
-                            Statement::Forward(e)
-                            | Statement::Invoke(e)
-                            | Statement::Drop(e)
-                            | Statement::Emit(e) => self.expr(e, *at)?,
-                            Statement::Assign(a, b) => {
-                                self.expr(a, *at)?;
-                                self.expr(b, *at)?;
-                            }
-                            Statement::Delta(_, e, arms) => {
-                                self.expr(e, *at)?;
-                                for arm in arms {
-                                    self.pattern(arm, *at)?;
-                                    self.locals
-                                        .extend(arm.bindings.iter().map(|f| f.name.clone()));
-                                }
-                            }
-                            Statement::Exit(_, args) | Statement::Again(_, args) => {
-                                for a in args {
-                                    self.expr(a, *at)?;
-                                }
-                            }
-                            Statement::ExitName(_) => (),
-                        }
-                        at.line += self.offset;
+                        self.statement(at, s)?;
                     }
                 }
                 Item::Loop(at, _, ps, body) => {
@@ -675,6 +683,7 @@ fn locals(region: &syntax::Region) -> BTreeSet<String> {
                             Statement::ExitOutcome(e) => outcome(e, names),
                             Statement::Delta(_, _, arms) => names.extend(
                                 arms.iter()
+                                    .filter(|a| a.termination.is_none())
                                     .flat_map(|a| a.bindings.iter().map(|f| f.name.clone())),
                             ),
                             _ => (),

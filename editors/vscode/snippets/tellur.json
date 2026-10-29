@@ -166,5 +166,15 @@
       "}"
     ],
     "description": "End a path selection explicitly, without a new value or lifetime scope"
+  },
+  "Decision with direct exit": {
+    "prefix": "delta_exit",
+    "body": [
+      "delta ${1:operation}(${2}) {",
+      "    ${3:ready} { ${4:auto} ${5:value} } => ${6:available},",
+      "    ${7:missing} => exit ${8:absent}",
+      "}"
+    ],
+    "description": "Keep a continuing path and directly exit a payload-free alternative"
   }
 }

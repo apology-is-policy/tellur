@@ -16,7 +16,7 @@ in the roadmap have not yet added execution semantics to these terms.
 | Completion | One invocation finishing through an outcome label with its payload. A failure label is still a normal completion. |
 | Control | A callable unit with typed parameters, a closed exit contract and a checked body. It was called a region in the original syntax. |
 | Copy | Permission to duplicate a value implicitly on ordinary use. Shared references are Copy; exclusive references are not. |
-| Delta | An exhaustive decision over a control completion, boolean or closed tagged value. It produces path facts or an inline adapted outcome. |
+| Delta | An exhaustive decision over a control completion, boolean or closed tagged value. It produces path facts, directly exits selected histories, or produces an inline adapted outcome. |
 | Drop | Ordinary disposal of a disposable value. It cannot silently complete a resource or abandon an outcome. |
 | Effect | An observable operation represented by a primitive contract/trace. Having one outcome does not imply purity. |
 | Entry | The distinguished selection of histories entering the current control or loop; nested entry also respects surrounding group/scope selections. |

@@ -66,10 +66,15 @@ fn statement(s: &Statement, bound: &mut BTreeSet<String>, free: &mut BTreeSet<St
         Statement::ExitOutcome(e) => outcome(e, bound, free),
         Statement::Delta(_, e, arms) => {
             expression(e, bound, free);
-            bound.extend(
-                arms.iter()
-                    .flat_map(|a| a.bindings.iter().map(|f| f.name.clone())),
-            );
+            for arm in arms {
+                if let Some(exit) = &arm.termination {
+                    let mut inner = bound.clone();
+                    inner.extend(arm.bindings.iter().map(|f| f.name.clone()));
+                    statement(&exit.1, &mut inner, free);
+                } else {
+                    bound.extend(arm.bindings.iter().map(|f| f.name.clone()));
+                }
+            }
         }
         Statement::ExitName(n) => {
             if !bound.contains(n) {
@@ -140,6 +145,7 @@ fn declarations(
                         }
                         Statement::Delta(_, _, arms) => names.extend(
                             arms.iter()
+                                .filter(|a| a.termination.is_none())
                                 .flat_map(|a| a.bindings.iter().map(|f| f.name.clone())),
                         ),
                         _ => (),

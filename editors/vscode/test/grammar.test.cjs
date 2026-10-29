@@ -251,3 +251,15 @@ test('optional path groups keep nested labels and following statements distinct'
   has(ts, 'exit', 'keyword.control.tellur');
   has(ts, '}', 'punctuation.section.tellur');
 });
+
+test('direct arm exits distinguish keywords, final outcomes and continuing paths', () => {
+  const ts = tokens(fs.readFileSync(path.join(__dirname, '../../../playground/arm_exits.tellur'), 'utf8'));
+  has(ts, 'exit', 'keyword.control.tellur');
+  has(ts, 'invalid', 'entity.name.type.outcome.tellur');
+  has(ts, 'parsed', 'constant.other.tellur');
+  has(ts, 'value', 'variable.other.definition.tellur');
+  assert.ok(!ts.some(t => t.text === 'exit' && t.scopes.includes('constant.other.tellur')));
+  const legacy = tokens('[entry]: delta flag -> [true=>exit Done,false=>exit Done];');
+  has(legacy, 'exit', 'keyword.control.tellur');
+  has(legacy, 'Done', 'entity.name.type.outcome.tellur');
+});

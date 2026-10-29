@@ -1,8 +1,8 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.53.0 -->
+<!-- tellur-reference-version: 0.54.0 -->
 
-This manual describes **compiler 0.53.0**, including the current ownership model,
+This manual describes **compiler 0.54.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -347,7 +347,8 @@ This small example parses a u32; the playground's version also checks port range
 have one explicit arm. There are no wildcard arms or implicit error propagation.
 `number` is an outcome label, `port` is a declared payload binding, and `parsed` is a
 fresh path atom. `number { auto port }` is the inferred form. Payload positions are
-ordered, and declared types must match exactly. Pattern braces do not create a scope.
+ordered, and declared types must match exactly. Pattern braces on an arm targeting
+a path do not create a scope.
 A payload can be used only on paths where its binding is definitely available.
 
 A boolean example is `delta (number <= limit) { true => more, false => finished }`.
@@ -367,6 +368,54 @@ against that complete contract, even when the callee appears later in the file.
 Coverage and resource checks still apply. Recursive calls remain unsupported. A body
 with no exit sites needs an explicit contract (for example an indefinitely restarting
 loop). Inference is not a search for concretely feasible paths or backward type inference.
+
+### Direct arm exits
+
+An arm can finish the enclosing control immediately with `=> exit`, instead of
+introducing a path label used only for that exit:
+
+<!-- tellur:check -->
+```tellur
+control parse_port(string input) exits ready { u32 port }, invalid {
+    delta parse_u32(input) {
+        number { u32 port } => parsed,
+        malformed => exit invalid,
+        overflow => exit invalid
+    }
+    [parsed]: exit ready { port };
+}
+```
+
+Continuing arms still create first-class paths and expose their payload bindings
+on those paths. A terminating arm instead has a private payload scope and exports
+no path name. Its payload names may differ in type from the same names in sibling arms,
+including continuing arms. They cannot shadow an existing outer binding. The compiler retains
+the outcome decision and exit provenance for diagnostics and expansion.
+
+The exit means exactly what it means as a statement: `exit done` selects a nullary
+label or forwards a stored completed outcome named `done`; `exit done {}` explicitly
+chooses the nullary label. `exit ready { value }` returns a payload, and
+`exit delta operation() { ... }` runs a nested tail adapter. Separate arms with
+commas; there is no semicolon inside the arm. Every incoming outcome still needs
+an explicit arm. All arms may exit directly, so no trailing statement is required.
+
+Normal contracts, moves, borrow origins and resource obligations apply at every
+exit. A later statement whose selection overlaps an already terminated history is
+still rejected; use the continuing arm's path to select subsequent work. There is
+no implicit subtraction of exited histories from `[entry]`:
+
+<!-- tellur:reject E_TERMINATED -->
+```tellur
+control finish(bool stop) exits done {
+    delta stop { true => exit done, false => continuing }
+    [entry]: exit done;
+}
+```
+
+Select `[continuing]:` for that final statement. Direct exits do not add arbitrary
+arm statement blocks, direct loop restarts or general expression-position adapters.
+See [the runnable example](../playground/arm_exits.tellur) and the validation/storage
+paths in the maintained settings application.
 
 ### Infer selected payloads with `...`
 
@@ -2536,7 +2585,7 @@ bindings/contracts. It does not yet provide general expression or call-site type
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and async tasks remain planned; they are not executable features of 0.53.0.
+and async tasks remain planned; they are not executable features of 0.54.0.
 ## Compare supplied scenarios
 
 ```sh

@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Lexical structure](lexical-structure.md)
 
-This is a reading grammar for the modern compiler 0.53.0 profile, not a replacement
+This is a reading grammar for the modern compiler 0.54.0 profile, not a replacement
 for its type, ownership, origin or coverage rules. It omits legacy spellings and
 parser recovery details. `name`, `integer` and `string_literal` are lexical tokens.
 Quoted text denotes source tokens; `?` means optional, `*` repetition, `+` one or
@@ -135,13 +135,12 @@ statement        = binding | assignment | flat_delta | exit | forwarding
 binding          = "mutable"? type name "=" initializer ";" ;
 initializer      = expression | "capture" call | inline_delta ;
 assignment       = expression "=" expression ";" ;
-exit             = "exit" name ";"
-                 | "exit" name "{" trailing_list(expression)? "}" ";"
-                 | "exit" inline_delta ";" ;
+exit             = direct_exit ";" ;
+direct_exit      = "exit" (name ("{" trailing_list(expression)? "}")? | inline_delta) ;
 forwarding       = "forward" call ";" ;
 flat_delta       = (name "=")? "delta" expression
                    "{" trailing_list(flat_arm) "}" ";"? ;
-flat_arm         = qualified_name payload_declaration? "=>" name ;
+flat_arm         = qualified_name payload_declaration? "=>" (name | direct_exit) ;
 inline_delta     = "delta" expression "{" trailing_list(inline_arm) "}" ;
 inline_arm       = qualified_name payload_declaration? "=>"
                    ("[" name "]" ":")? outcome_expression ;

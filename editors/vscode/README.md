@@ -531,3 +531,12 @@ eligible for checking again. Unsaved imported files participate in the same chec
 `auto` hover is unavailable while the current program is invalid and returns after
 repair. Parsing and shared declaration failures still stop at their first error;
 recovery within a damaged body remains future work.
+
+## Direct arm exits (0.54)
+
+An ordinary delta arm can finish its control with `missing => exit absent` or
+`ready { auto value } => exit done { value }`. Terminating payloads have private
+arm scopes; continuing arms keep their path labels and bindings. Highlighting,
+inferred `auto` hover, unsaved diagnostics and native build/run support the syntax.
+Try `playground/arm_exits.tellur`. Arm separators are commas, without a statement
+semicolon inside the arm; multi-statement arm bodies remain unsupported.

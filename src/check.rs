@@ -1964,6 +1964,7 @@ impl Checker<'_> {
                     outcome: sig.outcomes[0].name.clone(),
                     bindings: vec![],
                     atom: atom.clone(),
+                    termination: None,
                 };
                 self.scopes.push(Scope::default());
                 self.decision(guard, domain, &None, operand, &[pattern], span, None, None)?;
@@ -2281,6 +2282,7 @@ impl Checker<'_> {
                         outcome: o.name.clone(),
                         bindings: fields.clone(),
                         atom: o.name.clone(),
+                        termination: None,
                     },
                     result: syntax::OutcomeExpr::Construct(
                         span,
@@ -2333,6 +2335,7 @@ impl Checker<'_> {
             .map(|(i, o)| syntax::Arm {
                 outcome: o.name.clone(),
                 atom: format!("$capture_{serial}_{i}"),
+                termination: None,
                 bindings: o
                     .fields
                     .iter()
@@ -2898,16 +2901,27 @@ impl Checker<'_> {
                 }
             }
         }
+        // Terminating payloads are local to their arm. Check those declarations
+        // before exporting continuing payloads into the enclosing scope, so a
+        // sibling's new binding cannot look like a pre-existing outer binding.
+        // Alternative order is not execution order: exactly one outcome is chosen.
+        if inline.is_none() && arms.iter().any(|arm| arm.termination.is_some()) {
+            arms.sort_by_key(|arm| arm.termination.is_none());
+        }
         let mut remaining = domain;
         let mut resolved = vec![];
         let mut branch_scopes = vec![];
         let mut stored_bindings = vec![];
         for (index, arm) in arms.iter().enumerate() {
-            let span = inline.map_or(span, |arms| arms[index].span);
-            if inline.is_some() {
+            let span = arm.termination.as_ref().map_or_else(
+                || inline.map_or(span, |arms| arms[index].span),
+                |exit| exit.0,
+            );
+            let local = inline.is_some() || arm.termination.is_some();
+            if local {
                 self.scopes.push(Scope::default());
             }
-            if inline.is_none() && self.path(&arm.atom).is_some() {
+            if !local && self.path(&arm.atom).is_some() {
                 return Err(self.error(
                     "E_PATH",
                     span,
@@ -3138,9 +3152,11 @@ impl Checker<'_> {
                         .extend(bindings.into_iter().map(|(id, value)| (atom, id, value)));
                 }
             }
-            if inline.is_some() {
-                branch_scopes.push((self.scopes.pop().unwrap(), atom, selected));
-            }
+            branch_scopes.push(if local {
+                Some((self.scopes.pop().unwrap(), atom, selected))
+            } else {
+                None
+            });
             resolved.push(Arm {
                 outcome: arm.outcome.clone(),
                 atom,
@@ -3165,9 +3181,8 @@ impl Checker<'_> {
             );
         }
         if let Some(inline) = inline {
-            for ((arm, pattern), (scope, atom, selected)) in
-                inline.iter().zip(&arms).zip(branch_scopes)
-            {
+            for ((arm, pattern), scope) in inline.iter().zip(&arms).zip(branch_scopes) {
+                let (scope, atom, selected) = scope.unwrap();
                 self.scopes.push(scope);
                 let branch_guard = guard.clone().and(Guard::Atom(atom));
                 let forwarded;
@@ -3200,6 +3215,20 @@ impl Checker<'_> {
                     self.emit(branch_guard, Action::Release(slots), arm.span);
                 }
                 self.scopes.pop();
+            }
+        } else {
+            for (arm, scope) in arms.iter().zip(branch_scopes) {
+                if let Some(exit) = &arm.termination {
+                    let (scope, atom, selected) = scope.unwrap();
+                    self.scopes.push(scope);
+                    self.statement(
+                        guard.clone().and(Guard::Atom(atom)),
+                        selected,
+                        &exit.1,
+                        exit.0,
+                    )?;
+                    self.scopes.pop();
+                }
             }
         }
         Ok(())

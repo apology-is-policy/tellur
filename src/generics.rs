@@ -335,6 +335,47 @@ impl Specializer<'_> {
         }
         Ok(())
     }
+    fn statement(&mut self, at: Span, s: &Statement) -> Result<()> {
+        match s {
+            Statement::Forward(e)
+            | Statement::Invoke(e)
+            | Statement::Drop(e)
+            | Statement::Emit(e) => self.expr(e, at)?,
+            Statement::Bind(_, ty, e, _) | Statement::Capture(_, ty, e, _) => {
+                if let Some(ty) = ty {
+                    self.require(ty, at, 0)?;
+                }
+                self.expr(e, at)?;
+            }
+            Statement::Assign(a, b) => {
+                self.expr(a, at)?;
+                self.expr(b, at)?;
+            }
+            Statement::Exit(_, args) | Statement::Again(_, args) => {
+                for a in args {
+                    self.expr(a, at)?;
+                }
+            }
+            Statement::ExitOutcome(e) => self.outcome(e)?,
+            Statement::BindOutcome(_, ty, e, _) => {
+                if let Some(ty) = ty {
+                    self.require(ty, at, 0)?;
+                }
+                self.outcome(e)?;
+            }
+            Statement::ExitName(_) => (),
+            Statement::Delta(_, e, arms) => {
+                self.expr(e, at)?;
+                for a in arms {
+                    self.fields(&a.bindings, at)?;
+                    if let Some(exit) = &a.termination {
+                        self.statement(exit.0, &exit.1)?;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
     fn items(&mut self, items: &[Item]) -> Result<()> {
         for item in items {
             match item {
@@ -349,41 +390,7 @@ impl Specializer<'_> {
                 }
                 Item::Guard(_, statements) => {
                     for (at, s) in statements {
-                        match s {
-                            Statement::Forward(e)
-                            | Statement::Invoke(e)
-                            | Statement::Drop(e)
-                            | Statement::Emit(e) => self.expr(e, *at)?,
-                            Statement::Bind(_, ty, e, _) | Statement::Capture(_, ty, e, _) => {
-                                if let Some(ty) = ty {
-                                    self.require(ty, *at, 0)?;
-                                }
-                                self.expr(e, *at)?;
-                            }
-                            Statement::Assign(a, b) => {
-                                self.expr(a, *at)?;
-                                self.expr(b, *at)?;
-                            }
-                            Statement::Exit(_, args) | Statement::Again(_, args) => {
-                                for a in args {
-                                    self.expr(a, *at)?;
-                                }
-                            }
-                            Statement::ExitOutcome(e) => self.outcome(e)?,
-                            Statement::BindOutcome(_, ty, e, _) => {
-                                if let Some(ty) = ty {
-                                    self.require(ty, *at, 0)?;
-                                }
-                                self.outcome(e)?;
-                            }
-                            Statement::ExitName(_) => (),
-                            Statement::Delta(_, e, arms) => {
-                                self.expr(e, *at)?;
-                                for a in arms {
-                                    self.fields(&a.bindings, *at)?;
-                                }
-                            }
-                        }
+                        self.statement(*at, s)?;
                     }
                 }
             }

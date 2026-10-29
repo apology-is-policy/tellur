@@ -62,10 +62,17 @@ pub fn statement(stmt: &Statement, names: &mut BTreeSet<String>) {
             expression(e, names)
         }
         Statement::ExitOutcome(e) | Statement::BindOutcome(_, _, e, _) => outcome(e, names),
-        Statement::Bind(_, _, e, _)
-        | Statement::Drop(e)
-        | Statement::Emit(e)
-        | Statement::Delta(_, e, _) => expression(e, names),
+        Statement::Bind(_, _, e, _) | Statement::Drop(e) | Statement::Emit(e) => {
+            expression(e, names)
+        }
+        Statement::Delta(_, e, arms) => {
+            expression(e, names);
+            for arm in arms {
+                if let Some(exit) = &arm.termination {
+                    statement(&exit.1, names);
+                }
+            }
+        }
         Statement::Assign(a, b) => {
             expression(a, names);
             expression(b, names);

@@ -1861,3 +1861,29 @@ fn grouped_paths_keep_inferred_hover_and_report_unsaved_selection_errors() {
     assert_eq!(f.diagnostics(), json!([]));
     auto_hover(&f, source, "auto heading", "string heading");
 }
+
+#[test]
+fn direct_arm_exits_hover_payloads_and_report_unsaved_exit_contract_errors() {
+    let mut f = Fixture::new();
+    fs::write(
+        f.root.join("manifest.json"),
+        include_str!("../playground/manifest.json"),
+    )
+    .unwrap();
+    let source = "control main(option<string> input) exits ready {string value},missing {\n delta input {some {auto value}=>exit ready {value},none=>exit missing}\n}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    auto_hover(&f, source, "auto value", "string value");
+    f.change(&source.replace("ready {value}", "ready {false}"), 2);
+    let diagnostic = &f.diagnostics()[0];
+    assert_eq!(diagnostic["code"], "E_TYPE");
+    assert_eq!(diagnostic["range"]["start"]["line"], 1);
+    assert_eq!(
+        diagnostic["range"]["end"]["character"].as_u64().unwrap()
+            - diagnostic["range"]["start"]["character"].as_u64().unwrap(),
+        5
+    );
+    f.change(source, 3);
+    assert_eq!(f.diagnostics(), json!([]));
+    auto_hover(&f, source, "auto value", "string value");
+}
