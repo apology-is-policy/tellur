@@ -85,7 +85,7 @@ pub fn items(body: &[Item], names: &mut BTreeSet<String>) {
                     statement(s, names)
                 }
             }
-            Item::Over(_, _, body) => items(body, names),
+            Item::Group(_, _, body) | Item::Over(_, _, body) => items(body, names),
             Item::Loop(_, _, params, body) => {
                 for p in params {
                     expression(&p.initial, names);

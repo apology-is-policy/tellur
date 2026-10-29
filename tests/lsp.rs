@@ -1840,3 +1840,24 @@ fn structural_witness_data_is_current_and_distinct_from_message_text() {
     assert_eq!(diagnostics[0]["code"], "E_TYPE");
     assert!(diagnostics[0].get("data").is_none());
 }
+
+#[test]
+fn grouped_paths_keep_inferred_hover_and_report_unsaved_selection_errors() {
+    let mut f = Fixture::new();
+    let source = include_str!("../playground/path_groups.tellur");
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    auto_hover(&f, source, "auto heading", "string heading");
+    f.change(
+        &source.replace(
+            "[entry]:\n            emit(heading);",
+            "[absent]:\n            emit(heading);",
+        ),
+        2,
+    );
+    assert_eq!(f.diagnostics()[0]["code"], "E_EMPTY");
+    assert!(f.server.hover(&f.uri, 4, 8).is_null());
+    f.change(source, 3);
+    assert_eq!(f.diagnostics(), json!([]));
+    auto_hover(&f, source, "auto heading", "string heading");
+}

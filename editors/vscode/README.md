@@ -51,7 +51,7 @@ The language is named **Tellur**. `.tellur` is the canonical source extension; l
   mutability, or the inferred signature for `exits auto`. Updated from unsaved
   source; types are shown only after successful checking.
 - Region names and signatures in Outline / Go to Symbol in Editor.
-- Region, decision, selector, intersection-group and loop snippets.
+- Control, decision, selector, optional path-group, scoped-intersection and loop snippets.
 - Bracket matching, automatic closing, indentation and line-comment toggling.
 - **Tellur: Restart Language Server**, plus a **Tellur Language** output channel.
 - Native build/run commands, toolbar button, shortcuts and **Tellur Build** output.
@@ -59,6 +59,10 @@ The language is named **Tellur**. `.tellur` is the canonical source extension; l
 Highlighting works in restricted workspaces. The language server runs after the
 workspace is trusted. It analyzes source; it does not run the source program or
 invoke real primitives.
+
+Try `playground/path_groups.tellur` for optional `[path]: { ... }` grouping.
+The `path_group` snippet ends a selection explicitly without creating a new lifetime
+scope. The ordinary `guard` snippet stays unbraced; `over` creates a lexical scope.
 
 ## Manifests and compilation units
 
@@ -72,8 +76,10 @@ another file; relative paths are resolved against the workspace folder. Manifest
 edits take effect after saving. With no valid manifest, syntax diagnostics still
 work and a warning explains that type/coverage/resource checks did not run.
 
-The server reports the first error per document, debounced during typing. Semantic
-errors currently point to the relevant statement or region declaration. Structural
+The server reports bounded independent-control errors, debounced during typing,
+with one primary error per body and up to 32 per check. Failed callers are suppressed
+to avoid cascades. Expression diagnostics select their source ranges; other
+diagnostics may point to a token, statement or declaration. Structural
 witnesses describe what *may* reach a point, not proven feasible input values.
 Declaration hover shows checked control contracts. Completion, rename, cross-file
 references and formatting are not implemented.

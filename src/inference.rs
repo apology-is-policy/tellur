@@ -171,7 +171,7 @@ pub(crate) fn dependency_order(
                     }
                     items(body, calls, manifest);
                 }
-                Item::Over(_, _, body) => items(body, calls, manifest),
+                Item::Group(_, _, body) | Item::Over(_, _, body) => items(body, calls, manifest),
                 Item::Alias(..) => {}
             }
         }

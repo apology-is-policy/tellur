@@ -46,7 +46,7 @@
       "    [${2:entry}]: ${0}",
       "}"
     ],
-    "description": "Factor a shared intersection"
+    "description": "Intersect paths in a new lexical lifetime scope"
   },
   "Tail loop": {
     "prefix": "loop",
@@ -157,5 +157,14 @@
       "}"
     ],
     "description": "Implement a trait for an explicit type"
+  },
+  "Path group": {
+    "prefix": "path_group",
+    "body": [
+      "[${1:path}]: {",
+      "    ${0}",
+      "}"
+    ],
+    "description": "End a path selection explicitly, without a new value or lifetime scope"
   }
 }

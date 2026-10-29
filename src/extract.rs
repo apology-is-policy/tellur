@@ -103,6 +103,7 @@ fn items(body: &[Item], bound: &mut BTreeSet<String>, free: &mut BTreeSet<String
                 inner.extend(params.iter().map(|p| p.field.name.clone()));
                 items(body, &mut inner, free);
             }
+            Item::Group(_, _, body) => items(body, bound, free),
             Item::Over(_, _, body) => items(body, &mut bound.clone(), free),
             Item::Alias(..) => (),
         }
@@ -152,7 +153,9 @@ fn declarations(
                 names.extend(ps.iter().map(|p| p.field.name.clone()));
                 declarations(body, names, mutable, cut);
             }
-            Item::Over(_, _, body) => declarations(body, names, mutable, cut),
+            Item::Group(_, _, body) | Item::Over(_, _, body) => {
+                declarations(body, names, mutable, cut)
+            }
             Item::Alias(..) => (),
         }
     }

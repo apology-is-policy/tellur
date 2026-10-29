@@ -76,7 +76,7 @@ fn rewrite_items(items: &mut [Item], b: &BTreeMap<String, String>) {
     for i in items {
         match i {
             Item::Alias(..) => (),
-            Item::Over(_, _, body) => rewrite_items(body, b),
+            Item::Group(_, _, body) | Item::Over(_, _, body) => rewrite_items(body, b),
             Item::Loop(_, _, ps, body) => {
                 for p in ps {
                     p.field.ty = substitute(&p.field.ty, b);
@@ -221,7 +221,7 @@ fn item_calls(items: &[Item], v: &mut Visit<'_>) -> Result<()> {
     for i in items {
         match i {
             Item::Alias(..) => (),
-            Item::Over(_, _, body) => item_calls(body, v)?,
+            Item::Group(_, _, body) | Item::Over(_, _, body) => item_calls(body, v)?,
             Item::Loop(at, _, ps, body) => {
                 for p in ps {
                     type_calls(&p.field.ty, *at, v)?;

@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.52.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.53.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -1448,3 +1448,47 @@ Evidence: `work/tellur-0.52-validation.json`, `tellur-0.52-tests.log`,
 `tellur-0.52-package-integrity.log`, `tellur-0.52-install.log`,
 `tellur-0.52-installed-integrity.log` and `tellur-0.52-backup.log`.
 The verified source snapshot is `work/revision-backups/tellur-0.52-source.tar.gz`.
+
+## 0.53 — Optional path grouping
+
+`[path]: { ... }` gives a selection an explicit end. Inner selectors intersect the
+group domain, inner `entry` selects that domain, and closing the group resumes the
+enclosing body's entry selection. A preceding flat label stays ended. Existing
+unbraced label extent remains unchanged. Empty groups are explicit no-ops; they do
+not complete a live history. Unlabeled block statements remain unsupported.
+
+Grouping introduces no lexical value or lifetime scope: compatible bindings and
+path aliases remain visible afterward, live borrows retain their owners, moves
+remain conditional, and resource obligations survive `}`. Scoped `over &:` retains
+its separate lifetime behavior. Tail loops may end a selected group; nested source
+loops remain rejected. Module resolution, generic rewriting, inference dependency
+collection, liveness and tail extraction all traverse the new body item. Extraction
+preserves complete groups and still rejects a cut inside a nested body.
+
+`tests/path_groups.rs` covers nested/intersecting selection, entry restoration,
+unbraced compatibility, empty groups, moved values, live references, resource
+completion, tail loops, imported generic bindings, extraction boundaries, and
+reference/expanded/native agreement at O0/O2. LSP, TextMate and real VS Code tests
+exercise grouped inferred bindings, an impossible nested selector, unsaved repair
+and native execution through a shared continuation. The runnable example is
+`playground/path_groups.tellur`; the reference gives checked positive and negative
+examples plus canonical layout guidance. Default labels stay unbraced. The editor
+adds a separate `path_group` snippet and clarifies the scoped `over` snippet.
+
+Selected-history editor feedback and direct arm exits remain the next P3 work.
+This release does not add a formatter, multi-statement arm bodies or new lifetimes.
+
+Validation: all **803 Rust tests** pass. Clippy passes all targets with warnings
+denied; all **34 Node tests** and the complete real VS Code suite pass. The manual
+checks **56** accepted examples, **21** expected diagnostics, **14** context fragments
+and **167** local links. All **59** maintained Tellur sources pass release checking.
+Compiler and LSP initialization report **0.53.0**. All nine packaged and installed
+payloads, package metadata and executable permissions are verified.
+
+Evidence: `work/tellur-0.53-validation.json`, `tellur-0.53-tests.log`,
+`tellur-0.53-focused.log`, `tellur-0.53-manual-final.log`, `tellur-0.53-clippy.log`,
+`tellur-0.53-examples.log`, `tellur-0.53-node.log`, `tellur-0.53-editor.log`,
+`tellur-0.53-build.log`, `tellur-0.53-versions.log`, `tellur-0.53-package.log`,
+`tellur-0.53-package-integrity.log`, `tellur-0.53-install.log`,
+`tellur-0.53-installed-integrity.log` and `tellur-0.53-backup.log`.
+The verified source snapshot is `work/revision-backups/tellur-0.53-source.tar.gz`.

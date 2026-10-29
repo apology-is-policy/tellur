@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Lexical structure](lexical-structure.md)
 
-This is a reading grammar for the modern compiler 0.52.0 profile, not a replacement
+This is a reading grammar for the modern compiler 0.53.0 profile, not a replacement
 for its type, ownership, origin or coverage rules. It omits legacy spellings and
 parser recovery details. `name`, `integer` and `string_literal` are lexical tokens.
 Quoted text denotes source tokens; `?` means optional, `*` repetition, `+` one or
@@ -97,8 +97,9 @@ explicit_exits   = named_type origin_mapping? | list(exit_alternative)
 exit_alternative = name ("{" trailing_list(result_field)? "}")? ;
 inferred_exits   = list(name "..." | exit_alternative) ;
 body             = "{" body_item* "}" ;
-body_item        = statement+ | selected | scoped | path_alias | tail_loop ;
+body_item        = statement+ | selected | grouped | scoped | path_alias | tail_loop ;
 selected         = "[" mask "]" ":" statement+ ;
+grouped          = "[" mask "]" ":" body ;
 scoped           = "[" mask "]" "over" "&" ":" body ;
 path_alias       = "path" name "=" mask ";" ;
 mask             = intersection ("|" intersection)* ;
@@ -109,8 +110,11 @@ tail_loop        = "loop" name "(" list(field "=" expression)? ")" body ;
 
 The general `statement+` body item is the implicit entry form. After an explicit
 selection, following statements stay selected until another body item starts;
-resuming the enclosing selection requires `[entry]:`. There is no arbitrary
-unselected block statement. A tail loop must be last in its scope, and nested
+resuming the enclosing selection requires `[entry]:`. A `grouped` item instead
+ends its selection at `}` and permits implicit entry statements afterward. Nested
+selectors intersect the group domain; closing a group restores the enclosing body's
+entry selection. Grouping introduces no value/lifetime scope. There is no arbitrary
+unselected block statement. A tail loop must be last in its body, and nested
 source loops are not supported. Empty live fallthrough is not a completion.
 
 Public controls require `explicit_exits` and explicit borrowed-result origin

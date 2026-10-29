@@ -242,3 +242,12 @@ test('process statuses are annotations on alternatives, outside payloads', () =>
   has(ts, 'done', 'entity.name.type.outcome.tellur');
   assert.ok(!tokens('// @exit 0\n"@exit 1"').some(t => t.scopes.includes('storage.modifier.annotation.tellur')));
 });
+
+test('optional path groups keep nested labels and following statements distinct', () => {
+  const ts = tokens(fs.readFileSync(path.join(__dirname, '../../../playground/path_groups.tellur'), 'utf8'));
+  for (const name of ['present', 'absent', 'full', 'brief']) has(ts, name, 'constant.other.tellur');
+  has(ts, 'heading', 'variable.other.definition.tellur');
+  has(ts, 'describe', 'entity.name.function.tellur');
+  has(ts, 'exit', 'keyword.control.tellur');
+  has(ts, '}', 'punctuation.section.tellur');
+});

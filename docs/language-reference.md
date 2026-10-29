@@ -1,8 +1,8 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.52.0 -->
+<!-- tellur-reference-version: 0.53.0 -->
 
-This manual describes **compiler 0.52.0**, including the current ownership model,
+This manual describes **compiler 0.53.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -200,13 +200,16 @@ invalid source does not display stale or guessed types.
 and loop parameters currently require explicit types. There is no forward declaration
 of an uninitialized local. No implicit numeric or string conversions are inserted.
 
-At the start of a control, loop or scoped body, `[entry]:` may be omitted. Those
+At the start of a control, loop, grouped or scoped body, `[entry]:` may be omitted. Those
 statements belong to the enclosing entry selection, whether or not they produce a
 delta. A flat `[selected]:` group still owns following statements until the next
 selector or item boundary; omission never silently resets that group. Use `[entry]:`
-to explicitly resume the enclosing entry selection.
+to explicitly resume the enclosing entry selection. Optional `[selected]: { ... }`
+grouping ends that selection at `}`; bare statements after it resume the enclosing
+body's entry selection.
 
-`entry` selects every history entering the current control or loop. Statements run
+`entry` selects every history entering the current control or loop, intersected
+with any surrounding group or scope. Statements run
 in source order on their selected histories. Ordinary `[selector]:` groups do not
 introduce a new scope. Inner lexical scopes cannot shadow outer values. Definitions
 of the same value on disjoint paths are allowed if their types match.
@@ -751,6 +754,65 @@ Selectors use `a & b` (both) and `a | b` (either); intersection binds more tight
 A union executes shared work once even when both constituents hold. Facts remain
 true on descendant histories; an operation's atom is false where it was skipped.
 There are no forward references to paths or executable path negation/subtraction.
+
+### Labels and optional grouping
+
+An unbraced label selects its following statements until the next label or body-item
+boundary. Indentation helps readers see that extent; it does not determine selection.
+Keep ordinary labels unbraced. Use `[path]: { ... }` when an explicit end makes a
+shared continuation easier to see:
+
+<!-- tellur:check -->
+```tellur
+control announce(bool enabled) exits done {
+    delta enabled { true => yes, false => no }
+    [yes]: {
+        emit("Enabled");
+    }
+    emit("Checked");
+    exit done;
+}
+```
+
+`Checked` runs on both histories. Without the group braces, it and `exit done`
+would stay under `[yes]:`, leaving `[no]` unfinished. Braces are optional syntax,
+but adding or removing them can therefore change selection.
+
+Nested labels intersect with the group's selected domain. `[entry]:` inside the
+group selects that whole domain; it cannot escape to other histories. Closing a
+nested group resumes its enclosing group's entry. Closing an outer group resumes
+the enclosing control/loop/scoped body's entry, **not a preceding flat label**.
+Empty groups are allowed but do not complete any history. A selected tail loop
+must remain the last item of its body; lexically nested loops remain unsupported.
+
+Grouping creates no value or lifetime scope. A binding or path defined inside a
+group remains visible afterward on compatible histories; moves, borrow last uses,
+and must-complete resources follow their normal rules. Closing `}` neither drops
+values nor discharges resource obligations. Use `over &:` when a lexical scope is
+intended. Arbitrary unlabeled block statements are not supported.
+
+A nested selector cannot escape its group; the following `no` statement selects
+no history and is rejected:
+
+<!-- tellur:reject E_EMPTY -->
+```tellur
+control announce(bool enabled) exits done {
+    delta enabled { true => yes, false => no }
+    [yes]: {
+        [no]: emit("Outside this group");
+    }
+    exit done;
+}
+```
+
+The recommended layout puts labels at one indentation level and their selected
+statements one level deeper. A grouped body adds one indentation level. Keep a
+shared continuation aligned with the group's label, as above. A formatter must
+preserve selection extent, never add or remove braces as a purely cosmetic edit.
+See [the runnable example](../playground/path_groups.tellur) for nested selection
+and an entry reset inside a group.
+
+### Scoped intersections
 
 _Context fragment: Uses path atoms produced by earlier read and close decisions._
 
@@ -2468,13 +2530,13 @@ Do not mix old primitive outcome names with the revised playground manifest.
 Editor settings: `tellurLanguage.compilerPath`, `serverPath`, `manifestPath`,
 `programArguments`, and `releaseBuild`. The entry setting is still named
 `tellurLanguage.entryRegion` for compatibility; it selects the control to run. The
-extension reports the first diagnostic per document. Hover supports control and named-outcome declaration names and inferred `auto`
+extension reports bounded independent-control diagnostics (one per body, up to 32). Hover supports control and named-outcome declaration names and inferred `auto`
 bindings/contracts. It does not yet provide general expression or call-site type hover.
 
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and async tasks remain planned; they are not executable features of 0.52.0.
+and async tasks remain planned; they are not executable features of 0.53.0.
 ## Compare supplied scenarios
 
 ```sh

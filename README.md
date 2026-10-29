@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.52.0** implements the v0.1 checked core and the current language
+Compiler release **0.53.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -39,6 +39,9 @@ their source expressions, including multiline strings and imported generic code.
 Release 0.52 adds [independent-body error reporting](docs/reference/diagnostics-and-limits.md#independent-body-errors):
 `check` and VS Code show multiple independent errors while suppressing callers of
 failed controls. Inferred hover remains unavailable until the current program checks.
+Release 0.53 adds [optional path grouping](docs/language-reference.md#labels-and-optional-grouping):
+`[path]: { ... }` gives a selection an explicit end without creating a new value or
+lifetime scope. Ordinary labels stay unbraced. Try [path_groups.tellur](playground/path_groups.tellur).
 
 The [semantic foundation](docs/semantic-foundation.md) distinguishes compatibility,
 ownership transfer, behavioral equivalence and provenance. Executable law tests and
@@ -211,7 +214,7 @@ Historical `region` syntax retains reusable values for compatibility. Borrowed s
 async tasks remain upcoming. Other
 future work includes recursion, concurrency, richer proofs, general graph
 extraction and the graphical editor. Constant constructors do not refine path
-coverage or resource obligations. The editor reports the first error per document.
+coverage or resource obligations. The editor reports bounded independent-control errors (one per body, up to 32).
 
 See [generic control checking](docs/generic-controls.md) for the definition/specialization
 boundary and the implemented capability rules.

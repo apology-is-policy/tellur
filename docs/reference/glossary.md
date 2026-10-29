@@ -19,7 +19,7 @@ in the roadmap have not yet added execution semantics to these terms.
 | Delta | An exhaustive decision over a control completion, boolean or closed tagged value. It produces path facts or an inline adapted outcome. |
 | Drop | Ordinary disposal of a disposable value. It cannot silently complete a resource or abandon an outcome. |
 | Effect | An observable operation represented by a primitive contract/trace. Having one outcome does not imply purity. |
-| Entry | The distinguished selection of histories entering the current control or loop; scoped entry also respects the enclosing scope selection. |
+| Entry | The distinguished selection of histories entering the current control or loop; nested entry also respects surrounding group/scope selections. |
 | Exit contract | A control's declared or inferred set of completion alternatives and payload types, including checked borrow dependencies. |
 | Exclusive reference | `ref mutable t`: a non-Copy permission that excludes overlapping competing access and can authorize mutation/reborrowing. |
 | Field | A named part of a struct, or a name documenting a payload position in a contract. A contract field name is not a body-local variable. |
@@ -27,8 +27,9 @@ in the roadmap have not yet added execution semantics to these terms.
 | History | A modeled sequence of control-flow choices and operations. Structural analysis may include histories impossible for concrete inputs. |
 | Host failure | Failure outside a declared Tellur contract, such as allocation failure or an unavailable live adapter. It is not an implicit outcome. |
 | Invocation | A particular call occurrence, distinct from the reusable control declaration. Expansion retains this identity. |
+| Grouped selection | `[path]: { ... }` explicitly bounds a selection. Its closing brace restores the enclosing body's entry; it introduces no value/lifetime scope. |
 | Last use | The last use relevant to the conservative liveness analysis. A loan may end here before the reference's lexical scope ends. |
-| Lexical scope | The source region that bounds names. Flat path selection does not create one; a scoped selection or inline adapter arm does. |
+| Lexical scope | The source region that bounds names. Flat and grouped path selection do not create one; a scoped selection or inline adapter arm does. |
 | Loan | The checker's tracked restriction on owner access while references retain permission/dependencies. It is not a runtime resource supplied by the programmer. |
 | Move | Transfer of a non-Copy value and its obligations/dependencies to another owner. Later use of the moved value is invalid until valid reinitialization. |
 | Nominal type | A type identified by its declaration and arguments, rather than solely by its field shape. |

@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.52.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.53.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -11,7 +11,7 @@ The linked regression suites give more detailed acceptance and rejection evidenc
 
 | Area | Current support | Boundary / next work | Evidence |
 | --- | --- | --- | --- |
-| Controls and paths | Typed parameters, exhaustive delta, selected histories, inferred contracts, aliases and scopes | No recursive calls or value-level proof of path feasibility | [Revision tests](../../tests/revision.rs) |
+| Controls and paths | Typed parameters, exhaustive delta, selected histories, inferred contracts, aliases, optional grouping and lexical scopes | No recursive calls or value-level proof of path feasibility | [Revision tests](../../tests/revision.rs), [path grouping](../../tests/path_groups.rs) |
 | Adapters and forwarding | Nested tail adapters, stored adapters, explicit compatible forwarding, one-nullary-completion statements | No arm statement blocks or general expression-position adapters | [Adapter tests](../../tests/adapters.rs), [forwarding tests](../../tests/forward.rs) |
 | Completed outcomes | Capture now, handle later; named and producer-indexed contracts; mandatory handling | Not futures; no implicit structural assignment across unrelated named types | [Outcome tests](../../tests/outcomes.rs), [named contracts](../../tests/named_outcomes.rs) |
 | Payload inference | Private `exits auto` and selected nonempty `label...`; local/pattern `auto` | Explicit public and trait contracts; no general signature wildcard | [Inference tests](../../tests/payload_inference.rs) |
@@ -62,7 +62,7 @@ with complete schemas for every nested reference layer.
 | Rust source adapters | Typed wrappers, closed result enums, owned scalar/collection data, direct opaque retained resources, call-duration shared borrows, explicit dependencies and locked builds | No stable binary ABI, foreign returned borrows, exclusive mutation, aggregate resource boundary or async adapters |
 | Maintained application | Persistent settings CLI and bounded sequential loopback HTTP; Tellur routing/validation/cleanup and Rust mechanisms | Limited HTTP profile; no concurrency, task cancellation or crash-durable transaction guarantee |
 | CLI and native build | Check, execute, build standalone executable through Rust/Cargo and LLVM | No direct LLVM coroutine lowering |
-| VS Code | Highlighting, unsaved diagnostics with related forwarding locations, Outline, declaration contracts, inferred `auto` hover, build/run | First diagnostic per document; hover requires a successful check and is not general expression hover |
+| VS Code | Highlighting, unsaved diagnostics with related forwarding locations, Outline, declaration contracts, inferred `auto` hover, build/run | Bounded independent-body diagnostics; hover requires a successful check and is not general expression hover |
 | Expansion | Checked rewrite certificates, retained invocation/decision provenance | Not arbitrary equivalence or termination checking |
 | Tail extraction | Typed helper generation and whole-candidate rechecking | Not general graph extraction or a full equivalence certificate |
 | Scenario comparison | Concrete supplied-case comparisons and counterexamples | Agreement on those cases only |

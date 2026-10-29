@@ -339,7 +339,7 @@ impl Specializer<'_> {
         for item in items {
             match item {
                 Item::Alias(..) => (),
-                Item::Over(_, _, body) => self.items(body)?,
+                Item::Group(_, _, body) | Item::Over(_, _, body) => self.items(body)?,
                 Item::Loop(at, _, ps, body) => {
                     for p in ps {
                         self.require(&p.field.ty, *at, 0)?;

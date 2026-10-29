@@ -1,0 +1,29 @@
+// Labels normally stay unbraced. Here the braces make the shared continuation clear.
+control describe(bool available, bool detailed) exits done {
+    delta available { true => present, false => absent }
+
+    [present]: {
+        auto heading = "Available";
+        delta detailed { true => full, false => brief }
+        [full]:
+            emit("Full details");
+        [brief]:
+            emit("Brief details");
+        [entry]:
+            emit(heading);
+    }
+    [absent]: {
+        emit("Unavailable");
+    }
+    // Both histories continue here. The preceding flat label is not resumed.
+    emit("Description complete");
+    exit done;
+}
+
+control main() exits process_result {
+    describe(true, true);
+    describe(false, false);
+    exit done;
+}
+
+outcome process_result { @exit 0 done }

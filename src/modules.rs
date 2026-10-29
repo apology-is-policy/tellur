@@ -634,6 +634,10 @@ impl Resolver<'_> {
                     self.locals = outer;
                     at.line += self.offset;
                 }
+                Item::Group(at, _, body) => {
+                    self.items(body)?;
+                    at.line += self.offset;
+                }
                 Item::Over(at, _, body) => {
                     let outer = self.locals.clone();
                     self.items(body)?;
@@ -681,7 +685,7 @@ fn locals(region: &syntax::Region) -> BTreeSet<String> {
                     names.extend(ps.iter().map(|p| p.field.name.clone()));
                     items(body, names);
                 }
-                Item::Over(_, _, body) => items(body, names),
+                Item::Group(_, _, body) | Item::Over(_, _, body) => items(body, names),
                 _ => (),
             }
         }

@@ -143,6 +143,21 @@ exports.run = async function () {
     await replace(buildDocument, independent.replace('u32 value=true', 'u32 value=1').replace('string value=7', 'string value="ok"'));
     await waitFor(() => revisedDiagnostics().length === 0, 'all independent errors repaired');
     console.log('TELLUR_INDEPENDENT_DIAGNOSTICS_EDITOR_TESTS_PASSED: two errors, blocked caller, partial repair and hover invalidation');
+    const groups = await fs.readFile(path.join(__dirname, '../../../playground/path_groups.tellur'), 'utf8');
+    await replace(buildDocument, groups);
+    const headingLine = groups.split('\n').findIndex(line => line.includes('auto heading'));
+    await waitFor(async () => {
+      const hover = await vscode.commands.executeCommand('vscode.executeHoverProvider', buildUri, new vscode.Position(headingLine, 8));
+      return hover?.some(h => h.contents.some(c => /string heading/.test(c.value))) && revisedDiagnostics().length === 0;
+    }, 'grouped binding inference');
+    await replace(buildDocument, groups.replace('[entry]:\n            emit(heading);', '[absent]:\n            emit(heading);'));
+    await waitFor(() => revisedDiagnostics().some(d => code(d) === 'E_EMPTY'), 'nested label cannot escape its group');
+    await replace(buildDocument, groups);
+    await waitFor(() => revisedDiagnostics().length === 0, 'group repair');
+    const groupsRun = await buildWithStatus('tellur.buildAndRun', { output: path.join(root, 'native output', 'path-groups') }, {"done": 0});
+    assert.equal(groupsRun.code, 0, groupsRun.stderr);
+    assert.equal(groupsRun.stdout.trim(), 'Full details\nAvailable\nDescription complete\nUnavailable\nDescription complete\ndone');
+    console.log('TELLUR_PATH_GROUPS_EDITOR_TESTS_PASSED: inferred hover, selection error, repair and native shared continuation');
     await replace(buildDocument, revised);
     await waitFor(() => revisedDiagnostics().length === 0, 'typed declaration repair');
     const owned = 'control main() exits auto { [entry]: mutable string text="before"; auto ref=&mutable text; *ref="after"; emit(ref); drop(ref); exit done {text}; }';

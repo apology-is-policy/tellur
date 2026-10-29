@@ -3417,6 +3417,11 @@ impl Checker<'_> {
                         self.statement(outer.clone().and(guard), domain, statement, *span)?;
                     }
                 }
+                Item::Group(span, mask, body) => {
+                    let (guard, domain) = self.mask(mask, *span)?;
+                    let domain = self.bdd.and(context, domain);
+                    self.items(body, outer.clone().and(guard), domain)?;
+                }
                 Item::Over(span, mask, body) => {
                     let (guard, domain) = self.mask(mask, *span)?;
                     let domain = self.bdd.and(context, domain);

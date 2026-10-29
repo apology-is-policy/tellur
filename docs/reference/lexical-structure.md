@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Core grammar](grammar.md)
 
-This chapter describes modern source accepted by compiler 0.52.0. Compatibility
+This chapter describes modern source accepted by compiler 0.53.0. Compatibility
 spellings are listed separately in the main reference.
 
 ## Source and identifiers
@@ -119,6 +119,7 @@ is no executable path complement. `&&`/`||` operate on bool; `&`/`|` combine pat
 | `{ values }` | After a constructor or exit label | Supply positional payloads |
 | `{ field: value }` | Struct construction | Supply named fields in written evaluation order |
 | `[path]:` | Control body | Select subsequent statements |
+| `[path]: { ... }` | Control body | End a selection explicitly; no new value or lifetime scope |
 | `[path] over &: { ... }` | Control body | Lexical scope with intersected selections |
 | `[values]` | Expression | Array/vector construction with an expected type |
 | `['a, 'b]` | Struct/variant declaration | Declare ordered origin groups |

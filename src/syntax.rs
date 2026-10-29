@@ -138,6 +138,8 @@ pub enum Statement {
 pub enum Item {
     Alias(Span, String, Mask),
     Guard(Mask, Vec<(Span, Statement)>),
+    /// Explicit selection extent, without introducing a value or lifetime scope.
+    Group(Span, Mask, Vec<Item>),
     Over(Span, Mask, Vec<Item>),
     Loop(Span, String, Vec<LoopParameter>, Vec<Item>),
 }
@@ -1362,6 +1364,13 @@ impl Parser {
                     items.push(Item::Over(span, mask, self.body()?));
                 } else {
                     self.need(":")?;
+                    if self.at("{") {
+                        items.push(Item::Group(span, mask, self.body()?));
+                        // The preceding flat label ended at this label. A closed
+                        // group resumes this body's entry, not that earlier label.
+                        initial = true;
+                        continue;
+                    }
                     let mut statements = vec![];
                     while !self.at("[") && !self.at("}") && !self.at("path") && !self.at("loop") {
                         let span = self.here();
