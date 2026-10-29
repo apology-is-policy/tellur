@@ -1,7 +1,7 @@
 # Tellur language revision: controls, values, outcomes, and tasks
 
 29 October 2026. This is the working revision plan, not a claim that all proposed
-features are implemented. Compiler **0.54.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
+features are implemented. Compiler **0.55.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
 lifetime checkpoints of milestone 2, the array/vector/map core of milestone 3,
 and implicit entry, inline/stored adapters, owned capture, named outcome contracts
 and checked forwarding in milestone 4. A first [semantic foundation](semantic-foundation.md)
@@ -16,8 +16,10 @@ and exhaustive entry mappings.
 
 Release 0.50 delivers P5b.1: the settings application now serves bounded, sequential
 loopback HTTP with Tellur routing, validation, status mapping and resource completion.
-The next emphasis is P2/P3 diagnostic and path readability work, using this application
-as a maintained example rather than extending reference machinery speculatively.
+With the planned P3 slice delivered in 0.55, the next emphasis is P4 formatting
+that preserves label extent and comments, then contract snapshots/diffs and broader
+bounded explain queries. Keep using this application as a maintained example;
+further reference expansion remains driven by application evidence.
 
 Release 0.47 starts P2 structured output: versioned JSON check reports, explicit
 point encodings, related locations and typed structural witnesses in CLI/LSP.
@@ -26,7 +28,7 @@ generics, including multiline/Unicode editor locations. Release 0.52 adds bounde
 independent-body recovery with failed-caller suppression and fresh hover. Release
 0.53 starts P3 with optional path grouping and canonical layout guidance. Release
 0.54 adds direct arm exits and adopts them in the settings application. Selected-history
-editor feedback comes next; within-body and preparation-phase
+editor feedback is delivered in 0.55; within-body and preparation-phase
 recovery remain follow-ups.
 
 Release 0.46 extends diagnostic contributors through captures, moves, local aggregate
@@ -135,8 +137,8 @@ unimplemented syntax are promised.
 | I1a | Owned-data Rust adapters | **Delivered in 0.45**: typed wrapper/result generation, registry dependencies and explicit locking, owned scalar/collection data, shared call borrows, blocking/immediate classification and scripted/live conformance |
 | I1b.1 | Retained host resource foundation | **Delivered in 0.49**: opaque must-complete Rust owners, direct shared/consuming calls, explicit resource return on retry, checked runtime identities, teardown fallback and live/scripted/editor evidence |
 | I1b.2 | Broader Rust reuse | Application-driven follow-up: richer data boundaries, exclusive foreign mutation and dependency/package ergonomics; stable binary ABI and LTO remain later layers |
-| P3 | Readable path labels and direct dispositions | **Grouping/layout in 0.53; direct arm exits in 0.54**: explicit selection extent and immediate completion without throwaway labels, exercised in the settings application. Next: selected-history editor feedback; settle multi-statement arm syntax separately |
-| P4 | Explain, format and contract changes | Queued: bounded history/contributor queries, formatter, public contract snapshots/diffs and internal absorption changes; distinguish structural evidence from feasible inputs |
+| P3 | Readable path labels and direct dispositions | **Grouping/layout in 0.53; direct exits in 0.54; selected-history hover in 0.55**: resolved selectors, aliases, local arm facts, one-iteration loop context, bounded origins and fresh unsaved checking. The planned P3 slice is complete; multi-statement arm syntax remains separate |
+| P4 | Explain, format and contract changes | Next: formatter preserving labels, grouping and comments; then public contract snapshots/diffs and internal absorption changes, plus broader bounded history/contributor queries. P3 hover supplies the initial source-selection feedback; distinguish structural evidence from feasible inputs |
 | P5a | Sustained application: persistent CLI | **Delivered in 0.45**: settings load/get/set, validation, strict JSON, bounded input/output, replacement uncertainty and live/scripted failure scenarios |
 | P5a.1 | Executable outcome status contracts | **Delivered in 0.48**: alternative annotations, exhaustive entry mappings, final-contract policy, exact exec status propagation, and settings/editor migration |
 | P5b.1 | Sustained application: blocking HTTP | **Delivered in 0.50**: loopback settings/lookup/update endpoints, Tellur policy, retained listeners/connections, framing/size/deadline limits, budget/idle shutdown and live/scripted cleanup evidence |

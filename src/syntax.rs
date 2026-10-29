@@ -102,6 +102,7 @@ pub struct Outcome {
 }
 #[derive(Clone, Debug)]
 pub struct Arm {
+    pub span: Span,
     pub outcome: String,
     pub bindings: Vec<Field>,
     pub atom: String,
@@ -247,6 +248,7 @@ pub struct TraitCheck {
 }
 #[derive(Clone, Debug)]
 pub struct Unit {
+    pub(crate) selection_sites: Vec<SelectionSite>,
     pub trait_types: std::collections::BTreeMap<String, String>,
     pub traits: Vec<TraitDeclaration>,
     pub implementations: Vec<Implementation>,
@@ -424,12 +426,39 @@ fn lex(source: &str) -> Result<Vec<Token>> {
     Ok(tokens)
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum SelectionKind {
+    Statement,
+    Outcome,
+    Arm,
+    Scope,
+    Alias,
+    Loop,
+}
+#[derive(Clone, Debug)]
+pub(crate) struct SelectionSite {
+    pub range: SourceRange,
+    pub anchor: Span,
+    pub kind: SelectionKind,
+}
+
 struct Parser {
+    selection_sites: Vec<SelectionSite>,
     tokens: Vec<Token>,
     pos: usize,
     brace_expr: bool,
 }
 impl Parser {
+    fn selection_site(&mut self, start: Span, anchor: Span, kind: SelectionKind) {
+        self.selection_sites.push(SelectionSite {
+            range: SourceRange {
+                start,
+                end: self.tokens[self.pos - 1].end,
+            },
+            anchor,
+            kind,
+        });
+    }
     fn here(&self) -> Span {
         self.tokens[self.pos].span
     }
@@ -1066,6 +1095,12 @@ impl Parser {
         }
     }
     fn outcome_expr(&mut self) -> Result<OutcomeExpr> {
+        let start = self.here();
+        let result = self.outcome_expr_inner()?;
+        self.selection_site(start, start, SelectionKind::Outcome);
+        Ok(result)
+    }
+    fn outcome_expr_inner(&mut self) -> Result<OutcomeExpr> {
         let span = self.here();
         if self.at("forward")
             && !self
@@ -1096,9 +1131,11 @@ impl Parser {
                     outcome.rsplit('.').next().unwrap().into()
                 };
                 let result = self.outcome_expr()?;
+                self.selection_site(arm_span, arm_span, SelectionKind::Arm);
                 arms.push(InlineArm {
                     span: arm_span,
                     pattern: Arm {
+                        span: arm_span,
                         outcome,
                         bindings,
                         atom,
@@ -1133,6 +1170,12 @@ impl Parser {
         }
     }
     fn statement(&mut self) -> Result<Statement> {
+        let start = self.here();
+        let result = self.statement_inner()?;
+        self.selection_site(start, start, SelectionKind::Statement);
+        Ok(result)
+    }
+    fn statement_inner(&mut self) -> Result<Statement> {
         if [
             "async", "await", "spawn", "defer", "capture", "vary", "flux",
         ]
@@ -1265,6 +1308,7 @@ impl Parser {
                 };
                 let mut arms = vec![];
                 while !self.at(end) {
+                    let arm_span = self.here();
                     let outcome = self.qualified()?;
                     let mut bindings = vec![];
                     if self.at("{") {
@@ -1303,7 +1347,9 @@ impl Parser {
                     {
                         let at = self.here();
                         self.pos += 1;
-                        Some(Box::new((at, self.exit_value()?)))
+                        let value = self.exit_value()?;
+                        self.selection_site(at, at, SelectionKind::Statement);
+                        Some(Box::new((at, value)))
                     } else {
                         None
                     };
@@ -1312,7 +1358,9 @@ impl Parser {
                     } else {
                         self.id()?
                     };
+                    self.selection_site(arm_span, arm_span, SelectionKind::Arm);
                     arms.push(Arm {
+                        span: arm_span,
                         outcome,
                         bindings,
                         atom,
@@ -1343,6 +1391,7 @@ impl Parser {
                 self.need("=")?;
                 let mask = self.mask(0)?;
                 self.need(";")?;
+                self.selection_site(span, span, SelectionKind::Alias);
                 items.push(Item::Alias(span, name, mask));
             } else if self.eat("loop") {
                 let name = self.id()?;
@@ -1362,6 +1411,7 @@ impl Parser {
                     }
                 }
                 self.need(")")?;
+                self.selection_site(span, span, SelectionKind::Loop);
                 items.push(Item::Loop(span, name, parameters, self.body()?));
             } else {
                 let mask = if self.eat("[") {
@@ -1383,10 +1433,13 @@ impl Parser {
                 if self.eat("over") {
                     self.need("&")?;
                     self.need(":")?;
+                    self.selection_site(span, span, SelectionKind::Scope);
                     items.push(Item::Over(span, mask, self.body()?));
                 } else {
                     self.need(":")?;
+                    let header_end = self.tokens[self.pos - 1].end;
                     if self.at("{") {
+                        self.selection_site(span, span, SelectionKind::Scope);
                         items.push(Item::Group(span, mask, self.body()?));
                         // The preceding flat label ended at this label. A closed
                         // group resumes this body's entry, not that earlier label.
@@ -1401,6 +1454,14 @@ impl Parser {
                     if statements.is_empty() {
                         return Err(self.error("empty guarded item"));
                     }
+                    self.selection_sites.push(SelectionSite {
+                        range: SourceRange {
+                            start: span,
+                            end: header_end,
+                        },
+                        anchor: statements[0].0,
+                        kind: SelectionKind::Statement,
+                    });
                     items.push(Item::Guard(mask, statements));
                 }
             }
@@ -1414,6 +1475,7 @@ pub fn parse(source: &str) -> Result<Vec<Region>> {
 }
 pub fn parse_unit(source: &str) -> Result<Unit> {
     let mut p = Parser {
+        selection_sites: vec![],
         tokens: lex(source)?,
         pos: 0,
         brace_expr: true,
@@ -1661,6 +1723,7 @@ pub fn parse_unit(source: &str) -> Result<Unit> {
         return Err(p.error("expected at least one control"));
     }
     Ok(Unit {
+        selection_sites: p.selection_sites,
         trait_types: Default::default(),
         traits,
         implementations,
@@ -1700,4 +1763,23 @@ pub(crate) fn auto_exit_spans(source: &str) -> Result<Vec<Span>> {
         .filter(|pair| pair[0].is("exits") && pair[1].is("auto"))
         .map(|pair| pair[1].span)
         .collect())
+}
+
+/// Comments and whitespace have no executable selection hover.
+pub(crate) fn selection_site_at(unit: &Unit, source: &str, at: Span) -> Option<SelectionSite> {
+    let key = |s: Span| (s.line, s.column);
+    let contains = |r: SourceRange| key(r.start) <= key(at) && key(at) < key(r.end);
+    if !lex(source).ok()?.iter().any(|t| {
+        contains(SourceRange {
+            start: t.span,
+            end: t.end,
+        })
+    }) {
+        return None;
+    }
+    unit.selection_sites
+        .iter()
+        .filter(|s| contains(s.range))
+        .min_by_key(|s| (std::cmp::Reverse(key(s.range.start)), key(s.range.end)))
+        .cloned()
 }

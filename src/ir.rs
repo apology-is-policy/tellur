@@ -343,6 +343,7 @@ pub(crate) struct InferredBinding {
 }
 #[derive(Clone, Debug)]
 pub struct CheckedProgram {
+    pub(crate) selected_histories: Vec<crate::history::SelectedHistory>,
     /// Defaults from each control's final named contract, not from its callees.
     pub(crate) outcome_exit_codes: BTreeMap<String, BTreeMap<String, u8>>,
     pub(crate) inferred_bindings: Vec<InferredBinding>,

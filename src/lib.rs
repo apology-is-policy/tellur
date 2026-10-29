@@ -10,6 +10,7 @@ mod expand;
 pub mod extract;
 mod generic_controls;
 mod generics;
+mod history;
 mod inference;
 pub mod ir;
 pub mod launch;

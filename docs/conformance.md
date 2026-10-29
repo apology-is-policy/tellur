@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.54.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.55.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -1546,3 +1546,57 @@ Evidence: `work/tellur-0.54-validation.json`, `tellur-0.54-tests.log`,
 `tellur-0.54-install.log`, `tellur-0.54-installed-integrity.log` and
 `tellur-0.54-backup.log`. The verified source snapshot is
 `work/revision-backups/tellur-0.54-source.tar.gz`.
+
+## 0.55 — Selected-history editor feedback
+
+The checker records bounded source selections separately from executable IR and
+expansion certificates. Hovers join those checked selections to parser-recorded
+ranges for statements, selectors, aliases, loop headers, delta arms and inline
+results. Resolved guards include enclosing intersections and expanded aliases;
+exact duplicate Boolean terms are removed. Empty aliases/groups are marked empty.
+Decision-arm origins retain authored outcome spellings and source coordinates.
+Duplicate fact names from distinct decisions are disambiguated with explanatory
+`@line:column` suffixes, while implicit local outcomes are distinguished from
+exported paths. These display suffixes are not language syntax.
+
+Existing declaration and inferred-type hovers take precedence. Generic-body
+selections use the universally checked definition rather than a particular call.
+Source modules map ranges/origins back to their own coordinates; UTF-16 editor
+positions and multiline source ranges remain correct. Every hover checks the
+current compilation unit, including unsaved dependencies. Failed checks publish
+no old/partial selection, and comments/whitespace have no selection hover.
+
+The display describes structural selection, not feasible inputs. Loop-body
+selections are relative to one iteration's entry, including its inherited entry
+conditions; they do not enumerate invocations or backedges. Rendering has a
+96-node traversal budget, depth limit 48 and eight displayed origin entries.
+Truncation is explicit, with no claim that omitted conditions are unconditional.
+These are source/editor facts, not general history enumeration or behavioral proof.
+
+Eight new LSP regressions cover flat/grouped extents, aliases, empty selections,
+entry restoration, local/direct/nested arm facts, duplicate names, loops, generic
+and trait bodies, unsaved edits/import failures, UTF-16/CRLF/multiline ranges,
+comments, and bounded displays. Existing string-hover coverage now distinguishes
+selection of the containing statement from fabricated `auto` inference. The real
+VS Code test exercises aliases, nested groups, source ranges, comments, selection
+changes, invalidation, repair and native execution of `history_hover.tellur`.
+
+This completes the planned P3 slice alongside optional groups and direct exits.
+P4 remains queued for formatting, broader explain queries and contract changes;
+multi-statement arm syntax and executable async remain separate future work.
+
+Validation: all **824 Rust tests** pass, along with **35 Node tests** and the
+complete real VS Code suite, including live HTTP and retained-resource execution.
+Clippy passes all targets with warnings denied. The manual checks **57** accepted
+examples, **22** expected diagnostics, **14** context fragments and **171** local
+links. All **61** maintained Tellur sources pass release checking. Compiler and
+LSP initialization report **0.55.0**; all nine packaged and installed payloads,
+package metadata and executable permissions are verified.
+
+Evidence: `work/tellur-0.55-validation.json`, `tellur-0.55-tests.log`,
+`tellur-0.55-focused.log`, `tellur-0.55-manual-final.log`, `tellur-0.55-clippy.log`,
+`tellur-0.55-examples.log`, `tellur-0.55-node.log`, `tellur-0.55-editor.log`,
+`tellur-0.55-build.log`, `tellur-0.55-versions.log`, `tellur-0.55-package.log`,
+`tellur-0.55-package-integrity.log`, `tellur-0.55-install.log`,
+`tellur-0.55-installed-integrity.log` and `tellur-0.55-backup.log`.
+The verified source snapshot is `work/revision-backups/tellur-0.55-source.tar.gz`.

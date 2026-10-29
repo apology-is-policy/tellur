@@ -1,0 +1,27 @@
+// Hover over labels, delta arms, aliases, or executable statements.
+control describe(bool supplied, bool verbose) exits done {
+    delta supplied { true => present, false => absent }
+    delta verbose { true => full, false => brief }
+    path detailed = present & full;
+
+    [present]: {
+        // The alias already includes present; hover resolves it without repetition.
+        [detailed]: emit("Full description");
+        [brief]: emit("Brief description");
+        [entry]: emit("Value supplied");
+    }
+    [absent]: {
+        emit("No value supplied");
+    }
+    // Closing the group restored the enclosing entry selection.
+    emit("Description complete");
+    exit done;
+}
+
+control main() exits process_result {
+    describe(true, true);
+    describe(false, false);
+    exit done;
+}
+
+outcome process_result { @exit 0 done }

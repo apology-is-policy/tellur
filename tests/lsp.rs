@@ -1228,7 +1228,12 @@ fn auto_hover_uses_checked_types_and_updates_after_unsaved_edits() {
     auto_hover(&f, source, "auto value", "u32 value");
     for byte in source.match_indices("auto fake").map(|(i, _)| i) {
         let col = source[..byte].encode_utf16().count() as u64;
-        assert_eq!(f.server.hover(&f.uri, 0, col), Value::Null);
+        let hover = f.server.hover(&f.uri, 0, col);
+        // A string can describe its containing statement's selection, never a fake inferred binding.
+        assert!(!hover.to_string().contains("Inferred binding"));
+        if byte > source.find("//").unwrap() {
+            assert_eq!(hover, Value::Null);
+        }
     }
 }
 
@@ -1886,4 +1891,193 @@ fn direct_arm_exits_hover_payloads_and_report_unsaved_exit_contract_errors() {
     f.change(source, 3);
     assert_eq!(f.diagnostics(), json!([]));
     auto_hover(&f, source, "auto value", "string value");
+}
+
+fn history_hover(f: &Fixture, source: &str, marker: &str) -> Value {
+    let byte = source.find(marker).unwrap();
+    let line = source[..byte].bytes().filter(|b| *b == b'\n').count();
+    let start = source[..byte].rfind('\n').map_or(0, |i| i + 1);
+    let column = source[start..byte].encode_utf16().count();
+    f.server.hover(&f.uri, line as u64, column as u64)
+}
+fn history_text(hover: &Value) -> &str {
+    hover["contents"]["value"]
+        .as_str()
+        .unwrap_or_else(|| panic!("missing hover: {hover}"))
+}
+
+#[test]
+fn selected_history_hovers_resolve_aliases_groups_and_entry_restoration() {
+    let mut f = Fixture::new();
+    let source = r#"control main(bool a,bool b) exits done {
+ delta a {true=>yes,false=>no}
+ delta b {true=>short,false=>long}
+ path selected=yes & (short | long);
+ [selected]: {
+   [short]:emit("short work");
+   [long]: {emit("long work");}
+   emit("group continuation");
+ }
+ emit("all work");
+ exit done;
+}"#;
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    for marker in ["path selected", "[selected]", "group continuation"] {
+        let h = history_hover(&f, source, marker);
+        let text = history_text(&h);
+        assert!(text.contains("yes & (short | long)"), "{text}");
+        assert!(text.contains("not a proven feasible input"));
+        assert!(text.contains("line 2, column 11"), "{text}");
+    }
+    let h = history_hover(&f, source, "short work");
+    assert!(
+        history_text(&h).contains("yes & (short | long) & short"),
+        "{h}"
+    );
+    let h = history_hover(&f, source, "all work");
+    assert!(history_text(&h).contains("\nentry\n"), "{h}");
+    assert!(!history_text(&h).contains("Decision arms:"));
+    assert_eq!(h["range"]["start"]["line"], 9);
+    assert_eq!(h["range"]["end"]["character"], 18);
+    let alias = history_hover(&f, source, "path selected");
+    assert!(history_text(&alias).contains("declaring the alias executes no work"));
+}
+
+#[test]
+fn flat_selection_extents_and_empty_groups_have_checked_hovers() {
+    let mut f = Fixture::new();
+    let source = "control main(bool flag) exits done {delta flag {true=>yes,false=>no}[yes]:emit(\"one\");emit(\"two\");path impossible=yes & no;[impossible]: {} [entry]:exit done;}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    for marker in ["[yes]", "\"one\"", "\"two\""] {
+        assert!(history_text(&history_hover(&f, source, marker)).contains("\nyes\n"));
+    }
+    for marker in ["path impossible", "[impossible]"] {
+        assert!(history_text(&history_hover(&f, source, marker)).contains("structurally empty"));
+    }
+    assert!(history_text(&history_hover(&f, source, "[entry]")).contains("\nentry\n"));
+}
+
+#[test]
+fn nested_adapter_and_direct_exit_hovers_identify_local_outcomes() {
+    let mut f = Fixture::new();
+    let source = "control main(bool a,bool b) exits done {\n delta a {true=>go,false=>exit done}\n [go]:exit delta b {true=>delta a {true=>done {},false=>done {}},false=>done {}};\n}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let direct = history_hover(&f, source, "exit done");
+    assert!(history_text(&direct).contains("\nfalse\n"), "{direct}");
+    assert!(history_text(&direct).contains("local outcome fact"));
+    let nested = history_hover(&f, source, "done {}");
+    let text = history_text(&nested);
+    assert!(text.contains("go & true@3:"), "{text}");
+    assert_eq!(text.matches("true@3:").count(), 2, "{text}");
+    assert!(text.contains("line 3, column"));
+    let outer = history_hover(&f, source, "[go]");
+    assert!(history_text(&outer).contains("\ngo\n"), "{outer}");
+}
+
+#[test]
+fn loop_hovers_describe_live_entry_and_one_iteration() {
+    let mut f = Fixture::new();
+    let source = "control main(bool flag) exits done {\n delta flag {true=>exit done,false=>continue}\n loop retry(bool state=true) {\n   delta state {true=>again_path,false=>exit done}\n   [again_path]:again retry(false);\n }\n}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let h = history_hover(&f, source, "loop retry");
+    assert!(
+        history_text(&h).contains("Only histories still live"),
+        "{h}"
+    );
+    let h = history_hover(&f, source, "again retry");
+    let text = history_text(&h);
+    assert!(
+        text.contains("\nagain_path\n") && text.contains("one iteration of `retry`"),
+        "{text}"
+    );
+    assert!(text.contains("not the whole control entry"));
+}
+
+#[test]
+fn history_hovers_follow_utf16_comments_ranges_and_unsaved_repairs() {
+    let mut f = Fixture::new();
+    let source = "control main(bool flag) exits done {\r\n emit(\"😀\"); delta flag {true=>yes,false=>no}\r\n [yes]: // not executable\r\n emit(\"first 😀\r\nsecond\");\r\n [entry]:exit done;\r\n}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let h = history_hover(&f, source, "delta flag");
+    assert_eq!(h["range"]["start"]["character"], 13);
+    assert!(history_hover(&f, source, "not executable").is_null());
+    let h = history_hover(&f, source, "second");
+    assert!(history_text(&h).contains("\nyes\n"), "{h}");
+    assert_eq!(h["range"]["start"]["line"], 3);
+    assert_eq!(h["range"]["end"]["line"], 4);
+    let changed = source.replace("[yes]:", "[no]:");
+    f.change(&changed, 2);
+    assert!(history_text(&history_hover(&f, &changed, "second")).contains("\nno\n"));
+    let invalid = changed.replace("emit(\"first", "emit(unknown + \"first");
+    f.change(&invalid, 3);
+    assert!(!f.diagnostics().as_array().unwrap().is_empty());
+    assert!(history_hover(&f, &invalid, "second").is_null());
+    f.change(source, 4);
+    assert_eq!(f.diagnostics(), json!([]));
+    assert!(history_text(&history_hover(&f, source, "second")).contains("\nyes\n"));
+}
+
+#[test]
+fn generic_and_trait_bodies_show_universal_selections_without_instantiations() {
+    let mut f = Fixture::new();
+    let source = "control choose<t>(t input,bool flag) exits ready {t value} {delta flag {true=>left,false=>right} [left|right]:exit ready {input};}\ntrait worker {control run(&self input,bool flag) exits done;}\nstruct record {u32 value;}\nimplement worker for record {control run(&self input,bool flag) exits done {delta flag {true=>go,false=>exit done} [go]:exit done;}}\ncontrol main() exits done {exit done;}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let h = history_hover(&f, source, "exit ready {input}");
+    assert!(history_text(&h).contains("left | right"), "{h}");
+    assert!(!history_text(&h).contains("_path_poly"));
+    let h = history_hover(&f, source, "[go]");
+    assert!(history_text(&h).contains("\ngo\n"), "{h}");
+}
+
+#[test]
+fn history_display_is_bounded_without_suggesting_unconditional_execution() {
+    let mut f = Fixture::new();
+    let mut source = "control main(bool flag) exits done {\n".to_string();
+    for i in 0..60 {
+        source.push_str(&format!("delta flag {{true=>yes_{i},false=>no_{i}}}\n"));
+    }
+    let mask = (0..60)
+        .map(|i| format!("yes_{i}"))
+        .collect::<Vec<_>>()
+        .join(" | ");
+    source.push_str(&format!(
+        "[{mask}]:emit(\"selected\");\n[entry]:exit done;}}"
+    ));
+    f.open(&source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let h = history_hover(&f, &source, "selected");
+    let text = history_text(&h);
+    assert!(text.contains("Display limited"), "{text}");
+    assert!(text.contains("…"));
+    assert!(text.len() < 6000, "hover must stay bounded: {}", text.len());
+    assert!(!text.contains("\nentry\n"));
+}
+
+#[test]
+fn imported_history_positions_and_unsaved_dependency_errors_are_current() {
+    let mut f = Fixture::new();
+    let library =
+        "pub control choose(bool flag) exits yes,no {delta flag {true=>exit yes,false=>exit no}}";
+    fs::write(f.root.join("library.tellur"), library).unwrap();
+    let source = "import \"library.tellur\" as lib;\ncontrol main(bool flag) exits done {\n delta lib.choose(flag) {yes=>selected,no=>exit done}\n [selected]:exit done;\n}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let h = history_hover(&f, source, "[selected]");
+    assert!(history_text(&h).contains("line 3, column 26"), "{h}");
+    let imported = url::Url::from_file_path(f.root.join("library.tellur"))
+        .unwrap()
+        .to_string();
+    f.server.notification("textDocument/didOpen",&json!({"textDocument":{"uri":imported,"languageId":"tellur","version":1,"text":library.replace("exit yes","exit unknown")}}));
+    assert!(history_hover(&f, source, "[selected]").is_null());
+    f.server.notification(
+        "textDocument/didClose",
+        &json!({"textDocument":{"uri":imported}}),
+    );
+    assert!(!history_hover(&f, source, "[selected]").is_null());
 }

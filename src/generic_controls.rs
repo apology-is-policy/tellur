@@ -634,6 +634,17 @@ pub(crate) fn compile(
                 && (b.span.line, b.span.column) <= (template.end.line, template.end.column)
         };
         result.inferred_bindings.retain(|b| !within(b));
+        result.selected_histories.retain(|h| {
+            (h.span.line, h.span.column) < (template.span.line, template.span.column)
+                || (h.span.line, h.span.column) > (template.end.line, template.end.column)
+        });
+        result.selected_histories.extend(
+            checked
+                .selected_histories
+                .iter()
+                .filter(|h| h.control == *seed)
+                .cloned(),
+        );
         for binding in checked
             .inferred_bindings
             .iter()

@@ -44,6 +44,30 @@ fn position(text: &str, span: Span) -> Value {
         .sum();
     json!({"line":line,"character":character})
 }
+fn scalar_span(text: &str, line: u64, character: u64) -> Option<Span> {
+    let line = usize::try_from(line).ok()?;
+    let target = usize::try_from(character).ok()?;
+    let contents = text.split('\n').nth(line)?.trim_end_matches('\r');
+    let mut units = 0;
+    let mut column = 1;
+    for c in contents.chars() {
+        if units == target {
+            return Some(Span {
+                line: line + 1,
+                column,
+            });
+        }
+        units += c.len_utf16();
+        column += 1;
+        if units > target {
+            return None;
+        }
+    }
+    (units == target).then_some(Span {
+        line: line + 1,
+        column,
+    })
+}
 pub fn diagnostic_range(text: &str, span: Span) -> Value {
     let start = position(text, span);
     let line = text
@@ -779,7 +803,39 @@ impl Server {
                 .unwrap_or_default();
             return json!({"contents":{"kind":"markdown","value":format!("```tellur\ncontrol {}({params}) exits {exits}\n```{inferred}{details}{borrows}",region.name)},"range":range});
         }
-        Value::Null
+        self.selection_hover(uri, &unit, line, character)
+    }
+    fn selection_hover(&self, uri: &str, unit: &syntax::Unit, line: u64, character: u64) -> Value {
+        let doc = &self.documents[uri];
+        let Some(at) = scalar_span(&doc.text, line, character) else {
+            return Value::Null;
+        };
+        let Some(site) = syntax::selection_site_at(unit, &doc.text, at) else {
+            return Value::Null;
+        };
+        let Ok(program) = self.checked(uri) else {
+            return Value::Null;
+        };
+        let root = file_path(uri).map(|p| crate::modules::source_identity(&p).unwrap_or(p));
+        let offset = program
+            .source_files()
+            .iter()
+            .find(|s| Some(&s.path) == root.as_ref())
+            .map(|s| s.start_line - 1)
+            .unwrap_or(0);
+        let anchor = Span {
+            line: site.anchor.line + offset,
+            column: site.anchor.column,
+        };
+        let Some(history) = program
+            .selected_histories
+            .iter()
+            .find(|h| h.span == anchor && h.kind == site.kind)
+        else {
+            return Value::Null;
+        };
+        json!({"contents":{"kind":"markdown","value":history.markdown(offset)},
+            "range":{"start":position(&doc.text,site.range.start),"end":position(&doc.text,site.range.end)}})
     }
     /// Returns an immediate publication only for close; other changes are debounced.
     pub fn notification(&mut self, method: &str, params: &Value) -> Option<Value> {

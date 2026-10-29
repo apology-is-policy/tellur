@@ -158,6 +158,31 @@ exports.run = async function () {
     assert.equal(groupsRun.code, 0, groupsRun.stderr);
     assert.equal(groupsRun.stdout.trim(), 'Full details\nAvailable\nDescription complete\nUnavailable\nDescription complete\ndone');
     console.log('TELLUR_PATH_GROUPS_EDITOR_TESTS_PASSED: inferred hover, selection error, repair and native shared continuation');
+    const historySource = await fs.readFile(path.join(__dirname, '../../../playground/history_hover.tellur'), 'utf8');
+    const selectionHover = async marker => {
+      const at = buildDocument.getText().indexOf(marker);
+      assert.ok(at >= 0, marker);
+      return vscode.commands.executeCommand('vscode.executeHoverProvider', buildUri, buildDocument.positionAt(at));
+    };
+    const selectionIncludes = async (marker, text) => (await selectionHover(marker))?.some(h => h.contents.some(c => c.value.includes(text)));
+    await replace(buildDocument, historySource);
+    await waitFor(async () => revisedDiagnostics().length === 0 && await selectionIncludes('[detailed]', 'present & full'), 'resolved selection hover');
+    const statementHover = await selectionHover('Full description');
+    assert.ok(statementHover?.some(h => buildDocument.getText(h.range) === 'emit("Full description");'));
+    assert.ok(await selectionIncludes('Description complete', '\nentry\n'));
+    assert.ok(await selectionIncludes('path detailed', 'declaring the alias executes no work'));
+    assert.equal((await selectionHover('The alias already'))?.length ?? 0, 0, 'comments are not executable selections');
+    await replace(buildDocument, historySource.replace('[detailed]:', '[brief]:'));
+    await waitFor(() => selectionIncludes('Full description', 'present & brief'), 'selection follows unsaved edit');
+    await replace(buildDocument, historySource.replace('[detailed]:', '[unknown_selection]:'));
+    await waitFor(() => revisedDiagnostics().some(d => code(d) === 'E_PATH'), 'invalid path selection');
+    assert.equal((await selectionHover('Full description'))?.length ?? 0, 0, 'invalid source hides stale selection');
+    await replace(buildDocument, historySource);
+    await waitFor(async () => revisedDiagnostics().length === 0 && await selectionIncludes('Full description', 'present & full'), 'selection repairs');
+    const historyRun = await buildWithStatus('tellur.buildAndRun', {output: path.join(root, 'native output', 'history-hover')}, {"done": 0});
+    assert.equal(historyRun.code, 0, historyRun.stderr);
+    assert.equal(historyRun.stdout.trim(), 'Full description\nValue supplied\nDescription complete\nNo value supplied\nDescription complete\ndone');
+    console.log('TELLUR_HISTORY_HOVER_EDITOR_TESTS_PASSED: aliases, nested intersections, entry restoration, source range, comments, unsaved edit, invalidation, repair and native execution');
     const armManifestBefore = await fs.readFile(manifestPath, 'utf8');
     await fs.writeFile(manifestPath, await fs.readFile(path.join(__dirname, '../../../playground/manifest.json'), 'utf8'));
     try {

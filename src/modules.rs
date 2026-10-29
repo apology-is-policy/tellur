@@ -545,6 +545,7 @@ impl Resolver<'_> {
         if arm.outcome.contains('.') {
             arm.outcome = self.name(&arm.outcome, span, None)?;
         }
+        arm.span.line += self.offset;
         self.fields(&mut arm.bindings, span)
     }
     fn outcome(&mut self, e: &mut OutcomeExpr) -> Result<()> {
@@ -722,6 +723,7 @@ fn resolve(
     manifest: Manifest,
 ) -> crate::CheckResult<CheckedProgram, ModuleError> {
     let mut combined = syntax::Unit {
+        selection_sites: vec![],
         trait_types: Default::default(),
         traits: vec![],
         implementations: vec![],

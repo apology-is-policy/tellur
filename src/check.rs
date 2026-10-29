@@ -135,6 +135,8 @@ struct LoopContext {
     scope: usize,
 }
 struct Checker<'a> {
+    selected_histories: Vec<crate::history::SelectedHistory>,
+    selection_facts: BTreeMap<Id, crate::history::Fact>,
     forwarded_exits: BTreeMap<Id, Vec<crate::DiagnosticNote>>,
     forwarding: Option<BTreeMap<String, Vec<crate::DiagnosticNote>>>,
     inferred_bindings: Vec<InferredBinding>,
@@ -169,6 +171,25 @@ struct OutcomeBinding {
     writes: Vec<usize>,
 }
 impl Checker<'_> {
+    fn record_selection(
+        &mut self,
+        span: Span,
+        kind: syntax::SelectionKind,
+        guard: &Guard,
+        domain: Formula,
+    ) {
+        self.selected_histories
+            .push(crate::history::SelectedHistory::capture(
+                self.result.name.clone(),
+                span,
+                kind,
+                guard,
+                &self.selection_facts,
+                self.loop_context.as_ref().map(|l| l.name.clone()),
+                domain == FALSE,
+            ));
+    }
+
     fn moves(&self, ty: &str) -> bool {
         self.manifest.linear(ty)
             || (self.manifest.contains_references(ty) && !self.manifest.is_cloneable(ty))
@@ -1961,6 +1982,7 @@ impl Checker<'_> {
                 }
                 let atom = format!("$call_{}", self.fresh());
                 let pattern = syntax::Arm {
+                    span,
                     outcome: sig.outcomes[0].name.clone(),
                     bindings: vec![],
                     atom: atom.clone(),
@@ -2279,6 +2301,7 @@ impl Checker<'_> {
                 syntax::InlineArm {
                     span,
                     pattern: syntax::Arm {
+                        span,
                         outcome: o.name.clone(),
                         bindings: fields.clone(),
                         atom: o.name.clone(),
@@ -2333,6 +2356,7 @@ impl Checker<'_> {
             .iter()
             .enumerate()
             .map(|(i, o)| syntax::Arm {
+                span,
                 outcome: o.name.clone(),
                 atom: format!("$capture_{serial}_{i}"),
                 termination: None,
@@ -2507,6 +2531,12 @@ impl Checker<'_> {
         domain: Formula,
         sink: Option<&mut OutcomeBinding>,
     ) -> Result<()> {
+        let at = match e {
+            syntax::OutcomeExpr::Forward(s)
+            | syntax::OutcomeExpr::Construct(s, ..)
+            | syntax::OutcomeExpr::Delta(s, ..) => *s,
+        };
+        self.record_selection(at, syntax::SelectionKind::Outcome, &guard, domain);
         self.lower_outcome_inner(e, guard.clone(), domain, sink)
             .map_err(|error| self.with_path_contributors(error, &guard, domain))
     }
@@ -2821,7 +2851,9 @@ impl Checker<'_> {
             (Operation::Variant(expr), vec![], outcomes, Some(ty))
         };
         let mut arms = arms.to_vec();
+        let mut authored_outcomes = BTreeMap::new();
         for arm in &mut arms {
+            let authored = arm.outcome.rsplit('.').next().unwrap().to_owned();
             if let Some((qualifier, outcome)) = arm.outcome.rsplit_once('.') {
                 let valid = variant_type.as_deref().is_some_and(|ty| {
                     qualifier == ty
@@ -2848,6 +2880,7 @@ impl Checker<'_> {
                     _ => arm.outcome.clone(),
                 };
             }
+            authored_outcomes.insert(arm.outcome.clone(), authored);
         }
         let mut seen = BTreeSet::new();
         for arm in &arms {
@@ -2952,6 +2985,28 @@ impl Checker<'_> {
                 .insert(arm.atom.clone(), (Guard::Atom(atom), selected));
             self.result.atoms.insert(atom, arm.atom.clone());
             self.atom_formulas.insert(atom, selected);
+            self.selection_facts.insert(
+                atom,
+                crate::history::Fact {
+                    id: atom,
+                    name: if arm.atom.starts_with('$') {
+                        arm.outcome.clone()
+                    } else {
+                        arm.atom.clone()
+                    },
+                    outcome: authored_outcomes[&arm.outcome].clone(),
+                    span: arm.span,
+                    implicit: inline.is_some()
+                        || arm.termination.is_some()
+                        || arm.atom.starts_with('$'),
+                },
+            );
+            self.record_selection(
+                arm.span,
+                syntax::SelectionKind::Arm,
+                &guard.clone().and(Guard::Atom(atom)),
+                selected,
+            );
             if let Some(plan) = &collection {
                 self.update_collection_loans(plan, &arm.outcome, selected);
             }
@@ -3221,6 +3276,12 @@ impl Checker<'_> {
                 if let Some(exit) = &arm.termination {
                     let (scope, atom, selected) = scope.unwrap();
                     self.scopes.push(scope);
+                    self.record_selection(
+                        exit.0,
+                        syntax::SelectionKind::Statement,
+                        &guard.clone().and(Guard::Atom(atom)),
+                        selected,
+                    );
                     self.statement(
                         guard.clone().and(Guard::Atom(atom)),
                         selected,
@@ -3325,6 +3386,7 @@ impl Checker<'_> {
                             "loop has no live entry histories",
                         ));
                     }
+                    self.record_selection(*span, syntax::SelectionKind::Loop, &outer, domain);
                     let params: Vec<_> = parameters
                         .iter()
                         .map(|p| manifest::Parameter {
@@ -3428,6 +3490,12 @@ impl Checker<'_> {
                     }
                     let (guard, domain) = self.mask(mask, *span)?;
                     let domain = self.bdd.and(context, domain);
+                    self.record_selection(
+                        *span,
+                        syntax::SelectionKind::Alias,
+                        &outer.clone().and(guard.clone()),
+                        domain,
+                    );
                     self.scopes
                         .last_mut()
                         .unwrap()
@@ -3443,17 +3511,35 @@ impl Checker<'_> {
                         self.expire_loans(&live);
                         let (guard, domain) = self.mask(mask, *span)?;
                         let domain = self.bdd.and(context, domain);
+                        self.record_selection(
+                            *span,
+                            syntax::SelectionKind::Statement,
+                            &outer.clone().and(guard.clone()),
+                            domain,
+                        );
                         self.statement(outer.clone().and(guard), domain, statement, *span)?;
                     }
                 }
                 Item::Group(span, mask, body) => {
                     let (guard, domain) = self.mask(mask, *span)?;
                     let domain = self.bdd.and(context, domain);
+                    self.record_selection(
+                        *span,
+                        syntax::SelectionKind::Scope,
+                        &outer.clone().and(guard.clone()),
+                        domain,
+                    );
                     self.items(body, outer.clone().and(guard), domain)?;
                 }
                 Item::Over(span, mask, body) => {
                     let (guard, domain) = self.mask(mask, *span)?;
                     let domain = self.bdd.and(context, domain);
+                    self.record_selection(
+                        *span,
+                        syntax::SelectionKind::Scope,
+                        &outer.clone().and(guard.clone()),
+                        domain,
+                    );
                     self.scopes.push(Scope::default());
                     self.items(body, outer.clone().and(guard), domain)?;
                     self.resources(domain, *span, Some(self.scopes.len() - 1))?;
@@ -3801,6 +3887,7 @@ pub(crate) fn compile_concrete_unit(
         );
     }
     let mut regions = BTreeMap::new();
+    let mut selected_histories = vec![];
     let mut inferred_bindings = vec![];
     let mut next = 0;
     let dependencies = crate::inference::dependency_order(&parsed, &manifest)?;
@@ -3820,6 +3907,7 @@ pub(crate) fn compile_concrete_unit(
         let saved_manifest = manifest.clone();
         let saved_next = next;
         let saved_bindings = inferred_bindings.len();
+        let saved_histories = selected_histories.len();
         let checked: Result<()> = (|| {
             for f in &source.parameters {
                 if let Some((_, inner)) = manifest::reference_inner(&f.ty) {
@@ -3838,6 +3926,8 @@ pub(crate) fn compile_concrete_unit(
                 crate::origins::result_type(&f.ty, &origin_schemas, &manifest, source.span)?;
             }
             let mut checker = Checker {
+                selected_histories: vec![],
+                selection_facts: BTreeMap::new(),
                 forwarded_exits: BTreeMap::new(),
                 forwarding: None,
                 inferred_bindings: vec![],
@@ -3981,6 +4071,7 @@ pub(crate) fn compile_concrete_unit(
                     .entry(name.clone())
                     .or_insert_with(|| notes.clone());
             }
+            selected_histories.extend(checker.selected_histories);
             inferred_bindings.extend(checker.inferred_bindings);
             let mut result = checker.result;
             crate::origins::normalize(&mut result, &origin_schemas, &manifest, source.span)?;
@@ -4004,6 +4095,7 @@ pub(crate) fn compile_concrete_unit(
             manifest = saved_manifest;
             next = saved_next;
             inferred_bindings.truncate(saved_bindings);
+            selected_histories.truncate(saved_histories);
             failed.insert(index);
             errors.push(error);
             if errors.len() == crate::diagnostics::MAX_DIAGNOSTICS {
@@ -4071,6 +4163,7 @@ pub(crate) fn compile_concrete_unit(
         })
         .collect();
     let program = ir::CheckedProgram {
+        selected_histories,
         outcome_exit_codes,
         inferred_bindings,
         manifest,

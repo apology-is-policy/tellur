@@ -50,6 +50,7 @@ The language is named **Tellur**. `.tellur` is the canonical source extension; l
 - Hover on `auto` for the full inferred binding type, including references and
   mutability, or the inferred signature for `exits auto`. Updated from unsaved
   source; types are shown only after successful checking.
+- Resolved path-selection hover on labels, aliases, arms and executable statements, with bounded decision origins and loop context.
 - Region names and signatures in Outline / Go to Symbol in Editor.
 - Control, decision, selector, optional path-group, scoped-intersection and loop snippets.
 - Bracket matching, automatic closing, indentation and line-comment toggling.
@@ -540,3 +541,17 @@ arm scopes; continuing arms keep their path labels and bindings. Highlighting,
 inferred `auto` hover, unsaved diagnostics and native build/run support the syntax.
 Try `playground/arm_exits.tellur`. Arm separators are commas, without a statement
 semicolon inside the arm; multi-statement arm bodies remain unsupported.
+
+## Selected-history hover (0.55)
+
+Hover over `[path]:`, a `path` alias, a delta arm, or an executable statement to see
+its resolved structural selection. Enclosing group intersections and aliases are
+included. `auto` and declaration hovers retain their type/contract information.
+Decision-arm locations distinguish the contributing facts; duplicate names gain
+explanatory `@line:column` suffixes. These suffixes are not Tellur syntax.
+
+The display describes possible structural histories, not proven input values.
+Loop context means one iteration, with entry conditions already inherited. Large
+conditions/origin lists are bounded and explicitly marked when incomplete. Comments
+and whitespace have no selection hover. Invalid source, including broken unsaved
+imports, suppresses stale information. Try `playground/history_hover.tellur`.

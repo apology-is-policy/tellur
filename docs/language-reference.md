@@ -1,8 +1,8 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.54.0 -->
+<!-- tellur-reference-version: 0.55.0 -->
 
-This manual describes **compiler 0.54.0**, including the current ownership model,
+This manual describes **compiler 0.55.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -860,6 +860,36 @@ shared continuation aligned with the group's label, as above. A formatter must
 preserve selection extent, never add or remove braces as a purely cosmetic edit.
 See [the runnable example](../playground/path_groups.tellur) for nested selection
 and an entry reset inside a group.
+
+### Selected-history hover
+
+In VS Code, hover over a path selector, alias, delta arm, or executable statement
+to see its **resolved structural selection**. A nested `[brief]:` inside
+`[present]: { ... }` displays `present & brief`; an entry reset after the outer
+group displays `entry`. Aliases expand to the path facts they name, with redundant
+identical terms removed. Hover on a string literal describes the containing
+statement's selection; comments and whitespace have no selection hover.
+
+Decision-arm locations identify where the displayed facts came from. Local facts
+from adapters and direct exits are marked as local outcomes, not exported path
+labels. Repeated names from distinct decisions gain an `@line:column` suffix in
+this explanatory display; that suffix is not executable Tellur syntax. Hover on
+`auto` retains its inferred-type information instead of being replaced by path
+information. Declaration hovers likewise keep their contracts.
+
+These are symbolic selections, not proven feasible inputs or exhaustive lists of
+execution histories. Union-selected work executes once. Loop-body hovers describe
+one iteration: its `entry` already includes the conditions needed to reach that
+loop. They do not unroll iterations or enumerate callers. Empty aliases/groups
+are identified as structurally empty. Large explanations show an explicit limit
+notice (a traversal budget of 96 condition nodes, nesting depth 48 and eight displayed origins);
+omitted conditions are never described as unconditional.
+
+The hover requires the current compilation unit to check successfully, including
+unsaved imports. Invalid source has no stale or guessed selection. Generic bodies
+use their universally checked definition, independent of concrete callers.
+See [history_hover.tellur](../playground/history_hover.tellur) for an executable
+example. This adds editor feedback; it does not change path or lifetime semantics.
 
 ### Scoped intersections
 
@@ -2580,12 +2610,13 @@ Editor settings: `tellurLanguage.compilerPath`, `serverPath`, `manifestPath`,
 `programArguments`, and `releaseBuild`. The entry setting is still named
 `tellurLanguage.entryRegion` for compatibility; it selects the control to run. The
 extension reports bounded independent-control diagnostics (one per body, up to 32). Hover supports control and named-outcome declaration names and inferred `auto`
-bindings/contracts. It does not yet provide general expression or call-site type hover.
+bindings/contracts, plus [selected-history feedback](#selected-history-hover) on executable code.
+It does not yet provide general expression or call-site type hover.
 
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and async tasks remain planned; they are not executable features of 0.54.0.
+and async tasks remain planned; they are not executable features of 0.55.0.
 ## Compare supplied scenarios
 
 ```sh
