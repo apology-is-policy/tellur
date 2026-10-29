@@ -58,6 +58,23 @@ impl Drop for Fixture {
 }
 const VALID: &str = "region main() exits Done { [Entry]: exit Done; }";
 #[test]
+fn retained_resource_diagnostics_do_not_need_the_rust_source() {
+    let mut f = Fixture::new();
+    fs::write(
+        f.root.join("manifest.json"),
+        include_str!("../examples/retained_file/manifest.json"),
+    )
+    .unwrap();
+    let source = include_str!("../examples/retained_file/main.tellur");
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    f.change(&source.replace("file_release(file);", ""), 2);
+    assert_eq!(f.diagnostics()[0]["code"], "E_RESOURCE");
+    f.change(source, 3);
+    assert_eq!(f.diagnostics(), json!([]));
+    assert!(!f.root.join("host.rs").exists());
+}
+#[test]
 fn outcome_status_hover_and_unsaved_annotation_errors() {
     let mut f = Fixture::new();
     let source = "outcome result {\n @exit 0 done,\n @exit 23 missing\n}\ncontrol main() exits result {exit done;}";

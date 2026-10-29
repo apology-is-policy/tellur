@@ -1,8 +1,8 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.48.0 -->
+<!-- tellur-reference-version: 0.49.0 -->
 
-This manual describes **compiler 0.48.0**, including the current ownership model,
+This manual describes **compiler 0.49.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -2112,8 +2112,13 @@ Since 0.45, a project manifest can bind primitive operations to typed Rust wrapp
 and explicitly locked Cargo dependencies. Tellur checks calls against the manifest;
 the native build generates Rust outcome enums and checks each wrapper signature.
 Supported data includes owned scalars, strings, bytes, vectors and maps, plus shared
-input borrows that last for the call. Returned foreign borrows, retained resources,
-callbacks and asynchronous adapters remain outside this profile.
+input borrows that last for the call. Since 0.49, `rust.resources` binds opaque
+must-complete types to retained Rust owners. Shared calls receive `&T`; consuming
+calls receive `T`, and resource payloads return ownership under a fresh identity.
+The same explicit completion and borrow/move rules apply as for other resources.
+Returned foreign borrows, exclusive foreign mutation, callbacks and asynchronous
+adapters remain outside this profile. See the runnable
+[retained-file example](../examples/retained_file/main.tellur).
 
 Each binding declares `immediate` or `blocking` execution. Neither suspends a Tellur
 control. This preserves a separate boundary for future tasks and LLVM coroutine
@@ -2462,7 +2467,7 @@ bindings/contracts. It does not yet provide general expression or call-site type
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and async tasks remain planned; they are not executable features of 0.48.0.
+and async tasks remain planned; they are not executable features of 0.49.0.
 ## Compare supplied scenarios
 
 ```sh

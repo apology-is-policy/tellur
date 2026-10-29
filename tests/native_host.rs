@@ -114,3 +114,71 @@ fn malformed_script_payload_and_exhaustion_are_rejected() {
             .contains("exhausted")
     );
 }
+
+#[test]
+fn retained_resources_check_identity_aliases_and_release_exactly_once() {
+    use std::{cell::Cell, rc::Rc};
+    struct Tracked(Rc<Cell<usize>>);
+    impl Drop for Tracked {
+        fn drop(&mut self) {
+            self.0.set(self.0.get() + 1);
+        }
+    }
+    let drops = Rc::new(Cell::new(0));
+    let mut store = host::Resources::default();
+    let first = store.insert("first", Tracked(drops.clone())).unwrap();
+    assert!(std::ptr::eq(
+        store.get::<Tracked>(&first, "first").unwrap(),
+        store.get::<Tracked>(&first, "first").unwrap()
+    ));
+    store
+        .validate_call(&[(&first, "first", false), (&first, "first", false)])
+        .unwrap();
+    for consumes in [(true, false), (false, true), (true, true)] {
+        assert!(
+            store
+                .validate_call(&[(&first, "first", consumes.0), (&first, "first", consumes.1)])
+                .unwrap_err()
+                .contains("aliased")
+        );
+    }
+    assert!(
+        store
+            .take::<String>(&first, "first")
+            .unwrap_err()
+            .contains("Rust resource type")
+    );
+    let V::Opaque { token, .. } = &first else {
+        panic!()
+    };
+    let forged = V::Opaque {
+        ty: "second".into(),
+        token: token.clone(),
+    };
+    assert!(
+        store
+            .get::<Tracked>(&forged, "second")
+            .err()
+            .unwrap()
+            .contains("identity/type")
+    );
+    let mut other = host::Resources::default();
+    let second = other.insert("first", Tracked(drops.clone())).unwrap();
+    assert_ne!(first, second);
+    assert!(other.get::<Tracked>(&first, "first").is_err());
+    assert!(
+        store
+            .validate_call(&[(&first, "first", true), (&second, "first", false)])
+            .is_err()
+    );
+    assert_eq!(drops.get(), 0);
+    drop(store.take::<Tracked>(&first, "first").unwrap());
+    assert_eq!(drops.get(), 1);
+    assert!(store.get::<Tracked>(&first, "first").is_err());
+    assert!(store.take::<Tracked>(&first, "first").is_err());
+    let third = store.insert("first", Tracked(drops.clone())).unwrap();
+    assert_ne!(first, third);
+    drop(store);
+    drop(other);
+    assert_eq!(drops.get(), 3);
+}

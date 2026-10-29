@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.48.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.49.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -1259,3 +1259,49 @@ Evidence: `work/tellur-0.48-validation.json`, `tellur-0.48-tests.log`,
 `tellur-0.48-port.log`, `tellur-0.48-package.log`,
 `tellur-0.48-package-integrity.log`, `tellur-0.48-install.log` and
 `tellur-0.48-installed-integrity.log`.
+
+## 0.49 — Retained Rust resource owners
+
+I1b.1 binds opaque must-complete Tellur types to owned Rust objects through
+`rust.resources`. Shared calls borrow the actual object; consuming calls remove
+and transfer it. Returned resource payloads receive fresh identities, including
+when the wrapper returns an object for retry. The generated interfaces retain
+concrete Rust types and require no `Clone`, `Send` or `Sync` implementation.
+
+`tests/rust_adapters.rs` covers binding validation, ownership diagnostics without
+reading Rust, duplicate shared borrows, mixed borrowed/consuming inputs, transfers
+through a Tellur helper before/after expansion at O0/O2, explicit failed cleanup,
+host teardown and fuel faults. The retained-file example runs live and with
+scripted end/read-failure paths. Nested resource arguments supplied as live JSON
+are rejected before acquisition or other wrapper execution; scenario handles stay
+symbolic. `tests/native_host.rs` checks nominal identity, consuming aliases, stale
+and cross-host handles, wrong concrete Rust types, fresh identities and exactly-once
+destruction. LSP tests check unsaved completion errors and repair without `host.rs`.
+
+The full **769-test** Rust run passed. Final resource/process-entry regression
+checks also passed after strengthening the helper-transfer fixture and adding the
+live-entry rejection, for **770 distinct passing Rust tests**. Clippy passed for
+all targets with warnings denied. All **33 Node tests** passed. The manual accepts
+**55** examples, requires **20** diagnostics, classifies **14** context fragments
+and resolves **162** local links. All **56** maintained Tellur sources pass checking.
+
+The full real VS Code suite passed again with the final rebuilt compiler, including
+the retained-file completion diagnostic, unsaved repair and native open/read/release
+sequence. Compiler and LSP initialization report **0.49.0**. All nine packaged
+payloads match staging; the installed extension's contents, metadata and executable
+permissions match the package. The verified source snapshot is
+`work/revision-backups/tellur-0.49-source.tar.gz`.
+
+This release supports direct resource parameters/payloads. Foreign exclusive
+mutation, returned references, aggregate boundary conversion, async suspension and
+cancellation remain unimplemented. Host teardown drops remaining Rust objects;
+it does not execute fallible Tellur cleanup or report its outcomes. The file
+example's release operation does not claim checked close errors or write durability.
+
+Evidence: `work/tellur-0.49-validation.json`, `tellur-0.49-tests.log`,
+`tellur-0.49-resources-final.log`, `tellur-0.49-clippy.log`,
+`tellur-0.49-reference.log`, `tellur-0.49-examples.log`,
+`tellur-0.49-node.log`, `tellur-0.49-build.log`, `tellur-0.49-editor-final.log`,
+`tellur-0.49-versions.log`, `tellur-0.49-package.log`,
+`tellur-0.49-package-integrity.log`, `tellur-0.49-install.log`,
+`tellur-0.49-installed-integrity.log` and `tellur-0.49-backup.log`.

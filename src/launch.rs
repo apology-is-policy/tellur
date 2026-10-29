@@ -11,7 +11,7 @@ pub struct EntryConfiguration {
     pub exit_codes: BTreeMap<String, u8>,
 }
 
-// Duplicate policy keys must not silently select a different status.
+// Duplicate contract metadata keys must not silently select a different binding.
 pub(crate) fn unique_map<'de, D, T>(
     deserializer: D,
 ) -> std::result::Result<BTreeMap<String, T>, D::Error>
@@ -32,9 +32,7 @@ where
             let mut values = BTreeMap::new();
             while let Some((key, value)) = a.next_entry::<String, T>()? {
                 if values.insert(key.clone(), value).is_some() {
-                    return Err(serde::de::Error::custom(format!(
-                        "duplicate launch policy key `{key}`"
-                    )));
+                    return Err(serde::de::Error::custom(format!("duplicate key `{key}`")));
                 }
             }
             Ok(values)

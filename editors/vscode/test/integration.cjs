@@ -781,6 +781,29 @@ control main() exits done {
     assert.equal(settingsMissing.stderr, '');
     console.log('TELLUR_EXIT_CODES_EDITOR_TESTS_PASSED: annotation hover, unsaved diagnostic, repair, exact nonzero status and JSON outcome');
     console.log('TELLUR_RUST_SETTINGS_EDITOR_TESTS_PASSED: manifest-relative Rust adapter, unsaved checking, repair, locked build, persistent update and reload');
+    const resourceFolder = path.join(root, 'retained-file');
+    await fs.mkdir(resourceFolder, {recursive:true});
+    for (const file of ['main.tellur', 'manifest.json', 'host.rs', 'Cargo.lock']) {
+      await fs.copyFile(path.join(__dirname, '../../../examples/retained_file', file), path.join(resourceFolder, file));
+    }
+    const resourceUri = vscode.Uri.file(path.join(resourceFolder, 'main.tellur'));
+    const resourceDocument = await vscode.workspace.openTextDocument(resourceUri);
+    await vscode.window.showTextDocument(resourceDocument);
+    const resourceSource = resourceDocument.getText();
+    const resourceDiagnostics = () => vscode.languages.getDiagnostics(resourceUri).filter(d => d.source === 'tellur');
+    await replace(resourceDocument, resourceSource.replace('file_release(file);', ''));
+    await waitFor(() => resourceDiagnostics().some(d => code(d) === 'E_RESOURCE'), 'retained resource requires explicit completion');
+    await replace(resourceDocument, resourceSource);
+    await waitFor(() => resourceDiagnostics().length === 0, 'retained resource repair');
+    const resourceInput = path.join(resourceFolder, 'input.txt');
+    await fs.writeFile(resourceInput, 'retained file');
+    const resourceRun = await vscode.commands.executeCommand('tellur.buildAndRun', {arguments:['--json', '--', resourceInput], output:path.join(root, 'native output', 'retained-file')});
+    assert.equal(resourceRun.code, 0, resourceRun.stderr);
+    const resourceReport = JSON.parse(resourceRun.stdout);
+    assert.equal(resourceReport.outcome, 'data');
+    assert.deepEqual(resourceReport.fields[0].value, Array.from(Buffer.from('retained file')));
+    assert.deepEqual(resourceReport.events.map(event => event.operation), ['file_open', 'file_chunk', 'file_release']);
+    console.log('TELLUR_RETAINED_RESOURCES_EDITOR_TESTS_PASSED: manifest mapping, unsaved completion diagnostic, repair, locked native build and explicit release');
     console.log('TELLUR_EDITOR_TESTS_PASSED: language recognition, unsaved diagnostics/repair, outline, witness, UTF-16, manifest watcher, restart, partial moves, owned variants');
   } finally {
     await replace(document, original);

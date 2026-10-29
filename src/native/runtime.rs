@@ -342,7 +342,76 @@ unsafe extern "C" {
     fn ferror(file: *mut c_void) -> c_int;
     fn fclose(file: *mut c_void) -> c_int;
 }
-pub type RustAdapter = fn(&str, Vec<V>) -> R<Outcome>;
+/// Invocation-owned storage. Tokens never own or clone the Rust object.
+/// Dropping the host releases remaining objects; fallible protocol completion
+/// still belongs to explicit consuming adapter operations.
+#[derive(Default)]
+pub struct Resources {
+    values: BTreeMap<String, (&'static str, Box<dyn std::any::Any>)>,
+}
+impl Resources {
+    pub fn insert<T: 'static>(&mut self, ty: &'static str, value: T) -> R<V> {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        // Process-wide identities prevent reuse even across separate hosts.
+        let id = NEXT
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
+            .map_err(|_| "E_HOST: resource identity exhausted")?;
+        let token = format!("rust:{id}");
+        self.values.insert(token.clone(), (ty, Box::new(value)));
+        Ok(V::Opaque {
+            ty: ty.into(),
+            token,
+        })
+    }
+    fn token<'a>(&self, value: &'a V, expected: &str) -> R<&'a str> {
+        let V::Opaque { ty, token } = value else {
+            return Err("E_HOST: expected resource handle".into());
+        };
+        if ty != expected {
+            return Err("E_HOST: resource type mismatch".into());
+        }
+        let (actual, _) = self
+            .values
+            .get(token)
+            .ok_or("E_HOST: unknown or consumed resource handle")?;
+        if *actual != expected {
+            return Err("E_HOST: resource identity/type mismatch".into());
+        }
+        Ok(token)
+    }
+    pub fn get<T: 'static>(&self, value: &V, ty: &str) -> R<&T> {
+        let token = self.token(value, ty)?;
+        self.values[token]
+            .1
+            .downcast_ref()
+            .ok_or_else(|| "E_HOST: Rust resource type mismatch".into())
+    }
+    pub fn take<T: 'static>(&mut self, value: &V, ty: &str) -> R<T> {
+        self.get::<T>(value, ty)?;
+        let V::Opaque { token, .. } = value else {
+            unreachable!()
+        };
+        let (_, value) = self.values.remove(token).unwrap();
+        Ok(*value
+            .downcast::<T>()
+            .map_err(|_| "E_HOST: Rust resource type mismatch")?)
+    }
+    /// Check all handle identities and ownership aliases before any removal/call.
+    pub fn validate_call(&self, inputs: &[(&V, &str, bool)]) -> R<()> {
+        let mut seen = BTreeMap::new();
+        for (value, ty, consume) in inputs {
+            let token = self.token(value, ty)?;
+            if let Some(previous) = seen.insert(token, *consume)
+                && (previous || *consume)
+            {
+                return Err("E_HOST: aliased consuming resource arguments".into());
+            }
+        }
+        Ok(())
+    }
+}
+pub type RustAdapter = fn(&mut Resources, &str, Vec<V>) -> R<Outcome>;
 pub struct Host {
     pub rust_adapter: Option<RustAdapter>,
     pub manifest: Json,
@@ -353,6 +422,7 @@ pub struct Host {
     pub fuel: Option<usize>,
     files: BTreeMap<String, *mut c_void>,
     next_file: usize,
+    resources: Resources,
 }
 impl Drop for Host {
     fn drop(&mut self) {
@@ -380,6 +450,7 @@ impl Host {
             fuel,
             files: BTreeMap::new(),
             next_file: 0,
+            resources: Resources::default(),
         }
     }
     pub fn tick(&mut self, line: usize, column: usize) -> R<()> {
@@ -438,7 +509,11 @@ impl Host {
             (call.outcome.clone(), call.fields.clone())
         } else if p["rust"].is_object() {
             self.rust_adapter
-                .ok_or("E_HOST: Rust adapter is not linked")?(name, args.clone())?
+                .ok_or("E_HOST: Rust adapter is not linked")?(
+                &mut self.resources,
+                name,
+                args.clone(),
+            )?
         } else {
             let modern = self.check_contract(name, &p)?;
             let (mut outcome, mut values) = self.real(name, &args)?;
@@ -901,6 +976,23 @@ pub fn launch(
         (values, None)
     };
     validate_args(&values, types, &manifest)?;
+    // A new live invocation has no pre-existing resource owners. Reject JSON
+    // handles before executing any code, including handles nested in aggregates.
+    // Otherwise a guessed token could alias an object acquired later by the entry.
+    fn supplied_resource(value: &V, bindings: &Json) -> bool {
+        match value {
+            V::Opaque { ty, .. } => bindings.get(ty).is_some(),
+            V::Construct { fields, .. } => fields.iter().any(|v| supplied_resource(v, bindings)),
+            _ => false,
+        }
+    }
+    if script.is_none()
+        && values
+            .iter()
+            .any(|v| supplied_resource(v, &manifest["rust"]["resources"]))
+    {
+        return Err("E_HOST: live resource arguments cannot be supplied as JSON; acquire resources inside the executable entry".into());
+    }
     let mut host = Host::new(manifest, script, json_output, fuel);
     host.rust_adapter = rust_adapter;
     let result = (selected.run)(&mut host, values)?;

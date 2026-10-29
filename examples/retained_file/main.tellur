@@ -1,0 +1,24 @@
+// The File stays alive between calls. Every opened path explicitly releases it.
+control main(string path) exits process_result {
+    delta file_open(borrow path) {
+        opened { input_file file } => opened,
+        failed { string message } => unavailable,
+    }
+[opened]:
+    auto result = capture file_chunk(borrow file);
+    file_release(file);
+    exit delta result {
+        data { bytes contents } => data { contents },
+        end => end {},
+        failed { string problem } => read_failed { problem },
+    };
+[unavailable]:
+    exit open_failed { message };
+}
+
+outcome process_result {
+    @exit 0 data { bytes contents },
+    @exit 0 end,
+    @exit 1 open_failed { string message },
+    @exit 1 read_failed { string message },
+}

@@ -2,7 +2,7 @@
 use crate::{
     Diagnostic, Result, Span,
     collection_support::Collection,
-    manifest::{Manifest, Mode},
+    manifest::{Manifest, Mode, TypeDef},
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -18,6 +18,13 @@ pub struct Configuration {
     pub lockfile: PathBuf,
     #[serde(default)]
     pub dependencies: BTreeMap<String, Dependency>,
+    /// Tellur opaque must-complete type -> public type in the adapter module.
+    #[serde(
+        default,
+        skip_serializing_if = "BTreeMap::is_empty",
+        deserialize_with = "crate::launch::unique_map"
+    )]
+    pub resources: BTreeMap<String, String>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -99,6 +106,19 @@ pub(crate) fn validate(manifest: &Manifest) -> Result<()> {
                 )));
             }
         }
+        for (name, rust_type) in &config.resources {
+            if !identifier(name)
+                || !identifier(rust_type)
+                || !matches!(
+                    manifest.type_def(name),
+                    Some(TypeDef::Opaque { linear: true, .. })
+                )
+            {
+                return Err(error(format!(
+                    "Rust resource `{name}` requires an opaque linear manifest type and a Rust-compatible adapter type identifier"
+                )));
+            }
+        }
     }
     for p in manifest.primitives.iter().filter(|p| p.rust.is_some()) {
         if manifest.rust.is_none() {
@@ -121,9 +141,9 @@ pub(crate) fn validate(manifest: &Manifest) -> Result<()> {
                 .iter()
                 .flat_map(|o| o.fields.iter().map(|f| f.ty.as_str())),
         ) {
-            if !supported(ty) {
+            if !supported(ty) && !manifest.rust.as_ref().unwrap().resources.contains_key(ty) {
                 return Err(error(format!(
-                    "Rust adapter `{}` does not support `{ty}`; use owned scalar/string/bytes/vector/map data or call-duration borrowed inputs",
+                    "Rust adapter `{}` does not support `{ty}`; use owned scalar/string/bytes/vector/map data, call-duration shared borrows, or a directly bound opaque resource",
                     p.name
                 )));
             }
@@ -131,7 +151,10 @@ pub(crate) fn validate(manifest: &Manifest) -> Result<()> {
     }
     Ok(())
 }
-fn rust_type(t: &str) -> String {
+fn rust_type(t: &str, resources: &BTreeMap<String, String>) -> String {
+    if let Some(name) = resources.get(t) {
+        return format!("crate::rust_host::r#{name}");
+    }
     match t {
         "Bool" => "bool".into(),
         "U32" => "u32".into(),
@@ -139,11 +162,11 @@ fn rust_type(t: &str) -> String {
         "Bytes" => "Vec<u8>".into(),
         "Unit" => "()".into(),
         _ => match Collection::parse(t).unwrap() {
-            Collection::Vector(t) => format!("Vec<{}>", rust_type(&t)),
+            Collection::Vector(t) => format!("Vec<{}>", rust_type(&t, resources)),
             Collection::Map(k, v) => format!(
                 "std::collections::BTreeMap<{},{}>",
-                rust_type(&k),
-                rust_type(&v)
+                rust_type(&k, resources),
+                rust_type(&v, resources)
             ),
             _ => unreachable!(),
         },
@@ -161,7 +184,7 @@ fn collect_type(t: &str, all: &mut BTreeSet<String>) {
 /// that checks Tellur callers. No arbitrary dynamic wire-value API reaches wrappers.
 pub(crate) fn source(manifest: &Manifest) -> Result<String> {
     let Some(config) = &manifest.rust else {
-        return Ok("fn rust_dispatch(_: &str, _: Vec<V>) -> R<Outcome> { Err(\"E_HOST: no Rust adapter\".into()) }\n".into());
+        return Ok("fn rust_dispatch(_: &mut Resources, _: &str, _: Vec<V>) -> R<Outcome> { Err(\"E_HOST: no Rust adapter\".into()) }\n".into());
     };
     if !config.source.is_absolute() || !config.lockfile.is_absolute() {
         return Err(error(
@@ -175,6 +198,7 @@ pub(crate) fn source(manifest: &Manifest) -> Result<String> {
         ))
     })?;
     let mut code = String::from("#[allow(non_camel_case_types)]\npub mod rust_api {\n");
+    let resources = &config.resources;
     let mut all = BTreeSet::new();
     for p in manifest.primitives.iter().filter(|p| p.rust.is_some()) {
         writeln!(code, "pub enum {}_outcome {{", p.name).unwrap();
@@ -188,7 +212,7 @@ pub(crate) fn source(manifest: &Manifest) -> Result<String> {
                     o.name,
                     o.fields
                         .iter()
-                        .map(|f| rust_type(&f.ty))
+                        .map(|f| rust_type(&f.ty, resources))
                         .collect::<Vec<_>>()
                         .join(",")
                 )
@@ -206,6 +230,7 @@ pub(crate) fn source(manifest: &Manifest) -> Result<String> {
     code.push_str("}\nmod rust_host {\n");
     code.push_str(&source);
     code.push_str("\n}\n");
+    all.retain(|t| !resources.contains_key(t));
     let ids: BTreeMap<_, _> = all
         .iter()
         .enumerate()
@@ -213,7 +238,7 @@ pub(crate) fn source(manifest: &Manifest) -> Result<String> {
         .collect();
     for t in &all {
         let id = ids[t];
-        let ty = rust_type(t);
+        let ty = rust_type(t, resources);
         let (decode, encode) = match t.as_str() {
             "Bool" | "U32" | "String" | "Bytes" => (
                 format!(
@@ -251,30 +276,71 @@ pub(crate) fn source(manifest: &Manifest) -> Result<String> {
         };
         writeln!(code,"fn decode_{id}(value:V)->R<{ty}>{{{decode}}}\nfn encode_{id}(value:{ty})->V{{{encode}}}").unwrap();
     }
-    code.push_str("fn rust_dispatch(name:&str,args:Vec<V>)->R<Outcome>{let mut args=args.into_iter();match name{\n");
+    code.push_str("fn rust_dispatch(resources:&mut Resources,name:&str,args:Vec<V>)->R<Outcome>{let mut args=args.into_iter();match name{\n");
     for p in manifest.primitives.iter().filter(|p| p.rust.is_some()) {
         writeln!(code, "{:?}=>{{", p.name).unwrap();
-        for (i, f) in p.parameters.iter().enumerate() {
+        for i in 0..p.parameters.len() {
             writeln!(
                 code,
-                "let p{i}=decode_{}(args.next().ok_or(\"E_HOST: missing adapter argument\")?)?;",
-                ids[&f.ty]
+                "let a{i}=args.next().ok_or(\"E_HOST: missing adapter argument\")?;"
             )
             .unwrap();
+        }
+        code.push_str(
+            "if args.next().is_some(){return Err(\"E_HOST: extra adapter argument\".into());}\n",
+        );
+        writeln!(
+            code,
+            "resources.validate_call(&[{}])?;",
+            p.parameters
+                .iter()
+                .enumerate()
+                .filter(|(_, f)| resources.contains_key(&f.ty))
+                .map(|(i, f)| format!("(&a{i},{:?},{})", f.ty, f.mode == Mode::Consume))
+                .collect::<Vec<_>>()
+                .join(",")
+        )
+        .unwrap();
+        // Decode data and take owners before creating shared arena references.
+        for (i, f) in p.parameters.iter().enumerate() {
+            if resources.contains_key(&f.ty) {
+                if f.mode != Mode::Borrow {
+                    writeln!(
+                        code,
+                        "let p{i}=resources.take::<{}>(&a{i},{:?})?;",
+                        rust_type(&f.ty, resources),
+                        f.ty
+                    )
+                    .unwrap();
+                }
+            } else {
+                writeln!(code, "let p{i}=decode_{}(a{i})?;", ids[&f.ty]).unwrap();
+            }
+        }
+        for (i, f) in p.parameters.iter().enumerate() {
+            if resources.contains_key(&f.ty) && f.mode == Mode::Borrow {
+                writeln!(
+                    code,
+                    "let p{i}=resources.get::<{}>(&a{i},{:?})?;",
+                    rust_type(&f.ty, resources),
+                    f.ty
+                )
+                .unwrap();
+            }
         }
         let types = p
             .parameters
             .iter()
             .map(|p| {
                 if p.mode != Mode::Borrow {
-                    return rust_type(&p.ty);
+                    return rust_type(&p.ty, resources);
                 }
                 match p.ty.as_str() {
                     "String" => "&str".into(),
                     "Bytes" => "&[u8]".into(),
                     _ => match Collection::parse(&p.ty) {
-                        Some(Collection::Vector(t)) => format!("&[{}]", rust_type(&t)),
-                        _ => format!("&{}", rust_type(&p.ty)),
+                        Some(Collection::Vector(t)) => format!("&[{}]", rust_type(&t, resources)),
+                        _ => format!("&{}", rust_type(&p.ty, resources)),
                     },
                 }
             })
@@ -284,7 +350,16 @@ pub(crate) fn source(manifest: &Manifest) -> Result<String> {
             .parameters
             .iter()
             .enumerate()
-            .map(|(i, p)| format!("{}p{i}", if p.mode == Mode::Borrow { "&" } else { "" }))
+            .map(|(i, p)| {
+                format!(
+                    "{}p{i}",
+                    if p.mode == Mode::Borrow && !resources.contains_key(&p.ty) {
+                        "&"
+                    } else {
+                        ""
+                    }
+                )
+            })
             .collect::<Vec<_>>()
             .join(",");
         writeln!(
@@ -314,7 +389,11 @@ pub(crate) fn source(manifest: &Manifest) -> Result<String> {
                 o.fields
                     .iter()
                     .enumerate()
-                    .map(|(i, f)| format!("encode_{}(v{i})", ids[&f.ty]))
+                    .map(|(i, f)| if resources.contains_key(&f.ty) {
+                        format!("resources.insert({:?},v{i})?", f.ty)
+                    } else {
+                        format!("encode_{}(v{i})", ids[&f.ty])
+                    })
                     .collect::<Vec<_>>()
                     .join(",")
             )

@@ -1,0 +1,36 @@
+{
+  "version": "0.1",
+  "types": [{"name": "input_file", "kind": "opaque", "linear": true}],
+  "rust": {
+    "source": "host.rs",
+    "lockfile": "Cargo.lock",
+    "resources": {"input_file": "InputFile"}
+  },
+  "primitives": [
+    {
+      "name": "file_open",
+      "parameters": [{"name": "path", "type": "string", "mode": "borrow"}],
+      "outcomes": [
+        {"name": "opened", "fields": [{"name": "file", "type": "input_file"}]},
+        {"name": "failed", "fields": [{"name": "message", "type": "string"}]}
+      ],
+      "effects": ["file.open"], "returns": true, "rust": {"execution": "blocking"}
+    },
+    {
+      "name": "file_chunk",
+      "parameters": [{"name": "file", "type": "input_file", "mode": "borrow"}],
+      "outcomes": [
+        {"name": "data", "fields": [{"name": "contents", "type": "bytes"}]},
+        {"name": "end", "fields": []},
+        {"name": "failed", "fields": [{"name": "message", "type": "string"}]}
+      ],
+      "effects": ["file.read"], "returns": true, "rust": {"execution": "blocking"}
+    },
+    {
+      "name": "file_release",
+      "parameters": [{"name": "file", "type": "input_file", "mode": "consume"}],
+      "outcomes": [{"name": "released", "fields": []}],
+      "effects": ["file.release"], "returns": true, "rust": {"execution": "blocking"}
+    }
+  ]
+}

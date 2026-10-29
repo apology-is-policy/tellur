@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.48.0** implements the v0.1 checked core and the current language
+Compiler release **0.49.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -27,6 +27,9 @@ through stored values, adapters and merged path labels. Release 0.47 adds
 Release 0.48 adds [explicit process exit contracts](docs/reference/process-entry.md):
 `@exit N` on named alternatives, checked entry overrides, and exact status propagation
 through `tellurc exec`. Runnable playgrounds now declare their status policy.
+Release 0.49 adds [retained Rust resources](docs/rust-adapters.md#retained-resources-049):
+opaque owners survive between calls, with checked borrowing and explicit consumption.
+Try the [file adapter](examples/retained_file/README.md) in VS Code or the terminal.
 
 The [semantic foundation](docs/semantic-foundation.md) distinguishes compatibility,
 ownership transfer, behavioral equivalence and provenance. Executable law tests and

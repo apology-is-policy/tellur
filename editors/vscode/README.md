@@ -475,6 +475,16 @@ zero-based UTF-16 encoding. Path-related LSP diagnostics additionally carry a
 `structural_may_reach` witness in diagnostic data. See the
 [report format](https://github.com/apology-is-policy/tellur/blob/main/docs/reference/diagnostics-and-limits.md#machine-readable-checking).
 
+## Retained Rust resources in 0.49
+
+The compiler now supports manifest-bound opaque Rust owners across calls, with
+shared borrowing and explicit consuming operations. Open
+[`examples/retained_file/main.tellur`](https://github.com/apology-is-policy/tellur/blob/main/examples/retained_file/main.tellur)
+to try it. Removing `file_release(file);` produces an unsaved resource diagnostic;
+repairing it permits a native build with the bundled compiler. No new Tellur
+syntax is required. See the
+[adapter reference](https://github.com/apology-is-policy/tellur/blob/main/docs/rust-adapters.md#retained-resources-049).
+
 ## Process status contracts in 0.48
 
 Named outcome alternatives support `@exit N` highlighting, annotation diagnostics,

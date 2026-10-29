@@ -1,6 +1,6 @@
 # Rust source adapters
 
-Compiler 0.45 can compile project-supplied Rust wrappers with a generated native
+Since compiler 0.45, project-supplied Rust wrappers can be compiled with a generated native
 program. The Tellur primitive manifest is the source of argument types, closed
 outcomes, ownership modes and declared effects. The compiler generates concrete
 Rust result enums, conversions and exact wrapper-signature checks from it.
@@ -78,8 +78,9 @@ Vectors and map values may nest supported types. Map keys are `string`, `u32` or
 `bool`; ordering matches Tellur's map representation. The manifest `borrow` mode
 means a call-duration shared borrow. `value` and `consume` deliver owned Rust
 arguments, under the existing Tellur Copy/move rules. Outcomes contain owned data.
-Returned references, exclusive foreign mutation, opaque retained resources, nominal
+Returned references, exclusive foreign mutation, nominal
 records/sums, callbacks and asynchronous adapters are not supported by this profile.
+Compiler 0.49 additionally supports directly bound opaque retained resources below.
 
 The current bridge converts runtime values and may copy borrowed input data. It
 does not promise zero-copy FFI. The generated function types prevent ordinary safe
@@ -88,6 +89,96 @@ a trust boundary: types do not prove effect declarations, error classification,
 blocking behavior or domain laws. An adapter panic terminates the native execution;
 it is not converted into a recoverable Tellur alternative. No unwinding/abort or
 cancellation cleanup guarantee is implied.
+
+## Retained resources (0.49)
+
+An opaque must-complete Tellur type can represent an owned Rust object that survives
+between calls. Add a `resources` map to the top-level `rust` configuration:
+
+```json
+"types": [{"name": "input_file", "kind": "opaque", "linear": true}],
+"rust": {
+  "source": "host.rs",
+  "lockfile": "Cargo.lock",
+  "resources": {"input_file": "InputFile"}
+}
+```
+
+This fragment binds `input_file` to `rust_host::InputFile`. `host.rs` must define or
+publicly re-export that type, for example `pub use std::fs::File as InputFile;`.
+The right-hand name is one Rust-compatible identifier, not arbitrary Rust syntax
+or a qualified path. A public alias/re-export can name a dependency type. The type
+must be `'static` (it cannot retain a call's borrowed arguments); it need not be
+`Copy`, `Clone`, `Send` or `Sync`. Two Tellur resource names remain distinct even if
+they map to the same Rust type. Duplicate resource bindings are rejected.
+
+| Boundary use of `input_file` | Rust representation | Ownership effect |
+| --- | --- | --- |
+| Outcome payload | `InputFile` | Store the returned object and issue a fresh Tellur handle |
+| Parameter, `mode: borrow` | `&InputFile` | Borrow the stored object for this call |
+| Parameter, `mode: consume` | `InputFile` | Remove the object and transfer it into the wrapper |
+| Parameter, `mode: value` | Rejected | Must-complete owners require borrow or consume |
+
+For example, the three generated interfaces in the
+[retained-file example](../examples/retained_file/host.rs) are:
+
+```rust
+pub fn file_open(path: &str) -> rust_api::file_open_outcome;
+pub fn file_chunk(file: &InputFile) -> rust_api::file_chunk_outcome;
+pub fn file_release(file: InputFile) -> rust_api::file_release_outcome;
+```
+
+Resources currently cross the Rust boundary directly, as parameters or individual
+outcome fields. A Rust-bound `vector<input_file>`, nominal record/sum, returned
+reference or exclusive borrow is not supported. Inside Tellur, the existing
+resource-containing structs, sums, outcomes and collections still work; unpack an
+owner before passing it to Rust. A wrapper may own a richer internal Rust object
+behind a single opaque type.
+
+The existing checker enforces consumption or transfer on every selected completion.
+It rejects implicit discard, `drop`, `clone`, use after consumption and borrowing
+an owner during its consumption. Multiple shared inputs may name the same object.
+The bridge does not clone these objects to satisfy borrows. A shared resource
+borrow protects the owner from replacement/consumption; it does not promise that
+external state is immutable. Reads can advance a file offset and a listener can
+accept connections. Such effects belong in the primitive's declared effects.
+
+### Completion, failures and identity
+
+Consumption happens regardless of which declared outcome the wrapper returns.
+A failed close therefore cannot silently restore the old Tellur owner. If retry
+requires retaining ownership, declare a resource payload on that outcome and
+return the object explicitly. The returned handle is fresh, even when the same
+Rust object is returned. There is no built-in interpretation of an operation's
+name as `close`, `release` or `retry`.
+
+Live handles are checked against invocation-owned storage before dispatch.
+Unknown, consumed, wrong-type and cross-host identities are rejected; consuming
+aliases are rejected before objects are removed or the wrapper is called. Trace
+copies of a handle do not clone its Rust owner. Tokens are process-local diagnostic
+identities, not serialized objects or cryptographic capabilities. A JSON token
+from an earlier run cannot reopen a resource. Live executable entries reject
+resource arguments supplied as JSON, including nested ones, before any wrapper
+runs; acquire owners inside the entry instead. Scenario runs use symbolic opaque
+values and bypass both the store and live wrappers.
+
+Normal host teardown and ordinary returned runtime errors drop any retained Rust
+objects. This fallback does not invoke Tellur completion controls or synthesize
+their outcomes. An executable entry that returns a resource transfers it to the
+host: its JSON payload records an identity that is released at teardown, not a
+resource transferable to another process. Complete any required fallible protocol
+before the executable entry returns. No destructor ordering, panic/abort, forced
+termination or future cancellation guarantee is added by this checkpoint.
+
+The example's `file_release` deliberately means descriptor release. Rust's
+[`File` destructor](https://doc.rust-lang.org/std/fs/struct.File.html) does not report
+close errors, so this operation does not claim fallible-close success or write
+durability. Adapters requiring fallible completion must expose explicit outcomes.
+
+Retained storage currently belongs to one synchronous invocation, with no global
+object registry, thread-safety requirement, Rust future or executor contract. Future
+Tellur tasks will need explicit resource/frame ownership and cancellation rules;
+this facility does not settle them or constrain LLVM coroutine lowering.
 
 ## Dependency and build workflow
 
