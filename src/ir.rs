@@ -343,6 +343,8 @@ pub(crate) struct InferredBinding {
 }
 #[derive(Clone, Debug)]
 pub struct CheckedProgram {
+    /// Bounded source evidence; excluded from executable IR and certificates.
+    pub(crate) contributors: BTreeMap<String, BTreeMap<String, Vec<crate::absorption::Raw>>>,
     pub(crate) selected_histories: Vec<crate::history::SelectedHistory>,
     /// Defaults from each control's final named contract, not from its callees.
     pub(crate) outcome_exit_codes: BTreeMap<String, BTreeMap<String, u8>>,

@@ -47,7 +47,10 @@ function scheduleStart(context) {
 }
 async function activate(context) {
   registerBuildCommands(context);
-  context.subscriptions.push(vscode.commands.registerCommand('tellur.showContractSnapshot', async () => {
+  for (const [command, method, label] of [
+    ['tellur.showContractSnapshot', 'tellur/contractSnapshot', 'contract snapshot'],
+    ['tellur.showAbsorptionSnapshot', 'tellur/absorptionSnapshot', 'outcome absorption snapshot'],
+  ]) context.subscriptions.push(vscode.commands.registerCommand(command, async () => {
     const source = vscode.window.activeTextEditor?.document;
     if (!source || !['tellur', 'path'].includes(source.languageId)) {
       void vscode.window.showWarningMessage('Open a Tellur source file to inspect its public contract.');
@@ -59,12 +62,12 @@ async function activate(context) {
       return null;
     }
     try {
-      const snapshot = await client.sendRequest('tellur/contractSnapshot', { textDocument: { uri: source.uri.toString() } });
+      const snapshot = await client.sendRequest(method, { textDocument: { uri: source.uri.toString() } });
       const document = await vscode.workspace.openTextDocument({ language: 'json', content: JSON.stringify(snapshot, null, 2) + '\n' });
       await vscode.window.showTextDocument(document, { preview: false });
       return snapshot;
     } catch (error) {
-      void vscode.window.showErrorMessage(`Tellur contract snapshot failed: ${error.message}`);
+      void vscode.window.showErrorMessage(`Tellur ${label} failed: ${error.message}`);
       return null;
     }
   }));

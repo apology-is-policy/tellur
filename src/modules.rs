@@ -322,6 +322,22 @@ pub fn contract_snapshot_with_loader(
 ) -> crate::CheckResult<crate::contracts::Snapshot, ModuleError> {
     load_checked(path.as_ref(), manifest, read, true).map(|(_, snapshot)| snapshot.unwrap())
 }
+/// Checked public contracts together with bounded internal outcome contributors.
+pub fn absorption_snapshot(
+    path: impl AsRef<Path>,
+    manifest: Manifest,
+) -> crate::CheckResult<crate::absorption::Snapshot, ModuleError> {
+    absorption_snapshot_with_loader(path, manifest, |p| std::fs::read_to_string(p))
+}
+pub fn absorption_snapshot_with_loader(
+    path: impl AsRef<Path>,
+    manifest: Manifest,
+    read: impl FnMut(&Path) -> std::io::Result<String>,
+) -> crate::CheckResult<crate::absorption::Snapshot, ModuleError> {
+    let (program, snapshot) = load_checked(path.as_ref(), manifest, read, true)?;
+    crate::absorption::checked(&program, snapshot.unwrap())
+        .map_err(|diagnostic| locate(program.source_files(), diagnostic).into())
+}
 fn load_checked(
     path: &Path,
     manifest: Manifest,

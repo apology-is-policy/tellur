@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.57.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.58.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -1715,3 +1715,70 @@ Evidence: `work/tellur-0.57-validation.json`, `tellur-0.57-tests.log`,
 `tellur-0.57-install.log`, `tellur-0.57-installed-integrity.log` and
 `tellur-0.57-backup.log`. The verified source snapshot is
 `work/revision-backups/tellur-0.57-source.tar.gz`.
+
+## 0.58 — Outcome absorption evidence
+
+P4b.2 exposes the checked contributor analysis as typed, bounded source evidence.
+`absorption-snapshot` exports public contracts alongside the internal contributors
+to public exits; `absorption-diff` reports public-contract equality separately from
+recorded-evidence equality. A private failure can change while its existing public
+mapping stays the same. The settings regression introduces `blank` under public
+`invalid_key` and verifies precisely that distinction.
+
+The checker retains structured contributors outside executable IR and certificates;
+existing diagnostic text is rendered from the same facts. Capture/moves, local
+aggregate payloads, stored/nested adapters, guarded overwrites, merged labels and
+forwarding retain their existing bounded lineage. Each exported contributor has
+its source control, outcome, operation where applicable, local site and location.
+Named decision sites survive, repeated calls remain distinct, and qualified trait
+members cannot capture unrelated top-level declaration names. Locations are excluded
+from comparison; formatting, alias changes, module relocation and declaration
+reordering do not create evidence differences.
+
+The snapshot records its analysis profile and limitations. It contains at most
+32 contributors per outcome and propagates truncation explicitly; even identical
+truncated artifacts fail `--check`. Generic public templates have explicit
+`generic_definition_only` entries, while concrete generic/trait callees can supply
+body evidence. Loop-carried values, indirect storage, dynamic collection contents,
+cross-call payload lineage, scalar/predicate changes and concrete feasibility remain
+outside this analysis. Contributor sets are not complete invocation trees or
+execution traces. Neither equality flag establishes behavioral equivalence.
+
+Fourteen new absorption regressions cover hidden and added failures, capture and
+forwarding, merged outcomes, guarded replacement, borrowed inspection, distinct and
+named sites, formatting/relocation stability, generic roots and concrete callees,
+trait-member identities, loop limits, truncation, strict reading, CLI modes, the
+settings baseline and every maintained source. Two new LSP regressions cover unsaved
+imported implementation changes, invalid dependencies, stale edits, close/revert,
+missing manifests and file identities. The protocol advertises the new capability.
+Actual VS Code tests invoke **Tellur: Show Outcome Absorption Snapshot**, inspect
+the opened JSON, check an unsaved hidden failure change and reject invalid source.
+
+The editor harness uses the real formatter provider and live-buffer edit API when
+macOS leaves its isolated test window inactive; focused windows retain the standard
+format action. The verification log records which route ran. This avoids making
+compiler/editor regression coverage depend on foreground-window activation.
+
+Validation records **865 passing Rust regressions** across the full run and final
+focused reruns, **35 Node tests**, and the full real VS Code suite including live
+HTTP and retained-resource execution. The initial full run caught a missing process
+status in the new playground example; its named `@exit 0` contract was added and all
+nine exit-code regressions rerun successfully. The final 129-test focused run covers
+the last name-normalization change. Clippy passes all targets with warnings denied.
+The manual checks **58** accepted examples, **22** expected diagnostics, **14**
+context fragments and **190** local links. All **62** maintained sources pass release
+checking and both snapshot exports. The settings absorption baseline matches without
+truncation. The new example runs in the interpreter and as a native executable.
+Compiler and LSP report **0.58.0**; both snapshot capabilities and all nine packaged
+and installed payloads, metadata and executable permissions are verified.
+
+Evidence: `work/tellur-0.58-validation.json`, `tellur-0.58-tests.log`,
+`tellur-0.58-focused-final.log`, `tellur-0.58-final-regressions.log`,
+`tellur-0.58-clippy.log`, `tellur-0.58-examples.log`, `tellur-0.58-settings-diff.log`,
+`tellur-0.58-node.log`, `tellur-0.58-editor-verified.log`,
+`tellur-0.58-example-run.log`, `tellur-0.58-example-native.log`,
+`tellur-0.58-build-final.log`, `tellur-0.58-versions.log`,
+`tellur-0.58-package.log`, `tellur-0.58-package-integrity.log`,
+`tellur-0.58-install.log`, `tellur-0.58-installed-integrity.log` and
+`tellur-0.58-backup.log`. The verified source snapshot is
+`work/revision-backups/tellur-0.58-source.tar.gz`.

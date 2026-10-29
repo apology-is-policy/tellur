@@ -20,6 +20,20 @@ function previewEdits(document, edits) {
   }
   return text;
 }
+async function formatActiveDocument(document) {
+  if (vscode.window.state.focused) {
+    await vscode.commands.executeCommand('editor.action.formatDocument');
+    return 'standard action';
+  }
+  // A background macOS test window cannot dispatch focus-dependent editor actions.
+  // Still verify the real provider, minimal edits and application to the live buffer.
+  const edits = await vscode.commands.executeCommand('vscode.executeFormatDocumentProvider', document.uri, { tabSize: 4, insertSpaces: true });
+  assert.ok(Array.isArray(edits));
+  const change = new vscode.WorkspaceEdit();
+  change.set(document.uri, edits);
+  assert.ok(await vscode.workspace.applyEdit(change));
+  return 'provider and live-buffer edits (inactive window)';
+}
 // The editor fixtures that exercise anonymous inference supply explicit launcher policy.
 async function buildWithStatus(command, options, exitCodes) {
   const root = vscode.workspace.workspaceFolders[0].uri.fsPath;
@@ -157,17 +171,18 @@ exports.run = async function () {
       const edits = await vscode.commands.executeCommand('vscode.executeFormatDocumentProvider', buildUri, { tabSize: 2, insertSpaces: true });
       return previewEdits(buildDocument, edits)?.includes('\n  [entry]: {\n    emit("inside");');
     }, 'format provider handles current unsaved source and indentation options');
-    await vscode.commands.executeCommand('workbench.action.focusWindow');
-    // The output panel has its own readonly editor and can otherwise receive the action.
-    await vscode.commands.executeCommand('workbench.action.closePanel');
+    let formattingMode;
     await waitFor(async () => {
       // Workbench focus can change during isolated-window startup. Target and
       // focus this editor on each attempt before invoking the user-facing action.
+      // The output panel has its own readonly editor and can receive the action.
+      await vscode.commands.executeCommand('workbench.action.closePanel');
       const editor = await vscode.window.showTextDocument(buildDocument, { preview: false, preserveFocus: false });
       editor.options = { ...editor.options, tabSize: 4, insertSpaces: true };
       await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
+      await new Promise(resolve => setTimeout(resolve, 50));
       assert.equal(vscode.window.activeTextEditor?.document.uri.toString(), buildUri.toString());
-      await vscode.commands.executeCommand('editor.action.formatDocument');
+      formattingMode = await formatActiveDocument(buildDocument);
       return buildDocument.getText().includes('\n    [entry]: {\n        emit("inside");\n    }\n    exit done;');
     }, 'Format Document applies its edit');
     const layout = buildDocument.getText();
@@ -184,7 +199,7 @@ exports.run = async function () {
     await waitFor(() => revisedDiagnostics().some(d => code(d) === 'E_TYPE'), 'type error before formatting');
     const typeEdits = await vscode.commands.executeCommand('vscode.executeFormatDocumentProvider', buildUri, { tabSize: 4, insertSpaces: false });
     assert.ok(previewEdits(buildDocument, typeEdits)?.includes('\n\tu32 wrong = "text";'));
-    console.log('TELLUR_FORMAT_EDITOR_TESTS_PASSED: standard Format Document, unsaved edits, spaces/tabs, labels/groups, Unicode, comments, idempotence, syntax refusal and type errors');
+    console.log(`TELLUR_FORMAT_EDITOR_TESTS_PASSED: ${formattingMode}, unsaved edits, spaces/tabs, labels/groups, Unicode, comments, idempotence, syntax refusal and type errors`);
     const snapshotSource = 'pub struct record {string hidden;pub u32 id;}pub control number() exits ready {u32 value} {exit ready {7};}';
     await replace(buildDocument, snapshotSource);
     await vscode.window.showTextDocument(buildDocument);
@@ -205,6 +220,25 @@ exports.run = async function () {
     assert.equal(await vscode.commands.executeCommand('tellur.showContractSnapshot'), null, 'failed checking must not display a partial contract');
     assert.equal(vscode.window.activeTextEditor.document.uri.toString(), buildUri.toString());
     console.log('TELLUR_CONTRACT_SNAPSHOT_EDITOR_TESTS_PASSED: checked JSON view, private fields, current unsaved changes and failed-check refusal');
+    const absorptionSource = 'control leaf() exits auto {exit missing;}pub control lookup() exits failed {exit delta leaf() {missing=>failed {}};}';
+    await replace(buildDocument, absorptionSource);
+    const absorptionBefore = await vscode.commands.executeCommand('tellur.showAbsorptionSnapshot');
+    assert.equal(absorptionBefore.format, 'tellur.outcome-absorption');
+    assert.deepEqual(JSON.parse(vscode.window.activeTextEditor.document.getText()), absorptionBefore);
+    assert.ok(absorptionBefore.controls['@entry::lookup'].outcomes.failed.contributors.some(c => c.control === '@entry::leaf' && c.outcome === 'missing'));
+    await vscode.commands.executeCommand('workbench.action.revertAndCloseActiveEditor');
+    await vscode.window.showTextDocument(buildDocument);
+    await replace(buildDocument, absorptionSource.replaceAll('missing', 'malformed'));
+    const absorptionAfter = await vscode.commands.executeCommand('tellur.showAbsorptionSnapshot');
+    assert.deepEqual(absorptionBefore.contracts, absorptionAfter.contracts);
+    assert.ok(absorptionAfter.controls['@entry::lookup'].outcomes.failed.contributors.some(c => c.control === '@entry::leaf' && c.outcome === 'malformed'));
+    assert.ok(absorptionAfter.analysis.limitations.includes('loop_carried_values'));
+    await vscode.commands.executeCommand('workbench.action.revertAndCloseActiveEditor');
+    await vscode.window.showTextDocument(buildDocument);
+    await replace(buildDocument, 'pub control lookup() exits failed {exit other;}');
+    assert.equal(await vscode.commands.executeCommand('tellur.showAbsorptionSnapshot'), null);
+    assert.equal(vscode.window.activeTextEditor.document.uri.toString(), buildUri.toString());
+    console.log('TELLUR_ABSORPTION_EDITOR_TESTS_PASSED: checked JSON, unsaved hidden failure change, unchanged public contract, limits and failed-check refusal');
     const groups = await fs.readFile(path.join(__dirname, '../../../playground/path_groups.tellur'), 'utf8');
     await replace(buildDocument, groups);
     const headingLine = groups.split('\n').findIndex(line => line.includes('auto heading'));
@@ -216,7 +250,7 @@ exports.run = async function () {
     await waitFor(() => revisedDiagnostics().some(d => code(d) === 'E_EMPTY'), 'nested label cannot escape its group');
     await replace(buildDocument, groups);
     await waitFor(() => revisedDiagnostics().length === 0, 'group repair');
-    await vscode.commands.executeCommand('editor.action.formatDocument');
+    await formatActiveDocument(buildDocument);
     assert.ok(buildDocument.getText().includes('[present]: {'), 'formatter retains the explicit selected group');
     const groupsRun = await buildWithStatus('tellur.buildAndRun', { output: path.join(root, 'native output', 'path-groups') }, {"done": 0});
     assert.equal(groupsRun.code, 0, groupsRun.stderr);

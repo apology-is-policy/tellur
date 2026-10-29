@@ -153,7 +153,7 @@ impl Snapshot {
         snapshot.validate()?;
         Ok(snapshot)
     }
-    fn validate(&self) -> Result<()> {
+    pub(crate) fn validate(&self) -> Result<()> {
         if self.format != FORMAT || self.version != VERSION {
             return Err(error(format!("expected {FORMAT} version {VERSION}")));
         }
@@ -166,38 +166,9 @@ impl Snapshot {
     pub fn compare(&self, after: &Self) -> Result<Difference> {
         self.validate()?;
         after.validate()?;
-        fn walk(path: &str, before: &Value, after: &Value, changes: &mut Vec<Change>) {
-            if before == after {
-                return;
-            }
-            if let (Value::Object(a), Value::Object(b)) = (before, after) {
-                for key in a.keys().chain(b.keys()).collect::<BTreeSet<_>>() {
-                    let path = format!("{path}/{}", key.replace('~', "~0").replace('/', "~1"));
-                    match (a.get(key), b.get(key)) {
-                        (Some(a), Some(b)) => walk(&path, a, b, changes),
-                        (a, b) => changes.push(Change {
-                            kind: if a.is_none() { "added" } else { "removed" },
-                            path,
-                            before: a.cloned(),
-                            after: b.cloned(),
-                        }),
-                    }
-                }
-            } else {
-                changes.push(Change {
-                    kind: "changed",
-                    path: path.into(),
-                    before: Some(before.clone()),
-                    after: Some(after.clone()),
-                });
-            }
-        }
-        let mut changes = vec![];
-        walk(
-            "",
+        let changes = changes(
             &serde_json::to_value(self).unwrap(),
             &serde_json::to_value(after).unwrap(),
-            &mut changes,
         );
         Ok(Difference {
             format: "tellur.public-contract-diff",
@@ -208,7 +179,39 @@ impl Snapshot {
     }
 }
 
-fn relative(path: &Path, base: &Path) -> Result<String> {
+pub(crate) fn changes(before: &Value, after: &Value) -> Vec<Change> {
+    fn walk(path: &str, before: &Value, after: &Value, changes: &mut Vec<Change>) {
+        if before == after {
+            return;
+        }
+        if let (Value::Object(a), Value::Object(b)) = (before, after) {
+            for key in a.keys().chain(b.keys()).collect::<BTreeSet<_>>() {
+                let path = format!("{path}/{}", key.replace('~', "~0").replace('/', "~1"));
+                match (a.get(key), b.get(key)) {
+                    (Some(a), Some(b)) => walk(&path, a, b, changes),
+                    (a, b) => changes.push(Change {
+                        kind: if a.is_none() { "added" } else { "removed" },
+                        path,
+                        before: a.cloned(),
+                        after: b.cloned(),
+                    }),
+                }
+            }
+        } else {
+            changes.push(Change {
+                kind: "changed",
+                path: path.into(),
+                before: Some(before.clone()),
+                after: Some(after.clone()),
+            });
+        }
+    }
+    let mut result = vec![];
+    walk("", before, after, &mut result);
+    result
+}
+
+pub(crate) fn relative(path: &Path, base: &Path) -> Result<String> {
     let a: Vec<_> = path.components().collect();
     let b: Vec<_> = base.components().collect();
     let shared = a.iter().zip(&b).take_while(|(a, b)| a == b).count();

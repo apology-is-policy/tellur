@@ -1,12 +1,12 @@
-//! Diagnostic-only lineage over the checked prefix. This never changes typing,
+//! Bounded source lineage over the checked prefix. This never changes typing,
 //! exhaustiveness, IR, or execution. Guards retain disjoint writes; tags and field
 //! trees keep unrelated aggregate payloads separate. Calls summarize result tags,
 //! not argument-to-payload dependencies. Loop-carried and indirect storage are
 //! deliberately forgotten rather than reported with stale lineage.
 use super::*;
-use crate::DiagnosticNote;
+use crate::absorption::Kind;
 
-type Notes = Vec<(Formula, DiagnosticNote)>;
+type Notes = Vec<(Formula, Contributor)>;
 #[derive(Clone, Default)]
 struct ValueTrace {
     tags: BTreeMap<String, TagTrace>,
@@ -18,7 +18,7 @@ struct TagTrace {
     fields: BTreeMap<usize, ValueTrace>,
 }
 
-fn add(notes: &mut Notes, domain: Formula, note: DiagnosticNote, bdd: &mut Bdd) {
+fn add(notes: &mut Notes, domain: Formula, note: Contributor, bdd: &mut Bdd) {
     if domain == FALSE {
         return;
     }
@@ -26,23 +26,15 @@ fn add(notes: &mut Notes, domain: Formula, note: DiagnosticNote, bdd: &mut Bdd) 
         *previous = bdd.or(*previous, domain);
         return;
     }
-    let omission = notes
-        .iter()
-        .position(|(_, n)| n.message == contracts::OMITTED);
-    if note.message != contracts::OMITTED
+    let omission = notes.iter().position(|(_, n)| n.kind == Kind::Omitted);
+    if note.kind != Kind::Omitted
         && notes.len() - usize::from(omission.is_some()) < contracts::NOTE_LIMIT
     {
         notes.insert(omission.unwrap_or(notes.len()), (domain, note));
     } else if let Some(index) = omission {
         notes[index].0 = bdd.or(notes[index].0, domain);
     } else {
-        notes.push((
-            domain,
-            DiagnosticNote {
-                message: contracts::OMITTED.into(),
-                ..note
-            },
-        ));
+        notes.push((domain, note.omitted()));
     }
 }
 
@@ -84,11 +76,11 @@ struct Trace<'a> {
     formulas: &'a BTreeMap<Id, Formula>,
     signatures: &'a BTreeMap<String, Signature>,
     manifest: &'a Manifest,
-    forwarded: &'a BTreeMap<Id, Vec<DiagnosticNote>>,
+    forwarded: &'a BTreeMap<Id, Vec<Contributor>>,
     control: &'a str,
     slots: BTreeMap<Id, ValueTrace>,
     atoms: BTreeMap<Id, Notes>,
-    exits: BTreeMap<String, Vec<DiagnosticNote>>,
+    exits: BTreeMap<String, Vec<Contributor>>,
 }
 impl Trace<'_> {
     fn formula(&mut self, guard: &Guard) -> Formula {
@@ -122,11 +114,13 @@ impl Trace<'_> {
         restrict_notes(&mut notes, domain, self.bdd);
         notes
     }
-    fn note(&self, span: Span, message: String) -> DiagnosticNote {
-        DiagnosticNote {
+    fn note(&self, span: Span, kind: Kind, outcome: &str, operation: Option<&str>) -> Contributor {
+        Contributor {
             span,
-            path: None,
-            message,
+            kind,
+            control: self.control.into(),
+            outcome: outcome.into(),
+            operation: operation.map(str::to_owned),
         }
     }
     fn value(&mut self, expr: &Expr, flow: &Notes, domain: Formula, span: Span) -> ValueTrace {
@@ -164,13 +158,7 @@ impl Trace<'_> {
                 add(
                     &mut notes,
                     domain,
-                    self.note(
-                        span,
-                        format!(
-                            "outcome `{name}` is constructed by `{}` here (structural contributor)",
-                            self.control
-                        ),
-                    ),
+                    self.note(span, Kind::Constructed, name, None),
                     self.bdd,
                 );
                 let tag = TagTrace {
@@ -249,13 +237,7 @@ impl Trace<'_> {
                     add(
                         &mut notes,
                         domain,
-                        self.note(
-                            span,
-                            format!(
-                                "outcome `{}` is received from `{name}` by `{}` here",
-                                outcome.name, self.control
-                            ),
-                        ),
+                        self.note(span, Kind::Received, &outcome.name, Some(name)),
                         self.bdd,
                     );
                     value.tags.insert(
@@ -352,20 +334,21 @@ impl Trace<'_> {
                         for (_, note) in flow {
                             // The specialized forward note already names this call.
                             if note.span != span {
-                                contracts::append(&mut notes, note);
+                                crate::absorption::append(&mut notes, note);
                             }
                         }
                         notes
                     } else {
                         let mut notes: Vec<_> = flow.into_iter().map(|(_, n)| n).collect();
-                        contracts::append(&mut notes, self.note(span, format!(
-                            "outcome `{name}` is produced by `{}` here (structural contributor)", self.control
-                        )));
+                        crate::absorption::append(
+                            &mut notes,
+                            self.note(span, Kind::Produced, name, None),
+                        );
                         notes
                     };
                     let target = self.exits.entry(name.clone()).or_default();
                     for note in notes {
-                        contracts::append(target, note);
+                        crate::absorption::append(target, note);
                     }
                 }
                 Action::Loop { body, .. } => {
@@ -398,7 +381,7 @@ impl Checker<'_> {
         trace.walk(&self.result.code);
         trace
     }
-    pub(super) fn outcome_contributors(&mut self) -> BTreeMap<String, Vec<DiagnosticNote>> {
+    pub(super) fn outcome_contributors(&mut self) -> BTreeMap<String, Vec<Contributor>> {
         self.contributor_trace().exits
     }
     pub(super) fn with_path_contributors(
@@ -408,7 +391,7 @@ impl Checker<'_> {
         domain: Formula,
     ) -> Diagnostic {
         for (_, note) in self.contributor_trace().flow(guard, domain) {
-            contracts::append(&mut diagnostic.notes, note);
+            contracts::append(&mut diagnostic.notes, note.diagnostic());
         }
         diagnostic
     }
@@ -431,7 +414,7 @@ impl Checker<'_> {
             .operation(operation, &vec![], domain, diagnostic.span);
         for name in missing {
             for (_, note) in value.tags.get(name).into_iter().flat_map(|t| &t.notes) {
-                contracts::append(&mut diagnostic.notes, note.clone());
+                contracts::append(&mut diagnostic.notes, note.diagnostic());
             }
         }
         diagnostic

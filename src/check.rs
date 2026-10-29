@@ -1,5 +1,6 @@
 use crate::{
     Diagnostic, Result, Span,
+    absorption::{Kind as ContributorKind, Raw as Contributor},
     bdd::{Bdd, FALSE, Formula, TRUE},
     ir::{self, *},
     manifest::{self, Manifest, Mode},
@@ -21,7 +22,7 @@ struct Access {
 }
 #[derive(Clone)]
 struct Signature {
-    contributors: BTreeMap<String, Vec<crate::DiagnosticNote>>,
+    contributors: BTreeMap<String, Vec<Contributor>>,
     stored_returns: Vec<StoredReturn>,
     parameters: Vec<manifest::Parameter>,
     outcomes: Vec<manifest::Outcome>,
@@ -137,8 +138,8 @@ struct LoopContext {
 struct Checker<'a> {
     selected_histories: Vec<crate::history::SelectedHistory>,
     selection_facts: BTreeMap<Id, crate::history::Fact>,
-    forwarded_exits: BTreeMap<Id, Vec<crate::DiagnosticNote>>,
-    forwarding: Option<BTreeMap<String, Vec<crate::DiagnosticNote>>>,
+    forwarded_exits: BTreeMap<Id, Vec<Contributor>>,
+    forwarding: Option<BTreeMap<String, Vec<Contributor>>>,
     inferred_bindings: Vec<InferredBinding>,
     contained_inputs: BTreeMap<Id, (usize, ContainedOrigin)>,
     origin_schemas: &'a crate::origins::Schemas,
@@ -3832,13 +3833,12 @@ pub(crate) fn compile_concrete_unit(
                     .map(|o| {
                         (
                             o.name.clone(),
-                            vec![crate::DiagnosticNote {
+                            vec![Contributor {
                                 span: region.name_span,
-                                path: None,
-                                message: format!(
-                                    "outcome `{}` is declared by `{}` here",
-                                    o.name, region.name
-                                ),
+                                kind: ContributorKind::Declared,
+                                control: region.name.clone(),
+                                operation: None,
+                                outcome: o.name.clone(),
                             }],
                         )
                     })
@@ -4163,6 +4163,11 @@ pub(crate) fn compile_concrete_unit(
         })
         .collect();
     let program = ir::CheckedProgram {
+        contributors: signatures
+            .into_iter()
+            .filter(|(_, s)| s.region)
+            .map(|(name, s)| (name, s.contributors))
+            .collect(),
         selected_histories,
         outcome_exit_codes,
         inferred_bindings,

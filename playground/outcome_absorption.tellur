@@ -1,0 +1,35 @@
+// Run Tellur: Show Outcome Absorption Snapshot, or use absorption-snapshot.
+// The public lookup contract hides the distinction between missing and malformed.
+control inspect_record(bool present, bool valid) exits auto {
+    exit delta present {
+        false => missing {},
+        true => delta valid {
+            true => ready {},
+            false => malformed {}
+        }
+    };
+}
+pub control lookup(bool present, bool valid) exits ready, unavailable {
+    auto result = capture inspect_record(present, valid);
+    exit delta result {
+        ready => ready {},
+        missing => unavailable {},
+        malformed => unavailable {}
+    };
+}
+control main() exits process_result {
+    delta lookup(true, false) {
+        ready => available,
+        unavailable => absent
+    }
+    [available]:
+        emit("record is ready");
+        exit done;
+    [absent]:
+        emit("record is unavailable; inspect the contributor snapshot");
+        exit done;
+}
+
+outcome process_result {
+    @exit 0 done
+}

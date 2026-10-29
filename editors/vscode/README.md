@@ -585,3 +585,17 @@ Loop context means one iteration, with entry conditions already inherited. Large
 conditions/origin lists are bounded and explicitly marked when incomplete. Comments
 and whitespace have no selection hover. Invalid source, including broken unsaved
 imports, suppresses stale information. Try `playground/history_hover.tellur`.
+
+## Outcome absorption (0.58)
+
+**Tellur: Show Outcome Absorption Snapshot** opens checked public contracts together
+with bounded internal contributor evidence. It uses current unsaved source and
+imports. The JSON includes source locations, distinct call sites, explicit analysis
+limitations and truncation flags. Failed checking opens no partial or stale result.
+Save As can retain the snapshot; rerun the command to refresh it.
+
+The terminal `absorption-diff` command compares these artifacts, reporting public
+contract changes separately from internal contributor changes. Try
+`playground/outcome_absorption.tellur`; its `unavailable` public outcome absorbs two
+different private outcomes. See [the reference](https://github.com/apology-is-policy/tellur/blob/main/docs/reference/outcome-absorption.md)
+for the exact scope and baseline workflow.

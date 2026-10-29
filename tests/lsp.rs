@@ -58,6 +58,63 @@ impl Drop for Fixture {
 }
 const VALID: &str = "region main() exits Done { [Entry]: exit Done; }";
 #[test]
+fn absorption_snapshots_show_unsaved_internal_changes_across_imports() {
+    let mut f = Fixture::new();
+    let library = f.root.join("library.tellur");
+    let library_uri = url::Url::from_file_path(&library).unwrap().to_string();
+    let before = "control leaf() exits auto {exit missing;}pub control lookup() exits failed {exit delta leaf() {missing=>failed {}};}";
+    fs::write(&library, before).unwrap();
+    f.open("import \"library.tellur\" as lib;pub control lookup() exits failed {forward lib.lookup();}");
+    let snapshot = |f: &Fixture| {
+        tellur::absorption::Snapshot::from_json(
+            &f.server.absorption_snapshot(&f.uri).unwrap().to_string(),
+        )
+        .unwrap()
+    };
+    let first = snapshot(&f);
+    f.server.notification("textDocument/didOpen",&json!({"textDocument":{"uri":library_uri,"version":1,"text":before.replace("missing","malformed")}}));
+    let second = snapshot(&f);
+    let diff = first.compare(&second).unwrap();
+    assert!(diff.public_contracts_equal && !diff.recorded_evidence_equal);
+    let evidence = &second.controls["@entry::lookup"].outcomes["failed"].contributors;
+    assert!(
+        evidence
+            .iter()
+            .any(|c| c.control == "file:library.tellur::leaf"
+                && c.outcome == "malformed"
+                && c.location.module == "file:library.tellur")
+    );
+    f.server.notification("textDocument/didChange",&json!({"textDocument":{"uri":library_uri,"version":2},"contentChanges":[{"text":"control broken("}]}));
+    assert!(f.server.absorption_snapshot(&f.uri).is_err());
+    f.server.notification(
+        "textDocument/didClose",
+        &json!({"textDocument":{"uri":library_uri}}),
+    );
+    assert_eq!(snapshot(&f), first);
+    f.change("pub control bad() exits auto {exit done;}", 2);
+    assert!(f.server.absorption_snapshot(&f.uri).is_err());
+    f.change("pub control lookup() exits done {exit done;}", 1);
+    assert!(f.server.absorption_snapshot(&f.uri).is_err());
+}
+#[test]
+fn absorption_snapshots_require_open_file_and_manifest() {
+    let mut f = Fixture::new();
+    assert!(f.server.absorption_snapshot(&f.uri).is_err());
+    f.open("pub control lookup() exits done {exit done;}");
+    fs::remove_file(f.root.join("manifest.json")).unwrap();
+    assert!(f.server.absorption_snapshot(&f.uri).is_err());
+    f.server.notification(
+        "textDocument/didOpen",
+        &json!({"textDocument":{"uri":"untitled:absorption","version":1,"text":VALID}}),
+    );
+    assert!(
+        f.server
+            .absorption_snapshot("untitled:absorption")
+            .unwrap_err()
+            .contains("save the source file")
+    );
+}
+#[test]
 fn contract_snapshots_use_unsaved_graphs_and_refuse_partial_or_stale_results() {
     let mut f = Fixture::new();
     let library = f.root.join("library.tellur");
@@ -591,6 +648,7 @@ fn protocol_initialize_diagnostics_unknown_method_and_shutdown() {
     assert_eq!(capabilities["textDocumentSync"]["change"], 1);
     assert_eq!(capabilities["documentFormattingProvider"], true);
     assert_eq!(capabilities["experimental"]["tellurContractSnapshot"], 1);
+    assert_eq!(capabilities["experimental"]["tellurAbsorptionSnapshot"], 1);
     client
         .sender
         .send(Notification::new("initialized".into(), json!({})).into())

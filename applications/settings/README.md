@@ -205,3 +205,17 @@ limit or mapping a new internal failure into an existing public outcome may leav
 the contract unchanged; this is not a behavioral-equivalence check.
 The [snapshot reference](../../docs/reference/contract-snapshots.md) explains the
 format and VS Code's **Tellur: Show Public Contract Snapshot** command.
+
+`settings.absorption.json` additionally records bounded internal contributors. Compare
+it separately when a private helper or failure mapping changes:
+
+```sh
+./bin/tellurc absorption-snapshot applications/settings/settings.tellur > /tmp/settings.absorption.json
+./bin/tellurc absorption-diff applications/settings/settings.absorption.json /tmp/settings.absorption.json --check
+```
+
+The absorption regression adds a private `blank` validation outcome and maps it to
+the existing public `invalid_key`. The report shows changed contributors while the
+public contract remains equal. Review evidence changes before replacing the baseline;
+equal recorded evidence does not prove unchanged behavior. See
+[outcome absorption](../../docs/reference/outcome-absorption.md) for analysis limits.

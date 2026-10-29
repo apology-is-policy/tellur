@@ -1,0 +1,1857 @@
+{
+  "format": "tellur.outcome-absorption",
+  "version": 1,
+  "analysis": {
+    "profile": "structural_source_contributors_v1",
+    "per_outcome_limit": 32,
+    "limitations": [
+      "value_feasibility",
+      "complete_execution_histories",
+      "loop_carried_values",
+      "indirect_storage",
+      "dynamic_collections",
+      "cross_call_payloads",
+      "uninstantiated_generic_definitions"
+    ]
+  },
+  "contracts": {
+    "format": "tellur.public-contracts",
+    "version": 1,
+    "modules": {
+      "@entry": {
+        "declarations": {
+          "get": {
+            "kind": "control",
+            "profile": "control",
+            "type_parameters": [],
+            "requirements": {},
+            "parameters": [
+              {
+                "name": "path",
+                "type": "ref string",
+                "origins": [],
+                "referent_origins": [],
+                "from": null
+              },
+              {
+                "name": "key",
+                "type": "ref string",
+                "origins": [],
+                "referent_origins": [],
+                "from": null
+              }
+            ],
+            "exits": {
+              "kind": "inline",
+              "alternatives": {
+                "found": [
+                  {
+                    "name": "value",
+                    "type": "string",
+                    "origins": [],
+                    "referent_origins": [],
+                    "from": null
+                  }
+                ],
+                "invalid_file": [
+                  {
+                    "name": "message",
+                    "type": "string",
+                    "origins": [],
+                    "referent_origins": [],
+                    "from": null
+                  }
+                ],
+                "invalid_key": [],
+                "missing": [],
+                "storage_failed": [
+                  {
+                    "name": "message",
+                    "type": "string",
+                    "origins": [],
+                    "referent_origins": [],
+                    "from": null
+                  }
+                ],
+                "too_large": []
+              }
+            }
+          },
+          "load": {
+            "kind": "control",
+            "profile": "control",
+            "type_parameters": [],
+            "requirements": {},
+            "parameters": [
+              {
+                "name": "path",
+                "type": "ref string",
+                "origins": [],
+                "referent_origins": [],
+                "from": null
+              }
+            ],
+            "exits": {
+              "kind": "named",
+              "type": "@entry::loaded_settings",
+              "origins": []
+            }
+          },
+          "loaded_settings": {
+            "kind": "outcome",
+            "type_parameters": [],
+            "origin_parameters": [],
+            "alternatives": {
+              "invalid_file": [
+                {
+                  "name": "message",
+                  "type": "string",
+                  "origins": [],
+                  "referent_origins": [],
+                  "from": null
+                }
+              ],
+              "loaded": [
+                {
+                  "name": "values",
+                  "type": "map<string, string>",
+                  "origins": [],
+                  "referent_origins": [],
+                  "from": null
+                }
+              ],
+              "storage_failed": [
+                {
+                  "name": "message",
+                  "type": "string",
+                  "origins": [],
+                  "referent_origins": [],
+                  "from": null
+                }
+              ],
+              "too_large": []
+            },
+            "exit_codes": {},
+            "capabilities": {
+              "copy": null,
+              "clone": null,
+              "drop": null
+            }
+          },
+          "set": {
+            "kind": "control",
+            "profile": "control",
+            "type_parameters": [],
+            "requirements": {},
+            "parameters": [
+              {
+                "name": "path",
+                "type": "ref string",
+                "origins": [],
+                "referent_origins": [],
+                "from": null
+              },
+              {
+                "name": "key",
+                "type": "string",
+                "origins": [],
+                "referent_origins": [],
+                "from": null
+              },
+              {
+                "name": "value",
+                "type": "string",
+                "origins": [],
+                "referent_origins": [],
+                "from": null
+              }
+            ],
+            "exits": {
+              "kind": "named",
+              "type": "@entry::update_result",
+              "origins": []
+            }
+          },
+          "update_result": {
+            "kind": "outcome",
+            "type_parameters": [],
+            "origin_parameters": [],
+            "alternatives": {
+              "commit_uncertain": [
+                {
+                  "name": "message",
+                  "type": "string",
+                  "origins": [],
+                  "referent_origins": [],
+                  "from": null
+                }
+              ],
+              "invalid_file": [
+                {
+                  "name": "message",
+                  "type": "string",
+                  "origins": [],
+                  "referent_origins": [],
+                  "from": null
+                }
+              ],
+              "invalid_key": [],
+              "saved": [],
+              "storage_failed": [
+                {
+                  "name": "message",
+                  "type": "string",
+                  "origins": [],
+                  "referent_origins": [],
+                  "from": null
+                }
+              ],
+              "too_large": []
+            },
+            "exit_codes": {},
+            "capabilities": {
+              "copy": null,
+              "clone": null,
+              "drop": null
+            }
+          }
+        },
+        "implementations": {}
+      }
+    },
+    "manifest_types": {}
+  },
+  "controls": {
+    "@entry::get": {
+      "generic_definition_only": false,
+      "outcomes": {
+        "found": {
+          "contributors": [
+            {
+              "kind": "produced",
+              "control": "@entry::get",
+              "operation": null,
+              "outcome": "found",
+              "site": "source:5",
+              "location": {
+                "module": "@entry",
+                "line": 69,
+                "column": 47
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "@entry::load",
+              "operation": null,
+              "outcome": "loaded",
+              "site": "source:3",
+              "location": {
+                "module": "@entry",
+                "line": 19,
+                "column": 55
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "@entry::load",
+              "operation": null,
+              "outcome": "loaded",
+              "site": "source:5",
+              "location": {
+                "module": "@entry",
+                "line": 22,
+                "column": 20
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "@entry::validate_key",
+              "operation": null,
+              "outcome": "valid",
+              "site": "source:3",
+              "location": {
+                "module": "@entry",
+                "line": 30,
+                "column": 17
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::get",
+              "operation": "@entry::load",
+              "outcome": "loaded",
+              "site": "source:3",
+              "location": {
+                "module": "@entry",
+                "line": 67,
+                "column": 14
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::get",
+              "operation": "@entry::validate_key",
+              "outcome": "valid",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 65,
+                "column": 5
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::load",
+              "operation": "file_read",
+              "outcome": "missing",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 17,
+                "column": 10
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::load",
+              "operation": "file_read",
+              "outcome": "read",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 17,
+                "column": 10
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::load",
+              "operation": "json_decode",
+              "outcome": "decoded",
+              "site": "source:2",
+              "location": {
+                "module": "@entry",
+                "line": 18,
+                "column": 45
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::validate_key",
+              "operation": "text_trim",
+              "outcome": "trimmed",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 28,
+                "column": 5
+              }
+            }
+          ],
+          "truncated": false
+        },
+        "invalid_file": {
+          "contributors": [
+            {
+              "kind": "produced",
+              "control": "@entry::get",
+              "operation": null,
+              "outcome": "invalid_file",
+              "site": "source:7",
+              "location": {
+                "module": "@entry",
+                "line": 72,
+                "column": 48
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "@entry::load",
+              "operation": null,
+              "outcome": "invalid_file",
+              "site": "source:4",
+              "location": {
+                "module": "@entry",
+                "line": 20,
+                "column": 43
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "@entry::validate_key",
+              "operation": null,
+              "outcome": "valid",
+              "site": "source:3",
+              "location": {
+                "module": "@entry",
+                "line": 30,
+                "column": 17
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::get",
+              "operation": "@entry::load",
+              "outcome": "invalid_file",
+              "site": "source:3",
+              "location": {
+                "module": "@entry",
+                "line": 67,
+                "column": 14
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::get",
+              "operation": "@entry::validate_key",
+              "outcome": "valid",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 65,
+                "column": 5
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::load",
+              "operation": "file_read",
+              "outcome": "read",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 17,
+                "column": 10
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::load",
+              "operation": "json_decode",
+              "outcome": "invalid",
+              "site": "source:2",
+              "location": {
+                "module": "@entry",
+                "line": 18,
+                "column": 45
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::validate_key",
+              "operation": "text_trim",
+              "outcome": "trimmed",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 28,
+                "column": 5
+              }
+            }
+          ],
+          "truncated": false
+        },
+        "invalid_key": {
+          "contributors": [
+            {
+              "kind": "produced",
+              "control": "@entry::get",
+              "operation": null,
+              "outcome": "invalid_key",
+              "site": "source:2",
+              "location": {
+                "module": "@entry",
+                "line": 65,
+                "column": 58
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "@entry::validate_key",
+              "operation": null,
+              "outcome": "invalid",
+              "site": "source:4",
+              "location": {
+                "module": "@entry",
+                "line": 31,
+                "column": 18
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::get",
+              "operation": "@entry::validate_key",
+              "outcome": "invalid",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 65,
+                "column": 5
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::validate_key",
+              "operation": "text_trim",
+              "outcome": "trimmed",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 28,
+                "column": 5
+              }
+            }
+          ],
+          "truncated": false
+        },
+        "missing": {
+          "contributors": [
+            {
+              "kind": "produced",
+              "control": "@entry::get",
+              "operation": null,
+              "outcome": "missing",
+              "site": "source:6",
+              "location": {
+                "module": "@entry",
+                "line": 70,
+                "column": 28
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "@entry::load",
+              "operation": null,
+              "outcome": "loaded",
+              "site": "source:3",
+              "location": {
+                "module": "@entry",
+                "line": 19,
+                "column": 55
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "@entry::load",
+              "operation": null,
+              "outcome": "loaded",
+              "site": "source:5",
+              "location": {
+                "module": "@entry",
+                "line": 22,
+                "column": 20
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "@entry::validate_key",
+              "operation": null,
+              "outcome": "valid",
+              "site": "source:3",
+              "location": {
+                "module": "@entry",
+                "line": 30,
+                "column": 17
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::get",
+              "operation": "@entry::load",
+              "outcome": "loaded",
+              "site": "source:3",
+              "location": {
+                "module": "@entry",
+                "line": 67,
+                "column": 14
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::get",
+              "operation": "@entry::validate_key",
+              "outcome": "valid",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 65,
+                "column": 5
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::load",
+              "operation": "file_read",
+              "outcome": "missing",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 17,
+                "column": 10
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::load",
+              "operation": "file_read",
+              "outcome": "read",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 17,
+                "column": 10
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::load",
+              "operation": "json_decode",
+              "outcome": "decoded",
+              "site": "source:2",
+              "location": {
+                "module": "@entry",
+                "line": 18,
+                "column": 45
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::validate_key",
+              "operation": "text_trim",
+              "outcome": "trimmed",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 28,
+                "column": 5
+              }
+            }
+          ],
+          "truncated": false
+        },
+        "storage_failed": {
+          "contributors": [
+            {
+              "kind": "produced",
+              "control": "@entry::get",
+              "operation": null,
+              "outcome": "storage_failed",
+              "site": "source:8",
+              "location": {
+                "module": "@entry",
+                "line": 73,
+                "column": 50
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "@entry::load",
+              "operation": null,
+              "outcome": "storage_failed",
+              "site": "source:7",
+              "location": {
+                "module": "@entry",
+                "line": 24,
+                "column": 43
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "@entry::validate_key",
+              "operation": null,
+              "outcome": "valid",
+              "site": "source:3",
+              "location": {
+                "module": "@entry",
+                "line": 30,
+                "column": 17
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::get",
+              "operation": "@entry::load",
+              "outcome": "storage_failed",
+              "site": "source:3",
+              "location": {
+                "module": "@entry",
+                "line": 67,
+                "column": 14
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::get",
+              "operation": "@entry::validate_key",
+              "outcome": "valid",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 65,
+                "column": 5
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::load",
+              "operation": "file_read",
+              "outcome": "read_failed",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 17,
+                "column": 10
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::validate_key",
+              "operation": "text_trim",
+              "outcome": "trimmed",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 28,
+                "column": 5
+              }
+            }
+          ],
+          "truncated": false
+        },
+        "too_large": {
+          "contributors": [
+            {
+              "kind": "produced",
+              "control": "@entry::get",
+              "operation": null,
+              "outcome": "too_large",
+              "site": "source:9",
+              "location": {
+                "module": "@entry",
+                "line": 74,
+                "column": 26
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "@entry::load",
+              "operation": null,
+              "outcome": "too_large",
+              "site": "source:6",
+              "location": {
+                "module": "@entry",
+                "line": 23,
+                "column": 22
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "@entry::validate_key",
+              "operation": null,
+              "outcome": "valid",
+              "site": "source:3",
+              "location": {
+                "module": "@entry",
+                "line": 30,
+                "column": 17
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::get",
+              "operation": "@entry::load",
+              "outcome": "too_large",
+              "site": "source:3",
+              "location": {
+                "module": "@entry",
+                "line": 67,
+                "column": 14
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::get",
+              "operation": "@entry::validate_key",
+              "outcome": "valid",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 65,
+                "column": 5
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::load",
+              "operation": "file_read",
+              "outcome": "too_large",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 17,
+                "column": 10
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::validate_key",
+              "operation": "text_trim",
+              "outcome": "trimmed",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 28,
+                "column": 5
+              }
+            }
+          ],
+          "truncated": false
+        }
+      }
+    },
+    "@entry::load": {
+      "generic_definition_only": false,
+      "outcomes": {
+        "invalid_file": {
+          "contributors": [
+            {
+              "kind": "produced",
+              "control": "@entry::load",
+              "operation": null,
+              "outcome": "invalid_file",
+              "site": "source:4",
+              "location": {
+                "module": "@entry",
+                "line": 20,
+                "column": 43
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::load",
+              "operation": "file_read",
+              "outcome": "read",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 17,
+                "column": 10
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::load",
+              "operation": "json_decode",
+              "outcome": "invalid",
+              "site": "source:2",
+              "location": {
+                "module": "@entry",
+                "line": 18,
+                "column": 45
+              }
+            }
+          ],
+          "truncated": false
+        },
+        "loaded": {
+          "contributors": [
+            {
+              "kind": "produced",
+              "control": "@entry::load",
+              "operation": null,
+              "outcome": "loaded",
+              "site": "source:3",
+              "location": {
+                "module": "@entry",
+                "line": 19,
+                "column": 55
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "@entry::load",
+              "operation": null,
+              "outcome": "loaded",
+              "site": "source:5",
+              "location": {
+                "module": "@entry",
+                "line": 22,
+                "column": 20
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::load",
+              "operation": "file_read",
+              "outcome": "missing",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 17,
+                "column": 10
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::load",
+              "operation": "file_read",
+              "outcome": "read",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 17,
+                "column": 10
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::load",
+              "operation": "json_decode",
+              "outcome": "decoded",
+              "site": "source:2",
+              "location": {
+                "module": "@entry",
+                "line": 18,
+                "column": 45
+              }
+            }
+          ],
+          "truncated": false
+        },
+        "storage_failed": {
+          "contributors": [
+            {
+              "kind": "produced",
+              "control": "@entry::load",
+              "operation": null,
+              "outcome": "storage_failed",
+              "site": "source:7",
+              "location": {
+                "module": "@entry",
+                "line": 24,
+                "column": 43
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::load",
+              "operation": "file_read",
+              "outcome": "read_failed",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 17,
+                "column": 10
+              }
+            }
+          ],
+          "truncated": false
+        },
+        "too_large": {
+          "contributors": [
+            {
+              "kind": "produced",
+              "control": "@entry::load",
+              "operation": null,
+              "outcome": "too_large",
+              "site": "source:6",
+              "location": {
+                "module": "@entry",
+                "line": 23,
+                "column": 22
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::load",
+              "operation": "file_read",
+              "outcome": "too_large",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 17,
+                "column": 10
+              }
+            }
+          ],
+          "truncated": false
+        }
+      }
+    },
+    "@entry::set": {
+      "generic_definition_only": false,
+      "outcomes": {
+        "commit_uncertain": {
+          "contributors": [
+            {
+              "kind": "produced",
+              "control": "@entry::load",
+              "operation": null,
+              "outcome": "loaded",
+              "site": "source:3",
+              "location": {
+                "module": "@entry",
+                "line": 19,
+                "column": 55
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "@entry::load",
+              "operation": null,
+              "outcome": "loaded",
+              "site": "source:5",
+              "location": {
+                "module": "@entry",
+                "line": 22,
+                "column": 20
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "@entry::set",
+              "operation": null,
+              "outcome": "commit_uncertain",
+              "site": "source:14",
+              "location": {
+                "module": "@entry",
+                "line": 58,
+                "column": 62
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "@entry::validate_key",
+              "operation": null,
+              "outcome": "valid",
+              "site": "source:3",
+              "location": {
+                "module": "@entry",
+                "line": 30,
+                "column": 17
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::load",
+              "operation": "file_read",
+              "outcome": "missing",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 17,
+                "column": 10
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::load",
+              "operation": "file_read",
+              "outcome": "read",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 17,
+                "column": 10
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::load",
+              "operation": "json_decode",
+              "outcome": "decoded",
+              "site": "source:2",
+              "location": {
+                "module": "@entry",
+                "line": 18,
+                "column": 45
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::set",
+              "operation": "@entry::load",
+              "outcome": "loaded",
+              "site": "source:3",
+              "location": {
+                "module": "@entry",
+                "line": 37,
+                "column": 9
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::set",
+              "operation": "@entry::validate_key",
+              "outcome": "valid",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 35,
+                "column": 5
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::set",
+              "operation": "file_replace",
+              "outcome": "commit_uncertain",
+              "site": "source:11",
+              "location": {
+                "module": "@entry",
+                "line": 55,
+                "column": 14
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::set",
+              "operation": "json_encode",
+              "outcome": "encoded",
+              "site": "source:9",
+              "location": {
+                "module": "@entry",
+                "line": 50,
+                "column": 9
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::validate_key",
+              "operation": "text_trim",
+              "outcome": "trimmed",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 28,
+                "column": 5
+              }
+            }
+          ],
+          "truncated": false
+        },
+        "invalid_file": {
+          "contributors": [
+            {
+              "kind": "produced",
+              "control": "@entry::load",
+              "operation": null,
+              "outcome": "invalid_file",
+              "site": "source:4",
+              "location": {
+                "module": "@entry",
+                "line": 20,
+                "column": 43
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "@entry::set",
+              "operation": null,
+              "outcome": "invalid_file",
+              "site": "source:4",
+              "location": {
+                "module": "@entry",
+                "line": 39,
+                "column": 48
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "@entry::validate_key",
+              "operation": null,
+              "outcome": "valid",
+              "site": "source:3",
+              "location": {
+                "module": "@entry",
+                "line": 30,
+                "column": 17
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::load",
+              "operation": "file_read",
+              "outcome": "read",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 17,
+                "column": 10
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::load",
+              "operation": "json_decode",
+              "outcome": "invalid",
+              "site": "source:2",
+              "location": {
+                "module": "@entry",
+                "line": 18,
+                "column": 45
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::set",
+              "operation": "@entry::load",
+              "outcome": "invalid_file",
+              "site": "source:3",
+              "location": {
+                "module": "@entry",
+                "line": 37,
+                "column": 9
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::set",
+              "operation": "@entry::validate_key",
+              "outcome": "valid",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 35,
+                "column": 5
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::validate_key",
+              "operation": "text_trim",
+              "outcome": "trimmed",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 28,
+                "column": 5
+              }
+            }
+          ],
+          "truncated": false
+        },
+        "invalid_key": {
+          "contributors": [
+            {
+              "kind": "produced",
+              "control": "@entry::set",
+              "operation": null,
+              "outcome": "invalid_key",
+              "site": "source:2",
+              "location": {
+                "module": "@entry",
+                "line": 35,
+                "column": 65
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "@entry::validate_key",
+              "operation": null,
+              "outcome": "invalid",
+              "site": "source:4",
+              "location": {
+                "module": "@entry",
+                "line": 31,
+                "column": 18
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::set",
+              "operation": "@entry::validate_key",
+              "outcome": "invalid",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 35,
+                "column": 5
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::validate_key",
+              "operation": "text_trim",
+              "outcome": "trimmed",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 28,
+                "column": 5
+              }
+            }
+          ],
+          "truncated": false
+        },
+        "saved": {
+          "contributors": [
+            {
+              "kind": "produced",
+              "control": "@entry::load",
+              "operation": null,
+              "outcome": "loaded",
+              "site": "source:3",
+              "location": {
+                "module": "@entry",
+                "line": 19,
+                "column": 55
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "@entry::load",
+              "operation": null,
+              "outcome": "loaded",
+              "site": "source:5",
+              "location": {
+                "module": "@entry",
+                "line": 22,
+                "column": 20
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "@entry::set",
+              "operation": null,
+              "outcome": "saved",
+              "site": "source:12",
+              "location": {
+                "module": "@entry",
+                "line": 56,
+                "column": 25
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "@entry::validate_key",
+              "operation": null,
+              "outcome": "valid",
+              "site": "source:3",
+              "location": {
+                "module": "@entry",
+                "line": 30,
+                "column": 17
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::load",
+              "operation": "file_read",
+              "outcome": "missing",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 17,
+                "column": 10
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::load",
+              "operation": "file_read",
+              "outcome": "read",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 17,
+                "column": 10
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::load",
+              "operation": "json_decode",
+              "outcome": "decoded",
+              "site": "source:2",
+              "location": {
+                "module": "@entry",
+                "line": 18,
+                "column": 45
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::set",
+              "operation": "@entry::load",
+              "outcome": "loaded",
+              "site": "source:3",
+              "location": {
+                "module": "@entry",
+                "line": 37,
+                "column": 9
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::set",
+              "operation": "@entry::validate_key",
+              "outcome": "valid",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 35,
+                "column": 5
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::set",
+              "operation": "file_replace",
+              "outcome": "replaced",
+              "site": "source:11",
+              "location": {
+                "module": "@entry",
+                "line": 55,
+                "column": 14
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::set",
+              "operation": "json_encode",
+              "outcome": "encoded",
+              "site": "source:9",
+              "location": {
+                "module": "@entry",
+                "line": 50,
+                "column": 9
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::validate_key",
+              "operation": "text_trim",
+              "outcome": "trimmed",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 28,
+                "column": 5
+              }
+            }
+          ],
+          "truncated": false
+        },
+        "storage_failed": {
+          "contributors": [
+            {
+              "kind": "produced",
+              "control": "@entry::load",
+              "operation": null,
+              "outcome": "loaded",
+              "site": "source:3",
+              "location": {
+                "module": "@entry",
+                "line": 19,
+                "column": 55
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "@entry::load",
+              "operation": null,
+              "outcome": "loaded",
+              "site": "source:5",
+              "location": {
+                "module": "@entry",
+                "line": 22,
+                "column": 20
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "@entry::load",
+              "operation": null,
+              "outcome": "storage_failed",
+              "site": "source:7",
+              "location": {
+                "module": "@entry",
+                "line": 24,
+                "column": 43
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "@entry::set",
+              "operation": null,
+              "outcome": "storage_failed",
+              "site": "source:10",
+              "location": {
+                "module": "@entry",
+                "line": 52,
+                "column": 49
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "@entry::set",
+              "operation": null,
+              "outcome": "storage_failed",
+              "site": "source:13",
+              "location": {
+                "module": "@entry",
+                "line": 57,
+                "column": 54
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "@entry::set",
+              "operation": null,
+              "outcome": "storage_failed",
+              "site": "source:5",
+              "location": {
+                "module": "@entry",
+                "line": 40,
+                "column": 50
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "@entry::validate_key",
+              "operation": null,
+              "outcome": "valid",
+              "site": "source:3",
+              "location": {
+                "module": "@entry",
+                "line": 30,
+                "column": 17
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::load",
+              "operation": "file_read",
+              "outcome": "missing",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 17,
+                "column": 10
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::load",
+              "operation": "file_read",
+              "outcome": "read",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 17,
+                "column": 10
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::load",
+              "operation": "file_read",
+              "outcome": "read_failed",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 17,
+                "column": 10
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::load",
+              "operation": "json_decode",
+              "outcome": "decoded",
+              "site": "source:2",
+              "location": {
+                "module": "@entry",
+                "line": 18,
+                "column": 45
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::set",
+              "operation": "@entry::load",
+              "outcome": "loaded",
+              "site": "source:3",
+              "location": {
+                "module": "@entry",
+                "line": 37,
+                "column": 9
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::set",
+              "operation": "@entry::load",
+              "outcome": "storage_failed",
+              "site": "source:3",
+              "location": {
+                "module": "@entry",
+                "line": 37,
+                "column": 9
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::set",
+              "operation": "@entry::validate_key",
+              "outcome": "valid",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 35,
+                "column": 5
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::set",
+              "operation": "file_replace",
+              "outcome": "write_failed",
+              "site": "source:11",
+              "location": {
+                "module": "@entry",
+                "line": 55,
+                "column": 14
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::set",
+              "operation": "json_encode",
+              "outcome": "encode_failed",
+              "site": "source:9",
+              "location": {
+                "module": "@entry",
+                "line": 50,
+                "column": 9
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::set",
+              "operation": "json_encode",
+              "outcome": "encoded",
+              "site": "source:9",
+              "location": {
+                "module": "@entry",
+                "line": 50,
+                "column": 9
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::validate_key",
+              "operation": "text_trim",
+              "outcome": "trimmed",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 28,
+                "column": 5
+              }
+            }
+          ],
+          "truncated": false
+        },
+        "too_large": {
+          "contributors": [
+            {
+              "kind": "produced",
+              "control": "@entry::load",
+              "operation": null,
+              "outcome": "loaded",
+              "site": "source:3",
+              "location": {
+                "module": "@entry",
+                "line": 19,
+                "column": 55
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "@entry::load",
+              "operation": null,
+              "outcome": "loaded",
+              "site": "source:5",
+              "location": {
+                "module": "@entry",
+                "line": 22,
+                "column": 20
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "@entry::load",
+              "operation": null,
+              "outcome": "too_large",
+              "site": "source:6",
+              "location": {
+                "module": "@entry",
+                "line": 23,
+                "column": 22
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "@entry::set",
+              "operation": null,
+              "outcome": "too_large",
+              "site": "source:15",
+              "location": {
+                "module": "@entry",
+                "line": 59,
+                "column": 26
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "@entry::set",
+              "operation": null,
+              "outcome": "too_large",
+              "site": "source:6",
+              "location": {
+                "module": "@entry",
+                "line": 41,
+                "column": 26
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "@entry::validate_key",
+              "operation": null,
+              "outcome": "valid",
+              "site": "source:3",
+              "location": {
+                "module": "@entry",
+                "line": 30,
+                "column": 17
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::load",
+              "operation": "file_read",
+              "outcome": "missing",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 17,
+                "column": 10
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::load",
+              "operation": "file_read",
+              "outcome": "read",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 17,
+                "column": 10
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::load",
+              "operation": "file_read",
+              "outcome": "too_large",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 17,
+                "column": 10
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::load",
+              "operation": "json_decode",
+              "outcome": "decoded",
+              "site": "source:2",
+              "location": {
+                "module": "@entry",
+                "line": 18,
+                "column": 45
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::set",
+              "operation": "@entry::load",
+              "outcome": "loaded",
+              "site": "source:3",
+              "location": {
+                "module": "@entry",
+                "line": 37,
+                "column": 9
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::set",
+              "operation": "@entry::load",
+              "outcome": "too_large",
+              "site": "source:3",
+              "location": {
+                "module": "@entry",
+                "line": 37,
+                "column": 9
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::set",
+              "operation": "@entry::validate_key",
+              "outcome": "valid",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 35,
+                "column": 5
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::set",
+              "operation": "file_replace",
+              "outcome": "too_large",
+              "site": "source:11",
+              "location": {
+                "module": "@entry",
+                "line": 55,
+                "column": 14
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::set",
+              "operation": "json_encode",
+              "outcome": "encoded",
+              "site": "source:9",
+              "location": {
+                "module": "@entry",
+                "line": 50,
+                "column": 9
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::validate_key",
+              "operation": "text_trim",
+              "outcome": "trimmed",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 28,
+                "column": 5
+              }
+            }
+          ],
+          "truncated": false
+        }
+      }
+    }
+  }
+}

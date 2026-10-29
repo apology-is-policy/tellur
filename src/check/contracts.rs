@@ -1,8 +1,8 @@
 //! Stable public interfaces and bounded diagnostic contributor summaries.
 use super::*;
 use crate::DiagnosticNote;
-pub(super) const NOTE_LIMIT: usize = 32;
-pub(super) const OMITTED: &str = "additional outcome contributors omitted (diagnostic limit)";
+pub(super) const NOTE_LIMIT: usize = crate::absorption::LIMIT;
+pub(super) const OMITTED: &str = crate::absorption::OMITTED;
 
 pub(super) fn public_shape(region: &syntax::Region) -> Result<()> {
     if region.public && (region.infer_exits || !region.infer_payloads.is_empty()) {
@@ -78,7 +78,7 @@ impl Checker<'_> {
         callee: &str,
         signature: &Signature,
         span: Span,
-    ) -> BTreeMap<String, Vec<DiagnosticNote>> {
+    ) -> BTreeMap<String, Vec<Contributor>> {
         signature
             .outcomes
             .iter()
@@ -88,15 +88,14 @@ impl Checker<'_> {
                     .get(&outcome.name)
                     .cloned()
                     .unwrap_or_default();
-                append(
+                crate::absorption::append(
                     &mut notes,
-                    DiagnosticNote {
+                    Contributor {
                         span,
-                        path: None,
-                        message: format!(
-                            "outcome `{}` is forwarded from `{callee}` by `{}` here",
-                            outcome.name, self.result.name
-                        ),
+                        kind: ContributorKind::Forwarded,
+                        control: self.result.name.clone(),
+                        operation: Some(callee.into()),
+                        outcome: outcome.name.clone(),
                     },
                 );
                 (outcome.name.clone(), notes)
@@ -111,7 +110,7 @@ impl Checker<'_> {
     ) -> Diagnostic {
         for outcome in outcomes {
             for note in signature.contributors.get(outcome).into_iter().flatten() {
-                append(&mut diagnostic.notes, note.clone());
+                append(&mut diagnostic.notes, note.diagnostic());
             }
         }
         diagnostic

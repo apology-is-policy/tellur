@@ -123,6 +123,8 @@ provided; reading it does not recheck the original program. Unknown schema field
 duplicate object keys and unsupported versions are rejected.
 
 In particular, a new private failure mapped into an existing public `failed` outcome
-can leave the snapshot unchanged. Tracking that change through bounded contributor
-evidence is the next P4b increment. The settings regression also changes an internal
-input-size limit while demonstrating an unchanged contract; this is intentional.
+can leave the snapshot unchanged. [Outcome absorption snapshots](outcome-absorption.md)
+now compare bounded contributor evidence separately from the public contract. The
+settings contract regression also changes an internal input-size limit while
+demonstrating an unchanged contract; this is intentional. Contributor comparison
+also does not compare arbitrary scalar values or predicates.
