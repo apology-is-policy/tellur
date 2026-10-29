@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.50.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.51.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -17,7 +17,7 @@ The linked regression suites give more detailed acceptance and rejection evidenc
 | Payload inference | Private `exits auto` and selected nonempty `label...`; local/pattern `auto` | Explicit public and trait contracts; no general signature wildcard | [Inference tests](../../tests/payload_inference.rs) |
 | Data declarations | Nominal structs, closed variants, wrappers, named/positional struct construction | No recursive layouts, inheritance, defaults or update spreads | [Data tests](../../tests/data_types.rs), [field tests](../../tests/named_fields.rs) |
 | Public control contracts | Explicit labels, payloads and borrowed-result mappings, including unused generics; bounded forwarding/stored-outcome/adapter contributor notes | Loop-carried values, indirect aliases, dynamic collections and cross-call payload dependencies are not traced | [Public contract tests](../../tests/public_contracts.rs), [example](../../playground/public_contracts.tellur) |
-| Diagnostic reports | Versioned `check --json`, related source points and structured CLI/LSP path witnesses | Full expression ranges and independent-error recovery remain queued | [Report tests](../../tests/diagnostics.rs), [format](diagnostics-and-limits.md#machine-readable-checking) |
+| Diagnostic reports | Versioned `check --json`, expression/token ranges, related source points and structured CLI/LSP path witnesses | Independent-error recovery remains queued; declaration/contract/contributor locations may still be points | [Report tests](../../tests/diagnostics.rs), [format](diagnostics-and-limits.md#machine-readable-checking) |
 | Modules | Explicit relative imports and namespaces; private by default; public declarations/fields | No package-name resolver or package manager | [Module tests](../../tests/modules.rs) |
 | Generic data | Explicit first-order type parameters and specialization | No argument inference, data bounds or higher-kinded parameters | [Generic data tests](../../tests/generic_data.rs) |
 | Generic controls | Universal definition checking, sealed/user-trait bounds, explicit specialization | No recursive calls, type-argument inference or reference types as generic arguments | [Control tests](../../tests/generic_controls.rs), [bounds](../../tests/trait_bounds.rs) |

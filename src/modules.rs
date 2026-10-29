@@ -3,7 +3,7 @@
 use crate::{
     CheckedProgram, Diagnostic, Span,
     manifest::Manifest,
-    syntax::{self, DataBody, Expr, Item, OutcomeExpr, Statement},
+    syntax::{self, DataBody, Expr, ExprKind, Item, OutcomeExpr, Statement},
 };
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -422,41 +422,53 @@ impl Resolver<'_> {
         Ok(())
     }
     fn expr(&self, e: &mut Expr, span: Span) -> Result<()> {
-        match e {
-            Expr::Name(n) => {
-                if !self.locals.contains(n.split('.').next().unwrap())
-                    && !self.type_parameters.contains(n.split('.').next().unwrap())
-                {
-                    *n = self.name(n, span, None)?;
+        let span = e.span(span);
+        let result = (|| {
+            match &mut e.kind {
+                ExprKind::Name(n) => {
+                    if !self.locals.contains(n.split('.').next().unwrap())
+                        && !self.type_parameters.contains(n.split('.').next().unwrap())
+                    {
+                        *n = self.name(n, span, None)?;
+                    }
                 }
-            }
-            Expr::Call(n, args) | Expr::Construct(n, args) => {
-                *n = self.constructor(n, span)?;
-                for a in args {
+                ExprKind::Call(n, args) | ExprKind::Construct(n, args) => {
+                    *n = self.constructor(n, span)?;
+                    for a in args {
+                        self.expr(a, span)?;
+                    }
+                }
+                ExprKind::NamedRecord(n, fields) => {
+                    *n = self.ty(n, span)?;
+                    for (_, value) in fields {
+                        self.expr(value, span)?;
+                    }
+                }
+                ExprKind::List(args) => {
+                    for a in args {
+                        self.expr(a, span)?;
+                    }
+                }
+                ExprKind::Borrow(e)
+                | ExprKind::BorrowMutable(e)
+                | ExprKind::Deref(e)
+                | ExprKind::Project(e, _)
+                | ExprKind::Unary(e) => self.expr(e, span)?,
+                ExprKind::Binary(_, a, b) => {
                     self.expr(a, span)?;
+                    self.expr(b, span)?;
                 }
+                _ => (),
             }
-            Expr::NamedRecord(n, fields) => {
-                *n = self.ty(n, span)?;
-                for (_, value) in fields {
-                    self.expr(value, span)?;
-                }
-            }
-            Expr::List(args) => {
-                for a in args {
-                    self.expr(a, span)?;
-                }
-            }
-            Expr::Borrow(e)
-            | Expr::BorrowMutable(e)
-            | Expr::Deref(e)
-            | Expr::Project(e, _)
-            | Expr::Unary(e) => self.expr(e, span)?,
-            Expr::Binary(_, a, b) => {
-                self.expr(a, span)?;
-                self.expr(b, span)?;
-            }
-            _ => (),
+            Ok(())
+        })();
+        result.map_err(|mut error: ModuleError| {
+            error.diagnostic = e.locate(error.diagnostic, span);
+            error
+        })?;
+        if e.range.start.line != 0 {
+            e.range.start.line += self.offset;
+            e.range.end.line += self.offset;
         }
         Ok(())
     }
@@ -882,6 +894,9 @@ fn locate(sources: &[SourceFile], mut diagnostic: Diagnostic) -> ModuleError {
         .line
         .saturating_sub(file.start_line - 1)
         .max(1);
+    if let Some(end) = &mut diagnostic.end {
+        end.line = end.line.saturating_sub(file.start_line - 1).max(1);
+    }
     for note in &mut diagnostic.notes {
         let source = sources
             .iter()

@@ -326,37 +326,39 @@ impl Checker<'_> {
         expression: &syntax::Expr,
         span: Span,
     ) -> Result<Option<ResolvedPlace>> {
-        if let syntax::Expr::Deref(inner) = expression {
-            let (_, _, loan, holder) = self.reference_source(inner, span)?.ok_or_else(|| {
-                self.error(
-                    "E_BORROW",
-                    span,
-                    "dereference requires a reference name or stored reference field",
-                )
-            })?;
-            let mut target = loan.target.clone();
-            if let Some(holder) = holder {
-                target.carriers.extend(holder.carriers);
-                target.carriers.extend(holder.via);
-            }
-            target.via = Some(loan.id);
-            return Ok(Some(target));
-        }
-        if let syntax::Expr::Project(base, field) = expression
-            && let Some(mut target) = self.resolve_place(base, span)?
-        {
-            if manifest::reference_inner(&target.ty).is_some() {
-                let (_, _, loan) = self.stored_loan(&target).ok_or_else(|| {
-                    self.error("E_LIFETIME", span, "missing stored reference provenance")
-                })?;
-                let mut carriers = target.carriers;
-                carriers.extend(target.via);
-                target = loan.target.clone();
-                target.carriers.extend(carriers);
+        expression.checked(span, |span| {
+            if let syntax::ExprKind::Deref(inner) = &expression.kind {
+                let (_, _, loan, holder) =
+                    self.reference_source(inner, span)?.ok_or_else(|| {
+                        self.error(
+                            "E_BORROW",
+                            span,
+                            "dereference requires a reference name or stored reference field",
+                        )
+                    })?;
+                let mut target = loan.target.clone();
+                if let Some(holder) = holder {
+                    target.carriers.extend(holder.carriers);
+                    target.carriers.extend(holder.via);
+                }
                 target.via = Some(loan.id);
+                return Ok(Some(target));
             }
-            let (index, definition) =
-                self.manifest
+            if let syntax::ExprKind::Project(base, field) = &expression.kind
+                && let Some(mut target) = self.resolve_place(base, span)?
+            {
+                if manifest::reference_inner(&target.ty).is_some() {
+                    let (_, _, loan) = self.stored_loan(&target).ok_or_else(|| {
+                        self.error("E_LIFETIME", span, "missing stored reference provenance")
+                    })?;
+                    let mut carriers = target.carriers;
+                    carriers.extend(target.via);
+                    target = loan.target.clone();
+                    target.carriers.extend(carriers);
+                    target.via = Some(loan.id);
+                }
+                let (index, definition) = self
+                    .manifest
                     .record_field(&target.ty, field)
                     .ok_or_else(|| {
                         self.error(
@@ -365,77 +367,78 @@ impl Checker<'_> {
                             format!("type `{}` has no record field `{field}`", target.ty),
                         )
                     })?;
-            self.visibility
-                .field(&self.result.name, &target.ty, field, span)?;
-            target.place.fields.push(index);
-            target.ty = definition.ty.clone();
-            return Ok(Some(target));
-        }
-        fn components(e: &syntax::Expr) -> Option<Vec<&str>> {
-            match e {
-                syntax::Expr::Name(name) => Some(name.split('.').collect()),
-                syntax::Expr::Project(base, field) => {
-                    let mut parts = components(base)?;
-                    parts.push(field);
-                    Some(parts)
+                self.visibility
+                    .field(&self.result.name, &target.ty, field, span)?;
+                target.place.fields.push(index);
+                target.ty = definition.ty.clone();
+                return Ok(Some(target));
+            }
+            fn components(e: &syntax::Expr) -> Option<Vec<&str>> {
+                match &e.kind {
+                    syntax::ExprKind::Name(name) => Some(name.split('.').collect()),
+                    syntax::ExprKind::Project(base, field) => {
+                        let mut parts = components(base)?;
+                        parts.push(field);
+                        Some(parts)
+                    }
+                    _ => None,
                 }
-                _ => None,
             }
-        }
-        let Some(parts) = components(expression) else {
-            return Ok(None);
-        };
-        // Only field access dereferences implicitly. A bare reference name
-        // remains a reference value in calls, returns and local bindings.
-        let mut target = if parts.len() > 1
-            && let Some((_, loan)) = self.find_loan(parts[0])
-        {
-            let mut target = loan.target.clone();
-            target.via = Some(loan.id);
-            target
-        } else if let Some((scope, binding)) = self.find_value(parts[0]) {
-            ResolvedPlace {
-                carriers: vec![],
-                scope,
-                name: parts[0].into(),
-                place: Place {
-                    indirect: false,
-                    root: binding.slot.id,
-                    fields: vec![],
-                },
-                ty: binding.slot.ty,
-                via: None,
-            }
-        } else {
-            return Ok(None);
-        };
-        for name in &parts[1..] {
-            if manifest::reference_inner(&target.ty).is_some() {
-                let (_, _, loan) = self.stored_loan(&target).ok_or_else(|| {
-                    self.error("E_LIFETIME", span, "missing stored reference provenance")
-                })?;
-                let mut carriers = target.carriers;
-                carriers.extend(target.via);
-                target = loan.target.clone();
-                target.carriers.extend(carriers);
+            let Some(parts) = components(expression) else {
+                return Ok(None);
+            };
+            // Only field access dereferences implicitly. A bare reference name
+            // remains a reference value in calls, returns and local bindings.
+            let mut target = if parts.len() > 1
+                && let Some((_, loan)) = self.find_loan(parts[0])
+            {
+                let mut target = loan.target.clone();
                 target.via = Some(loan.id);
+                target
+            } else if let Some((scope, binding)) = self.find_value(parts[0]) {
+                ResolvedPlace {
+                    carriers: vec![],
+                    scope,
+                    name: parts[0].into(),
+                    place: Place {
+                        indirect: false,
+                        root: binding.slot.id,
+                        fields: vec![],
+                    },
+                    ty: binding.slot.ty,
+                    via: None,
+                }
+            } else {
+                return Ok(None);
+            };
+            for name in &parts[1..] {
+                if manifest::reference_inner(&target.ty).is_some() {
+                    let (_, _, loan) = self.stored_loan(&target).ok_or_else(|| {
+                        self.error("E_LIFETIME", span, "missing stored reference provenance")
+                    })?;
+                    let mut carriers = target.carriers;
+                    carriers.extend(target.via);
+                    target = loan.target.clone();
+                    target.carriers.extend(carriers);
+                    target.via = Some(loan.id);
+                }
+                let (index, field) =
+                    self.manifest
+                        .record_field(&target.ty, name)
+                        .ok_or_else(|| {
+                            self.error(
+                                "E_FIELD",
+                                span,
+                                format!("type `{}` has no record field `{name}`", target.ty),
+                            )
+                        })?;
+                self.visibility
+                    .field(&self.result.name, &target.ty, name, span)?;
+                target.place.fields.push(index);
+                target.ty = field.ty.clone();
             }
-            let (index, field) = self
-                .manifest
-                .record_field(&target.ty, name)
-                .ok_or_else(|| {
-                    self.error(
-                        "E_FIELD",
-                        span,
-                        format!("type `{}` has no record field `{name}`", target.ty),
-                    )
-                })?;
-            self.visibility
-                .field(&self.result.name, &target.ty, name, span)?;
-            target.place.fields.push(index);
-            target.ty = field.ty.clone();
-        }
-        Ok(Some(target))
+            Ok(Some(target))
+        })
     }
     fn find_loan(&self, name: &str) -> Option<(usize, &Loan)> {
         self.scopes
@@ -655,12 +658,13 @@ impl Checker<'_> {
         domain: Formula,
         span: Span,
     ) -> Result<ResolvedPlace> {
-        use syntax::Expr as S;
+        expression.checked(span, |span| {
+        use syntax::ExprKind as S;
         let source = self.reference_source(expression, span)?;
         if let Some((_, _, _, Some(holder))) = &source {
             self.use_place(holder.clone(), domain, false, span)?;
         }
-        let target = match expression {
+        let target = match &expression.kind {
             _ if source.is_some() => {
                 let (_, _, loan, holder) = source.as_ref().unwrap();
                 let mut target = loan.target.clone();
@@ -672,7 +676,7 @@ impl Checker<'_> {
                 target
             }
             S::Borrow(inner) | S::BorrowMutable(inner) => {
-                if matches!(expression, S::BorrowMutable(_)) != mutable {
+                if matches!(expression.kind, S::BorrowMutable(_)) != mutable {
                     return Err(self.error(
                         "E_BORROW",
                         span,
@@ -719,6 +723,7 @@ impl Checker<'_> {
             }
         }
         Ok(target)
+        })
     }
     fn add_loan(
         &mut self,
@@ -757,9 +762,9 @@ impl Checker<'_> {
         domain: Formula,
         span: Span,
     ) -> Result<bool> {
-        use syntax::Expr as S;
+        use syntax::ExprKind as S;
         let copied = self.reference_source(expression, span)?;
-        let mutable = match expression {
+        let mutable = match &expression.kind {
             S::Borrow(_) => false,
             S::BorrowMutable(_) => true,
             _ if copied.is_some() => copied.as_ref().unwrap().2.mutable,
@@ -782,7 +787,8 @@ impl Checker<'_> {
         let target = self.reference_argument(expression, mutable, domain, span)?;
         let ty = format!("&{}{}", if mutable { "mutable " } else { "" }, target.ty);
         if let Some(expected) = annotation {
-            self.expect_binding_type(&ty, expected, span)?;
+            self.expect_binding_type(&ty, expected, span)
+                .map_err(|e| expression.locate(e, span))?;
         }
         let origins = self.origins(&target);
         let parents = if let Some(source) = copied {
@@ -803,12 +809,13 @@ impl Checker<'_> {
         span: Span,
         expected: Option<&str>,
     ) -> Result<(Expr, String)> {
+        arg.checked(span, |span| {
         if let Some(value) = self.exit_stored(name, index, arg, domain, span, expected)? {
             return Ok(value);
         }
-        let reference = match arg {
-            syntax::Expr::Borrow(_) => Some(false),
-            syntax::Expr::BorrowMutable(_) => Some(true),
+        let reference = match &arg.kind {
+            syntax::ExprKind::Borrow(_) => Some(false),
+            syntax::ExprKind::BorrowMutable(_) => Some(true),
             _ => self
                 .reference_source(arg, span)?
                 .map(|(_, _, l, _)| l.mutable),
@@ -865,6 +872,7 @@ impl Checker<'_> {
         let temp = format!("$return_{}", self.fresh());
         self.add_loan(&temp, target, origins, parents, mutable, domain);
         Ok((value, ty))
+        })
     }
     fn place_name(&self, place: &Place) -> String {
         let slot = &self.result.slots[&place.root];
@@ -1006,7 +1014,7 @@ impl Checker<'_> {
         domain: Formula,
         span: Span,
     ) -> Result<()> {
-        if let syntax::Expr::Name(name) = target
+        if let syntax::ExprKind::Name(name) = &target.kind
             && self.find_loan(name).is_some()
         {
             return Err(self.error(
@@ -1039,8 +1047,11 @@ impl Checker<'_> {
                 missing,
             ));
         }
-        let (value, ty) = self.expr_expected(value, domain, true, span, Some(&target.ty))?;
-        self.expect_type(&ty, &target.ty, span)?;
+        let value = value.checked(span, |span| {
+            let (expr, ty) = self.expr_expected(value, domain, true, span, Some(&target.ty))?;
+            self.expect_type(&ty, &target.ty, span)?;
+            Ok(expr)
+        })?;
         if target.place.indirect && self.manifest.linear(&target.ty) {
             return Err(self.error(
                 "E_RESOURCE",
@@ -1088,8 +1099,8 @@ impl Checker<'_> {
         Ok(())
     }
     fn collection_type(&self, arg: &syntax::Expr, span: Span) -> Result<String> {
-        let e = match arg {
-            syntax::Expr::Borrow(e) | syntax::Expr::BorrowMutable(e) => e.as_ref(),
+        let e = match &arg.kind {
+            syntax::ExprKind::Borrow(e) | syntax::ExprKind::BorrowMutable(e) => e.as_ref(),
             _ => arg,
         };
         if let Some((_, _, loan, _)) = self.reference_source(e, span)? {
@@ -1135,7 +1146,8 @@ impl Checker<'_> {
         span: Span,
         expected: Option<&str>,
     ) -> Result<(Expr, String)> {
-        use syntax::Expr as S;
+        expr.checked(span, |span| {
+        use syntax::ExprKind as S;
         if let Some(place) = self.resolve_place(expr, span)? {
             if self.manifest.contains_references(&place.ty) {
                 return Err(self.error("E_UNSUPPORTED", span, "stored references currently support local record construction, binding, field access and drop; this value boundary needs contained-loan propagation"));
@@ -1152,7 +1164,7 @@ impl Checker<'_> {
                 "bind the reference-bearing record locally before accessing its fields",
             ));
         }
-        let literal = match expr {
+        let literal = match &expr.kind {
             S::String(s) => Some(Value::String(s.clone())),
             S::Bool(b) => Some(Value::Bool(*b)),
             S::U32(n) => Some(Value::U32(*n)),
@@ -1164,7 +1176,7 @@ impl Checker<'_> {
             let ty = value.ty();
             return Ok((Expr::Value(value), ty));
         }
-        match expr {
+        match &expr.kind {
             S::Name(name) if self.find_loan(name).is_some() => Err(self.error("E_LIFETIME", span, "local references cannot escape or enter aggregates; dereference with deref name, copy into a local reference, or pass to a borrowed parameter")),
             S::Name(name) => {
                 let (base,suffix)=name.split_once('.').map_or((name.as_str(),None),|(a,b)|(a,Some(b)));
@@ -1185,9 +1197,9 @@ impl Checker<'_> {
                 if name == "clone" {
                     let dereferenced;
                     let value = match args.as_slice() {
-                        [S::Borrow(value)] => value.as_ref(),
+                        [syntax::Expr { kind: S::Borrow(value), .. }] => value.as_ref(),
                         [value] if self.reference_source(value, span)?.is_some() => {
-                            dereferenced = S::Deref(Box::new(args[0].clone()));
+                            dereferenced = S::Deref(Box::new(args[0].clone())).at(args[0].range);
                             &dereferenced
                         }
                         _ => return Err(self.error("E_BORROW", span, "clone expects a shared borrow or reference: clone(borrow value) or clone(reference)")),
@@ -1244,19 +1256,19 @@ impl Checker<'_> {
                 self.visibility.field(&self.result.name, &ty, name, span)?;
                 Ok((Expr::Project(Box::new(base), index), field.ty.clone()))
             }
-            S::Unary(e) => {
-                let (e, ty) = self.expr(e, domain, false, span)?;
-                self.expect_type(&ty, "Bool", span)?;
+            S::Unary(source) => {
+                let (e, ty) = self.expr(source, domain, false, span)?;
+                self.expect_type(&ty, "Bool", span).map_err(|e| source.locate(e, span))?;
                 Ok((Expr::Not(Box::new(e)), "Bool".into()))
             }
-            S::Binary(op, a, b) => {
-                let (a, ta) = self.expr(a, domain, false, span)?;
-                let (b, tb) = self.expr(b, domain, false, span)?;
-                self.expect_type(&tb, &ta, span)?;
+            S::Binary(op, left, right) => {
+                let (a, ta) = self.expr(left, domain, false, span)?;
+                let (b, tb) = self.expr(right, domain, false, span)?;
+                self.expect_type(&tb, &ta, span).map_err(|e| right.locate(e, span))?;
                 if ["&&", "||"].contains(&op.as_str()) {
-                    self.expect_type(&ta, "Bool", span)?;
+                    self.expect_type(&ta, "Bool", span).map_err(|e| left.locate(e, span))?;
                 } else if ["<", "<=", ">", ">="].contains(&op.as_str()) {
-                    self.expect_type(&ta, "U32", span)?;
+                    self.expect_type(&ta, "U32", span).map_err(|e| left.locate(e, span))?;
                 } else if !["Bool", "U32", "String", "Unit"].contains(&ta.as_str()) {
                     return Err(self.error(
                         "E_TYPE",
@@ -1271,6 +1283,7 @@ impl Checker<'_> {
             }
             _ => unreachable!(),
         }
+        })
     }
     fn named_record(
         &mut self,
@@ -1511,7 +1524,7 @@ impl Checker<'_> {
         let first_argument_loan = *self.next;
         let result = args.iter()
             .zip(parameters)
-            .map(|(arg, p)| {
+            .map(|(arg, p)| arg.checked(span, |span| {
                 if let Some((mutable,inner))=manifest::reference_inner(&p.ty) {
                     let target=self.reference_argument(arg,mutable,domain,span)?;
                     self.expect_type(&target.ty,inner,span)?;
@@ -1522,13 +1535,13 @@ impl Checker<'_> {
                 let dereferenced;
                 let arg = if self.reference_source(arg, span)?.is_some()
                     && mode == Mode::Borrow {
-                    dereferenced = syntax::Expr::Borrow(Box::new(syntax::Expr::Deref(Box::new(arg.clone()))));
+                    dereferenced = syntax::ExprKind::Borrow(Box::new(syntax::ExprKind::Deref(Box::new(arg.clone())).at(arg.range))).at(arg.range);
                     &dereferenced
                 } else { arg };
-                let arg = match (arg, &mode) {
-                    (syntax::Expr::Borrow(inner), Mode::Borrow) => inner.as_ref(),
-                    (syntax::Expr::Borrow(_), _) => return Err(self.error("E_BORROW", span, "borrow supplied to an owning parameter")),
-                    (syntax::Expr::BorrowMutable(_), _) => return Err(self.error("E_UNSUPPORTED", span, "exclusive borrow supplied to a parameter without an exclusive reference type")),
+                let arg = match (&arg.kind, &mode) {
+                    (syntax::ExprKind::Borrow(inner), Mode::Borrow) => inner.as_ref(),
+                    (syntax::ExprKind::Borrow(_), _) => return Err(self.error("E_BORROW", span, "borrow supplied to an owning parameter")),
+                    (syntax::ExprKind::BorrowMutable(_), _) => return Err(self.error("E_UNSUPPORTED", span, "exclusive borrow supplied to a parameter without an exclusive reference type")),
                     (_, Mode::Borrow) if self.modern => return Err(self.error("E_BORROW", span, format!("parameter `{}` requires an explicit shared borrow (`borrow value`)", p.name))),
                     _ => arg,
                 };
@@ -1541,7 +1554,7 @@ impl Checker<'_> {
                 let (expr, ty) = self.expr_expected(arg, domain, mode == Mode::Consume, span, Some(&p.ty))?;
                 self.expect_type(&ty, &p.ty, span)?;
                 Ok(expr)
-            })
+            }))
             .collect();
         // Temporary holders protect earlier arguments during evaluation. The
         // callee owns them for the invocation; returned permissions get their
@@ -1567,8 +1580,10 @@ impl Checker<'_> {
         for (argument, (arg, param)) in args.iter().zip(parameters).enumerate() {
             let mut accesses = vec![];
             self.accesses(arg, &self.argument_mode(param), span, &mut accesses)?;
-            let place = match arg {
-                syntax::Expr::Borrow(inner) | syntax::Expr::BorrowMutable(inner) => inner.as_ref(),
+            let place = match &arg.kind {
+                syntax::ExprKind::Borrow(inner) | syntax::ExprKind::BorrowMutable(inner) => {
+                    inner.as_ref()
+                }
                 _ => arg,
             };
             let carrier = self.reference_source(place, span)?.is_some()
@@ -1641,121 +1656,125 @@ impl Checker<'_> {
         span: Span,
         uses: &mut Vec<Access>,
     ) -> Result<()> {
-        if let Some((_, _, loan, _)) = self.reference_source(expr, span)? {
-            self.contained_accesses(&loan.target, *mode != Mode::Borrow, uses);
-            uses.extend(loan.origins.iter().map(|p| Access {
-                origin: p.clone(),
-                mode: if p.guard { Mode::Borrow } else { mode.clone() },
-                temporary: *mode == Mode::Value,
-                exclusive: *mode == Mode::Consume,
-            }));
-            return Ok(());
-        }
-        if let Some(resolved) = self.resolve_place(expr, span)? {
-            self.contained_accesses(&resolved, *mode != Mode::Borrow, uses);
-            let mode = if *mode == Mode::Consume && !self.moves(&resolved.ty) {
-                Mode::Value
-            } else {
-                mode.clone()
-            };
-            uses.extend(self.origins(&resolved).into_iter().map(|p| Access {
-                origin: p.clone(),
-                mode: if p.guard { Mode::Borrow } else { mode.clone() },
-                temporary: mode == Mode::Value,
-                exclusive: false,
-            }));
-            return Ok(());
-        }
-        match expr {
-            syntax::Expr::Borrow(inner) => self.accesses(inner, &Mode::Borrow, span, uses)?,
-            syntax::Expr::BorrowMutable(inner) => {
-                if let Some(target) = self.resolve_place(inner, span)? {
-                    self.contained_accesses(&target, true, uses);
-                    uses.extend(self.origins(&target).into_iter().map(|p| Access {
-                        origin: p.clone(),
-                        mode: if p.guard { Mode::Borrow } else { Mode::Consume },
-                        temporary: false,
-                        exclusive: true,
-                    }));
-                } else {
-                    self.accesses(inner, &Mode::Consume, span, uses)?;
-                }
-            }
-            syntax::Expr::NamedRecord(name, fields) => {
-                for (field, value) in fields {
-                    let mode = self
-                        .manifest
-                        .record_field(name, field)
-                        .map(|(_, f)| {
-                            if self.moves(&f.ty) {
-                                Mode::Consume
-                            } else {
-                                Mode::Value
-                            }
-                        })
-                        .unwrap_or(Mode::Consume);
-                    self.accesses(value, &mode, span, uses)?;
-                }
-            }
-            syntax::Expr::List(args) => {
-                for arg in args {
-                    self.accesses(arg, &Mode::Consume, span, uses)?;
-                }
-            }
-            syntax::Expr::Call(name, args)
-                if name == "clone" || crate::collections::is_length(name) =>
-            {
-                let mut reads = vec![];
-                for arg in args {
-                    self.accesses(arg, &Mode::Borrow, span, &mut reads)?;
-                }
-                uses.extend(reads.into_iter().map(|mut access| {
-                    access.temporary = true;
-                    access.exclusive = false;
-                    access
+        expr.checked(span, |span| {
+            if let Some((_, _, loan, _)) = self.reference_source(expr, span)? {
+                self.contained_accesses(&loan.target, *mode != Mode::Borrow, uses);
+                uses.extend(loan.origins.iter().map(|p| Access {
+                    origin: p.clone(),
+                    mode: if p.guard { Mode::Borrow } else { mode.clone() },
+                    temporary: *mode == Mode::Value,
+                    exclusive: *mode == Mode::Consume,
                 }));
+                return Ok(());
             }
-            syntax::Expr::Call(name, args) | syntax::Expr::Construct(name, args) => {
-                if let Some(sig) = self.signatures.get(name) {
-                    for (arg, p) in args.iter().zip(&sig.parameters) {
-                        self.accesses(arg, &self.argument_mode(p), span, uses)?;
-                    }
-                    return Ok(());
+            if let Some(resolved) = self.resolve_place(expr, span)? {
+                self.contained_accesses(&resolved, *mode != Mode::Borrow, uses);
+                let mode = if *mode == Mode::Consume && !self.moves(&resolved.ty) {
+                    Mode::Value
+                } else {
+                    mode.clone()
+                };
+                uses.extend(self.origins(&resolved).into_iter().map(|p| Access {
+                    origin: p.clone(),
+                    mode: if p.guard { Mode::Borrow } else { mode.clone() },
+                    temporary: mode == Mode::Value,
+                    exclusive: false,
+                }));
+                return Ok(());
+            }
+            match &expr.kind {
+                syntax::ExprKind::Borrow(inner) => {
+                    self.accesses(inner, &Mode::Borrow, span, uses)?
                 }
-                if self.manifest.option_constructor_visible(name, |ty| {
-                    self.visibility
-                        .constructor_visible(&self.result.name, ty, name)
-                }) == Some("Some")
-                {
+                syntax::ExprKind::BorrowMutable(inner) => {
+                    if let Some(target) = self.resolve_place(inner, span)? {
+                        self.contained_accesses(&target, true, uses);
+                        uses.extend(self.origins(&target).into_iter().map(|p| Access {
+                            origin: p.clone(),
+                            mode: if p.guard { Mode::Borrow } else { Mode::Consume },
+                            temporary: false,
+                            exclusive: true,
+                        }));
+                    } else {
+                        self.accesses(inner, &Mode::Consume, span, uses)?;
+                    }
+                }
+                syntax::ExprKind::NamedRecord(name, fields) => {
+                    for (field, value) in fields {
+                        let mode = self
+                            .manifest
+                            .record_field(name, field)
+                            .map(|(_, f)| {
+                                if self.moves(&f.ty) {
+                                    Mode::Consume
+                                } else {
+                                    Mode::Value
+                                }
+                            })
+                            .unwrap_or(Mode::Consume);
+                        self.accesses(value, &mode, span, uses)?;
+                    }
+                }
+                syntax::ExprKind::List(args) => {
                     for arg in args {
                         self.accesses(arg, &Mode::Consume, span, uses)?;
                     }
-                    return Ok(());
                 }
-                if let Ok((_, _, fields)) = self.manifest.constructor_visible(name, |ty| {
-                    self.visibility
-                        .constructor_visible(&self.result.name, ty, name)
-                }) {
-                    for (arg, field) in args.iter().zip(fields) {
-                        let mode = if self.moves(&field.ty) {
-                            Mode::Consume
-                        } else {
-                            Mode::Value
-                        };
-                        self.accesses(arg, &mode, span, uses)?;
+                syntax::ExprKind::Call(name, args)
+                    if name == "clone" || crate::collections::is_length(name) =>
+                {
+                    let mut reads = vec![];
+                    for arg in args {
+                        self.accesses(arg, &Mode::Borrow, span, &mut reads)?;
+                    }
+                    uses.extend(reads.into_iter().map(|mut access| {
+                        access.temporary = true;
+                        access.exclusive = false;
+                        access
+                    }));
+                }
+                syntax::ExprKind::Call(name, args) | syntax::ExprKind::Construct(name, args) => {
+                    if let Some(sig) = self.signatures.get(name) {
+                        for (arg, p) in args.iter().zip(&sig.parameters) {
+                            self.accesses(arg, &self.argument_mode(p), span, uses)?;
+                        }
+                        return Ok(());
+                    }
+                    if self.manifest.option_constructor_visible(name, |ty| {
+                        self.visibility
+                            .constructor_visible(&self.result.name, ty, name)
+                    }) == Some("Some")
+                    {
+                        for arg in args {
+                            self.accesses(arg, &Mode::Consume, span, uses)?;
+                        }
+                        return Ok(());
+                    }
+                    if let Ok((_, _, fields)) = self.manifest.constructor_visible(name, |ty| {
+                        self.visibility
+                            .constructor_visible(&self.result.name, ty, name)
+                    }) {
+                        for (arg, field) in args.iter().zip(fields) {
+                            let mode = if self.moves(&field.ty) {
+                                Mode::Consume
+                            } else {
+                                Mode::Value
+                            };
+                            self.accesses(arg, &mode, span, uses)?;
+                        }
                     }
                 }
+                syntax::ExprKind::Project(base, _) | syntax::ExprKind::Unary(base) => {
+                    self.accesses(base, &Mode::Value, span, uses)?
+                }
+                syntax::ExprKind::Binary(_, a, b) => {
+                    self.accesses(a, &Mode::Value, span, uses)?;
+                    self.accesses(b, &Mode::Value, span, uses)?;
+                }
+                _ => {}
             }
-            syntax::Expr::Project(base, _) | syntax::Expr::Unary(base) => {
-                self.accesses(base, &Mode::Value, span, uses)?
-            }
-            syntax::Expr::Binary(_, a, b) => {
-                self.accesses(a, &Mode::Value, span, uses)?;
-                self.accesses(b, &Mode::Value, span, uses)?;
-            }
-            _ => {}
-        }
-        Ok(())
+            Ok(())
+        })
     }
     fn resources(&mut self, domain: Formula, span: Span, only_scope: Option<usize>) -> Result<()> {
         for (i, scope) in self.scopes.iter().enumerate() {
@@ -1874,7 +1893,7 @@ impl Checker<'_> {
         }
         match statement {
             Statement::Forward(operand) => {
-                let syntax::Expr::Call(callee, args) = operand else {
+                let syntax::ExprKind::Call(callee, args) = &operand.kind else {
                     return Err(self.error(
                         "E_FORWARD",
                         span,
@@ -1923,7 +1942,7 @@ impl Checker<'_> {
                 checked?;
             }
             Statement::Invoke(operand) => {
-                let syntax::Expr::Call(callee, args) = operand else {
+                let syntax::ExprKind::Call(callee, args) = &operand.kind else {
                     return Err(self.error(
                         "E_DISPOSITION",
                         span,
@@ -2007,7 +2026,8 @@ impl Checker<'_> {
                 let (expr, ty) =
                     self.expr_expected(expression, domain, true, span, annotation.as_deref())?;
                 if let Some(expected) = annotation {
-                    self.expect_type(&ty, expected, span)?;
+                    self.expect_type(&ty, expected, span)
+                        .map_err(|e| expression.locate(e, span))?;
                 }
                 let id = self.define(name, &ty, domain, span)?;
                 let binding = self
@@ -2031,7 +2051,7 @@ impl Checker<'_> {
                 if self.drop_stored(expression, guard.clone(), domain, span)? {
                     return Ok(());
                 }
-                if let syntax::Expr::Name(name) = expression
+                if let syntax::ExprKind::Name(name) = &expression.kind
                     && let Some((scope, loan)) = self.find_loan(name)
                 {
                     let loan = loan.clone();
@@ -2083,20 +2103,23 @@ impl Checker<'_> {
             Statement::Emit(expression) => {
                 let dereferenced;
                 let expression = if self.reference_source(expression, span)?.is_some() {
-                    dereferenced = syntax::Expr::Borrow(Box::new(syntax::Expr::Deref(Box::new(
-                        expression.clone(),
-                    ))));
+                    dereferenced = syntax::ExprKind::Borrow(Box::new(
+                        syntax::ExprKind::Deref(Box::new(expression.clone())).at(expression.range),
+                    ))
+                    .at(expression.range);
                     &dereferenced
                 } else {
                     expression
                 };
-                let (expression, moving) = if let syntax::Expr::Borrow(inner) = expression {
+                let (expression, moving) = if let syntax::ExprKind::Borrow(inner) = &expression.kind
+                {
                     (inner.as_ref(), false)
                 } else {
                     (expression, self.modern)
                 };
                 let (expr, ty) = self.expr(expression, domain, moving, span)?;
-                self.expect_type(&ty, "String", span)?;
+                self.expect_type(&ty, "String", span)
+                    .map_err(|e| expression.locate(e, span))?;
                 self.emit(guard, Action::Emit(expr), span);
             }
             Statement::Exit(name, args) => {
@@ -2175,7 +2198,8 @@ impl Checker<'_> {
                 for (index, (arg, field)) in args.iter().zip(&outcome.fields).enumerate() {
                     let (value, ty) =
                         self.exit_value(name, index, arg, domain, span, Some(&field.ty))?;
-                    self.expect_type(&ty, &field.ty, span)?;
+                    self.expect_type(&ty, &field.ty, span)
+                        .map_err(|e| arg.locate(e, span))?;
                     values.push(value);
                 }
                 self.resources(domain, span, None)?;
@@ -2199,7 +2223,11 @@ impl Checker<'_> {
                     let outcomes = self.manifest.outcomes(&binding.slot.ty).unwrap();
                     let arms = self.identity_arms(&outcomes, span);
                     self.exit_outcome(
-                        &syntax::OutcomeExpr::Delta(span, syntax::Expr::Name(name.clone()), arms),
+                        &syntax::OutcomeExpr::Delta(
+                            span,
+                            syntax::ExprKind::Name(name.clone()).synthetic(),
+                            arms,
+                        ),
                         guard,
                         domain,
                     )?;
@@ -2259,7 +2287,7 @@ impl Checker<'_> {
                         o.name.clone(),
                         fields
                             .iter()
-                            .map(|f| syntax::Expr::Name(f.name.clone()))
+                            .map(|f| syntax::ExprKind::Name(f.name.clone()).synthetic())
                             .collect(),
                     ),
                 }
@@ -2277,7 +2305,7 @@ impl Checker<'_> {
         domain: Formula,
         span: Span,
     ) -> Result<()> {
-        let syntax::Expr::Call(producer, _) = operand else {
+        let syntax::ExprKind::Call(producer, _) = &operand.kind else {
             return Err(self.error("E_OUTCOME", span, "capture expects an operation call"));
         };
         let sig=self.signatures.get(producer).cloned().ok_or_else(||self.error("E_OUTCOME",span,"capture currently accepts source controls and manifest primitives; use delta for generic collection operations"))?;
@@ -2339,7 +2367,7 @@ impl Checker<'_> {
             let mut fields = vec![];
             for (payload, field) in pattern.bindings.iter().enumerate() {
                 let (value, _, loans) = self.pack_payload(
-                    &syntax::Expr::Name(field.name.clone()),
+                    &syntax::ExprKind::Name(field.name.clone()).synthetic(),
                     Some(&field.ty),
                     &outcome.name,
                     payload,
@@ -2530,7 +2558,8 @@ impl Checker<'_> {
                         self.pack_payload(arg, expected_ty, name, index, domain, *span)?;
                     sink.loans.extend(loans);
                     if let Some(expected) = expected_ty {
-                        self.expect_type(&ty, expected, *span)?;
+                        self.expect_type(&ty, expected, *span)
+                            .map_err(|e| arg.locate(e, *span))?;
                     }
                     fields.push(manifest::Field {
                         name: format!("value_{index}"),
@@ -2623,11 +2652,15 @@ impl Checker<'_> {
         let mut nested_loans = vec![];
         let mut retained_contents = vec![];
         let mut public_returns = vec![];
-        if let syntax::Expr::Call(callee, call_args) = operand
-            && let Some(sig) = self.signature(callee, call_args, span)?
+        if let syntax::ExprKind::Call(callee, call_args) = &operand.kind
+            && let Some(sig) = self
+                .signature(callee, call_args, span)
+                .map_err(|e| operand.locate(e, span))?
         {
             if call_args.len() != sig.parameters.len() {
-                return Err(self.error("E_ARITY", span, "wrong argument count"));
+                return Err(
+                    operand.locate(self.error("E_ARITY", span, "wrong argument count"), span)
+                );
             }
             let returns = sig
                 .borrow_returns
@@ -2694,11 +2727,15 @@ impl Checker<'_> {
                 }
             }
         }
-        let (operation, args, outcomes, variant_type) = if let syntax::Expr::Call(name, args) =
-            operand
-            && let Some(sig) = self.signature(name, args, span)?
+        let (operation, args, outcomes, variant_type) = if let syntax::ExprKind::Call(name, args) =
+            &operand.kind
+            && let Some(sig) = self
+                .signature(name, args, span)
+                .map_err(|e| operand.locate(e, span))?
         {
-            let args = self.arguments(args, &sig.parameters, domain, span)?;
+            let args = self
+                .arguments(args, &sig.parameters, domain, span)
+                .map_err(|e| operand.locate(e, span))?;
             (
                 if sig.region {
                     Operation::Region(name.clone())
@@ -2776,6 +2813,7 @@ impl Checker<'_> {
                     span,
                     format!("{ty} is not a closed variant or Bool"),
                 )
+                .with_range(operand.range)
             })?;
             (Operation::Variant(expr), vec![], outcomes, Some(ty))
         };
@@ -3140,7 +3178,7 @@ impl Checker<'_> {
                         pattern
                             .bindings
                             .iter()
-                            .map(|f| syntax::Expr::Name(f.name.clone()))
+                            .map(|f| syntax::ExprKind::Name(f.name.clone()).synthetic())
                             .collect(),
                     );
                     &forwarded

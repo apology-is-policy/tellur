@@ -125,6 +125,13 @@ exports.run = async function () {
     }, 'inferred control contract hover');
     await replace(buildDocument, revised.replace('string output', 'u32 output'));
     await waitFor(() => revisedDiagnostics().some(d => code(d) === 'E_TYPE'), 'typed declaration diagnostic');
+    const ranged = 'control main() exits done {\r\n emit("😀"); u32 value = "first 😀\r\nsecond";\r\n exit done;\r\n}';
+    await replace(buildDocument, ranged);
+    await waitFor(() => revisedDiagnostics().some(d => code(d) === 'E_TYPE' && d.range.end.line === 2), 'multiline expression range');
+    const typeError = revisedDiagnostics().find(d => code(d) === 'E_TYPE');
+    assert.equal(buildDocument.getText(typeError.range).replace(/\r\n/g, '\n'), '"first 😀\nsecond"');
+    assert.equal(typeError.range.start.character, ranged.split('\n')[1].indexOf('"first'));
+    console.log('TELLUR_EXPRESSION_RANGES_EDITOR_TESTS_PASSED: multiline UTF-16 diagnostics and unsaved repair');
     await replace(buildDocument, revised);
     await waitFor(() => revisedDiagnostics().length === 0, 'typed declaration repair');
     const owned = 'control main() exits auto { [entry]: mutable string text="before"; auto ref=&mutable text; *ref="after"; emit(ref); drop(ref); exit done {text}; }';

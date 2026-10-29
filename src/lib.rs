@@ -35,6 +35,12 @@ pub struct Span {
     pub line: usize,
     pub column: usize,
 }
+/// Half-open source range in one-based Unicode scalar coordinates.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct SourceRange {
+    pub start: Span,
+    pub end: Span,
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DiagnosticNote {
@@ -55,6 +61,8 @@ pub enum DiagnosticWitness {
 pub struct Diagnostic {
     pub code: &'static str,
     pub span: Span,
+    /// Optional exclusive end; boxed to keep error results small on the success path.
+    pub end: Option<Box<Span>>,
     pub message: String,
     pub notes: Vec<DiagnosticNote>,
     pub witness: Option<Box<DiagnosticWitness>>,
@@ -64,10 +72,16 @@ impl Diagnostic {
         Self {
             code,
             span,
+            end: None,
             message: message.into(),
             notes: vec![],
             witness: None,
         }
+    }
+    pub fn with_range(mut self, range: SourceRange) -> Self {
+        self.span = range.start;
+        self.end = Some(Box::new(range.end));
+        self
     }
 }
 impl std::fmt::Display for Diagnostic {

@@ -139,9 +139,14 @@ impl Checker<'_> {
                 .map(|target| (self.origins(target), self.parents(target)))
                 .collect());
         };
-        let arg = match arg {
-            syntax::Expr::Call(n, args) if n == "clone" => match args.as_slice() {
-                [syntax::Expr::Borrow(v)] => v.as_ref(),
+        let arg = match &arg.kind {
+            syntax::ExprKind::Call(n, args) if n == "clone" => match args.as_slice() {
+                [
+                    syntax::Expr {
+                        kind: syntax::ExprKind::Borrow(v),
+                        ..
+                    },
+                ] => v.as_ref(),
                 _ => arg,
             },
             _ => arg,

@@ -279,41 +279,43 @@ impl Specializer<'_> {
         Ok(())
     }
     fn expr(&mut self, e: &Expr, at: Span) -> Result<()> {
-        match e {
-            Expr::Call(name, args) | Expr::Construct(name, args) => {
-                if self.templates.contains_key(name) {
+        e.checked(at, |at| {
+            match &e.kind {
+                ExprKind::Call(name, args) | ExprKind::Construct(name, args) => {
+                    if self.templates.contains_key(name) {
+                        self.require(name, at, 0)?;
+                    }
+                    if let Some(end) = name.rfind('>') {
+                        self.require(&name[..=end], at, 0)?;
+                    }
+                    for a in args {
+                        self.expr(a, at)?;
+                    }
+                }
+                ExprKind::NamedRecord(name, fs) => {
                     self.require(name, at, 0)?;
+                    for (_, e) in fs {
+                        self.expr(e, at)?;
+                    }
                 }
-                if let Some(end) = name.rfind('>') {
-                    self.require(&name[..=end], at, 0)?;
+                ExprKind::List(args) => {
+                    for a in args {
+                        self.expr(a, at)?;
+                    }
                 }
-                for a in args {
+                ExprKind::Borrow(e)
+                | ExprKind::BorrowMutable(e)
+                | ExprKind::Deref(e)
+                | ExprKind::Project(e, _)
+                | ExprKind::Unary(e) => self.expr(e, at)?,
+                ExprKind::Binary(_, a, b) => {
                     self.expr(a, at)?;
+                    self.expr(b, at)?;
                 }
+                _ => (),
             }
-            Expr::NamedRecord(name, fs) => {
-                self.require(name, at, 0)?;
-                for (_, e) in fs {
-                    self.expr(e, at)?;
-                }
-            }
-            Expr::List(args) => {
-                for a in args {
-                    self.expr(a, at)?;
-                }
-            }
-            Expr::Borrow(e)
-            | Expr::BorrowMutable(e)
-            | Expr::Deref(e)
-            | Expr::Project(e, _)
-            | Expr::Unary(e) => self.expr(e, at)?,
-            Expr::Binary(_, a, b) => {
-                self.expr(a, at)?;
-                self.expr(b, at)?;
-            }
-            _ => (),
-        }
-        Ok(())
+            Ok(())
+        })
     }
     fn outcome(&mut self, e: &OutcomeExpr) -> Result<()> {
         match e {

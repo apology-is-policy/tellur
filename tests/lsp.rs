@@ -58,6 +58,56 @@ impl Drop for Fixture {
 }
 const VALID: &str = "region main() exits Done { [Entry]: exit Done; }";
 #[test]
+fn expression_ranges_use_utf16_and_follow_unsaved_edits() {
+    let mut f = Fixture::new();
+    let valid = "control main() exits done {\r\n emit(\"😀\"); auto value = \"a 😀\r\nb\";\r\n exit done;\r\n}";
+    f.open(valid);
+    assert_eq!(f.diagnostics(), json!([]));
+    assert!(f.server.hover(&f.uri, 1, 14).to_string().contains("string"));
+    let invalid = valid.replace("auto value", "u32 value");
+    f.change(&invalid, 2);
+    let errors = f.diagnostics();
+    assert_eq!(errors[0]["code"], "E_TYPE");
+    let line = invalid.split('\n').nth(1).unwrap();
+    let start = line[..line.find("\"a").unwrap()].encode_utf16().count();
+    assert_eq!(
+        errors[0]["range"],
+        json!({"start":{"line":1,"character":start},"end":{"line":2,"character":2}})
+    );
+    f.change(valid, 3);
+    assert_eq!(f.diagnostics(), json!([]));
+    assert!(f.server.hover(&f.uri, 1, 14).to_string().contains("string"));
+}
+
+#[test]
+fn imported_expression_ranges_use_unsaved_dependency_text() {
+    let mut f = Fixture::new();
+    let path = f.root.join("library.tellur");
+    let uri = url::Url::from_file_path(&path).unwrap().to_string();
+    let valid = "pub control read() exits done { exit done; }";
+    fs::write(&path, valid).unwrap();
+    f.open("import \"library.tellur\" as lib;\ncontrol main() exits done {forward lib.read();}");
+    assert_eq!(f.diagnostics(), json!([]));
+    f.server.notification("textDocument/didOpen", &json!({"textDocument":{"uri":uri,"languageId":"tellur","version":1,"text":"pub control read() exits done {\n u32 value = \"😀\";\n exit done;\n}"}}));
+    let errors = f.diagnostics();
+    assert_eq!(errors[0]["code"], "E_TYPE");
+    assert_eq!(
+        errors[0]["range"],
+        json!({"start":{"line":0,"character":0},"end":{"line":0,"character":6}})
+    );
+    let location = &errors[0]["relatedInformation"][0]["location"];
+    assert_eq!(location["uri"], uri);
+    assert_eq!(
+        location["range"],
+        json!({"start":{"line":1,"character":13},"end":{"line":1,"character":17}})
+    );
+    f.server.notification(
+        "textDocument/didChange",
+        &json!({"textDocument":{"uri":uri,"version":2},"contentChanges":[{"text":valid}]}),
+    );
+    assert_eq!(f.diagnostics(), json!([]));
+}
+#[test]
 fn retained_resource_diagnostics_do_not_need_the_rust_source() {
     let mut f = Fixture::new();
     fs::write(
@@ -1578,6 +1628,33 @@ fn rust_adapter_project_checks_unsaved_sources_without_loading_host_code() {
     );
     assert_eq!(f.diagnostics()[0]["code"], "E_TYPE");
     f.change(source, 3);
+    assert_eq!(f.diagnostics(), json!([]));
+    let uri = url::Url::from_file_path(f.root.join("http.tellur"))
+        .unwrap()
+        .to_string();
+    let original = include_str!("../applications/settings/http.tellur");
+    let invalid = original.replacen("400,", "\"bad status\",", 1);
+    f.server.notification(
+        "textDocument/didOpen",
+        &json!({"textDocument":{"uri":uri,"languageId":"tellur","version":1,"text":invalid}}),
+    );
+    let errors = f.server.diagnostics(&uri);
+    let error = &errors["diagnostics"][0];
+    assert_eq!(error["code"], "E_TYPE");
+    let (line, text) = invalid
+        .lines()
+        .enumerate()
+        .find(|(_, line)| line.contains("bad status"))
+        .unwrap();
+    let start = text.find('"').unwrap();
+    assert_eq!(
+        error["range"],
+        json!({"start":{"line":line,"character":start},"end":{"line":line,"character":start+12}})
+    );
+    f.server.notification(
+        "textDocument/didChange",
+        &json!({"textDocument":{"uri":uri,"version":2},"contentChanges":[{"text":original}]}),
+    );
     assert_eq!(f.diagnostics(), json!([]));
 }
 

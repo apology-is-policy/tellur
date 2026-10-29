@@ -321,7 +321,9 @@ fn json_check(args: &[String]) -> ExitCode {
             report["diagnostics"] = json!([{
                 "code":diagnostic.code, "message":diagnostic.message,
                 "path":path.map(|p| p.to_string_lossy().into_owned()),
-                "position":position(diagnostic.span), "notes":notes,
+                "position":position(diagnostic.span),
+                "range":diagnostic.end.map(|end| json!({"start":position(diagnostic.span),"end":position(*end)})),
+                "notes":notes,
                 "witness":diagnostic.witness,
             }]);
             false

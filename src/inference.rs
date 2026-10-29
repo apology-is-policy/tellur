@@ -1,35 +1,35 @@
 //! Check callees before callers so `exits auto` uses checked, closed contracts.
 use crate::{
     Diagnostic, Result,
-    syntax::{Expr, Item, Region, Statement},
+    syntax::{Expr, ExprKind, Item, Region, Statement},
 };
 use std::collections::{BTreeMap, BTreeSet};
 
 pub(crate) fn dependency_order(regions: &[Region]) -> Result<Vec<usize>> {
     fn expr(e: &Expr, calls: &mut BTreeSet<String>) {
-        match e {
-            Expr::Call(name, args) => {
+        match &e.kind {
+            ExprKind::Call(name, args) => {
                 calls.insert(name.clone());
                 for a in args {
                     expr(a, calls);
                 }
             }
-            Expr::Construct(_, args) | Expr::List(args) => {
+            ExprKind::Construct(_, args) | ExprKind::List(args) => {
                 for a in args {
                     expr(a, calls);
                 }
             }
-            Expr::NamedRecord(_, fields) => {
+            ExprKind::NamedRecord(_, fields) => {
                 for (_, value) in fields {
                     expr(value, calls);
                 }
             }
-            Expr::Project(e, _)
-            | Expr::Unary(e)
-            | Expr::Borrow(e)
-            | Expr::BorrowMutable(e)
-            | Expr::Deref(e) => expr(e, calls),
-            Expr::Binary(_, a, b) => {
+            ExprKind::Project(e, _)
+            | ExprKind::Unary(e)
+            | ExprKind::Borrow(e)
+            | ExprKind::BorrowMutable(e)
+            | ExprKind::Deref(e) => expr(e, calls),
+            ExprKind::Binary(_, a, b) => {
                 expr(a, calls);
                 expr(b, calls);
             }

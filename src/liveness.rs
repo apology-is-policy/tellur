@@ -1,26 +1,27 @@
 //! Conservative local reference liveness. The checker retains outer-loop loans at
 //! backedges; this traversal only shortens straight-line local lifetimes.
-use crate::syntax::{Expr, Item, Statement};
+use crate::syntax::{Expr, ExprKind, Item, Statement};
 use std::collections::BTreeSet;
 pub fn expression(expr: &Expr, names: &mut BTreeSet<String>) {
-    match expr {
-        Expr::Name(n) => {
+    match &expr.kind {
+        ExprKind::Name(n) => {
             names.insert(n.clone());
         }
-        Expr::Call(_, args) | Expr::Construct(_, args) | Expr::List(args) => {
+        ExprKind::Call(_, args) | ExprKind::Construct(_, args) | ExprKind::List(args) => {
             for arg in args {
                 expression(arg, names)
             }
         }
-        Expr::NamedRecord(_, fields) => {
+        ExprKind::NamedRecord(_, fields) => {
             for (_, value) in fields {
                 expression(value, names);
             }
         }
-        Expr::Borrow(e) | Expr::BorrowMutable(e) | Expr::Deref(e) | Expr::Unary(e) => {
-            expression(e, names)
-        }
-        Expr::Project(e, field) => {
+        ExprKind::Borrow(e)
+        | ExprKind::BorrowMutable(e)
+        | ExprKind::Deref(e)
+        | ExprKind::Unary(e) => expression(e, names),
+        ExprKind::Project(e, field) => {
             if let Some(mut path) = path(e) {
                 path.push('.');
                 path.push_str(field);
@@ -29,7 +30,7 @@ pub fn expression(expr: &Expr, names: &mut BTreeSet<String>) {
                 expression(e, names);
             }
         }
-        Expr::Binary(_, a, b) => {
+        ExprKind::Binary(_, a, b) => {
             expression(a, names);
             expression(b, names);
         }
@@ -97,9 +98,9 @@ pub fn items(body: &[Item], names: &mut BTreeSet<String>) {
 }
 
 fn path(e: &Expr) -> Option<String> {
-    match e {
-        Expr::Name(n) => Some(n.clone()),
-        Expr::Project(e, f) => Some(format!("{}.{f}", path(e)?)),
+    match &e.kind {
+        ExprKind::Name(n) => Some(n.clone()),
+        ExprKind::Project(e, f) => Some(format!("{}.{f}", path(e)?)),
         // Explicit dereference may cross a reference into another owner. Keep
         // the base alive conservatively rather than inventing a storage path.
         _ => None,

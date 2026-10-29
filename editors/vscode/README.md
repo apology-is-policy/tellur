@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-0.47.0-darwin-arm64.vsix` using **Extensions:
+1. Install the supplied `tellur-language-0.51.0-darwin-arm64.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -504,3 +504,13 @@ and declaration hover listing status defaults. Build and Run propagates the fina
 entry's configured status. Migrated `.tellur` playgrounds declare their entry policy;
 older programs need explicit annotations or manifest mappings before native build.
 See [process entry contracts](https://github.com/apology-is-policy/tellur/blob/main/docs/reference/process-entry.md).
+
+
+## Expression diagnostics in 0.51
+
+Type, move, field and borrow errors found during expression checking now underline
+the affected expression. Invalid arguments select their argument; missing arguments
+select the call. Multiline strings, emoji and unsaved imported files retain their
+correct editor ranges. Parser errors select the unexpected token, with an empty
+selection at end of input. Path coverage and contract errors retain their existing
+locations. The server still reports one primary error per check.

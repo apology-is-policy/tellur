@@ -25,30 +25,30 @@ fn rewrite_fields(fields: &mut [Field], bindings: &BTreeMap<String, String>) {
     }
 }
 fn rewrite_expr(e: &mut Expr, b: &BTreeMap<String, String>) {
-    match e {
-        Expr::Call(n, args) | Expr::Construct(n, args) => {
+    match &mut e.kind {
+        ExprKind::Call(n, args) | ExprKind::Construct(n, args) => {
             *n = map_name(n, b);
             for a in args {
                 rewrite_expr(a, b);
             }
         }
-        Expr::NamedRecord(n, fs) => {
+        ExprKind::NamedRecord(n, fs) => {
             *n = substitute(n, b);
             for (_, e) in fs {
                 rewrite_expr(e, b);
             }
         }
-        Expr::List(args) => {
+        ExprKind::List(args) => {
             for a in args {
                 rewrite_expr(a, b);
             }
         }
-        Expr::Borrow(e)
-        | Expr::BorrowMutable(e)
-        | Expr::Deref(e)
-        | Expr::Project(e, _)
-        | Expr::Unary(e) => rewrite_expr(e, b),
-        Expr::Binary(_, a, c) => {
+        ExprKind::Borrow(e)
+        | ExprKind::BorrowMutable(e)
+        | ExprKind::Deref(e)
+        | ExprKind::Project(e, _)
+        | ExprKind::Unary(e) => rewrite_expr(e, b),
+        ExprKind::Binary(_, a, c) => {
             rewrite_expr(a, b);
             rewrite_expr(c, b);
         }
@@ -158,44 +158,46 @@ fn field_calls(fs: &[Field], at: Span, v: &mut Visit<'_>) -> Result<()> {
     Ok(())
 }
 fn expr_calls(e: &Expr, at: Span, v: &mut Visit<'_>) -> Result<()> {
-    match e {
-        Expr::Call(n, args) => {
-            v(n, at)?;
-            for a in args {
+    e.checked(at, |at| {
+        match &e.kind {
+            ExprKind::Call(n, args) => {
+                v(n, at)?;
+                for a in args {
+                    expr_calls(a, at, v)?;
+                }
+            }
+            ExprKind::Construct(n, args) => {
+                if let Some(end) = n.rfind('>') {
+                    type_calls(&n[..=end], at, v)?;
+                }
+                for a in args {
+                    expr_calls(a, at, v)?;
+                }
+            }
+            ExprKind::NamedRecord(n, fs) => {
+                type_calls(n, at, v)?;
+                for (_, e) in fs {
+                    expr_calls(e, at, v)?;
+                }
+            }
+            ExprKind::List(args) => {
+                for a in args {
+                    expr_calls(a, at, v)?;
+                }
+            }
+            ExprKind::Borrow(e)
+            | ExprKind::BorrowMutable(e)
+            | ExprKind::Deref(e)
+            | ExprKind::Project(e, _)
+            | ExprKind::Unary(e) => expr_calls(e, at, v)?,
+            ExprKind::Binary(_, a, b) => {
                 expr_calls(a, at, v)?;
+                expr_calls(b, at, v)?;
             }
+            _ => (),
         }
-        Expr::Construct(n, args) => {
-            if let Some(end) = n.rfind('>') {
-                type_calls(&n[..=end], at, v)?;
-            }
-            for a in args {
-                expr_calls(a, at, v)?;
-            }
-        }
-        Expr::NamedRecord(n, fs) => {
-            type_calls(n, at, v)?;
-            for (_, e) in fs {
-                expr_calls(e, at, v)?;
-            }
-        }
-        Expr::List(args) => {
-            for a in args {
-                expr_calls(a, at, v)?;
-            }
-        }
-        Expr::Borrow(e)
-        | Expr::BorrowMutable(e)
-        | Expr::Deref(e)
-        | Expr::Project(e, _)
-        | Expr::Unary(e) => expr_calls(e, at, v)?,
-        Expr::Binary(_, a, b) => {
-            expr_calls(a, at, v)?;
-            expr_calls(b, at, v)?;
-        }
-        _ => (),
-    }
-    Ok(())
+        Ok(())
+    })
 }
 fn outcome_calls(e: &OutcomeExpr, v: &mut Visit<'_>) -> Result<()> {
     match e {

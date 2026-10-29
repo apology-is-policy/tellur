@@ -10,58 +10,61 @@ impl Checker<'_> {
         domain: Formula,
         span: Span,
     ) -> Result<StoredValue> {
-        let (name, args) = match e {
-            syntax::Expr::Name(n) => (n.as_str(), &[][..]),
-            syntax::Expr::Construct(n, args) | syntax::Expr::Call(n, args) => {
-                (n.as_str(), args.as_slice())
+        e.checked(span, |span| {
+            let (name, args) = match &e.kind {
+                syntax::ExprKind::Name(n) => (n.as_str(), &[][..]),
+                syntax::ExprKind::Construct(n, args) | syntax::ExprKind::Call(n, args) => {
+                    (n.as_str(), args.as_slice())
+                }
+                _ => {
+                    return Err(self.error(
+                        "E_UNSUPPORTED",
+                        span,
+                        "borrowed variants must be constructed or transferred from a local binding",
+                    ));
+                }
+            };
+            let outcomes = self.manifest.outcomes(ty).unwrap();
+            let outcome = outcomes
+                .iter()
+                .find(|o| {
+                    name == o.name
+                        || name == format!("{ty}.{}", o.name)
+                        || (manifest::option_inner(ty).is_some()
+                            && name.eq_ignore_ascii_case(&o.name))
+                })
+                .ok_or_else(|| {
+                    self.error(
+                        "E_CONSTRUCTOR",
+                        span,
+                        format!("unknown constructor `{name}` for `{ty}`"),
+                    )
+                })?
+                .clone();
+            if !self
+                .visibility
+                .constructor_visible(&self.result.name, ty, name)
+            {
+                return Err(self.error("E_VISIBILITY", span, "constructor is private"));
             }
-            _ => {
-                return Err(self.error(
-                    "E_UNSUPPORTED",
-                    span,
-                    "borrowed variants must be constructed or transferred from a local binding",
-                ));
+            if args.len() != outcome.fields.len() {
+                return Err(self.error("E_ARITY", span, "wrong variant payload arity"));
             }
-        };
-        let outcomes = self.manifest.outcomes(ty).unwrap();
-        let outcome = outcomes
-            .iter()
-            .find(|o| {
-                name == o.name
-                    || name == format!("{ty}.{}", o.name)
-                    || (manifest::option_inner(ty).is_some() && name.eq_ignore_ascii_case(&o.name))
+            let mut values = vec![];
+            let mut loans = vec![];
+            for (payload, (arg, field)) in args.iter().zip(&outcome.fields).enumerate() {
+                let value = self.stored_value(arg, &field.ty, domain, span, true)?;
+                values.push(value.expression);
+                for (fields, id) in value.loans {
+                    self.set_sum_leaf(id, &outcome.name, payload, fields);
+                    loans.push((vec![], id));
+                }
+            }
+            Ok(StoredValue {
+                expression: Expr::Construct(ty.into(), outcome.name, values),
+                ty: ty.into(),
+                loans,
             })
-            .ok_or_else(|| {
-                self.error(
-                    "E_CONSTRUCTOR",
-                    span,
-                    format!("unknown constructor `{name}` for `{ty}`"),
-                )
-            })?
-            .clone();
-        if !self
-            .visibility
-            .constructor_visible(&self.result.name, ty, name)
-        {
-            return Err(self.error("E_VISIBILITY", span, "constructor is private"));
-        }
-        if args.len() != outcome.fields.len() {
-            return Err(self.error("E_ARITY", span, "wrong variant payload arity"));
-        }
-        let mut values = vec![];
-        let mut loans = vec![];
-        for (payload, (arg, field)) in args.iter().zip(&outcome.fields).enumerate() {
-            let value = self.stored_value(arg, &field.ty, domain, span, true)?;
-            values.push(value.expression);
-            for (fields, id) in value.loans {
-                self.set_sum_leaf(id, &outcome.name, payload, fields);
-                loans.push((vec![], id));
-            }
-        }
-        Ok(StoredValue {
-            expression: Expr::Construct(ty.into(), outcome.name, values),
-            ty: ty.into(),
-            loans,
         })
     }
     fn set_sum_leaf(&mut self, id: Id, outcome: &str, payload: usize, fields: Vec<usize>) {
@@ -88,54 +91,56 @@ impl Checker<'_> {
         domain: Formula,
         span: Span,
     ) -> Result<(Expr, String, Vec<Loan>)> {
-        let inferred_reference = if ty.is_none() {
-            match arg {
-                syntax::Expr::Borrow(_) | syntax::Expr::BorrowMutable(_) => {
-                    let mutable = matches!(arg, syntax::Expr::BorrowMutable(_));
-                    let target = self.reference_argument(arg, mutable, domain, span)?;
-                    Some(format!(
-                        "&{}{}",
-                        if mutable { "mutable " } else { "" },
-                        target.ty
-                    ))
+        arg.checked(span, |span| {
+            let inferred_reference = if ty.is_none() {
+                match &arg.kind {
+                    syntax::ExprKind::Borrow(_) | syntax::ExprKind::BorrowMutable(_) => {
+                        let mutable = matches!(arg.kind, syntax::ExprKind::BorrowMutable(_));
+                        let target = self.reference_argument(arg, mutable, domain, span)?;
+                        Some(format!(
+                            "&{}{}",
+                            if mutable { "mutable " } else { "" },
+                            target.ty
+                        ))
+                    }
+                    _ => self.reference_source(arg, span)?.map(|(_, _, l, _)| {
+                        format!(
+                            "&{}{}",
+                            if l.mutable { "mutable " } else { "" },
+                            l.target.ty
+                        )
+                    }),
                 }
-                _ => self.reference_source(arg, span)?.map(|(_, _, l, _)| {
-                    format!(
-                        "&{}{}",
-                        if l.mutable { "mutable " } else { "" },
-                        l.target.ty
-                    )
-                }),
+            } else {
+                None
+            };
+            let ty = ty
+                .map(str::to_owned)
+                .or(self.stored_type(arg, span)?)
+                .or(inferred_reference);
+            let Some(ty) = ty.clone().filter(|t| self.manifest.contains_references(t)) else {
+                let (e, t) = self.expr_expected(arg, domain, true, span, ty.as_deref())?;
+                return Ok((e, t, vec![]));
+            };
+            let inner = manifest::reference_inner(&ty).map_or(ty.as_str(), |(_, inner)| inner);
+            if crate::collection_support::Collection::parse(inner).is_some()
+                && self.manifest.contains_references(inner)
+            {
+                return Err(self.error(
+                    "E_UNSUPPORTED",
+                    span,
+                    "borrowed collections in stored outcomes require collection origin contracts",
+                ));
             }
-        } else {
-            None
-        };
-        let ty = ty
-            .map(str::to_owned)
-            .or(self.stored_type(arg, span)?)
-            .or(inferred_reference);
-        let Some(ty) = ty.clone().filter(|t| self.manifest.contains_references(t)) else {
-            let (e, t) = self.expr_expected(arg, domain, true, span, ty.as_deref())?;
-            return Ok((e, t, vec![]));
-        };
-        let inner = manifest::reference_inner(&ty).map_or(ty.as_str(), |(_, inner)| inner);
-        if crate::collection_support::Collection::parse(inner).is_some()
-            && self.manifest.contains_references(inner)
-        {
-            return Err(self.error(
-                "E_UNSUPPORTED",
-                span,
-                "borrowed collections in stored outcomes require collection origin contracts",
-            ));
-        }
-        self.manifest.check_local_storage(&ty)?;
-        let value = self.stored_value(arg, &ty, domain, span, true)?;
-        let mut loans = vec![];
-        for (fields, id) in value.loans {
-            self.set_sum_leaf(id, outcome, payload, fields);
-            loans.push(self.loan(id).clone());
-        }
-        Ok((value.expression, ty, loans))
+            self.manifest.check_local_storage(&ty)?;
+            let value = self.stored_value(arg, &ty, domain, span, true)?;
+            let mut loans = vec![];
+            for (fields, id) in value.loans {
+                self.set_sum_leaf(id, outcome, payload, fields);
+                loans.push(self.loan(id).clone());
+            }
+            Ok((value.expression, ty, loans))
+        })
     }
     pub(super) fn install_sum_loans(&mut self, root: Id, loans: Vec<Loan>) {
         for loan in loans {
@@ -220,25 +225,27 @@ impl Checker<'_> {
         domain: Formula,
         span: Span,
     ) -> Result<Option<(ResolvedPlace, bool)>> {
-        let mutable = match operand {
-            syntax::Expr::Borrow(_) => Some(false),
-            syntax::Expr::BorrowMutable(_) => Some(true),
-            _ => self
-                .reference_source(operand, span)?
-                .map(|(_, _, l, _)| l.mutable),
-        };
-        let Some(mutable) = mutable else {
-            return Ok(None);
-        };
-        let target = self.reference_argument(operand, mutable, domain, span)?;
-        if self.manifest.outcomes(&target.ty).is_none() {
-            return Err(self.error(
-                "E_DECISION",
-                span,
-                "borrowed decision requires a closed sum or bool",
-            ));
-        }
-        Ok(Some((target, mutable)))
+        operand.checked(span, |span| {
+            let mutable = match &operand.kind {
+                syntax::ExprKind::Borrow(_) => Some(false),
+                syntax::ExprKind::BorrowMutable(_) => Some(true),
+                _ => self
+                    .reference_source(operand, span)?
+                    .map(|(_, _, l, _)| l.mutable),
+            };
+            let Some(mutable) = mutable else {
+                return Ok(None);
+            };
+            let target = self.reference_argument(operand, mutable, domain, span)?;
+            if self.manifest.outcomes(&target.ty).is_none() {
+                return Err(self.error(
+                    "E_DECISION",
+                    span,
+                    "borrowed decision requires a closed sum or bool",
+                ));
+            }
+            Ok(Some((target, mutable)))
+        })
     }
     #[allow(clippy::too_many_arguments)]
     pub(super) fn borrowed_sum_payloads(

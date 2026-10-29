@@ -62,8 +62,14 @@ pub fn diagnostic_range(text: &str, span: Span) -> Value {
     };
     json!({"start":start,"end":{"line":start["line"],"character":start["character"].as_u64().unwrap_or(0) + width as u64}})
 }
+fn source_range(text: &str, error: &Diagnostic) -> Value {
+    match error.end.as_deref() {
+        Some(end) => json!({"start":position(text,error.span),"end":position(text,*end)}),
+        None => diagnostic_range(text, error.span),
+    }
+}
 fn diagnostic(text: &str, error: Diagnostic, severity: u8) -> Value {
-    let mut result = json!({"range":diagnostic_range(text,error.span),"severity":severity,"code":error.code,"source":"tellur","message":error.message});
+    let mut result = json!({"range":source_range(text,&error),"severity":severity,"code":error.code,"source":"tellur","message":error.message});
     if let Some(witness) = error.witness {
         result["data"] = json!({"schema":"tellur.diagnostic.v1","witness":witness});
     }
@@ -211,9 +217,18 @@ impl Server {
             Some(json!({"location":{"uri":target_uri,"range":diagnostic_range(&text,note.span)},"message":note.message}))
         }).collect::<Vec<_>>();
         let mut result = if root.as_ref().is_some_and(|p| p != &error.path) {
-            let target_uri = Url::from_file_path(&error.path).ok().map(|u| u.to_string());
+            let target_uri = self
+                .documents
+                .keys()
+                .find(|uri| {
+                    file_path(uri).is_some_and(|p| {
+                        crate::modules::source_identity(&p).unwrap_or(p) == error.path
+                    })
+                })
+                .cloned()
+                .or_else(|| Url::from_file_path(&error.path).ok().map(|u| u.to_string()));
             let text = self.source_text(&error.path).unwrap_or_default();
-            let target_range = diagnostic_range(&text, error.diagnostic.span);
+            let target_range = source_range(&text, &error.diagnostic);
             let message = format!(
                 "Imported {}:{}:{}: {}",
                 error.path.display(),
@@ -226,6 +241,7 @@ impl Server {
                 .and_then(|u| u.imports.first().map(|i| i.span))
                 .unwrap_or(Span { line: 1, column: 1 });
             error.diagnostic.message = message.clone();
+            error.diagnostic.end = None;
             if let Some(target_uri) = target_uri {
                 related.insert(
                     0,

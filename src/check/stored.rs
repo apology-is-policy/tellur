@@ -180,18 +180,20 @@ impl Checker<'_> {
         expression: &syntax::Expr,
         span: Span,
     ) -> Result<Option<ReferenceSource>> {
-        if let syntax::Expr::Name(name) = expression
-            && let Some((scope, loan)) = self.find_loan(name)
-        {
-            return Ok(Some((scope, name.clone(), loan.clone(), None)));
-        }
-        if let Some(place) = self.resolve_place(expression, span)?
-            && manifest::reference_inner(&place.ty).is_some()
-            && let Some((scope, name, loan)) = self.stored_loan(&place)
-        {
-            return Ok(Some((scope, name, loan, Some(place))));
-        }
-        Ok(None)
+        expression.checked(span, |span| {
+            if let syntax::ExprKind::Name(name) = &expression.kind
+                && let Some((scope, loan)) = self.find_loan(name)
+            {
+                return Ok(Some((scope, name.clone(), loan.clone(), None)));
+            }
+            if let Some(place) = self.resolve_place(expression, span)?
+                && manifest::reference_inner(&place.ty).is_some()
+                && let Some((scope, name, loan)) = self.stored_loan(&place)
+            {
+                return Ok(Some((scope, name, loan, Some(place))));
+            }
+            Ok(None)
+        })
     }
 
     pub(super) fn transfer_reference(
@@ -236,69 +238,78 @@ impl Checker<'_> {
     }
 
     pub(super) fn stored_type(&self, e: &syntax::Expr, span: Span) -> Result<Option<String>> {
-        if let Some(p) = self.resolve_place(e, span)? {
-            return Ok(Some(p.ty));
-        }
-        if let syntax::Expr::Name(n) | syntax::Expr::Call(n, _) | syntax::Expr::Construct(n, _) = e
-            && let Ok((ty, _, _)) = self.manifest.constructor_visible(n, |ty| {
-                self.visibility
-                    .constructor_visible(&self.result.name, ty, n)
-            })
-        {
-            return Ok(Some(ty));
-        }
-        if let syntax::Expr::Call(n, args) | syntax::Expr::Construct(n, args) = e
-            && let [arg] = args.as_slice()
-            && self.manifest.option_constructor_visible(n, |ty| {
-                self.visibility
-                    .constructor_visible(&self.result.name, ty, n)
-            }) == Some("Some")
-        {
-            let ty = match arg {
-                syntax::Expr::Borrow(inner) | syntax::Expr::BorrowMutable(inner) => {
-                    self.resolve_place(inner, span)?.map(|p| {
-                        format!(
-                            "&{}{}",
-                            if matches!(arg, syntax::Expr::BorrowMutable(_)) {
-                                "mutable "
-                            } else {
-                                ""
-                            },
-                            p.ty
-                        )
-                    })
-                }
-                _ => self
-                    .reference_source(arg, span)?
-                    .map(|(_, _, l, _)| {
-                        format!(
-                            "&{}{}",
-                            if l.mutable { "mutable " } else { "" },
-                            l.target.ty
-                        )
-                    })
-                    .or(self.stored_type(arg, span)?),
-            };
-            if let Some(ty) = ty.filter(|t| self.manifest.contains_references(t)) {
-                return Ok(Some(format!("Option<{ty}>")));
+        e.checked(span, |span| {
+            if let Some(p) = self.resolve_place(e, span)? {
+                return Ok(Some(p.ty));
             }
-        }
-        Ok(match e {
-            syntax::Expr::NamedRecord(n, _)
-            | syntax::Expr::Construct(n, _)
-            | syntax::Expr::Call(n, _)
-                if matches!(
-                    self.manifest.type_def(n),
-                    Some(manifest::TypeDef::Record { .. })
-                ) =>
+            if let syntax::ExprKind::Name(n)
+            | syntax::ExprKind::Call(n, _)
+            | syntax::ExprKind::Construct(n, _) = &e.kind
+                && let Ok((ty, _, _)) = self.manifest.constructor_visible(n, |ty| {
+                    self.visibility
+                        .constructor_visible(&self.result.name, ty, n)
+                })
             {
-                Some(n.clone())
+                return Ok(Some(ty));
             }
-            syntax::Expr::Call(n, args) if n == "clone" => match args.as_slice() {
-                [syntax::Expr::Borrow(e)] => self.stored_type(e, span)?,
+            if let syntax::ExprKind::Call(n, args) | syntax::ExprKind::Construct(n, args) = &e.kind
+                && let [arg] = args.as_slice()
+                && self.manifest.option_constructor_visible(n, |ty| {
+                    self.visibility
+                        .constructor_visible(&self.result.name, ty, n)
+                }) == Some("Some")
+            {
+                let ty = match &arg.kind {
+                    syntax::ExprKind::Borrow(inner) | syntax::ExprKind::BorrowMutable(inner) => {
+                        self.resolve_place(inner, span)?.map(|p| {
+                            format!(
+                                "&{}{}",
+                                if matches!(arg.kind, syntax::ExprKind::BorrowMutable(_)) {
+                                    "mutable "
+                                } else {
+                                    ""
+                                },
+                                p.ty
+                            )
+                        })
+                    }
+                    _ => self
+                        .reference_source(arg, span)?
+                        .map(|(_, _, l, _)| {
+                            format!(
+                                "&{}{}",
+                                if l.mutable { "mutable " } else { "" },
+                                l.target.ty
+                            )
+                        })
+                        .or(self.stored_type(arg, span)?),
+                };
+                if let Some(ty) = ty.filter(|t| self.manifest.contains_references(t)) {
+                    return Ok(Some(format!("Option<{ty}>")));
+                }
+            }
+            Ok(match &e.kind {
+                syntax::ExprKind::NamedRecord(n, _)
+                | syntax::ExprKind::Construct(n, _)
+                | syntax::ExprKind::Call(n, _)
+                    if matches!(
+                        self.manifest.type_def(n),
+                        Some(manifest::TypeDef::Record { .. })
+                    ) =>
+                {
+                    Some(n.clone())
+                }
+                syntax::ExprKind::Call(n, args) if n == "clone" => match args.as_slice() {
+                    [
+                        syntax::Expr {
+                            kind: syntax::ExprKind::Borrow(e),
+                            ..
+                        },
+                    ] => self.stored_type(e, span)?,
+                    _ => None,
+                },
                 _ => None,
-            },
-            _ => None,
+            })
         })
     }
 
@@ -310,6 +321,7 @@ impl Checker<'_> {
         span: Span,
         moving: bool,
     ) -> Result<StoredValue> {
+        e.checked(span, |span| {
         if let Some((mutable, inner)) = manifest::reference_inner(expected) {
             let source = self.reference_source(e, span)?;
             if let Some((_, _, loan, _)) = &source {
@@ -360,9 +372,9 @@ impl Checker<'_> {
             });
         }
         self.manifest.check_local_storage(expected)?;
-        if let syntax::Expr::Call(n, args) = e
+        if let syntax::ExprKind::Call(n, args) = &e.kind
             && n == "clone"
-            && let [syntax::Expr::Borrow(value)] = args.as_slice()
+            && let [syntax::Expr { kind: syntax::ExprKind::Borrow(value), .. }] = args.as_slice()
         {
             if !self.manifest.is_cloneable(expected) {
                 return Err(self.error(
@@ -431,13 +443,13 @@ impl Checker<'_> {
             });
         }
         if let Some(c) = crate::collection_support::Collection::parse(expected) {
-            let args = match e {
-                syntax::Expr::List(args)
+            let args = match &e.kind {
+                syntax::ExprKind::List(args)
                     if !matches!(c, crate::collection_support::Collection::Map(..)) =>
                 {
                     args
                 }
-                syntax::Expr::Construct(name, args)
+                syntax::ExprKind::Construct(name, args)
                     if name == "map"
                         && args.is_empty()
                         && matches!(c, crate::collection_support::Collection::Map(..)) =>
@@ -489,8 +501,8 @@ impl Checker<'_> {
                 "stored references currently require a local struct",
             ));
         };
-        let (name, initializers): (&str, Vec<(usize, &syntax::Expr)>) = match e {
-            syntax::Expr::NamedRecord(name, initializers) => {
+        let (name, initializers): (&str, Vec<(usize, &syntax::Expr)>) = match &e.kind {
+            syntax::ExprKind::NamedRecord(name, initializers) => {
                 let mut seen = BTreeSet::new();
                 let mut ordered = vec![];
                 for (field, value) in initializers {
@@ -500,7 +512,7 @@ impl Checker<'_> {
                 }
                 (name, ordered)
             }
-            syntax::Expr::Construct(name, args) | syntax::Expr::Call(name, args) => (name, args.iter().enumerate().collect()),
+            syntax::ExprKind::Construct(name, args) | syntax::ExprKind::Call(name, args) => (name, args.iter().enumerate().collect()),
             _ => return Err(self.error("E_UNSUPPORTED", span, "reference-bearing records must be constructed, copied, cloned or moved from a local place")),
         };
         self.expect_type(name, expected, span)?;
@@ -526,6 +538,7 @@ impl Checker<'_> {
             expression: Expr::Record(name.into(), values),
             ty: expected.into(),
             loans,
+        })
         })
     }
 
@@ -1063,7 +1076,9 @@ impl Checker<'_> {
         domain: Formula,
         span: Span,
     ) -> Result<Expr> {
-        Ok(self.stored_value(arg, ty, domain, span, true)?.expression)
+        arg.checked(span, |span| {
+            Ok(self.stored_value(arg, ty, domain, span, true)?.expression)
+        })
     }
     pub(super) fn call_origin_targets(
         &mut self,
@@ -1078,9 +1093,14 @@ impl Checker<'_> {
                 .call_origin_target(source, arg, param, domain, span)
                 .map(|t| vec![t]);
         };
-        let arg = match arg {
-            syntax::Expr::Call(n, args) if n == "clone" => match args.as_slice() {
-                [syntax::Expr::Borrow(value)] => value.as_ref(),
+        let arg = match &arg.kind {
+            syntax::ExprKind::Call(n, args) if n == "clone" => match args.as_slice() {
+                [
+                    syntax::Expr {
+                        kind: syntax::ExprKind::Borrow(value),
+                        ..
+                    },
+                ] => value.as_ref(),
                 _ => arg,
             },
             _ => arg,
@@ -1130,9 +1150,14 @@ impl Checker<'_> {
         span: Span,
     ) -> Result<ResolvedPlace> {
         if let Some(contained) = &source.contained {
-            let arg = match arg {
-                syntax::Expr::Call(n, args) if n == "clone" => match args.as_slice() {
-                    [syntax::Expr::Borrow(value)] => value.as_ref(),
+            let arg = match &arg.kind {
+                syntax::ExprKind::Call(n, args) if n == "clone" => match args.as_slice() {
+                    [
+                        syntax::Expr {
+                            kind: syntax::ExprKind::Borrow(value),
+                            ..
+                        },
+                    ] => value.as_ref(),
                     _ => arg,
                 },
                 _ => arg,
@@ -1148,9 +1173,9 @@ impl Checker<'_> {
                     let field = self.manifest.field_at(ty, *index).ok_or_else(|| {
                         self.error("E_LIFETIME", span, "invalid contained origin projection")
                     })?;
-                    expression = match expression {
-                        syntax::Expr::NamedRecord(_, fields) => fields.iter().find(|(n, _)| n == &field.name).map(|(_, e)| e),
-                        syntax::Expr::Construct(_, values) | syntax::Expr::Call(_, values) => values.get(*index),
+                    expression = match &expression.kind {
+                        syntax::ExprKind::NamedRecord(_, fields) => fields.iter().find(|(n, _)| n == &field.name).map(|(_, e)| e),
+                        syntax::ExprKind::Construct(_, values) | syntax::ExprKind::Call(_, values) => values.get(*index),
                         _ => None,
                     }.ok_or_else(|| self.error("E_UNSUPPORTED", span, "bind this reference-bearing expression locally before returning its contained origins"))?;
                     ty = &field.ty;

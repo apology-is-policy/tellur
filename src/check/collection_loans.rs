@@ -24,7 +24,7 @@ impl Checker<'_> {
         domain: Formula,
         span: Span,
     ) -> Result<Option<CollectionLoans>> {
-        let syntax::Expr::Call(name, args) = operand else {
+        let syntax::ExprKind::Call(name, args) = &operand.kind else {
             return Ok(None);
         };
         if !crate::collections::is_operation(name) {
@@ -50,8 +50,8 @@ impl Checker<'_> {
         if args.len() != contract.parameters.len() {
             return Err(self.error("E_ARITY", span, "wrong collection argument count"));
         }
-        let expression = match first {
-            syntax::Expr::Borrow(e) | syntax::Expr::BorrowMutable(e) => e.as_ref(),
+        let expression = match &first.kind {
+            syntax::ExprKind::Borrow(e) | syntax::ExprKind::BorrowMutable(e) => e.as_ref(),
             _ => first,
         };
         let target = if let Some((_, _, loan, _)) = self.reference_source(expression, span)? {

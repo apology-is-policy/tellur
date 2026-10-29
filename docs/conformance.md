@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.50.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.51.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -1354,3 +1354,48 @@ Evidence: `work/tellur-0.50-validation.json`, `tellur-0.50-tests.log`,
 `tellur-0.50-versions.log`, `tellur-0.50-package.log`,
 `tellur-0.50-package-integrity.log`, `tellur-0.50-install.log`,
 `tellur-0.50-installed-integrity.log` and `tellur-0.50-backup.log`.
+
+## 0.51 — Expression source ranges
+
+Value-expression nodes retain half-open source ranges through parsing, module
+resolution and generic rewriting. Expression checking preserves a child error's
+range instead of replacing it with its enclosing statement location. Argument
+and payload mismatches, annotated initializers, assignments, reference bindings,
+field accesses and moved values select their relevant expressions. Missing call
+arguments select the call; incompatible comparison operands select the right
+operand. Parser errors select the unexpected token, with a zero-width EOF range.
+
+`check --json` retains the `tellur.check.v1` schema and existing `position` field;
+the additive nullable `range` contains one-based Unicode scalar start/end points.
+LSP ranges convert both endpoints to zero-based UTF-16, including multiline
+strings and CRLF. Imported diagnostics keep the original file's coordinates and
+prefer its open editor URI when available. Contributor notes, path witnesses and
+point-only declaration/contract diagnostics retain their existing representation.
+
+The new tests cover nested calls and comparisons, list elements, escapes,
+parenthesized initializers, assignment/reference mismatches, moved values,
+multiline Unicode/CRLF, imported generic bodies and parser token/EOF locations.
+Editor tests cover unsaved imported sources, repair, inference hover freshness
+and a bad HTTP status payload in the settings service without reading Rust host
+code. The real VS Code test selects the exact multiline string containing emoji.
+
+This remains a single-primary-error checker. Independent-error recovery, broader
+contract/declaration ranges and ranged contributor notes are separate follow-ups;
+no language syntax, ownership rules or execution policy changes in this release.
+
+Validation: **781 Rust tests** pass in the full regression run; the final range
+checks pass all **84** library/diagnostic/LSP tests. Clippy passes all targets with
+warnings denied. All **33 Node tests** and the complete real VS Code suite pass,
+including live settings HTTP and retained-resource execution. The current manual
+checks **55** accepted examples, **20** expected diagnostics, **14** context
+fragments and **165** local links. All **58** maintained Tellur sources pass release
+checking. Compiler and LSP initialization report **0.51.0**. All nine packaged and
+installed payloads, package metadata and executable permissions are verified.
+
+Evidence: `work/tellur-0.51-validation.json`, `tellur-0.51-tests.log`,
+`tellur-0.51-ranges.log`, `tellur-0.51-clippy.log`, `tellur-0.51-reference.log`,
+`tellur-0.51-examples.log`, `tellur-0.51-node.log`, `tellur-0.51-editor.log`,
+`tellur-0.51-build.log`, `tellur-0.51-versions.log`, `tellur-0.51-package.log`,
+`tellur-0.51-package-integrity.log`, `tellur-0.51-install.log`,
+`tellur-0.51-installed-integrity.log` and `tellur-0.51-backup.log`.
+The verified source snapshot is `work/revision-backups/tellur-0.51-source.tar.gz`.

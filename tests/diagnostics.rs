@@ -7,6 +7,135 @@ use std::{
 };
 use tellur::{DiagnosticWitness, compile, manifest::Manifest};
 static NEXT: AtomicUsize = AtomicUsize::new(0);
+fn scalar_position(source: &str, offset: usize) -> Value {
+    let prefix = &source[..offset];
+    json!({"line":prefix.bytes().filter(|b| *b == b'\n').count()+1,
+        "column":prefix.rsplit('\n').next().unwrap().chars().count()+1})
+}
+fn selected_range(source: &str, selected: &str) -> Value {
+    let start = source.find(selected).unwrap();
+    json!({"start":scalar_position(source,start),"end":scalar_position(source,start+selected.len())})
+}
+
+#[test]
+fn expression_diagnostics_select_arguments_initializers_and_complete_calls() {
+    let f = Fixture::new();
+    for (body, selected, code) in [
+        (
+            r#"u32 value = "wrong\n"; exit done;"#,
+            r#""wrong\n""#,
+            "E_TYPE",
+        ),
+        (
+            "string owner = \"x\"; ref u32 alias = borrow owner; drop(alias); exit done;",
+            "borrow owner",
+            "E_TYPE",
+        ),
+        (
+            "mutable u32 value = 1; value = true; exit done;",
+            "true",
+            "E_TYPE",
+        ),
+        (
+            "u32 value = (\"wrong\"); exit done;",
+            "(\"wrong\")",
+            "E_TYPE",
+        ),
+        ("forward accept(\n  true\n);", "true", "E_TYPE"),
+        ("forward accept(\n);", "accept(\n)", "E_ARITY"),
+        (
+            "string text = \"x\"; emit(text.missing); exit done;",
+            "text.missing",
+            "E_FIELD",
+        ),
+        (
+            "vector<u32> values = [1, true]; exit done;",
+            "true",
+            "E_TYPE",
+        ),
+        (
+            "string text = \"x\"; emit(text); emit(text); exit done;",
+            "text); exit",
+            "E_MOVED",
+        ),
+        (
+            "delta (1 < 2) && (3 < \"no\") {true=>yes,false=>no} [yes | no]: exit done;",
+            "\"no\"",
+            "E_TYPE",
+        ),
+    ] {
+        let source = format!(
+            "control accept(u32 value) exits done {{ exit done; }}\ncontrol main() exits done {{\n {body}\n}}"
+        );
+        f.write("main.tellur", &source);
+        let report = f.report(&["check", "main.tellur", "--json"], false);
+        let error = &report["diagnostics"][0];
+        assert_eq!(error["code"], code, "{body}: {error}");
+        let expected = if code == "E_MOVED" {
+            let start = source.find(selected).unwrap();
+            json!({"start":scalar_position(&source,start),"end":scalar_position(&source,start+4)})
+        } else {
+            selected_range(&source, selected)
+        };
+        assert_eq!(error["range"], expected, "{body}: {error}");
+        assert_eq!(error["position"], expected["start"]);
+    }
+}
+
+#[test]
+fn expression_ranges_preserve_unicode_crlf_and_multiline_literals() {
+    let f = Fixture::new();
+    let source = "control main() exits done {\r\n emit(\"😀\"); u32 n = \"line 😀\r\nsecond\";\r\n exit done;\r\n}";
+    f.write("main.tellur", source);
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    assert_eq!(
+        report["diagnostics"][0]["range"],
+        selected_range(source, "\"line 😀\r\nsecond\"")
+    );
+}
+
+#[test]
+fn imported_generic_expression_ranges_use_original_source_coordinates() {
+    let f = Fixture::new();
+    let library = "// source coordinates survive generic checking\npub control bad<t: drop>(t value) exits done {\n drop(value);\n u32 n = \"wrong\";\n exit done;\n}";
+    f.write("library.tellur", library);
+    f.write(
+        "main.tellur",
+        "import \"library.tellur\" as lib;\ncontrol main() exits done {exit done;}",
+    );
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    let error = &report["diagnostics"][0];
+    assert_eq!(error["code"], "E_TYPE", "{error}");
+    assert_eq!(
+        error["path"],
+        f.root.join("library.tellur").to_string_lossy().as_ref()
+    );
+    assert_eq!(error["range"], selected_range(library, "\"wrong\""));
+}
+
+#[test]
+fn parser_diagnostics_select_complete_tokens_and_zero_width_eof() {
+    let f = Fixture::new();
+    for (source, selected) in [
+        (
+            "control main() exits done { exit done unexpected; }",
+            "unexpected",
+        ),
+        ("control main() exits done { exit done;", ""),
+    ] {
+        f.write("main.tellur", source);
+        let report = f.report(&["check", "main.tellur", "--json"], false);
+        let error = &report["diagnostics"][0];
+        assert_eq!(error["code"], "E_PARSE");
+        let expected = if selected.is_empty() {
+            let end = scalar_position(source, source.len());
+            json!({"start":end,"end":end})
+        } else {
+            selected_range(source, selected)
+        };
+        assert_eq!(error["range"], expected);
+    }
+}
 struct Fixture {
     root: PathBuf,
 }

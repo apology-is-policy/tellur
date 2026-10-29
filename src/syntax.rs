@@ -1,7 +1,38 @@
-use crate::{Diagnostic, Result, Span};
+use crate::{Diagnostic, Result, SourceRange, Span};
 
 #[derive(Clone, Debug)]
-pub enum Expr {
+pub struct Expr {
+    pub kind: ExprKind,
+    pub range: SourceRange,
+}
+impl Expr {
+    pub(crate) fn checked<T>(
+        &self,
+        fallback: Span,
+        check: impl FnOnce(Span) -> Result<T>,
+    ) -> Result<T> {
+        check(self.span(fallback)).map_err(|error| self.locate(error, fallback))
+    }
+    pub fn span(&self, fallback: Span) -> Span {
+        if self.range.start.line == 0 {
+            fallback
+        } else {
+            self.range.start
+        }
+    }
+    /// Preserve a more precise child diagnostic; synthetic nodes use their caller's location.
+    pub fn locate(&self, mut error: Diagnostic, fallback: Span) -> Diagnostic {
+        if error.end.is_none()
+            && self.range.start.line != 0
+            && (error.span == fallback || error.span == self.range.start)
+        {
+            error = error.with_range(self.range);
+        }
+        error
+    }
+}
+#[derive(Clone, Debug)]
+pub enum ExprKind {
     Name(String),
     String(String),
     U32(u32),
@@ -18,6 +49,14 @@ pub enum Expr {
     Project(Box<Expr>, String),
     Unary(Box<Expr>),
     Binary(String, Box<Expr>, Box<Expr>),
+}
+impl ExprKind {
+    pub fn at(self, range: SourceRange) -> Expr {
+        Expr { kind: self, range }
+    }
+    pub fn synthetic(self) -> Expr {
+        self.at(SourceRange::default())
+    }
 }
 #[derive(Clone, Debug)]
 pub enum Mask {
@@ -225,6 +264,7 @@ enum Kind {
 struct Token {
     kind: Kind,
     span: Span,
+    end: Span,
 }
 impl Token {
     fn is(&self, text: &str) -> bool {
@@ -303,6 +343,7 @@ fn lex(source: &str) -> Result<Vec<Token>> {
             tokens.push(Token {
                 kind: Kind::String(s),
                 span,
+                end: Span { line, column },
             });
             continue;
         }
@@ -326,6 +367,7 @@ fn lex(source: &str) -> Result<Vec<Token>> {
             tokens.push(Token {
                 kind: Kind::Word(chars[start..i].iter().collect()),
                 span,
+                end: Span { line, column },
             });
             continue;
         }
@@ -338,6 +380,7 @@ fn lex(source: &str) -> Result<Vec<Token>> {
             tokens.push(Token {
                 kind: Kind::Number(chars[start..i].iter().collect()),
                 span,
+                end: Span { line, column },
             });
             continue;
         }
@@ -366,11 +409,13 @@ fn lex(source: &str) -> Result<Vec<Token>> {
         tokens.push(Token {
             kind: Kind::Symbol(symbol),
             span,
+            end: Span { line, column },
         });
     }
     tokens.push(Token {
         kind: Kind::End,
         span: Span { line, column },
+        end: Span { line, column },
     });
     Ok(tokens)
 }
@@ -396,7 +441,10 @@ impl Parser {
         }
     }
     fn error(&self, message: impl Into<String>) -> Diagnostic {
-        Diagnostic::new("E_PARSE", self.here(), message)
+        Diagnostic::new("E_PARSE", self.here(), message).with_range(SourceRange {
+            start: self.here(),
+            end: self.tokens[self.pos].end,
+        })
     }
     fn need(&mut self, s: &str) -> Result<()> {
         if self.eat(s) {
@@ -838,25 +886,29 @@ impl Parser {
         Ok(args)
     }
     fn expr(&mut self, level: u8) -> Result<Expr> {
+        let start = self.here();
         if level == 3 {
             if self.eat("borrow") || self.eat("&") {
                 let mutable = self.eat("mutable");
                 let value = Box::new(self.expr(3)?);
-                return Ok(if mutable {
-                    Expr::BorrowMutable(value)
+                return Ok((if mutable {
+                    ExprKind::BorrowMutable(value)
                 } else {
-                    Expr::Borrow(value)
-                });
+                    ExprKind::Borrow(value)
+                })
+                .at(self.range_from(start)));
             }
             if self.eat("deref") || self.eat("*") {
-                return Ok(Expr::Deref(Box::new(self.expr(3)?)));
+                let value = self.expr(3)?;
+                return Ok(ExprKind::Deref(Box::new(value)).at(self.range_from(start)));
             }
             if self.eat("!") {
-                return Ok(Expr::Unary(Box::new(self.expr(3)?)));
+                let value = self.expr(3)?;
+                return Ok(ExprKind::Unary(Box::new(value)).at(self.range_from(start)));
             }
             let mut e = self.primary()?;
             while self.eat(".") {
-                e = Expr::Project(Box::new(e), self.id()?);
+                e = ExprKind::Project(Box::new(e), self.id()?).at(self.range_from(start));
             }
             return Ok(e);
         }
@@ -874,12 +926,23 @@ impl Parser {
             let op = op.to_string();
             self.pos += 1;
             let right = self.expr(level + 1)?;
-            left = Expr::Binary(op, Box::new(left), Box::new(right));
+            left = ExprKind::Binary(op, Box::new(left), Box::new(right)).at(self.range_from(start));
             used = true;
         }
         Ok(left)
     }
     fn primary(&mut self) -> Result<Expr> {
+        let start = self.here();
+        let kind = self.primary_kind()?;
+        Ok(kind.at(self.range_from(start)))
+    }
+    fn range_from(&self, start: Span) -> SourceRange {
+        SourceRange {
+            start,
+            end: self.tokens[self.pos.saturating_sub(1)].end,
+        }
+    }
+    fn primary_kind(&mut self) -> Result<ExprKind> {
         if self.eat("[") {
             let previous = self.brace_expr;
             self.brace_expr = true;
@@ -894,7 +957,7 @@ impl Parser {
             }
             self.need("]")?;
             self.brace_expr = previous;
-            return Ok(Expr::List(values));
+            return Ok(ExprKind::List(values));
         }
         if self.eat("(") {
             let previous = self.brace_expr;
@@ -902,13 +965,13 @@ impl Parser {
             let e = self.expr(0)?;
             self.need(")")?;
             self.brace_expr = previous;
-            return Ok(e);
+            return Ok(e.kind);
         }
         let token = self.tokens[self.pos].clone();
         match token.kind {
             Kind::String(s) => {
                 self.pos += 1;
-                Ok(Expr::String(s))
+                Ok(ExprKind::String(s))
             }
             Kind::Number(n) => {
                 self.pos += 1;
@@ -920,7 +983,7 @@ impl Parser {
                         "invalid or overflowing U32 literal",
                     )
                 })?;
-                Ok(Expr::U32(n))
+                Ok(ExprKind::U32(n))
             }
             Kind::Word(_) => {
                 let saved = self.pos;
@@ -947,9 +1010,9 @@ impl Parser {
                     }
                 }
                 match name.as_str() {
-                    "true" => Ok(Expr::Bool(true)),
-                    "false" => Ok(Expr::Bool(false)),
-                    "unit" => Ok(Expr::Unit),
+                    "true" => Ok(ExprKind::Bool(true)),
+                    "false" => Ok(ExprKind::Bool(false)),
+                    "unit" => Ok(ExprKind::Unit),
                     "bytes" if matches!(self.tokens[self.pos].kind, Kind::String(_)) => {
                         let Kind::String(s) = self.tokens[self.pos].kind.clone() else {
                             unreachable!()
@@ -962,7 +1025,7 @@ impl Parser {
                                 "invalid hexadecimal byte literal",
                             ));
                         }
-                        Ok(Expr::Bytes(
+                        Ok(ExprKind::Bytes(
                             (0..s.len())
                                 .step_by(2)
                                 .map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap())
@@ -971,7 +1034,7 @@ impl Parser {
                     }
                     _ => {
                         if self.at("(") {
-                            Ok(Expr::Call(name, self.args()?))
+                            Ok(ExprKind::Call(name, self.args()?))
                         } else if self.brace_expr && self.at("{") {
                             if self.tokens.get(self.pos + 2).is_some_and(|t| t.is(":")) {
                                 self.need("{")?;
@@ -985,12 +1048,12 @@ impl Parser {
                                     }
                                 }
                                 self.need("}")?;
-                                Ok(Expr::NamedRecord(name, fields))
+                                Ok(ExprKind::NamedRecord(name, fields))
                             } else {
-                                Ok(Expr::Construct(name, self.args()?))
+                                Ok(ExprKind::Construct(name, self.args()?))
                             }
                         } else {
-                            Ok(Expr::Name(name))
+                            Ok(ExprKind::Name(name))
                         }
                     }
                 }
@@ -1143,7 +1206,7 @@ impl Parser {
                                 self.need(";")?;
                                 return Ok(Statement::Assign(target, value));
                             }
-                            if matches!(target, Expr::Call(..)) && self.eat(";") {
+                            if matches!(target.kind, ExprKind::Call(..)) && self.eat(";") {
                                 return Ok(Statement::Invoke(target));
                             }
                         }

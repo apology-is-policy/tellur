@@ -72,8 +72,7 @@ not traced. Calls summarize their result alternatives rather than substituting
 caller argument histories. Unknown indirect writes, calls with exclusive-reference
 parameters and collection operations conservatively forget stored-value lineage
 on the affected histories. Their actual ownership, typing and exhaustiveness
-checks still run normally. Full expression ranges and independent-error recovery
-remain future work.
+checks still run normally. Independent-error recovery remains future work.
 
 ## Machine-readable checking
 
@@ -97,9 +96,11 @@ policy. The legacy `pathc` command accepts the same option.
 | `diagnostics` | Empty on success; currently one diagnostic on failure |
 | `summary` | Counts `controls` and `generic_definitions` on success; null on failure |
 
-Each diagnostic contains `code`, `message`, `path`, `position`, `notes` and
-`witness`. A position is `{ "line": 2, "column": 7 }`; it is a source **point**,
-not an expression range. A missing position is null, as with a manifest error
+Each diagnostic contains `code`, `message`, `path`, `position`, `range`, `notes`
+and `witness`. A position is `{ "line": 2, "column": 7 }`. Since 0.51, `range`
+is either `{ "start": position, "end": position }` or null. Its start is included
+and its end is excluded; `position` remains the same start point for existing
+consumers. A missing position is null, as with a manifest error
 that has no checked source location. A missing path is null, as with command
 usage errors. Notes have their own `path`, `position` and `message`; imported
 source locations refer to their original files. Message wording is for humans
@@ -123,9 +124,32 @@ no path witness; there is no need to parse the explanatory message.
 
 The LSP supplies the same witness through diagnostic `data`, with schema
 `tellur.diagnostic.v1`. Its normal ranges retain the LSP's zero-based UTF-16
-coordinates. These formats do not yet provide full expression ranges or report
-multiple independent errors. JSON checking includes usage, configuration,
+coordinates. JSON checking includes usage, configuration,
 manifest and file-read failures; it does not build or execute Rust adapters.
+
+## Expression locations
+
+Since 0.51, value expressions retain their written source ranges through module
+resolution and generic specialization. Type, move, field and borrow errors found
+while checking an expression select that expression. A bad call argument selects
+the argument; an argument-count error selects the call. For example, in
+`u32 count = "three";`, the type error selects `"three"`. In a comparison with
+incompatible operands, it selects the right operand. A more precise child error
+keeps its own range as it passes through the enclosing expression checks.
+
+Ranges include written parentheses, string delimiters and escape sequences, and
+can cross lines. Comments and whitespace following an expression are excluded.
+Parser errors select the unexpected token; an error at end of input has an empty
+range. Imported-file diagnostics point to the original file; VS Code includes
+that location as related information and uses the current unsaved dependency text.
+
+This does not turn every diagnostic into an expression error. Path coverage,
+exit contracts, declaration errors, contributor notes and some specialized boundary
+checks still carry source points. Their JSON `range` is null, and VS Code uses its
+existing token-sized selection. There is still one primary error per check;
+independent-error recovery is the next diagnostic checkpoint. Hover information
+continues to come from the current checked source rather than a stale successful
+version.
 
 ## Type context: E_TYPE and E_INFER
 
