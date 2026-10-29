@@ -1,0 +1,207 @@
+{
+  "format": "tellur.public-contracts",
+  "version": 1,
+  "modules": {
+    "@entry": {
+      "declarations": {
+        "get": {
+          "kind": "control",
+          "profile": "control",
+          "type_parameters": [],
+          "requirements": {},
+          "parameters": [
+            {
+              "name": "path",
+              "type": "ref string",
+              "origins": [],
+              "referent_origins": [],
+              "from": null
+            },
+            {
+              "name": "key",
+              "type": "ref string",
+              "origins": [],
+              "referent_origins": [],
+              "from": null
+            }
+          ],
+          "exits": {
+            "kind": "inline",
+            "alternatives": {
+              "found": [
+                {
+                  "name": "value",
+                  "type": "string",
+                  "origins": [],
+                  "referent_origins": [],
+                  "from": null
+                }
+              ],
+              "invalid_file": [
+                {
+                  "name": "message",
+                  "type": "string",
+                  "origins": [],
+                  "referent_origins": [],
+                  "from": null
+                }
+              ],
+              "invalid_key": [],
+              "missing": [],
+              "storage_failed": [
+                {
+                  "name": "message",
+                  "type": "string",
+                  "origins": [],
+                  "referent_origins": [],
+                  "from": null
+                }
+              ],
+              "too_large": []
+            }
+          }
+        },
+        "load": {
+          "kind": "control",
+          "profile": "control",
+          "type_parameters": [],
+          "requirements": {},
+          "parameters": [
+            {
+              "name": "path",
+              "type": "ref string",
+              "origins": [],
+              "referent_origins": [],
+              "from": null
+            }
+          ],
+          "exits": {
+            "kind": "named",
+            "type": "@entry::loaded_settings",
+            "origins": []
+          }
+        },
+        "loaded_settings": {
+          "kind": "outcome",
+          "type_parameters": [],
+          "origin_parameters": [],
+          "alternatives": {
+            "invalid_file": [
+              {
+                "name": "message",
+                "type": "string",
+                "origins": [],
+                "referent_origins": [],
+                "from": null
+              }
+            ],
+            "loaded": [
+              {
+                "name": "values",
+                "type": "map<string, string>",
+                "origins": [],
+                "referent_origins": [],
+                "from": null
+              }
+            ],
+            "storage_failed": [
+              {
+                "name": "message",
+                "type": "string",
+                "origins": [],
+                "referent_origins": [],
+                "from": null
+              }
+            ],
+            "too_large": []
+          },
+          "exit_codes": {},
+          "capabilities": {
+            "copy": null,
+            "clone": null,
+            "drop": null
+          }
+        },
+        "set": {
+          "kind": "control",
+          "profile": "control",
+          "type_parameters": [],
+          "requirements": {},
+          "parameters": [
+            {
+              "name": "path",
+              "type": "ref string",
+              "origins": [],
+              "referent_origins": [],
+              "from": null
+            },
+            {
+              "name": "key",
+              "type": "string",
+              "origins": [],
+              "referent_origins": [],
+              "from": null
+            },
+            {
+              "name": "value",
+              "type": "string",
+              "origins": [],
+              "referent_origins": [],
+              "from": null
+            }
+          ],
+          "exits": {
+            "kind": "named",
+            "type": "@entry::update_result",
+            "origins": []
+          }
+        },
+        "update_result": {
+          "kind": "outcome",
+          "type_parameters": [],
+          "origin_parameters": [],
+          "alternatives": {
+            "commit_uncertain": [
+              {
+                "name": "message",
+                "type": "string",
+                "origins": [],
+                "referent_origins": [],
+                "from": null
+              }
+            ],
+            "invalid_file": [
+              {
+                "name": "message",
+                "type": "string",
+                "origins": [],
+                "referent_origins": [],
+                "from": null
+              }
+            ],
+            "invalid_key": [],
+            "saved": [],
+            "storage_failed": [
+              {
+                "name": "message",
+                "type": "string",
+                "origins": [],
+                "referent_origins": [],
+                "from": null
+              }
+            ],
+            "too_large": []
+          },
+          "exit_codes": {},
+          "capabilities": {
+            "copy": null,
+            "clone": null,
+            "drop": null
+          }
+        }
+      },
+      "implementations": {}
+    }
+  },
+  "manifest_types": {}
+}

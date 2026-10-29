@@ -305,6 +305,29 @@ pub fn check_with_loader(
     manifest: Manifest,
     read: impl FnMut(&Path) -> std::io::Result<String>,
 ) -> crate::CheckResult<CheckedProgram, ModuleError> {
+    load_checked(path.as_ref(), manifest, read, false).map(|(program, _)| program)
+}
+/// Export checked public declarations from this file and its explicit imports.
+pub fn contract_snapshot(
+    path: impl AsRef<Path>,
+    manifest: Manifest,
+) -> crate::CheckResult<crate::contracts::Snapshot, ModuleError> {
+    contract_snapshot_with_loader(path, manifest, |p| std::fs::read_to_string(p))
+}
+/// Snapshot an editor's current source graph using the same loader and checker.
+pub fn contract_snapshot_with_loader(
+    path: impl AsRef<Path>,
+    manifest: Manifest,
+    read: impl FnMut(&Path) -> std::io::Result<String>,
+) -> crate::CheckResult<crate::contracts::Snapshot, ModuleError> {
+    load_checked(path.as_ref(), manifest, read, true).map(|(_, snapshot)| snapshot.unwrap())
+}
+fn load_checked(
+    path: &Path,
+    manifest: Manifest,
+    read: impl FnMut(&Path) -> std::io::Result<String>,
+    snapshot: bool,
+) -> crate::CheckResult<(CheckedProgram, Option<crate::contracts::Snapshot>), ModuleError> {
     let mut loader = Loader {
         read,
         files: vec![],
@@ -313,8 +336,8 @@ pub fn check_with_loader(
         prefixes: BTreeMap::new(),
         bytes: 0,
     };
-    loader.load(path.as_ref(), None)?;
-    resolve(loader.files, manifest)
+    loader.load(path, None)?;
+    resolve(loader.files, manifest, snapshot)
 }
 
 struct Resolver<'a> {
@@ -721,7 +744,8 @@ fn type_leaves(ty: &str) -> Vec<String> {
 fn resolve(
     files: Vec<File>,
     manifest: Manifest,
-) -> crate::CheckResult<CheckedProgram, ModuleError> {
+    snapshot: bool,
+) -> crate::CheckResult<(CheckedProgram, Option<crate::contracts::Snapshot>), ModuleError> {
     let mut combined = syntax::Unit {
         selection_sites: vec![],
         trait_types: Default::default(),
@@ -914,10 +938,15 @@ fn resolve(
         )
         .into());
     }
+    let snapshot_input = snapshot.then(|| (combined.clone(), manifest.clone()));
     let mut program = crate::check::compile_unit(combined, manifest, &visibility)
         .map_err(|errors| errors.map(|diagnostic| locate(&sources, diagnostic)))?;
+    let snapshot = snapshot_input
+        .map(|(unit, manifest)| crate::contracts::checked(&unit, &manifest, &sources))
+        .transpose()
+        .map_err(|diagnostic| locate(&sources, diagnostic))?;
     program.source_files = sources;
-    Ok(program)
+    Ok((program, snapshot))
 }
 fn locate(sources: &[SourceFile], mut diagnostic: Diagnostic) -> ModuleError {
     let file = sources

@@ -5,6 +5,7 @@ pub mod certificate;
 mod check;
 mod collection_support;
 mod collections;
+pub mod contracts;
 pub mod diagnostics;
 mod expand;
 pub mod extract;

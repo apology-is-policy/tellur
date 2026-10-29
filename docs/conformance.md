@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.56.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.57.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -1658,3 +1658,60 @@ Evidence: `work/tellur-0.56-validation.json`, `tellur-0.56-tests.log`,
 `tellur-0.56-package-integrity.log`, `tellur-0.56-install.log`,
 `tellur-0.56-installed-integrity.log` and `tellur-0.56-backup.log`.
 The verified source snapshot is `work/revision-backups/tellur-0.56-source.tar.gz`.
+
+## 0.57 — Checked public contract snapshots
+
+P4b.1 exports versioned public source contracts with `tellurc contract-snapshot`
+and compares them with `contract-diff`. Export uses the ordinary module loader and
+full checker, including generic-definition validation; invalid source never yields
+a partial snapshot. Diff reports named additions, removals and structural changes.
+`--check` fails when contracts differ. No semantic compatibility classifier or
+behavioral-equivalence claim is attached to these changes.
+
+Snapshots cover public declarations in the explicit import graph, using portable
+entry-relative module identities. They retain the current/legacy ownership profile,
+ordered signatures, generic requirements, direct/contained/referent origins, visible
+trait implementations and associated bindings, named outcomes and process statuses.
+Referenced manifest schemas are included transitively. Private representations,
+implementation-local parameter names, bodies, source locations and local import
+aliases are excluded. Public construction order and private-field effects on
+copy/clone/drop remain visible; generic capabilities are recorded symbolically with
+memoized, bounded expansion. Strict reading rejects unknown fields, duplicate object
+keys and unsupported format versions.
+
+Thirteen new contract regressions cover relocation and alias/order stability,
+private representation changes, construction permissions, nested/generic capabilities,
+borrow origins, trait requirements/bindings, status changes, manifest dependencies
+and normalization, invalid-source refusal, strict deserialization, CLI statuses and
+all **61 maintained sources**. The settings library has a checked, committed baseline;
+a regression changes its internal input-size limit while preserving that baseline.
+This demonstrates the intended boundary: equal public contracts do not imply equal
+behavior. Internal absorption/contributor changes remain the next P4b.2 increment.
+
+Two new LSP regressions and the protocol test cover checked JSON export, unsaved
+import graphs, invalid dependencies, closed/stale documents, missing file identities
+and manifests, and capability advertisement. **Tellur: Show Public Contract Snapshot**
+opens an editable JSON document from the live source graph. Actual VS Code tests
+check its contents, private-field filtering, immediate unsaved changes and refusal
+to open a snapshot after checking fails. The editor harness now closes its output
+panel before the standard formatting action so the readonly output editor cannot
+receive that action.
+
+Validation: **849 Rust tests**, **35 Node tests** and the full real VS Code suite
+pass, including live HTTP and retained-resource execution. The final **142-test**
+focused run covers the last snapshot/profile/manifest changes and module/LSP/manual
+integration. Clippy passes all targets with warnings denied. The manual checks
+**58** accepted examples, **22** expected diagnostics, **14** context fragments and
+**181** local links. All **61** maintained Tellur sources pass release checking and
+snapshot export. The release settings diff reports equality. Compiler and LSP
+report **0.57.0**; snapshot capability, all nine packaged/installed payloads,
+metadata and executable permissions are verified.
+
+Evidence: `work/tellur-0.57-validation.json`, `tellur-0.57-tests.log`,
+`tellur-0.57-focused-final.log`, `tellur-0.57-clippy.log`,
+`tellur-0.57-examples.log`, `tellur-0.57-settings-diff.log`, `tellur-0.57-node.log`,
+`tellur-0.57-editor-panel.log`, `tellur-0.57-build.log`, `tellur-0.57-versions.log`,
+`tellur-0.57-package.log`, `tellur-0.57-package-integrity.log`,
+`tellur-0.57-install.log`, `tellur-0.57-installed-integrity.log` and
+`tellur-0.57-backup.log`. The verified source snapshot is
+`work/revision-backups/tellur-0.57-source.tar.gz`.

@@ -392,6 +392,21 @@ impl Server {
         json!(symbols)
     }
     /// Declaration hover exposes the checked contract, including inferred payload types.
+    /// Export checked contracts for the current buffer and its explicit imports.
+    pub fn contract_snapshot(&self, uri: &str) -> std::result::Result<Value, String> {
+        if !self.documents.contains_key(uri) {
+            return Err("open the source document before requesting its contract".into());
+        }
+        let path = file_path(uri)
+            .ok_or("save the source file first so its modules have stable identities")?;
+        let manifest = self.manifest(uri).map_err(|e| e.to_string())?;
+        let snapshot =
+            crate::modules::contract_snapshot_with_loader(&path, manifest, |requested| {
+                self.source_text(requested)
+            })
+            .map_err(|e| e.to_string())?;
+        Ok(serde_json::to_value(snapshot).unwrap())
+    }
     /// Format the current buffer, including untitled files, without semantic checking.
     pub fn formatting(&self, uri: &str, options: crate::format::Options) -> Value {
         let Some(document) = self.documents.get(uri) else {
@@ -1022,6 +1037,13 @@ fn exit_description_with_origins(
 }
 fn request(server: &Server, request: Request) -> Response {
     match request.method.as_str() {
+        "tellur/contractSnapshot" => match request.params["textDocument"]["uri"].as_str() {
+            Some(uri) => match server.contract_snapshot(uri) {
+                Ok(snapshot) => Response::new_ok(request.id, snapshot),
+                Err(message) => Response::new_err(request.id, -32803, message),
+            },
+            None => Response::new_err(request.id, -32602, "missing document URI".into()),
+        },
         "textDocument/formatting" => match (
             request.params["textDocument"]["uri"].as_str(),
             request.params["options"]["tabSize"].as_u64(),
@@ -1075,7 +1097,8 @@ pub fn serve(connection: Connection) -> std::result::Result<(), Box<dyn std::err
     server.initialize(&params);
     connection.initialize_finish(id,json!({"capabilities":{
         "positionEncoding":"utf-16", "textDocumentSync":{"openClose":true,"change":1,"save":{"includeText":false}},
-        "documentSymbolProvider":true, "hoverProvider":true, "documentFormattingProvider":true
+        "documentSymbolProvider":true, "hoverProvider":true, "documentFormattingProvider":true,
+        "experimental":{"tellurContractSnapshot":1}
     },"serverInfo":{"name":"tellur-lsp","version":env!("CARGO_PKG_VERSION")}}))?;
     let mut last_publication = Instant::now();
     loop {

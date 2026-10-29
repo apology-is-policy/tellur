@@ -187,3 +187,21 @@ and expanded execution, including native O0/O2 builds.
 The [HTTP tests](../../tests/settings_http.rs) add real socket exchanges, framing
 and deadline limits, occupied ports, persistence across restarts, clean disconnects,
 graceful listener release and scripted read/write/cleanup failures.
+
+## Review the library's public contract
+
+`settings.contract.json` records the checked public interface of `settings.tellur`.
+The regression suite checks this baseline against the current source. From the
+compiler checkout:
+
+```sh
+./bin/tellurc contract-snapshot applications/settings/settings.tellur > /tmp/settings.contract.json
+./bin/tellurc contract-diff applications/settings/settings.contract.json /tmp/settings.contract.json --check
+```
+
+Review changes before replacing the committed baseline. An added failure outcome,
+changed payload or borrowing contract appears in the report. Changing an internal
+limit or mapping a new internal failure into an existing public outcome may leave
+the contract unchanged; this is not a behavioral-equivalence check.
+The [snapshot reference](../../docs/reference/contract-snapshots.md) explains the
+format and VS Code's **Tellur: Show Public Contract Snapshot** command.

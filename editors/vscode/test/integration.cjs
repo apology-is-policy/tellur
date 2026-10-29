@@ -157,10 +157,16 @@ exports.run = async function () {
       const edits = await vscode.commands.executeCommand('vscode.executeFormatDocumentProvider', buildUri, { tabSize: 2, insertSpaces: true });
       return previewEdits(buildDocument, edits)?.includes('\n  [entry]: {\n    emit("inside");');
     }, 'format provider handles current unsaved source and indentation options');
-    const editor = await vscode.window.showTextDocument(buildDocument);
-    editor.options = { ...editor.options, tabSize: 4, insertSpaces: true };
-    await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
+    await vscode.commands.executeCommand('workbench.action.focusWindow');
+    // The output panel has its own readonly editor and can otherwise receive the action.
+    await vscode.commands.executeCommand('workbench.action.closePanel');
     await waitFor(async () => {
+      // Workbench focus can change during isolated-window startup. Target and
+      // focus this editor on each attempt before invoking the user-facing action.
+      const editor = await vscode.window.showTextDocument(buildDocument, { preview: false, preserveFocus: false });
+      editor.options = { ...editor.options, tabSize: 4, insertSpaces: true };
+      await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
+      assert.equal(vscode.window.activeTextEditor?.document.uri.toString(), buildUri.toString());
       await vscode.commands.executeCommand('editor.action.formatDocument');
       return buildDocument.getText().includes('\n    [entry]: {\n        emit("inside");\n    }\n    exit done;');
     }, 'Format Document applies its edit');
@@ -179,6 +185,26 @@ exports.run = async function () {
     const typeEdits = await vscode.commands.executeCommand('vscode.executeFormatDocumentProvider', buildUri, { tabSize: 4, insertSpaces: false });
     assert.ok(previewEdits(buildDocument, typeEdits)?.includes('\n\tu32 wrong = "text";'));
     console.log('TELLUR_FORMAT_EDITOR_TESTS_PASSED: standard Format Document, unsaved edits, spaces/tabs, labels/groups, Unicode, comments, idempotence, syntax refusal and type errors');
+    const snapshotSource = 'pub struct record {string hidden;pub u32 id;}pub control number() exits ready {u32 value} {exit ready {7};}';
+    await replace(buildDocument, snapshotSource);
+    await vscode.window.showTextDocument(buildDocument);
+    const contractBefore = await vscode.commands.executeCommand('tellur.showContractSnapshot');
+    assert.equal(contractBefore.format, 'tellur.public-contracts');
+    assert.equal(contractBefore.modules['@entry'].declarations.number.exits.alternatives.ready[0].type, 'u32');
+    assert.equal(contractBefore.modules['@entry'].declarations.record.constructible, false);
+    assert.equal(vscode.window.activeTextEditor.document.languageId, 'json');
+    assert.deepEqual(JSON.parse(vscode.window.activeTextEditor.document.getText()), contractBefore);
+    await vscode.commands.executeCommand('workbench.action.revertAndCloseActiveEditor');
+    await vscode.window.showTextDocument(buildDocument);
+    await replace(buildDocument, snapshotSource.replace('u32 value', 'string value').replace('{7}', '{"changed"}'));
+    const contractAfter = await vscode.commands.executeCommand('tellur.showContractSnapshot');
+    assert.equal(contractAfter.modules['@entry'].declarations.number.exits.alternatives.ready[0].type, 'string');
+    await vscode.commands.executeCommand('workbench.action.revertAndCloseActiveEditor');
+    await vscode.window.showTextDocument(buildDocument);
+    await replace(buildDocument, 'pub control number() exits auto {exit done;}');
+    assert.equal(await vscode.commands.executeCommand('tellur.showContractSnapshot'), null, 'failed checking must not display a partial contract');
+    assert.equal(vscode.window.activeTextEditor.document.uri.toString(), buildUri.toString());
+    console.log('TELLUR_CONTRACT_SNAPSHOT_EDITOR_TESTS_PASSED: checked JSON view, private fields, current unsaved changes and failed-check refusal');
     const groups = await fs.readFile(path.join(__dirname, '../../../playground/path_groups.tellur'), 'utf8');
     await replace(buildDocument, groups);
     const headingLine = groups.split('\n').findIndex(line => line.includes('auto heading'));

@@ -2,7 +2,7 @@
   "name": "tellur-language",
   "displayName": "Tellur Language (Experimental)",
   "description": "Tellur controls, inline adapters, owned outcomes, diagnostics and native build/run",
-  "version": "0.56.0",
+  "version": "0.57.0",
   "publisher": "tellur-language-local",
   "license": "Apache-2.0",
   "engines": {
@@ -80,6 +80,10 @@
         "command": "tellur.buildAndRun",
         "title": "Tellur: Build and Run",
         "icon": "$(play)"
+      },
+      {
+        "command": "tellur.showContractSnapshot",
+        "title": "Tellur: Show Public Contract Snapshot"
       }
     ],
     "configuration": {

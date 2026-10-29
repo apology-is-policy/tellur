@@ -101,6 +101,20 @@ braces, sort imports or enable format-on-save. Range formatting, on-type formatt
 and automatic width-based wrapping remain future work. If another formatter is
 active, use **Format Document With…** to select Tellur.
 
+## Public contract snapshots (0.57)
+
+Run **Tellur: Show Public Contract Snapshot** with a Tellur file active. It checks
+the current unsaved source and imported buffers, then opens a JSON document with
+the public contracts. Save As can retain a baseline. The view is a fixed snapshot;
+rerun the command after changes. Source files are not saved or modified.
+
+The command needs a file identity, a valid manifest and successful checking. Save
+untitled source first. On errors it reports the failure without showing a partial
+or cached result. Public fields, outcome payloads, borrowing origins, trait
+requirements and copy/clone/drop permissions are recorded; private bodies and fields
+are omitted. The CLI's `contract-diff BEFORE_JSON AFTER_JSON --check` can compare a
+saved baseline. Equal contracts do not prove equal behavior or binary compatibility.
+
 ## Migration from Path
 
 Both `.tellur` and `.path` files use Tellur highlighting and the same compiler.

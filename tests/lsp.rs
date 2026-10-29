@@ -58,6 +58,60 @@ impl Drop for Fixture {
 }
 const VALID: &str = "region main() exits Done { [Entry]: exit Done; }";
 #[test]
+fn contract_snapshots_use_unsaved_graphs_and_refuse_partial_or_stale_results() {
+    let mut f = Fixture::new();
+    let library = f.root.join("library.tellur");
+    let library_uri = url::Url::from_file_path(&library).unwrap().to_string();
+    fs::write(&library, "pub struct record {pub u32 value;}").unwrap();
+    f.open("import \"library.tellur\" as lib;pub control echo(lib.record input) exits ready {lib.record value} {exit ready {input};}");
+    let first = f.server.contract_snapshot(&f.uri).unwrap();
+    assert_eq!(
+        first["modules"]["file:library.tellur"]["declarations"]["record"]["fields"][0]["type"],
+        "u32"
+    );
+    f.server.notification("textDocument/didOpen", &json!({"textDocument":{"uri":library_uri,"version":1,"text":"pub struct record {pub string value;}"}}));
+    let second = f.server.contract_snapshot(&f.uri).unwrap();
+    assert_eq!(
+        second["modules"]["file:library.tellur"]["declarations"]["record"]["fields"][0]["type"],
+        "string"
+    );
+    f.server.notification("textDocument/didChange", &json!({"textDocument":{"uri":library_uri,"version":2},"contentChanges":[{"text":"pub struct record {pub missing value;}"}]}));
+    assert!(f.server.contract_snapshot(&f.uri).is_err());
+    f.server.notification(
+        "textDocument/didClose",
+        &json!({"textDocument":{"uri":library_uri}}),
+    );
+    assert_eq!(f.server.contract_snapshot(&f.uri).unwrap(), first);
+    f.change("pub control echo() exits auto {exit done;}", 2);
+    assert!(
+        f.server
+            .contract_snapshot(&f.uri)
+            .unwrap_err()
+            .contains("E_PUBLIC_CONTRACT")
+    );
+    f.change("pub control echo() exits done {exit done;}", 1);
+    assert!(f.server.contract_snapshot(&f.uri).is_err());
+}
+
+#[test]
+fn contract_snapshots_require_a_file_identity_manifest_and_open_buffer() {
+    let mut f = Fixture::new();
+    assert!(f.server.contract_snapshot(&f.uri).is_err());
+    f.open("pub control f() exits done {exit done;}");
+    fs::remove_file(f.root.join("manifest.json")).unwrap();
+    assert!(f.server.contract_snapshot(&f.uri).is_err());
+    f.server.notification(
+        "textDocument/didOpen",
+        &json!({"textDocument":{"uri":"untitled:scratch","version":1,"text":VALID}}),
+    );
+    assert!(
+        f.server
+            .contract_snapshot("untitled:scratch")
+            .unwrap_err()
+            .contains("save the source file")
+    );
+}
+#[test]
 fn formatting_uses_current_buffer_options_and_utf16_document_extent() {
     let mut f = Fixture::new();
     let original = "control main() exits done {emit(\"😀\");exit done;}//😀";
@@ -536,6 +590,7 @@ fn protocol_initialize_diagnostics_unknown_method_and_shutdown() {
     let capabilities = response.response_result.unwrap()["capabilities"].clone();
     assert_eq!(capabilities["textDocumentSync"]["change"], 1);
     assert_eq!(capabilities["documentFormattingProvider"], true);
+    assert_eq!(capabilities["experimental"]["tellurContractSnapshot"], 1);
     client
         .sender
         .send(Notification::new("initialized".into(), json!({})).into())
@@ -558,6 +613,25 @@ fn protocol_initialize_diagnostics_unknown_method_and_shutdown() {
         panic!("expected diagnostic")
     };
     assert_eq!(n.params["diagnostics"][0]["code"], "E_PARSE");
+    client
+        .sender
+        .send(
+            Request::new(
+                20.into(),
+                "tellur/contractSnapshot".into(),
+                json!({"textDocument":{"uri":"untitled:test"}}),
+            )
+            .into(),
+        )
+        .unwrap();
+    let Message::Response(response) = client
+        .receiver
+        .recv_timeout(Duration::from_secs(5))
+        .unwrap()
+    else {
+        panic!("expected snapshot response")
+    };
+    assert_eq!(response.response_result.unwrap_err().code, -32803);
     for (id, options, error) in [
         (10, json!({"tabSize": 4, "insertSpaces": true}), false),
         (11, json!({"tabSize": 0, "insertSpaces": true}), true),

@@ -4,7 +4,7 @@ use std::{
     process::{Command, ExitCode},
 };
 use tellur::{compile_file, manifest::Manifest, runtime::Scenario};
-const USAGE: &str = "Tellur compiler\n  tellurc format SOURCE [--check | --write]  (stdout by default; no manifest needed)\n  tellurc check SOURCE [MANIFEST] [--json]\n  tellurc lock-native SOURCE [MANIFEST]  (explicitly resolve Rust adapter dependencies)\n  tellurc run SOURCE MANIFEST SCENARIO [--expanded]  (reference interpreter)\n  tellurc compare SOURCE MANIFEST OTHER_SOURCE SCENARIOS  (finite scenario evidence)\n  tellurc expand SOURCE MANIFEST ENTRY\n  tellurc extract-tail SOURCE MANIFEST CONTROL LINE HELPER [--report]\n  tellurc protocol SOURCE MANIFEST ENTRY [PREFIX_JSON]  (structural abstraction)\n  tellurc protocol-compare SOURCE MANIFEST OTHER_SOURCE ENTRY\n  tellurc certify-expansion SOURCE MANIFEST ENTRY  (JSON graph and correspondence)\n  tellurc verify-expansion SOURCE MANIFEST ARTIFACT\n  tellurc inspect SOURCE MANIFEST ENTRY [--expanded]\n  tellurc build SOURCE [MANIFEST] [--entry main] [--out FILE] [--release] [--expanded]\n  tellurc exec SOURCE [MANIFEST] [build options] [-- PROGRAM_ARGUMENTS]\nBuild writes a native executable, LLVM IR (.ll), and generated source (.tellur-build/).\nNative programs accept --help, --json, --scenario FILE, and --fuel N.\nRust/Cargo with its LLVM backend is required to build; executables are standalone.";
+const USAGE: &str = "Tellur compiler\n  tellurc contract-snapshot SOURCE [MANIFEST]  (checked public interface JSON)\n  tellurc contract-diff BEFORE_JSON AFTER_JSON [--check]  (exact contract differences)\n  tellurc format SOURCE [--check | --write]  (stdout by default; no manifest needed)\n  tellurc check SOURCE [MANIFEST] [--json]\n  tellurc lock-native SOURCE [MANIFEST]  (explicitly resolve Rust adapter dependencies)\n  tellurc run SOURCE MANIFEST SCENARIO [--expanded]  (reference interpreter)\n  tellurc compare SOURCE MANIFEST OTHER_SOURCE SCENARIOS  (finite scenario evidence)\n  tellurc expand SOURCE MANIFEST ENTRY\n  tellurc extract-tail SOURCE MANIFEST CONTROL LINE HELPER [--report]\n  tellurc protocol SOURCE MANIFEST ENTRY [PREFIX_JSON]  (structural abstraction)\n  tellurc protocol-compare SOURCE MANIFEST OTHER_SOURCE ENTRY\n  tellurc certify-expansion SOURCE MANIFEST ENTRY  (JSON graph and correspondence)\n  tellurc verify-expansion SOURCE MANIFEST ARTIFACT\n  tellurc inspect SOURCE MANIFEST ENTRY [--expanded]\n  tellurc build SOURCE [MANIFEST] [--entry main] [--out FILE] [--release] [--expanded]\n  tellurc exec SOURCE [MANIFEST] [build options] [-- PROGRAM_ARGUMENTS]\nBuild writes a native executable, LLVM IR (.ll), and generated source (.tellur-build/).\nNative programs accept --help, --json, --scenario FILE, and --fuel N.\nRust/Cargo with its LLVM backend is required to build; executables are standalone.";
 fn discover(source: &Path) -> Option<PathBuf> {
     let source = if source.is_absolute() {
         source.to_owned()
@@ -31,6 +31,20 @@ fn run(args: Vec<String>) -> std::result::Result<ExitCode, Box<dyn std::error::E
     }
     if args.len() < 2 {
         return Err(USAGE.into());
+    }
+    if args[0] == "contract-diff" {
+        if args.len() < 3 || args.len() > 4 || (args.len() == 4 && args[3] != "--check") {
+            return Err("usage: tellurc contract-diff BEFORE_JSON AFTER_JSON [--check]".into());
+        }
+        let before = tellur::contracts::Snapshot::from_json(&fs::read_to_string(&args[1])?)?;
+        let after = tellur::contracts::Snapshot::from_json(&fs::read_to_string(&args[2])?)?;
+        let difference = before.compare(&after)?;
+        println!("{}", serde_json::to_string_pretty(&difference)?);
+        return Ok(if args.len() == 4 && !difference.equal {
+            ExitCode::FAILURE
+        } else {
+            ExitCode::SUCCESS
+        });
     }
     let source = PathBuf::from(&args[1]);
     if args[0] == "format" {
@@ -61,6 +75,14 @@ fn run(args: Vec<String>) -> std::result::Result<ExitCode, Box<dyn std::error::E
     };
     let manifest_text = fs::read_to_string(&manifest)?;
     let checked_manifest = Manifest::from_json_at(&manifest_text, &manifest)?;
+    if args[0] == "contract-snapshot" {
+        if index != args.len() {
+            return Err("usage: tellurc contract-snapshot SOURCE [MANIFEST]".into());
+        }
+        let snapshot = tellur::modules::contract_snapshot(&source, checked_manifest)?;
+        println!("{}", serde_json::to_string_pretty(&snapshot)?);
+        return Ok(ExitCode::SUCCESS);
+    }
     let program = if args[0] == "check" {
         tellur::check_file(&source, checked_manifest)?
     } else {

@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.56.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.57.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -65,6 +65,7 @@ with complete schemas for every nested reference layer.
 | [Formatting](formatting.md) | CLI stdout/check/write and VS Code Format Document; parser-directed label/group layout; token, comment and literal preservation | Whole documents; no automatic width wrapping, range formatting or project-wide discovery |
 | VS Code | Highlighting, unsaved diagnostics with related forwarding locations, Outline, declaration contracts, inferred `auto` hover, bounded selected-history hover, build/run | Bounded independent-body diagnostics; hover requires a successful check and is not general expression hover |
 | Expansion | Checked rewrite certificates, retained invocation/decision provenance | Not arbitrary equivalence or termination checking |
+| [Contract snapshots](contract-snapshots.md) | Checked public declarations across the explicit import graph, symbolic permissions, stable JSON, structural diffs and editor export | No automatic compatibility verdict, ABI promise or internal failure/contributor comparison yet |
 | Tail extraction | Typed helper generation and whole-candidate rechecking | Not general graph extraction or a full equivalence certificate |
 | Scenario comparison | Concrete supplied-case comparisons and counterexamples | Agreement on those cases only |
 | Protocol analysis | Finite graph/residual queries, completed finite trace-language comparison | Forgets data and concrete feasibility; budgets can make results inconclusive |
