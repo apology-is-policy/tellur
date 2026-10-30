@@ -102,8 +102,9 @@ its command status reports whether interpretation completed successfully.
 
 Launcher/runtime faults still report a diagnostic on stderr and status 1; they do
 not become declared outcomes. Application status 1 is also permitted, so status
-alone does not distinguish a domain outcome from a runtime fault. Foreign panics
-retain their existing fatal behavior. `--help` returns 0. Returning a mapped status
+alone does not distinguish a domain outcome from a runtime fault. Returned execution failures now include [activation reports](execution-failures.md),
+with JSON on stderr under native `--json`/`--scenario`. Pre-execution launcher
+errors remain ordinary diagnostics. Foreign panics retain their existing fatal behavior. `--help` returns 0. Returning a mapped status
 occurs after execution and result reporting, allowing normal runtime cleanup.
 
 ## Migration and future execution

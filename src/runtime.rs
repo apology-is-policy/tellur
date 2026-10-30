@@ -261,6 +261,8 @@ struct Machine<'a> {
     cursor: usize,
     events: Vec<Event>,
     steps_left: usize,
+    activations: crate::fault::Tracker,
+    phase: crate::fault::Phase,
 }
 impl Machine<'_> {
     fn invoke(
@@ -281,12 +283,19 @@ impl Machine<'_> {
             validate(&value, &param.ty, self.program.manifest())?;
             values.insert(param.id, value);
         }
+        self.activations
+            .enter(&self.program.runtime_name(name))
+            .map_err(error)?;
+        self.phase = crate::fault::Phase::Execution;
         let flow = self.execute(&region.code, values, &mut facts)?;
         for id in region.slots.keys() {
             values.remove(id);
         }
         match flow {
-            Flow::Exit(outcome, fields) => Ok((outcome, fields)),
+            Flow::Exit(outcome, fields) => {
+                self.activations.leave();
+                Ok((outcome, fields))
+            }
             _ => Err(error("interpreter invariant: checked region fell through")),
         }
     }
@@ -297,6 +306,7 @@ impl Machine<'_> {
         facts: &mut BTreeSet<Id>,
     ) -> Result<Flow> {
         for instruction in code {
+            self.activations.at(instruction.id);
             if self.steps_left == 0 {
                 return Err(Diagnostic::new(
                     "E_FUEL",
@@ -538,39 +548,78 @@ impl Machine<'_> {
         Ok(Flow::Fallthrough)
     }
 }
+#[derive(Debug)]
+pub struct Failure {
+    pub diagnostic: Diagnostic,
+    pub report: crate::fault::Report,
+}
+impl std::fmt::Display for Failure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.report.fmt(f)
+    }
+}
+impl std::error::Error for Failure {}
 impl CheckedProgram {
     pub fn run(&self, scenario: &Scenario) -> Result<Execution> {
         self.run_with_limit(scenario, 1_000_000)
     }
     pub fn run_with_limit(&self, scenario: &Scenario, steps: usize) -> Result<Execution> {
-        if self
-            .region(&scenario.entry)
-            .is_some_and(|r| r.parameters.iter().any(|p| p.ty.starts_with('&')))
-        {
-            return Err(error("entry controls cannot require borrowed arguments"));
-        }
+        self.run_detailed(scenario, steps)
+            .map_err(|failure| failure.diagnostic)
+    }
+    /// A fresh execution boundary, with observed invocation context on failure.
+    /// This does not catch panics or provide recovery/isolation.
+    pub fn run_detailed(
+        &self,
+        scenario: &Scenario,
+        steps: usize,
+    ) -> std::result::Result<Execution, Box<Failure>> {
         let mut machine = Machine {
             program: self,
             calls: &scenario.calls,
             cursor: 0,
             events: vec![],
             steps_left: steps,
+            activations: crate::fault::Tracker::new(self.runtime_sites()),
+            phase: crate::fault::Phase::EntryValidation,
         };
-        let (outcome, fields) = machine.invoke(
-            &scenario.entry,
-            scenario.arguments.clone(),
-            &mut BTreeMap::new(),
-        )?;
-        if machine.cursor != scenario.calls.len() {
-            return Err(error(format!(
-                "{} unconsumed script calls",
-                scenario.calls.len() - machine.cursor
-            )));
-        }
-        Ok(Execution {
-            outcome,
-            fields,
-            events: machine.events,
+        let result = (|| {
+            if self
+                .region(&scenario.entry)
+                .is_some_and(|r| r.parameters.iter().any(|p| p.ty.starts_with('&')))
+            {
+                return Err(error("entry controls cannot require borrowed arguments"));
+            }
+            let (outcome, fields) = machine.invoke(
+                &scenario.entry,
+                scenario.arguments.clone(),
+                &mut BTreeMap::new(),
+            )?;
+            machine.phase = crate::fault::Phase::ResultValidation;
+            if machine.cursor != scenario.calls.len() {
+                return Err(error(format!(
+                    "{} unconsumed script calls",
+                    scenario.calls.len() - machine.cursor
+                )));
+            }
+            Ok(Execution {
+                outcome,
+                fields,
+                events: std::mem::take(&mut machine.events),
+            })
+        })();
+        result.map_err(|diagnostic| {
+            Box::new(Failure {
+                report: machine.activations.failure(
+                    &self
+                        .region(&scenario.entry)
+                        .map(|r| self.runtime_name(&r.name))
+                        .unwrap_or_else(|| scenario.entry.clone()),
+                    machine.phase,
+                    &format!("{}: {}", diagnostic.code, diagnostic.message),
+                ),
+                diagnostic,
+            })
         })
     }
 }

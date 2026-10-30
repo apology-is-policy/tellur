@@ -1,0 +1,22 @@
+// Intentionally reaches the executor's instruction limit; this is not fault syntax.
+// ./bin/tellurc exec playground/execution_faults.tellur -- --json --fuel 40
+control worker(bool repeat) exits done {
+    loop retry(bool pending = repeat) {
+        delta pending {
+            true => retrying,
+            false => exit done
+        }
+        [retrying]:
+            again retry(true);
+    }
+}
+control main() exits process_result {
+    delta worker(false) {
+        done => first_finished
+    }
+    [first_finished]:
+        forward worker(true);
+}
+outcome process_result {
+    @exit 0 done
+}

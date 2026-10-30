@@ -419,7 +419,11 @@ fn resource_host_teardown_releases_escaped_objects_and_fuel_faults() {
             .output()
             .unwrap();
         if !result.status.success() && log.is_file() {
-            assert!(String::from_utf8_lossy(&result.stderr).contains("E_FUEL"));
+            let report: tellur::fault::Report = serde_json::from_slice(&result.stderr).unwrap();
+            assert!(report.message.contains("E_FUEL"));
+            assert_eq!(report.phase, tellur::fault::Phase::Execution);
+            assert!(!report.activations.is_empty());
+            assert!(result.stdout.is_empty());
             let text = fs::read_to_string(log).unwrap();
             assert!(text == "drop 7\n" || text == "drop 7\ndrop 7\n");
             observed = true;

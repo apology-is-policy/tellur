@@ -615,3 +615,18 @@ generic/trait outcome roots remain unavailable. Conditions, decision origins and
 contributors have explicit bounds. These are structural facts, not concrete-input
 proofs. See [the query reference](https://github.com/apology-is-policy/tellur/blob/main/docs/reference/explanations.md)
 for terminal commands, JSON, coordinate conventions and remaining analysis gaps.
+
+
+## Execution failure reports (0.60)
+
+**Tellur: Build and Run** now shows observed control activations and source sites
+for returned execution failures. Use `playground/execution_faults.tellur` with
+`"tellurLanguage.programArguments": ["--json", "--fuel", "40"]` to observe the
+second worker invocation exhausting its budget. The report goes to stderr and the
+program returns 1; it does not invent a declared outcome. Clear these arguments
+when returning to other programs.
+
+There is no local catch/recovery, source `fault` keyword, isolated task or async
+execution yet. Normal host teardown is distinct from a resource's declared completion
+protocol. See [execution failures](https://github.com/apology-is-policy/tellur/blob/main/docs/reference/execution-failures.md)
+and the [activation plan](https://github.com/apology-is-policy/tellur/blob/main/docs/faults-and-activations.md).

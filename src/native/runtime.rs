@@ -1,6 +1,9 @@
 #[cfg(test)]
 #[path = "../collection_support.rs"]
 mod collection_support;
+#[cfg(test)]
+#[path = "../fault.rs"]
+mod fault;
 // Embedded in generated programs. This runtime contains values and primitive
 // adapters only; region execution is generated as native Rust control flow.
 use serde::{Deserialize, Serialize};
@@ -423,6 +426,7 @@ pub struct Host {
     files: BTreeMap<String, *mut c_void>,
     next_file: usize,
     resources: Resources,
+    activations: fault::Tracker,
 }
 impl Drop for Host {
     fn drop(&mut self) {
@@ -451,6 +455,30 @@ impl Host {
             files: BTreeMap::new(),
             next_file: 0,
             resources: Resources::default(),
+            activations: fault::Tracker::default(),
+        }
+    }
+    pub fn enter(&mut self, control: &str) -> R<()> {
+        self.activations.enter(control)
+    }
+    pub fn leave(&mut self) {
+        self.activations.leave();
+    }
+    pub fn at(&mut self, site: usize) {
+        self.activations.at(site);
+    }
+    fn failure(
+        &mut self,
+        entry: &str,
+        phase: fault::Phase,
+        message: String,
+        json_output: bool,
+    ) -> String {
+        let report = self.activations.failure(entry, phase, &message);
+        if json_output {
+            serde_json::to_string(&report).unwrap_or_else(|_| report.to_string())
+        } else {
+            report.to_string()
         }
     }
     pub fn tick(&mut self, line: usize, column: usize) -> R<()> {
@@ -872,6 +900,7 @@ fn contract(name: &str) -> Option<Contract> {
 pub type EntryFn = fn(&mut Host, Vec<V>) -> R<Outcome>;
 pub struct Entry {
     pub name: &'static str,
+    pub display_name: &'static str,
     pub run: EntryFn,
     pub arguments: Vec<String>,
     pub exit_codes: &'static [(&'static str, u8)],
@@ -881,6 +910,7 @@ pub fn launch(
     default_entry: &str,
     entries: &[Entry],
     rust_adapter: Option<RustAdapter>,
+    sites: &str,
 ) -> R<u8> {
     let manifest: Json = serde_json::from_str(manifest).map_err(|e| e.to_string())?;
     let args = std::env::args().skip(1).collect::<Vec<_>>();
@@ -995,14 +1025,38 @@ pub fn launch(
     }
     let mut host = Host::new(manifest, script, json_output, fuel);
     host.rust_adapter = rust_adapter;
-    let result = (selected.run)(&mut host, values)?;
+    host.activations = fault::Tracker::new(
+        serde_json::from_str(sites).map_err(|e| format!("E_NATIVE: invalid source table: {e}"))?,
+    );
+    let result = (selected.run)(&mut host, values).map_err(|error| {
+        host.failure(
+            selected.display_name,
+            fault::Phase::Execution,
+            error,
+            json_output,
+        )
+    })?;
     let code = selected
         .exit_codes
         .iter()
         .find(|(name, _)| *name == result.0)
-        .ok_or_else(|| format!("E_EXIT_CODE: no status for {}.{}", selected.name, result.0))?
+        .ok_or_else(|| {
+            host.failure(
+                selected.display_name,
+                fault::Phase::ResultValidation,
+                format!("E_EXIT_CODE: no status for {}.{}", selected.name, result.0),
+                json_output,
+            )
+        })?
         .1;
-    host.finish(result, json_output)?;
+    host.finish(result, json_output).map_err(|error| {
+        host.failure(
+            selected.display_name,
+            fault::Phase::ResultValidation,
+            error,
+            json_output,
+        )
+    })?;
     Ok(code)
 }
 

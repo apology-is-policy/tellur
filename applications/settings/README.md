@@ -72,6 +72,19 @@ arguments in workspace settings, for example:
 }
 ```
 
+## Execution boundary failures
+
+The CLI/server entry is currently one execution boundary. A returned executor
+failure terminates that entry; the server does not catch it and continue accepting
+requests. Native `--json` failures after execution begins carry a structured report
+on stderr with control invocations and source sites. Ordinary HTTP/file outcomes
+still use the application's declared contracts and status mapping.
+
+Retained host objects are released during ordinary teardown, but this does not
+invoke Tellur cleanup controls, undo a file replacement or prove fallible protocol
+completion. Per-request isolation is later work, after activation storage and
+resource-disposition contracts. See [the agreed model](../../docs/faults-and-activations.md).
+
 ## Inspect decisions and failure contributors
 
 Use the compiler's explanations while changing the application policy:

@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.59.0** implements the v0.1 checked core and the current language
+Compiler release **0.60.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -74,6 +74,13 @@ Use `tellurc explain` at a source position or for one control outcome, including
 private controls. VS Code provides **Tellur: Explain Path Selection at Cursor** and
 **Tellur: Explain Outcome Contributors**, with readable reports and source links.
 Try `playground/path_explanations.tellur`.
+
+Release 0.60 starts [faults and activation boundaries](docs/faults-and-activations.md):
+returned execution failures now identify the actual control invocations and source
+sites in reference/native reports. Try `playground/execution_faults.tellur` with
+`--fuel 40`. The [reference](docs/reference/execution-failures.md) distinguishes
+boundary failure, resource teardown and normal outcomes; source fault syntax and
+isolated tasks remain subsequent work.
 
 The [semantic foundation](docs/semantic-foundation.md) distinguishes compatibility,
 ownership transfer, behavioral equivalence and provenance. Executable law tests and

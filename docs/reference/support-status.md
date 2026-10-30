@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.59.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.60.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -71,6 +71,7 @@ with complete schemas for every nested reference layer.
 | Tail extraction | Typed helper generation and whole-candidate rechecking | Not general graph extraction or a full equivalence certificate |
 | Scenario comparison | Concrete supplied-case comparisons and counterexamples | Agreement on those cases only |
 | Protocol analysis | Finite graph/residual queries, completed finite trace-language comparison | Forgets data and concrete feasibility; budgets can make results inconclusive |
+| [Execution failures](execution-failures.md) | Agreed boundary policy; reference/native returned-error reports with observed invocation IDs, source sites and bounded expansion origins | No source fault syntax/effect declarations, isolation, activation-owned storage or panic recovery yet |
 | Async and tasks | Design direction only | No executable spawn/await/cancellation/task ownership yet |
 | Runtime polymorphism | Roadmap only | Traits currently dispatch statically |
 

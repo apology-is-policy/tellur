@@ -938,6 +938,20 @@ exports.run = async function () {
     }, 'legacy language ID works after legacy restart command');
     console.log('TELLUR_MIGRATION_EDITOR_TESTS_PASSED: both extensions, legacy language ID and commands, canonical default output name');
     console.log('TELLUR_NATIVE_EDITOR_TESTS_PASSED: build, run, argument boundaries, paths with spaces, LLVM output');
+    const faultSource = await fs.readFile(path.join(__dirname, '../../../playground/execution_faults.tellur'), 'utf8');
+    await replace(buildDocument, faultSource);
+    await vscode.window.showTextDocument(buildDocument);
+    const faultRun = await vscode.commands.executeCommand('tellur.buildAndRun', {arguments:['--json','--fuel','40'],output:path.join(root,'native output','execution-failure')});
+    assert.equal(faultRun.code, 1);
+    assert.equal(faultRun.stdout, '');
+    const faultReport = JSON.parse(faultRun.stderr);
+    assert.equal(faultReport.format, 'tellur.execution-failure');
+    assert.equal(faultReport.phase, 'execution');
+    assert.deepEqual(faultReport.activations.map(a => [a.id,a.control]), [[1,'main'],[3,'worker']]);
+    assert.equal(faultReport.site.control, 'worker');
+    assert.equal(faultReport.site.path, buildUri.fsPath);
+    assert.ok(faultReport.message.includes('E_FUEL'));
+    console.log('TELLUR_FAULT_REPORT_EDITOR_TESTS_PASSED: native boundary failure, stderr JSON, nonzero status, repeated-call identity, source mapping and no invented outcome');
     const contributorSource = `control leaf() exits auto {exit missing;}
 control main() exits done {
  auto saved=capture leaf();

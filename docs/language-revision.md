@@ -1,7 +1,7 @@
 # Tellur language revision: controls, values, outcomes, and tasks
 
 30 October 2026. This is the working revision plan, not a claim that all proposed
-features are implemented. Compiler **0.59.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
+features are implemented. Compiler **0.60.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
 lifetime checkpoints of milestone 2, the array/vector/map core of milestone 3,
 and implicit entry, inline/stored adapters, owned capture, named outcome contracts
 and checked forwarding in milestone 4. A first [semantic foundation](semantic-foundation.md)
@@ -22,8 +22,10 @@ public contract snapshots, structural diffs, an editor JSON view and the setting
 library baseline. Release 0.58 delivers P4b.2: bounded internal outcome contributor
 snapshots/diffs, including changes under equal public signatures. Release 0.59 delivers
 P4c: bounded source-position and targeted outcome queries in the CLI and editor,
-including private controls and explicit limits. Next is P6 fault/activation design,
-using the settings CLI/server to choose concrete requirements.
+including private controls and explicit limits. Release 0.60 starts P6a with the
+agreed execution-boundary fault model, observed invocation identities and bounded
+runtime failure reports. Next is explicit fault termination and transitive visibility,
+followed by activation storage and checked isolation. See [the fault/activation plan](faults-and-activations.md).
 Keep using this application as a maintained example;
 further reference expansion remains driven by application evidence.
 
@@ -149,7 +151,10 @@ unimplemented syntax are promised.
 | P5a.1 | Executable outcome status contracts | **Delivered in 0.48**: alternative annotations, exhaustive entry mappings, final-contract policy, exact exec status propagation, and settings/editor migration |
 | P5b.1 | Sustained application: blocking HTTP | **Delivered in 0.50**: loopback settings/lookup/update endpoints, Tellur policy, retained listeners/connections, framing/size/deadline limits, budget/idle shutdown and live/scripted cleanup evidence |
 | P5b.2 | Sustained application and library growth | Maintain CLI/server during P2–P4; extract reusable mechanisms when contracts settle. Signal-driven shutdown, richer HTTP and concurrency remain later work |
-| P6 | Faults and activation boundaries | Design before async: explicit invariant-failure disposition, transitive fault visibility, resource/isolation semantics; faulting operators and any no-fault annotation remain separate decisions |
+| P6a | Boundary policy and execution evidence | **Delivered in 0.60:** agreed boundary termination without local catch/resume; bounded reference/native failure reports, observed activation IDs, source/expansion origins and explicit teardown limits. These IDs do not yet address storage |
+| P6b | Source faults and transitive contracts | **Next:** explicit invariant termination and public fault visibility; require explicit fault-disposition contracts for live must-complete resources at faulting paths and calls. Faulting operators and no-fault annotations remain separate decisions |
+| P6c | Activation-owned storage | Frame identities, reference addresses, retirement and transformation evidence before recursion/suspension; current storage remains sequential |
+| P6d | Isolated boundaries | Checked admission and resource disposition before a supervisor can continue after child failure; borrowed state and async children require explicit rules |
 | C1b.3c.2 | Local exclusive-reference collection elements | Deferred pending application evidence: permission transfer, direct reborrowing, dynamic removal splits and carrier invalidation |
 | C1b.3c.3 | Nested and public borrowed-collection contracts | Deferred pending application evidence: element origin schemas, nested carriers, generic/trait boundaries and stored outcomes |
 | C1c | Generic loan propagation and reference state | Deferred pending application evidence: contained loans across generic calls, assignments and adapters; rebinding/reborrowing |
@@ -204,6 +209,13 @@ indentation that visually contradicts the parsed group. Formatting does not prov
 that a selection matches the author's intent. Indentation remains presentation,
 not a new semantic delimiter. Lint details and editor presentation need evaluation.
 The existing scoped `over &:` construct retains its distinct lifetime purpose.
+
+The author's `applications/settings/server.tellur` layout, included in 0.60, keeps
+labels inside the enclosing control/loop indentation, expands long signatures and
+decisions over multiple lines, and separates decisions from their final path
+dispositions with blank lines. Preserve this application example as a concrete
+readability reference for further formatter refinements. The 0.60 formatter itself
+has not changed to reproduce every aspect of that layout.
 
 Direct arm termination, such as `missing => exit absent`, removes names for histories
 that immediately finish. It does not require replacing `[path]:` labels with braces.

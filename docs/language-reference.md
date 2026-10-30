@@ -1,8 +1,8 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.59.0 -->
+<!-- tellur-reference-version: 0.60.0 -->
 
-This manual describes **compiler 0.59.0**, including the current ownership model,
+This manual describes **compiler 0.60.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -39,6 +39,7 @@ The companion chapters provide quick lookup:
 - [Public contract snapshots](reference/contract-snapshots.md): portable checked interfaces, reviewable diffs and the editor JSON view.
 - [Outcome absorption](reference/outcome-absorption.md): internal contributors and changes hidden by an unchanged public contract.
 - [Explanations](reference/explanations.md): source-position histories and targeted outcome contributors, including private controls.
+- [Execution failures](reference/execution-failures.md): observed activation reports, boundary termination and resource-disposition limits.
 - [Glossary](reference/glossary.md): precise meanings of Tellur's terminology.
 
 ## Contents
@@ -2619,7 +2620,7 @@ and caches are left in place. The Rust library crate is now `tellur`.
 
 Native executables accept `--json`, `--entry`, `--scenario FILE`, `--fuel N`, and `--`
 before positional arguments. Declared completion outcomes use their explicit
-[process-status mapping](reference/process-entry.md); host faults report nonzero status.
+[process-status mapping](reference/process-entry.md); host failures report nonzero status. [Execution failure reports](reference/execution-failures.md) identify active invocations and source sites; they do not synthesize outcome alternatives.
 An optional fuel budget bounds host execution; normal
 native execution has no default instruction limit. Aggregates use the JSON value
 format in the historical scenarios. Wire/IR builtin type names retain their v0.1
@@ -2639,7 +2640,7 @@ It does not yet provide general expression or call-site type hover.
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and async tasks remain planned; they are not executable features of 0.59.0.
+and async tasks remain planned; they are not executable features of 0.60.0.
 ## Compare supplied scenarios
 
 ```sh

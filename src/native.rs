@@ -130,12 +130,13 @@ impl Generator<'_> {
             let p = &i.provenance;
             let _ = writeln!(
                 self.code,
-                "// {}:{}:{} definition {} calls {:?}\nhost.tick({}, {})?;\nif {} {{",
+                "// {}:{}:{} definition {} calls {:?}\nhost.at({});\nhost.tick({}, {})?;\nif {} {{",
                 p.region,
                 p.span.line,
                 p.span.column,
                 p.definition,
                 p.call_sites,
+                i.id,
                 p.span.line,
                 p.span.column,
                 guard(&i.guard)
@@ -311,6 +312,9 @@ impl CheckedProgram {
         g.code.push_str("mod collection_support {\n");
         g.code.push_str(include_str!("collection_support.rs"));
         g.code.push_str("\n}\n");
+        g.code.push_str("mod fault {\n");
+        g.code.push_str(include_str!("fault.rs"));
+        g.code.push_str("\n}\n");
         g.code.push_str(SUPPORT);
         g.code.push_str("\n}\nuse support::*;\n");
         g.code.push_str(&crate::rust_host::source(self.manifest())?);
@@ -325,15 +329,16 @@ impl CheckedProgram {
                 .unwrap_or(0);
             let _ = writeln!(
                 g.code,
-                "fn region_{}(host:&mut Host, mut v:&mut Vec<Option<V>>, args:Vec<V>)->R<Outcome> {{\nlet mut a = vec![false; {size}];\nlet mut args = args.into_iter();",
-                g.names[r.name.as_str()]
+                "fn region_{}(host:&mut Host, mut v:&mut Vec<Option<V>>, args:Vec<V>)->R<Outcome> {{\nhost.enter({})?;\nlet result=(|| {{\nlet mut a = vec![false; {size}];\nlet mut args = args.into_iter();",
+                g.names[r.name.as_str()],
+                string(&self.runtime_name(&r.name))
             );
             for p in &r.parameters {
                 let _ = writeln!(g.code, "v[{}] = args.next();", p.id);
             }
             g.instructions(&r.code);
             g.code
-                .push_str("Err(\"E_NATIVE: checked region fell through\".into())\n}\n");
+                .push_str("Err(\"E_NATIVE: checked region fell through\".into())\n})(); if result.is_ok() { host.leave(); } result\n}\n");
         }
         for r in self.regions() {
             let id = g.names[r.name.as_str()];
@@ -361,8 +366,9 @@ impl CheckedProgram {
             };
             let _ = writeln!(
                 g.code,
-                "Entry {{ name: {}, run: entry_{}, arguments: vec![{}], exit_codes: &[{}] }},",
+                "Entry {{ name: {}, display_name: {}, run: entry_{}, arguments: vec![{}], exit_codes: &[{}] }},",
                 string(&r.name),
+                string(&self.runtime_name(&r.name)),
                 g.names[r.name.as_str()],
                 r.parameters
                     .iter()
@@ -378,9 +384,12 @@ impl CheckedProgram {
         }
         let _ = writeln!(
             g.code,
-            "];\nmatch launch({}, {}, &entries, Some(rust_dispatch)) {{ Ok(code) => std::process::ExitCode::from(code), Err(error) => {{ eprintln!(\"{{error}}\"); std::process::ExitCode::FAILURE }} }}\n}}",
+            "];\nmatch launch({}, {}, &entries, Some(rust_dispatch), {}) {{ Ok(code) => std::process::ExitCode::from(code), Err(error) => {{ eprintln!(\"{{error}}\"); std::process::ExitCode::FAILURE }} }}\n}}",
             string(&manifest),
-            string(entry)
+            string(entry),
+            string(
+                &serde_json::to_string(&self.runtime_sites()).map_err(|e| error(e.to_string()))?
+            )
         );
         Ok(g.code)
     }

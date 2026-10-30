@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.59.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.60.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -1851,3 +1851,73 @@ Evidence: `work/tellur-0.59-validation.json`, `tellur-0.59-tests.log`,
 `tellur-0.59-package-integrity.log`, `tellur-0.59-install.log`,
 `tellur-0.59-installed-integrity.log` and `tellur-0.59-backup.log`.
 The verified source snapshot is `work/revision-backups/tellur-0.59-source.tar.gz`.
+
+## 0.60 — Execution-boundary policy and observed activations
+
+P6a records the agreed boundary model: invariant faults terminate the current
+execution boundary; ordinary controls do not catch them and resume. Explicit
+isolated child boundaries remain future work. The checkpoint implements reporting
+for existing returned execution failures, not a source `fault` keyword or a
+transitive fault-effect system. Resource teardown is explicitly distinguished from
+normal/fallible protocol completion. The author also chose explicit fault-disposition
+contracts for live must-complete resources, checked at faulting paths and calls;
+that P6b requirement is recorded in `docs/faults-and-activations.md`.
+
+The shared `tellur.execution-failure` envelope records entry, phase, diagnostic
+text, observed activation identities/parents, call/current sites and expansion
+provenance. Reference `run_detailed` exposes it alongside the existing diagnostic;
+`run`/`run_with_limit` preserve their diagnostic API. Reference CLI `run --json`
+and native `--json`/`--scenario` write returned execution failures to stderr, with
+status 1 and no successful completion object. Native pre-execution launcher errors
+and foreign panics retain their existing behavior. Normal outcomes and process
+status mappings are unchanged.
+
+Invocation IDs restart at one per entry boundary. Completed calls are discarded;
+`again` reuses the activation. Reports retain the first/final 16 active frames when
+necessary, up to 32 expansion origins per site and 4096 diagnostic Unicode scalars,
+with explicit omissions. Report IDs are not addresses: value storage is still the
+sequential compilation-slot store, so recursion, isolation and suspension remain
+unimplemented. Native optimizer inlining preserves the instrumentation of checked
+Tellur calls; source expansion can eliminate those calls while preserving source
+and expansion origins in the failure site.
+
+The new `playground/execution_faults.tellur` deliberately exhausts a host instruction
+budget during its second worker invocation. Its native report identifies root 1
+and worker 3, not the already completed worker 2. The selected source site is the
+instruction-budget check site; a guard can still be false there. The settings
+application documents its current whole-entry boundary and unchanged cleanup limits.
+
+Validation: **888 distinct Rust tests pass**. The full all-targets run passed 886;
+the final 12-test failure-report/manual run added two regressions for imported
+entry display names and invalid entry text that resembles deeply nested generics.
+All eight settings CLI/HTTP tests were rerun successfully after incorporating the
+author's server layout, including real persistence, live loopback HTTP and ordinary
+versus expanded execution at optimization levels 0 and 2. The source edit changes
+layout only; labels remain unbraced and semantically unchanged.
+
+Clippy with warnings denied and Rust formatting checks pass. All **64 maintained
+modern sources** check. The reference manual verifies **58 accepted examples,
+22 expected diagnostics, 14 context fragments and 208 local links**. All **35 Node
+tests** pass, and the settings library's committed public-contract/absorption
+baseline is unchanged.
+
+The complete real VS Code integration suite passes, including the new runtime
+failure report, stderr JSON, exact failure status, repeated-call activation identity
+and source mapping. Existing diagnostics, hover, formatting, explanation reports,
+native builds, LLVM output, retained resources and live HTTP remain covered. Final
+imported-entry and invalid-entry refinements are covered by the targeted Rust run.
+
+Compiler and language server report **0.60.0**. All nine packaged and installed
+extension payloads match final staging, with executable bits retained. The verified
+extension is installed without reloading existing editor windows; reload VS Code
+to activate it in an already open window.
+
+Evidence: `work/tellur-0.60-validation.json`, `tellur-0.60-tests.log`,
+`tellur-0.60-final-regressions.log`, `tellur-0.60-settings-final.log`,
+`tellur-0.60-clippy-final.log`, `tellur-0.60-examples.log`,
+`tellur-0.60-settings-diff.log`, `tellur-0.60-node.log`, `tellur-0.60-editor.log`,
+`tellur-0.60-example-failure.json`, `tellur-0.60-build-final.log`,
+`tellur-0.60-versions.log`, `tellur-0.60-package.log`,
+`tellur-0.60-package-integrity.log`, `tellur-0.60-install.log`,
+`tellur-0.60-installed-integrity.log` and `tellur-0.60-backup.log`.
+The verified source snapshot is `work/revision-backups/tellur-0.60-source.tar.gz`.

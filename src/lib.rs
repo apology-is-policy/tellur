@@ -11,6 +11,8 @@ pub mod diagnostics;
 mod expand;
 pub mod explain;
 pub mod extract;
+pub mod fault;
+mod fault_sites;
 pub mod format;
 mod generic_controls;
 mod generics;
