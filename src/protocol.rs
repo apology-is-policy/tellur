@@ -10,6 +10,7 @@ pub enum Symbol {
     Emit,
     Primitive { operation: String, outcome: String },
     Exit { outcome: String },
+    Fault,
 }
 /// Forget payload values, arguments, emit text and primitive effect annotations.
 /// The final exit token distinguishes completed traces from proper prefixes.
@@ -46,6 +47,8 @@ pub struct Protocol {
     states: usize,
     initial: usize,
     accepting: BTreeSet<usize>,
+    #[serde(skip_serializing_if = "BTreeSet::is_empty")]
+    faulted: BTreeSet<usize>,
     edges: Vec<Edge>,
 }
 #[derive(Clone, Debug, serde::Serialize)]
@@ -54,6 +57,8 @@ pub struct Residual {
     pub prefix_possible: bool,
     pub complete: bool,
     pub can_complete: bool,
+    pub faulted: bool,
+    pub can_fault: bool,
     pub may_silently_diverge: bool,
     pub next_symbols: Vec<Symbol>,
     pub residual_states: Vec<usize>,
@@ -66,6 +71,7 @@ enum Step {
     Silent,
     Emit,
     Exit(String),
+    Fault,
     Decide(Vec<(Id, Option<Symbol>)>),
     Loop(Id),
     Again(Id),
@@ -88,6 +94,7 @@ struct Graph {
 }
 const ACCEPT: usize = 0;
 const FALLTHROUGH: usize = 1;
+const FAULT: usize = 2;
 impl Graph {
     fn new() -> Self {
         Self {
@@ -103,6 +110,12 @@ impl Graph {
                     guard: Guard::True,
                     step: Step::Silent,
                     next: 1,
+                },
+                Node {
+                    id: 0,
+                    guard: Guard::True,
+                    step: Step::Silent,
+                    next: FAULT,
                 },
             ],
             loops: BTreeMap::new(),
@@ -136,6 +149,7 @@ impl Graph {
                 Action::Again { target, .. } => Step::Again(*target),
                 Action::Complete { atom, unwind, .. } => Step::Complete(*atom, *unwind),
                 Action::Exit(name, _) => Step::Exit(name.clone()),
+                Action::Fault(_) => Step::Fault,
                 Action::Emit(_) => Step::Emit,
                 Action::Decide {
                     operation, arms, ..
@@ -210,12 +224,17 @@ impl CheckedProgram {
             states: 0,
             initial: 0,
             accepting: BTreeSet::new(),
+            faulted: BTreeSet::new(),
             edges: vec![],
         };
         while let Some(state) = pending.pop_front() {
             let from = ids[&state];
             if state.pc == ACCEPT {
                 result.accepting.insert(from);
+                continue;
+            }
+            if state.pc == FAULT {
+                result.faulted.insert(from);
                 continue;
             }
             if state.pc == FALLTHROUGH {
@@ -241,6 +260,13 @@ impl CheckedProgram {
                 match &n.step {
                     Step::Silent => transitions.push((None, next)),
                     Step::Emit => transitions.push((Some(Symbol::Emit), next)),
+                    Step::Fault => transitions.push((
+                        Some(Symbol::Fault),
+                        State {
+                            pc: FAULT,
+                            facts: BTreeSet::new(),
+                        },
+                    )),
                     Step::Exit(outcome) => transitions.push((
                         Some(Symbol::Exit {
                             outcome: outcome.clone(),
@@ -377,6 +403,8 @@ impl Protocol {
             prefix_possible: !current.is_empty(),
             complete: !current.is_disjoint(&self.accepting),
             can_complete: !reachable.is_disjoint(&self.accepting),
+            faulted: !current.is_disjoint(&self.faulted),
+            can_fault: !reachable.is_disjoint(&self.faulted),
             may_silently_diverge: removed < current.len(),
             next_symbols,
             residual_states: current.into_iter().collect(),
@@ -422,7 +450,7 @@ impl Protocol {
         }
         edges
     }
-    /// Exact inclusion of completed finite words of these two abstract models.
+    /// Exact inclusion of finite normal-completion or fault words of these models.
     /// This forgets infinite behavior and concrete data feasibility. Exhausting
     /// the subset-product budget returns an error, never a positive conclusion.
     pub fn included_in(&self, other: &Self, pair_limit: usize) -> Result<Inclusion> {
@@ -438,10 +466,17 @@ impl Protocol {
         let mut ids = BTreeMap::from([(initial.clone(), 0)]);
         let mut states = VecDeque::from([initial]);
         let mut parents = vec![None::<(usize, Symbol)>];
-        let claim = "inclusion_of_completed_structural_traces_only";
+        let claim = if self.faulted.is_empty() && other.faulted.is_empty() {
+            "inclusion_of_completed_structural_traces_only"
+        } else {
+            "inclusion_of_terminated_structural_traces_only"
+        };
         while let Some((a, b)) = states.pop_front() {
             let id = ids[&(a.clone(), b.clone())];
-            if !a.is_disjoint(&self.accepting) && b.is_disjoint(&other.accepting) {
+            if (!a.is_disjoint(&self.accepting) || !a.is_disjoint(&self.faulted))
+                && b.is_disjoint(&other.accepting)
+                && b.is_disjoint(&other.faulted)
+            {
                 let mut witness = vec![];
                 let mut cursor = id;
                 while let Some((parent, symbol)) = &parents[cursor] {

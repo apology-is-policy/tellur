@@ -467,6 +467,13 @@ impl Host {
     pub fn at(&mut self, site: usize) {
         self.activations.at(site);
     }
+    pub fn fault(&mut self, value: V) -> R<Outcome> {
+        let V::String(message) = value else {
+            return Err("E_NATIVE: fault requires string".into());
+        };
+        self.activations.source_fault();
+        Err(format!("E_FAULT: {message}"))
+    }
     fn failure(
         &mut self,
         entry: &str,

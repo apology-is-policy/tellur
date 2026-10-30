@@ -56,6 +56,17 @@ exports.run = async function () {
   const diagnostics = () => vscode.languages.getDiagnostics(uri).filter(d => d.source === 'tellur');
   const code = d => typeof d.code === 'object' ? d.code.value : d.code;
   try {
+    const sourceFaultContract = 'control stop() faults {fault "broken";}\ncontrol main() exits auto {stop();}';
+    await replace(document, sourceFaultContract);
+    await waitFor(async () => {
+      const hovers = await vscode.commands.executeCommand('vscode.executeHoverProvider', uri, new vscode.Position(1, 9));
+      return diagnostics().length === 0 && hovers?.some(h => h.contents.some(c => c.value.includes('faults')));
+    }, 'inferred fault permission hover');
+    await replace(document, sourceFaultContract.replace('control main() exits auto', 'pub control main() exits done'));
+    await waitFor(() => diagnostics().some(d => code(d) === 'E_FAULT_CONTRACT'), 'public fault permission diagnostic');
+    await replace(document, sourceFaultContract.replace('control main() exits auto', 'pub control main() faults'));
+    await waitFor(() => diagnostics().length === 0, 'fault-only public contract repair');
+    console.log('TELLUR_SOURCE_FAULT_EDITOR_TESTS_PASSED: inferred permission hover, unsaved public contract diagnostic and repair');
     const autoSource = 'control main() exits auto {emit("😀");mutable string first="before";ref mutable auto first_b=borrow mutable first;deref first_b="after";auto count=1;exit done;}';
     await replace(document, autoSource);
     const expectAutoHover = async (marker, expected) => {
@@ -976,6 +987,15 @@ exports.run = async function () {
     assert.equal(faultReport.site.path, buildUri.fsPath);
     assert.ok(faultReport.message.includes('E_FUEL'));
     console.log('TELLUR_FAULT_REPORT_EDITOR_TESTS_PASSED: native boundary failure, stderr JSON, nonzero status, repeated-call identity, source mapping and no invented outcome');
+    await replace(buildDocument, 'control stop() faults {fault "explicit invariant";}control main() faults {stop();}');
+    const sourceFaultRun = await vscode.commands.executeCommand('tellur.buildAndRun', {arguments:['--json'],output:path.join(root,'native output','source-fault')});
+    assert.equal(sourceFaultRun.code, 1);
+    assert.equal(sourceFaultRun.stdout, '');
+    const sourceFaultReport = JSON.parse(sourceFaultRun.stderr);
+    assert.equal(sourceFaultReport.kind, 'source_fault');
+    assert.deepEqual(sourceFaultReport.activations.map(a => a.control), ['main','stop']);
+    assert.ok(sourceFaultReport.message.includes('explicit invariant'));
+    console.log('TELLUR_SOURCE_FAULT_NATIVE_EDITOR_TESTS_PASSED: fault-only build, typed fault report and no normal completion');
     const contributorSource = `control leaf() exits auto {exit missing;}
 control main() exits done {
  auto saved=capture leaf();

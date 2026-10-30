@@ -6,6 +6,18 @@ use std::collections::BTreeMap;
 pub const MAX_ACTIVATIONS: usize = 32;
 pub const MAX_EXPANSION_CALLS: usize = 32;
 pub const MAX_MESSAGE_CHARS: usize = 4096;
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Kind {
+    #[default]
+    ReturnedError,
+    SourceFault,
+}
+impl Kind {
+    fn is_returned(&self) -> bool {
+        *self == Self::ReturnedError
+    }
+}
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Site {
     pub control: String,
@@ -33,6 +45,8 @@ pub struct Activation {
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Report {
+    #[serde(default, skip_serializing_if = "Kind::is_returned")]
+    pub kind: Kind,
     pub format: String,
     pub version: u32,
     pub boundary: String,
@@ -114,12 +128,16 @@ struct Active {
 /// accumulate history. Once a report is captured, this tracker cannot resume.
 #[derive(Default, Debug)]
 pub struct Tracker {
+    kind: Kind,
     sites: BTreeMap<usize, Site>,
     active: Vec<Active>,
     next: u64,
     failed: bool,
 }
 impl Tracker {
+    pub fn source_fault(&mut self) {
+        self.kind = Kind::SourceFault;
+    }
     pub fn new(sites: BTreeMap<usize, Site>) -> Self {
         Self {
             sites,
@@ -173,6 +191,7 @@ impl Tracker {
             })
             .collect();
         Report {
+            kind: self.kind.clone(),
             format: "tellur.execution-failure".into(),
             version: 1,
             boundary: boundary.into(),

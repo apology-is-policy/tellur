@@ -1,7 +1,7 @@
 # Tellur language revision: controls, values, outcomes, and tasks
 
 30 October 2026. This is the working revision plan, not a claim that all proposed
-features are implemented. Compiler **0.61.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
+features are implemented. Compiler **0.62.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
 lifetime checkpoints of milestone 2, the array/vector/map core of milestone 3,
 and implicit entry, inline/stored adapters, owned capture, named outcome contracts
 and checked forwarding in milestone 4. A first [semantic foundation](semantic-foundation.md)
@@ -24,14 +24,16 @@ snapshots/diffs, including changes under equal public signatures. Release 0.59 d
 P4c: bounded source-position and targeted outcome queries in the CLI and editor,
 including private controls and explicit limits. Release 0.60 starts P6a with the
 agreed execution-boundary fault model, observed invocation identities and bounded
-runtime failure reports. Next is explicit fault termination and transitive visibility,
-followed by activation storage and checked isolation. See [the fault/activation plan](faults-and-activations.md).
+runtime failure reports. Release 0.62 delivers source fault termination and transitive
+permissions. Activation-owned storage is next, followed by checked isolation. See [the fault/activation plan](faults-and-activations.md).
 Keep using this application as a maintained example;
 further reference expansion remains driven by application evidence.
 
 Release 0.61 refines P4a using the author's server layout: inline label dispositions,
 automatic width-based list/condition wrapping, consistent nested-adapter indentation
-and matching CLI/editor width options. P6b remains the next language checkpoint.
+and matching CLI/editor width options. Release 0.62 completes P6b: `fault`/`faults`,
+fault-only controls without `exits`, explicit retained-owner fault release, and
+corresponding contracts, editor feedback and transformation evidence.
 
 Release 0.47 starts P2 structured output: versioned JSON check reports, explicit
 point encodings, related locations and typed structural witnesses in CLI/LSP.
@@ -156,8 +158,8 @@ unimplemented syntax are promised.
 | P5b.1 | Sustained application: blocking HTTP | **Delivered in 0.50**: loopback settings/lookup/update endpoints, Tellur policy, retained listeners/connections, framing/size/deadline limits, budget/idle shutdown and live/scripted cleanup evidence |
 | P5b.2 | Sustained application and library growth | Maintain CLI/server during P2–P4; extract reusable mechanisms when contracts settle. Signal-driven shutdown, richer HTTP and concurrency remain later work |
 | P6a | Boundary policy and execution evidence | **Delivered in 0.60:** agreed boundary termination without local catch/resume; bounded reference/native failure reports, observed activation IDs, source/expansion origins and explicit teardown limits. These IDs do not yet address storage |
-| P6b | Source faults and transitive contracts | **Next:** explicit invariant termination and public fault visibility; require explicit fault-disposition contracts for live must-complete resources at faulting paths and calls. Faulting operators and no-fault annotations remain separate decisions |
-| P6c | Activation-owned storage | Frame identities, reference addresses, retirement and transformation evidence before recursion/suspension; current storage remains sequential |
+| P6b | Source faults and transitive contracts | **Delivered in 0.62:** source termination, public/trait fault permissions and private inference; live resources require explicit retained-owner release dispositions at faulting paths/calls. Fault-only controls omit `exits`. Faulting operators and no-fault annotations remain separate decisions |
+| P6c | Activation-owned storage | **Next:** frame identities, reference addresses, retirement and transformation evidence before recursion/suspension; current storage remains sequential |
 | P6d | Isolated boundaries | Checked admission and resource disposition before a supervisor can continue after child failure; borrowed state and async children require explicit rules |
 | C1b.3c.2 | Local exclusive-reference collection elements | Deferred pending application evidence: permission transfer, direct reborrowing, dynamic removal splits and carrier invalidation |
 | C1b.3c.3 | Nested and public borrowed-collection contracts | Deferred pending application evidence: element origin schemas, nested carriers, generic/trait boundaries and stored outcomes |

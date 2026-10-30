@@ -263,3 +263,10 @@ test('direct arm exits distinguish keywords, final outcomes and continuing paths
   has(legacy, 'exit', 'keyword.control.tellur');
   has(legacy, 'Done', 'entity.name.type.outcome.tellur');
 });
+
+test('fault permissions and terminations are control keywords, not paths or types', () => {
+  const ts = tokens('control fail(string reason) faults { fault reason; }\ncontrol check(bool ok) exits done faults {delta ok {true=>exit done,false=>fault "broken"}}');
+  has(ts, 'faults', 'keyword.control.tellur');
+  has(ts, 'fault', 'keyword.control.tellur');
+  assert.ok(ts.filter(t => t.text === 'fault').every(t => t.scopes.includes('keyword.control.tellur')));
+});

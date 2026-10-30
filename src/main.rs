@@ -251,8 +251,14 @@ fn run(args: Vec<String>) -> std::result::Result<ExitCode, Box<dyn std::error::E
             let cases: Vec<Scenario> = serde_json::from_str(&fs::read_to_string(&rest[1])?)?;
             let report = tellur::algebra::compare_scenarios(&program, &other, &cases, 100_000)?;
             println!("{}", serde_json::to_string_pretty(&report)?);
-            if !report.observations_match || !report.declared_outcome_shapes_equal {
-                return Err("comparison found different observations or declared outcome shapes; see report".into());
+            if !report.observations_match
+                || !report.declared_outcome_shapes_equal
+                || !report.fault_permissions_equal
+            {
+                return Err(
+                    "comparison found different observations or declared contracts; see report"
+                        .into(),
+                );
             }
         }
         "run" if !rest.is_empty() => {

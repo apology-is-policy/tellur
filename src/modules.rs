@@ -635,7 +635,8 @@ impl Resolver<'_> {
             Statement::Forward(e)
             | Statement::Invoke(e)
             | Statement::Drop(e)
-            | Statement::Emit(e) => self.expr(e, *at)?,
+            | Statement::Emit(e)
+            | Statement::Fault(e) => self.expr(e, *at)?,
             Statement::Assign(a, b) => {
                 self.expr(a, *at)?;
                 self.expr(b, *at)?;

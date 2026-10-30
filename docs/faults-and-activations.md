@@ -1,9 +1,10 @@
 # Faults, execution boundaries and activations
 
-30 October 2026. Design checkpoint P6a. The boundary policy below was agreed with
+30 October 2026. Design checkpoints P6a/P6b. The boundary policy below was agreed with
 the language author. Compiler 0.60 implements runtime failure reports and observed
-activation identities; source fault syntax, fault effect contracts, isolated
-boundaries and activation-owned storage remain later checkpoints.
+activation identities. Compiler 0.62 adds source faults, public/trait permissions,
+private inference and explicit retained-owner fault release. Isolated boundaries
+and activation-owned storage remain later checkpoints.
 
 ## Agreed boundary policy
 
@@ -26,7 +27,7 @@ Keep these situations distinct:
 | Situation | Meaning |
 | --- | --- |
 | `missing`, `invalid_file`, `write_failed` | Ordinary declared alternatives; callers handle them with delta/adaptation/forwarding |
-| Explicit invariant failure | Planned source-level fault; terminates its boundary and must be visible transitively |
+| Explicit invariant failure | Source-level `fault`; terminates its boundary and is visible transitively |
 | Host instruction budget exhausted | Executor policy, not a new outcome or a source assertion failure |
 | Malformed scripted host reply | Driver/contract rejection; not evidence of a bug in the Tellur source |
 | Runtime invariant violation | Compiler/runtime or trusted-host problem; not a domain error to silently classify |
@@ -34,7 +35,8 @@ Keep these situations distinct:
 
 The current report carries the existing diagnostic text and execution phase.
 It does not claim a complete typed taxonomy or infer a fault effect from diagnostic
-message wording. That taxonomy belongs with the explicit fault contract work.
+message wording. The additive `source_fault` kind distinguishes explicit source
+termination; named fault categories remain deferred.
 
 ## Resource disposition is separate from completion
 
@@ -46,8 +48,8 @@ fallible cleanup succeeded. A consumed Rust owner may already have left the host
 store; its wrapper is part of the trusted boundary.
 
 A must-complete resource's normal obligation remains explicit. Faults must not be
-used to manufacture a successful completion. When adding source fault exits, specify
-the fault disposition of each outstanding obligation: which objects can be released
+used to manufacture a successful completion. Source faults require an explicit
+fault disposition for each outstanding resource obligation: which objects can be released
 by teardown, which require an explicit fault protocol, and which boundaries cannot
 be isolated. This is a prerequisite for recoverable child boundaries, not a hidden
 promise made by the current Rust destructor fallback.
@@ -120,32 +122,34 @@ toolchain. The current native backend still generates Rust and uses its LLVM bac
 
 ## Agreed resource policy
 
-Source faults will require an explicit fault-disposition contract for every live
-must-complete resource. The compiler must reject a faulting path or a call that may
+Source faults require an explicit fault-disposition contract for every live
+must-complete resource. The compiler rejects a faulting path or a call that may
 fault while an outstanding resource lacks that permission. This check is transitive:
 a resource held by a caller still constrains a fault raised by a callee.
 
 Best-effort host teardown does not itself grant permission to abandon a resource's
-normal completion obligation. Contract spelling, supported dispositions and their
-runtime enforcement belong to P6b. Compiler 0.60 does not yet implement source
-faults or those contracts; its returned-error teardown behavior above remains the
-existing baseline.
+normal completion obligation. Compiler 0.62 supports explicit `"fault": "release"`
+on manifest opaque linear types mapped to retained Rust owners. The host destroys
+those owners on ordinary boundary teardown; this does not claim normal protocol
+completion or rollback. Custom fault cleanup remains future work. See the
+[executable reference](reference/execution-failures.md) for the complete rules.
 
 ## Checkpoints and decision points
 
-The author chose one source-fault channel carrying a diagnostic message. P6b will
-spell explicit termination `fault "reason";` and add a separate `faults` permission
-to public and trait control signatures, for example
-`control check(...) exits valid, invalid faults { ... }`. Private controls infer
-and propagate that permission. These are agreed future syntax, not executable
-constructs in compiler 0.61. Named typed fault categories are deferred.
+The author chose one source-fault channel carrying a diagnostic message. Compiler
+0.62 spells termination `fault "reason";` and adds `faults` to public and trait
+control signatures, such as `control check(...) exits valid, invalid faults { ... }`.
+Private controls infer and propagate permission. Fault-only controls omit `exits`:
+`control fail(string reason) faults { fault reason; }`. Named typed fault categories
+are deferred. Reports retain the 4096-scalar message bound; finite scenario comparison
+uses the full diagnostic message and preceding event history.
 
 1. **P6a, compiler 0.60:** record this boundary policy, audit current teardown,
    report existing returned execution failures, and track observed activations in
    both executors. Keep normal outcomes/status mappings unchanged.
-2. **P6b:** explicit invariant-failure termination and transitive fault visibility.
-   Implement the agreed `fault`/`faults` spelling and settle payload limits; enforce the agreed
-   explicit resource fault dispositions at faulting paths and calls. No-fault annotations and
+2. **P6b, delivered in 0.62:** source termination and transitive fault permissions,
+   fault-only controls, explicit retained-owner fault release, editor/contract
+   visibility and separate fault terminals in protocol/comparison evidence. No-fault annotations and
    faulting arithmetic/indexing sugar are separate decisions.
 3. **P6c:** activation-owned storage and reference addresses, with repeated/nested
    invocation, frame retirement, resource disposition and transformation evidence.
@@ -156,7 +160,7 @@ constructs in compiler 0.61. Named typed fault categories are deferred.
 5. **E1/E2:** deterministic task execution, declared cancellation and controlled
    schedule tests, followed by the pinned LLVM coroutine experiment.
 
-P6a does not add a `fault` keyword, catch syntax, automatic domain-error conversion,
-recursion, an executor, suspension or task cancellation. The maintained application
+P6a/P6b do not add catch syntax, automatic domain-error conversion, recursion,
+an async executor, suspension or task cancellation. The maintained application
 is useful evidence for error reporting now; its sequential server still has one
 execution boundary for the whole entry invocation.

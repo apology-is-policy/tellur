@@ -48,6 +48,8 @@ pub struct Field {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Control {
+    #[serde(default, skip_serializing_if = "crate::ir::is_false")]
+    pub faults: bool,
     pub profile: Profile,
     pub type_parameters: Vec<String>,
     #[serde(deserialize_with = "crate::launch::unique_map")]
@@ -112,6 +114,8 @@ pub enum Declaration {
     },
     Opaque {
         capabilities: Capabilities,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        fault: Option<crate::manifest::FaultDisposition>,
     },
     Trait {
         #[serde(deserialize_with = "crate::launch::unique_map")]
@@ -337,6 +341,7 @@ impl Builder<'_> {
             Exits::Inline { alternatives }
         };
         Control {
+            faults: region.fault_contract.unwrap_or(false),
             profile: if region.modern {
                 Profile::Control
             } else {
@@ -666,7 +671,10 @@ pub(crate) fn checked(
                 .collect()
         };
         let declaration = match manifest.type_def(&name).unwrap() {
-            TypeDef::Opaque { .. } => Declaration::Opaque { capabilities },
+            TypeDef::Opaque { fault, .. } => Declaration::Opaque {
+                capabilities,
+                fault: fault.clone(),
+            },
             TypeDef::Record { fields: fs, .. } => Declaration::Struct {
                 type_parameters: vec![],
                 origin_parameters: vec![],

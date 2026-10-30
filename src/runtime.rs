@@ -385,6 +385,17 @@ impl Machine<'_> {
                     };
                     self.events.push(Event::Emit { message });
                 }
+                Action::Fault(expr) => {
+                    let Value::String(message) = evaluate(expr, values)? else {
+                        return Err(error("interpreter invariant: fault type"));
+                    };
+                    self.activations.source_fault();
+                    return Err(Diagnostic::new(
+                        "E_FAULT",
+                        instruction.provenance.span,
+                        message,
+                    ));
+                }
                 Action::Exit(outcome, args) => {
                     return Ok(Flow::Exit(
                         outcome.clone(),
@@ -552,6 +563,9 @@ impl Machine<'_> {
 pub struct Failure {
     pub diagnostic: Diagnostic,
     pub report: crate::fault::Report,
+    /// Observed effects before termination, for finite execution comparisons.
+    /// These are deliberately separate from the bounded diagnostic report.
+    pub events: Vec<Event>,
 }
 impl std::fmt::Display for Failure {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -610,6 +624,7 @@ impl CheckedProgram {
         })();
         result.map_err(|diagnostic| {
             Box::new(Failure {
+                events: std::mem::take(&mut machine.events),
                 report: machine.activations.failure(
                     &self
                         .region(&scenario.entry)

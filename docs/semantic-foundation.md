@@ -247,8 +247,10 @@ nonempty scenario set. Across revisions, reachable named type definitions must
 also match; this is conservative, including their field names and order. Output
 layout differences make declared outcome-shape equality false even if the tested
 cases select another alternative. The report identifies the checked entries. It compares complete interpreter observations and reports
-outcome-shape equality separately. Invalid scripts, runtime errors and step-budget
-exhaustion are inconclusive errors—even when both sides fail. Fuel exhaustion is
+outcome-shape and source-fault-permission equality separately. Source faults compare
+their full diagnostic messages and preceding events, without activation IDs or
+source locations. Invalid scripts, other runtime errors and step-budget exhaustion
+are inconclusive errors—even when both sides fail. Fuel exhaustion is
 not proof of divergence. A borrowed entry requires an owning observer harness.
 
 From the project root:

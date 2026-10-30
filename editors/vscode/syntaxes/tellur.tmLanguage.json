@@ -197,7 +197,7 @@
           }
         },
         {
-          "match": "\\b((?!(?:mutable|borrow|deref|from|ref)\\b)(?:auto|[a-z_][a-z_0-9]*)(?:\\.[a-z_][a-z_0-9]*)*(?:<[^;{}\\n]*>(?:\\.[a-z_][a-z_0-9]*)?)?)\\s+([a-z_][a-z_0-9]*)(?=\\s*(?:from\\b|<-|=|[,)};]))",
+          "match": "\\b((?!(?:mutable|borrow|deref|from|ref|fault|faults)\\b)(?:auto|[a-z_][a-z_0-9]*)(?:\\.[a-z_][a-z_0-9]*)*(?:<[^;{}\\n]*>(?:\\.[a-z_][a-z_0-9]*)?)?)\\s+([a-z_][a-z_0-9]*)(?=\\s*(?:from\\b|<-|=|[,)};]))",
           "captures": {
             "1": {
               "name": "storage.type.tellur"
@@ -235,7 +235,7 @@
           "include": "#comments"
         },
         {
-          "match": "(=>)\\s*(exit)(?=\\s*[,}\\]])",
+          "match": "(=>)\\s*(exit|fault)(?=\\s*[,}\\]])",
           "captures": {
             "1": {
               "name": "keyword.operator.tellur"
@@ -257,7 +257,7 @@
           }
         },
         {
-          "match": "(=>)\\s*((?!exit\\b)[A-Za-z_][A-Za-z0-9_]*)",
+          "match": "(=>)\\s*((?!(?:exit|fault)\\b)[A-Za-z_][A-Za-z0-9_]*)",
           "captures": {
             "1": {
               "name": "keyword.operator.tellur"
@@ -351,7 +351,7 @@
         },
         {
           "name": "keyword.control.tellur",
-          "match": "\\b(?:control|region|exits|from|exit|again|loop|over|path|delta|capture)\\b|\u0394|\\bforward\\b(?!\\s*[({])"
+          "match": "\\b(?:control|region|exits|faults|fault|from|exit|again|loop|over|path|delta|capture)\\b|\u0394|\\bforward\\b(?!\\s*[({])"
         },
         {
           "name": "support.function.tellur",
@@ -410,7 +410,7 @@
     "modern_arms": {
       "patterns": [
         {
-          "match": "(=>)\\s*(exit)(?=\\s*[,}\\]])",
+          "match": "(=>)\\s*(exit|fault)(?=\\s*[,}\\]])",
           "captures": {
             "1": {
               "name": "keyword.operator.tellur"
@@ -421,7 +421,7 @@
           }
         },
         {
-          "match": "(=>)\\s*((?!(?:delta|forward|exit)\\b)[A-Za-z_][A-Za-z0-9_]*)\\b(?!\\s*[({])",
+          "match": "(=>)\\s*((?!(?:delta|forward|exit|fault)\\b)[A-Za-z_][A-Za-z0-9_]*)\\b(?!\\s*[({])",
           "captures": {
             "1": {
               "name": "keyword.operator.tellur"

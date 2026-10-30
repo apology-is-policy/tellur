@@ -22,6 +22,7 @@ struct Access {
 }
 #[derive(Clone)]
 struct Signature {
+    faults: bool,
     contributors: BTreeMap<String, Vec<Contributor>>,
     stored_returns: Vec<StoredReturn>,
     parameters: Vec<manifest::Parameter>,
@@ -136,6 +137,7 @@ struct LoopContext {
     scope: usize,
 }
 struct Checker<'a> {
+    fault_contract: Option<bool>,
     selected_histories: Vec<crate::history::SelectedHistory>,
     selection_facts: BTreeMap<Id, crate::history::Fact>,
     forwarded_exits: BTreeMap<Id, Vec<Contributor>>,
@@ -1149,6 +1151,7 @@ impl Checker<'_> {
                 )
             })?;
             return Ok(Some(Signature {
+                faults: false,
                 contributors: BTreeMap::new(),
                 stored_returns: vec![],
                 parameters: c.parameters,
@@ -1835,6 +1838,56 @@ impl Checker<'_> {
         }
         Ok(())
     }
+    fn fault_permission(&mut self, domain: Formula, span: Span) -> Result<()> {
+        if !self.modern {
+            return Err(self.error(
+                "E_UNSUPPORTED",
+                span,
+                "source fault permissions require control syntax",
+            ));
+        }
+        if self.fault_contract == Some(false) {
+            return Err(self.error(
+                "E_FAULT_CONTRACT",
+                span,
+                "this control may fault; its public or trait contract must permit `faults`",
+            ));
+        }
+        for scope in &self.scopes {
+            for binding in scope.values.values() {
+                for (path, owned) in &binding.owned {
+                    let live = self.bdd.and(domain, *owned);
+                    if live == FALSE {
+                        continue;
+                    }
+                    let mut ty = binding.slot.ty.as_str();
+                    for &field in path {
+                        ty = &self.manifest.field_at(ty, field).unwrap().ty;
+                    }
+                    if !self.manifest.permits_fault(ty) {
+                        let name = self.place_name(&Place {
+                            root: binding.slot.id,
+                            fields: path.clone(),
+                            indirect: false,
+                        });
+                        return Err(self.fail_domain("E_FAULT_RESOURCE", span, &format!("resource `{name}` remains owned without a fault disposition; complete or transfer it before a faulting path or call"), live));
+                    }
+                }
+            }
+        }
+        self.result.faults = true;
+        Ok(())
+    }
+    fn terminate_fault(&mut self, domain: Formula) {
+        for scope in &mut self.scopes {
+            for binding in scope.values.values_mut() {
+                for owned in binding.owned.values_mut() {
+                    *owned = self.bdd.minus(*owned, domain);
+                }
+            }
+        }
+        self.dead = self.bdd.or(self.dead, domain);
+    }
     fn emit(&mut self, guard: Guard, action: Action, span: Span) {
         let id = self.fresh();
         if let Action::Exit(name, _) = &action
@@ -1978,6 +2031,10 @@ impl Checker<'_> {
                         "call statements require a declared operation",
                     )
                 })?;
+                if sig.outcomes.is_empty() && sig.faults {
+                    self.decision(guard, domain, &None, operand, &[], span, None, None)?;
+                    return Ok(());
+                }
                 if sig.outcomes.len() != 1 || !sig.outcomes[0].fields.is_empty() {
                     return Err(self.error("E_DISPOSITION",span,"a call statement requires exactly one outcome with no payload; use delta, capture or forward"));
                 }
@@ -2145,6 +2202,14 @@ impl Checker<'_> {
                 self.expect_type(&ty, "String", span)
                     .map_err(|e| expression.locate(e, span))?;
                 self.emit(guard, Action::Emit(expr), span);
+            }
+            Statement::Fault(message) => {
+                let (value, ty) = self.expr(message, domain, true, span)?;
+                self.expect_type(&ty, "String", span)
+                    .map_err(|e| message.locate(e, span))?;
+                self.fault_permission(domain, span)?;
+                self.terminate_fault(domain);
+                self.emit(guard, Action::Fault(value), span);
             }
             Statement::Exit(name, args) => {
                 if self.infer_exits || self.infer_payloads.contains(name) {
@@ -2335,6 +2400,13 @@ impl Checker<'_> {
             return Err(self.error("E_OUTCOME", span, "capture expects an operation call"));
         };
         let sig=self.signatures.get(producer).cloned().ok_or_else(||self.error("E_OUTCOME",span,"capture currently accepts source controls and manifest primitives; use delta for generic collection operations"))?;
+        if sig.outcomes.is_empty() {
+            return Err(self.error(
+                "E_OUTCOME",
+                span,
+                "a fault-only control has no completed outcome to capture; invoke it directly",
+            ));
+        }
         let producer_type = format!("outcome<{producer}>");
         let mut ty = sig
             .completion_type
@@ -2770,6 +2842,13 @@ impl Checker<'_> {
             let args = self
                 .arguments(args, &sig.parameters, domain, span)
                 .map_err(|e| operand.locate(e, span))?;
+            if sig.faults {
+                self.fault_permission(domain, span)
+                    .map_err(|e| operand.locate(e, span))?;
+                if sig.outcomes.is_empty() {
+                    self.terminate_fault(domain);
+                }
+            }
             (
                 if sig.region {
                     Operation::Region(name.clone())
@@ -3769,6 +3848,7 @@ pub(crate) fn compile_concrete_unit(
         signatures.insert(
             p.name.clone(),
             Signature {
+                faults: false,
                 contributors: BTreeMap::new(),
                 stored_returns: vec![],
                 parameters: p.parameters.clone(),
@@ -3827,6 +3907,7 @@ pub(crate) fn compile_concrete_unit(
         signatures.insert(
             region.name.clone(),
             Signature {
+                faults: region.fault_contract.unwrap_or(false),
                 contributors: region
                     .exits
                     .iter()
@@ -3926,6 +4007,7 @@ pub(crate) fn compile_concrete_unit(
                 crate::origins::result_type(&f.ty, &origin_schemas, &manifest, source.span)?;
             }
             let mut checker = Checker {
+                fault_contract: source.fault_contract,
                 selected_histories: vec![],
                 selection_facts: BTreeMap::new(),
                 forwarded_exits: BTreeMap::new(),
@@ -3951,6 +4033,7 @@ pub(crate) fn compile_concrete_unit(
                 visibility,
                 type_bindings: &source.type_bindings,
                 result: Region {
+                    faults: source.fault_contract.unwrap_or(false),
                     stored_returns: signatures[&source.name].stored_returns.clone(),
                     borrow_returns: signatures[&source.name].borrow_returns.clone(),
                     name: source.name.clone(),
@@ -4043,7 +4126,7 @@ pub(crate) fn compile_concrete_unit(
                     live,
                 ));
             }
-            if source.infer_exits && checker.result.exits.is_empty() {
+            if source.infer_exits && checker.result.exits.is_empty() && !checker.result.faults {
                 return Err(Diagnostic::new(
                     "E_INFER",
                     source.span,
@@ -4084,6 +4167,7 @@ pub(crate) fn compile_concrete_unit(
             }
             signatures.get_mut(&source.name).unwrap().contributors = contributors;
             signatures.get_mut(&source.name).unwrap().outcomes = result.exits.clone();
+            signatures.get_mut(&source.name).unwrap().faults = result.faults;
             signatures.get_mut(&source.name).unwrap().borrow_returns =
                 result.borrow_returns.clone();
             signatures.get_mut(&source.name).unwrap().stored_returns =

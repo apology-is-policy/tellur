@@ -110,8 +110,17 @@ pub fn outcome_embedding(
 pub struct CaseDifference {
     pub scenario_index: usize,
     pub entry: String,
-    pub before: Execution,
-    pub after: Execution,
+    pub before: Observation,
+    pub after: Observation,
+}
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(untagged)]
+pub enum Observation {
+    Completed(Execution),
+    Faulted {
+        fault: String,
+        events: Vec<crate::runtime::Event>,
+    },
 }
 #[derive(Clone, Debug, serde::Serialize)]
 pub struct ScenarioAgreement {
@@ -120,6 +129,7 @@ pub struct ScenarioAgreement {
     pub checked_entries: Vec<String>,
     pub step_limit_per_execution: usize,
     pub declared_outcome_shapes_equal: bool,
+    pub fault_permissions_equal: bool,
     pub observations_match: bool,
     pub differences: Vec<CaseDifference>,
 }
@@ -180,6 +190,7 @@ pub fn compare_scenarios(
         ));
     }
     let mut shapes_equal = true;
+    let mut fault_permissions_equal = true;
     let mut entries = BTreeSet::new();
     let mut differences = vec![];
     for (index, scenario) in cases.iter().enumerate() {
@@ -219,6 +230,7 @@ pub fn compare_scenarios(
         }
         shapes_equal &= outcome_embedding(&a.exits, &b.exits).is_ok()
             && outcome_embedding(&b.exits, &a.exits).is_ok();
+        fault_permissions_equal &= a.faults == b.faults;
         shapes_equal &= a.exits.iter().flat_map(|o| &o.fields).all(|f| {
             common_type(
                 before.manifest(),
@@ -227,13 +239,18 @@ pub fn compare_scenarios(
                 &mut BTreeSet::new(),
             )
         });
-        let execute = |p: &CheckedProgram, side: &str| {
-            p.run_with_limit(scenario, step_limit).map_err(|e| {
-                error(
-                    "E_COMPARE_INCONCLUSIVE",
-                    format!("scenario {index}, {side}: {e}"),
-                )
-            })
+        let execute = |p: &CheckedProgram, side: &str| match p.run_detailed(scenario, step_limit) {
+            Ok(execution) => Ok(Observation::Completed(execution)),
+            Err(failure) if failure.report.kind == crate::fault::Kind::SourceFault => {
+                Ok(Observation::Faulted {
+                    fault: failure.diagnostic.message,
+                    events: failure.events,
+                })
+            }
+            Err(failure) => Err(error(
+                "E_COMPARE_INCONCLUSIVE",
+                format!("scenario {index}, {side}: {}", failure.diagnostic),
+            )),
         };
         let left = execute(before, "before")?;
         let right = execute(after, "after")?;
@@ -252,6 +269,7 @@ pub fn compare_scenarios(
         checked_entries: entries.into_iter().collect(),
         step_limit_per_execution: step_limit,
         declared_outcome_shapes_equal: shapes_equal,
+        fault_permissions_equal,
         observations_match: differences.is_empty(),
         differences,
     })

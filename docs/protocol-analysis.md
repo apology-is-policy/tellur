@@ -1,9 +1,9 @@
 # Structural protocols and residual queries
 
-Compiler 0.15.0, 25 October 2026.
+Introduced in compiler 0.15.0; source-fault terminals added in 0.62.0.
 
 Tellur can now build a finite protocol model and answer: **after this prefix, what may
-happen next?** It also compares the completed finite trace languages of two such
+happen next?** It also compares the terminated finite trace languages of two such
 models and produces counterexamples when they differ. This implements a first
 restricted form of the residual operation proposed in the vision.
 
@@ -45,6 +45,8 @@ The residual report includes:
 | `prefix_possible` | Some path can consume precisely this token prefix |
 | `complete` | The consumed prefix includes a public exit and is a completed word |
 | `can_complete` | Some further finite suffix reaches a public exit |
+| `faulted` | The consumed prefix ends with a source-fault terminal, not a normal exit |
+| `can_fault` | Some finite suffix reaches a source fault |
 | `next_symbols` | Tokens enabled after any number of silent steps |
 | `may_silently_diverge` | A silent cycle is reachable without another token |
 | `residual_states` | The remaining nondeterministic state set after silent closure |
@@ -60,7 +62,7 @@ an endless silent retry in the model.
 The model is built from independently validated expanded IR. Its state is a control
 position and a finite set of active decision facts. It retains guards, operation
 order, outcome alternatives, loop entry/restart resets, completion targets and the
-public exit. Loops are cycles, not a fixed number of unrolled iterations.
+public exit or source-fault terminal. Loops are cycles, not a fixed number of unrolled iterations.
 
 Its finite alphabet is:
 
@@ -68,6 +70,7 @@ Its finite alphabet is:
 - `{"kind":"primitive","operation":"name","outcome":"label"}`:
   a non-pure primitive completion, with arguments, payloads and effect annotations forgotten.
 - `{"kind":"exit","outcome":"label"}`: the final public completion, with payloads forgotten.
+- `{"kind":"fault"}`: source-fault termination, with its diagnostic message forgotten.
 
 Pure expressions, pure primitive decisions and collection operations are silent.
 Their declared decision alternatives are retained nondeterministically. Boolean
@@ -95,7 +98,7 @@ on token `a`. Starting at the initial state's closure, consume a prefix with:
 
     S_next = E(step(S, a))
 
-For the language `L` of completed finite words, this remaining state set represents
+For the language `L` of finite words ending in a normal exit or source fault, this remaining state set represents
 `L / h = { s | h;s belongs to L }`. It also represents possible finite path prefixes,
 which need not extend to a completion. The report keeps those two questions separate:
 a silently diverging model can have a possible prefix and no completing suffix.
@@ -113,8 +116,8 @@ all reachable pairs establishes inclusion for these finite models. The CLI permi
 A completed comparison returns nonzero when either direction fails.
 
 Counterexamples are abstract words, not reconstructed input values or concrete
-executions. Only finite words ending in a public exit are compared. Two models with
-no completion at all have equal empty completed languages even if one emits forever
+executions. Only finite words ending in a public exit or source fault are compared.
+Two models with neither form of termination have equal empty terminated languages even if one emits forever
 and the other silently loops. Unused declared exits, parameter/payload types, and
 infinite-trace or fairness properties are outside this comparison.
 
@@ -122,7 +125,11 @@ There is a useful deliberate counterexample in the playground: compare
 `original.tellur` with `reordered.tellur`. `tellurc compare` finds a concrete difference in
 emit order. `protocol-compare` accepts both inclusions because the messages have
 been erased and both produce two indistinguishable emit tokens before their exits.
-This is why the JSON claim is `inclusion_of_completed_structural_traces_only`.
+The JSON claim is `inclusion_of_completed_structural_traces_only` when neither
+model has fault terminals, or `inclusion_of_terminated_structural_traces_only` when
+either does. A declared `faults` permission alone does not add a graph edge: this
+model follows the checked body. Fault-permission contracts are compared separately
+by contract snapshots and finite scenario comparison.
 
 ## Relationship to transformation certificates
 

@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Lexical structure](lexical-structure.md)
 
-This is a reading grammar for the modern compiler 0.61.0 profile, not a replacement
+This is a reading grammar for the modern compiler 0.62.0 profile, not a replacement
 for its type, ownership, origin or coverage rules. It omits legacy spellings and
 parser recovery details. `name`, `integer` and `string_literal` are lexical tokens.
 Quoted text denotes source tokens; `?` means optional, `*` repetition, `+` one or
@@ -42,7 +42,7 @@ field            = type name ;
 trait            = "trait" name "{" (associated_requirement | control_signature)* "}" ;
 associated_requirement = "type" name (":" bounds)? ";" ;
 control_signature = "control" name "(" trailing_list(field)? ")"
-                    "exits" explicit_exits ";" ;
+                    ("exits" explicit_exits "faults"? | "faults") ";" ;
 implementation   = "implement" qualified_name "for" type
                    "{" (associated_assignment | control)* "}" ;
 associated_assignment = "type" name "=" type ";" ;
@@ -90,7 +90,7 @@ semantically; they are not interchangeable.
 
 ```ebnf
 control          = "control" name control_parameters?
-                   "(" trailing_list(field)? ")" "exits" exits body ;
+                   "(" trailing_list(field)? ")" ("exits" exits "faults"? | "faults") body ;
 exits            = "auto" | explicit_exits | inferred_exits ;
 explicit_exits   = named_type origin_mapping? | list(exit_alternative)
                  | "{" trailing_list(exit_alternative) "}" ;
@@ -117,8 +117,9 @@ entry selection. Grouping introduces no value/lifetime scope. There is no arbitr
 unselected block statement. A tail loop must be last in its body, and nested
 source loops are not supported. Empty live fallthrough is not a completion.
 
-Public controls require `explicit_exits` and explicit borrowed-result origin
-mappings. The `auto` and `inferred_exits` forms are limited to private controls.
+Public controls with normal outcomes require `explicit_exits` and explicit
+borrowed-result origin mappings. Fault-only controls omit `exits`; public and
+trait controls require `faults` to permit source faults. The `auto` and `inferred_exits` forms are limited to private controls.
 
 A single bare exit name is resolved against named outcome declarations. If one
 exists, it supplies the contract. `exits { ready }` or `exits ready {}` explicitly
@@ -129,7 +130,7 @@ alternative, with a fixed nonempty inferred payload.
 
 ```ebnf
 statement        = binding | assignment | flat_delta | exit | forwarding
-                 | call ";" | "emit" "(" expression ")" ";"
+                 | "fault" expression ";" | call ";" | "emit" "(" expression ")" ";"
                  | "drop" "(" expression ")" ";"
                  | "again" name "(" trailing_list(expression)? ")" ";" ;
 binding          = "mutable"? type name "=" initializer ";" ;
@@ -140,7 +141,7 @@ direct_exit      = "exit" (name ("{" trailing_list(expression)? "}")? | inline_d
 forwarding       = "forward" call ";" ;
 flat_delta       = (name "=")? "delta" expression
                    "{" trailing_list(flat_arm) "}" ";"? ;
-flat_arm         = qualified_name payload_declaration? "=>" (name | direct_exit) ;
+flat_arm         = qualified_name payload_declaration? "=>" (name | direct_exit | "fault" expression) ;
 inline_delta     = "delta" expression "{" trailing_list(inline_arm) "}" ;
 inline_arm       = qualified_name payload_declaration? "=>"
                    ("[" name "]" ":")? outcome_expression ;
@@ -149,7 +150,7 @@ outcome_expression = name "{" trailing_list(expression)? "}"
 ```
 
 Only assignable places may be assignment targets. An ordinary call statement must
-have one nullary completion. Flat arms bind path-dependent outer values; inline
+have one nullary completion, or no normal outcomes with fault permission. Flat arms bind path-dependent outer values; inline
 arms introduce local scopes. `forward` as an arm result forwards that arm's input
 payload. `forward call(...);` delegates the whole call. Bare `exit name;` forwards
 a bound completed outcome or selects a nullary label under the main reference's

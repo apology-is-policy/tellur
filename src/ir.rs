@@ -123,6 +123,8 @@ pub enum Action {
     /// Release remaining slot storage after its completion obligations are discharged.
     Release(Vec<Id>),
     Emit(Expr),
+    /// Nonlocal termination of the current execution boundary, never an outcome.
+    Fault(Expr),
     Exit(String, Vec<Expr>),
     Loop {
         id: Id,
@@ -314,6 +316,8 @@ pub struct StoredReturn {
 }
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Region {
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub faults: bool,
     #[serde(default)]
     pub stored_returns: Vec<StoredReturn>,
     #[serde(with = "borrow_return_entries")]
@@ -325,8 +329,12 @@ pub struct Region {
     pub atoms: BTreeMap<Id, String>,
     pub code: Vec<Instruction>,
 }
+pub(crate) fn is_false(value: &bool) -> bool {
+    !value
+}
 #[derive(Clone, Debug)]
 pub struct GenericControl {
+    pub faults: bool,
     pub name: String,
     pub type_parameters: Vec<String>,
     pub type_bounds: BTreeMap<String, Vec<String>>,

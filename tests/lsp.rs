@@ -2494,3 +2494,40 @@ fn explanation_serialization_errors_do_not_crash_the_server() {
     );
     assert_eq!(f.diagnostics(), json!([]));
 }
+
+#[test]
+fn source_fault_hover_outline_and_unsaved_permissions() {
+    let mut f = Fixture::new();
+    let source = "control stop() faults {fault \"broken\";}\ncontrol main() exits auto {stop();}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    for line in [0, 1] {
+        let hover = f.server.hover(&f.uri, line, 9);
+        let text = hover["contents"]["value"].as_str().unwrap();
+        assert!(text.contains("faults"), "{text}");
+        assert!(!text.contains("exits  "), "{text}");
+    }
+    let auto_hover = f.server.hover(&f.uri, 1, 22);
+    assert!(
+        auto_hover["contents"]["value"]
+            .as_str()
+            .unwrap()
+            .contains("control main() faults")
+    );
+    assert!(
+        f.server.symbols(&f.uri)[1]["detail"]
+            .as_str()
+            .unwrap()
+            .contains("faults")
+    );
+    f.change(
+        "control stop() faults {fault \"broken\";}\npub control main() exits done {stop();}",
+        2,
+    );
+    assert_eq!(f.diagnostics()[0]["code"], "E_FAULT_CONTRACT");
+    f.change(
+        "control stop() faults {fault \"broken\";}\npub control main() faults {stop();}",
+        3,
+    );
+    assert_eq!(f.diagnostics(), json!([]));
+}

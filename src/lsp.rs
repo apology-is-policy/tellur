@@ -347,7 +347,9 @@ impl Server {
             let params = region.parameters.iter().map(|p|format!("{} {}",display_type(&p.ty),p.name)).collect::<Vec<_>>().join(", ");
             let exits = checked.as_ref().and_then(|p| p.region(&region.name).map(|r| checked_exit_description(&r.exits, region)).or_else(|| p.generic_controls().iter().find(|r| r.name == region.name).map(|r| checked_exit_description(&r.exits, region))))
                 .unwrap_or_else(|| if region.infer_exits { "auto (unresolved)".into() } else { region.exits.iter().map(|e| format!("{}{}", e.name, if region.infer_payloads.contains(&e.name) {"... (unresolved)"} else {""})).collect::<Vec<_>>().join(" | ") });
-            json!({"name":region.name,"detail":format!("{}({params}) exits {exits}",bounded_type_parameters(&region.type_parameters, &region.type_bounds)),"kind":12,
+            let faults = checked.as_ref().and_then(|p| p.region(&region.name).map(|r| r.faults).or_else(|| p.generic_controls().iter().find(|r| r.name == region.name).map(|r| r.faults))).unwrap_or(region.fault_contract == Some(true));
+            let completion = completion_description(&exits, faults);
+            json!({"name":region.name,"detail":format!("{}({params}){completion}",bounded_type_parameters(&region.type_parameters, &region.type_bounds)),"kind":12,
                 "range":{"start":position(&doc.text,region.span),"end":position(&doc.text,Span{column:region.end.column+1,..region.end})},
                 "selectionRange":diagnostic_range(&doc.text,region.name_span)})
         }).collect::<Vec<_>>();
@@ -740,7 +742,7 @@ impl Server {
                     .map(|p| format!("{} {}", display_type(&p.ty), p.name))
                     .collect::<Vec<_>>()
                     .join(", ");
-                return json!({"contents":{"kind":"markdown","value":format!("```tellur\ncontrol {}{}({params}) exits {}\n```\n\nGeneric definition checked using only its declared capabilities. Concrete type arguments are explicit. Unconstrained values can be borrowed or transferred. Sealed bounds grant permissions: copy implies clone, and clone implies drop.",region.name,bounded_type_parameters(&region.type_parameters, &region.type_bounds),source_spelling(uri,&unit,&program,&checked_exit_description(&generic.exits,region)))},"range":range});
+                return json!({"contents":{"kind":"markdown","value":format!("```tellur\ncontrol {}{}({params}){}\n```\n\nGeneric definition checked using only its declared capabilities. Concrete type arguments are explicit. Unconstrained values can be borrowed or transferred. Sealed bounds grant permissions: copy implies clone, and clone implies drop.",region.name,bounded_type_parameters(&region.type_parameters, &region.type_bounds),completion_description(&source_spelling(uri,&unit,&program,&checked_exit_description(&generic.exits,region)), generic.faults))},"range":range});
             }
             let Some(checked) = program.region(&region.name) else {
                 return Value::Null;
@@ -897,7 +899,8 @@ impl Server {
                     )
                 })
                 .unwrap_or_default();
-            return json!({"contents":{"kind":"markdown","value":format!("```tellur\ncontrol {}({params}) exits {exits}\n```{inferred}{details}{borrows}",region.name)},"range":range});
+            let completion = completion_description(&exits, checked.faults);
+            return json!({"contents":{"kind":"markdown","value":format!("```tellur\ncontrol {}({params}){completion}\n```{inferred}{details}{borrows}",region.name)},"range":range});
         }
         self.selection_hover(uri, &unit, line, character)
     }
@@ -1253,6 +1256,18 @@ fn bounded_type_parameters(
     )
 }
 
+fn completion_description(exits: &str, faults: bool) -> String {
+    format!(
+        "{}{}",
+        if exits.is_empty() {
+            String::new()
+        } else {
+            format!(" exits {exits}")
+        },
+        if faults { " faults" } else { "" }
+    )
+}
+
 fn source_signature(r: &syntax::Region) -> String {
     let parameters = r
         .parameters
@@ -1296,7 +1311,11 @@ fn source_signature(r: &syntax::Region) -> String {
                 .collect::<Vec<_>>()
                 .join(", ")
         });
-    format!("control {}({parameters}) exits {exits}", r.name)
+    format!(
+        "control {}({parameters}){}",
+        r.name,
+        completion_description(&exits, r.fault_contract == Some(true))
+    )
 }
 fn trait_members(
     text: &str,

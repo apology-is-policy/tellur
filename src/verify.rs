@@ -223,6 +223,12 @@ impl Verifier<'_> {
                     }
                 }
                 Action::Emit(e) => same(&self.expr(e)?, "String")?,
+                Action::Fault(e) => {
+                    if !self.region.faults {
+                        return Err(error("fault without control permission"));
+                    }
+                    same(&self.expr(e)?, "String")?;
+                }
                 Action::Exit(name, args) => self.args(
                     args,
                     &self
@@ -329,6 +335,9 @@ impl Verifier<'_> {
                                 .program
                                 .region(name)
                                 .ok_or_else(|| error("unknown callee"))?;
+                            if r.faults && !self.region.faults {
+                                return Err(error("faulting call without control permission"));
+                            }
                             self.args(
                                 args,
                                 &r.parameters

@@ -176,5 +176,14 @@
       "}"
     ],
     "description": "Keep a continuing path and directly exit a payload-free alternative"
+  },
+  "Fault-only control": {
+    "prefix": "control_fault",
+    "body": [
+      "control ${1:fail}(string reason) faults {",
+      "    fault reason;",
+      "}"
+    ],
+    "description": "A control with no normal completion"
   }
 }

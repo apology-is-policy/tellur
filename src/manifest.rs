@@ -49,6 +49,8 @@ pub enum TypeDef {
     Opaque {
         name: String,
         linear: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        fault: Option<FaultDisposition>,
     },
     Variant {
         name: String,
@@ -62,6 +64,13 @@ pub enum TypeDef {
         name: String,
         fields: Vec<Field>,
     },
+}
+/// A trusted retained-owner contract. This authorizes destruction on a source
+/// fault; it does not claim that the resource's normal completion succeeded.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FaultDisposition {
+    Release,
 }
 impl TypeDef {
     pub fn name(&self) -> &str {
@@ -430,6 +439,35 @@ impl Manifest {
             _ => vec![],
         }
     }
+    /// Normal outcome-handling obligations end with the boundary. Actual owned
+    /// resources inside any possible alternative still need a fault disposition.
+    pub(crate) fn permits_fault(&self, name: &str) -> bool {
+        if reference_inner(name).is_some() || !self.linear(name) {
+            return true;
+        }
+        if let Some(inner) = option_inner(name) {
+            return self.permits_fault(inner);
+        }
+        if let Some(c) = crate::collection_support::Collection::parse(name) {
+            return c.types().iter().all(|t| self.permits_fault(t));
+        }
+        match self.type_def(name) {
+            Some(TypeDef::Opaque {
+                fault: Some(FaultDisposition::Release),
+                ..
+            }) => true,
+            Some(TypeDef::Record { fields, .. }) => {
+                fields.iter().all(|f| self.permits_fault(&f.ty))
+            }
+            Some(TypeDef::Variant { constructors, .. } | TypeDef::Outcome { constructors, .. }) => {
+                constructors
+                    .iter()
+                    .flat_map(|o| &o.fields)
+                    .all(|f| self.permits_fault(&f.ty))
+            }
+            _ => false,
+        }
+    }
     pub fn record_field(&self, ty: &str, name: &str) -> Option<(usize, &Field)> {
         match self.type_def(ty) {
             Some(TypeDef::Record { fields, .. }) => {
@@ -600,6 +638,22 @@ impl Manifest {
         }
         let mut names = BTreeSet::new();
         for ty in &self.types {
+            if let TypeDef::Opaque {
+                name,
+                linear,
+                fault: Some(_),
+                ..
+            } = ty
+                && (!linear
+                    || !self
+                        .rust
+                        .as_ref()
+                        .is_some_and(|r| r.resources.contains_key(name)))
+            {
+                return Err(error(format!(
+                    "fault release for `{name}` requires an opaque linear type mapped to a retained Rust owner"
+                )));
+            }
             let specialization = spans.contains_key(ty.name())
                 && crate::collection_support::generic(ty.name()).is_some_and(|(base, args)| {
                     identifier(base)

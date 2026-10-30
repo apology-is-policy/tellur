@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.61.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.62.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -1977,3 +1977,74 @@ Evidence: `work/tellur-0.61-validation.json`, `tellur-0.61-tests.log`,
 `tellur-0.61-install.log`, `tellur-0.61-installed-integrity.log` and
 `tellur-0.61-backup.log`. The verified source snapshot is
 `work/revision-backups/tellur-0.61-source.tar.gz`.
+
+## 0.62 — Source faults and transitive permissions
+
+P6b implements one diagnostic fault channel. `fault expression;` requires a string
+and terminates the current execution boundary; ordinary controls cannot catch or
+resume it. Flat delta arms also accept direct fault termination. A fault-only
+control omits `exits`: `control fail(string reason) faults { fault reason; }`.
+Private controls infer transitive permission, while public and trait contracts must
+permit `faults`. Implementations inherit the trait permission; generic definitions
+check it before specialization. Fault-only calls terminate their selected histories
+and cannot be captured as completed outcomes.
+
+The checker examines resources still owned after argument transfer at every fault
+and potentially faulting call. Callers' retained owners remain relevant. A callee
+can complete a transferred resource before faulting; that does not authorize a
+separate resource retained by its caller. Opaque linear types mapped to retained
+Rust owners may explicitly declare `"fault": "release"`. This permits ordinary
+host destruction on a source fault, without relaxing normal completion obligations.
+Records, options and sum payloads preserve contained-resource requirements. Normal
+outcome-handling obligations over ordinary data end with the boundary.
+
+Reference and native execution keep source faults separate from normal outcomes,
+process status mappings and returned executor errors. Source reports add
+`kind: "source_fault"`; earlier returned-error JSON remains readable and unchanged.
+The bounded report retains source/activation context. The reference failure API
+also exposes prior events, and finite scenario comparison observes full fault
+messages and those events separately from permission equality. Fuel/driver failures
+remain inconclusive for comparison.
+
+Expansion and certificates retain fault termination and reject forged normal exits
+or erased permissions. Tail extraction infers a private helper's permission and
+rechecks public contracts. Structural protocols have distinct fault terminals and
+residual `faulted`/`can_fault` fields; normal completion fields keep their meaning.
+Public snapshots expose control permission and resource disposition. LSP declaration
+and `auto` hover, Outline, unsaved diagnostics, TextMate highlighting and a fault-only
+snippet reflect the same syntax. `playground/source_faults.tellur` is a runnable
+normal/fault comparison; the reference and active roadmap are updated.
+
+Limits remain explicit: no fault-valued inline-adapter leaves, generic fault-release
+capability bound, custom fallible fault cleanup, local catch, isolated requests,
+activation-owned storage, recursion or
+async execution. Source permission does not promise immunity from executor limits,
+foreign panics or process termination. Existing returned-error teardown remains its
+previous behavior. Retained-owner release is a trusted adapter contract, not a proof
+of cleanup success or destructor ordering. P6c activation storage is next.
+
+Validation: **904 distinct Rust tests** pass in the full offline all-target suite,
+including source faults, retained-owner destruction, certificates, imports, generics,
+traits, original/expanded native O0/O2 execution and the live settings HTTP service.
+A final 105-test LSP/source-fault/manual run covers inferred `auto` hover and the
+finished reference. Clippy passes with warnings denied; Rust formatting is clean.
+All **65 maintained sources** check. The manual checks **60 accepted examples,
+22 expected diagnostics, 14 contextual fragments and 210 local links**. Both new
+fault-layout fixtures remain idempotent at widths 40, 100 and 240. The settings
+contract/contributor baseline remains equal without truncation.
+
+All **36 Node tests** and the full real VS Code suite pass, including unsaved fault
+permission diagnostics/repair, inferred hover and fault-only native Build and Run.
+The final CLI comparison wording is separately checked against a permission-only
+contract change. Reference CLI ordinary/expanded faults and native normal/fault
+execution preserve their JSON/status behavior. Compiler/LSP report **0.62.0**;
+all nine packaged and installed payloads match staging. The extension was installed
+without reloading the author's open windows.
+
+Evidence: `work/tellur-0.62-validation.json`, `tellur-0.62-tests.log`,
+`tellur-0.62-final-regressions.log`, `tellur-0.62-clippy-final.log`,
+`tellur-0.62-examples.log`, `tellur-0.62-format.log`, `tellur-0.62-settings-diff.log`,
+`tellur-0.62-node.log`, `tellur-0.62-editor.log`, `tellur-0.62-cli.log`,
+`tellur-0.62-build-final.log`, `tellur-0.62-versions.log`,
+`tellur-0.62-package-integrity.log` and `tellur-0.62-installed-integrity.log`.
+The verified source snapshot is `work/revision-backups/tellur-0.62-source.tar.gz`.

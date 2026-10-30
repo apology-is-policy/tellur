@@ -565,6 +565,21 @@ pub(crate) fn lower(
             expected.push(method);
         }
         for mut method in i.methods.clone() {
+            let permission = d
+                .methods
+                .iter()
+                .find(|m| m.name == method.name)
+                .unwrap()
+                .fault_contract
+                .unwrap_or(false);
+            if method.fault_contract == Some(true) && !permission {
+                return Err(Diagnostic::new(
+                    "E_FAULT_CONTRACT",
+                    method.span,
+                    "implementation cannot add faults to a trait control that does not permit them",
+                ));
+            }
+            method.fault_contract = Some(permission);
             method.name = format!("{trait_name}<{target}>.{}", method.name);
             method.public = public;
             crate::generic_controls::rewrite_region(&mut method, &bindings);
@@ -807,6 +822,7 @@ pub(crate) fn abstract_witness(
         manifest.types.push(manifest::TypeDef::Opaque {
             name: name.clone(),
             linear: !capabilities.drop,
+            fault: None,
         });
         unit.trait_types
             .insert(format!("{trait_name}<{target}>.{}", a.name), name.clone());

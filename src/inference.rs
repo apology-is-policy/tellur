@@ -156,6 +156,7 @@ pub(crate) fn dependency_order(
             Statement::Bind(_, _, e, _)
             | Statement::Drop(e)
             | Statement::Emit(e)
+            | Statement::Fault(e)
             | Statement::Delta(_, e, _) => expr(e, calls, manifest),
             Statement::Assign(a, b) => {
                 expr(a, calls, manifest);

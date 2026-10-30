@@ -530,3 +530,73 @@ fn retained_file_example_runs_live_and_scripted_failure_paths() {
         assert_eq!(actual["events"].as_array().unwrap().len(), 3);
     }
 }
+
+#[test]
+fn explicit_fault_release_checks_ownership_and_releases_real_retained_owners() {
+    let f = Fixture::new();
+    fs::write(f.root.join("host.rs"), RESOURCE_HOST).unwrap();
+    let mut config = resource_config();
+    config["types"][0]["fault"] = json!("release");
+    let m = f.manifest(&config);
+    for source in [
+        "control main(counter owned) faults {fault \"broken\";}",
+        "struct box {counter owned;}control main(box owned) faults {fault \"broken\";}",
+        "outcome result {ready {counter owned},missing}control main(result value) faults {fault \"broken\";}",
+        "control main(option<counter> owned) faults {fault \"broken\";}",
+        "control stop(ref counter input) faults {fault \"broken\";}control main(counter owned) faults {stop(borrow owned);}",
+    ] {
+        compile(source, m.clone()).unwrap();
+    }
+    assert_eq!(
+        compile(
+            "control main(counter owned) exits done {exit done;}",
+            m.clone()
+        )
+        .unwrap_err()
+        .code,
+        "E_RESOURCE"
+    );
+    let source = "control stop(counter child) faults {fault \"broken\";}control main(string path) faults {delta make(borrow path) {made {counter parent}=>first} [first]:delta make(borrow path) {made {counter child}=>second} [second]:stop(child);}";
+    assert_eq!(
+        compile(source, f.manifest(&resource_config()))
+            .unwrap_err()
+            .code,
+        "E_FAULT_RESOURCE"
+    );
+    let p = compile(source, m).unwrap();
+    for expanded in [false, true] {
+        let p = if expanded {
+            p.expanded("main").unwrap()
+        } else {
+            p.clone()
+        };
+        let binary = f.root.join(format!("source-fault-{expanded}"));
+        // No normal outcomes means no process-outcome mapping is needed.
+        p.build_native("main", &binary, 2).unwrap();
+        let log = f.root.join(format!("source-fault-drops-{expanded}"));
+        let result = Command::new(&binary)
+            .args(["--json", "--"])
+            .arg(&log)
+            .output()
+            .unwrap();
+        assert_eq!(result.status.code(), Some(1));
+        assert!(result.stdout.is_empty());
+        let report: tellur::fault::Report = serde_json::from_slice(&result.stderr).unwrap();
+        assert_eq!(report.kind, tellur::fault::Kind::SourceFault);
+        assert_eq!(fs::read_to_string(log).unwrap(), "drop 7\ndrop 7\n");
+    }
+    for invalid in ["no_rust", "not_linear", "no_owner"] {
+        let mut value = config.clone();
+        match invalid {
+            "no_rust" => {
+                value.as_object_mut().unwrap().remove("rust");
+            }
+            "not_linear" => value["types"][0]["linear"] = json!(false),
+            _ => value["rust"]["resources"] = json!({}),
+        }
+        assert!(
+            Manifest::from_json_at(&value.to_string(), &f.root.join("manifest.json")).is_err(),
+            "{invalid}"
+        );
+    }
+}

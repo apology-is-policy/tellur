@@ -514,6 +514,9 @@ control main() exits done { exit done; }
 | `E_LEX`, `E_LITERAL`, `E_PARSE` | Tokens, supported escapes/literals, delimiters and required semicolons |
 | `E_NAME`, `E_SHADOW`, `E_REDEFINE` | Name resolution, duplicate names, disjoint definitions and forbidden outer-value shadowing |
 | `E_UNCOVERED`, `E_TERMINATED`, `E_EMPTY` | Missing completion, overlapping work after exit, or an empty structural selection |
+| `E_FAULT_CONTRACT` | A public or trait control needs explicit source-fault permission |
+| `E_FAULT_RESOURCE` | A still-owned resource needs an explicit fault disposition before this faulting path or call |
+| `E_FAULT` | Observed source-fault termination at runtime, not a normal outcome |
 | `E_MUTABILITY` | Immutable binding assignment or insufficient reference authority |
 | `E_ORIGIN` | Origin schema, result mapping or declared input dependency |
 | `E_TRAIT`, `E_COHERENCE`, `E_VISIBILITY` | Contract conformance, implementation identity/ownership, module privacy |

@@ -402,8 +402,23 @@ pub fn extract_tail(
     }
     output.push('\n');
     let helper_line = output.lines().count() + 1;
+    let contract = format!(
+        "{}{}",
+        if checked.exits.is_empty() {
+            String::new()
+        } else {
+            format!(" exits {contract}")
+        },
+        // A private helper infers its own permission from the extracted tail.
+        // Fault-only syntax needs the marker because there is no exits clause.
+        if checked.exits.is_empty() {
+            " faults"
+        } else {
+            ""
+        }
+    );
     output.push_str(&format!(
-        "control {helper}({}) exits {contract} {{\n{locals}{}}}\n",
+        "control {helper}({}){contract} {{\n{locals}{}}}\n",
         params.join(", "),
         &source[start..end]
     ));
@@ -429,6 +444,7 @@ pub fn extract_tail(
             .eq(after.parameters.iter().map(|p| (&p.name, &p.ty)));
         if !parameters_equal
             || before.exits != after.exits
+            || before.faults != after.faults
             || before.borrow_returns != after.borrow_returns
             || before.stored_returns != after.stored_returns
         {

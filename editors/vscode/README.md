@@ -637,3 +637,7 @@ There is no local catch/recovery, source `fault` keyword, isolated task or async
 execution yet. Normal host teardown is distinct from a resource's declared completion
 protocol. See [execution failures](https://github.com/apology-is-policy/tellur/blob/main/docs/reference/execution-failures.md)
 and the [activation plan](https://github.com/apology-is-policy/tellur/blob/main/docs/faults-and-activations.md).
+
+Source faults (0.62): `fault`/`faults` are highlighted; declaration hover and Outline
+show inferred permissions. Public/trait fault contracts and retained-resource
+dispositions are checked in unsaved buffers. A fault-only control omits `exits`.

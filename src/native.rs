@@ -166,6 +166,13 @@ impl Generator<'_> {
                 Action::Emit(e) => {
                     let _ = writeln!(self.code, "host.emit({})?;", expression(e));
                 }
+                Action::Fault(e) => {
+                    let _ = writeln!(
+                        self.code,
+                        "let message = {}; return host.fault(message);",
+                        expression(e)
+                    );
+                }
                 Action::Exit(name, args) => {
                     let _ = writeln!(self.code, "let fields = {};", expressions(args));
                     for id in &self.slots {

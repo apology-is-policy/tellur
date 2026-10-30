@@ -86,9 +86,11 @@ fn rewrite_statement(s: &mut Statement, b: &BTreeMap<String, String>) {
             }
             rewrite_outcome(e, b);
         }
-        Statement::Forward(e) | Statement::Invoke(e) | Statement::Drop(e) | Statement::Emit(e) => {
-            rewrite_expr(e, b)
-        }
+        Statement::Forward(e)
+        | Statement::Invoke(e)
+        | Statement::Drop(e)
+        | Statement::Emit(e)
+        | Statement::Fault(e) => rewrite_expr(e, b),
         Statement::Assign(a, c) => {
             rewrite_expr(a, b);
             rewrite_expr(c, b);
@@ -236,9 +238,11 @@ fn statement_calls(s: &Statement, at: Span, v: &mut Visit<'_>) -> Result<()> {
             }
             outcome_calls(e, v)?;
         }
-        Statement::Forward(e) | Statement::Invoke(e) | Statement::Drop(e) | Statement::Emit(e) => {
-            expr_calls(e, at, v)?
-        }
+        Statement::Forward(e)
+        | Statement::Invoke(e)
+        | Statement::Drop(e)
+        | Statement::Emit(e)
+        | Statement::Fault(e) => expr_calls(e, at, v)?,
         Statement::Assign(a, b) => {
             expr_calls(a, at, v)?;
             expr_calls(b, at, v)?;
@@ -579,6 +583,7 @@ pub(crate) fn compile(
             symbolic_manifest.types.push(TypeDef::Opaque {
                 name: name.clone(),
                 linear: !capabilities.drop,
+                fault: None,
             });
             for bound in &template.type_bounds[p] {
                 if !["copy", "clone", "drop"].contains(&bound.as_str()) {
@@ -670,6 +675,7 @@ pub(crate) fn compile(
             }
         }
         result.generic_controls.push(ir::GenericControl {
+            faults: region.faults,
             name: template.name.clone(),
             type_parameters: template.type_parameters.clone(),
             type_bounds: template.type_bounds.clone(),

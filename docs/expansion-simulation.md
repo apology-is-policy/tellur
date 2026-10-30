@@ -121,6 +121,23 @@ and atoms introduced by expanded calls inside the loop. Thus one iteration canno
 reuse a private decision fact from an earlier iteration. The loop target map
 preserves the structured control transfer admitted by the current language.
 
+## Source-fault extension (0.62)
+
+The checker now also establishes fault permission and disposition requirements for
+live resources. A copied `Fault` instruction evaluates the substituted message and
+terminates the whole invocation; expansion never rewrites it to the normal `Complete`
+join. Under the expression lemma, the diagnostic message and preceding event prefix
+agree. No caller continuation or normal outcome follows. Certificates check that the
+instruction and enclosing fault permission are retained; mutation tests reject their
+erasure or replacement by a normal exit. Native tests also exercise ordinary retained
+owner teardown before and after expansion.
+
+This extends the finite reference-observation argument. It does not prove externally
+observable destructor ordering, cleanup success or isolation: Rust destruction is a
+trusted host contract, and actual activation stacks/source sites can differ under
+expansion. Activation-owned storage and richer cleanup protocols need their own
+preservation argument. The earlier assumptions above remain limits of this draft.
+
 ## Finite execution and divergence
 
 The local cases suggest a weak simulation: one source step may match several silent

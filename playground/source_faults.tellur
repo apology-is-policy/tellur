@@ -1,0 +1,19 @@
+// A domain outcome completes normally. A fault terminates the whole invocation.
+pub outcome completion {
+    @exit 0 done
+}
+
+control fail(string reason) faults {
+    fault reason;
+}
+
+pub control main(bool valid) exits completion faults {
+    emit("checking the invariant");
+    delta valid {
+        true => accepted,
+        false => broken
+    }
+
+    [accepted]: exit done;
+    [broken]: fail("the required invariant does not hold");
+}

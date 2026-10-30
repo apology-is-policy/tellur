@@ -340,7 +340,8 @@ impl Specializer<'_> {
             Statement::Forward(e)
             | Statement::Invoke(e)
             | Statement::Drop(e)
-            | Statement::Emit(e) => self.expr(e, at)?,
+            | Statement::Emit(e)
+            | Statement::Fault(e) => self.expr(e, at)?,
             Statement::Bind(_, ty, e, _) | Statement::Capture(_, ty, e, _) => {
                 if let Some(ty) = ty {
                     self.require(ty, at, 0)?;

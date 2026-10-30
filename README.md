@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.61.0** implements the v0.1 checked core and the current language
+Compiler release **0.62.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -16,6 +16,12 @@ a reference interpreter, graph expansion, native compiler, language server, and
 VS Code build/run commands. The [revision plan](docs/language-revision.md) separates
 delivered features from the remaining reference, slice, outcome-expression and async work. The language is still
 fluid; this is an experimental implementation, not a production compiler.
+
+Release 0.62 adds [source faults](docs/reference/execution-failures.md):
+`fault "reason";` terminates an invocation, public and trait contracts declare
+`faults`, and private controls infer it. Fault-only controls omit `exits`.
+Live must-complete resources need explicit fault dispositions. Try
+`./bin/tellurc exec playground/source_faults.tellur -- --json -- false`.
 
 Release 0.61 adopts the author's server layout in the [formatter](docs/reference/formatting.md):
 short label dispositions remain inline, and long lists and conditions wrap at a
@@ -84,7 +90,7 @@ Release 0.60 starts [faults and activation boundaries](docs/faults-and-activatio
 returned execution failures now identify the actual control invocations and source
 sites in reference/native reports. Try `playground/execution_faults.tellur` with
 `--fuel 40`. The [reference](docs/reference/execution-failures.md) distinguishes
-boundary failure, resource teardown and normal outcomes; source fault syntax and
+boundary failure, resource teardown and normal outcomes. Source fault syntax is available in 0.62;
 isolated tasks remain subsequent work.
 
 The [semantic foundation](docs/semantic-foundation.md) distinguishes compatibility,

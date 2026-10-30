@@ -129,6 +129,7 @@ pub enum Statement {
     Assign(Expr, Expr),
     Drop(Expr),
     Emit(Expr),
+    Fault(Expr),
     Exit(String, Vec<Expr>),
     ExitOutcome(OutcomeExpr),
     BindOutcome(String, Option<String>, OutcomeExpr, bool),
@@ -158,6 +159,8 @@ pub struct Region {
     /// Compiler-only lexical type bindings of a specialized control.
     pub type_bindings: std::collections::BTreeMap<String, String>,
     pub public: bool,
+    /// None infers a private control's permission; public/trait contracts are explicit.
+    pub fault_contract: Option<bool>,
     pub span: Span,
     pub end: Span,
     pub name_span: Span,
@@ -622,14 +625,17 @@ impl Parser {
         }
         let parameters = self.fields()?;
         let contract_start = self.pos;
-        self.need("exits")?;
-        let infer_exits = self.eat("auto");
+        let fault_only = modern && self.at("faults");
+        if !fault_only {
+            self.need("exits")?;
+        }
+        let infer_exits = !fault_only && self.eat("auto");
         let mut exits = vec![];
         let mut infer_payloads = std::collections::BTreeSet::new();
         let mut return_origins = std::collections::BTreeMap::new();
         let mut exit_contract = None;
         let mut exit_origins = vec![];
-        if !infer_exits {
+        if !infer_exits && !fault_only {
             let wrapped = self.eat("{");
             let mut bare = true;
             loop {
@@ -669,6 +675,7 @@ impl Parser {
                             if self.at(",")
                                 || self.at("{")
                                 || self.at(";")
+                                || (modern && self.at("faults"))
                                 || (wrapped && self.at("}")) =>
                         {
                             bare = false;
@@ -704,7 +711,16 @@ impl Parser {
         if !exit_origins.is_empty() && exit_contract.is_none() {
             return Err(self.error("origin arguments require a named exit contract"));
         }
-        self.layout.contracts.push((contract_start, self.pos));
+        let fault_contract = if modern && self.eat("faults") {
+            Some(true)
+        } else if public || signature {
+            Some(false)
+        } else {
+            None
+        };
+        if !fault_only {
+            self.layout.contracts.push((contract_start, self.pos));
+        }
         let body = if signature {
             self.need(";")?;
             vec![]
@@ -718,6 +734,7 @@ impl Parser {
             type_bounds,
             type_bindings: Default::default(),
             public,
+            fault_contract,
             span,
             end: self.tokens[self.pos - 1].span,
             name_span,
@@ -1214,6 +1231,8 @@ impl Parser {
             if self.at("forward") && !self.tokens.get(self.pos + 1).is_some_and(|t| t.is("(")) {
                 self.pos += 1;
                 Statement::Forward(self.expr(0)?)
+            } else if self.eat("fault") {
+                Statement::Fault(self.expr(0)?)
             } else if self.eat("drop") {
                 if !self.at("(") {
                     return Err(self.error("drop arguments use parentheses"));
@@ -1364,15 +1383,19 @@ impl Parser {
                     }
                     self.need("=>")?;
                     // Keep an existing path named `exit` valid at the arm boundary.
-                    let termination = if self.at("exit")
+                    let termination = if (self.at("exit") || (modern && self.at("fault")))
                         && !self
                             .tokens
                             .get(self.pos + 1)
                             .is_some_and(|t| t.is(",") || t.is(end))
                     {
                         let at = self.here();
-                        self.pos += 1;
-                        let value = self.exit_value()?;
+                        let value = if self.eat("fault") {
+                            Statement::Fault(self.expr(0)?)
+                        } else {
+                            self.need("exit")?;
+                            self.exit_value()?
+                        };
                         self.selection_site(at, at, SelectionKind::Statement);
                         Some(Box::new((at, value)))
                     } else {

@@ -149,6 +149,7 @@ impl Boundary<'_> {
             Action::Assign(p, e) => Action::Assign(place(p, &m.slots), sub(e)),
             Action::Drop(e) => Action::Drop(sub(e)),
             Action::Emit(e) => Action::Emit(sub(e)),
+            Action::Fault(e) => Action::Fault(sub(e)),
             Action::Release(ids) => Action::Release(ids.iter().map(|id| m.slots[id]).collect()),
             Action::Decide {
                 operation,

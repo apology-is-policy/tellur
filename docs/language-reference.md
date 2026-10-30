@@ -1,8 +1,8 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.61.0 -->
+<!-- tellur-reference-version: 0.62.0 -->
 
-This manual describes **compiler 0.61.0**, including the current ownership model,
+This manual describes **compiler 0.62.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -39,7 +39,7 @@ The companion chapters provide quick lookup:
 - [Public contract snapshots](reference/contract-snapshots.md): portable checked interfaces, reviewable diffs and the editor JSON view.
 - [Outcome absorption](reference/outcome-absorption.md): internal contributors and changes hidden by an unchanged public contract.
 - [Explanations](reference/explanations.md): source-position histories and targeted outcome contributors, including private controls.
-- [Execution failures](reference/execution-failures.md): observed activation reports, boundary termination and resource-disposition limits.
+- [Execution failures](reference/execution-failures.md): `fault`/`faults`, public permissions, explicit resource dispositions and activation reports.
 - [Glossary](reference/glossary.md): precise meanings of Tellur's terminology.
 
 ## Contents
@@ -2642,7 +2642,7 @@ It does not yet provide general expression or call-site type hover.
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and async tasks remain planned; they are not executable features of 0.61.0.
+and async tasks remain planned; they are not executable features of 0.62.0.
 ## Compare supplied scenarios
 
 ```sh
@@ -2651,11 +2651,11 @@ and async tasks remain planned; they are not executable features of 0.61.0.
 ```
 
 The scenario file is a JSON array. The report lists checked entries, observed
-agreement, declared outcome-shape equality and counterexamples. Replace
+agreement, declared outcome-shape equality, fault-permission equality and counterexamples. Replace
 `identity.tellur` with `reordered.tellur` to observe changed event order. The command
 returns nonzero for a mismatch or an inconclusive error. Matching inputs and
-reachable type layouts are required. Runtime failures and budget exhaustion are
-inconclusive. Passing cases establish agreement only for those cases, not general
+reachable type layouts are required. Source faults compare their full messages and
+preceding events. Other runtime failures and budget exhaustion are inconclusive. Passing cases establish agreement only for those cases, not general
 equivalence, refinement or termination.
 
 ## Validate expansion

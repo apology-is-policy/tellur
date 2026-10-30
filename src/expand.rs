@@ -150,6 +150,7 @@ impl Expander<'_> {
             Action::Drop(e) => Action::Drop(expr(e, s)),
             Action::Release(ids) => Action::Release(ids.iter().map(|id| s[id]).collect()),
             Action::Emit(e) => Action::Emit(expr(e, s)),
+            Action::Fault(e) => Action::Fault(expr(e, s)),
             Action::Decide {
                 operation,
                 args,
