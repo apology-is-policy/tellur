@@ -1,7 +1,7 @@
 const vscode = require('vscode');
 const fs = require('node:fs');
 const path = require('node:path');
-const { LanguageClient } = require('vscode-languageclient/node');
+const { LanguageClient, DocumentFormattingRequest } = require('vscode-languageclient/node');
 const { configuration } = require('./configuration.cjs');
 const { registerBuildCommands } = require('./build.cjs');
 let client;
@@ -29,6 +29,23 @@ async function start(context) {
     documentSelector: ['tellur', 'path'].flatMap(language => ['file', 'untitled'].map(scheme => ({ language, scheme }))),
     initializationOptions: { manifestPath: configuration(vscode).get('manifestPath', '') },
     synchronize: { fileEvents: watcher },
+    middleware: {
+      async provideDocumentFormattingEdits(document, options, token) {
+        const maxLineLength = configuration(vscode, document.uri).get('formatWidth', 100);
+        // The client's standard option converter drops extension-specific keys.
+        // Send the width explicitly while retaining its document synchronization,
+        // cancellation, edit conversion and request-error handling.
+        try {
+          const edits = await next.sendRequest(DocumentFormattingRequest.type, {
+            textDocument: next.code2ProtocolConverter.asTextDocumentIdentifier(document),
+            options: { tabSize: options.tabSize, insertSpaces: options.insertSpaces, maxLineLength },
+          }, token);
+          return token.isCancellationRequested ? null : next.protocol2CodeConverter.asTextEdits(edits, token);
+        } catch (error) {
+          return next.handleFailedRequest(DocumentFormattingRequest.type, token, error, null);
+        }
+      },
+    },
   });
   client = next;
   try { await next.start(); }

@@ -176,6 +176,7 @@ fn formatting_uses_current_buffer_options_and_utf16_document_extent() {
     let options = tellur::format::Options {
         tab_size: 2,
         insert_spaces: true,
+        ..Default::default()
     };
     let edits = f.server.formatting(&f.uri, options);
     assert_eq!(
@@ -729,6 +730,26 @@ fn protocol_initialize_diagnostics_unknown_method_and_shutdown() {
         (10, json!({"tabSize": 4, "insertSpaces": true}), false),
         (11, json!({"tabSize": 0, "insertSpaces": true}), true),
         (12, json!({"tabSize": 4}), true),
+        (
+            40,
+            json!({"tabSize": 4, "insertSpaces": true, "maxLineLength": 60}),
+            false,
+        ),
+        (
+            41,
+            json!({"tabSize": 4, "insertSpaces": true, "maxLineLength": 39}),
+            true,
+        ),
+        (
+            42,
+            json!({"tabSize": 4, "insertSpaces": true, "maxLineLength": 241}),
+            true,
+        ),
+        (
+            43,
+            json!({"tabSize": 4, "insertSpaces": true, "maxLineLength": "60"}),
+            true,
+        ),
     ] {
         client
             .sender

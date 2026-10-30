@@ -1141,21 +1141,23 @@ fn request(server: &Server, request: Request) -> Response {
             request.params["textDocument"]["uri"].as_str(),
             request.params["options"]["tabSize"].as_u64(),
             request.params["options"]["insertSpaces"].as_bool(),
+            request.params["options"].get("maxLineLength").map_or(Some(100), Value::as_u64),
         ) {
-            (Some(uri), Some(tab_size @ 1..=16), Some(insert_spaces)) => Response::new_ok(
+            (Some(uri), Some(tab_size @ 1..=16), Some(insert_spaces), Some(max_width @ 40..=240)) => Response::new_ok(
                 request.id,
                 server.formatting(
                     uri,
                     crate::format::Options {
                         tab_size: tab_size as usize,
                         insert_spaces,
+                        max_width: max_width as usize,
                     },
                 ),
             ),
             _ => Response::new_err(
                 request.id,
                 -32602,
-                "formatting needs a document URI, tabSize from 1 through 16, and insertSpaces"
+                "formatting needs a document URI, tabSize from 1 through 16, insertSpaces, and optional maxLineLength from 40 through 240"
                     .into(),
             ),
         },

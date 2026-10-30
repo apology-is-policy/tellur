@@ -133,11 +133,18 @@ existing baseline.
 
 ## Checkpoints and decision points
 
+The author chose one source-fault channel carrying a diagnostic message. P6b will
+spell explicit termination `fault "reason";` and add a separate `faults` permission
+to public and trait control signatures, for example
+`control check(...) exits valid, invalid faults { ... }`. Private controls infer
+and propagate that permission. These are agreed future syntax, not executable
+constructs in compiler 0.61. Named typed fault categories are deferred.
+
 1. **P6a, compiler 0.60:** record this boundary policy, audit current teardown,
    report existing returned execution failures, and track observed activations in
    both executors. Keep normal outcomes/status mappings unchanged.
 2. **P6b:** explicit invariant-failure termination and transitive fault visibility.
-   Decide public fault-contract spelling and payload limits; enforce the agreed
+   Implement the agreed `fault`/`faults` spelling and settle payload limits; enforce the agreed
    explicit resource fault dispositions at faulting paths and calls. No-fault annotations and
    faulting arithmetic/indexing sugar are separate decisions.
 3. **P6c:** activation-owned storage and reference addresses, with repeated/nested

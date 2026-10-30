@@ -621,6 +621,7 @@ impl Parser {
             return Err(self.error("control parameters use parentheses"));
         }
         let parameters = self.fields()?;
+        let contract_start = self.pos;
         self.need("exits")?;
         let infer_exits = self.eat("auto");
         let mut exits = vec![];
@@ -703,6 +704,7 @@ impl Parser {
         if !exit_origins.is_empty() && exit_contract.is_none() {
             return Err(self.error("origin arguments require a named exit contract"));
         }
+        self.layout.contracts.push((contract_start, self.pos));
         let body = if signature {
             self.need(";")?;
             vec![]
@@ -929,6 +931,7 @@ impl Parser {
         Ok(args)
     }
     fn expr(&mut self, level: u8) -> Result<Expr> {
+        let token_start = self.pos;
         let start = self.here();
         if level == 3 {
             if self.eat("borrow") || self.eat("&") {
@@ -971,6 +974,9 @@ impl Parser {
             let right = self.expr(level + 1)?;
             left = ExprKind::Binary(op, Box::new(left), Box::new(right)).at(self.range_from(start));
             used = true;
+        }
+        if level == 0 {
+            self.layout.conditions.push((token_start, self.pos));
         }
         Ok(left)
     }
@@ -1144,7 +1150,9 @@ impl Parser {
                 } else {
                     outcome.rsplit('.').next().unwrap().into()
                 };
+                let result_start = self.pos;
                 let result = self.outcome_expr()?;
+                self.layout.arm_results.push((result_start, self.pos));
                 self.selection_site(arm_span, arm_span, SelectionKind::Arm);
                 arms.push(InlineArm {
                     span: arm_span,
@@ -1472,6 +1480,9 @@ impl Parser {
                         self.layout.starts.insert(self.pos);
                         let span = self.here();
                         statements.push((span, self.statement()?));
+                        if statements.len() == 1 {
+                            self.layout.label_statements.push((indent_start, self.pos));
+                        }
                     }
                     if statements.is_empty() {
                         return Err(self.error("empty guarded item"));

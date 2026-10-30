@@ -1,7 +1,7 @@
 # Tellur language revision: controls, values, outcomes, and tasks
 
 30 October 2026. This is the working revision plan, not a claim that all proposed
-features are implemented. Compiler **0.60.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
+features are implemented. Compiler **0.61.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
 lifetime checkpoints of milestone 2, the array/vector/map core of milestone 3,
 and implicit entry, inline/stored adapters, owned capture, named outcome contracts
 and checked forwarding in milestone 4. A first [semantic foundation](semantic-foundation.md)
@@ -28,6 +28,10 @@ runtime failure reports. Next is explicit fault termination and transitive visib
 followed by activation storage and checked isolation. See [the fault/activation plan](faults-and-activations.md).
 Keep using this application as a maintained example;
 further reference expansion remains driven by application evidence.
+
+Release 0.61 refines P4a using the author's server layout: inline label dispositions,
+automatic width-based list/condition wrapping, consistent nested-adapter indentation
+and matching CLI/editor width options. P6b remains the next language checkpoint.
 
 Release 0.47 starts P2 structured output: versioned JSON check reports, explicit
 point encodings, related locations and typed structural witnesses in CLI/LSP.
@@ -146,7 +150,7 @@ unimplemented syntax are promised.
 | I1b.1 | Retained host resource foundation | **Delivered in 0.49**: opaque must-complete Rust owners, direct shared/consuming calls, explicit resource return on retry, checked runtime identities, teardown fallback and live/scripted/editor evidence |
 | I1b.2 | Broader Rust reuse | Application-driven follow-up: richer data boundaries, exclusive foreign mutation and dependency/package ergonomics; stable binary ABI and LTO remain later layers |
 | P3 | Readable path labels and direct dispositions | **Grouping/layout in 0.53; direct exits in 0.54; selected-history hover in 0.55**: resolved selectors, aliases, local arm facts, one-iteration loop context, bounded origins and fresh unsaved checking. The planned P3 slice is complete; multi-statement arm syntax remains separate |
-| P4 | Explain, format and contract changes | **P4a delivered in 0.56:** whole-document CLI/editor formatting preserving labels, grouping, comments and literals. **P4b.1 delivered in 0.57:** checked public snapshots/diffs, symbolic permissions, editor export and an application baseline. **P4b.2 delivered in 0.58:** typed bounded contributor evidence, separate public/evidence diffs, source sites, editor export and an application baseline. **P4c delivered in 0.59:** source-position and targeted outcome queries, private roots, readable Markdown/structured JSON and editor actions. This planned tooling slice is complete; loop-carried/indirect/cross-call payload lineage and generic root evidence remain explicit follow-ups. All reports distinguish structural evidence from feasible inputs |
+| P4 | Explain, format and contract changes | **P4a delivered in 0.56:** whole-document CLI/editor formatting preserving labels, grouping, comments and literals; 0.61 adds configurable wrapping and the author’s inline-label style. **P4b.1 delivered in 0.57:** checked public snapshots/diffs, symbolic permissions, editor export and an application baseline. **P4b.2 delivered in 0.58:** typed bounded contributor evidence, separate public/evidence diffs, source sites, editor export and an application baseline. **P4c delivered in 0.59:** source-position and targeted outcome queries, private roots, readable Markdown/structured JSON and editor actions. This planned tooling slice is complete; loop-carried/indirect/cross-call payload lineage and generic root evidence remain explicit follow-ups. All reports distinguish structural evidence from feasible inputs |
 | P5a | Sustained application: persistent CLI | **Delivered in 0.45**: settings load/get/set, validation, strict JSON, bounded input/output, replacement uncertainty and live/scripted failure scenarios |
 | P5a.1 | Executable outcome status contracts | **Delivered in 0.48**: alternative annotations, exhaustive entry mappings, final-contract policy, exact exec status propagation, and settings/editor migration |
 | P5b.1 | Sustained application: blocking HTTP | **Delivered in 0.50**: loopback settings/lookup/update endpoints, Tellur policy, retained listeners/connections, framing/size/deadline limits, budget/idle shutdown and live/scripted cleanup evidence |
@@ -214,8 +218,9 @@ The author's `applications/settings/server.tellur` layout, included in 0.60, kee
 labels inside the enclosing control/loop indentation, expands long signatures and
 decisions over multiple lines, and separates decisions from their final path
 dispositions with blank lines. Preserve this application example as a concrete
-readability reference for further formatter refinements. The 0.60 formatter itself
-has not changed to reproduce every aspect of that layout.
+readability reference for further formatter refinements. The 0.61 formatter follows
+these conventions and adds configurable width wrapping; it preserves tokens and
+comments rather than reproducing arbitrary column alignment.
 
 Direct arm termination, such as `missing => exit absent`, removes names for histories
 that immediately finish. It does not require replacing `[path]:` labels with braces.

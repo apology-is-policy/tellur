@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.60.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.61.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -1921,3 +1921,59 @@ Evidence: `work/tellur-0.60-validation.json`, `tellur-0.60-tests.log`,
 `tellur-0.60-package-integrity.log`, `tellur-0.60-install.log`,
 `tellur-0.60-installed-integrity.log` and `tellur-0.60-backup.log`.
 The verified source snapshot is `work/revision-backups/tellur-0.60-source.tar.gz`.
+
+## 0.61 — Readable wrapping and inline path dispositions
+
+The formatter adopts the author's settings-server layout. An authored first
+statement beside a path label remains inline; a standalone label keeps its selected
+statements indented below it. Long signatures, calls, payloads, collection literals,
+generic arguments and exit contracts wrap at syntax boundaries. Logical conditions
+break before `&&`/`||`. A nested adapter beginning below its arm label now retains
+the continuation indentation throughout its body. No braces, tokens, comments or
+literal bytes are added, removed or reordered.
+
+The preferred width defaults to 100 Unicode scalar columns, with tabs advancing to
+indentation tab stops. CLI `format --width N` and VS Code's resource setting
+`tellurLanguage.formatWidth` accept 40–240. The LSP option is `maxLineLength`.
+Comments and indivisible tokens may exceed the target; existing multiline lists
+stay multiline. Formatting still operates on the current unsaved editor buffer,
+needs no manifest and refuses broken syntax. It does not enable format-on-save.
+
+The settings server is formatted with the updated compiler, preserving the author's
+labels, blank-line divisions and semantic selection extent. Repository instructions
+record this convention for subsequent work. The source-fault contract decision is
+also recorded: one message-bearing channel, `fault`, and explicit public/trait
+`faults` permission with private inference. Those language features remain P6b work.
+
+Validation: **891 distinct Rust tests pass** in the full all-targets run. The final
+104-test formatter/LSP/manual run also passes after equivalent loop and formatting
+performance refinements. All **109 maintained modern and legacy sources** format
+idempotently at widths 40, 100 and 240; token/comment fingerprints and reparsing
+hold, checking is preserved at the default width, and selected execution remains
+equivalent before/after formatting and graph expansion. Invalid width settings and
+CLI combinations cannot write a file. Clippy with warnings denied and Rust
+formatting checks pass.
+
+All **64 maintained modern sources** check; the manual verifies **58 accepted
+examples, 22 expected diagnostics, 14 context fragments and 209 local links**.
+The settings library's public-contract/absorption baseline is unchanged. The full
+suite includes the formatted HTTP server's live requests and scripted cleanup
+failures, with ordinary/expanded native execution at both optimization levels.
+All **35 Node tests** pass.
+
+The complete real VS Code suite passes, including resource-scoped width changes
+from 60 to 100 without restarting, formatting the current unsaved buffer, inline
+label layout, applying edits and a second no-op format. Existing diagnostics,
+hover, contract/explanation reports, native builds, retained resources and live HTTP
+remain covered. Compiler and LSP report **0.61.0**; all nine packaged and installed
+extension payloads match final staging, with executable bits retained. Existing
+editor windows were not reloaded.
+
+Evidence: `work/tellur-0.61-validation.json`, `tellur-0.61-tests.log`,
+`tellur-0.61-final-regressions.log`, `tellur-0.61-clippy-final.log`,
+`tellur-0.61-examples.log`, `tellur-0.61-settings-diff.log`, `tellur-0.61-node.log`,
+`tellur-0.61-editor.log`, `tellur-0.61-build-final.log`, `tellur-0.61-versions.log`,
+`tellur-0.61-package.log`, `tellur-0.61-package-integrity.log`,
+`tellur-0.61-install.log`, `tellur-0.61-installed-integrity.log` and
+`tellur-0.61-backup.log`. The verified source snapshot is
+`work/revision-backups/tellur-0.61-source.tar.gz`.

@@ -200,6 +200,30 @@ exports.run = async function () {
     const typeEdits = await vscode.commands.executeCommand('vscode.executeFormatDocumentProvider', buildUri, { tabSize: 4, insertSpaces: false });
     assert.ok(previewEdits(buildDocument, typeEdits)?.includes('\n\tu32 wrong = "text";'));
     console.log(`TELLUR_FORMAT_EDITOR_TESTS_PASSED: ${formattingMode}, unsaved edits, spaces/tabs, labels/groups, Unicode, comments, idempotence, syntax refusal and type errors`);
+    const widthConfig = vscode.workspace.getConfiguration('tellurLanguage', buildUri);
+    const oldWidth = widthConfig.inspect('formatWidth')?.workspaceValue;
+    try {
+      const wrappingSource = 'control main(string first_name,string second_name,bool available) exits done {delta available{true=>ready,false=>missing}[ready]:emit(concat(first_name,second_name));exit done;[missing]:exit done;}';
+      await replace(buildDocument, wrappingSource);
+      await widthConfig.update('formatWidth', 60, vscode.ConfigurationTarget.Workspace);
+      const narrowEdits = await vscode.commands.executeCommand('vscode.executeFormatDocumentProvider', buildUri, { tabSize: 4, insertSpaces: true });
+      const narrow = previewEdits(buildDocument, narrowEdits);
+      assert.ok(narrow.includes('control main(\n    string first_name,\n    string second_name,\n    bool available\n)'));
+      assert.ok(narrow.includes('[missing]: exit done;'));
+      assert.ok(narrow.split('\n').every(line => [...line].length <= 60));
+      await widthConfig.update('formatWidth', 100, vscode.ConfigurationTarget.Workspace);
+      const wideEdits = await vscode.commands.executeCommand('vscode.executeFormatDocumentProvider', buildUri, { tabSize: 4, insertSpaces: true });
+      assert.ok(previewEdits(buildDocument, wideEdits).includes('control main(string first_name, string second_name, bool available) exits done {'));
+      await widthConfig.update('formatWidth', 60, vscode.ConfigurationTarget.Workspace);
+      await vscode.window.showTextDocument(buildDocument);
+      await formatActiveDocument(buildDocument);
+      assert.equal(buildDocument.getText(), narrow);
+      assert.ok(buildDocument.isDirty);
+      assert.equal((await vscode.commands.executeCommand('vscode.executeFormatDocumentProvider', buildUri, { tabSize: 4, insertSpaces: true }))?.length ?? 0, 0);
+      console.log('TELLUR_WRAP_EDITOR_TESTS_PASSED: resource width setting, unsaved buffer, real formatting edits, inline labels and idempotence');
+    } finally {
+      await widthConfig.update('formatWidth', oldWidth, vscode.ConfigurationTarget.Workspace);
+    }
     const snapshotSource = 'pub struct record {string hidden;pub u32 id;}pub control number() exits ready {u32 value} {exit ready {7};}';
     await replace(buildDocument, snapshotSource);
     await vscode.window.showTextDocument(buildDocument);

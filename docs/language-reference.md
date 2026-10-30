@@ -1,8 +1,8 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.60.0 -->
+<!-- tellur-reference-version: 0.61.0 -->
 
-This manual describes **compiler 0.60.0**, including the current ownership model,
+This manual describes **compiler 0.61.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -147,6 +147,8 @@ contract; Outline also shows inferred contracts. Diagnostics use unsaved source.
 
 Use **Format Document** to format the current buffer with your editor's indentation
 settings. The formatter preserves labels, optional braces, comments and literals.
+Long lists and conditions wrap at a default 100-column target. Set
+`tellurLanguage.formatWidth` in VS Code or pass `--width N` to the CLI to change it.
 From the terminal, `./bin/tellurc format SOURCE` previews formatted text;
 `--write` updates the file and `--check` checks its layout without writing.
 See [formatting](reference/formatting.md) for exact behavior and limits.
@@ -2640,7 +2642,7 @@ It does not yet provide general expression or call-site type hover.
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and async tasks remain planned; they are not executable features of 0.60.0.
+and async tasks remain planned; they are not executable features of 0.61.0.
 ## Compare supplied scenarios
 
 ```sh

@@ -22,7 +22,7 @@ fn labels_groups_and_nested_adapters_have_distinct_layout() {
     let source = "control main(bool flag) exits done {delta flag{true=>yes,false=>exit done}[yes]:{emit(\"selected\");[entry]:emit(\"still selected\");}path resumed=entry;[resumed]:exit delta operation(){done=>[observed]:delta other(){done=>done{}}};}";
     assert_eq!(
         formatted(source),
-        "control main(bool flag) exits done {\n    delta flag {\n        true => yes,\n        false => exit done\n    }\n    [yes]: {\n        emit(\"selected\");\n        [entry]:\n            emit(\"still selected\");\n    }\n    path resumed = entry;\n    [resumed]:\n        exit delta operation() {\n            done => [observed]: delta other() {\n                done => done {}\n            }\n        };\n}\n"
+        "control main(bool flag) exits done {\n    delta flag {\n        true => yes,\n        false => exit done\n    }\n    [yes]: {\n        emit(\"selected\");\n        [entry]: emit(\"still selected\");\n    }\n    path resumed = entry;\n    [resumed]: exit delta operation() {\n        done => [observed]: delta other() {\n            done => done {}\n        }\n    };\n}\n"
     );
 }
 
@@ -80,10 +80,7 @@ fn generics_comparisons_origins_annotations_and_legacy_spellings() {
         assert!(result.contains(part), "missing {part}: {result}");
     }
     let legacy = "region main() exits { Done } { [Entry]: site = Δ (1 < 2) -> [ True => Yes, False => No ]; [Yes | No]: exit Done; }";
-    assert!(
-        formatted(legacy)
-            .contains("-> [\n            True => Yes,\n            False => No\n        ];")
-    );
+    assert!(formatted(legacy).contains("-> [\n        True => Yes,\n        False => No\n    ];"));
     // Failed type speculation must not turn comparison angles into generic angles.
     assert!(formatted("control main() exits done {bool test=a<b;exit done;}").contains("a < b"));
     assert!(formatted("control main() exits done {bool test=a>b;exit done;}").contains("a > b"));
@@ -99,6 +96,7 @@ fn tabs_blank_lines_and_comments_in_empty_groups_are_stable() {
     let options = Options {
         tab_size: 2,
         insert_spaces: false,
+        ..Options::default()
     };
     let text = format::source(source, options).unwrap();
     assert_eq!(
@@ -134,7 +132,7 @@ fn authored_wrapping_and_comments_inside_headers_and_payloads_are_retained() {
     let result = formatted(source);
     assert_eq!(
         result,
-        "control main(\n    ref string input, // source\n    bool flag)\n    exits found {\n    ref string value from input\n}, missing {\n    exit found { // payload\n        input\n    };\n}\n"
+        "control main(\n    ref string input, // source\n    bool flag\n)\n    exits found {\n        ref string value from input\n    },\n    missing\n{\n    exit found { // payload\n        input\n    };\n}\n"
     );
     assert!(
         formatted("control main() exits done {vector<\nu32\n> values=[\n1,\n2\n];exit done;}")
@@ -158,6 +156,19 @@ fn every_maintained_source_is_parseable_and_idempotent_after_formatting() {
                 .is_some_and(|e| e == "tellur" || e == "path")
             {
                 let source = fs::read_to_string(&path).unwrap();
+                for max_width in [40, 240] {
+                    let options = Options {
+                        max_width,
+                        ..Default::default()
+                    };
+                    let result = format::source(&source, options).unwrap();
+                    assert_eq!(
+                        result,
+                        format::source(&result, options).unwrap(),
+                        "{} at width {max_width}",
+                        path.display()
+                    );
+                }
                 let result = format::source(&source, Options::default())
                     .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
                 assert_eq!(
@@ -276,6 +287,16 @@ fn cli_stdout_check_write_and_syntax_errors_need_no_manifest() {
     assert!(!run(&["--check"]).status.success());
     assert_eq!(fs::read_to_string(&path).unwrap(), original);
     assert!(!run(&["--write", "--check"]).status.success());
+    for flags in [
+        vec!["--write", "--width", "39"],
+        vec!["--width", "241", "--write"],
+        vec!["--width"],
+        vec!["--width", "60", "--width", "80"],
+    ] {
+        assert!(!run(&flags).status.success());
+        assert_eq!(fs::read_to_string(&path).unwrap(), original);
+    }
+    assert!(run(&["--width", "60"]).status.success());
     assert!(run(&["--write"]).status.success());
     assert_eq!(fs::read_to_string(&path).unwrap(), formatted(original));
     assert!(run(&["--check"]).status.success());
@@ -283,4 +304,73 @@ fn cli_stdout_check_write_and_syntax_errors_need_no_manifest() {
     assert!(!run(&["--write"]).status.success());
     assert_eq!(fs::read_to_string(&path).unwrap(), "control broken(");
     fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn width_wraps_signatures_conditions_calls_and_payloads_with_stable_label_layout() {
+    let source = "control summarize(string first_name,string second_name,bool first_available,bool second_available) exits ready {string first,string second},missing {delta (first_available && second_available) {true=>present,false=>absent}[present]:exit ready {concat(first_name,\" first\"),concat(second_name,\" second\")};[absent]:exit missing;}";
+    for max_width in [40, 60, 80, 100, 240] {
+        let options = Options {
+            max_width,
+            ..Default::default()
+        };
+        let text = format::source(source, options).unwrap();
+        assert_eq!(text, format::source(&text, options).unwrap());
+        assert!(text.contains("[absent]: exit missing;"), "{text}");
+        assert!(text.contains("[present]: exit ready {"), "{text}");
+        assert!(
+            text.lines().all(|line| line.chars().count() <= max_width),
+            "width {max_width}: {text}"
+        );
+        if max_width < 100 {
+            assert!(text.contains("\n    string first_name,"), "{text}");
+        }
+    }
+    let source = "control main(bool first_condition,bool second_condition,bool third_condition) exits done {bool available=first_condition && second_condition || third_condition;exit done;}";
+    let options = Options {
+        max_width: 60,
+        ..Default::default()
+    };
+    let text = format::source(source, options).unwrap();
+    assert!(
+        text.contains("\n        && second_condition\n        || third_condition;"),
+        "{text}"
+    );
+    assert_eq!(text, format::source(&text, options).unwrap());
+}
+
+#[test]
+fn user_server_style_keeps_labels_and_indents_nested_adapter_bodies() {
+    let source = include_str!("../applications/settings/server.tellur");
+    let result = formatted(source);
+    assert!(result.contains("    [invalid]: exit invalid_configuration;"));
+    assert!(result.contains("    [listening]:\n        emit("));
+    assert!(result.contains("\n    [sent & closed]: exit served;"));
+    assert!(
+        result.contains(
+            "\n                sent => sent {},\n                failed { string message }"
+        )
+    );
+    assert!(result.contains("\n        u32 status,\n        string body,"));
+    assert!(result.lines().all(|line| line.chars().count() <= 100));
+}
+
+#[test]
+fn width_is_soft_for_literals_comments_and_accounts_for_tabs_and_unicode() {
+    let literal = "😀".repeat(90);
+    let source = format!(
+        "control main(string first_name,string second_name) exits done {{// {}\nemit(\"{}\");exit done;}}",
+        "comment ".repeat(30),
+        literal
+    );
+    let options = Options {
+        max_width: 40,
+        tab_size: 4,
+        insert_spaces: false,
+    };
+    let result = format::source(&source, options).unwrap();
+    assert!(result.contains(&format!("\"{literal}\"")));
+    assert!(result.contains(&format!("// {}", "comment ".repeat(30))));
+    assert!(result.contains("\n\tstring first_name,\n\tstring second_name\n)"));
+    assert_eq!(result, format::source(&result, options).unwrap());
 }

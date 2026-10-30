@@ -2,7 +2,7 @@
   "name": "tellur-language",
   "displayName": "Tellur Language (Experimental)",
   "description": "Tellur controls, inline adapters, owned outcomes, diagnostics and native build/run",
-  "version": "0.60.0",
+  "version": "0.61.0",
   "publisher": "tellur-language-local",
   "license": "Apache-2.0",
   "engines": {
@@ -199,6 +199,14 @@
           "default": false,
           "description": "Optimize native programs with LLVM at level 2.",
           "deprecationMessage": "Use tellurLanguage.releaseBuild instead."
+        },
+        "tellurLanguage.formatWidth": {
+          "type": "integer",
+          "default": 100,
+          "minimum": 40,
+          "maximum": 240,
+          "scope": "resource",
+          "description": "Preferred line width for Tellur formatting. Long lists and conditions wrap at syntax boundaries; comments and literals are preserved."
         }
       }
     },

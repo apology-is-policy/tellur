@@ -86,7 +86,7 @@ Declaration hover shows checked control contracts. **Format Document** formats t
 current buffer while preserving labels, explicit groups, comments and literals.
 Completion, rename and cross-file references are not implemented.
 
-## Formatting (0.56)
+## Formatting (0.61)
 
 Use VS Code's **Format Document** command or editor context menu. The server uses
 the current unsaved source and your indentation preference (spaces/tabs, width
@@ -94,11 +94,18 @@ the current unsaved source and your indentation preference (spaces/tabs, width
 despite type errors or missing imports. Broken syntax produces no formatting edit;
 repair the syntax diagnostic first. Formatting does not save the document.
 
-Flat labels stay distinct, with selected statements indented beneath them. The
+Set `tellurLanguage.formatWidth` to a preferred width from 40 through 240 (default
+100). It applies to the current document without restarting the server. Long
+signatures, calls, payloads and outcome lists wrap automatically; conditions put
+`&&` and `||` at the start of continuation lines. Width is a soft target measured
+in Unicode scalar columns; comments and literals may exceed it.
+
+Flat labels stay distinct. Short authored inline dispositions remain beside their
+labels; statements beneath a standalone label are indented. The
 formatter preserves every explicit brace, comment and literal, including multiline
-strings, and retains authored wrapping in headers and payloads. It does not add
+strings, and retains multiline headers and payloads. It does not add
 braces, sort imports or enable format-on-save. Range formatting, on-type formatting
-and automatic width-based wrapping remain future work. If another formatter is
+and comment reflow remain future work. If another formatter is
 active, use **Format Document With…** to select Tellur.
 
 ## Public contract snapshots (0.57)

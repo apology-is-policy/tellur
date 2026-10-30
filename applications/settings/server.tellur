@@ -16,12 +16,13 @@ pub control start(
     u32 idle_ms
 ) exits service_result {
     delta (port <= 65535
-            && max_connections > 0
-            && max_connections <= 1000000
-            && idle_ms > 0
-            && idle_ms <= 60000
-          ) {
-        true => valid, false => invalid
+        && max_connections > 0
+        && max_connections <= 1000000
+        && idle_ms > 0
+        && idle_ms <= 60000
+    ) {
+        true => valid,
+        false => invalid
     }
     [invalid]: exit invalid_configuration;
     [valid]: delta http_listen(port) {
@@ -31,7 +32,13 @@ pub control start(
     [unavailable]: exit failed { listen_message };
     [listening]:
         emit(concat("http://", clone(borrow authority)));
-        auto result = capture run(path, borrow listener, borrow authority, max_connections, idle_ms);
+        auto result = capture run(
+            path,
+            borrow listener,
+            borrow authority,
+            max_connections,
+            idle_ms
+        );
         http_listener_release(listener);
         exit delta result {
             completed => completed {},
@@ -117,7 +124,8 @@ control exchange(
     exit delta prepare(path, authority, connection) {
         prepared { u32 status, string body, string media, string allow } => [prepared]:
             delta http_send(connection, status, borrow body, borrow media, borrow allow) {
-                sent => sent {}, failed { string message } => failed { message }
+                sent => sent {},
+                failed { string message } => failed { message }
             },
         disconnected => disconnected {},
         failed { string message } => failed { message }
@@ -129,26 +137,66 @@ control prepare(
     ref string authority,
     ref http_connection connection
 ) exits prepared {
-            u32 status,
-            string body,
-            string media,
-            string allow
-        },
-        disconnected,
-        failed { string message }
+        u32 status,
+        string body,
+        string media,
+        string allow
+    },
+    disconnected,
+    failed { string message }
 {
     exit delta http_receive(connection) {
-        request { string method, string target, map<string, string> headers, string body } => [received]:
+        request {
+            string method,
+            string target,
+            map<string, string> headers,
+            string body
+        } => [received]:
             delta http.route(path, authority, method, target, headers, body) {
-                json { u32 status, string content } => prepared { status, content, "application/json", "" },
-                text { u32 status, string content } => prepared { status, content, "text/plain; charset=utf-8", "" },
-                method_not_allowed { string allow } => prepared { 405, "Method not allowed", "text/plain; charset=utf-8", allow }
+                json { u32 status, string content } => prepared {
+                    status,
+                    content,
+                    "application/json",
+                    ""
+                },
+                text { u32 status, string content } => prepared {
+                    status,
+                    content,
+                    "text/plain; charset=utf-8",
+                    ""
+                },
+                method_not_allowed { string allow } => prepared {
+                    405,
+                    "Method not allowed",
+                    "text/plain; charset=utf-8",
+                    allow
+                }
             },
         malformed { string message } => prepared { 400, message, "text/plain; charset=utf-8", "" },
-        headers_too_large => prepared { 431, "Request headers too large", "text/plain; charset=utf-8", "" },
-        body_too_large => prepared { 413, "Request body exceeds 1 MiB", "text/plain; charset=utf-8", "" },
-        unsupported_transfer => prepared { 501, "Transfer-Encoding is unsupported", "text/plain; charset=utf-8", "" },
-        unsupported_expectation => prepared { 417, "Expect is unsupported", "text/plain; charset=utf-8", "" },
+        headers_too_large => prepared {
+            431,
+            "Request headers too large",
+            "text/plain; charset=utf-8",
+            ""
+        },
+        body_too_large => prepared {
+            413,
+            "Request body exceeds 1 MiB",
+            "text/plain; charset=utf-8",
+            ""
+        },
+        unsupported_transfer => prepared {
+            501,
+            "Transfer-Encoding is unsupported",
+            "text/plain; charset=utf-8",
+            ""
+        },
+        unsupported_expectation => prepared {
+            417,
+            "Expect is unsupported",
+            "text/plain; charset=utf-8",
+            ""
+        },
         timed_out => prepared { 408, "Request deadline exceeded", "text/plain; charset=utf-8", "" },
         disconnected => disconnected {},
         failed { string message } => failed { message }
