@@ -52,6 +52,11 @@ impl CheckedProgram {
         let region = self
             .region(entry)
             .ok_or_else(|| error(format!("unknown executable entry `{entry}`")))?;
+        if region.boundary.is_some() || region.contingency {
+            return Err(error(
+                "boundaries are entered using supervise, not as executable controls",
+            ));
+        }
         if region.parameters.iter().any(|p| p.ty.starts_with('&')) {
             return Err(error(format!(
                 "executable entry `{entry}` cannot require borrowed arguments"

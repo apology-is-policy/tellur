@@ -600,3 +600,55 @@ fn explicit_fault_release_checks_ownership_and_releases_real_retained_owners() {
         );
     }
 }
+
+#[test]
+fn contingency_handover_releases_child_locals_and_preserves_parent_resources() {
+    let f = Fixture::new();
+    let host=RESOURCE_HOST.replace("pub fn close(value:Counter,fail:bool)->rust_api::close_outcome {drop(value);", "pub fn close(value:Counter,fail:bool)->rust_api::close_outcome {use std::io::Write;writeln!(std::fs::OpenOptions::new().append(true).create(true).open(&value.path).unwrap(),\"close\").unwrap();drop(value);");
+    fs::write(f.root.join("host.rs"), host).unwrap();
+    let mut config = resource_config();
+    config["types"][0]["fault"] = json!("release");
+    config["primitives"][1]["contingent"] = json!(true);
+    config["primitives"][3]["contingent"] = json!(true);
+    let source = r#"
+    boundary child(counter retained, string path) retains retained {
+        delta make(borrow path) {made {counter local}=>ready}
+        [ready]:fault "request broke";
+    } contingency(string reason) {
+        delta inspect(borrow retained,borrow retained) {number {u32 value}=>ready}
+        [ready]:emit("resource alive");
+        delta close(retained,false) {closed=>closed,failed=>failed}
+        [closed|failed]:terminate;
+    }
+    control main(string path) exits done {
+        delta make(borrow path) {made {counter parent}=>parent_ready}
+        [parent_ready]:delta make(borrow path) {made {counter retained}=>child_ready}
+        [child_ready]:supervise child(retained,clone(borrow path));
+        delta inspect(borrow parent,borrow parent) {number {u32 value}=>observed}
+        [observed]:emit("resource alive");
+        delta close(parent,false) {closed=>closed,failed=>failed}
+        [closed|failed]:exit done;
+    }"#;
+    let p = compile(source, f.manifest(&config)).unwrap();
+    let binary = f.root.join("contingency");
+    support::scenario_executable(&p)
+        .build_native("main", &binary, 2)
+        .unwrap();
+    let log = f.root.join("drops");
+    let output = Command::new(binary)
+        .args(["--json", "--"])
+        .arg(&log)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let result: Json = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(result["outcome"], "done");
+    assert_eq!(
+        fs::read_to_string(log).unwrap(),
+        "drop 7\nclose\ndrop 7\nclose\ndrop 7\n"
+    );
+}

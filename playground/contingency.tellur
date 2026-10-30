@@ -1,0 +1,32 @@
+@contingent
+control report(string reason) exits done {
+    emit(reason);
+    exit done;
+}
+
+boundary request(bool broken, string context) retains context {
+    delta broken {
+        true => failed,
+        false => healthy
+    }
+
+    [failed]: fault "request invariant failed";
+    [healthy]:
+        emit(context);
+        terminate;
+}
+contingency(string reason) {
+    emit(context);
+    report(reason);
+    terminate;
+}
+
+outcome program_result {
+    @exit 0 done
+}
+
+control main() exits program_result {
+    supervise request(true, "first request");
+    supervise request(false, "second request");
+    exit done;
+}

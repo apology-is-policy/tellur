@@ -49,6 +49,10 @@ pub struct Field {
 #[serde(deny_unknown_fields)]
 pub struct Control {
     #[serde(default, skip_serializing_if = "crate::ir::is_false")]
+    pub contingent: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retains: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "crate::ir::is_false")]
     pub faults: bool,
     pub profile: Profile,
     pub type_parameters: Vec<String>,
@@ -341,7 +345,13 @@ impl Builder<'_> {
             Exits::Inline { alternatives }
         };
         Control {
-            faults: region.fault_contract.unwrap_or(false),
+            contingent: region.contingent_contract == Some(true),
+            retains: region.boundary.as_ref().map(|b| b.retained.clone()),
+            faults: region
+                .boundary
+                .as_ref()
+                .map_or(region.fault_contract, |b| b.faults)
+                .unwrap_or(false),
             profile: if region.modern {
                 Profile::Control
             } else {

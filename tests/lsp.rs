@@ -2531,3 +2531,35 @@ fn source_fault_hover_outline_and_unsaved_permissions() {
     );
     assert_eq!(f.diagnostics(), json!([]));
 }
+
+#[test]
+fn boundary_and_contingent_hovers_follow_unsaved_contracts() {
+    let mut f = Fixture::new();
+    let source = "@contingent\npub control report(string reason) exits done {emit(reason);exit done;}\nboundary request() {fault \"broken\";}\ncontingency(string reason) {report(reason);terminate;}\ncontrol main() exits done {supervise request();exit done;}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let hover = f.server.hover(&f.uri, 2, 10);
+    assert!(
+        hover["contents"]["value"]
+            .as_str()
+            .unwrap()
+            .contains("supervise")
+    );
+    let hover = f.server.hover(&f.uri, 1, 13);
+    assert!(
+        hover["contents"]["value"]
+            .as_str()
+            .unwrap()
+            .contains("@contingent")
+    );
+    assert!(
+        f.server
+            .symbols(&f.uri)
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|s| !s["name"].as_str().unwrap().contains('$'))
+    );
+    f.change(&source.replace("@contingent\n", ""), 2);
+    assert_eq!(f.diagnostics()[0]["code"], "E_CONTINGENT");
+}

@@ -633,11 +633,26 @@ second worker invocation exhausting its budget. The report goes to stderr and th
 program returns 1; it does not invent a declared outcome. Clear these arguments
 when returning to other programs.
 
-There is no local catch/recovery, source `fault` keyword, isolated task or async
-execution yet. Normal host teardown is distinct from a resource's declared completion
+There is no local catch-and-resume or async execution. Source faults and synchronous
+request boundaries are described below. Normal host teardown is distinct from a resource's declared completion
 protocol. See [execution failures](https://github.com/apology-is-policy/tellur/blob/main/docs/reference/execution-failures.md)
 and the [activation plan](https://github.com/apology-is-policy/tellur/blob/main/docs/faults-and-activations.md).
 
 Source faults (0.62): `fault`/`faults` are highlighted; declaration hover and Outline
 show inferred permissions. Public/trait fault contracts and retained-resource
 dispositions are checked in unsaved buffers. A fault-only control omits `exits`.
+
+
+## Contingency and boundaries (0.63)
+
+`@contingent`, `boundary`, `retains`, `contingency`, `supervise`, `terminate` and
+`escalate` are highlighted. Boundary declarations hover with supervision and
+retained-owner contracts; eligible controls expose their contingent permission.
+Unsaved diagnostics check transitive call permission, retained-resource availability
+and illegal ordinary calls to boundaries. Snippets `boundary` and
+`control_contingent` provide starting points.
+
+Try `playground/contingency.tellur` with entry `main` and no program arguments. It
+handles one source fault, then runs another request. The updated settings server
+uses the same mechanism for per-request isolation. Faults never become ordinary
+outcomes. See [the full reference](https://github.com/apology-is-policy/tellur/blob/main/docs/reference/contingency.md).

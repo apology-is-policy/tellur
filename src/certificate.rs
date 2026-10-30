@@ -101,6 +101,12 @@ impl Boundary<'_> {
         let m = self.map;
         let sub = |e: &Expr| substitute(e, &m.slots);
         let action = match &i.action {
+            Action::Supervise { boundary, args } => Action::Supervise {
+                boundary: boundary.clone(),
+                args: args.iter().map(|e| sub(e)).collect(),
+            },
+            Action::Terminate => Action::Terminate,
+            Action::Escalate => Action::Escalate,
             Action::Exit(name, args) => {
                 let arm = self
                     .arms

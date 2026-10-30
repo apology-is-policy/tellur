@@ -22,6 +22,10 @@ struct Access {
 }
 #[derive(Clone)]
 struct Signature {
+    contingent: bool,
+    boundary: bool,
+    contingency: bool,
+    supervision_faults: bool,
     faults: bool,
     contributors: BTreeMap<String, Vec<Contributor>>,
     stored_returns: Vec<StoredReturn>,
@@ -137,6 +141,7 @@ struct LoopContext {
     scope: usize,
 }
 struct Checker<'a> {
+    contingent_contract: Option<bool>,
     fault_contract: Option<bool>,
     selected_histories: Vec<crate::history::SelectedHistory>,
     selection_facts: BTreeMap<Id, crate::history::Fact>,
@@ -1151,6 +1156,10 @@ impl Checker<'_> {
                 )
             })?;
             return Ok(Some(Signature {
+                contingent: true,
+                boundary: false,
+                contingency: false,
+                supervision_faults: false,
                 faults: false,
                 contributors: BTreeMap::new(),
                 stored_returns: vec![],
@@ -1853,8 +1862,33 @@ impl Checker<'_> {
                 "this control may fault; its public or trait contract must permit `faults`",
             ));
         }
+        if let Some(boundary) = &self.result.boundary {
+            for id in &boundary.retained {
+                let binding = self.scopes[0]
+                    .values
+                    .values()
+                    .find(|b| b.slot.id == *id)
+                    .unwrap();
+                let missing = binding
+                    .moved
+                    .values()
+                    .fold(FALSE, |missing, moved| self.bdd.or(missing, *moved));
+                let missing = self.bdd.and(domain, missing);
+                if missing != FALSE {
+                    return Err(self.fail_domain("E_BOUNDARY_RETAIN", span, "a retained parameter has been moved before a possible fault; its contingency requires the whole value", missing));
+                }
+            }
+        }
         for scope in &self.scopes {
             for binding in scope.values.values() {
+                if self
+                    .result
+                    .boundary
+                    .as_ref()
+                    .is_some_and(|b| b.retained.contains(&binding.slot.id))
+                {
+                    continue;
+                }
                 for (path, owned) in &binding.owned {
                     let live = self.bdd.and(domain, *owned);
                     if live == FALSE {
@@ -1876,6 +1910,15 @@ impl Checker<'_> {
             }
         }
         self.result.faults = true;
+        Ok(())
+    }
+    fn contingent_call(&mut self, permitted: bool, span: Span) -> Result<()> {
+        if !permitted {
+            if self.contingent_contract == Some(true) {
+                return Err(self.error("E_CONTINGENT", span, "contingency code may call only contingent operations; public and trait controls require @contingent"));
+            }
+            self.result.contingent = false;
+        }
         Ok(())
     }
     fn terminate_fault(&mut self, domain: Formula) {
@@ -2052,6 +2095,63 @@ impl Checker<'_> {
                     self.result.atoms.insert(id, sig.outcomes[0].name.clone());
                 }
                 self.scopes.pop();
+            }
+            Statement::Supervise(operand) => {
+                self.contingent_call(false, span)?;
+                let syntax::ExprKind::Call(name, args) = &operand.kind else {
+                    return Err(self.error(
+                        "E_BOUNDARY",
+                        span,
+                        "supervise requires a named boundary invocation",
+                    ));
+                };
+                let sig = self
+                    .signature(name, args, span)?
+                    .filter(|s| s.boundary)
+                    .ok_or_else(|| {
+                        self.error(
+                            "E_BOUNDARY",
+                            span,
+                            "supervise requires a named boundary, not an ordinary control",
+                        )
+                    })?;
+                let args = self.arguments(args, &sig.parameters, domain, span)?;
+                if sig.supervision_faults {
+                    self.fault_permission(domain, span)?;
+                }
+                self.emit(
+                    guard,
+                    Action::Supervise {
+                        boundary: name.clone(),
+                        args,
+                    },
+                    span,
+                );
+            }
+            Statement::Terminate | Statement::Escalate => {
+                if self.result.boundary.is_none() && !self.result.contingency {
+                    return Err(self.error(
+                        "E_BOUNDARY",
+                        span,
+                        "terminate belongs to a boundary or contingency",
+                    ));
+                }
+                if matches!(statement, Statement::Escalate) && !self.result.contingency {
+                    return Err(self.error(
+                        "E_BOUNDARY",
+                        span,
+                        "escalate belongs to a contingency",
+                    ));
+                }
+                self.resources(domain, span, None)?;
+                self.dead = self.bdd.or(self.dead, domain);
+                let action = if matches!(statement, Statement::Escalate) {
+                    self.fault_permission(domain, span)?;
+                    Action::Escalate
+                } else {
+                    Action::Terminate
+                };
+                self.emit(guard, action, span);
             }
             Statement::Again(name, args) => {
                 let target = self
@@ -2839,6 +2939,14 @@ impl Checker<'_> {
                 .signature(name, args, span)
                 .map_err(|e| operand.locate(e, span))?
         {
+            if sig.boundary || sig.contingency {
+                return Err(self.error(
+                    "E_BOUNDARY",
+                    span,
+                    "boundaries are entered with supervise and cannot produce ordinary outcomes",
+                ));
+            }
+            self.contingent_call(sig.contingent, span)?;
             let args = self
                 .arguments(args, &sig.parameters, domain, span)
                 .map_err(|e| operand.locate(e, span))?;
@@ -3848,6 +3956,10 @@ pub(crate) fn compile_concrete_unit(
         signatures.insert(
             p.name.clone(),
             Signature {
+                contingent: p.contingent || p.pure,
+                boundary: false,
+                contingency: false,
+                supervision_faults: false,
                 faults: false,
                 contributors: BTreeMap::new(),
                 stored_returns: vec![],
@@ -3860,6 +3972,14 @@ pub(crate) fn compile_concrete_unit(
         );
     }
     for region in &parsed {
+        if region.boundary.is_some()
+            && region
+                .parameters
+                .iter()
+                .any(|p| manifest.contains_references(&p.ty))
+        {
+            return Err(Diagnostic::new("E_BOUNDARY", region.span, "boundary inputs must own their data; borrowed inputs and stored references cannot cross an isolation boundary").into());
+        }
         contracts::public_origins(region, &origin_schemas)?;
         if signatures.contains_key(&region.name)
             || crate::collections::is_operation(&region.name)
@@ -3907,6 +4027,10 @@ pub(crate) fn compile_concrete_unit(
         signatures.insert(
             region.name.clone(),
             Signature {
+                contingent: region.contingent_contract.unwrap_or(true),
+                boundary: region.boundary.is_some(),
+                contingency: region.contingency,
+                supervision_faults: false,
                 faults: region.fault_contract.unwrap_or(false),
                 contributors: region
                     .exits
@@ -4007,6 +4131,7 @@ pub(crate) fn compile_concrete_unit(
                 crate::origins::result_type(&f.ty, &origin_schemas, &manifest, source.span)?;
             }
             let mut checker = Checker {
+                contingent_contract: source.contingent_contract,
                 fault_contract: source.fault_contract,
                 selected_histories: vec![],
                 selection_facts: BTreeMap::new(),
@@ -4033,6 +4158,9 @@ pub(crate) fn compile_concrete_unit(
                 visibility,
                 type_bindings: &source.type_bindings,
                 result: Region {
+                    contingent: source.contingent_contract.unwrap_or(true),
+                    contingency: source.contingency,
+                    boundary: None,
                     faults: source.fault_contract.unwrap_or(false),
                     stored_returns: signatures[&source.name].stored_returns.clone(),
                     borrow_returns: signatures[&source.name].borrow_returns.clone(),
@@ -4104,6 +4232,33 @@ pub(crate) fn compile_concrete_unit(
                     .parameters
                     .push(checker.result.slots[&id].clone());
             }
+            if let Some(b) = &source.boundary {
+                for p in &source.parameters {
+                    if checker.manifest.contains_references(&p.ty) {
+                        return Err(Diagnostic::new(
+                            "E_BOUNDARY",
+                            source.span,
+                            "boundary inputs must own their data; borrowed inputs and stored references cannot cross an isolation boundary",
+                        ));
+                    }
+                }
+                checker.result.boundary = Some(Boundary {
+                    handler: b.handler.clone(),
+                    retained: b
+                        .retained
+                        .iter()
+                        .map(|n| {
+                            checker
+                                .result
+                                .parameters
+                                .iter()
+                                .find(|p| &p.name == n)
+                                .unwrap()
+                                .id
+                        })
+                        .collect(),
+                });
+            }
             checker.initialize_contained_inputs(source.span)?;
             if source.abstract_signature {
                 if checker.manifest.abstract_types.is_empty() {
@@ -4168,6 +4323,11 @@ pub(crate) fn compile_concrete_unit(
             signatures.get_mut(&source.name).unwrap().contributors = contributors;
             signatures.get_mut(&source.name).unwrap().outcomes = result.exits.clone();
             signatures.get_mut(&source.name).unwrap().faults = result.faults;
+            signatures.get_mut(&source.name).unwrap().contingent = result.contingent;
+            if let Some(b) = &result.boundary {
+                signatures.get_mut(&source.name).unwrap().supervision_faults =
+                    signatures[&b.handler].faults;
+            }
             signatures.get_mut(&source.name).unwrap().borrow_returns =
                 result.borrow_returns.clone();
             signatures.get_mut(&source.name).unwrap().stored_returns =

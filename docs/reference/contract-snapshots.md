@@ -128,3 +128,10 @@ now compare bounded contributor evidence separately from the public contract. Th
 settings contract regression also changes an internal input-size limit while
 demonstrating an unchanged contract; this is intentional. Contributor comparison
 also does not compare arbitrary scalar values or predicates.
+
+Compiler 0.63 snapshots public and trait `contingent` permissions. A public
+boundary has a `retains` array (present even when empty), distinguishing lifecycle
+supervision from an ordinary control's outcome contract. Its `faults` field means
+permission for contingency escape. Internal contingency bodies are not exported.
+Changing these permissions or retained-parameter contracts appears in a structural
+diff; the report still makes no automatic compatibility verdict.

@@ -1,8 +1,8 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.62.0 -->
+<!-- tellur-reference-version: 0.63.0 -->
 
-This manual describes **compiler 0.62.0**, including the current ownership model,
+This manual describes **compiler 0.63.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -39,6 +39,7 @@ The companion chapters provide quick lookup:
 - [Public contract snapshots](reference/contract-snapshots.md): portable checked interfaces, reviewable diffs and the editor JSON view.
 - [Outcome absorption](reference/outcome-absorption.md): internal contributors and changes hidden by an unchanged public contract.
 - [Explanations](reference/explanations.md): source-position histories and targeted outcome contributors, including private controls.
+- [Contingency and boundaries](reference/contingency.md): checked contingency calls, retained owners, supervision and terminal escalation.
 - [Execution failures](reference/execution-failures.md): `fault`/`faults`, public permissions, explicit resource dispositions and activation reports.
 - [Glossary](reference/glossary.md): precise meanings of Tellur's terminology.
 
@@ -2642,7 +2643,14 @@ It does not yet provide general expression or call-site type hover.
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and async tasks remain planned; they are not executable features of 0.62.0.
+and async tasks remain planned; they are not executable features of 0.63.0.
+## Contingency and supervised boundaries
+
+The [contingency reference](reference/contingency.md) specifies `@contingent`,
+`boundary`, `retains`, `supervise`, `terminate`, `escalate`, resource handover,
+public fault escape permissions and the settings server's emergency-response protocol.
+Faults remain outside the outcome algebra.
+
 ## Compare supplied scenarios
 
 ```sh

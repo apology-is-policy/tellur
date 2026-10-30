@@ -56,6 +56,17 @@ exports.run = async function () {
   const diagnostics = () => vscode.languages.getDiagnostics(uri).filter(d => d.source === 'tellur');
   const code = d => typeof d.code === 'object' ? d.code.value : d.code;
   try {
+    const contingencySource = '@contingent\npub control report(string reason) exits done {emit(reason);exit done;}\nboundary request() {fault "broken";}\ncontingency(string reason) {report(reason);terminate;}\ncontrol main() exits done {supervise request();exit done;}';
+    await replace(document, contingencySource);
+    await waitFor(async () => {
+      const hovers = await vscode.commands.executeCommand('vscode.executeHoverProvider', uri, new vscode.Position(2, 10));
+      return diagnostics().length === 0 && hovers?.some(h => h.contents.some(c => c.value.includes('supervise')));
+    }, 'boundary supervision hover');
+    await replace(document, contingencySource.replace('@contingent\n', ''));
+    await waitFor(() => diagnostics().some(d => code(d) === 'E_CONTINGENT'), 'contingency call permission diagnostic');
+    await replace(document, contingencySource);
+    await waitFor(() => diagnostics().length === 0, 'contingency contract repair');
+    console.log('TELLUR_CONTINGENCY_EDITOR_TESTS_PASSED: boundary hover, transitive permission diagnostic and repair');
     const sourceFaultContract = 'control stop() faults {fault "broken";}\ncontrol main() exits auto {stop();}';
     await replace(document, sourceFaultContract);
     await waitFor(async () => {

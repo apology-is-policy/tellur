@@ -8,7 +8,7 @@ pub outcome response {
 }
 
 pub control route(ref string path, ref string authority, string method, string target,
-                  map<string, string> headers, string body) exits response {
+                  map<string, string> headers, string body) exits response faults {
     delta map_get(borrow headers, borrow "host") {
         found { ref string host } => host_present, missing => no_host
     }

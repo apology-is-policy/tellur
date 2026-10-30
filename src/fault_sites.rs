@@ -7,6 +7,9 @@ use crate::{
 use std::collections::BTreeMap;
 impl CheckedProgram {
     pub(crate) fn runtime_name(&self, name: &str) -> String {
+        if let Some(boundary) = name.strip_suffix("$contingency") {
+            return format!("{}::contingency", self.runtime_name(boundary));
+        }
         if let Some((application, member)) = crate::collection_support::qualified_member(name) {
             return format!("{}.{member}", self.runtime_name(application));
         }

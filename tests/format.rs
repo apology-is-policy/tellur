@@ -345,7 +345,8 @@ fn user_server_style_keeps_labels_and_indents_nested_adapter_bodies() {
     let result = formatted(source);
     assert!(result.contains("    [invalid]: exit invalid_configuration;"));
     assert!(result.contains("    [listening]:\n        emit("));
-    assert!(result.contains("\n    [sent & closed]: exit served;"));
+    assert!(result.contains("\n    [failed]: emit(message);"));
+    assert!(result.contains("\n    [entry]: terminate;"));
     assert!(
         result.contains(
             "\n                sent => sent {},\n                failed { string message }"

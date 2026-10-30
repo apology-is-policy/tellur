@@ -123,6 +123,9 @@ pub enum OutcomeExpr {
 }
 #[derive(Clone, Debug)]
 pub enum Statement {
+    Supervise(Expr),
+    Terminate,
+    Escalate,
     Forward(Expr),
     Invoke(Expr),
     Bind(String, Option<String>, Expr, bool),
@@ -150,6 +153,9 @@ pub enum Item {
 pub type TypeBounds = std::collections::BTreeMap<String, Vec<String>>;
 #[derive(Clone, Debug)]
 pub struct Region {
+    pub contingent_contract: Option<bool>,
+    pub boundary: Option<Boundary>,
+    pub contingency: bool,
     /// Explicit owner anchors, keyed by outcome and payload position.
     pub return_origins: std::collections::BTreeMap<(String, usize), String>,
     /// Compiler-only abstract witness signature; never emitted in an executable program.
@@ -174,6 +180,12 @@ pub struct Region {
     pub exit_origins: Vec<OriginArgument>,
     pub modern: bool,
     pub body: Vec<Item>,
+}
+#[derive(Clone, Debug)]
+pub struct Boundary {
+    pub handler: String,
+    pub retained: Vec<String>,
+    pub faults: Option<bool>,
 }
 #[derive(Clone, Debug)]
 pub struct OutcomeContract {
@@ -606,6 +618,15 @@ impl Parser {
         Ok(field)
     }
     fn control(&mut self, span: Span, public: bool, signature: bool) -> Result<Region> {
+        let contingent_contract = if self.eat("@") {
+            self.need("contingent")?;
+            self.layout.starts.insert(self.pos);
+            Some(true)
+        } else if public || signature {
+            Some(false)
+        } else {
+            None
+        };
         let modern = self.eat("control");
         if !modern {
             self.need("region")?;
@@ -728,6 +749,9 @@ impl Parser {
             self.body()?
         };
         Ok(Region {
+            contingent_contract,
+            boundary: None,
+            contingency: false,
             return_origins,
             abstract_signature: false,
             type_parameters,
@@ -1231,6 +1255,12 @@ impl Parser {
             if self.at("forward") && !self.tokens.get(self.pos + 1).is_some_and(|t| t.is("(")) {
                 self.pos += 1;
                 Statement::Forward(self.expr(0)?)
+            } else if self.eat("supervise") {
+                Statement::Supervise(self.expr(0)?)
+            } else if self.eat("terminate") {
+                Statement::Terminate
+            } else if self.eat("escalate") {
+                Statement::Escalate
             } else if self.eat("fault") {
                 Statement::Fault(self.expr(0)?)
             } else if self.eat("drop") {
@@ -1561,7 +1591,109 @@ pub(crate) fn parse_with_layout(source: &str) -> Result<(Unit, Vec<Token>, crate
             imports.push(Import { span, path, alias });
             continue;
         }
+        let annotated = p.at("@") && p.tokens.get(p.pos + 1).is_some_and(|t| t.is("contingent"));
+        if annotated {
+            p.pos += 2;
+            p.layout.starts.insert(p.pos);
+        }
         let public = p.eat("pub");
+        if annotated {
+            let mut control = p.control(span, public, false)?;
+            control.contingent_contract = Some(true);
+            regions.push(control);
+            continue;
+        }
+        if p.eat("boundary") {
+            let name_span = p.here();
+            let name = p.id()?;
+            let parameters = p.fields()?;
+            let mut retained = vec![];
+            if p.eat("retains") {
+                loop {
+                    let field = p.id()?;
+                    if retained.contains(&field) || !parameters.iter().any(|p| p.name == field) {
+                        return Err(p.error("retains must name distinct boundary parameters"));
+                    }
+                    retained.push(field);
+                    if !p.eat(",") {
+                        break;
+                    }
+                }
+            }
+            let faults = if p.eat("faults") {
+                Some(true)
+            } else if public {
+                Some(false)
+            } else {
+                None
+            };
+            let body = p.body()?;
+            let work_end = p.tokens[p.pos - 1].span;
+            p.layout.starts.insert(p.pos);
+            let handler_span = p.here();
+            p.need("contingency")?;
+            let reason = p.fields()?;
+            if reason.len() != 1 || reason[0].ty != "String" || retained.contains(&reason[0].name) {
+                return Err(p.error("contingency expects one string diagnostic parameter, distinct from retained names"));
+            }
+            let handler_body = p.body()?;
+            let handler_name = format!("{name}$contingency");
+            let common = Region {
+                contingent_contract: None,
+                boundary: None,
+                contingency: false,
+                return_origins: Default::default(),
+                abstract_signature: false,
+                type_parameters: vec![],
+                type_bounds: Default::default(),
+                type_bindings: Default::default(),
+                public,
+                fault_contract: None,
+                span,
+                end: work_end,
+                name_span,
+                name,
+                parameters,
+                exits: vec![],
+                infer_exits: false,
+                infer_payloads: Default::default(),
+                exit_contract: None,
+                exit_origins: vec![],
+                modern: true,
+                body,
+            };
+            let mut handler = common.clone();
+            handler.parameters = retained
+                .iter()
+                .map(|n| {
+                    common
+                        .parameters
+                        .iter()
+                        .find(|p| &p.name == n)
+                        .unwrap()
+                        .clone()
+                })
+                .chain(reason)
+                .collect();
+            handler.name = handler_name.clone();
+            handler.span = handler_span;
+            handler.name_span = handler_span;
+            handler.end = p.tokens[p.pos - 1].span;
+            handler.body = handler_body;
+            handler.public = false;
+            handler.contingency = true;
+            handler.fault_contract = faults;
+            handler.contingent_contract = Some(true);
+            let mut work = common;
+            work.boundary = Some(Boundary {
+                handler: handler_name,
+                retained,
+                faults,
+            });
+            regions.push(handler);
+            regions.push(work);
+            continue;
+        }
         if p.eat("trait") {
             let name_span = p.here();
             let name = p.id()?;

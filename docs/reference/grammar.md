@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Lexical structure](lexical-structure.md)
 
-This is a reading grammar for the modern compiler 0.62.0 profile, not a replacement
+This is a reading grammar for the modern compiler 0.63.0 profile, not a replacement
 for its type, ownership, origin or coverage rules. It omits legacy spellings and
 parser recovery details. `name`, `integer` and `string_literal` are lexical tokens.
 Quoted text denotes source tokens; `?` means optional, `*` repetition, `+` one or
@@ -14,7 +14,8 @@ comma. Empty lists are made optional at the use site.
 
 ```ebnf
 file             = declaration+ ;
-declaration      = import | public? (control | struct | variant | outcome | trait)
+declaration      = import | public? (control | boundary | struct | variant | outcome | trait)
+                 | contingent public? control
                  | implementation ;
 public           = "pub" ;
 import           = "import" string_literal "as" name ";" ;
@@ -41,7 +42,8 @@ field            = type name ;
 
 trait            = "trait" name "{" (associated_requirement | control_signature)* "}" ;
 associated_requirement = "type" name (":" bounds)? ";" ;
-control_signature = "control" name "(" trailing_list(field)? ")"
+contingent       = "@" "contingent" ;
+control_signature = contingent? "control" name "(" trailing_list(field)? ")"
                     ("exits" explicit_exits "faults"? | "faults") ";" ;
 implementation   = "implement" qualified_name "for" type
                    "{" (associated_assignment | control)* "}" ;
@@ -89,8 +91,11 @@ semantically; they are not interchangeable.
 ## Controls, bodies and paths
 
 ```ebnf
-control          = "control" name control_parameters?
+control          = contingent? "control" name control_parameters?
                    "(" trailing_list(field)? ")" ("exits" exits "faults"? | "faults") body ;
+boundary         = "boundary" name "(" trailing_list(field)? ")"
+                   ("retains" list(name))? "faults"? body
+                   "contingency" "(" "string" name ")" body ;
 exits            = "auto" | explicit_exits | inferred_exits ;
 explicit_exits   = named_type origin_mapping? | list(exit_alternative)
                  | "{" trailing_list(exit_alternative) "}" ;
@@ -129,7 +134,8 @@ alternative, with a fixed nonempty inferred payload.
 ## Statements and deltas
 
 ```ebnf
-statement        = binding | assignment | flat_delta | exit | forwarding
+statement        = "supervise" call ";" | "terminate" ";" | "escalate" ";"
+                 | binding | assignment | flat_delta | exit | forwarding
                  | "fault" expression ";" | call ";" | "emit" "(" expression ")" ";"
                  | "drop" "(" expression ")" ";"
                  | "again" name "(" trailing_list(expression)? ")" ";" ;

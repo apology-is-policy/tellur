@@ -24,6 +24,9 @@ pub struct Scenario {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum Event {
+    Fault {
+        report: Box<crate::fault::Report>,
+    },
     Primitive {
         operation: String,
         arguments: Vec<Value>,
@@ -132,10 +135,10 @@ fn place_mut<'a>(place: &Place, values: &'a mut BTreeMap<Id, Value>) -> Result<&
     }
     Ok(value)
 }
-fn evaluate(expr: &Expr, values: &mut BTreeMap<Id, Value>) -> Result<Value> {
+fn evaluate(expr: &Expr, values: &mut BTreeMap<Id, Value>, base: Id) -> Result<Value> {
     match expr {
         Expr::Length(e) => {
-            let Value::Reference { place, .. } = evaluate(e, values)? else {
+            let Value::Reference { place, .. } = evaluate(e, values, base)? else {
                 return Err(error("invalid collection length argument"));
             };
             Ok(Value::U32(
@@ -146,7 +149,7 @@ fn evaluate(expr: &Expr, values: &mut BTreeMap<Id, Value>) -> Result<Value> {
         Expr::Pure(name, args) => {
             let args = args
                 .iter()
-                .map(|e| evaluate(e, values))
+                .map(|e| evaluate(e, values, base))
                 .collect::<Result<Vec<_>>>()?;
             match (name.as_str(), args.as_slice()) {
                 ("u32_text", [Value::U32(n)]) => Ok(Value::String(n.to_string())),
@@ -158,10 +161,10 @@ fn evaluate(expr: &Expr, values: &mut BTreeMap<Id, Value>) -> Result<Value> {
         }
         Expr::Reference(place, ty) => Ok(Value::Reference {
             ty: ty.clone(),
-            place: address(place, values)?,
+            place: address(&shift(place, base), values)?,
         }),
         Expr::Move(place) => {
-            let place = address(place, values)?;
+            let place = address(&shift(place, base), values)?;
             if place.fields.is_empty() {
                 values
                     .remove(&place.root)
@@ -171,7 +174,7 @@ fn evaluate(expr: &Expr, values: &mut BTreeMap<Id, Value>) -> Result<Value> {
             }
         }
         Expr::Place(place) => {
-            let place = address(place, values)?;
+            let place = address(&shift(place, base), values)?;
             let mut value = values.get(&place.root).ok_or_else(|| {
                 error(format!(
                     "interpreter invariant: slot {} is unavailable",
@@ -189,7 +192,7 @@ fn evaluate(expr: &Expr, values: &mut BTreeMap<Id, Value>) -> Result<Value> {
             Ok(value.clone())
         }
         Expr::Project(e, field) => {
-            let Value::Construct { fields, .. } = evaluate(e, values)? else {
+            let Value::Construct { fields, .. } = evaluate(e, values, base)? else {
                 return Err(error("interpreter invariant: non-record projection"));
             };
             fields
@@ -202,13 +205,13 @@ fn evaluate(expr: &Expr, values: &mut BTreeMap<Id, Value>) -> Result<Value> {
             name: name.clone(),
             fields: fields
                 .iter()
-                .map(|e| evaluate(e, values))
+                .map(|e| evaluate(e, values, base))
                 .collect::<Result<_>>()?,
         }),
         Expr::Record(ty, initializers) => {
             let mut fields = vec![Value::Unit; initializers.len()];
             for (index, expr) in initializers {
-                let value = evaluate(expr, values)?;
+                let value = evaluate(expr, values, base)?;
                 *fields
                     .get_mut(*index)
                     .ok_or_else(|| error("interpreter invariant: invalid record initializer"))? =
@@ -220,19 +223,19 @@ fn evaluate(expr: &Expr, values: &mut BTreeMap<Id, Value>) -> Result<Value> {
                 fields,
             })
         }
-        Expr::Not(expr) => match evaluate(expr, values)? {
+        Expr::Not(expr) => match evaluate(expr, values, base)? {
             Value::Bool(b) => Ok(Value::Bool(!b)),
             _ => Err(error("interpreter invariant: ! operand")),
         },
         Expr::Binary(op, a, b) => {
-            let a = evaluate(a, values)?;
+            let a = evaluate(a, values, base)?;
             if op == "&&" && a == Value::Bool(false) {
                 return Ok(Value::Bool(false));
             }
             if op == "||" && a == Value::Bool(true) {
                 return Ok(Value::Bool(true));
             }
-            let b = evaluate(b, values)?;
+            let b = evaluate(b, values, base)?;
             let answer = match (op.as_str(), a, b) {
                 ("==", a, b) => a == b,
                 ("!=", a, b) => a != b,
@@ -248,7 +251,14 @@ fn evaluate(expr: &Expr, values: &mut BTreeMap<Id, Value>) -> Result<Value> {
         }
     }
 }
+fn shift(place: &Place, base: Id) -> Place {
+    Place {
+        root: base + place.root,
+        ..place.clone()
+    }
+}
 enum Flow {
+    Terminate,
     Exit(String, Vec<Value>),
     Again(usize, Vec<Value>),
     Complete(usize),
@@ -256,6 +266,8 @@ enum Flow {
 }
 
 struct Machine<'a> {
+    next_base: Id,
+    contingencies: Vec<Diagnostic>,
     program: &'a CheckedProgram,
     calls: &'a [ScriptCall],
     cursor: usize,
@@ -270,6 +282,7 @@ impl Machine<'_> {
         name: &str,
         args: Vec<Value>,
         values: &mut BTreeMap<Id, Value>,
+        handover: &mut Vec<Value>,
     ) -> Result<(String, Vec<Value>)> {
         let region = self
             .program
@@ -278,20 +291,40 @@ impl Machine<'_> {
         if args.len() != region.parameters.len() {
             return Err(error("wrong entry argument count"));
         }
+        let base = self.next_base;
+        self.next_base = self
+            .next_base
+            .checked_add(self.program.next_id.max(1))
+            .ok_or_else(|| error("activation storage address space exhausted"))?;
         let mut facts = BTreeSet::new();
         for (param, value) in region.parameters.iter().zip(args) {
             validate(&value, &param.ty, self.program.manifest())?;
-            values.insert(param.id, value);
+            values.insert(base + param.id, value);
         }
         self.activations
             .enter(&self.program.runtime_name(name))
             .map_err(error)?;
         self.phase = crate::fault::Phase::Execution;
-        let flow = self.execute(&region.code, values, &mut facts)?;
-        for id in region.slots.keys() {
-            values.remove(id);
+        let flow = self.execute(&region.code, values, &mut facts, base);
+        if flow.is_err() && self.activations.is_source_fault() {
+            if let Some(boundary) = &region.boundary {
+                for id in &boundary.retained {
+                    handover.push(
+                        values
+                            .remove(&(base + id))
+                            .ok_or_else(|| error("retained boundary resource is unavailable"))?,
+                    );
+                }
+            }
         }
-        match flow {
+        for id in region.slots.keys() {
+            values.remove(&(base + id));
+        }
+        match flow? {
+            Flow::Terminate => {
+                self.activations.leave();
+                Ok((String::new(), vec![]))
+            }
             Flow::Exit(outcome, fields) => {
                 self.activations.leave();
                 Ok((outcome, fields))
@@ -299,11 +332,67 @@ impl Machine<'_> {
             _ => Err(error("interpreter invariant: checked region fell through")),
         }
     }
+    fn supervise(
+        &mut self,
+        name: &str,
+        args: Vec<Value>,
+        values: &mut BTreeMap<Id, Value>,
+    ) -> Result<()> {
+        let handler = self
+            .program
+            .region(name)
+            .and_then(|r| r.boundary.as_ref())
+            .ok_or_else(|| error("invalid boundary"))?
+            .handler
+            .clone();
+        let child = self.activations.child();
+        let mut parent = std::mem::replace(&mut self.activations, child);
+        let mut retained = vec![];
+        let result = self.invoke(name, args, values, &mut retained);
+        let result = match result {
+            Err(diagnostic) if self.activations.is_source_fault() => {
+                let report = self.activations.failure(
+                    &self.program.runtime_name(name),
+                    crate::fault::Phase::Execution,
+                    &format!("{}: {}", diagnostic.code, diagnostic.message),
+                );
+                self.events.push(Event::Fault {
+                    report: Box::new(report.clone()),
+                });
+                let mut handler_tracker = self.activations.child();
+                handler_tracker.with_cause(report);
+                self.activations = handler_tracker;
+                retained.push(Value::String(diagnostic.message.clone()));
+                self.contingencies.push(diagnostic);
+                let answer = self
+                    .invoke(&handler, retained, values, &mut vec![])
+                    .map(|_| ());
+                self.contingencies.pop();
+                answer
+            }
+            other => other.map(|_| ()),
+        };
+        parent.absorb(&self.activations);
+        if let Err(diagnostic) = &result {
+            if self.activations.is_source_fault() {
+                parent.source_fault();
+            }
+            let report = self.activations.failure(
+                &self.program.runtime_name(name),
+                crate::fault::Phase::Execution,
+                &format!("{}: {}", diagnostic.code, diagnostic.message),
+            );
+            parent.with_cause(report);
+        }
+        self.activations = parent;
+        result
+    }
     fn execute(
         &mut self,
         code: &[Instruction],
         values: &mut BTreeMap<Id, Value>,
         facts: &mut BTreeSet<Id>,
+        base: Id,
     ) -> Result<Flow> {
         for instruction in code {
             self.activations.at(instruction.id);
@@ -319,11 +408,27 @@ impl Machine<'_> {
                 continue;
             }
             match &instruction.action {
+                Action::Terminate => return Ok(Flow::Terminate),
+                Action::Escalate => {
+                    self.activations.source_fault();
+                    return Err(self
+                        .contingencies
+                        .last()
+                        .cloned()
+                        .ok_or_else(|| error("escalate outside contingency"))?);
+                }
+                Action::Supervise { boundary, args } => {
+                    let args = args
+                        .iter()
+                        .map(|e| evaluate(e, values, base))
+                        .collect::<Result<Vec<_>>>()?;
+                    self.supervise(boundary, args, values)?;
+                }
                 Action::Again { target, args } => {
                     return Ok(Flow::Again(
                         *target,
                         args.iter()
-                            .map(|e| evaluate(e, values))
+                            .map(|e| evaluate(e, values, base))
                             .collect::<Result<_>>()?,
                     ));
                 }
@@ -336,19 +441,19 @@ impl Machine<'_> {
                 } => {
                     let mut arguments = parameters
                         .iter()
-                        .map(|(_, e)| evaluate(e, values))
+                        .map(|(_, e)| evaluate(e, values, base))
                         .collect::<Result<Vec<_>>>()?;
                     loop {
                         for slot in local_slots {
-                            values.remove(slot);
+                            values.remove(&(base + slot));
                         }
                         for atom in local_atoms {
                             facts.remove(atom);
                         }
                         for ((slot, _), value) in parameters.iter().zip(arguments) {
-                            values.insert(*slot, value);
+                            values.insert(base + *slot, value);
                         }
-                        match self.execute(body, values, facts)? {
+                        match self.execute(body, values, facts, base)? {
                             Flow::Again(target, next) if target == *id => arguments = next,
                             Flow::Complete(target) if target == *id => break,
                             Flow::Fallthrough => {
@@ -359,12 +464,12 @@ impl Machine<'_> {
                     }
                 }
                 Action::Bind(id, expr) => {
-                    let value = evaluate(expr, values)?;
-                    values.insert(*id, value);
+                    let value = evaluate(expr, values, base)?;
+                    values.insert(base + *id, value);
                 }
                 Action::Assign(place, expr) => {
-                    let value = evaluate(expr, values)?;
-                    let place = address(place, values)?;
+                    let value = evaluate(expr, values, base)?;
+                    let place = address(&shift(place, base), values)?;
                     if place.fields.is_empty() {
                         values.insert(place.root, value);
                     } else {
@@ -372,21 +477,21 @@ impl Machine<'_> {
                     }
                 }
                 Action::Drop(expr) => {
-                    drop(evaluate(expr, values)?);
+                    drop(evaluate(expr, values, base)?);
                 }
                 Action::Release(ids) => {
                     for id in ids {
-                        values.remove(id);
+                        values.remove(&(base + id));
                     }
                 }
                 Action::Emit(expr) => {
-                    let Value::String(message) = evaluate(expr, values)? else {
+                    let Value::String(message) = evaluate(expr, values, base)? else {
                         return Err(error("interpreter invariant: emit type"));
                     };
                     self.events.push(Event::Emit { message });
                 }
                 Action::Fault(expr) => {
-                    let Value::String(message) = evaluate(expr, values)? else {
+                    let Value::String(message) = evaluate(expr, values, base)? else {
                         return Err(error("interpreter invariant: fault type"));
                     };
                     self.activations.source_fault();
@@ -400,7 +505,7 @@ impl Machine<'_> {
                     return Ok(Flow::Exit(
                         outcome.clone(),
                         args.iter()
-                            .map(|a| evaluate(a, values))
+                            .map(|a| evaluate(a, values, base))
                             .collect::<Result<_>>()?,
                     ));
                 }
@@ -412,13 +517,13 @@ impl Machine<'_> {
                 } => {
                     let payloads = bindings
                         .iter()
-                        .map(|(id, e)| Ok((*id, evaluate(e, values)?)))
+                        .map(|(id, e)| Ok((*id, evaluate(e, values, base)?)))
                         .collect::<Result<Vec<_>>>()?;
                     for (id, value) in payloads {
-                        values.insert(id, value);
+                        values.insert(base + id, value);
                     }
                     for id in release {
-                        values.remove(id);
+                        values.remove(&(base + id));
                     }
                     facts.insert(*atom);
                     if let Some(target) = unwind {
@@ -432,18 +537,19 @@ impl Machine<'_> {
                 } => {
                     let args = args
                         .iter()
-                        .map(|a| evaluate(a, values))
+                        .map(|a| evaluate(a, values, base))
                         .collect::<Result<Vec<_>>>()?;
                     let (outcome, fields) = match operation {
                         Operation::Collection(name) => collection(name, args, values)?,
-                        Operation::Region(name) => self.invoke(name, args, values)?,
-                        Operation::Variant(expr) => match evaluate(expr, values)? {
+                        Operation::Region(name) => self.invoke(name, args, values, &mut vec![])?,
+                        Operation::Variant(expr) => match evaluate(expr, values, base)? {
                             Value::Bool(b) => (b.to_string(), vec![]),
                             Value::Construct { name, fields, .. } => (name, fields),
                             _ => return Err(error("interpreter invariant: decision operand")),
                         },
                         Operation::BorrowedVariant(expr) => {
-                            let Value::Reference { ty, place } = evaluate(expr, values)? else {
+                            let Value::Reference { ty, place } = evaluate(expr, values, base)?
+                            else {
                                 return Err(error("invalid borrowed decision address"));
                             };
                             let outcomes = self
@@ -502,7 +608,7 @@ impl Machine<'_> {
                                 );
                                 (
                                     primitive.outcomes[0].name.clone(),
-                                    vec![evaluate(&expression, values)?],
+                                    vec![evaluate(&expression, values, base)?],
                                 )
                             } else {
                                 let call = self.calls.get(self.cursor).ok_or_else(|| {
@@ -551,7 +657,7 @@ impl Machine<'_> {
                     }
                     facts.insert(arm.atom);
                     for (slot, value) in arm.slots.iter().zip(fields) {
-                        values.insert(*slot, value);
+                        values.insert(base + *slot, value);
                     }
                 }
             }
@@ -582,13 +688,15 @@ impl CheckedProgram {
             .map_err(|failure| failure.diagnostic)
     }
     /// A fresh execution boundary, with observed invocation context on failure.
-    /// This does not catch panics or provide recovery/isolation.
+    /// Only explicit supervision isolates source faults; this never catches panics.
     pub fn run_detailed(
         &self,
         scenario: &Scenario,
         steps: usize,
     ) -> std::result::Result<Execution, Box<Failure>> {
         let mut machine = Machine {
+            next_base: 0,
+            contingencies: vec![],
             program: self,
             calls: &scenario.calls,
             cursor: 0,
@@ -600,6 +708,14 @@ impl CheckedProgram {
         let result = (|| {
             if self
                 .region(&scenario.entry)
+                .is_some_and(|r| r.boundary.is_some() || r.contingency)
+            {
+                return Err(error(
+                    "boundaries are entered using supervise, not as executable controls",
+                ));
+            }
+            if self
+                .region(&scenario.entry)
                 .is_some_and(|r| r.parameters.iter().any(|p| p.ty.starts_with('&')))
             {
                 return Err(error("entry controls cannot require borrowed arguments"));
@@ -608,6 +724,7 @@ impl CheckedProgram {
                 &scenario.entry,
                 scenario.arguments.clone(),
                 &mut BTreeMap::new(),
+                &mut vec![],
             )?;
             machine.phase = crate::fault::Phase::ResultValidation;
             if machine.cursor != scenario.calls.len() {

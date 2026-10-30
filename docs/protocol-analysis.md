@@ -145,3 +145,8 @@ payloads, mutation, borrowing and much provenance. Conversely, certificate valid
 does not make a coarse abstraction precise. Future refinements could retain selected
 finite values or effect labels, but must state their new abstraction and inclusion
 claims explicitly.
+
+Compiler 0.63 preserves `supervise` as an isolation operation. Structural protocol
+analysis rejects graphs containing supervision instead of treating it as a silent
+call or an ordinary fault outcome; the corresponding multi-boundary abstraction
+is a future extension.

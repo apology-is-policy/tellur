@@ -1,26 +1,25 @@
 # Faults, execution boundaries and activations
 
-30 October 2026. Design checkpoints P6a/P6b. The boundary policy below was agreed with
-the language author. Compiler 0.60 implements runtime failure reports and observed
-activation identities. Compiler 0.62 adds source faults, public/trait permissions,
-private inference and explicit retained-owner fault release. Isolated boundaries
-and activation-owned storage remain later checkpoints.
+30 October 2026. Compiler 0.63 implements the first P6c/P6d slice: dynamic
+activation storage, named owned-input boundaries, explicit retained-owner handover,
+checked contingency permissions and sequential supervision. See the
+[normative reference](reference/contingency.md) for syntax and current limits.
 
 ## Agreed boundary policy
 
-A declared outcome is normal control completion, including outcomes that describe
-application failures. A fault means the current execution boundary cannot continue
-under its invariants. Ordinary controls do not catch a fault and resume. A control
-call belongs to its caller's execution boundary unless an explicitly isolated
-boundary is introduced in a later revision. At present there is one boundary per
-entry invocation, so an execution failure terminates that invocation.
+A declared outcome is normal control completion, including application failures.
+A fault permanently abandons the affected execution's normal continuation.
+`supervise` starts a named child boundary and waits for lifecycle completion without
+receiving any normal/fault result. Its contingency starts only after failed work
+retires, with explicitly retained owners and a diagnostic. It cannot return into
+that work. Ordinary outcomes of contingency helper operations stay inside that
+execution domain. `terminate` settles it; `escalate` propagates the original fault.
+A contingency fault escapes outward, with the original preserved as its cause.
 
-Future isolation may let a supervisor observe a failed child after that child's
-resources have reached a permitted disposition. It must not turn arbitrary shared
-state into recoverable state merely by putting a call inside a `try`-like construct.
-Borrowed mutable state, tasks, foreign effects and fallible resource protocols all
-constrain whether a boundary can safely be isolated. No isolation syntax is chosen
-by this checkpoint.
+This deliberately excludes catch-and-convert wrappers. The supervisor is a
+separate continuation; fault paths cannot join the failed request's normal paths.
+Public/trait `@contingent` contracts and trusted host metadata restrict transitive
+calls. No implicit service locator or general execution-mode flags are introduced.
 
 Keep these situations distinct:
 
@@ -40,9 +39,9 @@ termination; named fault categories remain deferred.
 
 ## Resource disposition is separate from completion
 
-The current native host owns retained Rust objects and legacy file handles for the
-whole entry invocation. On ordinary returned execution errors, normal host teardown
-releases those retained objects. It does not call Tellur completion controls,
+The native host stores retained Rust objects by token. Activation and boundary
+teardown release the failed child's owners while protecting retained handover and
+parent resources. Legacy file handles still have entry-host teardown fallback. It does not call Tellur completion controls,
 produce their outcomes, reverse writes, roll back mutated state or establish that
 fallible cleanup succeeded. A consumed Rust owner may already have left the host
 store; its wrapper is part of the trusted boundary.
@@ -78,18 +77,15 @@ identities, not addresses, serializable resources, globally unique IDs or values
 available to Tellur source. Only active invocations are retained. Completed calls
 and loop iterations do not accumulate an unbounded history.
 
-The current executor still stores values by compilation-time slot identity in one
-sequential address store. Recursion and concurrent invocations remain unsupported.
-Adding diagnostic activation IDs does **not** make that storage safe for concurrency.
-Before recursion or suspension, references must identify the owning activation and
-projection, and frame lifetime must remain valid while any permitted loan survives.
-
-A future activation frame needs distinct identity, owned slots, continuation state,
-loan/owner retention, completion state and outstanding child/resource obligations.
-Its transitions must distinguish normal completion, suspension, fault and requested
-cancellation. The executor must prevent reuse/resumption of a completed or faulted
-activation. The implementation should expose these concepts independently of Rust
-stack layout, foreign executors and a particular LLVM coroutine ABI.
+Both executors now allocate invocation-local storage ranges. References identify
+an actual activation's storage plus a projection, rather than just a definition's
+slot number. Every normal/error return retires that invocation's remaining storage;
+a boundary extracts its retained owners before retirement. Native storage uses a
+sequential arena with frame offsets; the reference executor allocates distinct
+logical ranges. These are implementation addresses, not source-visible lifetimes.
+Recursion and concurrency remain unsupported. Async lowering must make suspended
+frames persistent and settle children/loans before retirement; native offsets alone
+do not provide a scheduler, pinning protocol or coroutine ABI.
 
 ## Lift and extraction
 
@@ -131,7 +127,8 @@ Best-effort host teardown does not itself grant permission to abandon a resource
 normal completion obligation. Compiler 0.62 supports explicit `"fault": "release"`
 on manifest opaque linear types mapped to retained Rust owners. The host destroys
 those owners on ordinary boundary teardown; this does not claim normal protocol
-completion or rollback. Custom fault cleanup remains future work. See the
+completion or rollback. Compiler 0.63 adds explicit boundary-owned contingency
+cleanup; arbitrary deep-local registration and custom automatic dispositions remain future work. See the
 [executable reference](reference/execution-failures.md) for the complete rules.
 
 ## Checkpoints and decision points
@@ -151,16 +148,21 @@ uses the full diagnostic message and preceding event history.
    fault-only controls, explicit retained-owner fault release, editor/contract
    visibility and separate fault terminals in protocol/comparison evidence. No-fault annotations and
    faulting arithmetic/indexing sugar are separate decisions.
-3. **P6c:** activation-owned storage and reference addresses, with repeated/nested
-   invocation, frame retirement, resource disposition and transformation evidence.
-   Do not conflate the 0.60 diagnostic IDs with this storage migration.
-4. **P6d:** isolated child boundaries only after admission rules for transferred
-   values, borrowed state, host capabilities and fault cleanup are checked. Extend
-   the settings application with a request boundary when this is executable.
-5. **E1/E2:** deterministic task execution, declared cancellation and controlled
-   schedule tests, followed by the pinned LLVM coroutine experiment.
+3. **P6c, sequential slice delivered in 0.63:** invocation-local storage and
+   activation-relative addresses, normal/error retirement, retained handover and
+   repeated/nested-call regression coverage. Persistent suspended frames remain E1 work.
+4. **P6d, owned synchronous slice delivered in 0.63:** named source boundaries,
+   outcome-free supervision, checked contingent calls/traits, terminal escalation,
+   causal reporting and bounded emergency HTTP response/close. Only owned inputs
+   are admitted; borrowed state, async children and broader capability admission
+   need separate contracts.
 
-P6a/P6b do not add catch syntax, automatic domain-error conversion, recursion,
-an async executor, suspension or task cancellation. The maintained application
-is useful evidence for error reporting now; its sequential server still has one
-execution boundary for the whole entry invocation.
+The settings server now supervises each accepted connection independently. Its
+restricted emergency write checks response phase, attempts a generic 500 only
+before transmission starts, and always proceeds to explicit connection close.
+The supervisor's completed/idle status describes service lifecycle, not a child
+fault converted to an ordinary result.
+
+General user-defined annotation policies and execution flags are pinned for later
+research. Keep contingency specific until the application supplies evidence for a
+larger effect/typestate system.

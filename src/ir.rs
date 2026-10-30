@@ -117,6 +117,12 @@ pub enum Operation {
 }
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Action {
+    Supervise {
+        boundary: String,
+        args: Vec<Expr>,
+    },
+    Terminate,
+    Escalate,
     Bind(Id, Expr),
     Assign(Place, Expr),
     Drop(Expr),
@@ -317,6 +323,12 @@ pub struct StoredReturn {
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Region {
     #[serde(default, skip_serializing_if = "is_false")]
+    pub contingent: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub contingency: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub boundary: Option<Boundary>,
+    #[serde(default, skip_serializing_if = "is_false")]
     pub faults: bool,
     #[serde(default)]
     pub stored_returns: Vec<StoredReturn>,
@@ -329,11 +341,17 @@ pub struct Region {
     pub atoms: BTreeMap<Id, String>,
     pub code: Vec<Instruction>,
 }
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Boundary {
+    pub handler: String,
+    pub retained: Vec<Id>,
+}
 pub(crate) fn is_false(value: &bool) -> bool {
     !value
 }
 #[derive(Clone, Debug)]
 pub struct GenericControl {
+    pub contingent: bool,
     pub faults: bool,
     pub name: String,
     pub type_parameters: Vec<String>,

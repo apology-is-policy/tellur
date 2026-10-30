@@ -90,6 +90,7 @@ fn rewrite_statement(s: &mut Statement, b: &BTreeMap<String, String>) {
         | Statement::Invoke(e)
         | Statement::Drop(e)
         | Statement::Emit(e)
+        | Statement::Supervise(e)
         | Statement::Fault(e) => rewrite_expr(e, b),
         Statement::Assign(a, c) => {
             rewrite_expr(a, b);
@@ -101,7 +102,7 @@ fn rewrite_statement(s: &mut Statement, b: &BTreeMap<String, String>) {
             }
         }
         Statement::ExitOutcome(e) => rewrite_outcome(e, b),
-        Statement::ExitName(_) => (),
+        Statement::Terminate | Statement::Escalate | Statement::ExitName(_) => (),
         Statement::Delta(_, e, arms) => {
             rewrite_expr(e, b);
             for arm in arms {
@@ -242,6 +243,7 @@ fn statement_calls(s: &Statement, at: Span, v: &mut Visit<'_>) -> Result<()> {
         | Statement::Invoke(e)
         | Statement::Drop(e)
         | Statement::Emit(e)
+        | Statement::Supervise(e)
         | Statement::Fault(e) => expr_calls(e, at, v)?,
         Statement::Assign(a, b) => {
             expr_calls(a, at, v)?;
@@ -253,7 +255,7 @@ fn statement_calls(s: &Statement, at: Span, v: &mut Visit<'_>) -> Result<()> {
             }
         }
         Statement::ExitOutcome(e) => outcome_calls(e, v)?,
-        Statement::ExitName(_) => (),
+        Statement::Terminate | Statement::Escalate | Statement::ExitName(_) => (),
         Statement::Delta(_, e, arms) => {
             expr_calls(e, at, v)?;
             for a in arms {
@@ -675,6 +677,7 @@ pub(crate) fn compile(
             }
         }
         result.generic_controls.push(ir::GenericControl {
+            contingent: region.contingent,
             faults: region.faults,
             name: template.name.clone(),
             type_parameters: template.type_parameters.clone(),

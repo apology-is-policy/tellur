@@ -636,6 +636,7 @@ impl Resolver<'_> {
             | Statement::Invoke(e)
             | Statement::Drop(e)
             | Statement::Emit(e)
+            | Statement::Supervise(e)
             | Statement::Fault(e) => self.expr(e, *at)?,
             Statement::Assign(a, b) => {
                 self.expr(a, *at)?;
@@ -659,7 +660,7 @@ impl Resolver<'_> {
                     self.expr(a, *at)?;
                 }
             }
-            Statement::ExitName(_) => (),
+            Statement::Terminate | Statement::Escalate | Statement::ExitName(_) => (),
         }
         at.line += self.offset;
         Ok(())
@@ -903,6 +904,9 @@ fn resolve(
                     ))
                     .into());
                 }
+            }
+            if let Some(b) = &mut region.boundary {
+                b.handler = file.symbols[&b.handler].global.clone();
             }
             region.name = file.symbols[&region.name].global.clone();
             visibility.controls.insert(region.name.clone(), id);

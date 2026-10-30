@@ -3,9 +3,10 @@
 [Language reference](../language-reference.md) · [Process entry](process-entry.md) · [Boundary design](../faults-and-activations.md)
 
 A declared outcome, even one named `failed`, is ordinary completion. A source
-fault stops the current entry invocation, including all its callers. Ordinary
-controls cannot catch it and continue. Explicit isolated boundaries are planned;
-there is no catch syntax or isolated request/task boundary in compiler 0.62.
+fault stops the affected execution boundary, including its ordinary callers.
+Ordinary controls cannot catch it and continue. Compiler 0.63 adds named
+[supervised boundaries and contingency](contingency.md), which retire failed work
+before running a separate, restricted contingency. Faults never become outcomes.
 
 ## Source faults and permissions
 
@@ -216,6 +217,7 @@ message and preceding event history, and reports equality of fault permissions
 separately. Other executor errors, including fuel exhaustion, remain inconclusive.
 Neither analysis proves general behavioral equivalence or termination.
 
-Value storage remains the current sequential store. Diagnostic activation IDs do
+Value storage now uses activation-local ranges with checked retained-owner handover.
+Execution remains sequential. Diagnostic activation IDs do
 not enable recursion, simultaneous invocations, async execution or borrowed values
 across suspension. Those require the [activation storage and isolation checkpoints](../faults-and-activations.md#checkpoints-and-decision-points).

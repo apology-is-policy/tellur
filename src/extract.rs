@@ -196,6 +196,12 @@ pub fn extract_tail(
         .iter()
         .find(|r| r.name == control)
         .ok_or_else(|| error(span, "unknown source control"))?;
+    if region.boundary.is_some() || region.contingency {
+        return Err(error(
+            span,
+            "extract-tail cannot move a boundary or contingency into an ordinary control",
+        ));
+    }
     if !region.modern {
         return Err(error(
             span,
@@ -445,6 +451,9 @@ pub fn extract_tail(
         if !parameters_equal
             || before.exits != after.exits
             || before.faults != after.faults
+            || before.contingent != after.contingent
+            || before.boundary != after.boundary
+            || before.contingency != after.contingency
             || before.borrow_returns != after.borrow_returns
             || before.stored_returns != after.stored_returns
         {

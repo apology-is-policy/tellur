@@ -341,6 +341,7 @@ impl Specializer<'_> {
             | Statement::Invoke(e)
             | Statement::Drop(e)
             | Statement::Emit(e)
+            | Statement::Supervise(e)
             | Statement::Fault(e) => self.expr(e, at)?,
             Statement::Bind(_, ty, e, _) | Statement::Capture(_, ty, e, _) => {
                 if let Some(ty) = ty {
@@ -364,7 +365,7 @@ impl Specializer<'_> {
                 }
                 self.outcome(e)?;
             }
-            Statement::ExitName(_) => (),
+            Statement::Terminate | Statement::Escalate | Statement::ExitName(_) => (),
             Statement::Delta(_, e, arms) => {
                 self.expr(e, at)?;
                 for a in arms {

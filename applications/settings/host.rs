@@ -19,6 +19,7 @@ pub use std::net::TcpListener as Listener;
 pub struct Connection {
     stream: std::net::TcpStream,
     head: std::cell::Cell<bool>,
+    response_started: std::cell::Cell<bool>,
 }
 const HEADER_LIMIT: usize = 16384;
 const BODY_LIMIT: usize = 1048576;
@@ -56,6 +57,7 @@ pub fn http_accept(listener: &Listener, idle_ms: u32) -> rust_api::http_accept_o
                 return accepted(Connection {
                     stream,
                     head: std::cell::Cell::new(false),
+                    response_started: std::cell::Cell::new(false),
                 });
             }
             Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
@@ -239,6 +241,9 @@ pub fn http_send(
     {
         return failed("unsupported response metadata or response exceeds 2 MiB".into());
     }
+    if connection.response_started.replace(true) {
+        return failed("response already started".into());
+    }
     let allow = if allow.is_empty() {
         String::new()
     } else {
@@ -278,6 +283,24 @@ pub fn http_send(
     match result {
         Ok(()) => sent,
         Err(e) => failed(e.to_string()),
+    }
+}
+// Trusted contingency operation: fixed generic response, at most once, with
+// the same deadline and HEAD handling as ordinary response transmission.
+pub fn http_reply_failure(connection: &Connection) -> rust_api::http_reply_failure_outcome {
+    use rust_api::http_reply_failure_outcome::*;
+    if connection.response_started.get() {
+        return unavailable;
+    }
+    match http_send(
+        connection,
+        500,
+        "Internal server error",
+        "text/plain; charset=utf-8",
+        "",
+    ) {
+        rust_api::http_send_outcome::sent => sent,
+        rust_api::http_send_outcome::failed(message) => failed(message),
     }
 }
 pub fn http_connection_close(connection: Connection) -> rust_api::http_connection_close_outcome {

@@ -58,18 +58,18 @@ fn expression(e: &Expr) -> String {
         Expr::Value(v) => value(v),
         Expr::Pure(name, args) => format!("pure({}, {})?", string(name), expressions(args)),
         Expr::Reference(p, ty) => format!(
-            "reference(&v, {}, &{:?}, {}, {})?",
+            "reference(&v, base + {}, &{:?}, {}, {})?",
             p.root,
             p.fields,
             p.indirect,
             string(ty)
         ),
         Expr::Move(p) => format!(
-            "take_place(&mut v, {}, &{:?}, {})?",
+            "take_place(&mut v, base + {}, &{:?}, {})?",
             p.root, p.fields, p.indirect
         ),
         Expr::Place(p) => format!(
-            "read_place(&v, {}, &{:?}, {})?",
+            "read_place(&v, base + {}, &{:?}, {})?",
             p.root, p.fields, p.indirect
         ),
         Expr::Project(e, i) => format!("project(&({}), &[{i}])?", expression(e)),
@@ -120,6 +120,8 @@ fn guard(g: &Guard) -> String {
     }
 }
 struct Generator<'a> {
+    boundaries: BTreeMap<&'a str, (usize, usize)>,
+    display_names: BTreeMap<&'a str, String>,
     names: BTreeMap<&'a str, usize>,
     code: String,
     slots: Vec<Id>,
@@ -142,13 +144,32 @@ impl Generator<'_> {
                 guard(&i.guard)
             );
             match &i.action {
+                Action::Terminate => {
+                    self.code.push_str("return Ok((String::new(), vec![]));\n");
+                }
+                Action::Escalate => {
+                    self.code.push_str("return host.escalate();\n");
+                }
+                Action::Supervise { boundary, args } => {
+                    let (work, handler) = self.boundaries[boundary.as_str()];
+                    let _ = writeln!(
+                        self.code,
+                        "let args={}; host.supervise(&mut v, args, region_{work}, region_{handler}, {})?;",
+                        expressions(args),
+                        string(&self.display_names[boundary.as_str()])
+                    );
+                }
                 Action::Bind(id, e) => {
-                    let _ = writeln!(self.code, "let x = {}; v[{id}] = Some(x);", expression(e));
+                    let _ = writeln!(
+                        self.code,
+                        "let x = {}; v[base + {id}] = Some(x);",
+                        expression(e)
+                    );
                 }
                 Action::Assign(p, e) => {
                     let _ = writeln!(
                         self.code,
-                        "let x = {}; assign_place(&mut v, {}, &{:?}, {}, x)?;",
+                        "let x = {}; assign_place(&mut v, base + {}, &{:?}, {}, x)?;",
                         expression(e),
                         p.root,
                         p.fields,
@@ -160,7 +181,7 @@ impl Generator<'_> {
                 }
                 Action::Release(ids) => {
                     for id in ids {
-                        let _ = writeln!(self.code, "v[{id}] = None;");
+                        let _ = writeln!(self.code, "v[base + {id}] = None;");
                     }
                 }
                 Action::Emit(e) => {
@@ -176,7 +197,7 @@ impl Generator<'_> {
                 Action::Exit(name, args) => {
                     let _ = writeln!(self.code, "let fields = {};", expressions(args));
                     for id in &self.slots {
-                        let _ = writeln!(self.code, "v[{id}] = None;");
+                        let _ = writeln!(self.code, "v[base + {id}] = None;");
                     }
                     let _ = writeln!(self.code, "return Ok(({}.into(), fields));", string(name));
                 }
@@ -205,7 +226,7 @@ impl Generator<'_> {
                         )
                     );
                     for s in local_slots {
-                        let _ = writeln!(self.code, "v[{s}] = None;");
+                        let _ = writeln!(self.code, "v[base + {s}] = None;");
                     }
                     for atom in local_atoms {
                         let _ = writeln!(self.code, "a[{atom}] = false;");
@@ -215,7 +236,7 @@ impl Generator<'_> {
                         "let mut initial_{id} = std::mem::take(&mut next_{id}).into_iter();"
                     );
                     for (s, _) in parameters {
-                        let _ = writeln!(self.code, "v[{s}] = initial_{id}.next();");
+                        let _ = writeln!(self.code, "v[base + {s}] = initial_{id}.next();");
                     }
                     self.instructions(body);
                     let _ = writeln!(
@@ -235,10 +256,10 @@ impl Generator<'_> {
                         expressions(&bindings.iter().map(|(_, e)| e.clone()).collect::<Vec<_>>())
                     );
                     for (id, _) in bindings {
-                        let _ = writeln!(self.code, "v[{id}] = fields.next();");
+                        let _ = writeln!(self.code, "v[base + {id}] = fields.next();");
                     }
                     for id in release {
-                        let _ = writeln!(self.code, "v[{id}] = None;");
+                        let _ = writeln!(self.code, "v[base + {id}] = None;");
                     }
                     let _ = writeln!(self.code, "a[{atom}] = true;");
                     if let Some(target) = unwind {
@@ -264,7 +285,7 @@ impl Generator<'_> {
                             format!("host.primitive({}, {})?", string(name), expressions(args))
                         }
                         Operation::Region(name) => format!(
-                            "{{ let args = {}; region_{}(host, &mut v, args)? }}",
+                            "{{ let args = {}; region_{}(host, &mut v, args, &mut vec![])? }}",
                             expressions(args),
                             self.names[name.as_str()]
                         ),
@@ -281,7 +302,7 @@ impl Generator<'_> {
                             arm.atom
                         );
                         for id in &arm.slots {
-                            let _ = writeln!(self.code, "v[{id}] = fields.next();");
+                            let _ = writeln!(self.code, "v[base + {id}] = fields.next();");
                         }
                         self.code.push_str("},\n");
                     }
@@ -307,7 +328,27 @@ impl CheckedProgram {
             return Err(error(format!("unknown entry region {entry}")));
         }
         let launch_entries = self.executable_entries(entry)?;
+        let names: BTreeMap<_, _> = self
+            .regions()
+            .enumerate()
+            .map(|(i, r)| (r.name.as_str(), i))
+            .collect();
         let mut g = Generator {
+            display_names: self
+                .regions()
+                .map(|r| (r.name.as_str(), self.runtime_name(&r.name)))
+                .collect(),
+            boundaries: self
+                .regions()
+                .filter_map(|r| {
+                    r.boundary.as_ref().map(|b| {
+                        (
+                            r.name.as_str(),
+                            (names[r.name.as_str()], names[b.handler.as_str()]),
+                        )
+                    })
+                })
+                .collect(),
             slots: vec![],
             names: self
                 .regions()
@@ -336,20 +377,35 @@ impl CheckedProgram {
                 .unwrap_or(0);
             let _ = writeln!(
                 g.code,
-                "fn region_{}(host:&mut Host, mut v:&mut Vec<Option<V>>, args:Vec<V>)->R<Outcome> {{\nhost.enter({})?;\nlet result=(|| {{\nlet mut a = vec![false; {size}];\nlet mut args = args.into_iter();",
+                "fn region_{}(host:&mut Host, mut v:&mut Vec<Option<V>>, args:Vec<V>, handover:&mut Vec<V>)->R<Outcome> {{\nhost.enter({})?;\nlet base=v.len(); v.resize(base + {size}, None);\nlet result=(|| {{\nlet mut a = vec![false; {size}];\nlet mut args = args.into_iter();",
                 g.names[r.name.as_str()],
                 string(&self.runtime_name(&r.name))
             );
             for p in &r.parameters {
-                let _ = writeln!(g.code, "v[{}] = args.next();", p.id);
+                let _ = writeln!(g.code, "v[base + {}] = args.next();", p.id);
             }
             g.instructions(&r.code);
             g.code
-                .push_str("Err(\"E_NATIVE: checked region fell through\".into())\n})(); if result.is_ok() { host.leave(); } result\n}\n");
+                .push_str("Err(\"E_NATIVE: checked region fell through\".into())\n})();\n");
+            if let Some(b) = &r.boundary {
+                g.code
+                    .push_str("if result.is_err() && host.source_faulted() {\n");
+                for id in &b.retained {
+                    let _ = writeln!(
+                        g.code,
+                        "handover.push(v[base + {id}].take().ok_or(\"E_NATIVE: retained boundary parameter unavailable\")?);"
+                    );
+                }
+                g.code.push_str("}\n");
+            }
+            g.code.push_str("if result.is_err() { host.release_frame(&v[base..]); } v.truncate(base); if result.is_ok() { host.leave(); } result\n}\n");
         }
         for r in self.regions() {
             let id = g.names[r.name.as_str()];
-            if r.parameters.iter().any(|p| p.ty.starts_with('&')) {
+            if r.boundary.is_some()
+                || r.contingency
+                || r.parameters.iter().any(|p| p.ty.starts_with('&'))
+            {
                 let _ = writeln!(
                     g.code,
                     "fn entry_{id}(_: &mut Host, _: Vec<V>)->R<Outcome> {{ Err(\"E_ENTRY: entry controls cannot require borrowed arguments\".into()) }}"
@@ -357,8 +413,7 @@ impl CheckedProgram {
             } else {
                 let _ = writeln!(
                     g.code,
-                    "fn entry_{id}(host: &mut Host, args: Vec<V>)->R<Outcome> {{ let mut v=vec![None; {}]; region_{id}(host, &mut v, args) }}",
-                    self.next_id
+                    "fn entry_{id}(host: &mut Host, args: Vec<V>)->R<Outcome> {{ let mut v=Vec::new(); region_{id}(host, &mut v, args, &mut vec![]) }}",
                 );
             }
         }

@@ -209,6 +209,45 @@ impl Verifier<'_> {
             }
             self.guard(&i.guard)?;
             match &i.action {
+                Action::Supervise { boundary, args } => {
+                    if self.region.contingent {
+                        return Err(error("contingent code cannot supervise"));
+                    }
+                    let r = self
+                        .program
+                        .region(boundary)
+                        .filter(|r| r.boundary.is_some())
+                        .ok_or_else(|| error("supervise requires a boundary"))?;
+                    let b = r.boundary.as_ref().unwrap();
+                    let handler = self
+                        .program
+                        .region(&b.handler)
+                        .filter(|h| h.contingency && h.contingent)
+                        .ok_or_else(|| error("invalid contingency handler"))?;
+                    if handler.faults && !self.region.faults {
+                        return Err(error("escalating boundary requires fault permission"));
+                    }
+                    self.args(
+                        args,
+                        &r.parameters
+                            .iter()
+                            .map(|p| Field {
+                                name: p.name.clone(),
+                                ty: p.ty.clone(),
+                            })
+                            .collect::<Vec<_>>(),
+                    )?;
+                }
+                Action::Terminate => {
+                    if self.region.boundary.is_none() && !self.region.contingency {
+                        return Err(error("terminate outside a boundary"));
+                    }
+                }
+                Action::Escalate => {
+                    if !self.region.contingency || !self.region.faults {
+                        return Err(error("escalate outside a contingency"));
+                    }
+                }
                 Action::Bind(id, e) => same(&self.expr(e)?, self.slot(*id)?)?,
                 Action::Assign(p, e) => same(&self.expr(e)?, &self.expr(&Expr::Place(p.clone()))?)?,
                 Action::Drop(e) => {
@@ -335,6 +374,12 @@ impl Verifier<'_> {
                                 .program
                                 .region(name)
                                 .ok_or_else(|| error("unknown callee"))?;
+                            if r.boundary.is_some() || r.contingency {
+                                return Err(error("boundary used as an ordinary call"));
+                            }
+                            if self.region.contingent && !r.contingent {
+                                return Err(error("noncontingent call in contingent code"));
+                            }
                             if r.faults && !self.region.faults {
                                 return Err(error("faulting call without control permission"));
                             }
@@ -379,6 +424,9 @@ impl Verifier<'_> {
                                 .iter()
                                 .find(|p| p.name == *name)
                                 .ok_or_else(|| error("unknown primitive"))?;
+                            if self.region.contingent && !p.contingent && !p.pure {
+                                return Err(error("noncontingent primitive in contingent code"));
+                            }
                             self.args(
                                 args,
                                 &p.parameters
@@ -480,6 +528,48 @@ impl CheckedProgram {
             }
         }
         for r in self.regions() {
+            if r.contingency && (!r.contingent || r.boundary.is_some() || !r.exits.is_empty()) {
+                return Err(error("invalid contingency control contract"));
+            }
+            if let Some(b) = &r.boundary {
+                if !r.exits.is_empty()
+                    || r.parameters
+                        .iter()
+                        .any(|p| self.manifest.contains_references(&p.ty))
+                {
+                    return Err(error(
+                        "boundary must own its inputs and cannot expose outcomes",
+                    ));
+                }
+                let h = self
+                    .region(&b.handler)
+                    .filter(|h| h.contingency)
+                    .ok_or_else(|| error("missing boundary contingency"))?;
+                let mut seen = BTreeSet::new();
+                let mut types = vec![];
+                for id in &b.retained {
+                    if !seen.insert(*id) {
+                        return Err(error("duplicate retained parameter"));
+                    }
+                    types.push(
+                        r.parameters
+                            .iter()
+                            .find(|p| p.id == *id)
+                            .ok_or_else(|| error("retained storage must be a boundary parameter"))?
+                            .ty
+                            .as_str(),
+                    );
+                }
+                types.push("String");
+                if types
+                    != h.parameters
+                        .iter()
+                        .map(|p| p.ty.as_str())
+                        .collect::<Vec<_>>()
+                {
+                    return Err(error("invalid contingency handover signature"));
+                }
+            }
             let mut v = Verifier {
                 program: self,
                 region: r,

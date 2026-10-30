@@ -343,12 +343,14 @@ impl Server {
             return json!([]);
         };
         let checked = self.checked(uri).ok();
-        let mut symbols = unit.regions.iter().map(|region| {
+        let mut symbols = unit.regions.iter().filter(|r| !r.contingency).map(|region| {
             let params = region.parameters.iter().map(|p|format!("{} {}",display_type(&p.ty),p.name)).collect::<Vec<_>>().join(", ");
             let exits = checked.as_ref().and_then(|p| p.region(&region.name).map(|r| checked_exit_description(&r.exits, region)).or_else(|| p.generic_controls().iter().find(|r| r.name == region.name).map(|r| checked_exit_description(&r.exits, region))))
                 .unwrap_or_else(|| if region.infer_exits { "auto (unresolved)".into() } else { region.exits.iter().map(|e| format!("{}{}", e.name, if region.infer_payloads.contains(&e.name) {"... (unresolved)"} else {""})).collect::<Vec<_>>().join(" | ") });
             let faults = checked.as_ref().and_then(|p| p.region(&region.name).map(|r| r.faults).or_else(|| p.generic_controls().iter().find(|r| r.name == region.name).map(|r| r.faults))).unwrap_or(region.fault_contract == Some(true));
-            let completion = completion_description(&exits, faults);
+            let completion = if let Some(b) = &region.boundary {
+                format!(" boundary; retains {}; supervise only", b.retained.join(", "))
+            } else { format!("{}{}", completion_description(&exits, faults), if region.contingent_contract == Some(true) { " @contingent" } else { "" }) };
             json!({"name":region.name,"detail":format!("{}({params}){completion}",bounded_type_parameters(&region.type_parameters, &region.type_bounds)),"kind":12,
                 "range":{"start":position(&doc.text,region.span),"end":position(&doc.text,Span{column:region.end.column+1,..region.end})},
                 "selectionRange":diagnostic_range(&doc.text,region.name_span)})
@@ -742,7 +744,7 @@ impl Server {
                     .map(|p| format!("{} {}", display_type(&p.ty), p.name))
                     .collect::<Vec<_>>()
                     .join(", ");
-                return json!({"contents":{"kind":"markdown","value":format!("```tellur\ncontrol {}{}({params}){}\n```\n\nGeneric definition checked using only its declared capabilities. Concrete type arguments are explicit. Unconstrained values can be borrowed or transferred. Sealed bounds grant permissions: copy implies clone, and clone implies drop.",region.name,bounded_type_parameters(&region.type_parameters, &region.type_bounds),completion_description(&source_spelling(uri,&unit,&program,&checked_exit_description(&generic.exits,region)), generic.faults))},"range":range});
+                return json!({"contents":{"kind":"markdown","value":format!("```tellur\n{}control {}{}({params}){}\n```\n\nGeneric definition checked using only its declared capabilities. Concrete type arguments are explicit. Unconstrained values can be borrowed or transferred. Sealed bounds grant permissions: copy implies clone, and clone implies drop.",if generic.contingent { "@contingent\n" } else { "" },region.name,bounded_type_parameters(&region.type_parameters, &region.type_bounds),completion_description(&source_spelling(uri,&unit,&program,&checked_exit_description(&generic.exits,region)), generic.faults))},"range":range});
             }
             let Some(checked) = program.region(&region.name) else {
                 return Value::Null;
@@ -899,8 +901,40 @@ impl Server {
                     )
                 })
                 .unwrap_or_default();
+            if checked.contingency {
+                let reason = region
+                    .parameters
+                    .last()
+                    .map(|p| p.name.as_str())
+                    .unwrap_or("reason");
+                return json!({"contents":{"kind":"markdown","value":format!("```tellur\ncontingency(string {reason})\n```\n\nRuns after the failed activation retires, with the boundary's retained owners. Calls must be contingent. `terminate` settles this boundary; `escalate` propagates the original fault. Neither resumes the abandoned work.")},"range":range});
+            }
+            if let Some(b) = &region.boundary {
+                let disposition = if b.retained.is_empty() {
+                    String::new()
+                } else {
+                    format!(" retains {}", b.retained.join(", "))
+                };
+                let escape = checked
+                    .boundary
+                    .as_ref()
+                    .and_then(|b| program.region(&b.handler))
+                    .is_some_and(|h| h.faults);
+                let faults = if escape { " faults" } else { "" };
+                return json!({"contents":{"kind":"markdown","value":format!("```tellur\nboundary {}({params}){disposition}{faults}\n```\n\nEnter with `supervise`. Completion carries no outcome or payload. A source fault abandons the normal body and hands retained parameters to its contingency after failed activations retire. `faults` permits contingency escape to the supervisor's boundary.",region.name)},"range":range});
+            }
             let completion = completion_description(&exits, checked.faults);
-            return json!({"contents":{"kind":"markdown","value":format!("```tellur\ncontrol {}({params}){completion}\n```{inferred}{details}{borrows}",region.name)},"range":range});
+            let annotation = if checked.contingent {
+                "@contingent\n"
+            } else {
+                ""
+            };
+            let permission = if checked.contingent {
+                "\n\nChecked for use from contingency code (explicit on public/trait controls; inferred for private helpers). This does not prove termination or rollback."
+            } else {
+                ""
+            };
+            return json!({"contents":{"kind":"markdown","value":format!("```tellur\n{annotation}control {}({params}){completion}\n```{inferred}{details}{borrows}{permission}",region.name)},"range":range});
         }
         self.selection_hover(uri, &unit, line, character)
     }
@@ -1312,7 +1346,12 @@ fn source_signature(r: &syntax::Region) -> String {
                 .join(", ")
         });
     format!(
-        "control {}({parameters}){}",
+        "{}control {}({parameters}){}",
+        if r.contingent_contract == Some(true) {
+            "@contingent\n"
+        } else {
+            ""
+        },
         r.name,
         completion_description(&exits, r.fault_contract == Some(true))
     )

@@ -1,7 +1,7 @@
 # Tellur language revision: controls, values, outcomes, and tasks
 
 30 October 2026. This is the working revision plan, not a claim that all proposed
-features are implemented. Compiler **0.62.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
+features are implemented. Compiler **0.63.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
 lifetime checkpoints of milestone 2, the array/vector/map core of milestone 3,
 and implicit entry, inline/stored adapters, owned capture, named outcome contracts
 and checked forwarding in milestone 4. A first [semantic foundation](semantic-foundation.md)
@@ -159,15 +159,15 @@ unimplemented syntax are promised.
 | P5b.2 | Sustained application and library growth | Maintain CLI/server during P2–P4; extract reusable mechanisms when contracts settle. Signal-driven shutdown, richer HTTP and concurrency remain later work |
 | P6a | Boundary policy and execution evidence | **Delivered in 0.60:** agreed boundary termination without local catch/resume; bounded reference/native failure reports, observed activation IDs, source/expansion origins and explicit teardown limits. These IDs do not yet address storage |
 | P6b | Source faults and transitive contracts | **Delivered in 0.62:** source termination, public/trait fault permissions and private inference; live resources require explicit retained-owner release dispositions at faulting paths/calls. Fault-only controls omit `exits`. Faulting operators and no-fault annotations remain separate decisions |
-| P6c | Activation-owned storage | **Next:** frame identities, reference addresses, retirement and transformation evidence before recursion/suspension; current storage remains sequential |
-| P6d | Isolated boundaries | Checked admission and resource disposition before a supervisor can continue after child failure; borrowed state and async children require explicit rules |
+| P6c | Activation-owned storage | **Sequential slice delivered in 0.63:** invocation-local storage ranges, activation addresses, normal/fault retirement, protected parent storage and retained handover. Suspended frames/child-task retirement remain E1 prerequisites |
+| P6d | Isolated boundaries | **Owned synchronous slice delivered in 0.63:** named boundaries, outcome-free supervision, retained-owner handover, checked contingent calls/traits, terminal escalation, bounded causal reports and real HTTP 500/next-request evidence. Broader capability admission and async children remain separate design checkpoints |
 | C1b.3c.2 | Local exclusive-reference collection elements | Deferred pending application evidence: permission transfer, direct reborrowing, dynamic removal splits and carrier invalidation |
 | C1b.3c.3 | Nested and public borrowed-collection contracts | Deferred pending application evidence: element origin schemas, nested carriers, generic/trait boundaries and stored outcomes |
 | C1c | Generic loan propagation and reference state | Deferred pending application evidence: contained loans across generic calls, assignments and adapters; rebinding/reborrowing |
 | C2 | Slices and non-consuming iteration | Deferred pending application evidence: invalidation rules and library interfaces built on C1b/C1c |
 | C3 | Remaining adapter ergonomics | Direct arm exits delivered in P3 (0.54); multi-statement arms, whole-outcome binding and expression adapters remain design work |
 | D1 | Explicit runtime polymorphism | Queued: erasure rules, borrowed/owned storage, opaque graph boundaries |
-| D2 | Stateful protocols and effect contracts | Queued: sequence obligations, justified algebraic laws, groundwork for tasks |
+| D2 | Stateful protocols and effect contracts | General annotation/execution-mode flags explicitly deferred; current permission is only `@contingent`. Queued: sequence obligations, justified algebraic laws, groundwork for tasks |
 | E1 | Async reference execution | After P3/P6 and activation-frame work: activation identities, deterministic scheduling, task ownership, suspension, cancellation/cleanup |
 | E2 | Native coroutine lowering | Preserved architectural target: direct LLVM coroutine primitives, pinned-toolchain experiment, frame lifetime rules and schedule-based differential tests; I1 must keep this route open |
 | T1 | Stronger source transformations | Hold current scope during P1–P5: extraction correspondence, continuation cuts, source-level lift and editor actions |

@@ -2048,3 +2048,61 @@ Evidence: `work/tellur-0.62-validation.json`, `tellur-0.62-tests.log`,
 `tellur-0.62-build-final.log`, `tellur-0.62-versions.log`,
 `tellur-0.62-package-integrity.log` and `tellur-0.62-installed-integrity.log`.
 The verified source snapshot is `work/revision-backups/tellur-0.62-source.tar.gz`.
+
+## 0.63 — Contingency, retained handover and supervised boundaries
+
+P6c/P6d's first synchronous slice is implemented. Named `boundary` declarations
+own their inputs; `retains` explicitly selects parameters that survive a source
+fault. The checker requires those whole values to remain available at every
+faulting path/call. Other must-complete owners still need fault dispositions.
+Boundary inputs cannot carry references to outer storage.
+
+`supervise` waits for administrative completion without exposing a child outcome
+or payload. `terminate` settles a boundary/contingency; `escalate` propagates the
+original fault. Failed ordinary continuations never resume. A contingency starts
+after failed activations retire, receives retained owners exactly once, and may
+handle ordinary outcomes of its own permitted helper operations. Secondary faults
+escape rather than recursively invoking the same handler; bounded causal reports
+retain the original failure.
+
+`@contingent` checks transitive call permission. Public and trait contracts are
+explicit, private helpers infer eligibility, implementations inherit the trait
+subset, and generic witnesses preserve it. Trusted non-pure primitives need
+manifest permission. Contingencies cannot supervise new execution. Public boundary
+`faults` describes contingency escape. Snapshots, hovers, unsaved diagnostics,
+TextMate grammar and snippets reflect these contracts. General annotation policies
+and execution flags remain deferred.
+
+Both execution engines use invocation-local storage ranges and retire frames on
+normal/fault returns. References address the actual invocation's storage. Native
+resource teardown protects handover and parent owners; a live retained-owner test
+checks destruction order and continued parent access. Expansion certificates
+preserve supervision as an isolation operation. Structural protocol analysis rejects
+supervision graphs, and extraction rejects boundary/contingency bodies.
+
+The maintained settings server supervises accepted connections. A trusted emergency
+reply operation attempts a generic 500 only before response transmission starts,
+then explicit cleanup closes the connection. A real loopback regression injects
+source faults through its test loader: a pre-response fault returns 500, another
+request succeeds, and a post-response fault closes without appending a second
+response. Shipped routes have no fault-injection endpoint. Service completed/idle
+statuses describe supervisor lifecycle; request failures remain responses and
+reports rather than a result returned by supervision.
+
+Validation: **919 distinct Rust tests pass**, checked against the complete test
+inventory. The full run's formatter assertion referred to an old server path; it
+was updated to the new unbraced labels, and the remaining inventory plus final
+138-test boundary/fault/LSP/manual/format regression pass completed successfully.
+**37 Node tests** and the full real VS Code suite pass, including boundary hover,
+unsaved permission errors/repair, native build/run, retained resources and HTTP.
+All **66 maintained Tellur sources** check. The manual validates **63 accepted
+examples**, **22 expected diagnostics**, **15 context fragments** and **219 local
+links**. The new runnable contingency example has identical native/reference
+reports, including source fault provenance and subsequent normal execution.
+Settings library public-contract and absorption baselines remain unchanged.
+
+The 0.63 release binaries and editor package are synchronized. Package and installed
+payload integrity are checked; installation does not reload existing editor windows.
+Execution remains sequential: no async tasks, recursive calls, foreign panic
+recovery, general deep-local recovery registration or proof of handler termination.
+The activation model leaves suspended frames and LLVM coroutine lowering for E1/E2.

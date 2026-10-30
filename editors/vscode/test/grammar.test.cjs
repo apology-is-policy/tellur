@@ -270,3 +270,9 @@ test('fault permissions and terminations are control keywords, not paths or type
   has(ts, 'fault', 'keyword.control.tellur');
   assert.ok(ts.filter(t => t.text === 'fault').every(t => t.scopes.includes('keyword.control.tellur')));
 });
+
+test('boundaries and contingency permissions have distinct declarations and keywords', () => {
+  const ts = tokens('@contingent\npub control report(string reason) exits done {emit(reason);exit done;}\nboundary request(string context) retains context {fault "broken";}\ncontingency(string reason) {report(reason);terminate;}\ncontrol main() exits done {supervise request("context");exit done;}');
+  has(ts, '@contingent', 'storage.modifier.annotation.tellur');
+  for (const word of ['boundary', 'retains', 'contingency', 'terminate', 'supervise']) has(ts, word, 'keyword.control.tellur');
+});

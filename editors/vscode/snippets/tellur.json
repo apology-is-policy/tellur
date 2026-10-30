@@ -185,5 +185,31 @@
       "}"
     ],
     "description": "A control with no normal completion"
+  },
+  "Supervised boundary": {
+    "prefix": "boundary",
+    "body": [
+      "boundary ${1:request}(string context) retains context {",
+      "    ${0}",
+      "    terminate;",
+      "}",
+      "contingency(string reason) {",
+      "    emit(context);",
+      "    emit(reason);",
+      "    terminate;",
+      "}"
+    ],
+    "description": "Owned-input boundary with retained handover; invoke using supervise"
+  },
+  "Contingent control": {
+    "prefix": "control_contingent",
+    "body": [
+      "@contingent",
+      "control ${1:report}(string reason) exits done {",
+      "    emit(reason);",
+      "    exit done;",
+      "}"
+    ],
+    "description": "Checked control callable from contingency code"
   }
 }

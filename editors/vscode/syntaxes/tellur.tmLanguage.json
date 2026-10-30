@@ -81,6 +81,10 @@
     "declarations": {
       "patterns": [
         {
+          "name": "storage.modifier.annotation.tellur",
+          "match": "@contingent\\b"
+        },
+        {
           "name": "storage.type.tellur",
           "match": "\\bref\\b"
         },
@@ -128,7 +132,7 @@
           }
         },
         {
-          "match": "\\b(control|region|loop)\\s+([A-Za-z_][A-Za-z0-9_]*)(?:\\s*(<[^>]+>))?",
+          "match": "\\b(control|region|boundary|loop)\\s+([A-Za-z_][A-Za-z0-9_]*)(?:\\s*(<[^>]+>))?",
           "captures": {
             "1": {
               "name": "keyword.control.tellur"
@@ -197,7 +201,7 @@
           }
         },
         {
-          "match": "\\b((?!(?:mutable|borrow|deref|from|ref|fault|faults)\\b)(?:auto|[a-z_][a-z_0-9]*)(?:\\.[a-z_][a-z_0-9]*)*(?:<[^;{}\\n]*>(?:\\.[a-z_][a-z_0-9]*)?)?)\\s+([a-z_][a-z_0-9]*)(?=\\s*(?:from\\b|<-|=|[,)};]))",
+          "match": "\\b((?!(?:mutable|borrow|deref|from|ref|fault|faults|retains|supervise|terminate|escalate|contingency)\\b)(?:auto|[a-z_][a-z_0-9]*)(?:\\.[a-z_][a-z_0-9]*)*(?:<[^;{}\\n]*>(?:\\.[a-z_][a-z_0-9]*)?)?)\\s+([a-z_][a-z_0-9]*)(?=\\s*(?:from\\b|<-|=|[,)};]))",
           "captures": {
             "1": {
               "name": "storage.type.tellur"
@@ -351,7 +355,7 @@
         },
         {
           "name": "keyword.control.tellur",
-          "match": "\\b(?:control|region|exits|faults|fault|from|exit|again|loop|over|path|delta|capture)\\b|\u0394|\\bforward\\b(?!\\s*[({])"
+          "match": "\\b(?:control|region|boundary|retains|contingency|supervise|terminate|escalate|exits|faults|fault|from|exit|again|loop|over|path|delta|capture)\\b|Δ|\\bforward\\b(?!\\s*[({])"
         },
         {
           "name": "support.function.tellur",

@@ -186,11 +186,7 @@ fn failures() -> Vec<(Scenario, &'static str, Option<u32>)> {
                 call("checked_sub", "underflow", vec![]),
                 call("http_listener_release", "released", vec![]),
             ]),
-            if receive_failed || close_failed {
-                "completed_with_failures"
-            } else {
-                "completed"
-            },
+            "completed",
             None,
         ));
     }
@@ -214,7 +210,7 @@ fn failures() -> Vec<(Scenario, &'static str, Option<u32>)> {
             call("checked_sub", "underflow", vec![]),
             call("http_listener_release", "released", vec![]),
         ]),
-        "completed_with_failures",
+        "completed",
         Some(404),
     ));
     let mut idle_after_failure = scenario(vec![
@@ -228,7 +224,7 @@ fn failures() -> Vec<(Scenario, &'static str, Option<u32>)> {
         call("http_listener_release", "released", vec![]),
     ]);
     idle_after_failure.arguments[2] = Value::U32(2);
-    cases.push((idle_after_failure, "idle_with_failures", None));
+    cases.push((idle_after_failure, "idle", None));
     for outcome in ["write_failed", "commit_uncertain", "too_large"] {
         let received = call(
             "http_receive",
@@ -308,7 +304,7 @@ fn scripted_http_failures_preserve_cleanup_order_and_both_errors() {
                 );
             }
         }
-        if expected == "completed_with_failures" {
+        if expected == "completed" {
             for call in &scenario.calls {
                 if call.outcome == "failed" {
                     let Value::String(message) = &call.fields[0] else {
@@ -746,4 +742,70 @@ fn native_http_scripted_failures_match_expansion_at_both_optimization_levels() {
             }
         }
     }
+}
+
+#[test]
+fn native_http_source_fault_sends_500_then_serves_next_request() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("applications/settings");
+    let m = Manifest::from_json_at(
+        &fs::read_to_string(root.join("manifest.json")).unwrap(),
+        &root.join("manifest.json"),
+    )
+    .unwrap();
+    // Fault injection belongs to this test's source loader, never the shipped route.
+    let p=tellur::modules::compile_with_loader(root.join("main.tellur"),m,|path| {
+        let mut source=fs::read_to_string(path)?;
+        if path.ends_with("http.tellur") {
+            source=source.replace("exits response faults {", "exits response faults { delta (target == \"/injected-fault\") {true=>broken,false=>valid} [broken]: fault \"injected routing invariant\"; [valid]:");
+        }
+        if path.ends_with("server.tellur") {
+            source = source.replace("delta http_send(", "delta checked_send(");
+            source.push_str(r#"
+                control checked_send(ref http_connection connection, u32 status, ref string body,
+                    ref string media, ref string allow) exits sent, failed {string message} {
+                    delta http_send(connection,status,body,media,allow) {
+                        sent=>sent, failed {string message}=>failed
+                    }
+                    [failed]:exit failed {message};
+                    [sent]:delta (status==404) {true=>broken,false=>healthy}
+                    [broken]:fault "injected post-response invariant";
+                    [healthy]:exit sent;
+                }
+            "#);
+        }
+        Ok(source)
+    }).unwrap();
+    let f = Fixture::new();
+    let binary = f.0.join("isolated");
+    p.build_native("serve", &binary, 0).unwrap();
+    let server = Server::start(&binary, &f.0.join("settings.json"), 3, 3000);
+    let first = response(
+        &exchange(
+            &server.authority,
+            &request(&server.authority, "GET", "/injected-fault", "", ""),
+        ),
+        500,
+        false,
+    );
+    assert_eq!(first, "Internal server error");
+    assert!(!first.contains("invariant"));
+    response(
+        &exchange(
+            &server.authority,
+            &request(&server.authority, "GET", "/settings", "", ""),
+        ),
+        200,
+        false,
+    );
+    // The 404 has already been written. A second HTTP response would violate
+    // Content-Length and this assertion; contingency must only close now.
+    response(
+        &exchange(
+            &server.authority,
+            &request(&server.authority, "GET", "/missing-after-write", "", ""),
+        ),
+        404,
+        false,
+    );
+    server.finish(0, "completed");
 }

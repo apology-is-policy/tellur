@@ -33,6 +33,8 @@ pub struct Parameter {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Primitive {
+    #[serde(default, skip_serializing_if = "crate::ir::is_false")]
+    pub contingent: bool,
     pub name: String,
     pub parameters: Vec<Parameter>,
     pub outcomes: Vec<Outcome>,

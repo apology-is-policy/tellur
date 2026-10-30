@@ -98,6 +98,12 @@ impl Expander<'_> {
         let s = &instance.slots;
         let a = &instance.atoms;
         let action = match &original.action {
+            Action::Supervise { boundary, args } => Action::Supervise {
+                boundary: boundary.clone(),
+                args: args.iter().map(|e| expr(e, s)).collect(),
+            },
+            Action::Terminate => Action::Terminate,
+            Action::Escalate => Action::Escalate,
             Action::Exit(name, args) => {
                 let arm = instance.arms.iter().find(|a| a.outcome == *name).unwrap();
                 Action::Complete {

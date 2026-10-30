@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Core grammar](grammar.md)
 
-This chapter describes modern source accepted by compiler 0.62.0. Compatibility
+This chapter describes modern source accepted by compiler 0.63.0. Compatibility
 spellings are listed separately in the main reference.
 
 ## Source and identifiers
@@ -29,10 +29,10 @@ Avoid keyword names in user declarations. The main modern vocabulary is:
 
 | Purpose | Words |
 | --- | --- |
-| Declarations and modules | `control`, `struct`, `variant`, `outcome`, `trait`, `implement`, `type`, `import`, `as`, `pub` |
-| Completion and control flow | `exits`, `exit`, `delta`, `forward`, `capture`, `path`, `over`, `loop`, `again`, `fault`, `faults` |
+| Declarations and modules | `control`, `boundary`, `contingency`, `retains`, `struct`, `variant`, `outcome`, `trait`, `implement`, `type`, `import`, `as`, `pub` |
+| Completion and control flow | `exits`, `exit`, `delta`, `forward`, `capture`, `path`, `over`, `loop`, `again`, `fault`, `faults`, `supervise`, `terminate`, `escalate` |
 | Types and access | `auto`, `mutable`, `ref`, `borrow`, `deref`, `from`, `self` |
-| Capabilities and operations | `copy`, `clone`, `drop`, `emit` |
+| Capabilities and operations | `copy`, `clone`, `drop`, `emit`, `@contingent` |
 | Builtin values and constructors | `true`, `false`, `unit`, `some`, `none`, `bytes`, `map` |
 
 Builtin collection operation names and manifest primitive names also participate in

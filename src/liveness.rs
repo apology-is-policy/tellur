@@ -55,6 +55,7 @@ pub fn outcome(expr: &crate::syntax::OutcomeExpr, names: &mut BTreeSet<String>) 
 }
 pub fn statement(stmt: &Statement, names: &mut BTreeSet<String>) {
     match stmt {
+        Statement::Terminate | Statement::Escalate => {}
         Statement::ExitName(name) => {
             names.insert(name.clone());
         }
@@ -65,6 +66,7 @@ pub fn statement(stmt: &Statement, names: &mut BTreeSet<String>) {
         Statement::Bind(_, _, e, _)
         | Statement::Drop(e)
         | Statement::Emit(e)
+        | Statement::Supervise(e)
         | Statement::Fault(e) => expression(e, names),
         Statement::Delta(_, e, arms) => {
             expression(e, names);

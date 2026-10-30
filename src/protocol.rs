@@ -11,6 +11,7 @@ pub enum Symbol {
     Primitive { operation: String, outcome: String },
     Exit { outcome: String },
     Fault,
+    IsolatedFault,
 }
 /// Forget payload values, arguments, emit text and primitive effect annotations.
 /// The final exit token distinguishes completed traces from proper prefixes.
@@ -20,6 +21,7 @@ pub fn project_execution(execution: &crate::runtime::Execution) -> Vec<Symbol> {
         .events
         .iter()
         .map(|event| match event {
+            Event::Fault { .. } => Symbol::IsolatedFault,
             Event::Emit { .. } => Symbol::Emit,
             Event::Primitive {
                 operation, outcome, ..
@@ -150,6 +152,11 @@ impl Graph {
                 Action::Complete { atom, unwind, .. } => Step::Complete(*atom, *unwind),
                 Action::Exit(name, _) => Step::Exit(name.clone()),
                 Action::Fault(_) => Step::Fault,
+                Action::Supervise { .. } | Action::Terminate | Action::Escalate => {
+                    return Err(error(
+                        "protocol analysis of supervision boundaries is not implemented; isolation cannot be erased or treated as a normal outcome",
+                    ));
+                }
                 Action::Emit(_) => Step::Emit,
                 Action::Decide {
                     operation, arms, ..

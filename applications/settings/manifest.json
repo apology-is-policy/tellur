@@ -467,7 +467,8 @@
       "returns": true,
       "rust": {
         "execution": "blocking"
-      }
+      },
+      "contingent": true
     },
     {
       "name": "http_listener_release",
@@ -552,6 +553,43 @@
       "effects": [],
       "returns": true,
       "pure": true
+    },
+    {
+      "name": "http_reply_failure",
+      "contingent": true,
+      "parameters": [
+        {
+          "name": "connection",
+          "type": "http_connection",
+          "mode": "borrow"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "sent",
+          "fields": []
+        },
+        {
+          "name": "unavailable",
+          "fields": []
+        },
+        {
+          "name": "failed",
+          "fields": [
+            {
+              "name": "message",
+              "type": "string"
+            }
+          ]
+        }
+      ],
+      "effects": [
+        "net.write"
+      ],
+      "returns": true,
+      "rust": {
+        "execution": "blocking"
+      }
     }
   ],
   "rust": {

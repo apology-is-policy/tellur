@@ -62,6 +62,7 @@ fn manifest() -> Manifest {
         ),
     ] {
         m.primitives.push(Primitive {
+            contingent: false,
             name: name.into(),
             parameters: params
                 .into_iter()

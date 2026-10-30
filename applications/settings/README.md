@@ -74,16 +74,16 @@ arguments in workspace settings, for example:
 
 ## Execution boundary failures
 
-The CLI/server entry is currently one execution boundary. A returned executor
-failure terminates that entry; the server does not catch it and continue accepting
-requests. Native `--json` failures after execution begins carry a structured report
-on stderr with control invocations and source sites. Ordinary HTTP/file outcomes
-still use the application's declared contracts and status mapping.
+The CLI has one entry boundary. The server additionally supervises individual
+requests: explicit source faults retire request work, run its restricted
+contingency and permit the independent accept loop to continue. Other executor
+failures remain fatal. Native `--json` failures after execution begins carry
+structured reports; handled faults are diagnostic events with source context.
+Ordinary HTTP/file failures keep their declared outcomes inside request work.
 
-Retained host objects are released during ordinary teardown, but this does not
-invoke Tellur cleanup controls, undo a file replacement or prove fallible protocol
-completion. Per-request isolation is later work, after activation storage and
-resource-disposition contracts. See [the agreed model](../../docs/faults-and-activations.md).
+Retained host-object teardown does not implicitly call fallible cleanup controls
+or undo effects. The request contingency explicitly completes its connection.
+See [the agreed model](../../docs/faults-and-activations.md).
 
 ## Inspect decisions and failure contributors
 
@@ -185,9 +185,9 @@ release does not claim an observable OS close-error result or write durability.
 The loop stops after its connection budget or after an idle accept timeout. Every
 accepted connection counts, including malformed and disconnected clients. Normal
 completion is `completed` or `idle` (status 0). Read/write/cleanup failures are
-reported while the loop continues; eventual `completed_with_failures` or
-`idle_with_failures` has status 1. Successfully delivered HTTP 4xx/5xx responses do
-not by themselves make the server process fail. Accept failures end the loop as
+reported inside the request while the supervisor continues. The supervisor does
+not aggregate a request success/fault result. HTTP 4xx/5xx responses do not make
+the server process fail. Accept failures end the loop as
 `failed` (status 1). A clean peer disconnect is an ordinary connection completion.
 
 For VS Code, select entry `serve` and arguments such as
@@ -248,3 +248,19 @@ the existing public `invalid_key`. The report shows changed contributors while t
 public contract remains equal. Review evidence changes before replacing the baseline;
 equal recorded evidence does not prove unchanged behavior. See
 [outcome absorption](../../docs/reference/outcome-absorption.md) for analysis limits.
+
+## Request contingency
+
+Each accepted connection is owned by `server.handle`, a named supervised boundary.
+A source fault retires normal request work and transfers the retained connection
+to its contingency. The restricted host operation `http_reply_failure` attempts a
+generic 500 only before a response starts; otherwise it reports `unavailable`.
+The contingency closes the connection, accounts for write/close failures locally,
+and terminates. The independent accept loop then services the next connection.
+
+`completed` and `idle` now describe the service lifecycle without aggregating
+request results. Per-request problems appear in responses and diagnostic events.
+The former `completed_with_failures` / `idle_with_failures` alternatives were
+removed: supervision does not expose a child success/fault outcome. Source faults
+are isolated; foreign panics, driver failures and exhausted host fuel remain fatal.
+See [the contingency reference](../../docs/reference/contingency.md).

@@ -345,7 +345,7 @@ unsafe extern "C" {
     fn ferror(file: *mut c_void) -> c_int;
     fn fclose(file: *mut c_void) -> c_int;
 }
-/// Invocation-owned storage. Tokens never own or clone the Rust object.
+/// Host registry for activation-owned objects. Tokens never clone a Rust owner.
 /// Dropping the host releases remaining objects; fallible protocol completion
 /// still belongs to explicit consuming adapter operations.
 #[derive(Default)]
@@ -416,6 +416,7 @@ impl Resources {
 }
 pub type RustAdapter = fn(&mut Resources, &str, Vec<V>) -> R<Outcome>;
 pub struct Host {
+    contingencies: Vec<String>,
     pub rust_adapter: Option<RustAdapter>,
     pub manifest: Json,
     script: Option<Vec<ScriptCall>>,
@@ -455,6 +456,7 @@ impl Host {
             files: BTreeMap::new(),
             next_file: 0,
             resources: Resources::default(),
+            contingencies: vec![],
             activations: fault::Tracker::default(),
         }
     }
@@ -473,6 +475,106 @@ impl Host {
         };
         self.activations.source_fault();
         Err(format!("E_FAULT: {message}"))
+    }
+    pub fn source_faulted(&self) -> bool {
+        self.activations.is_source_fault()
+    }
+    pub fn escalate(&mut self) -> R<Outcome> {
+        self.activations.source_fault();
+        Err(self
+            .contingencies
+            .last()
+            .cloned()
+            .unwrap_or_else(|| "E_NATIVE: escalate outside contingency".into()))
+    }
+    pub fn release_frame(&mut self, values: &[Option<V>]) {
+        fn release(resources: &mut Resources, v: &V) {
+            match v {
+                V::Opaque { token, .. } => {
+                    resources.values.remove(token);
+                }
+                V::Construct { fields, .. } => {
+                    for v in fields {
+                        release(resources, v);
+                    }
+                }
+                _ => {}
+            }
+        }
+        for v in values.iter().flatten() {
+            release(&mut self.resources, v);
+        }
+    }
+    pub fn supervise(
+        &mut self,
+        values: &mut Vec<Option<V>>,
+        args: Vec<V>,
+        work: fn(&mut Host, &mut Vec<Option<V>>, Vec<V>, &mut Vec<V>) -> R<Outcome>,
+        handler: fn(&mut Host, &mut Vec<Option<V>>, Vec<V>, &mut Vec<V>) -> R<Outcome>,
+        name: &str,
+    ) -> R<()> {
+        fn tokens(v: &V, into: &mut std::collections::BTreeSet<String>) {
+            match v {
+                V::Opaque { token, .. } => {
+                    into.insert(token.clone());
+                }
+                V::Construct { fields, .. } => {
+                    for v in fields {
+                        tokens(v, into);
+                    }
+                }
+                _ => {}
+            }
+        }
+        let before: std::collections::BTreeSet<_> = self.resources.values.keys().cloned().collect();
+        let mut owned = std::collections::BTreeSet::new();
+        for v in &args {
+            tokens(v, &mut owned);
+        }
+        let child = self.activations.child();
+        let mut parent = std::mem::replace(&mut self.activations, child);
+        let mut retained = vec![];
+        let result = work(self, values, args, &mut retained);
+        let result = match result {
+            Err(message) if self.source_faulted() => {
+                let report = self
+                    .activations
+                    .failure(name, fault::Phase::Execution, &message);
+                if self.trace {
+                    self.events.push(json!({"kind":"fault", "report": report}));
+                } else {
+                    eprintln!("{report}");
+                }
+                let mut handler_tracker = self.activations.child();
+                handler_tracker.with_cause(report);
+                self.activations = handler_tracker;
+                retained.push(V::String(
+                    message.strip_prefix("E_FAULT: ").unwrap_or(&message).into(),
+                ));
+                self.contingencies.push(message);
+                let answer = handler(self, values, retained, &mut vec![]).map(|_| ());
+                self.contingencies.pop();
+                answer
+            }
+            other => other.map(|_| ()),
+        };
+        // Retire this boundary's objects, including owners moved into temporary
+        // arguments at a failing host call. Parent resources remain untouched.
+        self.resources
+            .values
+            .retain(|token, _| before.contains(token) && !owned.contains(token));
+        parent.absorb(&self.activations);
+        if let Err(message) = &result {
+            if self.source_faulted() {
+                parent.source_fault();
+            }
+            let report = self
+                .activations
+                .failure(name, fault::Phase::Execution, message);
+            parent.with_cause(report);
+        }
+        self.activations = parent;
+        result
     }
     fn failure(
         &mut self,

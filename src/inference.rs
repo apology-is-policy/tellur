@@ -146,7 +146,7 @@ pub(crate) fn dependency_order(
             type_calls(ty, calls, manifest);
         }
         match statement {
-            Statement::ExitName(_) => {}
+            Statement::Terminate | Statement::Escalate | Statement::ExitName(_) => {}
             Statement::Capture(_, _, e, _) | Statement::Forward(e) | Statement::Invoke(e) => {
                 expr(e, calls, manifest)
             }
@@ -156,6 +156,7 @@ pub(crate) fn dependency_order(
             Statement::Bind(_, _, e, _)
             | Statement::Drop(e)
             | Statement::Emit(e)
+            | Statement::Supervise(e)
             | Statement::Fault(e)
             | Statement::Delta(_, e, _) => expr(e, calls, manifest),
             Statement::Assign(a, b) => {
@@ -228,6 +229,9 @@ pub(crate) fn dependency_order(
         .map(|r| {
             let mut calls = BTreeSet::new();
             items(&r.body, &mut calls, manifest);
+            if let Some(b) = &r.boundary {
+                calls.insert(b.handler.clone());
+            }
             for p in &r.parameters {
                 type_calls(&p.ty, &mut calls, manifest);
             }

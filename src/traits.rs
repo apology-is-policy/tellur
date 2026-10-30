@@ -580,6 +580,21 @@ pub(crate) fn lower(
                 ));
             }
             method.fault_contract = Some(permission);
+            let contingent = d
+                .methods
+                .iter()
+                .find(|m| m.name == method.name)
+                .unwrap()
+                .contingent_contract
+                == Some(true);
+            if method.contingent_contract == Some(true) && !contingent {
+                return Err(Diagnostic::new(
+                    "E_CONTINGENT",
+                    method.span,
+                    "implementation cannot enlarge the trait contingency subset",
+                ));
+            }
+            method.contingent_contract = Some(contingent);
             method.name = format!("{trait_name}<{target}>.{}", method.name);
             method.public = public;
             crate::generic_controls::rewrite_region(&mut method, &bindings);

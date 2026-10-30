@@ -45,6 +45,8 @@ pub struct Activation {
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Report {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cause: Option<Box<Report>>,
     #[serde(default, skip_serializing_if = "Kind::is_returned")]
     pub kind: Kind,
     pub format: String,
@@ -110,6 +112,9 @@ impl std::fmt::Display for Report {
                 )?;
             }
         }
+        if let Some(cause) = &self.cause {
+            writeln!(f, "Caused by: {cause}")?;
+        }
         write!(
             f,
             "No rollback or resource-protocol completion is asserted."
@@ -128,6 +133,7 @@ struct Active {
 /// accumulate history. Once a report is captured, this tracker cannot resume.
 #[derive(Default, Debug)]
 pub struct Tracker {
+    cause: Option<Box<Report>>,
     kind: Kind,
     sites: BTreeMap<usize, Site>,
     active: Vec<Active>,
@@ -135,6 +141,31 @@ pub struct Tracker {
     failed: bool,
 }
 impl Tracker {
+    pub fn is_source_fault(&self) -> bool {
+        self.kind == Kind::SourceFault
+    }
+    pub fn child(&self) -> Self {
+        Self {
+            sites: self.sites.clone(),
+            next: self.next,
+            ..Self::default()
+        }
+    }
+    pub fn absorb(&mut self, child: &Self) {
+        self.next = self.next.max(child.next);
+    }
+    pub fn with_cause(&mut self, mut report: Report) {
+        // A bounded causal chain, even with nested boundary escalation.
+        let mut cursor = &mut report;
+        for _ in 0..7 {
+            let Some(ref mut cause) = cursor.cause else {
+                break;
+            };
+            cursor = cause;
+        }
+        cursor.cause = None;
+        self.cause = Some(Box::new(report));
+    }
     pub fn source_fault(&mut self) {
         self.kind = Kind::SourceFault;
     }
@@ -191,6 +222,7 @@ impl Tracker {
             })
             .collect();
         Report {
+            cause: self.cause.clone(),
             kind: self.kind.clone(),
             format: "tellur.execution-failure".into(),
             version: 1,
