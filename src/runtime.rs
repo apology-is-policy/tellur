@@ -265,6 +265,30 @@ enum Flow {
     Fallthrough,
 }
 
+/// Administrative settlement is not a source outcome, even inside the runtime.
+enum Completion {
+    Outcome(String, Vec<Value>),
+    Settled,
+}
+impl Completion {
+    fn outcome(self) -> Result<(String, Vec<Value>)> {
+        match self {
+            Self::Outcome(name, values) => Ok((name, values)),
+            Self::Settled => Err(error(
+                "administrative settlement cannot enter an outcome continuation",
+            )),
+        }
+    }
+    fn settled(self) -> Result<()> {
+        match self {
+            Self::Settled => Ok(()),
+            Self::Outcome(..) => Err(error(
+                "a supervised boundary cannot return an ordinary outcome",
+            )),
+        }
+    }
+}
+
 struct Machine<'a> {
     next_base: Id,
     contingencies: Vec<Diagnostic>,
@@ -283,7 +307,7 @@ impl Machine<'_> {
         args: Vec<Value>,
         values: &mut BTreeMap<Id, Value>,
         handover: &mut Vec<Value>,
-    ) -> Result<(String, Vec<Value>)> {
+    ) -> Result<Completion> {
         let region = self
             .program
             .region(name)
@@ -323,11 +347,11 @@ impl Machine<'_> {
         match flow? {
             Flow::Terminate => {
                 self.activations.leave();
-                Ok((String::new(), vec![]))
+                Ok(Completion::Settled)
             }
             Flow::Exit(outcome, fields) => {
                 self.activations.leave();
-                Ok((outcome, fields))
+                Ok(Completion::Outcome(outcome, fields))
             }
             _ => Err(error("interpreter invariant: checked region fell through")),
         }
@@ -366,11 +390,11 @@ impl Machine<'_> {
                 self.contingencies.push(diagnostic);
                 let answer = self
                     .invoke(&handler, retained, values, &mut vec![])
-                    .map(|_| ());
+                    .and_then(Completion::settled);
                 self.contingencies.pop();
                 answer
             }
-            other => other.map(|_| ()),
+            other => other.and_then(Completion::settled),
         };
         parent.absorb(&self.activations);
         if let Err(diagnostic) = &result {
@@ -541,7 +565,9 @@ impl Machine<'_> {
                         .collect::<Result<Vec<_>>>()?;
                     let (outcome, fields) = match operation {
                         Operation::Collection(name) => collection(name, args, values)?,
-                        Operation::Region(name) => self.invoke(name, args, values, &mut vec![])?,
+                        Operation::Region(name) => {
+                            self.invoke(name, args, values, &mut vec![])?.outcome()?
+                        }
                         Operation::Variant(expr) => match evaluate(expr, values, base)? {
                             Value::Bool(b) => (b.to_string(), vec![]),
                             Value::Construct { name, fields, .. } => (name, fields),
@@ -720,12 +746,14 @@ impl CheckedProgram {
             {
                 return Err(error("entry controls cannot require borrowed arguments"));
             }
-            let (outcome, fields) = machine.invoke(
-                &scenario.entry,
-                scenario.arguments.clone(),
-                &mut BTreeMap::new(),
-                &mut vec![],
-            )?;
+            let (outcome, fields) = machine
+                .invoke(
+                    &scenario.entry,
+                    scenario.arguments.clone(),
+                    &mut BTreeMap::new(),
+                    &mut vec![],
+                )?
+                .outcome()?;
             machine.phase = crate::fault::Phase::ResultValidation;
             if machine.cursor != scenario.calls.len() {
                 return Err(error(format!(

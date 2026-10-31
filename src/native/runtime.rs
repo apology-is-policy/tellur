@@ -14,6 +14,28 @@ use std::{
 };
 pub type R<T> = Result<T, String>;
 pub type Outcome = (String, Vec<V>);
+pub enum Completion {
+    Outcome(Outcome),
+    Settled,
+}
+impl Completion {
+    pub fn outcome(self) -> R<Outcome> {
+        match self {
+            Self::Outcome(value) => Ok(value),
+            Self::Settled => Err(
+                "E_NATIVE: administrative settlement cannot enter an outcome continuation".into(),
+            ),
+        }
+    }
+    pub fn settled(self) -> R<()> {
+        match self {
+            Self::Settled => Ok(()),
+            Self::Outcome(_) => {
+                Err("E_NATIVE: supervised boundary returned an ordinary outcome".into())
+            }
+        }
+    }
+}
 fn snake_name(name: &str) -> String {
     let mut out = String::new();
     for (i, c) in name.chars().enumerate() {
@@ -469,7 +491,7 @@ impl Host {
     pub fn at(&mut self, site: usize) {
         self.activations.at(site);
     }
-    pub fn fault(&mut self, value: V) -> R<Outcome> {
+    pub fn fault<T>(&mut self, value: V) -> R<T> {
         let V::String(message) = value else {
             return Err("E_NATIVE: fault requires string".into());
         };
@@ -479,7 +501,7 @@ impl Host {
     pub fn source_faulted(&self) -> bool {
         self.activations.is_source_fault()
     }
-    pub fn escalate(&mut self) -> R<Outcome> {
+    pub fn escalate<T>(&mut self) -> R<T> {
         self.activations.source_fault();
         Err(self
             .contingencies
@@ -509,8 +531,8 @@ impl Host {
         &mut self,
         values: &mut Vec<Option<V>>,
         args: Vec<V>,
-        work: fn(&mut Host, &mut Vec<Option<V>>, Vec<V>, &mut Vec<V>) -> R<Outcome>,
-        handler: fn(&mut Host, &mut Vec<Option<V>>, Vec<V>, &mut Vec<V>) -> R<Outcome>,
+        work: fn(&mut Host, &mut Vec<Option<V>>, Vec<V>, &mut Vec<V>) -> R<Completion>,
+        handler: fn(&mut Host, &mut Vec<Option<V>>, Vec<V>, &mut Vec<V>) -> R<Completion>,
         name: &str,
     ) -> R<()> {
         fn tokens(v: &V, into: &mut std::collections::BTreeSet<String>) {
@@ -552,11 +574,12 @@ impl Host {
                     message.strip_prefix("E_FAULT: ").unwrap_or(&message).into(),
                 ));
                 self.contingencies.push(message);
-                let answer = handler(self, values, retained, &mut vec![]).map(|_| ());
+                let answer =
+                    handler(self, values, retained, &mut vec![]).and_then(Completion::settled);
                 self.contingencies.pop();
                 answer
             }
-            other => other.map(|_| ()),
+            other => other.and_then(Completion::settled),
         };
         // Retire this boundary's objects, including owners moved into temporary
         // arguments at a failing host call. Parent resources remain untouched.

@@ -29,6 +29,38 @@ Each delivered checkpoint must update this list and the language reference with
 its actual scope and limitations. Existing named 0.63 boundaries remain a
 compatibility form while lexical boundaries are introduced.
 
+## Next boundary decisions
+
+The runtime preparation separates ordinary outcome completion from administrative
+settlement in both engines. A supervised invocation now accepts only the latter;
+an ordinary call accepts only the former. There is no internal empty-name outcome
+standing in for settlement. This is an internal preparation after the 0.65 release,
+not an implementation of lexical boundary syntax.
+Validation covers 54 boundary, source-fault, native, owning-expression, host and
+HTTP regressions, including a real request fault returning 500 followed by a
+successful request. Installed 0.65 binaries remain the published owning-expression
+release; this internal preparation is available from the repository source.
+
+Two policy choices are awaiting the author's decision before the new boundary
+interface is fixed:
+
+- **Process termination authority.** The recommendation is to allow
+  `terminate process N;` only in the executable entry control's outermost
+  contingency. The alternative is an explicit transitive `terminates` permission
+  in library contracts. Neither choice creates a normal outcome for a fault.
+- **Stateful recovery.** The recommendation is for `recover again requestor;` to
+  retain supervisor state as it stood at boundary entry while discarding request
+  locals. Protected work cannot mutate or consume that state, and the contingency
+  cannot choose replacement restart arguments. The smaller first implementation
+  would support recovery only for parameterless supervised loops.
+
+With retained supervisor state, an accept budget or listener belongs to the
+supervisor; an accepted connection belongs to the protected request. Any deliberate
+budget update happens before entering the request boundary. Recovery must neither
+silently reset that budget to its initial value nor carry values computed by the
+failed request into a new iteration. Moving a request connection into contingency
+does not confer permission to reuse it for another request.
+
 ## Recovery invariants
 
 - A fault retires ordinary continuations up to the nearest active boundary.

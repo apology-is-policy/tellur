@@ -145,7 +145,7 @@ impl Generator<'_> {
             );
             match &i.action {
                 Action::Terminate => {
-                    self.code.push_str("return Ok((String::new(), vec![]));\n");
+                    self.code.push_str("return Ok(Completion::Settled);\n");
                 }
                 Action::Escalate => {
                     self.code.push_str("return host.escalate();\n");
@@ -199,7 +199,11 @@ impl Generator<'_> {
                     for id in &self.slots {
                         let _ = writeln!(self.code, "v[base + {id}] = None;");
                     }
-                    let _ = writeln!(self.code, "return Ok(({}.into(), fields));", string(name));
+                    let _ = writeln!(
+                        self.code,
+                        "return Ok(Completion::Outcome(({}.into(), fields)));",
+                        string(name)
+                    );
                 }
                 Action::Again { target, args } => {
                     let _ = writeln!(
@@ -285,7 +289,7 @@ impl Generator<'_> {
                             format!("host.primitive({}, {})?", string(name), expressions(args))
                         }
                         Operation::Region(name) => format!(
-                            "{{ let args = {}; region_{}(host, &mut v, args, &mut vec![])? }}",
+                            "{{ let args = {}; region_{}(host, &mut v, args, &mut vec![])?.outcome()? }}",
                             expressions(args),
                             self.names[name.as_str()]
                         ),
@@ -377,7 +381,7 @@ impl CheckedProgram {
                 .unwrap_or(0);
             let _ = writeln!(
                 g.code,
-                "fn region_{}(host:&mut Host, mut v:&mut Vec<Option<V>>, args:Vec<V>, handover:&mut Vec<V>)->R<Outcome> {{\nhost.enter({})?;\nlet base=v.len(); v.resize(base + {size}, None);\nlet result=(|| {{\nlet mut a = vec![false; {size}];\nlet mut args = args.into_iter();",
+                "fn region_{}(host:&mut Host, mut v:&mut Vec<Option<V>>, args:Vec<V>, handover:&mut Vec<V>)->R<Completion> {{\nhost.enter({})?;\nlet base=v.len(); v.resize(base + {size}, None);\nlet result=(|| {{\nlet mut a = vec![false; {size}];\nlet mut args = args.into_iter();",
                 g.names[r.name.as_str()],
                 string(&self.runtime_name(&r.name))
             );
@@ -413,7 +417,7 @@ impl CheckedProgram {
             } else {
                 let _ = writeln!(
                     g.code,
-                    "fn entry_{id}(host: &mut Host, args: Vec<V>)->R<Outcome> {{ let mut v=Vec::new(); region_{id}(host, &mut v, args, &mut vec![]) }}",
+                    "fn entry_{id}(host: &mut Host, args: Vec<V>)->R<Outcome> {{ let mut v=Vec::new(); region_{id}(host, &mut v, args, &mut vec![])?.outcome() }}",
                 );
             }
         }
