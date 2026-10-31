@@ -10,7 +10,8 @@ syntax. Work is proceeding through the checkpoints below.
    statements. Omitted arms import their producer's outcomes and payload names;
    every resulting history must still have a disposition. An arm body adds values
    on its selected path; it does not replace the outcome's identity or schema.
-2. Explicit `move`, direct owning construction and temporary argument ergonomics.
+2. **Delivered in 0.65:** explicit `move`, nested owning construction and call-duration
+   temporary borrows for ordinary reference-free values with no escaping result loan.
    Generic forwarding preserves ownership/reference mode. Moves do not clone;
    eliminating physical storage transfers is a separate lowering objective.
 3. Lexical `fault boundary { ... } contingency [...] { ... }` and

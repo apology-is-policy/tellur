@@ -6,7 +6,7 @@ qualified decision paths, grouped arms, explicit ownership transfer, lexical
 contingency and supervised loops, followed by construction and lowering work.
 
 30 October 2026. This is the working revision plan, not a claim that all proposed
-features are implemented. Compiler **0.64.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
+features are implemented. Compiler **0.65.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
 lifetime checkpoints of milestone 2, the array/vector/map core of milestone 3,
 and implicit entry, inline/stored adapters, owned capture, named outcome contracts
 and checked forwarding in milestone 4. A first [semantic foundation](semantic-foundation.md)

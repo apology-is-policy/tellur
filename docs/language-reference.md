@@ -1,8 +1,8 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.64.0 -->
+<!-- tellur-reference-version: 0.65.0 -->
 
-This manual describes **compiler 0.64.0**, including the current ownership model,
+This manual describes **compiler 0.65.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -972,6 +972,13 @@ Disjoint definitions of one owned binding must agree on type and mutability. Cop
 reads and comparisons do not consume values. `emit(value)` consumes an owned string;
 `emit(borrow value)` borrows it.
 
+Since 0.65, `move value` makes an ownership transfer explicit. Copy values retain
+their Copy behavior, while an exclusive reference passed as `move reference`
+transfers its permission instead of reborrowing it for the call. Nested owning
+constructors need no intermediate variables. See
+[owning expressions and temporary arguments](reference/ownership-expressions.md)
+for examples, generic forwarding and the distinction between moves and copy elision.
+
 ## References, borrowed calls and lifetimes
 
 Reference types and operations use these words:
@@ -1123,7 +1130,10 @@ Every surviving copy or extracted reference keeps its owner borrowed. A loan end
 at its last use, explicit `drop(...)`, or lexical scope exit. Liveness is conservative
 around loops and whole-value uses. Individual record fields now have separate
 last uses, so a later use of another field need not keep an unrelated loan alive. Mutation through a shared reference, duplicated exclusive access, moving a
-borrowed owner, and borrowing a temporary are rejected. Constructor expressions
+borrowed owner, and storing a reference to an unnamed temporary are rejected.
+Reference-free ordinary temporaries may be borrowed for a call that cannot return
+their loan; [call-duration storage](reference/ownership-expressions.md#borrowing-a-temporary-for-a-call)
+ends before the outcome continuation. Constructor expressions
 are checked and evaluated in written order. Module field privacy still applies.
 
 Local storage, grouped results, and grouped control inputs are supported. Records
@@ -2646,7 +2656,7 @@ It does not yet provide general expression or call-site type hover.
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and async tasks remain planned; they are not executable features of 0.64.0.
+and async tasks remain planned; they are not executable features of 0.65.0.
 ## Contingency and supervised boundaries
 
 The [contingency reference](reference/contingency.md) specifies `@contingent`,

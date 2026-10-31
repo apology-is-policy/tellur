@@ -13,6 +13,7 @@ fn inferred_payload_name(expression: &syntax::Expr, index: usize) -> String {
         return name.clone();
     }
     match &expression.kind {
+        syntax::ExprKind::Move(value) => inferred_payload_name(value, index),
         syntax::ExprKind::Name(n) => {
             let name = expression.local_spelling.as_ref().unwrap_or(n);
             if !name.contains('.') && !name.starts_with('$') {
@@ -857,6 +858,11 @@ impl Checker<'_> {
         span: Span,
     ) -> Result<bool> {
         use syntax::ExprKind as S;
+        let expression = if let S::Move(value) = &expression.kind {
+            value.as_ref()
+        } else {
+            expression
+        };
         let copied = self.reference_source(expression, span)?;
         let mutable = match &expression.kind {
             S::Borrow(_) => false,
@@ -904,6 +910,9 @@ impl Checker<'_> {
         expected: Option<&str>,
     ) -> Result<(Expr, String)> {
         arg.checked(span, |span| {
+        if let syntax::ExprKind::Move(value) = &arg.kind {
+            return self.exit_value(name, index, value, domain, span, expected);
+        }
         if let Some(value) = self.exit_stored(name, index, arg, domain, span, expected)? {
             return Ok(value);
         }
@@ -1193,6 +1202,9 @@ impl Checker<'_> {
         Ok(())
     }
     fn collection_type(&self, arg: &syntax::Expr, span: Span) -> Result<String> {
+        if let syntax::ExprKind::Move(value) = &arg.kind {
+            return self.collection_type(value, span);
+        }
         let e = match &arg.kind {
             syntax::ExprKind::Borrow(e) | syntax::ExprKind::BorrowMutable(e) => e.as_ref(),
             _ => arg,
@@ -1249,6 +1261,12 @@ impl Checker<'_> {
         let expr = local.as_ref().unwrap_or(expr);
         expr.checked(span, |span| {
         use syntax::ExprKind as S;
+        if let S::Move(value) = &expr.kind {
+            if !moving {
+                return Err(self.error("E_MOVE", span, "move requires an owning value context; pass a borrow to retain the source"));
+            }
+            return self.expr_expected(value, domain, true, span, expected);
+        }
         if let Some(place) = self.resolve_place(expr, span)? {
             if self.manifest.contains_references(&place.ty) {
                 return Err(self.error("E_UNSUPPORTED", span, "stored references currently support local record construction, binding, field access and drop; this value boundary needs contained-loan propagation"));
@@ -1627,8 +1645,15 @@ impl Checker<'_> {
             .zip(parameters)
             .map(|(arg, p)| arg.checked(span, |span| {
                 if let Some((mutable,inner))=manifest::reference_inner(&p.ty) {
+                    let (arg, transfer) = if let syntax::ExprKind::Move(value) = &arg.kind {
+                        (value.as_ref(), true)
+                    } else { (arg, false) };
                     let target=self.reference_argument(arg,mutable,domain,span)?;
                     self.expect_type(&target.ty,inner,span)?;
+                    if transfer {
+                        let source = self.reference_source(arg, span)?.ok_or_else(|| self.error("E_MOVE", span, "move into a reference parameter requires an existing reference; use borrow to create a loan"))?;
+                        self.transfer_reference(&source, domain, span)?;
+                    }
                     return Ok(Expr::Reference(target.place,p.ty.clone()));
                 }
                 let mode = self.argument_mode(p);
@@ -1681,6 +1706,11 @@ impl Checker<'_> {
         for (argument, (arg, param)) in args.iter().zip(parameters).enumerate() {
             let mut accesses = vec![];
             self.accesses(arg, &self.argument_mode(param), span, &mut accesses)?;
+            let arg = if let syntax::ExprKind::Move(value) = &arg.kind {
+                value.as_ref()
+            } else {
+                arg
+            };
             let place = match &arg.kind {
                 syntax::ExprKind::Borrow(inner) | syntax::ExprKind::BorrowMutable(inner) => {
                     inner.as_ref()
@@ -1784,6 +1814,17 @@ impl Checker<'_> {
                 return Ok(());
             }
             match &expr.kind {
+                syntax::ExprKind::Move(inner) => {
+                    let mode = if self
+                        .reference_source(inner, span)?
+                        .is_some_and(|(_, _, loan, _)| !loan.mutable)
+                    {
+                        Mode::Borrow
+                    } else {
+                        Mode::Consume
+                    };
+                    self.accesses(inner, &mode, span, uses)?
+                }
                 syntax::ExprKind::Borrow(inner) => {
                     self.accesses(inner, &Mode::Borrow, span, uses)?
                 }
@@ -2297,6 +2338,11 @@ impl Checker<'_> {
                 self.emit(guard, Action::Bind(id, expr), span);
             }
             Statement::Drop(expression) => {
+                let expression = if let syntax::ExprKind::Move(value) = &expression.kind {
+                    value.as_ref()
+                } else {
+                    expression
+                };
                 let local = self.local_expression(expression);
                 let expression = local.as_ref().unwrap_or(expression);
                 if self.drop_stored(expression, guard.clone(), domain, span)? {
@@ -2914,6 +2960,104 @@ impl Checker<'_> {
             }
         }
     }
+    /// Give call-duration rvalues real storage. Stage owning arguments in written
+    /// order as well: a later temporary must not read an owner already transferred
+    /// by an earlier argument. Returned borrows require an explicitly named owner.
+    fn temporary_arguments(
+        &mut self,
+        operand: &syntax::Expr,
+        guard: &Guard,
+        domain: Formula,
+        span: Span,
+    ) -> Result<Option<(syntax::Expr, Vec<Id>)>> {
+        use syntax::ExprKind as S;
+        let S::Call(name, args) = &operand.kind else {
+            return Ok(None);
+        };
+        let Some(sig) = self.signature(name, args, span)? else {
+            return Ok(None);
+        };
+        if args.len() != sig.parameters.len() {
+            return Ok(None);
+        }
+        let mut temporary = BTreeSet::new();
+        for (index, (arg, parameter)) in args.iter().zip(&sig.parameters).enumerate() {
+            if manifest::reference_inner(&parameter.ty).is_some()
+                && let S::Borrow(value) | S::BorrowMutable(value) = &arg.kind
+                && self.resolve_place(value, span)?.is_none()
+            {
+                temporary.insert(index);
+            }
+        }
+        if temporary.is_empty() {
+            return Ok(None);
+        }
+        self.argument_aliases(args, &sig.parameters, domain, span)?;
+        let mut staged = Vec::new();
+        let mut release = Vec::new();
+        for (index, (arg, parameter)) in args.iter().zip(&sig.parameters).enumerate() {
+            let (value, ty, mutable, borrowed) = if temporary.contains(&index) {
+                let (mutable, ty) = manifest::reference_inner(&parameter.ty).unwrap();
+                if self.manifest.linear(ty) || self.manifest.contains_references(ty) {
+                    return Err(self.error("E_TEMPORARY", arg.span(span), "bind resource-containing or reference-bearing temporary owners before borrowing them"));
+                }
+                if sig
+                    .borrow_returns
+                    .values()
+                    .flatten()
+                    .any(|s| s.parameter == index)
+                    || sig
+                        .stored_returns
+                        .iter()
+                        .flat_map(|r| &r.sources)
+                        .any(|s| s.parameter == index)
+                {
+                    return Err(self.error("E_TEMPORARY", arg.span(span), "this call can return a borrow of the temporary; bind its owner to give the result a lifetime"));
+                }
+                let (S::Borrow(value) | S::BorrowMutable(value)) = &arg.kind else {
+                    unreachable!()
+                };
+                if matches!(arg.kind, S::BorrowMutable(_)) != mutable {
+                    return Err(self.error(
+                        "E_BORROW",
+                        arg.span(span),
+                        "reference mutability does not match the parameter",
+                    ));
+                }
+                (value.as_ref(), ty, mutable, true)
+            } else if manifest::reference_inner(&parameter.ty).is_none()
+                && self.argument_mode(parameter) != Mode::Borrow
+            {
+                (arg, parameter.ty.as_str(), false, false)
+            } else {
+                staged.push(arg.clone());
+                continue;
+            };
+            let local = format!("$argument_{}", self.fresh());
+            self.statement_inner(
+                guard.clone(),
+                domain,
+                &Statement::Bind(local.clone(), Some(ty.into()), value.clone(), mutable),
+                span,
+            )?;
+            release.push(self.find_value(&local).unwrap().1.slot.id);
+            let named = S::Name(local).at(arg.range);
+            staged.push(if borrowed {
+                (if mutable {
+                    S::BorrowMutable(Box::new(named))
+                } else {
+                    S::Borrow(Box::new(named))
+                })
+                .at(arg.range)
+            } else {
+                named
+            });
+        }
+        Ok(Some((
+            S::Call(name.clone(), staged).at(operand.range),
+            release,
+        )))
+    }
     #[allow(clippy::too_many_arguments)]
     fn decision(
         &mut self,
@@ -2926,6 +3070,8 @@ impl Checker<'_> {
         inline: Option<&[syntax::InlineArm]>,
         mut sink: Option<&mut OutcomeBinding>,
     ) -> Result<()> {
+        let temporaries = self.temporary_arguments(operand, &guard, domain, span)?;
+        let operand = temporaries.as_ref().map_or(operand, |(call, _)| call);
         if let Some(site) = site
             && !self.scopes.last_mut().unwrap().sites.insert(site.clone())
         {
@@ -3611,6 +3757,9 @@ impl Checker<'_> {
             span,
         );
         self.result.code.last_mut().unwrap().provenance.site = site.clone();
+        if let Some((_, release)) = temporaries {
+            self.emit(guard.clone(), Action::Release(release), span);
+        }
         for (atom, id, value) in stored_bindings {
             self.emit(
                 guard.clone().and(Guard::Atom(atom)),

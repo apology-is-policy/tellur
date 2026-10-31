@@ -92,6 +92,9 @@ impl Checker<'_> {
         span: Span,
     ) -> Result<(Expr, String, Vec<Loan>)> {
         arg.checked(span, |span| {
+            if let syntax::ExprKind::Move(value) = &arg.kind {
+                return self.pack_payload(value, ty, outcome, payload, domain, span);
+            }
             let inferred_reference = if ty.is_none() {
                 match &arg.kind {
                     syntax::ExprKind::Borrow(_) | syntax::ExprKind::BorrowMutable(_) => {

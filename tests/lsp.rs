@@ -2592,3 +2592,22 @@ fn boundary_and_contingent_hovers_follow_unsaved_contracts() {
     f.change(&source.replace("@contingent\n", ""), 2);
     assert_eq!(f.diagnostics()[0]["code"], "E_CONTINGENT");
 }
+
+#[test]
+fn explicit_moves_and_temporary_arguments_keep_inference_and_unsaved_diagnostics() {
+    let mut f = Fixture::new();
+    let source = "control show(ref string text) exits done {emit(text);exit done;}\ncontrol main() exits auto {string text=\"hello\";auto owned=move text;show(borrow \"temporary\");exit done {move owned};}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let column = source.lines().nth(1).unwrap().find("auto owned").unwrap();
+    assert!(
+        f.server.hover(&f.uri, 1, column as u64)["contents"]["value"]
+            .as_str()
+            .unwrap()
+            .contains("string owned")
+    );
+    f.change(&source.replace("move owned", "move text"), 2);
+    assert_eq!(f.diagnostics()[0]["code"], "E_MOVED");
+    f.change(source, 3);
+    assert_eq!(f.diagnostics(), json!([]));
+}

@@ -174,7 +174,7 @@ arbitrary expression, assignment or call-argument positions.
 expression       = conjunction ("||" conjunction)* ;
 conjunction      = comparison ("&&" comparison)* ;
 comparison       = prefix (("==" | "!=" | "<" | "<=" | ">" | ">=") prefix)? ;
-prefix           = ("!" | "borrow" "mutable"? | "deref") prefix | primary ;
+prefix           = ("!" | "borrow" "mutable"? | "deref" | "move") prefix | primary ;
 primary          = atom ("." name)* ;
 atom             = literal | qualified_name | "(" expression ")"
                  | call | construction | list_literal | "map" "{" "}" ;

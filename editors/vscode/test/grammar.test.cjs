@@ -286,3 +286,9 @@ test('boundaries and contingency permissions have distinct declarations and keyw
   has(ts, '@contingent', 'storage.modifier.annotation.tellur');
   for (const word of ['boundary', 'retains', 'contingency', 'terminate', 'supervise']) has(ts, word, 'keyword.control.tellur');
 });
+
+test('move remains an operator in expressions and outcome payloads', () => {
+  const ts = tokens('auto owned = move source;\nexit ready {move owned};\nshow(borrow "temporary");');
+  assert.equal(ts.filter(t => t.text === 'move').length, 2);
+  assert.ok(ts.filter(t => t.text === 'move').every(t => t.scopes.includes('keyword.operator.tellur')));
+});

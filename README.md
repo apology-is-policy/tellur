@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.64.0** implements the v0.1 checked core and the current language
+Compiler release **0.65.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -16,6 +16,11 @@ a reference interpreter, graph expansion, native compiler, language server, and
 VS Code build/run commands. The [revision plan](docs/language-revision.md) separates
 delivered features from the remaining reference, slice, outcome-expression and async work. The language is still
 fluid; this is an experimental implementation, not a production compiler.
+
+Release 0.65 adds [owning expressions and borrowed temporary arguments](docs/reference/ownership-expressions.md):
+explicit `move`, generic owning forwarding, and anonymous call-duration storage
+when a borrowed temporary cannot escape. Try
+[owning_expressions.tellur](playground/owning_expressions.tellur).
 
 Release 0.64 adds [implicit delta routing and named decisions](docs/reference/delta-routing.md):
 `received = delta request();` imports outcome paths and payload names. Select

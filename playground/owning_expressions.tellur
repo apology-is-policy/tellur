@@ -1,0 +1,26 @@
+struct image {
+    string caption;
+    bytes pixels;
+}
+
+control identity<t>(t value) exits ready... {
+    exit ready { move value };
+}
+
+control display(ref string text) exits done {
+    emit(text);
+    exit done;
+}
+
+outcome program_result {
+    @exit 0 done
+}
+
+control main() exits program_result {
+    display(borrow "temporary argument");
+    string caption = "owned image";
+    delta identity<image>(image(move caption, bytes "010203"));
+
+    [ready]: emit(move value.caption);
+        exit done;
+}

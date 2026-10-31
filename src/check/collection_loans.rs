@@ -51,7 +51,9 @@ impl Checker<'_> {
             return Err(self.error("E_ARITY", span, "wrong collection argument count"));
         }
         let expression = match &first.kind {
-            syntax::ExprKind::Borrow(e) | syntax::ExprKind::BorrowMutable(e) => e.as_ref(),
+            syntax::ExprKind::Borrow(e)
+            | syntax::ExprKind::BorrowMutable(e)
+            | syntax::ExprKind::Move(e) => e.as_ref(),
             _ => first,
         };
         let target = if let Some((_, _, loan, _)) = self.reference_source(expression, span)? {

@@ -241,6 +241,9 @@ impl Checker<'_> {
 
     pub(super) fn stored_type(&self, e: &syntax::Expr, span: Span) -> Result<Option<String>> {
         e.checked(span, |span| {
+            if let syntax::ExprKind::Move(value) = &e.kind {
+                return self.stored_type(value, span);
+            }
             if let Some(p) = self.resolve_place(e, span)? {
                 return Ok(Some(p.ty));
             }
@@ -324,6 +327,12 @@ impl Checker<'_> {
         moving: bool,
     ) -> Result<StoredValue> {
         e.checked(span, |span| {
+        if let syntax::ExprKind::Move(value) = &e.kind {
+            if !moving {
+                return Err(self.error("E_MOVE", span, "move requires an owning value context"));
+            }
+            return self.stored_value(value, expected, domain, span, true);
+        }
         if let Some((mutable, inner)) = manifest::reference_inner(expected) {
             let source = self.reference_source(e, span)?;
             if let Some((_, _, loan, _)) = &source {

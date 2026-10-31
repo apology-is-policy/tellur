@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.64.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.65.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -28,8 +28,8 @@ The linked regression suites give more detailed acceptance and rejection evidenc
 
 | Area | Current support | Boundary / next work | Evidence |
 | --- | --- | --- | --- |
-| Owning values | Copy/move/explicit clone/disposal, assignment, partial record moves | No user-defined copy/clone/drop behavior | [Value tests](../../tests/values.rs), [capabilities](../../tests/capabilities.rs) |
-| Direct references | Shared/exclusive calls and returns, reborrowing, last use, field separation | No reference rebinding or references to references | [Reference tests](../../tests/references.rs) |
+| Owning values | Copy/move/explicit clone/disposal, assignment, partial record moves, explicit move expressions and nested owning construction | No user-defined copy/clone/drop behavior or guaranteed physical copy elision | [Owning expressions](ownership-expressions.md), [value tests](../../tests/values.rs), [capabilities](../../tests/capabilities.rs) |
+| Direct references | Shared/exclusive calls and returns, reborrowing, last use, field separation, call-duration ordinary temporary borrows | No escaping temporary borrows, reference rebinding or references to references | [Reference tests](../../tests/references.rs), [owning expression tests](../../tests/explicit_moves.rs) |
 | Local reference fields | Nested structs, extraction, independent retainers and field last use | Assignment/rebinding of reference-bearing storage remains gated | [Stored record tests](../../tests/stored_records.rs) |
 | Public record origins | Ordered groups, returned mappings, whole-record inputs, `input['group]` | Grouped variants, named outcomes and options compose with records; aggregate trait contracts require explicit mappings | [Origin records](../../tests/origin_records.rs), [record inputs](../../tests/record_inputs.rs) |
 | Carrier reborrows | Shared/exclusive child access, preserved storage guards and last-use restoration | A shared carrier cannot grant exclusive access | [Carrier tests](../../tests/carrier_reborrows.rs) |

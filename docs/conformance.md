@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.64.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.65.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -2140,3 +2140,31 @@ Installation does not reload existing editor windows.
 Explicit move expressions, lexical supervision and constructor declarations are
 the next [accepted revision checkpoints](control-flow-revision.md); this release
 does not claim to implement them.
+
+## Owning expressions and call-duration temporaries (0.65)
+
+Explicit `move` composes with owned construction, generic forwarding, partial
+record moves, stored reference carriers, completed outcomes and direct reference
+transfer. Copy values retain their Copy behavior. Passing an exclusive reference
+with `move` consumes that reference; a bare reference argument retains call-duration
+reborrowing. Result origins survive an explicitly transferred reference argument.
+
+Borrowed ordinary rvalues receive real call-duration storage. Staging preserves
+argument order and path selection, with release before outcome continuation.
+Temporary resource/contained-reference owners and potentially escaping result
+loans require named storage. Local reference bindings do not extend rvalue lifetimes.
+Nested owning constructors already avoid intermediate source variables; this
+checkpoint does not add constructor declarations or promise physical copy elision.
+
+Validation: **195 ownership/compiler regressions** and **97 LSP/manual tests** pass,
+including nine new owning-expression tests. Differential native tests cover owning
+construction and temporary shared/exclusive access before and after expansion at
+O0/O2. **39 Node tests** pass. The targeted real VS Code test verifies unsaved move
+diagnostics and repair, formatting and native execution using the bundled compiler.
+Its formatting assertion now supplies an unformatted document, rather than expecting
+edits for a document already in canonical form.
+
+All **68 maintained sources** check. The manual validates **68 accepted examples**,
+**22 expected diagnostics**, **15 context fragments** and **229 local links**.
+Compiler/LSP binaries and the packaged and installed extension are synchronized at
+0.65.0. The lexical supervision and constructor checkpoints remain queued.

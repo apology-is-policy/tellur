@@ -132,6 +132,9 @@ impl Checker<'_> {
         domain: Formula,
         span: Span,
     ) -> Result<Vec<(Vec<LoanOrigin>, Vec<Id>)>> {
+        if let syntax::ExprKind::Move(value) = &arg.kind {
+            return self.call_origin_dependencies(source, value, param, domain, span);
+        }
         let Some(contained) = source.contained.as_ref().filter(|c| !c.through.is_empty()) else {
             return Ok(self
                 .call_origin_targets(source, arg, param, domain, span)?

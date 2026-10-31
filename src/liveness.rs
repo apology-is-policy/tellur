@@ -22,6 +22,7 @@ pub fn expression(expr: &Expr, names: &mut BTreeSet<String>) {
         }
         ExprKind::Borrow(e)
         | ExprKind::BorrowMutable(e)
+        | ExprKind::Move(e)
         | ExprKind::Deref(e)
         | ExprKind::Unary(e) => expression(e, names),
         ExprKind::Project(e, field) => {

@@ -305,6 +305,7 @@ impl Specializer<'_> {
                 }
                 ExprKind::Borrow(e)
                 | ExprKind::BorrowMutable(e)
+                | ExprKind::Move(e)
                 | ExprKind::Deref(e)
                 | ExprKind::Project(e, _)
                 | ExprKind::Unary(e) => self.expr(e, at)?,

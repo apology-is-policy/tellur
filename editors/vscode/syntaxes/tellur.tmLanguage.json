@@ -90,7 +90,7 @@
         },
         {
           "name": "keyword.operator.tellur",
-          "match": "\\b(?:borrow|deref)\\b"
+          "match": "\\b(?:borrow|deref|move)\\b"
         },
         {
           "match": "\\b(trait)\\s+([a-z_][a-z_0-9]*)",
@@ -205,7 +205,7 @@
           }
         },
         {
-          "match": "\\b((?!(?:mutable|borrow|deref|from|ref|fault|faults|retains|supervise|terminate|escalate|contingency)\\b)(?:auto|[a-z_][a-z_0-9]*)(?:\\.[a-z_][a-z_0-9]*)*(?:<[^;{}\\n]*>(?:\\.[a-z_][a-z_0-9]*)?)?)\\s+([a-z_][a-z_0-9]*)(?=\\s*(?:from\\b|<-|=|[,)};]))",
+          "match": "\\b((?!(?:mutable|borrow|deref|move|from|ref|fault|faults|retains|supervise|terminate|escalate|contingency)\\b)(?:auto|[a-z_][a-z_0-9]*)(?:\\.[a-z_][a-z_0-9]*)*(?:<[^;{}\\n]*>(?:\\.[a-z_][a-z_0-9]*)?)?)\\s+([a-z_][a-z_0-9]*)(?=\\s*(?:from\\b|<-|=|[,)};]))",
           "captures": {
             "1": {
               "name": "storage.type.tellur"
@@ -342,7 +342,7 @@
         },
         {
           "name": "keyword.operator.tellur",
-          "match": "\\b(?:borrow|deref)\\b"
+          "match": "\\b(?:borrow|deref|move)\\b"
         },
         {
           "include": "#comments"

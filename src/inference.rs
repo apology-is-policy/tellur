@@ -51,6 +51,7 @@ pub(crate) fn dependency_order(
             | ExprKind::Unary(e)
             | ExprKind::Borrow(e)
             | ExprKind::BorrowMutable(e)
+            | ExprKind::Move(e)
             | ExprKind::Deref(e) => expr(e, calls, manifest),
             ExprKind::Binary(_, a, b) => {
                 expr(a, calls, manifest);

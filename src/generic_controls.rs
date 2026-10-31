@@ -45,6 +45,7 @@ fn rewrite_expr(e: &mut Expr, b: &BTreeMap<String, String>) {
         }
         ExprKind::Borrow(e)
         | ExprKind::BorrowMutable(e)
+        | ExprKind::Move(e)
         | ExprKind::Deref(e)
         | ExprKind::Project(e, _)
         | ExprKind::Unary(e) => rewrite_expr(e, b),
@@ -196,6 +197,7 @@ fn expr_calls(e: &Expr, at: Span, v: &mut Visit<'_>) -> Result<()> {
             }
             ExprKind::Borrow(e)
             | ExprKind::BorrowMutable(e)
+            | ExprKind::Move(e)
             | ExprKind::Deref(e)
             | ExprKind::Project(e, _)
             | ExprKind::Unary(e) => expr_calls(e, at, v)?,

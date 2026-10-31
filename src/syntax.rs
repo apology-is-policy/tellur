@@ -53,6 +53,7 @@ pub enum ExprKind {
     NamedRecord(String, Vec<(String, Expr)>),
     Borrow(Box<Expr>),
     BorrowMutable(Box<Expr>),
+    Move(Box<Expr>),
     Deref(Box<Expr>),
     Project(Box<Expr>, String),
     Unary(Box<Expr>),
@@ -990,6 +991,10 @@ impl Parser {
         let token_start = self.pos;
         let start = self.here();
         if level == 3 {
+            if self.eat("move") {
+                let value = self.expr(3)?;
+                return Ok(ExprKind::Move(Box::new(value)).at(self.range_from(start)));
+            }
             if self.eat("borrow") || self.eat("&") {
                 let mutable = self.eat("mutable");
                 let value = Box::new(self.expr(3)?);
