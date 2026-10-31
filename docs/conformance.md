@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.65.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.66.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -2167,4 +2167,29 @@ edits for a document already in canonical form.
 All **68 maintained sources** check. The manual validates **68 accepted examples**,
 **22 expected diagnostics**, **15 context fragments** and **229 local links**.
 Compiler/LSP binaries and the packaged and installed extension are synchronized at
-0.65.0. The lexical supervision and constructor checkpoints remain queued.
+0.66.0. This historical checkpoint preceded the lexical supervision work delivered below; constructor declarations remain queued.
+
+
+## Lexical isolation and recovery (0.66)
+
+Delivered lexical boundaries, attached retained-owner contingency, supervised tail
+loops with preserved state, structured immutable `@fault` and entry-only process
+termination. Checked IR, expansion certificates, reference/native execution,
+formatting, hover and syntax highlighting preserve the new administrative edges.
+The settings HTTP server uses lexical isolation. Constructor declarations and
+direct destination lowering remain the next ownership checkpoint.
+
+Validation for 0.66: all **954 Rust tests across 68 nonempty targets** have passing
+results, reconciled against the final test inventory. The full-suite run exposed a
+missing process-status contract in the new playground; that fixture was corrected
+and its test rerun. Focused reruns include the added recovery/certificate/contract
+tests and final contingency-selection metadata. All 40 editor unit tests pass.
+The isolated VS Code checkpoint verifies structured hover, forbidden ordinary
+return and unsaved repair, formatting, native recovery and process status 23 with
+no outcome. The real HTTP suite verifies a fault response followed by a successful
+request, alongside response-start protection and framing/deadline regressions.
+
+Manual validation covers 70 accepted examples, 24 expected diagnostics, 15 explicitly
+identified context fragments and 232 local links. Local compiler/LSP binaries and
+VS Code package/install payloads are verified at 0.66.0. The runtime remains
+synchronous, with owned captures and the documented supervisor-access restrictions.

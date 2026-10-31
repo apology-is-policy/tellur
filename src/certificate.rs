@@ -37,6 +37,10 @@ fn error(message: impl Into<String>) -> Diagnostic {
 fn ids(code: &[Instruction], instructions: &mut BTreeSet<Id>, loops: &mut BTreeSet<Id>) {
     for i in code {
         instructions.insert(i.id);
+        if let Action::Boundary { body, handler, .. } = &i.action {
+            ids(body, instructions, loops);
+            ids(handler, instructions, loops);
+        }
         if let Action::Loop { id, body, .. } = &i.action {
             loops.insert(*id);
             ids(body, instructions, loops);
@@ -101,11 +105,39 @@ impl Boundary<'_> {
         let m = self.map;
         let sub = |e: &Expr| substitute(e, &m.slots);
         let action = match &i.action {
+            Action::Recover { target, args } => Action::Recover {
+                target: m.loops[target],
+                args: args.iter().map(sub).collect(),
+            },
+            Action::Boundary {
+                body,
+                handler,
+                retained,
+                retire,
+                work_slots,
+                handler_slots,
+                fault_slot,
+            } => Action::Boundary {
+                body: body
+                    .iter()
+                    .map(|i| self.instruction(i, enclosing_loop))
+                    .collect::<Result<_>>()?,
+                handler: handler
+                    .iter()
+                    .map(|i| self.instruction(i, enclosing_loop))
+                    .collect::<Result<_>>()?,
+                retained: retained.iter().map(|id| m.slots[id]).collect(),
+                retire: retire.iter().map(|id| m.slots[id]).collect(),
+                work_slots: work_slots.iter().map(|id| m.slots[id]).collect(),
+                handler_slots: handler_slots.iter().map(|id| m.slots[id]).collect(),
+                fault_slot: m.slots[fault_slot],
+            },
             Action::Supervise { boundary, args } => Action::Supervise {
                 boundary: boundary.clone(),
                 args: args.iter().map(|e| sub(e)).collect(),
             },
             Action::Terminate => Action::Terminate,
+            Action::TerminateProcess(n) => Action::TerminateProcess(*n),
             Action::Escalate => Action::Escalate,
             Action::Exit(name, args) => {
                 let arm = self
@@ -129,12 +161,14 @@ impl Boundary<'_> {
                 }
             }
             Action::Loop {
+                supervised,
                 id,
                 parameters,
                 local_slots,
                 local_atoms,
                 body,
             } => Action::Loop {
+                supervised: *supervised,
                 id: m.loops[id],
                 parameters: parameters
                     .iter()
@@ -228,6 +262,30 @@ impl Validator<'_> {
         for original in code {
             let mut i = original.clone();
             match &mut i.action {
+                Action::Boundary {
+                    body,
+                    handler,
+                    retire,
+                    work_slots,
+                    handler_slots,
+                    ..
+                } => {
+                    let slots = self.slots.keys().copied().collect::<BTreeSet<_>>();
+                    *body = self.sequence(body)?;
+                    let added: Vec<_> = self
+                        .slots
+                        .keys()
+                        .filter(|id| !slots.contains(id))
+                        .copied()
+                        .collect();
+                    retire.extend(&added);
+                    work_slots.extend(added);
+                    let slots = self.slots.keys().copied().collect::<BTreeSet<_>>();
+                    *handler = self.sequence(handler)?;
+                    handler_slots
+                        .extend(self.slots.keys().filter(|id| !slots.contains(id)).copied());
+                    output.push(i);
+                }
                 Action::Loop {
                     body,
                     local_slots,
@@ -346,6 +404,10 @@ fn formula(g: &Guard, b: &mut Bdd) -> Formula {
 fn canonical_guards(code: &mut [Instruction], b: &mut Bdd) {
     for i in code {
         i.guard = Guard::Atom(formula(&i.guard, b));
+        if let Action::Boundary { body, handler, .. } = &mut i.action {
+            canonical_guards(body, b);
+            canonical_guards(handler, b);
+        }
         if let Action::Loop { body, .. } = &mut i.action {
             canonical_guards(body, b);
         }

@@ -251,12 +251,15 @@ equal recorded evidence does not prove unchanged behavior. See
 
 ## Request contingency
 
-Each accepted connection is owned by `server.handle`, a named supervised boundary.
+Each accepted connection enters a lexical `fault boundary` inside the supervised
+`accept_next` loop. The remaining-request budget is decremented before entry;
+request inputs are owned copies, and `contingency [connection]` retains the channel.
 A source fault retires normal request work and transfers the retained connection
 to its contingency. The restricted host operation `http_reply_failure` attempts a
 generic 500 only before a response starts; otherwise it reports `unavailable`.
 The contingency closes the connection, accounts for write/close failures locally,
-and terminates. The independent accept loop then services the next connection.
+and uses `recover again accept_next;`. The next iteration preserves the already
+updated budget. Normal completion falls through to the ordinary loop restart.
 
 `completed` and `idle` now describe the service lifecycle without aggregating
 request results. Per-request problems appear in responses and diagnostic events.

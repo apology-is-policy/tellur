@@ -145,3 +145,8 @@ do not assume they are accepted in every angle-bracket or origin list.
 `@` introduces the `@exit N` annotation on named outcome alternatives. `N` is an
 unsuffixed decimal integer in 0..255. This is not a general annotation framework.
 See [process entry contracts](process-entry.md).
+
+Lexical supervision uses `fault boundary`, `contingency [owners]`, `supervised loop`,
+`recover again` and `terminate process`. `@fault` is the ambient immutable fault
+reference inside lexical contingency; it is an expression, not an annotation.
+See [contingency](contingency.md) for the contextual restrictions on these spellings.

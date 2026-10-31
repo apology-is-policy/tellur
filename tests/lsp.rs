@@ -2611,3 +2611,42 @@ fn explicit_moves_and_temporary_arguments_keep_inference_and_unsaved_diagnostics
     f.change(source, 3);
     assert_eq!(f.diagnostics(), json!([]));
 }
+
+#[test]
+fn lexical_recovery_and_fault_report_hovers_and_diagnostics() {
+    let mut f = Fixture::new();
+    let source = "control main() exits done {\n supervised loop requests {\n  fault boundary {exit done;} contingency [] {\n   emit(borrow @fault.message);\n   recover again requests;\n  }\n }\n}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    for (line, character, part) in [
+        (1, 3, "supervised tail loop"),
+        (2, 34, "Lexical contingency"),
+        (3, 17, "ref fault_report"),
+        (4, 4, "preserved at boundary entry"),
+    ] {
+        assert!(
+            f.server.hover(&f.uri, line, character)["contents"]["value"]
+                .as_str()
+                .unwrap_or("")
+                .contains(part),
+            "{line}: {}",
+            f.server.hover(&f.uri, line, character)
+        );
+    }
+    assert!(
+        f.server.hover(&f.uri, 3, 4)["contents"]["value"]
+            .as_str()
+            .unwrap()
+            .contains("contingency entry")
+    );
+    f.change(&source.replace("recover again requests;", "exit done;"), 2);
+    assert_eq!(f.diagnostics()[0]["code"], "E_CONTINGENCY_EXIT");
+    f.change("control main() exits done {fault boundary {fault \"broken\";} contingency [] {terminate process 2;}}",3);
+    assert_eq!(f.diagnostics(), json!([]));
+    assert!(
+        f.server.hover(&f.uri, 0, 9)["contents"]["value"]
+            .as_str()
+            .unwrap()
+            .contains("Executable entry only")
+    );
+}

@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.65.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.66.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -92,3 +92,13 @@ Named outcome alternatives accept `@exit N` with N in 0..255. Native generation
 checks complete final-entry mappings, including explicit manifest overrides.
 `exec` propagates numeric status; JSON/scenario output retains named outcomes.
 Library contracts remain annotation-optional. See [process entry](process-entry.md).
+
+### Lexical supervision (0.66)
+
+Lexical boundaries, retained owning captures, structured immutable `@fault`,
+supervised recovery preserving loop state, and entry-only process termination are
+implemented in both engines and expansion certificates. The settings HTTP server
+uses this form. Reference-bearing captures, direct protected-work access to
+supervisor state, nested tail loops, asynchronous boundaries and constructor
+bodies remain unsupported. Protocol graph analysis and source extraction reject
+lexical isolation rather than erasing its administrative edges.

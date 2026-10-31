@@ -1,15 +1,19 @@
 # Faults, execution boundaries and activations
 
-30 October 2026. Compiler 0.63 implements the first P6c/P6d slice: dynamic
-activation storage, named owned-input boundaries, explicit retained-owner handover,
-checked contingency permissions and sequential supervision. See the
+31 October 2026. Compiler 0.66 implements lexical boundaries and attached
+contingency, supervised loop recovery with preserved state, immutable `@fault`,
+and entry-only process termination. The 0.63 named-boundary form remains supported.
+Both use dynamic activation storage, retained-owner handover and checked
+contingency permissions. See the
 [normative reference](reference/contingency.md) for syntax and current limits.
 
 ## Agreed boundary policy
 
 A declared outcome is normal control completion, including application failures.
 A fault permanently abandons the affected execution's normal continuation.
-`supervise` starts a named child boundary and waits for lifecycle completion without
+The lexical form attaches contingency to `fault boundary` and permits terminal
+`recover again` into a supervised loop. Entry-only `terminate process N` is a
+separate administrative disposition. In the compatibility form, `supervise` starts a named child boundary and waits for lifecycle completion without
 receiving any normal/fault result. Its contingency starts only after failed work
 retires, with explicitly retained owners and a diagnostic. It cannot return into
 that work. Ordinary outcomes of contingency helper operations stay inside that

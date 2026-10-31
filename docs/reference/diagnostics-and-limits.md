@@ -563,3 +563,36 @@ a permitted rewrite correspondence rather than arbitrary equivalence or terminat
 Invalid source annotations report their source position. Native generation rejects
 missing or unknown entry mappings and borrowed entry parameters. Library checking
 does not require complete mappings. See [process entry contracts](process-entry.md).
+
+## Lexical recovery authority
+
+`E_CONTINGENCY_CAPTURE` rejects use of ordinary outer values from contingency.
+`E_BOUNDARY_BORROW` rejects outer loans/reference-bearing captures, and
+`E_SUPERVISOR_STATE` keeps protected supervisor values outside isolated work.
+Prepare owned request inputs before boundary entry. `E_BOUNDARY_RETAIN` means a
+captured owner is no longer wholly available at a potentially faulting operation.
+
+`E_RECOVER` requires the named enclosing supervised loop. `E_CONTINGENCY_EXIT`
+rejects ordinary return/restart from a handler; a fault cannot become an outcome.
+
+<!-- tellur:reject E_CONTINGENCY_EXIT -->
+```tellur
+control main() exits done {
+    fault boundary { fault "broken"; } contingency [] { exit done; }
+}
+```
+
+`E_PROCESS_EXIT` checks process-termination placement and literal range.
+`E_ENTRY_ONLY` rejects calls to controls with that authority. Both distinguish
+process termination from ordinary completion.
+
+<!-- tellur:reject E_ENTRY_ONLY -->
+```tellur
+control root() exits done {
+    fault boundary { fault "startup"; } contingency [] { terminate process 2; }
+}
+control caller() exits done {
+    root();
+    exit done;
+}
+```

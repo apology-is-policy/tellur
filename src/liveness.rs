@@ -59,7 +59,19 @@ pub fn outcome(expr: &crate::syntax::OutcomeExpr, names: &mut BTreeSet<String>) 
 }
 pub fn statement(stmt: &Statement, names: &mut BTreeSet<String>) {
     match stmt {
-        Statement::Terminate | Statement::Escalate => {}
+        Statement::Boundary {
+            body,
+            captures,
+            handler,
+        } => {
+            items(body, names);
+            items(handler, names);
+            names.extend(captures.iter().cloned());
+        }
+        Statement::Recover(_)
+        | Statement::TerminateProcess(_)
+        | Statement::Terminate
+        | Statement::Escalate => {}
         Statement::ExitName(name) => {
             names.insert(name.clone());
         }
@@ -101,7 +113,7 @@ pub fn items(body: &[Item], names: &mut BTreeSet<String>) {
                 }
             }
             Item::Group(_, _, body) | Item::Over(_, _, body) => items(body, names),
-            Item::Loop(_, _, params, body) => {
+            Item::Loop(_, _, params, body, _) => {
                 for p in params {
                     expression(&p.initial, names);
                 }

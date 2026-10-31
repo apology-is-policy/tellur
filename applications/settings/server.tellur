@@ -52,7 +52,7 @@ control run(
     u32 limit,
     u32 idle_ms
 ) exits auto {
-    loop accept_next(u32 remaining = limit) {
+    supervised loop accept_next(mutable u32 remaining = limit) {
         delta checked_sub(remaining, 1) {
             difference { u32 next } => available,
             underflow => finished
@@ -61,55 +61,56 @@ control run(
         [available]: delta http_accept(listener, idle_ms) {
             accepted { http_connection connection } => accepted,
             idle => idle,
-            failed { string message } => unavailable
+            failed { string accept_message } => unavailable
         }
         [idle]: exit idle;
-        [unavailable]: exit failed { message };
+        [unavailable]: exit failed { accept_message };
         [accepted]:
-            supervise handle(clone(path), clone(authority), connection);
-            again accept_next(next);
-    }
-}
+            // Update supervisor state before isolating the request.
+            remaining = next;
+            string request_path = clone(path);
+            string request_authority = clone(authority);
+            fault boundary {
+                auto exchange_result = capture exchange(
+                    borrow request_path,
+                    borrow request_authority,
+                    borrow connection
+                );
+                auto close_result = capture http_connection_close(connection);
 
-// Each request owns its connection. A source fault cannot return into this
-// body; only the independent accept loop continues after contingency finishes.
-boundary handle(string path, string authority, http_connection connection)
-    retains connection {
-    auto exchange_result = capture exchange(borrow path, borrow authority, borrow connection);
-    auto close_result = capture http_connection_close(connection);
+                delta exchange_result {
+                    sent => sent,
+                    disconnected => disconnected,
+                    failed { string message } => failed
+                }
+                delta close_result {
+                    closed => closed,
+                    failed { string cleanup } => cleanup_failed
+                }
 
-    delta exchange_result {
-        sent => sent,
-        disconnected => disconnected,
-        failed { string message } => failed
-    }
-    delta close_result {
-        closed => closed,
-        failed { string cleanup } => cleanup_failed
-    }
+                [failed]: emit(message);
+                [cleanup_failed]: emit(cleanup);
+            } contingency [connection] {
+                emit(borrow @fault.message);
+                auto reply_result = capture http_reply_failure(borrow connection);
+                auto close_result = capture http_connection_close(connection);
 
-    [failed]: emit(message);
-    [cleanup_failed]: emit(cleanup);
-    [entry]: terminate;
-}
-contingency(string reason) {
-    emit(reason);
-    auto reply_result = capture http_reply_failure(borrow connection);
-    auto close_result = capture http_connection_close(connection);
+                delta reply_result {
+                    sent => sent,
+                    unavailable => unavailable,
+                    failed { string message } => failed
+                }
+                delta close_result {
+                    closed => closed,
+                    failed { string cleanup } => cleanup_failed
+                }
 
-    delta reply_result {
-        sent => sent,
-        unavailable => unavailable,
-        failed { string message } => failed
+                [failed]: emit(message);
+                [cleanup_failed]: emit(cleanup);
+                [entry]: recover again accept_next;
+            }
+            again accept_next(remaining);
     }
-    delta close_result {
-        closed => closed,
-        failed { string cleanup } => cleanup_failed
-    }
-
-    [failed]: emit(message);
-    [cleanup_failed]: emit(cleanup);
-    [entry]: terminate;
 }
 
 control exchange(

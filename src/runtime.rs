@@ -44,6 +44,19 @@ pub struct Execution {
     pub fields: Vec<Value>,
     pub events: Vec<Event>,
 }
+/// Administrative termination is separate from ordinary outcome completion.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct ProcessTermination {
+    pub termination: &'static str,
+    pub status: u8,
+    pub events: Vec<Event>,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(untagged)]
+pub enum RunCompletion {
+    Outcome(Execution),
+    Process(ProcessTermination),
+}
 fn error(message: impl Into<String>) -> Diagnostic {
     Diagnostic::new("E_DRIVER", Span::default(), message)
 }
@@ -258,6 +271,8 @@ fn shift(place: &Place, base: Id) -> Place {
     }
 }
 enum Flow {
+    Process(u8),
+    Recover(usize, Vec<Value>),
     Terminate,
     Exit(String, Vec<Value>),
     Again(usize, Vec<Value>),
@@ -267,6 +282,7 @@ enum Flow {
 
 /// Administrative settlement is not a source outcome, even inside the runtime.
 enum Completion {
+    Process(u8),
     Outcome(String, Vec<Value>),
     Settled,
 }
@@ -274,7 +290,7 @@ impl Completion {
     fn outcome(self) -> Result<(String, Vec<Value>)> {
         match self {
             Self::Outcome(name, values) => Ok((name, values)),
-            Self::Settled => Err(error(
+            Self::Settled | Self::Process(_) => Err(error(
                 "administrative settlement cannot enter an outcome continuation",
             )),
         }
@@ -282,7 +298,7 @@ impl Completion {
     fn settled(self) -> Result<()> {
         match self {
             Self::Settled => Ok(()),
-            Self::Outcome(..) => Err(error(
+            Self::Outcome(..) | Self::Process(_) => Err(error(
                 "a supervised boundary cannot return an ordinary outcome",
             )),
         }
@@ -345,6 +361,10 @@ impl Machine<'_> {
             values.remove(&(base + id));
         }
         match flow? {
+            Flow::Process(status) => {
+                self.activations.leave();
+                Ok(Completion::Process(status))
+            }
             Flow::Terminate => {
                 self.activations.leave();
                 Ok(Completion::Settled)
@@ -432,7 +452,97 @@ impl Machine<'_> {
                 continue;
             }
             match &instruction.action {
+                Action::Boundary {
+                    body,
+                    handler,
+                    retained: _,
+                    retire,
+                    work_slots,
+                    handler_slots,
+                    fault_slot,
+                } => {
+                    let child = self.activations.child();
+                    let mut parent = std::mem::replace(&mut self.activations, child);
+                    let name = format!(
+                        "{}$boundary@{}",
+                        instruction.provenance.region, instruction.provenance.span.line
+                    );
+                    self.activations.enter(&name).map_err(error)?;
+                    let result = self.execute(body, values, facts, base);
+                    let result = match result {
+                        Err(diagnostic) if self.activations.is_source_fault() => {
+                            let report = self.activations.failure(
+                                &name,
+                                crate::fault::Phase::Execution,
+                                &format!("{}: {}", diagnostic.code, diagnostic.message),
+                            );
+                            self.events.push(Event::Fault {
+                                report: Box::new(report.clone()),
+                            });
+                            for id in retire {
+                                values.remove(&(base + id));
+                            }
+                            let (message, stack, paths) = report.source_fields();
+                            let strings = |xs: Vec<String>| Value::Construct {
+                                ty: "vector<String>".into(),
+                                name: "vector".into(),
+                                fields: xs.into_iter().map(Value::String).collect(),
+                            };
+                            values.insert(
+                                base + fault_slot,
+                                Value::Construct {
+                                    ty: "fault_report".into(),
+                                    name: "fault_report".into(),
+                                    fields: vec![
+                                        Value::String(message),
+                                        strings(stack),
+                                        strings(paths),
+                                    ],
+                                },
+                            );
+                            let mut tracker = self.activations.child();
+                            tracker.with_cause(report);
+                            self.activations = tracker;
+                            self.activations
+                                .enter(&format!("{name}$contingency"))
+                                .map_err(error)?;
+                            self.contingencies.push(diagnostic);
+                            let result = self.execute(handler, values, facts, base);
+                            self.contingencies.pop();
+                            result
+                        }
+                        other => other,
+                    };
+                    for id in work_slots.iter().chain(handler_slots) {
+                        values.remove(&(base + id));
+                    }
+                    parent.absorb(&self.activations);
+                    if let Err(diagnostic) = &result {
+                        if self.activations.is_source_fault() {
+                            parent.source_fault();
+                        }
+                        parent.with_cause(self.activations.failure(
+                            &name,
+                            crate::fault::Phase::Execution,
+                            &format!("{}: {}", diagnostic.code, diagnostic.message),
+                        ));
+                    }
+                    self.activations = parent;
+                    match result? {
+                        Flow::Fallthrough => {}
+                        flow => return Ok(flow),
+                    }
+                }
+                Action::Recover { target, args } => {
+                    return Ok(Flow::Recover(
+                        *target,
+                        args.iter()
+                            .map(|e| evaluate(e, values, base))
+                            .collect::<Result<_>>()?,
+                    ));
+                }
                 Action::Terminate => return Ok(Flow::Terminate),
+                Action::TerminateProcess(status) => return Ok(Flow::Process(*status)),
                 Action::Escalate => {
                     self.activations.source_fault();
                     return Err(self
@@ -457,6 +567,7 @@ impl Machine<'_> {
                     ));
                 }
                 Action::Loop {
+                    supervised: _,
                     id,
                     parameters,
                     local_slots,
@@ -478,7 +589,11 @@ impl Machine<'_> {
                             values.insert(base + *slot, value);
                         }
                         match self.execute(body, values, facts, base)? {
-                            Flow::Again(target, next) if target == *id => arguments = next,
+                            Flow::Again(target, next) | Flow::Recover(target, next)
+                                if target == *id =>
+                            {
+                                arguments = next
+                            }
                             Flow::Complete(target) if target == *id => break,
                             Flow::Fallthrough => {
                                 return Err(error("interpreter invariant: loop fell through"));
@@ -720,6 +835,36 @@ impl CheckedProgram {
         scenario: &Scenario,
         steps: usize,
     ) -> std::result::Result<Execution, Box<Failure>> {
+        match self.run_completion(scenario, steps)? {
+            RunCompletion::Outcome(result) => Ok(result),
+            RunCompletion::Process(result) => {
+                let diagnostic = Diagnostic::new(
+                    "E_PROCESS_EXIT",
+                    Span::default(),
+                    format!(
+                        "entry terminated the process with status {}; use run_completion to receive administrative results",
+                        result.status
+                    ),
+                );
+                let report = crate::fault::Tracker::new(self.runtime_sites()).failure(
+                    &scenario.entry,
+                    crate::fault::Phase::ResultValidation,
+                    &diagnostic.message,
+                );
+                Err(Box::new(Failure {
+                    diagnostic,
+                    report,
+                    events: result.events,
+                }))
+            }
+        }
+    }
+    /// Run an executable entry, preserving process termination as a distinct result.
+    pub fn run_completion(
+        &self,
+        scenario: &Scenario,
+        steps: usize,
+    ) -> std::result::Result<RunCompletion, Box<Failure>> {
         let mut machine = Machine {
             next_base: 0,
             contingencies: vec![],
@@ -746,14 +891,12 @@ impl CheckedProgram {
             {
                 return Err(error("entry controls cannot require borrowed arguments"));
             }
-            let (outcome, fields) = machine
-                .invoke(
-                    &scenario.entry,
-                    scenario.arguments.clone(),
-                    &mut BTreeMap::new(),
-                    &mut vec![],
-                )?
-                .outcome()?;
+            let completion = machine.invoke(
+                &scenario.entry,
+                scenario.arguments.clone(),
+                &mut BTreeMap::new(),
+                &mut vec![],
+            )?;
             machine.phase = crate::fault::Phase::ResultValidation;
             if machine.cursor != scenario.calls.len() {
                 return Err(error(format!(
@@ -761,11 +904,22 @@ impl CheckedProgram {
                     scenario.calls.len() - machine.cursor
                 )));
             }
-            Ok(Execution {
-                outcome,
-                fields,
-                events: std::mem::take(&mut machine.events),
-            })
+            let events = std::mem::take(&mut machine.events);
+            match completion {
+                Completion::Outcome(outcome, fields) => Ok(RunCompletion::Outcome(Execution {
+                    outcome,
+                    fields,
+                    events,
+                })),
+                Completion::Process(status) => Ok(RunCompletion::Process(ProcessTermination {
+                    termination: "process",
+                    status,
+                    events,
+                })),
+                Completion::Settled => {
+                    Err(error("entry settled without an executable disposition"))
+                }
+            }
         })();
         result.map_err(|diagnostic| {
             Box::new(Failure {

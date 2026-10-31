@@ -14,45 +14,34 @@ syntax. Work is proceeding through the checkpoints below.
    temporary borrows for ordinary reference-free values with no escaping result loan.
    Generic forwarding preserves ownership/reference mode. Moves do not clone;
    eliminating physical storage transfers is a separate lowering objective.
-3. Lexical `fault boundary { ... } contingency [...] { ... }` and
+3. **Delivered in 0.66:** lexical `fault boundary { ... } contingency [...] { ... }` and
    `supervised loop name { ... }`. `recover again name;` is a terminal recovery
    edge to the designated enclosing supervisor, never a general path jump.
-4. Structured handler-local `@fault`, explicit process termination, retained-owner
+4. **Delivered in 0.66:** structured handler-local `@fault`, explicit process termination, retained-owner
    capture and request-resource completion. Failed frames and loans retire before
    contingency access. A handler cannot return an ordinary outcome or fall through.
 5. Constructor declarations with definite field initialization and partial-failure
    cleanup; direct destination construction where the ABI and ownership permit.
-6. Reference, editor, formatter, native/reference parity and settings-server
-   migration for the completed feature group.
+6. **Delivered for checkpoints 3–4 in 0.66:** reference, editor, formatter,
+   native/reference parity and settings-server migration. Repeat for constructors.
 
 Each delivered checkpoint must update this list and the language reference with
 its actual scope and limitations. Existing named 0.63 boundaries remain a
 compatibility form while lexical boundaries are introduced.
 
-## Next boundary decisions
+## Accepted boundary policies
 
-The runtime preparation separates ordinary outcome completion from administrative
-settlement in both engines. A supervised invocation now accepts only the latter;
-an ordinary call accepts only the former. There is no internal empty-name outcome
-standing in for settlement. This is an internal preparation after the 0.65 release,
-not an implementation of lexical boundary syntax.
-Validation covers 54 boundary, source-fault, native, owning-expression, host and
-HTTP regressions, including a real request fault returning 500 followed by a
-successful request. Installed 0.65 binaries remain the published owning-expression
-release; this internal preparation is available from the repository source.
+The author accepted entry-only process termination and state-preserving recovery.
+Both are implemented in 0.66. Ordinary outcome completion, administrative boundary
+settlement, recovery and process termination have distinct runtime representations.
 
-Two policy choices are awaiting the author's decision before the new boundary
-interface is fixed:
-
-- **Process termination authority.** The recommendation is to allow
-  `terminate process N;` only in the executable entry control's outermost
-  contingency. The alternative is an explicit transitive `terminates` permission
-  in library contracts. Neither choice creates a normal outcome for a fault.
-- **Stateful recovery.** The recommendation is for `recover again requestor;` to
-  retain supervisor state as it stood at boundary entry while discarding request
-  locals. Protected work cannot mutate or consume that state, and the contingency
-  cannot choose replacement restart arguments. The smaller first implementation
-  would support recovery only for parameterless supervised loops.
+- `terminate process N;` belongs only to an entry's outermost lexical contingency.
+  The containing control is entry-only and cannot be called as a library control.
+- `recover again requestor;` preserves supervisor state at boundary entry and
+  discards the failed iteration's locals. It accepts no replacement arguments.
+- The first lexical slice rejects direct access to supervisor values inside work;
+  prepare owned inputs before entry. Reference captures and nested tail loops
+  remain unsupported. Diagnostic `@fault` exposes bounded message/stack/sites data.
 
 With retained supervisor state, an accept budget or listener belongs to the
 supervisor; an accepted connection belongs to the protected request. Any deliberate

@@ -103,7 +103,15 @@ fn rewrite_statement(s: &mut Statement, b: &BTreeMap<String, String>) {
             }
         }
         Statement::ExitOutcome(e) => rewrite_outcome(e, b),
-        Statement::Terminate | Statement::Escalate | Statement::ExitName(_) => (),
+        Statement::Boundary { body, handler, .. } => {
+            rewrite_items(body, b);
+            rewrite_items(handler, b);
+        }
+        Statement::Recover(_)
+        | Statement::TerminateProcess(_)
+        | Statement::Terminate
+        | Statement::Escalate
+        | Statement::ExitName(_) => (),
         Statement::Delta(_, e, arms) => {
             rewrite_expr(e, b);
             for arm in arms {
@@ -121,7 +129,7 @@ fn rewrite_items(items: &mut [Item], b: &BTreeMap<String, String>) {
         match i {
             Item::Alias(..) => (),
             Item::Group(_, _, body) | Item::Over(_, _, body) => rewrite_items(body, b),
-            Item::Loop(_, _, ps, body) => {
+            Item::Loop(_, _, ps, body, _) => {
                 for p in ps {
                     p.field.ty = substitute(&p.field.ty, b);
                     rewrite_expr(&mut p.initial, b);
@@ -258,7 +266,15 @@ fn statement_calls(s: &Statement, at: Span, v: &mut Visit<'_>) -> Result<()> {
             }
         }
         Statement::ExitOutcome(e) => outcome_calls(e, v)?,
-        Statement::Terminate | Statement::Escalate | Statement::ExitName(_) => (),
+        Statement::Boundary { body, handler, .. } => {
+            item_calls(body, v)?;
+            item_calls(handler, v)?;
+        }
+        Statement::Recover(_)
+        | Statement::TerminateProcess(_)
+        | Statement::Terminate
+        | Statement::Escalate
+        | Statement::ExitName(_) => (),
         Statement::Delta(_, e, arms) => {
             expr_calls(e, at, v)?;
             for a in arms {
@@ -277,7 +293,7 @@ fn item_calls(items: &[Item], v: &mut Visit<'_>) -> Result<()> {
         match i {
             Item::Alias(..) => (),
             Item::Group(_, _, body) | Item::Over(_, _, body) => item_calls(body, v)?,
-            Item::Loop(at, _, ps, body) => {
+            Item::Loop(at, _, ps, body, _) => {
                 for p in ps {
                     type_calls(&p.field.ty, *at, v)?;
                     expr_calls(&p.initial, *at, v)?;

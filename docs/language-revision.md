@@ -6,7 +6,7 @@ qualified decision paths, grouped arms, explicit ownership transfer, lexical
 contingency and supervised loops, followed by construction and lowering work.
 
 30 October 2026. This is the working revision plan, not a claim that all proposed
-features are implemented. Compiler **0.65.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
+features are implemented. Compiler **0.66.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
 lifetime checkpoints of milestone 2, the array/vector/map core of milestone 3,
 and implicit entry, inline/stored adapters, owned capture, named outcome contracts
 and checked forwarding in milestone 4. A first [semantic foundation](semantic-foundation.md)
@@ -165,12 +165,13 @@ unimplemented syntax are promised.
 | P6a | Boundary policy and execution evidence | **Delivered in 0.60:** agreed boundary termination without local catch/resume; bounded reference/native failure reports, observed activation IDs, source/expansion origins and explicit teardown limits. These IDs do not yet address storage |
 | P6b | Source faults and transitive contracts | **Delivered in 0.62:** source termination, public/trait fault permissions and private inference; live resources require explicit retained-owner release dispositions at faulting paths/calls. Fault-only controls omit `exits`. Faulting operators and no-fault annotations remain separate decisions |
 | P6c | Activation-owned storage | **Sequential slice delivered in 0.63:** invocation-local storage ranges, activation addresses, normal/fault retirement, protected parent storage and retained handover. Suspended frames/child-task retirement remain E1 prerequisites |
-| P6d | Isolated boundaries | **Owned synchronous slice delivered in 0.63:** named boundaries, outcome-free supervision, retained-owner handover, checked contingent calls/traits, terminal escalation, bounded causal reports and real HTTP 500/next-request evidence. Broader capability admission and async children remain separate design checkpoints |
+| P6d | Isolated boundaries | **Named form in 0.63; lexical form in 0.66:** attached contingency, retained-owner handover, supervised loop recovery preserving state, immutable `@fault`, entry-only process termination, checked contingent calls/traits and real HTTP 500/next-request evidence. Broader capability admission and async children remain separate checkpoints |
+| CF5 | Constructor declarations and destination lowering | **Next:** definite field initialization, partial-failure cleanup, then direct destination construction where ownership/ABI permit. See the [accepted revision](control-flow-revision.md) |
 | C1b.3c.2 | Local exclusive-reference collection elements | Deferred pending application evidence: permission transfer, direct reborrowing, dynamic removal splits and carrier invalidation |
 | C1b.3c.3 | Nested and public borrowed-collection contracts | Deferred pending application evidence: element origin schemas, nested carriers, generic/trait boundaries and stored outcomes |
 | C1c | Generic loan propagation and reference state | Deferred pending application evidence: contained loans across generic calls, assignments and adapters; rebinding/reborrowing |
 | C2 | Slices and non-consuming iteration | Deferred pending application evidence: invalidation rules and library interfaces built on C1b/C1c |
-| C3 | Remaining adapter ergonomics | Direct arm exits delivered in P3 (0.54); multi-statement arms, whole-outcome binding and expression adapters remain design work |
+| C3 | Remaining adapter ergonomics | Direct arm exits delivered in P3 (0.54), grouped multi-statement arms and qualified sites in 0.64; whole-outcome binding and broader expression adapters remain design work |
 | D1 | Explicit runtime polymorphism | Queued: erasure rules, borrowed/owned storage, opaque graph boundaries |
 | D2 | Stateful protocols and effect contracts | General annotation/execution-mode flags explicitly deferred; current permission is only `@contingent`. Queued: sequence obligations, justified algebraic laws, groundwork for tasks |
 | E1 | Async reference execution | After P3/P6 and activation-frame work: activation identities, deterministic scheduling, task ownership, suspension, cancellation/cleanup |

@@ -663,7 +663,19 @@ impl Resolver<'_> {
                     self.expr(a, *at)?;
                 }
             }
-            Statement::Terminate | Statement::Escalate | Statement::ExitName(_) => (),
+            Statement::Boundary { body, handler, .. } => {
+                let outer = self.locals.clone();
+                self.items(body)?;
+                self.locals = outer.clone();
+                self.locals.insert("$fault".into());
+                self.items(handler)?;
+                self.locals = outer;
+            }
+            Statement::Recover(_)
+            | Statement::TerminateProcess(_)
+            | Statement::Terminate
+            | Statement::Escalate
+            | Statement::ExitName(_) => (),
         }
         at.line += self.offset;
         Ok(())
@@ -676,7 +688,7 @@ impl Resolver<'_> {
                         self.statement(at, s)?;
                     }
                 }
-                Item::Loop(at, _, ps, body) => {
+                Item::Loop(at, _, ps, body, _) => {
                     for p in ps.iter_mut() {
                         p.field.ty = self.ty(&p.field.ty, *at)?;
                         self.expr(&mut p.initial, *at)?;
@@ -736,7 +748,7 @@ fn locals(region: &syntax::Region) -> BTreeSet<String> {
                         }
                     }
                 }
-                Item::Loop(_, _, ps, body) => {
+                Item::Loop(_, _, ps, body, _) => {
                     names.extend(ps.iter().map(|p| p.field.name.clone()));
                     items(body, names);
                 }

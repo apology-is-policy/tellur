@@ -101,7 +101,7 @@ fn items(body: &[Item], bound: &mut BTreeSet<String>, free: &mut BTreeSet<String
                     statement(s, bound, free);
                 }
             }
-            Item::Loop(_, _, params, body) => {
+            Item::Loop(_, _, params, body, _) => {
                 for p in params {
                     expression(&p.initial, bound, free);
                 }
@@ -157,7 +157,7 @@ fn declarations(
                     }
                 }
             }
-            Item::Loop(_, _, ps, body) => {
+            Item::Loop(_, _, ps, body, _) => {
                 names.extend(ps.iter().map(|p| p.field.name.clone()));
                 declarations(body, names, mutable, cut);
             }
@@ -198,7 +198,25 @@ pub fn extract_tail(
         .iter()
         .find(|r| r.name == control)
         .ok_or_else(|| error(span, "unknown source control"))?;
-    if region.boundary.is_some() || region.contingency {
+    fn isolated(items: &[Item]) -> bool {
+        fn statement(s: &Statement) -> bool {
+            match s {
+                Statement::Boundary { .. } | Statement::Recover(_) => true,
+                Statement::Delta(_, _, arms) => arms.iter().any(|a| {
+                    isolated(&a.body) || a.termination.as_ref().is_some_and(|e| statement(&e.1))
+                }),
+                _ => false,
+            }
+        }
+        items.iter().any(|i| match i {
+            Item::Guard(_, ss) => ss.iter().any(|(_, s)| statement(s)),
+            Item::Loop(_, _, _, body, _) | Item::Group(_, _, body) | Item::Over(_, _, body) => {
+                isolated(body)
+            }
+            _ => false,
+        })
+    }
+    if region.boundary.is_some() || region.contingency || isolated(&region.body) {
         return Err(error(
             span,
             "extract-tail cannot move a boundary or contingency into an ordinary control",

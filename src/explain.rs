@@ -28,6 +28,8 @@ pub struct SelectionLimits {
 }
 #[derive(Clone, Debug, Serialize)]
 pub struct Selection {
+    #[serde(skip_serializing_if = "crate::ir::is_false")]
+    pub contingency: bool,
     pub kind: String,
     pub condition: String,
     pub structurally_empty: bool,

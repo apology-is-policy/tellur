@@ -49,6 +49,8 @@ pub struct Field {
 #[serde(deny_unknown_fields)]
 pub struct Control {
     #[serde(default, skip_serializing_if = "crate::ir::is_false")]
+    pub entry_only: bool,
+    #[serde(default, skip_serializing_if = "crate::ir::is_false")]
     pub contingent: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub retains: Option<Vec<String>>,
@@ -345,6 +347,7 @@ impl Builder<'_> {
             Exits::Inline { alternatives }
         };
         Control {
+            entry_only: syntax::entry_only(&region.body),
             contingent: region.contingent_contract == Some(true),
             retains: region.boundary.as_ref().map(|b| b.retained.clone()),
             faults: region

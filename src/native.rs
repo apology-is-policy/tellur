@@ -144,6 +144,42 @@ impl Generator<'_> {
                 guard(&i.guard)
             );
             match &i.action {
+                Action::Boundary {
+                    body,
+                    handler,
+                    retained,
+                    retire,
+                    work_slots,
+                    handler_slots,
+                    fault_slot,
+                } => {
+                    let name = format!("{}$boundary@{}", p.region, p.span.line);
+                    let _ = writeln!(
+                        self.code,
+                        "let boundary_flow=host.lexical(v, &mut a, base, {}, &{:?}, &{:?}, &{:?}, &{:?}, {}, |host, mut v, mut a| {{",
+                        string(&name),
+                        retained,
+                        retire,
+                        work_slots,
+                        handler_slots,
+                        fault_slot
+                    );
+                    self.instructions(body);
+                    self.code
+                        .push_str("Ok(Completion::Fallthrough)\n}, |host, mut v, mut a| {\n");
+                    self.instructions(handler);
+                    self.code.push_str("Err(\"E_NATIVE: contingency fell through\".into())\n})?;\nmatch boundary_flow {Completion::Fallthrough=>{}, other=>return Ok(other)}\n");
+                }
+                Action::Recover { target, args } => {
+                    let _ = writeln!(
+                        self.code,
+                        "return Ok(Completion::Recover({target}, {}));",
+                        expressions(args)
+                    );
+                }
+                Action::TerminateProcess(status) => {
+                    let _ = writeln!(self.code, "return Ok(Completion::Process({status}));");
+                }
                 Action::Terminate => {
                     self.code.push_str("return Ok(Completion::Settled);\n");
                 }
@@ -208,11 +244,12 @@ impl Generator<'_> {
                 Action::Again { target, args } => {
                     let _ = writeln!(
                         self.code,
-                        "next_{target} = {}; continue 'loop_{target};",
+                        "return Ok(Completion::Again({target}, {}));",
                         expressions(args)
                     );
                 }
                 Action::Loop {
+                    supervised: _,
                     id,
                     parameters,
                     local_slots,
@@ -242,10 +279,23 @@ impl Generator<'_> {
                     for (s, _) in parameters {
                         let _ = writeln!(self.code, "v[base + {s}] = initial_{id}.next();");
                     }
+                    self.code.push_str("let loop_flow=(|| -> R<Completion> {\n");
                     self.instructions(body);
+                    self.code
+                        .push_str("Err(\"E_NATIVE: checked loop fell through\".into())\n})();\n");
                     let _ = writeln!(
                         self.code,
-                        "return Err(\"E_NATIVE: checked loop fell through\".into());\n}}"
+                        "match loop_flow? {{Completion::Again(target,args) if target=={id}=>{{next_{id}=args;continue 'loop_{id};}}, Completion::Recover(target,args) if target=={id}=>{{"
+                    );
+                    for s in local_slots {
+                        let _ = writeln!(
+                            self.code,
+                            "host.release_frame(std::slice::from_ref(&v[base+{s}]));"
+                        );
+                    }
+                    let _ = writeln!(
+                        self.code,
+                        "next_{id}=args;continue 'loop_{id};}},Completion::Complete(target) if target=={id}=>break 'loop_{id},other=>return Ok(other)}}\n}}"
                     );
                 }
                 Action::Complete {
@@ -267,7 +317,7 @@ impl Generator<'_> {
                     }
                     let _ = writeln!(self.code, "a[{atom}] = true;");
                     if let Some(target) = unwind {
-                        let _ = writeln!(self.code, "break 'loop_{target};");
+                        let _ = writeln!(self.code, "return Ok(Completion::Complete({target}));");
                     }
                 }
                 Action::Decide {
@@ -412,12 +462,12 @@ impl CheckedProgram {
             {
                 let _ = writeln!(
                     g.code,
-                    "fn entry_{id}(_: &mut Host, _: Vec<V>)->R<Outcome> {{ Err(\"E_ENTRY: entry controls cannot require borrowed arguments\".into()) }}"
+                    "fn entry_{id}(_: &mut Host, _: Vec<V>)->R<Completion> {{ Err(\"E_ENTRY: entry controls cannot require borrowed arguments\".into()) }}"
                 );
             } else {
                 let _ = writeln!(
                     g.code,
-                    "fn entry_{id}(host: &mut Host, args: Vec<V>)->R<Outcome> {{ let mut v=Vec::new(); region_{id}(host, &mut v, args, &mut vec![])?.outcome() }}",
+                    "fn entry_{id}(host: &mut Host, args: Vec<V>)->R<Completion> {{ let mut v=Vec::new(); region_{id}(host, &mut v, args, &mut vec![]) }}",
                 );
             }
         }

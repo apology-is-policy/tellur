@@ -82,6 +82,10 @@ impl Expander<'_> {
     }
     fn loop_ids(&mut self, code: &[Instruction], ids: &mut BTreeMap<Id, Id>) {
         for i in code {
+            if let Action::Boundary { body, handler, .. } = &i.action {
+                self.loop_ids(body, ids);
+                self.loop_ids(handler, ids);
+            }
             if let Action::Loop { id, body, .. } = &i.action {
                 ids.insert(*id, self.fresh());
                 self.loop_ids(body, ids);
@@ -98,11 +102,39 @@ impl Expander<'_> {
         let s = &instance.slots;
         let a = &instance.atoms;
         let action = match &original.action {
+            Action::Recover { target, args } => Action::Recover {
+                target: instance.loops[target],
+                args: args.iter().map(|e| expr(e, s)).collect(),
+            },
+            Action::Boundary {
+                body,
+                handler,
+                retained,
+                retire,
+                work_slots,
+                handler_slots,
+                fault_slot,
+            } => Action::Boundary {
+                body: body
+                    .iter()
+                    .map(|i| self.copy(i, instance, inside_loop, copied))
+                    .collect(),
+                handler: handler
+                    .iter()
+                    .map(|i| self.copy(i, instance, inside_loop, copied))
+                    .collect(),
+                retained: retained.iter().map(|id| s[id]).collect(),
+                retire: retire.iter().map(|id| s[id]).collect(),
+                work_slots: work_slots.iter().map(|id| s[id]).collect(),
+                handler_slots: handler_slots.iter().map(|id| s[id]).collect(),
+                fault_slot: s[fault_slot],
+            },
             Action::Supervise { boundary, args } => Action::Supervise {
                 boundary: boundary.clone(),
                 args: args.iter().map(|e| expr(e, s)).collect(),
             },
             Action::Terminate => Action::Terminate,
+            Action::TerminateProcess(n) => Action::TerminateProcess(*n),
             Action::Escalate => Action::Escalate,
             Action::Exit(name, args) => {
                 let arm = instance.arms.iter().find(|a| a.outcome == *name).unwrap();
@@ -123,6 +155,7 @@ impl Expander<'_> {
                 args: args.iter().map(|e| expr(e, s)).collect(),
             },
             Action::Loop {
+                supervised,
                 id,
                 parameters,
                 local_slots,
@@ -131,6 +164,7 @@ impl Expander<'_> {
             } => {
                 let id = instance.loops[id];
                 Action::Loop {
+                    supervised: *supervised,
                     id,
                     parameters: parameters
                         .iter()
@@ -206,6 +240,43 @@ impl Expander<'_> {
         }
     }
     fn instruction(&mut self, mut instruction: Instruction) {
+        if let Action::Boundary {
+            body,
+            handler,
+            retire,
+            work_slots,
+            handler_slots,
+            ..
+        } = &mut instruction.action
+        {
+            let slots = self.output.slots.keys().copied().collect::<BTreeSet<_>>();
+            let enclosing = std::mem::take(&mut self.output.code);
+            for child in std::mem::take(body) {
+                self.instruction(child);
+            }
+            *body = std::mem::take(&mut self.output.code);
+            let added: Vec<_> = self
+                .output
+                .slots
+                .keys()
+                .filter(|id| !slots.contains(id))
+                .copied()
+                .collect();
+            retire.extend(&added);
+            work_slots.extend(added);
+            let slots = self.output.slots.keys().copied().collect::<BTreeSet<_>>();
+            for child in std::mem::take(handler) {
+                self.instruction(child);
+            }
+            *handler = std::mem::replace(&mut self.output.code, enclosing);
+            handler_slots.extend(
+                self.output
+                    .slots
+                    .keys()
+                    .filter(|id| !slots.contains(id))
+                    .copied(),
+            );
+        }
         if let Action::Loop {
             body,
             local_slots,

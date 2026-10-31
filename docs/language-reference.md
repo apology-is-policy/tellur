@@ -1,8 +1,8 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.65.0 -->
+<!-- tellur-reference-version: 0.66.0 -->
 
-This manual describes **compiler 0.65.0**, including the current ownership model,
+This manual describes **compiler 0.66.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -2656,11 +2656,12 @@ It does not yet provide general expression or call-site type hover.
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and async tasks remain planned; they are not executable features of 0.65.0.
+and async tasks remain planned; they are not executable features of 0.66.0.
 ## Contingency and supervised boundaries
 
 The [contingency reference](reference/contingency.md) specifies `@contingent`,
-`boundary`, `retains`, `supervise`, `terminate`, `escalate`, resource handover,
+lexical `fault boundary … contingency […]`, `supervised loop`, `recover again`,
+`@fault`, entry-only `terminate process`, and compatible named boundaries; it covers resource handover,
 public fault escape permissions and the settings server's emergency-response protocol.
 Faults remain outside the outcome algebra.
 

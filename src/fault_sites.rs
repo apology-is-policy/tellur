@@ -77,6 +77,10 @@ impl CheckedProgram {
                 if let Action::Loop { body, .. } = &instruction.action {
                     walk(program, body, out);
                 }
+                if let Action::Boundary { body, handler, .. } = &instruction.action {
+                    walk(program, body, out);
+                    walk(program, handler, out);
+                }
             }
         }
         let mut result = BTreeMap::new();

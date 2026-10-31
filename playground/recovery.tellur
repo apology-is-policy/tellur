@@ -1,0 +1,35 @@
+// The first request faults; recovery preserves the updated supervisor state.
+control work(bool broken) exits done {
+    delta broken {
+        true => fault "request failed",
+        false => exit done
+    }
+}
+@contingent
+control report(ref fault_report info) exits done {
+    emit(borrow info.message);
+    exit done;
+}
+outcome program_result {
+    @exit 0 done
+}
+
+control main() exits program_result {
+    supervised loop requestor(mutable bool first = true) {
+        bool broken = first;
+        first = false;
+        mutable string context = "request context";
+        fault boundary {
+            auto view = borrow context;
+            work(broken);
+            emit(view);
+            exit done;
+        } contingency [context] {
+            auto edit = borrow mutable context;
+            deref edit = "retired work";
+            emit(edit);
+            report(@fault);
+            recover again requestor;
+        }
+    }
+}

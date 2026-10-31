@@ -59,6 +59,41 @@ pub struct Report {
     pub omitted_activations: usize,
     pub site: Option<Site>,
 }
+impl Report {
+    /// Bounded source-facing diagnostic data, independent of either executor's values.
+    pub fn source_fields(&self) -> (String, Vec<String>, Vec<String>) {
+        let stack = self
+            .activations
+            .iter()
+            .map(|a| format!("{}#{}", a.control, a.id))
+            .collect();
+        let paths = self
+            .activations
+            .iter()
+            .filter_map(|a| a.current_site.as_ref())
+            .map(|s| {
+                format!(
+                    "{}:{}:{}{}",
+                    s.control,
+                    s.line,
+                    s.column,
+                    s.label
+                        .as_ref()
+                        .map(|l| format!(" [{l}]"))
+                        .unwrap_or_default()
+                )
+            })
+            .collect();
+        (
+            self.message
+                .strip_prefix("E_FAULT: ")
+                .unwrap_or(&self.message)
+                .into(),
+            stack,
+            paths,
+        )
+    }
+}
 impl std::fmt::Display for Report {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(

@@ -353,6 +353,25 @@ impl Manifest {
         Ok(manifest)
     }
     pub fn canonicalize_types(&mut self) {
+        if self.type_def("fault_report").is_none() {
+            self.types.push(TypeDef::Record {
+                name: "fault_report".into(),
+                fields: vec![
+                    Field {
+                        name: "message".into(),
+                        ty: "String".into(),
+                    },
+                    Field {
+                        name: "stack".into(),
+                        ty: "vector<String>".into(),
+                    },
+                    Field {
+                        name: "sites".into(),
+                        ty: "vector<String>".into(),
+                    },
+                ],
+            });
+        }
         for ty in &mut self.types {
             match ty {
                 TypeDef::Opaque { .. } => {}
@@ -635,6 +654,14 @@ impl Manifest {
         self.validate_at(&BTreeMap::new())
     }
     pub(crate) fn validate_at(&self, spans: &BTreeMap<String, Span>) -> Result<()> {
+        if let Some(ty) = self.type_def("fault_report") {
+            let valid = matches!(ty, TypeDef::Record{fields,..} if fields.iter().map(|f|(f.name.as_str(),f.ty.as_str())).collect::<Vec<_>>() == vec![("message","String"),("stack","vector<String>"),("sites","vector<String>")]);
+            if !valid {
+                return Err(error(
+                    "fault_report is a builtin diagnostic record; its fields cannot be redefined",
+                ));
+            }
+        }
         if self.version != "0.1" {
             return Err(error("expected manifest version 0.1"));
         }

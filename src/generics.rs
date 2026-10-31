@@ -366,7 +366,15 @@ impl Specializer<'_> {
                 }
                 self.outcome(e)?;
             }
-            Statement::Terminate | Statement::Escalate | Statement::ExitName(_) => (),
+            Statement::Boundary { body, handler, .. } => {
+                self.items(body)?;
+                self.items(handler)?;
+            }
+            Statement::Recover(_)
+            | Statement::TerminateProcess(_)
+            | Statement::Terminate
+            | Statement::Escalate
+            | Statement::ExitName(_) => (),
             Statement::Delta(_, e, arms) => {
                 self.expr(e, at)?;
                 for a in arms {
@@ -385,7 +393,7 @@ impl Specializer<'_> {
             match item {
                 Item::Alias(..) => (),
                 Item::Group(_, _, body) | Item::Over(_, _, body) => self.items(body)?,
-                Item::Loop(at, _, ps, body) => {
+                Item::Loop(at, _, ps, body, _) => {
                     for p in ps {
                         self.require(&p.field.ty, *at, 0)?;
                         self.expr(&p.initial, *at)?;

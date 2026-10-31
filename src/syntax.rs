@@ -106,6 +106,7 @@ impl OriginArgument {
 }
 #[derive(Clone, Debug)]
 pub struct LoopParameter {
+    pub mutable: bool,
     pub field: Field,
     pub initial: Expr,
 }
@@ -139,8 +140,15 @@ pub enum OutcomeExpr {
 }
 #[derive(Clone, Debug)]
 pub enum Statement {
+    Boundary {
+        body: Vec<Item>,
+        captures: Vec<String>,
+        handler: Vec<Item>,
+    },
+    Recover(String),
     Supervise(Expr),
     Terminate,
+    TerminateProcess(u8),
     Escalate,
     Forward(Expr),
     Invoke(Expr),
@@ -164,7 +172,7 @@ pub enum Item {
     /// Explicit selection extent, without introducing a value or lifetime scope.
     Group(Span, Mask, Vec<Item>),
     Over(Span, Mask, Vec<Item>),
-    Loop(Span, String, Vec<LoopParameter>, Vec<Item>),
+    Loop(Span, String, Vec<LoopParameter>, Vec<Item>, bool),
 }
 pub type TypeBounds = std::collections::BTreeMap<String, Vec<String>>;
 #[derive(Clone, Debug)]
@@ -304,7 +312,7 @@ pub(crate) struct Token {
     pub end: Span,
 }
 impl Token {
-    fn is(&self, text: &str) -> bool {
+    pub(crate) fn is(&self, text: &str) -> bool {
         matches!(&self.kind, Kind::Word(s) | Kind::Symbol(s) if s == text)
     }
 }
@@ -1053,6 +1061,10 @@ impl Parser {
         }
     }
     fn primary_kind(&mut self) -> Result<ExprKind> {
+        if self.eat("@") {
+            self.need("fault")?;
+            return Ok(ExprKind::Name("$fault".into()));
+        }
         if self.eat("[") {
             let previous = self.brace_expr;
             self.brace_expr = true;
@@ -1260,6 +1272,7 @@ impl Parser {
         Ok(result)
     }
     fn statement_inner(&mut self) -> Result<Statement> {
+        let start = self.here();
         if [
             "async", "await", "spawn", "defer", "capture", "vary", "flux",
         ]
@@ -1279,10 +1292,50 @@ impl Parser {
             } else if self.eat("supervise") {
                 Statement::Supervise(self.expr(0)?)
             } else if self.eat("terminate") {
-                Statement::Terminate
+                if self.eat("process") {
+                    let value = self.expr(0)?;
+                    let ExprKind::U32(status) = value.kind else {
+                        return Err(Diagnostic::new(
+                            "E_PROCESS_EXIT",
+                            start,
+                            "process status must be a literal from 0 to 255",
+                        ));
+                    };
+                    Statement::TerminateProcess(u8::try_from(status).map_err(|_| {
+                        Diagnostic::new(
+                            "E_PROCESS_EXIT",
+                            start,
+                            "process status must be a literal from 0 to 255",
+                        )
+                    })?)
+                } else {
+                    Statement::Terminate
+                }
             } else if self.eat("escalate") {
                 Statement::Escalate
+            } else if self.eat("recover") {
+                self.need("again")?;
+                Statement::Recover(self.id()?)
             } else if self.eat("fault") {
+                if self.eat("boundary") {
+                    let body = self.body()?;
+                    self.need("contingency")?;
+                    self.need("[")?;
+                    let mut captures = vec![];
+                    while !self.at("]") {
+                        captures.push(self.id()?);
+                        if !self.eat(",") {
+                            break;
+                        }
+                    }
+                    self.need("]")?;
+                    let handler = self.body()?;
+                    return Ok(Statement::Boundary {
+                        body,
+                        captures,
+                        handler,
+                    });
+                }
                 Statement::Fault(self.expr(0)?)
             } else if self.eat("drop") {
                 if !self.at("(") {
@@ -1306,10 +1359,8 @@ impl Parser {
                 self.exit_value()?
             } else if self.eat("again") {
                 let name = self.id()?;
-                if !self.at("(") {
-                    return Err(self.error("restart arguments use parentheses"));
-                }
-                Statement::Again(name, self.args()?)
+                let args = if self.at("(") { self.args()? } else { vec![] };
+                Statement::Again(name, args)
             } else if !self.at("delta")
                 && !self.at("Δ")
                 && !self.at("borrow")
@@ -1503,15 +1554,19 @@ impl Parser {
                 self.need(";")?;
                 self.selection_site(span, span, SelectionKind::Alias);
                 items.push(Item::Alias(span, name, mask));
-            } else if self.eat("loop") {
+            } else if self.at("loop") || self.at("supervised") {
+                let supervised = self.eat("supervised");
+                self.need("loop")?;
                 let name = self.id()?;
-                self.need("(")?;
+                let parens = self.eat("(");
                 let mut parameters = vec![];
-                if !self.at(")") {
+                if parens && !self.at(")") {
                     loop {
+                        let mutable = self.eat("mutable");
                         let field = self.ordinary_field()?;
                         self.need("=")?;
                         parameters.push(LoopParameter {
+                            mutable,
                             field,
                             initial: self.expr(0)?,
                         });
@@ -1520,9 +1575,11 @@ impl Parser {
                         }
                     }
                 }
-                self.need(")")?;
+                if parens {
+                    self.need(")")?;
+                }
                 self.selection_site(span, span, SelectionKind::Loop);
-                items.push(Item::Loop(span, name, parameters, self.body()?));
+                items.push(Item::Loop(span, name, parameters, self.body()?, supervised));
             } else {
                 let mask = if self.eat("[") {
                     initial = false;
@@ -1531,7 +1588,12 @@ impl Parser {
                     mask
                 } else if initial {
                     let mut statements = vec![];
-                    while !self.at("[") && !self.at("}") && !self.at("path") && !self.at("loop") {
+                    while !self.at("[")
+                        && !self.at("}")
+                        && !self.at("path")
+                        && !self.at("loop")
+                        && !self.at("supervised")
+                    {
                         self.layout.starts.insert(self.pos);
                         let span = self.here();
                         statements.push((span, self.statement()?));
@@ -1559,7 +1621,12 @@ impl Parser {
                     }
                     let mut statements = vec![];
                     let indent_start = self.pos;
-                    while !self.at("[") && !self.at("}") && !self.at("path") && !self.at("loop") {
+                    while !self.at("[")
+                        && !self.at("}")
+                        && !self.at("path")
+                        && !self.at("loop")
+                        && !self.at("supervised")
+                    {
                         self.layout.starts.insert(self.pos);
                         let span = self.here();
                         statements.push((span, self.statement()?));
@@ -2016,4 +2083,22 @@ pub(crate) fn selection_site_at(unit: &Unit, source: &str, at: Span) -> Option<S
         .filter(|s| contains(s.range))
         .min_by_key(|s| (std::cmp::Reverse(key(s.range.start)), key(s.range.end)))
         .cloned()
+}
+
+pub(crate) fn entry_only(body: &[Item]) -> bool {
+    fn statement(s: &Statement) -> bool {
+        match s {
+            Statement::TerminateProcess(_) => true,
+            Statement::Boundary { body, handler, .. } => entry_only(body) || entry_only(handler),
+            Statement::Delta(_, _, arms) => arms.iter().any(|a| {
+                entry_only(&a.body) || a.termination.as_ref().is_some_and(|t| statement(&t.1))
+            }),
+            _ => false,
+        }
+    }
+    body.iter().any(|i| match i {
+        Item::Guard(_, ss) => ss.iter().any(|(_, s)| statement(s)),
+        Item::Group(_, _, b) | Item::Over(_, _, b) | Item::Loop(_, _, _, b, _) => entry_only(b),
+        _ => false,
+    })
 }

@@ -282,8 +282,13 @@ fn run(args: Vec<String>) -> std::result::Result<ExitCode, Box<dyn std::error::E
             } else {
                 program
             };
-            match p.run_detailed(&s, 1_000_000) {
-                Ok(result) => println!("{}", serde_json::to_string_pretty(&result)?),
+            match p.run_completion(&s, 1_000_000) {
+                Ok(result) => {
+                    println!("{}", serde_json::to_string_pretty(&result)?);
+                    if let tellur::runtime::RunCompletion::Process(result) = result {
+                        return Ok(ExitCode::from(result.status));
+                    }
+                }
                 Err(failure) => {
                     if json {
                         eprintln!("{}", serde_json::to_string(&failure.report)?);

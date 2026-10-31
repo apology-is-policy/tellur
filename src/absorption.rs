@@ -317,6 +317,10 @@ impl<'a> SourceIndex<'a> {
                 if let Action::Loop { body, .. } = &i.action {
                     spans(body, result);
                 }
+                if let Action::Boundary { body, handler, .. } = &i.action {
+                    spans(body, result);
+                    spans(handler, result);
+                }
             }
         }
         let sites: BTreeMap<_, _> = program

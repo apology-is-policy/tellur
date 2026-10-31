@@ -1055,6 +1055,7 @@ control main() exits done {
     assert.deepEqual(routingReport.events.filter(e => e.kind === 'emit').map(e => e.message), ['pixels', 'message']);
     console.log('TELLUR_IDENTITY_ROUTING_EDITOR_TESTS_PASSED: grouped auto hover, qualified path hover, omitted-arm coverage, repair and native execution');
     await require('./ownership-checkpoint.cjs').run(root);
+    await require('./lexical-checkpoint.cjs').run(root);
     const settingsFolder = path.join(root, 'settings-app');
     await fs.mkdir(settingsFolder, {recursive:true});
     for (const file of ['main.tellur', 'settings.tellur', 'server.tellur', 'http.tellur', 'manifest.json', 'host.rs', 'Cargo.lock']) {

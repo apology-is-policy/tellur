@@ -117,11 +117,26 @@ pub enum Operation {
 }
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Action {
+    /// Isolated lexical work and a terminal contingency. Neither creates a tag.
+    Boundary {
+        body: Vec<Instruction>,
+        handler: Vec<Instruction>,
+        retained: Vec<Id>,
+        retire: Vec<Id>,
+        work_slots: Vec<Id>,
+        handler_slots: Vec<Id>,
+        fault_slot: Id,
+    },
+    Recover {
+        target: Id,
+        args: Vec<Expr>,
+    },
     Supervise {
         boundary: String,
         args: Vec<Expr>,
     },
     Terminate,
+    TerminateProcess(u8),
     Escalate,
     Bind(Id, Expr),
     Assign(Place, Expr),
@@ -133,6 +148,8 @@ pub enum Action {
     Fault(Expr),
     Exit(String, Vec<Expr>),
     Loop {
+        #[serde(default)]
+        supervised: bool,
         id: Id,
         parameters: Vec<(Id, Expr)>,
         local_slots: Vec<Id>,
@@ -416,5 +433,20 @@ mod borrow_return_entries {
             }
         }
         Ok(result)
+    }
+}
+
+impl Region {
+    /// This control may only be selected as an executable entry, never called.
+    pub fn entry_only(&self) -> bool {
+        fn scan(code: &[Instruction]) -> bool {
+            code.iter().any(|i| match &i.action {
+                Action::TerminateProcess(_) => true,
+                Action::Boundary { body, handler, .. } => scan(body) || scan(handler),
+                Action::Loop { body, .. } => scan(body),
+                _ => false,
+            })
+        }
+        scan(&self.code)
     }
 }

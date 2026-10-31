@@ -112,3 +112,7 @@ The language server advertises `experimental.tellurExplain: 1`. Requests use
 LSP input positions use **zero-based UTF-16** coordinates; returned report positions
 remain one-based scalars. A position inside a surrogate pair is invalid. Malformed
 requests and failed checks return errors, never an older successful report.
+
+Lexical contingency selections carry `contingency: true` in structured selection
+reports. Their hover defines `entry` as handler entry after failed work retires;
+it does not describe an ordinary continuation of that work.

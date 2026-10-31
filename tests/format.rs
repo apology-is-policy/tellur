@@ -345,8 +345,8 @@ fn user_server_style_keeps_labels_and_indents_nested_adapter_bodies() {
     let result = formatted(source);
     assert!(result.contains("    [invalid]: exit invalid_configuration;"));
     assert!(result.contains("    [listening]:\n        emit("));
-    assert!(result.contains("\n    [failed]: emit(message);"));
-    assert!(result.contains("\n    [entry]: terminate;"));
+    assert!(result.contains("[failed]: emit(message);"));
+    assert!(result.contains("[entry]: recover again accept_next;"));
     assert!(
         result.contains(
             "\n                sent => sent {},\n                failed { string message }"
@@ -374,4 +374,20 @@ fn width_is_soft_for_literals_comments_and_accounts_for_tabs_and_unicode() {
     assert!(result.contains(&format!("// {}", "comment ".repeat(30))));
     assert!(result.contains("\n\tstring first_name,\n\tstring second_name\n)"));
     assert_eq!(result, format::source(&result, options).unwrap());
+}
+
+#[test]
+fn lexical_contingency_and_supervised_loop_layout_is_idempotent() {
+    let source = "control main() exits done {supervised loop requests(mutable bool first=true){bool broken=first;first=false;string context=\"request\";fault boundary{delta broken{true=>fault \"broken\",false=>exit done}}contingency[context]{emit(borrow @fault.message);recover again requests;}}}";
+    let result = formatted(source);
+    assert!(result.contains("} contingency [context] {"), "{result}");
+    assert!(
+        result.contains("supervised loop requests(mutable bool first = true) {"),
+        "{result}"
+    );
+    compile(
+        &result,
+        Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+    )
+    .unwrap();
 }

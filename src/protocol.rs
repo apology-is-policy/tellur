@@ -152,7 +152,12 @@ impl Graph {
                 Action::Complete { atom, unwind, .. } => Step::Complete(*atom, *unwind),
                 Action::Exit(name, _) => Step::Exit(name.clone()),
                 Action::Fault(_) => Step::Fault,
-                Action::Supervise { .. } | Action::Terminate | Action::Escalate => {
+                Action::Supervise { .. }
+                | Action::Boundary { .. }
+                | Action::Recover { .. }
+                | Action::TerminateProcess(_)
+                | Action::Terminate
+                | Action::Escalate => {
                     return Err(error(
                         "protocol analysis of supervision boundaries is not implemented; isolation cannot be erased or treated as a normal outcome",
                     ));

@@ -2,12 +2,129 @@
 
 [Language reference](../language-reference.md) · [Source faults](execution-failures.md) · [Design](../faults-and-activations.md)
 
-Compiler 0.63 implements synchronous, owned-input isolation for explicit source
+Compiler 0.66 implements synchronous, owned-input isolation for explicit source
 faults. A fault abandons the affected execution's normal continuation permanently.
 A contingency can satisfy outstanding external obligations, but cannot turn that
 fault into an outcome of the failed work.
 
-## A complete example
+## Lexical boundaries and supervised recovery
+
+Compiler 0.66 adds a lexical form. This is the recommended form for new code;
+[named boundaries](#declaration-and-invocation) remain compatible.
+
+<!-- tellur:check -->
+```tellur
+control work(bool broken) exits done {
+    delta broken {
+        true => fault "request invariant failed",
+        false => exit done
+    }
+}
+
+control main() exits done {
+    supervised loop requestor(mutable bool first = true) {
+        bool broken = first;
+        first = false;
+        string context = "request context";
+
+        fault boundary {
+            work(broken);
+            emit(context);
+            exit done;
+        } contingency [context] {
+            emit(context);
+            emit(borrow @fault.message);
+            recover again requestor;
+        }
+    }
+}
+```
+
+`fault boundary` encloses ordinary work. Its immediately attached `contingency`
+encloses emergency work; the brackets list the whole owned values retained at
+entry. Here the first request faults, the contingency reports it, and recovery
+starts another iteration with `first` still `false`. The second request returns
+`done` normally. No branch receives a successful result from the failed request.
+
+The body has a lexical value and path scope. On normal completion it may fall
+through to the next statement, or use ordinary `exit`/`again`. Locals and decision
+labels declared inside do not escape. On a source fault, ordinary invocations and
+work-local storage retire before contingency starts. The handler cannot fall
+through, return an ordinary outcome, use ordinary `again`, or establish fresh
+protected work. Each live history ends with `recover again`, `escalate`, another
+fault, or authorized `terminate process`.
+
+`recover again name;` must name the enclosing **supervised tail loop**. It takes
+no arguments. The compiler preserves that loop's parameters as they stood at
+boundary entry; the handler cannot replace them. Update counters or other
+supervisor state before entering the boundary. Every restart clears the old
+iteration's decisions and request locals. As with ordinary loops, lexically nested
+loops are not supported yet.
+
+Loop parameters and values from outside the loop remain outside protected work.
+This first implementation rejects even shared access to them from the boundary:
+prepare owned request inputs beforehand. Outer reference values and aggregates
+containing references cannot enter the work. Borrows created inside the work may
+refer to its owned inputs and retained owners; they end before handover.
+Contingency can access only its captures, local values, and `@fault`; earlier path
+labels and ordinary locals are unavailable. Owning a capability does not imply
+rollback of its external effects.
+
+Captured owners must exist and be fully available at entry and at every reachable
+faulting operation. They cannot be supervisor state or values containing
+references. Other abandoned must-complete resources need their declared fault
+disposition. Before recovery or process termination, contingency must complete
+its retained and locally acquired must-complete resources. A secondary fault or
+`escalate;` reaches the next outer boundary; the same handler never handles its
+own failure. Escaping faults also check dispositions for supervisor resources
+that would now be abandoned.
+
+## Structured fault information
+
+`@fault` has type `ref fault_report` within lexical contingency. It is an immutable
+borrow of a compiler-provided record with these fields:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `message` | `string` | The source diagnostic message |
+| `stack` | `vector<string>` | Bounded observed control/activation identities |
+| `sites` | `vector<string>` | Bounded current source sites and selected labels |
+
+Use `emit(borrow @fault.message);`, or pass `@fault` to a contingent helper taking
+`ref fault_report`. The field layout is reserved. The stack/sites are diagnostic
+summaries, not a complete execution history or a stable serialization protocol.
+The reference cannot outlive contingency or be exported on recovery. The native
+JSON failure report retains its richer cause chain and source metadata.
+
+## Entry-only process termination
+
+<!-- tellur:check -->
+```tellur
+control main() exits done {
+    fault boundary {
+        fault "startup invariant failed";
+    } contingency [] {
+        emit(borrow @fault.message);
+        terminate process 23;
+    }
+}
+```
+
+`terminate process N;` accepts a literal status from 0 to 255. It is permitted only
+in the executable entry's outermost lexical contingency. A control containing it
+becomes **entry-only**: ordinary invocation is rejected, including through imports
+or generic specialization. Public contract snapshots and declaration hover expose
+this restriction. This is not a transitive permission granted to library calls.
+
+Process termination carries no outcome tag or payload. Native execution and
+`tellurc run` return the status. JSON uses `termination: "process"`, `status`, and
+`events`, with no `outcome` or `fields`. The reference library's `run_completion`
+API returns `RunCompletion::Outcome` or `RunCompletion::Process`; the older
+outcome-only APIs report `E_PROCESS_EXIT` when used on an administrative result.
+That API mismatch is not a Tellur source fault. Scenario comparisons observe the
+termination status separately from ordinary outcomes.
+
+## Compatibility example: named boundaries
 
 <!-- tellur:check -->
 ```tellur
@@ -206,14 +323,15 @@ the client. The accept loop can serve the next connection afterwards.
 
 Service `completed` and `idle` describe the accept loop's lifecycle. They do not
 aggregate request failures. Responses and diagnostic events describe individual
-requests; no failure result is returned by `supervise`.
+requests; no failure outcome crosses the recovery edge.
 
 This release handles explicit Tellur source faults. Driver errors, fuel exhaustion,
 foreign panics, aborts and forced termination do not become recoverable source
 faults. There is no blanket Rust panic catcher. Storage is activation-owned but
 execution remains sequential: recursion, suspension, async children and LLVM
-coroutine lowering are later checkpoints. Call expansion preserves `supervise`
-as an isolation operation; it never expands the child into its supervisor.
+coroutine lowering are later checkpoints. Call expansion preserves lexical
+boundary/handler storage and recovery identities. Compatible named `supervise`
+operations also remain isolated; their children are not flattened into supervisors.
 Structural protocol analysis currently rejects graphs containing supervision,
 and tail extraction does not move boundary/contingency bodies into ordinary controls.
 General user-defined execution flags, annotation policies and dependency injection

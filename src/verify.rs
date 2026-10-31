@@ -17,6 +17,9 @@ fn same(a: &str, b: &str) -> Result<()> {
     }
 }
 struct Verifier<'a> {
+    boundaries: usize,
+    handler: bool,
+    supervisors: Vec<(Id, Vec<Id>)>,
     program: &'a CheckedProgram,
     region: &'a Region,
     instructions: BTreeSet<Id>,
@@ -209,8 +212,61 @@ impl Verifier<'_> {
             }
             self.guard(&i.guard)?;
             match &i.action {
+                Action::Boundary {
+                    body,
+                    handler,
+                    retained,
+                    retire,
+                    work_slots,
+                    handler_slots,
+                    fault_slot,
+                } => {
+                    if self.handler || self.region.contingent {
+                        return Err(error("contingent code cannot establish a boundary"));
+                    }
+                    same(self.slot(*fault_slot)?, "fault_report")?;
+                    if !handler_slots.contains(fault_slot)
+                        || retained.iter().any(|id| retire.contains(id))
+                        || work_slots.iter().any(|id| handler_slots.contains(id))
+                    {
+                        return Err(error("invalid boundary storage separation"));
+                    }
+                    for id in retained
+                        .iter()
+                        .chain(retire)
+                        .chain(work_slots)
+                        .chain(handler_slots)
+                    {
+                        self.slot(*id)?;
+                    }
+                    for id in retained {
+                        if self.program.manifest().contains_references(self.slot(*id)?) {
+                            return Err(error("retained boundary input contains a reference"));
+                        }
+                    }
+                    self.boundaries += 1;
+                    self.code(body, loops)?;
+                    self.boundaries -= 1;
+                    self.handler = true;
+                    self.code(handler, loops)?;
+                    self.handler = false;
+                }
+                Action::Recover { target, args } => {
+                    let (_, slots) = self
+                        .supervisors
+                        .last()
+                        .filter(|(id, _)| id == target)
+                        .ok_or_else(|| error("recovery requires the enclosing supervisor"))?;
+                    if !self.handler || args.len()!=slots.len() || args.iter().zip(slots).any(|(e,id)|!matches!(e,Expr::Place(p)|Expr::Move(p) if p.root==*id && !p.indirect && p.fields.is_empty())) {return Err(error("recovery must transfer only preserved supervisor state"));}
+                    self.args(
+                        args,
+                        loops
+                            .get(target)
+                            .ok_or_else(|| error("unknown recovery loop"))?,
+                    )?;
+                }
                 Action::Supervise { boundary, args } => {
-                    if self.region.contingent {
+                    if self.region.contingent || self.handler {
                         return Err(error("contingent code cannot supervise"));
                     }
                     let r = self
@@ -224,7 +280,7 @@ impl Verifier<'_> {
                         .region(&b.handler)
                         .filter(|h| h.contingency && h.contingent)
                         .ok_or_else(|| error("invalid contingency handler"))?;
-                    if handler.faults && !self.region.faults {
+                    if handler.faults && !self.region.faults && self.boundaries == 0 {
                         return Err(error("escalating boundary requires fault permission"));
                     }
                     self.args(
@@ -238,13 +294,31 @@ impl Verifier<'_> {
                             .collect::<Vec<_>>(),
                     )?;
                 }
+                Action::TerminateProcess(_) => {
+                    if !self.handler
+                        || self.boundaries != 0
+                        || self.region.boundary.is_some()
+                        || self.region.contingency
+                    {
+                        return Err(error(
+                            "process termination outside entry's outermost lexical contingency",
+                        ));
+                    }
+                }
                 Action::Terminate => {
+                    if self.handler {
+                        return Err(error(
+                            "lexical contingency cannot settle into normal execution",
+                        ));
+                    }
                     if self.region.boundary.is_none() && !self.region.contingency {
                         return Err(error("terminate outside a boundary"));
                     }
                 }
                 Action::Escalate => {
-                    if !self.region.contingency || !self.region.faults {
+                    if (!self.region.contingency && !self.handler)
+                        || (!self.region.faults && self.boundaries == 0)
+                    {
                         return Err(error("escalate outside a contingency"));
                     }
                 }
@@ -263,21 +337,26 @@ impl Verifier<'_> {
                 }
                 Action::Emit(e) => same(&self.expr(e)?, "String")?,
                 Action::Fault(e) => {
-                    if !self.region.faults {
+                    if !self.region.faults && self.boundaries == 0 {
                         return Err(error("fault without control permission"));
                     }
                     same(&self.expr(e)?, "String")?;
                 }
-                Action::Exit(name, args) => self.args(
-                    args,
-                    &self
-                        .region
-                        .exits
-                        .iter()
-                        .find(|o| o.name == *name)
-                        .ok_or_else(|| error("unknown exit"))?
-                        .fields,
-                )?,
+                Action::Exit(name, args) => {
+                    if self.handler {
+                        return Err(error("ordinary exit from contingency"));
+                    }
+                    self.args(
+                        args,
+                        &self
+                            .region
+                            .exits
+                            .iter()
+                            .find(|o| o.name == *name)
+                            .ok_or_else(|| error("unknown exit"))?
+                            .fields,
+                    )?;
+                }
                 Action::Again { target, args } => self.args(
                     args,
                     loops
@@ -285,6 +364,7 @@ impl Verifier<'_> {
                         .ok_or_else(|| error("restart outside target loop"))?,
                 )?,
                 Action::Loop {
+                    supervised,
                     id,
                     parameters,
                     local_slots,
@@ -322,7 +402,14 @@ impl Verifier<'_> {
                         }
                     }
                     loops.insert(*id, fields);
+                    if *supervised {
+                        self.supervisors
+                            .push((*id, parameters.iter().map(|(id, _)| *id).collect()));
+                    }
                     self.code(body, loops)?;
+                    if *supervised {
+                        self.supervisors.pop();
+                    }
                     loops.remove(id);
                 }
                 Action::Complete {
@@ -374,13 +461,16 @@ impl Verifier<'_> {
                                 .program
                                 .region(name)
                                 .ok_or_else(|| error("unknown callee"))?;
+                            if r.entry_only() {
+                                return Err(error("entry-only control used as an ordinary call"));
+                            }
                             if r.boundary.is_some() || r.contingency {
                                 return Err(error("boundary used as an ordinary call"));
                             }
-                            if self.region.contingent && !r.contingent {
+                            if (self.region.contingent || self.handler) && !r.contingent {
                                 return Err(error("noncontingent call in contingent code"));
                             }
-                            if r.faults && !self.region.faults {
+                            if r.faults && !self.region.faults && self.boundaries == 0 {
                                 return Err(error("faulting call without control permission"));
                             }
                             self.args(
@@ -424,7 +514,8 @@ impl Verifier<'_> {
                                 .iter()
                                 .find(|p| p.name == *name)
                                 .ok_or_else(|| error("unknown primitive"))?;
-                            if self.region.contingent && !p.contingent && !p.pure {
+                            if (self.region.contingent || self.handler) && !p.contingent && !p.pure
+                            {
                                 return Err(error("noncontingent primitive in contingent code"));
                             }
                             self.args(
@@ -571,6 +662,9 @@ impl CheckedProgram {
                 }
             }
             let mut v = Verifier {
+                boundaries: 0,
+                handler: false,
+                supervisors: vec![],
                 program: self,
                 region: r,
                 instructions: BTreeSet::new(),
@@ -696,6 +790,7 @@ impl CheckedProgram {
                 );
                 match &i.action {
                     Action::Loop {
+                        supervised: _,
                         id,
                         parameters,
                         local_slots,

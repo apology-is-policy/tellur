@@ -360,6 +360,7 @@ impl Trace<'_> {
                     self.slots = slots;
                     self.atoms = atoms;
                 }
+                Action::Boundary { body, .. } => self.walk(body),
                 _ => {}
             }
         }

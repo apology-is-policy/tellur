@@ -3,6 +3,10 @@
   "scopeName": "source.tellur",
   "patterns": [
     {
+      "name": "variable.language.fault.tellur",
+      "match": "@fault\\b"
+    },
+    {
       "include": "#comments"
     },
     {
@@ -169,7 +173,7 @@
         },
         {
           "name": "entity.name.label.tellur",
-          "match": "\\b[A-Za-z_][A-Za-z0-9_]*(?=\\s*=\\s*(?:delta\\b|Δ))"
+          "match": "\\b[A-Za-z_][A-Za-z0-9_]*(?=\\s*=\\s*(?:delta\\b|\u0394))"
         },
         {
           "match": "\\b(path)\\s+([A-Za-z_][A-Za-z0-9_]*)",
@@ -205,7 +209,7 @@
           }
         },
         {
-          "match": "\\b((?!(?:mutable|borrow|deref|move|from|ref|fault|faults|retains|supervise|terminate|escalate|contingency)\\b)(?:auto|[a-z_][a-z_0-9]*)(?:\\.[a-z_][a-z_0-9]*)*(?:<[^;{}\\n]*>(?:\\.[a-z_][a-z_0-9]*)?)?)\\s+([a-z_][a-z_0-9]*)(?=\\s*(?:from\\b|<-|=|[,)};]))",
+          "match": "\\b((?!(?:mutable|borrow|deref|move|from|ref|fault|faults|retains|supervise|supervised|recover|process|terminate|escalate|contingency)\\b)(?:auto|[a-z_][a-z_0-9]*)(?:\\.[a-z_][a-z_0-9]*)*(?:<[^;{}\\n]*>(?:\\.[a-z_][a-z_0-9]*)?)?)\\s+([a-z_][a-z_0-9]*)(?=\\s*(?:from\\b|<-|=|[,)};]))",
           "captures": {
             "1": {
               "name": "storage.type.tellur"
@@ -363,7 +367,7 @@
         },
         {
           "name": "keyword.control.tellur",
-          "match": "\\b(?:control|region|boundary|retains|contingency|supervise|terminate|escalate|exits|faults|fault|from|exit|again|loop|over|path|delta|capture)\\b|Δ|\\bforward\\b(?!\\s*[({])"
+          "match": "\\b(?:control|region|boundary|retains|contingency|supervise|supervised|recover|process|terminate|escalate|exits|faults|fault|from|exit|again|loop|over|path|delta|capture)\\b|\u0394|\\bforward\\b(?!\\s*[({])"
         },
         {
           "name": "support.function.tellur",

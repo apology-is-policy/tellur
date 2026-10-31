@@ -372,7 +372,12 @@ fn only_referenced_manifest_types_are_included_recursively() {
     );
     assert_eq!(snapshot.manifest_types.len(), 2);
     let mut direct = f.manifest();
-    let tellur::manifest::TypeDef::Record { fields, .. } = direct.types.last_mut().unwrap() else {
+    let tellur::manifest::TypeDef::Record { fields, .. } = direct
+        .types
+        .iter_mut()
+        .find(|t| t.name() == "envelope")
+        .unwrap()
+    else {
         panic!("record")
     };
     fields[0].ty = "string".into();
@@ -546,4 +551,13 @@ fn cli_exports_compares_checks_and_rejects_bad_inputs_without_writing_sources() 
         .unwrap();
     assert!(!invalid.status.success());
     assert!(invalid.stdout.is_empty());
+}
+
+#[test]
+fn process_termination_changes_public_call_authority() {
+    let f = Fixture::new();
+    let before = f.snapshot("pub control main() exits done {exit done;}");
+    let after=f.snapshot("pub control main() exits done {fault boundary {fault \"startup\";} contingency [] {terminate process 2;}}");
+    assert_eq!(entry(&after)["main"]["entry_only"], true);
+    assert_ne!(before, after);
 }

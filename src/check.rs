@@ -37,6 +37,7 @@ fn unique_payload_names(fields: &mut [manifest::Field]) {
 mod collection_loans;
 mod contracts;
 mod contributors;
+mod lexical;
 mod public;
 mod stored;
 mod sums;
@@ -49,6 +50,7 @@ struct Access {
 }
 #[derive(Clone)]
 struct Signature {
+    entry_only: bool,
     contingent: bool,
     boundary: bool,
     contingency: bool,
@@ -153,7 +155,7 @@ impl LoanOrigin {
         }
     }
 }
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct Scope {
     values: BTreeMap<String, Binding>,
     paths: BTreeMap<String, (Guard, Formula)>,
@@ -164,12 +166,15 @@ struct Scope {
 }
 #[derive(Clone)]
 struct LoopContext {
+    supervised: bool,
     name: String,
     id: Id,
     parameters: Vec<manifest::Parameter>,
     scope: usize,
 }
 struct Checker<'a> {
+    boundaries: Vec<lexical::BoundaryContext>,
+    handler: Option<lexical::HandlerContext>,
     contingent_contract: Option<bool>,
     fault_contract: Option<bool>,
     selected_histories: Vec<crate::history::SelectedHistory>,
@@ -247,6 +252,7 @@ impl Checker<'_> {
                 &self.selection_facts,
                 self.loop_context.as_ref().map(|l| l.name.clone()),
                 domain == FALSE,
+                self.handler.is_some() || self.result.contingency,
             ));
     }
 
@@ -651,6 +657,7 @@ impl Checker<'_> {
         exclusive: bool,
         span: Span,
     ) -> Result<()> {
+        self.boundary_access(place, span)?;
         if let Some(holder) = self.holder_access(place) {
             self.check_loans(&holder, domain, exclusive, span)?;
         }
@@ -1233,6 +1240,7 @@ impl Checker<'_> {
                 )
             })?;
             return Ok(Some(Signature {
+                entry_only: false,
                 contingent: true,
                 boundary: false,
                 contingency: false,
@@ -1246,6 +1254,13 @@ impl Checker<'_> {
                 region: false,
                 completion_type: None,
             }));
+        }
+        if self.signatures.get(name).is_some_and(|s| s.entry_only) {
+            return Err(self.error(
+                "E_ENTRY_ONLY",
+                span,
+                "a control with process termination can only be selected as an executable entry",
+            ));
         }
         Ok(self.signatures.get(name).cloned())
     }
@@ -1963,20 +1978,24 @@ impl Checker<'_> {
                 "source fault permissions require control syntax",
             ));
         }
-        if self.fault_contract == Some(false) {
+        if self.boundaries.is_empty() && self.fault_contract == Some(false) {
             return Err(self.error(
                 "E_FAULT_CONTRACT",
                 span,
                 "this control may fault; its public or trait contract must permit `faults`",
             ));
         }
-        if let Some(boundary) = &self.result.boundary {
-            for id in &boundary.retained {
-                let binding = self.scopes[0]
-                    .values
-                    .values()
+        let retained = self.retained_for_fault();
+        if !retained.is_empty() {
+            for id in &retained {
+                let binding = self
+                    .scopes
+                    .iter()
+                    .flat_map(|s| s.values.values())
                     .find(|b| b.slot.id == *id)
-                    .unwrap();
+                    .ok_or_else(|| {
+                        self.error("E_BOUNDARY_RETAIN", span, "retained owner is unavailable")
+                    })?;
                 let missing = binding
                     .moved
                     .values()
@@ -1989,11 +2008,9 @@ impl Checker<'_> {
         }
         for scope in &self.scopes {
             for binding in scope.values.values() {
-                if self
-                    .result
-                    .boundary
-                    .as_ref()
-                    .is_some_and(|b| b.retained.contains(&binding.slot.id))
+                if retained.contains(&binding.slot.id)
+                    || (!self.boundaries.is_empty()
+                        && self.protected_state().contains(&binding.slot.id))
                 {
                     continue;
                 }
@@ -2017,12 +2034,14 @@ impl Checker<'_> {
                 }
             }
         }
-        self.result.faults = true;
+        if self.boundaries.is_empty() {
+            self.result.faults = true;
+        }
         Ok(())
     }
     fn contingent_call(&mut self, permitted: bool, span: Span) -> Result<()> {
         if !permitted {
-            if self.contingent_contract == Some(true) {
+            if self.contingent_contract == Some(true) || self.handler.is_some() {
                 return Err(self.error("E_CONTINGENT", span, "contingency code may call only contingent operations; public and trait controls require @contingent"));
             }
             self.result.contingent = false;
@@ -2105,6 +2124,18 @@ impl Checker<'_> {
         statement: &Statement,
         span: Span,
     ) -> Result<()> {
+        if self.handler.is_some()
+            && matches!(
+                statement,
+                Statement::Exit(..)
+                    | Statement::ExitName(..)
+                    | Statement::ExitOutcome(..)
+                    | Statement::Forward(..)
+                    | Statement::Again(..)
+            )
+        {
+            return Err(self.error("E_CONTINGENCY_EXIT",span,"a contingency cannot return an ordinary outcome or use an ordinary restart; use recover again"));
+        }
         let overlap = self.bdd.and(domain, self.dead);
         if overlap != FALSE {
             return Err(self.fail_domain(
@@ -2118,6 +2149,12 @@ impl Checker<'_> {
             return Err(self.error("E_EMPTY", span, "structurally empty executable selector"));
         }
         match statement {
+            Statement::Boundary {
+                body,
+                captures,
+                handler,
+            } => self.lexical_boundary(body, captures, handler, guard, domain, span)?,
+            Statement::Recover(name) => self.recover(name, guard, domain, span)?,
             Statement::Forward(operand) => {
                 let syntax::ExprKind::Call(callee, args) = &operand.kind else {
                     return Err(self.error(
@@ -2237,22 +2274,42 @@ impl Checker<'_> {
                     span,
                 );
             }
+            Statement::TerminateProcess(status) => {
+                self.terminate_process(*status, guard, domain, span)?;
+            }
             Statement::Terminate | Statement::Escalate => {
-                if self.result.boundary.is_none() && !self.result.contingency {
+                if self.handler.is_some() && matches!(statement, Statement::Terminate) {
+                    return Err(self.error(
+                        "E_BOUNDARY",
+                        span,
+                        "lexical contingencies must recover, escalate, or terminate the process",
+                    ));
+                }
+                if self.result.boundary.is_none()
+                    && !self.result.contingency
+                    && self.handler.is_none()
+                {
                     return Err(self.error(
                         "E_BOUNDARY",
                         span,
                         "terminate belongs to a boundary or contingency",
                     ));
                 }
-                if matches!(statement, Statement::Escalate) && !self.result.contingency {
+                if matches!(statement, Statement::Escalate)
+                    && !self.result.contingency
+                    && self.handler.is_none()
+                {
                     return Err(self.error(
                         "E_BOUNDARY",
                         span,
                         "escalate belongs to a contingency",
                     ));
                 }
-                self.resources(domain, span, None)?;
+                if self.handler.is_some() {
+                    self.handler_resources(domain, span)?;
+                } else {
+                    self.resources(domain, span, None)?;
+                }
                 self.dead = self.bdd.or(self.dead, domain);
                 let action = if matches!(statement, Statement::Escalate) {
                     self.fault_permission(domain, span)?;
@@ -3915,7 +3972,7 @@ impl Checker<'_> {
             crate::liveness::items(std::slice::from_ref(item), &mut live);
             self.expire_loans(&live);
             match item {
-                Item::Loop(span, name, parameters, body) => {
+                Item::Loop(span, name, parameters, body, supervised) => {
                     if index + 1 != items.len() {
                         return Err(self.error(
                             "E_LOOP",
@@ -3980,12 +4037,20 @@ impl Checker<'_> {
                         .paths
                         .insert("Entry".into(), (Guard::True, domain));
                     let mut bindings = vec![];
-                    for (p, initial) in params.iter().zip(initial) {
+                    for ((p, initial), source) in params.iter().zip(initial).zip(parameters) {
                         let slot = self.define(&p.name, &p.ty, domain, *span)?;
+                        self.scopes
+                            .last_mut()
+                            .unwrap()
+                            .values
+                            .get_mut(&p.name)
+                            .unwrap()
+                            .mutable = source.mutable;
                         bindings.push((slot, initial));
                     }
                     let id = self.fresh();
                     self.loop_context = Some(LoopContext {
+                        supervised: *supervised,
                         name: name.clone(),
                         id,
                         parameters: params,
@@ -4022,6 +4087,7 @@ impl Checker<'_> {
                     self.emit(
                         outer.clone(),
                         Action::Loop {
+                            supervised: *supervised,
                             id,
                             parameters: bindings,
                             local_slots,
@@ -4323,6 +4389,7 @@ pub(crate) fn compile_concrete_unit(
         signatures.insert(
             p.name.clone(),
             Signature {
+                entry_only: false,
                 contingent: p.contingent || p.pure,
                 boundary: false,
                 contingency: false,
@@ -4394,6 +4461,7 @@ pub(crate) fn compile_concrete_unit(
         signatures.insert(
             region.name.clone(),
             Signature {
+                entry_only: syntax::entry_only(&region.body),
                 contingent: region.contingent_contract.unwrap_or(true),
                 boundary: region.boundary.is_some(),
                 contingency: region.contingency,
@@ -4498,6 +4566,8 @@ pub(crate) fn compile_concrete_unit(
                 crate::origins::result_type(&f.ty, &origin_schemas, &manifest, source.span)?;
             }
             let mut checker = Checker {
+                boundaries: vec![],
+                handler: None,
                 contingent_contract: source.contingent_contract,
                 fault_contract: source.fault_contract,
                 selected_histories: vec![],

@@ -505,6 +505,38 @@ impl Server {
                 && character >= r["start"]["character"].as_u64().unwrap()
                 && character < r["end"]["character"].as_u64().unwrap()
         };
+        if let Ok(tokens) = syntax::lex(&doc.text) {
+            for (index, token) in tokens.iter().enumerate() {
+                if !hit(token.span) {
+                    continue;
+                }
+                let text = match &token.kind {
+                    syntax::Kind::Word(word) => word.as_str(),
+                    _ => continue,
+                };
+                let info = match text {
+                    "fault" if index > 0 && tokens[index - 1].is("@") => Some(
+                        "`@fault: ref fault_report`\n\nImmutable contingency-local diagnostic. Fields: `string message`, `vector<string> stack`, `vector<string> sites`. Stack and current sites are bounded observations, not a complete execution history. It cannot cross a recovery edge.",
+                    ),
+                    "recover" => Some(
+                        "`recover again supervisor;`\n\nFinish contingency and start a fresh iteration of the enclosing supervised loop. Transfers only the supervisor state preserved at boundary entry; request values and the fault report cannot escape. Retained resources must be completed first.",
+                    ),
+                    "supervised" => Some(
+                        "A supervised tail loop permits terminal `recover again` from a lexical contingency. Loop parameters stay outside isolated request work; update them before entering the boundary.",
+                    ),
+                    "contingency" if tokens.get(index + 1).is_some_and(|t| t.is("[")) => Some(
+                        "Lexical contingency captures pre-existing whole owned request values. It runs after failed work and its loans retire. Calls must be contingent; every history must recover, escalate or terminate the process. No ordinary exit or fallthrough.",
+                    ),
+                    "process" if index > 0 && tokens[index - 1].is("terminate") => Some(
+                        "`terminate process N;`\n\nEnd the executable with literal status 0–255, without producing an outcome. Allowed only in an entry control's outermost lexical contingency. That control becomes entry-only and cannot be called.",
+                    ),
+                    _ => None,
+                };
+                if let Some(info) = info {
+                    return json!({"contents":{"kind":"markdown","value":info},"range":diagnostic_range(&doc.text,token.span)});
+                }
+            }
+        }
         let auto_sites = syntax::auto_binding_spans(&doc.text).unwrap_or_default();
         if auto_sites.iter().any(|(_, keyword, _)| hit(*keyword)) {
             let Ok(program) = self.checked(uri) else {
@@ -924,6 +956,14 @@ impl Server {
                 return json!({"contents":{"kind":"markdown","value":format!("```tellur\nboundary {}({params}){disposition}{faults}\n```\n\nEnter with `supervise`. Completion carries no outcome or payload. A source fault abandons the normal body and hands retained parameters to its contingency after failed activations retire. `faults` permits contingency escape to the supervisor's boundary.",region.name)},"range":range});
             }
             let completion = completion_description(&exits, checked.faults);
+            let details = format!(
+                "{details}{}",
+                if checked.entry_only() {
+                    "\n\n**Executable entry only:** this control can terminate the process from its outermost contingency and cannot be called by another control."
+                } else {
+                    ""
+                }
+            );
             let annotation = if checked.contingent {
                 "@contingent\n"
             } else {

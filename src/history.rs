@@ -157,12 +157,14 @@ pub(crate) struct SelectedHistory {
     condition: Condition,
     iteration: Option<String>,
     empty: bool,
+    contingency: bool,
 }
 impl SelectedHistory {
     pub fn summary(&self, offset: usize) -> crate::explain::Selection {
         let mut facts = BTreeMap::new();
         let condition_truncated = self.condition.facts(&mut facts);
         crate::explain::Selection {
+            contingency: self.contingency,
             kind: match self.kind {
                 SelectionKind::Statement => "statement",
                 SelectionKind::Outcome => "outcome",
@@ -205,6 +207,7 @@ impl SelectedHistory {
         facts: &BTreeMap<Id, Fact>,
         iteration: Option<String>,
         empty: bool,
+        contingency: bool,
     ) -> Self {
         let mut budget = MAX_NODES;
         Self {
@@ -214,6 +217,7 @@ impl SelectedHistory {
             condition: Condition::capture(guard, facts, &mut budget, 0),
             iteration,
             empty,
+            contingency,
         }
     }
     pub fn markdown(&self, offset: usize) -> String {
@@ -230,6 +234,9 @@ impl SelectedHistory {
         );
         if self.empty {
             text.push_str("\n\nThis selection is structurally empty.");
+        }
+        if self.contingency {
+            text.push_str("\n\nContingency context: `entry` means contingency entry after failed work retires, not ordinary control entry. These selections cannot resume the failed work.");
         }
         if let Some(name) = &self.iteration {
             text.push_str(&format!("\n\nWithin one iteration of `{name}`. Entry already includes the conditions needed to reach the loop; it is not the whole control entry."));

@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Lexical structure](lexical-structure.md)
 
-This is a reading grammar for the modern compiler 0.63.0 profile, not a replacement
+This is a reading grammar for the modern compiler 0.66.0 profile, not a replacement
 for its type, ownership, origin or coverage rules. It omits legacy spellings and
 parser recovery details. `name`, `integer` and `string_literal` are lexical tokens.
 Quoted text denotes source tokens; `?` means optional, `*` repetition, `+` one or
@@ -102,15 +102,15 @@ explicit_exits   = named_type origin_mapping? | list(exit_alternative)
 exit_alternative = name ("{" trailing_list(result_field)? "}")? ;
 inferred_exits   = list(name "..." | exit_alternative) ;
 body             = "{" body_item* "}" ;
-body_item        = statement+ | selected | grouped | scoped | path_alias | tail_loop ;
+body_item        = statement+ | selected | grouped | scoped | path_alias | tail_loop | supervised_loop ;
 selected         = "[" mask "]" ":" statement+ ;
 grouped          = "[" mask "]" ":" body ;
 scoped           = "[" mask "]" "over" "&" ":" body ;
 path_alias       = "path" name "=" mask ";" ;
 mask             = intersection ("|" intersection)* ;
 intersection     = path_primary ("&" path_primary)* ;
-path_primary     = name | "(" mask ")" ;
-tail_loop        = "loop" name "(" list(field "=" expression)? ")" body ;
+path_primary     = qualified_name | "(" mask ")" ;
+tail_loop        = "loop" name ("(" trailing_list(loop_parameter)? ")")? body ;
 ```
 
 The general `statement+` body item is the implicit entry form. After an explicit
@@ -138,7 +138,8 @@ statement        = "supervise" call ";" | "terminate" ";" | "escalate" ";"
                  | binding | assignment | flat_delta | exit | forwarding
                  | "fault" expression ";" | call ";" | "emit" "(" expression ")" ";"
                  | "drop" "(" expression ")" ";"
-                 | "again" name "(" trailing_list(expression)? ")" ";" ;
+                 | "again" name ("(" trailing_list(expression)? ")")? ";"
+                 | lexical_boundary | recovery | process_termination ;
 binding          = "mutable"? type name "=" initializer ";" ;
 initializer      = expression | "capture" call | inline_delta ;
 assignment       = expression "=" expression ";" ;
@@ -204,3 +205,19 @@ and `delta reference` inspect a sum without consuming it; see the
 `@exit N` is limited to named outcome alternatives and integer statuses 0..255.
 See [process entry contracts](process-entry.md); these annotations do not change
 ordinary payload grammar or outcome assignability.
+
+## Lexical supervision
+
+```ebnf
+lexical_boundary = "fault" "boundary" body "contingency" "[" list(name)? "]" body ;
+supervised_loop  = "supervised" "loop" name ("(" trailing_list(loop_parameter)? ")")? body ;
+loop_parameter   = "mutable"? type name "=" expression ;
+recovery         = "recover" "again" name ";" ;
+process_termination = "terminate" "process" decimal_integer ";" ;
+ambient_fault    = "@" "fault" ;
+```
+
+`lexical_boundary` is a statement without a trailing semicolon. An empty-parameter
+loop may omit `()`, as may its ordinary `again name;` restart. Supervision does not
+relax the existing tail-loop or ownership rules. Process status is a literal 0–255;
+see [contingency](contingency.md) for placement and recovery restrictions.

@@ -97,3 +97,12 @@ brackets. The compiler keeps these dependency paths distinct across calls.
 **Process status** — A numeric interpretation of the final executable outcome.
 Declaration defaults use `@exit N`; entry mappings can override them. It is not
 part of an outcome payload or its ordinary compatibility. See [process entry](process-entry.md).
+
+**Lexical boundary:** an isolated ordinary work block with an attached retained-owner
+contingency. A source fault abandons the work before its contingency runs.
+
+**Supervised loop:** a tail loop whose protected state survives terminal recovery
+into a fresh iteration. `recover again` cannot carry handler-chosen arguments.
+
+**Entry-only control:** a control containing authorized process termination. It can
+be selected as an executable entry, but ordinary calls to it are rejected.

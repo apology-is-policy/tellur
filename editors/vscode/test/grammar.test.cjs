@@ -292,3 +292,9 @@ test('move remains an operator in expressions and outcome payloads', () => {
   assert.equal(ts.filter(t => t.text === 'move').length, 2);
   assert.ok(ts.filter(t => t.text === 'move').every(t => t.scopes.includes('keyword.operator.tellur')));
 });
+test('lexical recovery keywords and ambient fault have distinct scopes', () => {
+  const ts=tokens('control main() exits done {supervised loop requests {fault boundary {exit done;} contingency [context] {emit(borrow @fault.message); recover again requests;}}}\ncontrol stop() faults {fault boundary {fault "broken";} contingency [] {terminate process 23;}}');
+  for (const word of ['supervised','recover','process','contingency']) has(ts,word,'keyword.control.tellur');
+  has(ts,'@fault','variable.language.fault.tellur');
+  assert.ok(!tokens('// @fault\n"@fault"').some(t=>t.scopes.includes('variable.language.fault.tellur')));
+});

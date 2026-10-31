@@ -15,14 +15,19 @@ use std::{
 pub type R<T> = Result<T, String>;
 pub type Outcome = (String, Vec<V>);
 pub enum Completion {
+    Process(u8),
     Outcome(Outcome),
     Settled,
+    Again(usize, Vec<V>),
+    Recover(usize, Vec<V>),
+    Complete(usize),
+    Fallthrough,
 }
 impl Completion {
     pub fn outcome(self) -> R<Outcome> {
         match self {
             Self::Outcome(value) => Ok(value),
-            Self::Settled => Err(
+            _ => Err(
                 "E_NATIVE: administrative settlement cannot enter an outcome continuation".into(),
             ),
         }
@@ -30,9 +35,7 @@ impl Completion {
     pub fn settled(self) -> R<()> {
         match self {
             Self::Settled => Ok(()),
-            Self::Outcome(_) => {
-                Err("E_NATIVE: supervised boundary returned an ordinary outcome".into())
-            }
+            _ => Err("E_NATIVE: supervised boundary returned an ordinary outcome".into()),
         }
     }
 }
@@ -526,6 +529,113 @@ impl Host {
         for v in values.iter().flatten() {
             release(&mut self.resources, v);
         }
+    }
+    pub fn lexical(
+        &mut self,
+        values: &mut Vec<Option<V>>,
+        atoms: &mut Vec<bool>,
+        base: usize,
+        name: &str,
+        retained: &[usize],
+        retire: &[usize],
+        work_slots: &[usize],
+        handler_slots: &[usize],
+        fault_slot: usize,
+        work: impl FnOnce(&mut Host, &mut Vec<Option<V>>, &mut Vec<bool>) -> R<Completion>,
+        handler: impl FnOnce(&mut Host, &mut Vec<Option<V>>, &mut Vec<bool>) -> R<Completion>,
+    ) -> R<Completion> {
+        fn tokens(v: &V, into: &mut std::collections::BTreeSet<String>) {
+            match v {
+                V::Opaque { token, .. } => {
+                    into.insert(token.clone());
+                }
+                V::Construct { fields, .. } => {
+                    for v in fields {
+                        tokens(v, into);
+                    }
+                }
+                _ => {}
+            }
+        }
+        let before: std::collections::BTreeSet<_> = self.resources.values.keys().cloned().collect();
+        let mut owned = std::collections::BTreeSet::new();
+        for id in retained.iter().chain(retire) {
+            if let Some(v) = &values[base + id] {
+                tokens(v, &mut owned);
+            }
+        }
+        let child = self.activations.child();
+        let mut parent = std::mem::replace(&mut self.activations, child);
+        self.enter(name)?;
+        let attempted = work(self, values, atoms);
+        let mut handled = false;
+        let result = match attempted {
+            Err(message) if self.source_faulted() => {
+                handled = true;
+                let report = self
+                    .activations
+                    .failure(name, fault::Phase::Execution, &message);
+                if self.trace {
+                    self.events.push(json!({"kind":"fault","report":report}));
+                } else {
+                    eprintln!("{report}");
+                }
+                let mut keep = std::collections::BTreeSet::new();
+                for id in retained {
+                    if let Some(v) = &values[base + id] {
+                        tokens(v, &mut keep);
+                    }
+                }
+                for id in retire {
+                    values[base + id] = None;
+                }
+                self.resources.values.retain(|token, _| {
+                    (before.contains(token) && !owned.contains(token)) || keep.contains(token)
+                });
+                let (message_text, stack, paths) = report.source_fields();
+                let strings = |xs: Vec<String>| V::Construct {
+                    ty: "vector<String>".into(),
+                    name: "vector".into(),
+                    fields: xs.into_iter().map(V::String).collect(),
+                };
+                values[base + fault_slot] = Some(V::Construct {
+                    ty: "fault_report".into(),
+                    name: "fault_report".into(),
+                    fields: vec![V::String(message_text), strings(stack), strings(paths)],
+                });
+                let mut tracker = self.activations.child();
+                tracker.with_cause(report);
+                self.activations = tracker;
+                self.enter(&format!("{name}$contingency"))?;
+                self.contingencies.push(message);
+                let answer = handler(self, values, atoms);
+                self.contingencies.pop();
+                answer
+            }
+            other => other,
+        };
+        for id in work_slots.iter().chain(handler_slots) {
+            values[base + id] = None;
+        }
+        if handled {
+            // Retained owners must be completed by the handler; all remaining
+            // child objects obey their explicit fault-release disposition.
+            self.resources
+                .values
+                .retain(|token, _| before.contains(token) && !owned.contains(token));
+        }
+        parent.absorb(&self.activations);
+        if let Err(message) = &result {
+            if self.source_faulted() {
+                parent.source_fault();
+            }
+            parent.with_cause(
+                self.activations
+                    .failure(name, fault::Phase::Execution, message),
+            );
+        }
+        self.activations = parent;
+        result
     }
     pub fn supervise(
         &mut self,
@@ -1029,7 +1139,7 @@ fn contract(name: &str) -> Option<Contract> {
         _ => return None,
     })
 }
-pub type EntryFn = fn(&mut Host, Vec<V>) -> R<Outcome>;
+pub type EntryFn = fn(&mut Host, Vec<V>) -> R<Completion>;
 pub struct Entry {
     pub name: &'static str,
     pub display_name: &'static str,
@@ -1168,6 +1278,20 @@ pub fn launch(
             json_output,
         )
     })?;
+    if let Completion::Process(status) = result {
+        if host.script.as_ref().is_some_and(|s| host.cursor != s.len()) {
+            return Err("E_DRIVER: unconsumed script calls".into());
+        }
+        // This is administrative completion, with no outcome tag or payload.
+        if json_output {
+            println!(
+                "{}",
+                json!({"termination":"process","status":status,"events":host.events})
+            );
+        }
+        return Ok(status);
+    }
+    let result = result.outcome()?;
     let code = selected
         .exit_codes
         .iter()

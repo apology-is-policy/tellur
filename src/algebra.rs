@@ -117,6 +117,7 @@ pub struct CaseDifference {
 #[serde(untagged)]
 pub enum Observation {
     Completed(Execution),
+    Terminated(crate::runtime::ProcessTermination),
     Faulted {
         fault: String,
         events: Vec<crate::runtime::Event>,
@@ -239,8 +240,14 @@ pub fn compare_scenarios(
                 &mut BTreeSet::new(),
             )
         });
-        let execute = |p: &CheckedProgram, side: &str| match p.run_detailed(scenario, step_limit) {
-            Ok(execution) => Ok(Observation::Completed(execution)),
+        let execute = |p: &CheckedProgram, side: &str| match p.run_completion(scenario, step_limit)
+        {
+            Ok(crate::runtime::RunCompletion::Outcome(execution)) => {
+                Ok(Observation::Completed(execution))
+            }
+            Ok(crate::runtime::RunCompletion::Process(result)) => {
+                Ok(Observation::Terminated(result))
+            }
             Err(failure) if failure.report.kind == crate::fault::Kind::SourceFault => {
                 Ok(Observation::Faulted {
                     fault: failure.diagnostic.message,

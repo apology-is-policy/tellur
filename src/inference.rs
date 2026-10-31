@@ -148,7 +148,15 @@ pub(crate) fn dependency_order(
             type_calls(ty, calls, manifest);
         }
         match statement {
-            Statement::Terminate | Statement::Escalate | Statement::ExitName(_) => {}
+            Statement::Boundary { body, handler, .. } => {
+                items(body, calls, manifest);
+                items(handler, calls, manifest);
+            }
+            Statement::Recover(_)
+            | Statement::TerminateProcess(_)
+            | Statement::Terminate
+            | Statement::Escalate
+            | Statement::ExitName(_) => {}
             Statement::Capture(_, _, e, _) | Statement::Forward(e) | Statement::Invoke(e) => {
                 expr(e, calls, manifest)
             }
@@ -180,7 +188,7 @@ pub(crate) fn dependency_order(
                         statement_calls(statement, calls, manifest);
                     }
                 }
-                Item::Loop(_, _, params, body) => {
+                Item::Loop(_, _, params, body, _) => {
                     for p in params {
                         type_calls(&p.field.ty, calls, manifest);
                         expr(&p.initial, calls, manifest);

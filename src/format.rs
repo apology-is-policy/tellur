@@ -153,7 +153,7 @@ fn space_before(previous: &str, current: &str, i: usize, angles: &BTreeSet<usize
         .contains(&previous);
     }
     if current == "[" {
-        return ["=", "=>", "->", ",", ":", "(", "{"].contains(&previous);
+        return ["=", "=>", "->", ",", ":", "(", "{", "contingency"].contains(&previous);
     }
     true
 }
