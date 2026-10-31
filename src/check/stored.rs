@@ -180,6 +180,8 @@ impl Checker<'_> {
         expression: &syntax::Expr,
         span: Span,
     ) -> Result<Option<ReferenceSource>> {
+        let local = self.local_expression(expression);
+        let expression = local.as_ref().unwrap_or(expression);
         expression.checked(span, |span| {
             if let syntax::ExprKind::Name(name) = &expression.kind
                 && let Some((scope, loan)) = self.find_loan(name)

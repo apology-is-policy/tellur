@@ -1,8 +1,8 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.63.0 -->
+<!-- tellur-reference-version: 0.64.0 -->
 
-This manual describes **compiler 0.63.0**, including the current ownership model,
+This manual describes **compiler 0.64.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -368,8 +368,11 @@ control parse_port(string input) exits ready { u32 port }, invalid {
 
 This small example parses a u32; the playground's version also checks port range.
 
-`delta` invokes an operation or decides a boolean/closed variant. Every outcome must
-have one explicit arm. There are no wildcard arms or implicit error propagation.
+`delta` invokes an operation or decides a boolean/closed variant. Flat decisions
+can use [identity routing and grouped arms](reference/delta-routing.md): omitted
+alternatives establish same-named paths and bind the producer's payload names.
+Inline outcome adapters still require every alternative explicitly. There is no
+implicit error propagation.
 `number` is an outcome label, `port` is a declared payload binding, and `parsed` is a
 fresh path atom. `number { auto port }` is the inferred form. Payload positions are
 ordered, and declared types must match exactly. Pattern braces on an arm targeting
@@ -421,8 +424,8 @@ The exit means exactly what it means as a statement: `exit done` selects a nulla
 label or forwards a stored completed outcome named `done`; `exit done {}` explicitly
 chooses the nullary label. `exit ready { value }` returns a payload, and
 `exit delta operation() { ... }` runs a nested tail adapter. Separate arms with
-commas; there is no semicolon inside the arm. Every incoming outcome still needs
-an explicit arm. All arms may exit directly, so no trailing statement is required.
+commas; there is no semicolon inside a direct-exit arm. Omitted flat alternatives
+use identity routing. All arms may exit directly, so no trailing statement is required.
 
 Normal contracts, moves, borrow origins and resource obligations apply at every
 exit. A later statement whose selection overlaps an already terminated history is
@@ -2643,7 +2646,7 @@ It does not yet provide general expression or call-site type hover.
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and async tasks remain planned; they are not executable features of 0.63.0.
+and async tasks remain planned; they are not executable features of 0.64.0.
 ## Contingency and supervised boundaries
 
 The [contingency reference](reference/contingency.md) specifies `@contingent`,

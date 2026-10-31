@@ -1,0 +1,29 @@
+control request(bool image) exits has_image { string data }, has_message { string text } {
+    exit delta image {
+        true => has_image { "pixels" },
+        false => has_message { "message" }
+    };
+}
+
+control display_request(bool image) exits done {
+    received = delta request(image) {
+        has_image { auto data } => {
+            string img = data;
+        }
+    }
+
+    [received.has_image]: emit(img);
+        exit done;
+    [received.has_message]: emit(text);
+        exit done;
+}
+
+outcome program_result {
+    @exit 0 done
+}
+
+control main() exits program_result {
+    display_request(true);
+    display_request(false);
+    exit done;
+}

@@ -168,6 +168,10 @@
           }
         },
         {
+          "name": "entity.name.label.tellur",
+          "match": "\\b[A-Za-z_][A-Za-z0-9_]*(?=\\s*=\\s*(?:delta\\b|Δ))"
+        },
+        {
           "match": "\\b(path)\\s+([A-Za-z_][A-Za-z0-9_]*)",
           "captures": {
             "1": {
@@ -309,6 +313,10 @@
         {
           "name": "punctuation.section.parens.tellur",
           "match": "[()]"
+        },
+        {
+          "name": "punctuation.separator.tellur",
+          "match": "\\."
         }
       ]
     },

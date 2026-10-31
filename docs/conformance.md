@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.62.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.64.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -2106,3 +2106,37 @@ payload integrity are checked; installation does not reload existing editor wind
 Execution remains sequential: no async tasks, recursive calls, foreign panic
 recovery, general deep-local recovery registration or proof of handler termination.
 The activation model leaves suspended frames and LLVM coroutine lowering for E1/E2.
+
+## Identity deltas and decision sites (0.64)
+
+Flat decisions may omit their arms or list only the transformed alternatives.
+Omitted alternatives import the producer's payload names and outcome paths; every
+history still needs a disposition. Named decisions qualify those paths, and a
+short name becomes ambiguous when more than one site supplies it. Grouped arm
+statements share the enclosing value scope while retaining their selected history.
+Inline adapters and legacy region decisions remain exhaustive.
+
+Payload inference retains agreeing source names, including forwarding and extracted
+helpers. Disagreeing or duplicate names use deterministic positional names. Module
+qualification preserves implicit local bindings even when a declaration shares the
+payload name. Remaining sibling arm bodies participate in reference liveness.
+
+Validation: **930 distinct Rust tests pass**, reconciled against the complete test
+inventory after updating diagnostics and payload-name expectations. The focused
+identity suite covers coverage, qualified ambiguity, grouped scope, sibling loans,
+module name collisions and original/expanded/native execution. **38 Node tests**
+pass. The full isolated VS Code suite passes, including grouped `auto` hover,
+qualified path hover, unsaved coverage errors/repair, native execution and the real
+HTTP application. The editor fixture was corrected to remove a formatter-wrapped
+disposition before the successful final run.
+
+All **67 maintained Tellur sources** check. The manual validates **66 accepted
+examples**, **22 expected diagnostics**, **15 context fragments** and **223 local
+links**. Settings public-contract and absorption baselines remain unchanged.
+Compiler/LSP release binaries, the editor package and the installed extension are
+synchronized at 0.64.0; package and installed payload integrity are verified.
+Installation does not reload existing editor windows.
+
+Explicit move expressions, lexical supervision and constructor declarations are
+the next [accepted revision checkpoints](control-flow-revision.md); this release
+does not claim to implement them.

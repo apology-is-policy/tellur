@@ -7,6 +7,32 @@ use crate::{
     syntax::{self, Item, Mask, Statement},
 };
 use std::collections::{BTreeMap, BTreeSet};
+
+fn inferred_payload_name(expression: &syntax::Expr, index: usize) -> String {
+    if let Some(name) = &expression.payload_name {
+        return name.clone();
+    }
+    match &expression.kind {
+        syntax::ExprKind::Name(n) => {
+            let name = expression.local_spelling.as_ref().unwrap_or(n);
+            if !name.contains('.') && !name.starts_with('$') {
+                name.clone()
+            } else {
+                format!("value_{index}")
+            }
+        }
+        _ => format!("value_{index}"),
+    }
+}
+
+fn unique_payload_names(fields: &mut [manifest::Field]) {
+    let mut names = BTreeSet::new();
+    if fields.iter().any(|f| !names.insert(f.name.clone())) {
+        for (index, field) in fields.iter_mut().enumerate() {
+            field.name = format!("value_{index}");
+        }
+    }
+}
 mod collection_loans;
 mod contracts;
 mod contributors;
@@ -131,6 +157,8 @@ struct Scope {
     values: BTreeMap<String, Binding>,
     paths: BTreeMap<String, (Guard, Formula)>,
     sites: BTreeSet<String>,
+    site_aliases: BTreeSet<String>,
+    ambiguous_paths: BTreeSet<String>,
     loans: BTreeMap<String, Loan>,
 }
 #[derive(Clone)]
@@ -166,6 +194,7 @@ struct Checker<'a> {
     pending_payloads: BTreeSet<String>,
     modern: bool,
     future_names: BTreeSet<String>,
+    identity_diagnostics: Vec<(Formula, Diagnostic)>,
     visibility: &'a crate::modules::Visibility,
     type_bindings: &'a BTreeMap<String, String>,
 }
@@ -179,6 +208,28 @@ struct OutcomeBinding {
     writes: Vec<usize>,
 }
 impl Checker<'_> {
+    fn uncovered(&mut self, span: Span, message: &str, live: Formula) -> Diagnostic {
+        let mut error = self.fail_domain("E_UNCOVERED", span, message, live);
+        let mut located = false;
+        for (domain, pending) in &self.identity_diagnostics {
+            if self.bdd.and(*domain, live) != FALSE {
+                if !located {
+                    error.span = pending.span;
+                    located = true;
+                }
+                for note in &pending.notes {
+                    contracts::append(&mut error.notes, note.clone());
+                }
+            }
+        }
+        error
+    }
+    fn local_expression(&self, expression: &syntax::Expr) -> Option<syntax::Expr> {
+        let name = expression.local_spelling.as_ref()?;
+        let root = name.split('.').next().unwrap();
+        (self.find_value(root).is_some() || self.find_loan(root).is_some())
+            .then(|| syntax::ExprKind::Name(name.clone()).at(expression.range))
+    }
     fn record_selection(
         &mut self,
         span: Span,
@@ -251,6 +302,9 @@ impl Checker<'_> {
     }
     fn path(&self, name: &str) -> Option<(Guard, Formula)> {
         let name = if name == "entry" { "Entry" } else { name };
+        if self.scopes.iter().any(|s| s.ambiguous_paths.contains(name)) {
+            return None;
+        }
         self.scopes
             .iter()
             .rev()
@@ -258,6 +312,14 @@ impl Checker<'_> {
     }
     fn mask(&mut self, mask: &Mask, span: Span) -> Result<(Guard, Formula)> {
         match mask {
+            Mask::Name(n) if self.scopes.iter().any(|s| s.ambiguous_paths.contains(n)) => Err(self
+                .error(
+                    "E_PATH_AMBIGUOUS",
+                    span,
+                    format!(
+                        "path `{n}` belongs to more than one decision; qualify it as `site.{n}`"
+                    ),
+                )),
             Mask::Name(n) => self.path(n).ok_or_else(|| {
                 self.error(
                     "E_PATH",
@@ -355,6 +417,9 @@ impl Checker<'_> {
         expression: &syntax::Expr,
         span: Span,
     ) -> Result<Option<ResolvedPlace>> {
+        if let Some(local) = self.local_expression(expression) {
+            return self.resolve_place(&local, span);
+        }
         expression.checked(span, |span| {
             if let syntax::ExprKind::Deref(inner) = &expression.kind {
                 let (_, _, loan, holder) =
@@ -1180,6 +1245,8 @@ impl Checker<'_> {
         span: Span,
         expected: Option<&str>,
     ) -> Result<(Expr, String)> {
+        let local = self.local_expression(expr);
+        let expr = local.as_ref().unwrap_or(expr);
         expr.checked(span, |span| {
         use syntax::ExprKind as S;
         if let Some(place) = self.resolve_place(expr, span)? {
@@ -2088,6 +2155,7 @@ impl Checker<'_> {
                     bindings: vec![],
                     atom: atom.clone(),
                     termination: None,
+                    body: vec![],
                 };
                 self.scopes.push(Scope::default());
                 self.decision(guard, domain, &None, operand, &[pattern], span, None, None)?;
@@ -2229,6 +2297,8 @@ impl Checker<'_> {
                 self.emit(guard, Action::Bind(id, expr), span);
             }
             Statement::Drop(expression) => {
+                let local = self.local_expression(expression);
+                let expression = local.as_ref().unwrap_or(expression);
                 if self.drop_stored(expression, guard.clone(), domain, span)? {
                     return Ok(());
                 }
@@ -2322,10 +2392,11 @@ impl Checker<'_> {
                         let (value, ty) = self.exit_value(name, index, arg, domain, span, None)?;
                         values.push(value);
                         fields.push(manifest::Field {
-                            name: format!("value_{index}"),
+                            name: inferred_payload_name(arg, index),
                             ty,
                         });
                     }
+                    unique_payload_names(&mut fields);
                     if self.pending_payloads.remove(name) {
                         self.result
                             .exits
@@ -2346,6 +2417,18 @@ impl Checker<'_> {
                         for (a, b) in previous.fields.iter().zip(&fields) {
                             self.expect_type(&b.ty, &a.ty, span)?;
                         }
+                        let previous = self
+                            .result
+                            .exits
+                            .iter_mut()
+                            .find(|o| o.name == *name)
+                            .unwrap();
+                        for (index, (a, b)) in previous.fields.iter_mut().zip(&fields).enumerate() {
+                            if a.name != b.name {
+                                a.name = format!("value_{index}");
+                            }
+                        }
+                        unique_payload_names(&mut previous.fields);
                     } else {
                         self.result.exits.push(manifest::Outcome {
                             name: name.clone(),
@@ -2472,13 +2555,19 @@ impl Checker<'_> {
                         bindings: fields.clone(),
                         atom: o.name.clone(),
                         termination: None,
+                        body: vec![],
                     },
                     result: syntax::OutcomeExpr::Construct(
                         span,
                         o.name.clone(),
                         fields
                             .iter()
-                            .map(|f| syntax::ExprKind::Name(f.name.clone()).synthetic())
+                            .zip(&o.fields)
+                            .map(|(f, source)| {
+                                syntax::ExprKind::Name(f.name.clone())
+                                    .synthetic()
+                                    .with_payload_name(source.name.clone())
+                            })
                             .collect(),
                     ),
                 }
@@ -2533,6 +2622,7 @@ impl Checker<'_> {
                 outcome: o.name.clone(),
                 atom: format!("$capture_{serial}_{i}"),
                 termination: None,
+                body: vec![],
                 bindings: o
                     .fields
                     .iter()
@@ -2768,12 +2858,28 @@ impl Checker<'_> {
                             .map_err(|e| arg.locate(e, *span))?;
                     }
                     fields.push(manifest::Field {
-                        name: format!("value_{index}"),
+                        name: expected
+                            .as_ref()
+                            .filter(|_| sink.expected.is_some())
+                            .map_or_else(
+                                || inferred_payload_name(arg, index),
+                                |fields| fields[index].name.clone(),
+                            ),
                         ty,
                     });
                     values.push(value);
                 }
-                if !sink.outcomes.iter().any(|o| o.name == *name) {
+                unique_payload_names(&mut fields);
+                if let Some(previous) = sink.outcomes.iter_mut().find(|o| o.name == *name) {
+                    if sink.expected.is_none() {
+                        for (index, (a, b)) in previous.fields.iter_mut().zip(&fields).enumerate() {
+                            if a.name != b.name {
+                                a.name = format!("value_{index}");
+                            }
+                        }
+                        unique_payload_names(&mut previous.fields);
+                    }
+                } else {
                     sink.outcomes.push(manifest::Outcome {
                         name: name.clone(),
                         fields,
@@ -3092,7 +3198,53 @@ impl Checker<'_> {
             .filter(|o| !seen.contains(&o.name))
             .map(|o| o.name.clone())
             .collect::<Vec<_>>();
-        if !missing.is_empty() {
+        let mut identity_diagnostics = BTreeMap::new();
+        if !missing.is_empty() && self.modern && inline.is_none() {
+            for outcome in outcomes.iter().filter(|o| !seen.contains(&o.name)) {
+                let diagnostic = self.error(
+                    "E_UNCOVERED",
+                    span,
+                    "identity-routed outcome has no disposition",
+                );
+                identity_diagnostics.insert(
+                    outcome.name.clone(),
+                    self.with_operation_contributors(
+                        diagnostic,
+                        &operation,
+                        domain,
+                        std::slice::from_ref(&outcome.name),
+                    ),
+                );
+                let name = if variant_type
+                    .as_deref()
+                    .and_then(manifest::option_inner)
+                    .is_some()
+                {
+                    outcome.name.to_lowercase()
+                } else {
+                    outcome.name.clone()
+                };
+                authored_outcomes.insert(outcome.name.clone(), name.clone());
+                arms.push(syntax::Arm {
+                    span,
+                    outcome: outcome.name.clone(),
+                    bindings: outcome
+                        .fields
+                        .iter()
+                        .map(|f| syntax::Field {
+                            type_span: Span::default(),
+                            origins: vec![],
+                            referent_origins: vec![],
+                            name: f.name.clone(),
+                            ty: "auto".into(),
+                        })
+                        .collect(),
+                    atom: name,
+                    termination: None,
+                    body: vec![],
+                });
+            }
+        } else if !missing.is_empty() {
             let error = self.error(
                 "E_ARMS",
                 span,
@@ -3133,6 +3285,7 @@ impl Checker<'_> {
         let mut resolved = vec![];
         let mut branch_scopes = vec![];
         let mut stored_bindings = vec![];
+        let mut body_paths = BTreeMap::new();
         for (index, arm) in arms.iter().enumerate() {
             let span = arm.termination.as_ref().map_or_else(
                 || inline.map_or(span, |arms| arms[index].span),
@@ -3142,7 +3295,22 @@ impl Checker<'_> {
             if local {
                 self.scopes.push(Scope::default());
             }
-            if !local && self.path(&arm.atom).is_some() {
+            let qualified = site
+                .as_ref()
+                .filter(|_| !local)
+                .map(|s| format!("{s}.{}", arm.atom));
+            let named_alias = self
+                .scopes
+                .iter()
+                .any(|s| s.site_aliases.contains(&arm.atom));
+            let ambiguous = self
+                .scopes
+                .iter()
+                .any(|s| s.ambiguous_paths.contains(&arm.atom));
+            if !local
+                && (self.path(&arm.atom).is_some() || ambiguous)
+                && !(qualified.is_some() && named_alias)
+            {
                 return Err(self.error(
                     "E_PATH",
                     span,
@@ -3166,11 +3334,36 @@ impl Checker<'_> {
                 remaining = self.bdd.minus(remaining, variable);
                 selected
             };
-            self.scopes
-                .last_mut()
-                .unwrap()
-                .paths
-                .insert(arm.atom.clone(), (Guard::Atom(atom), selected));
+            if let Some(qualified) = qualified {
+                if self.path(&qualified).is_some() {
+                    return Err(self.error(
+                        "E_PATH",
+                        span,
+                        format!("path `{qualified}` already exists"),
+                    ));
+                }
+                let collision = self.path(&arm.atom).is_some() || ambiguous;
+                let scope = self.scopes.last_mut().unwrap();
+                scope.paths.insert(qualified, (Guard::Atom(atom), selected));
+                scope.site_aliases.insert(arm.atom.clone());
+                if collision {
+                    scope.ambiguous_paths.insert(arm.atom.clone());
+                } else {
+                    scope
+                        .paths
+                        .insert(arm.atom.clone(), (Guard::Atom(atom), selected));
+                }
+            } else {
+                self.scopes
+                    .last_mut()
+                    .unwrap()
+                    .paths
+                    .insert(arm.atom.clone(), (Guard::Atom(atom), selected));
+            }
+            body_paths.insert(arm.outcome.clone(), (atom, selected));
+            if let Some(diagnostic) = identity_diagnostics.remove(&arm.outcome) {
+                self.identity_diagnostics.push((selected, diagnostic));
+            }
             self.result.atoms.insert(atom, arm.atom.clone());
             self.atom_formulas.insert(atom, selected);
             self.selection_facts.insert(
@@ -3179,6 +3372,8 @@ impl Checker<'_> {
                     id: atom,
                     name: if arm.atom.starts_with('$') {
                         arm.outcome.clone()
+                    } else if let Some(site) = site.as_ref().filter(|_| !local) {
+                        format!("{site}.{}", arm.atom)
                     } else {
                         arm.atom.clone()
                     },
@@ -3436,7 +3631,18 @@ impl Checker<'_> {
                         pattern
                             .bindings
                             .iter()
-                            .map(|f| syntax::ExprKind::Name(f.name.clone()).synthetic())
+                            .zip(
+                                &outcomes
+                                    .iter()
+                                    .find(|o| o.name == pattern.outcome)
+                                    .unwrap()
+                                    .fields,
+                            )
+                            .map(|(f, source)| {
+                                syntax::ExprKind::Name(f.name.clone())
+                                    .synthetic()
+                                    .with_payload_name(source.name.clone())
+                            })
                             .collect(),
                     );
                     &forwarded
@@ -3460,7 +3666,12 @@ impl Checker<'_> {
                 self.scopes.pop();
             }
         } else {
-            for (arm, scope) in arms.iter().zip(branch_scopes) {
+            let continuation = self.future_names.clone();
+            for (index, (arm, scope)) in arms.iter().zip(branch_scopes).enumerate() {
+                self.future_names = continuation.clone();
+                for pending in &arms[index + 1..] {
+                    crate::liveness::items(&pending.body, &mut self.future_names);
+                }
                 if let Some(exit) = &arm.termination {
                     let (scope, atom, selected) = scope.unwrap();
                     self.scopes.push(scope);
@@ -3477,8 +3688,12 @@ impl Checker<'_> {
                         exit.0,
                     )?;
                     self.scopes.pop();
+                } else if !arm.body.is_empty() {
+                    let (atom, selected) = body_paths[&arm.outcome];
+                    self.items(&arm.body, guard.clone().and(Guard::Atom(atom)), selected)?;
                 }
             }
+            self.future_names = continuation;
         }
         Ok(())
     }
@@ -3630,8 +3845,7 @@ impl Checker<'_> {
                     self.items(body, Guard::True, domain)?;
                     let uncovered = self.bdd.minus(domain, self.dead);
                     if uncovered != FALSE {
-                        return Err(self.fail_domain(
-                            "E_UNCOVERED",
+                        return Err(self.uncovered(
                             *span,
                             "loop has histories with no exit or again",
                             uncovered,
@@ -3697,6 +3911,10 @@ impl Checker<'_> {
                             crate::liveness::statement(s, &mut live);
                         }
                         self.expire_loans(&live);
+                        self.future_names = future.clone();
+                        for (_, s) in &statements[index + 1..] {
+                            crate::liveness::statement(s, &mut self.future_names);
+                        }
                         let (guard, domain) = self.mask(mask, *span)?;
                         let domain = self.bdd.and(context, domain);
                         self.record_selection(
@@ -4155,6 +4373,7 @@ pub(crate) fn compile_concrete_unit(
                 pending_payloads: source.infer_payloads.clone(),
                 modern: source.modern,
                 future_names: BTreeSet::new(),
+                identity_diagnostics: vec![],
                 visibility,
                 type_bindings: &source.type_bindings,
                 result: Region {
@@ -4274,8 +4493,7 @@ pub(crate) fn compile_concrete_unit(
             checker.items(&source.body, Guard::True, TRUE)?;
             let live = checker.bdd.not(checker.dead);
             if live != FALSE {
-                return Err(checker.fail_domain(
-                    "E_UNCOVERED",
+                return Err(checker.uncovered(
                     source.span,
                     "region has histories with no explicit exit",
                     live,

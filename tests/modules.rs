@@ -877,7 +877,7 @@ fn forwarding_contributors_resolve_to_original_module_locations() {
         include_str!("fixtures/public_contracts.tellur"),
     );
     f.write("main.tellur", "import \"library.tellur\" as lib;control main() exits done {delta lib.read_setting(true) {ready {auto value}=>ready}[ready]:exit done;}");
-    let e = f.reject("E_ARMS");
+    let e = f.reject("E_UNCOVERED");
     assert_eq!(e.path, f.root.join("main.tellur"));
     assert_eq!(e.diagnostic.notes.len(), 3, "{e}");
     for note in &e.diagnostic.notes {
@@ -910,8 +910,8 @@ control adapt() exits auto {
  exit mapped;}
 pub control run() exits unavailable {forward adapt();}"#,
     );
-    f.write("main.tellur", r#"import "adapter.tellur" as adapter;control main() exits done {auto saved=capture adapter.run();delta saved {}exit done;}"#);
-    let e = f.reject("E_ARMS");
+    f.write("main.tellur", r#"import "adapter.tellur" as adapter;control main() exits done {auto saved=capture adapter.run();delta saved {}}"#);
+    let e = f.reject("E_UNCOVERED");
     for file in ["leaf.tellur", "adapter.tellur", "main.tellur"] {
         assert!(
             e.diagnostic

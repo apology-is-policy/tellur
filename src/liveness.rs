@@ -3,6 +3,9 @@
 use crate::syntax::{Expr, ExprKind, Item, Statement};
 use std::collections::BTreeSet;
 pub fn expression(expr: &Expr, names: &mut BTreeSet<String>) {
+    if let Some(name) = &expr.local_spelling {
+        names.insert(name.clone());
+    }
     match &expr.kind {
         ExprKind::Name(n) => {
             names.insert(n.clone());
@@ -71,6 +74,7 @@ pub fn statement(stmt: &Statement, names: &mut BTreeSet<String>) {
         Statement::Delta(_, e, arms) => {
             expression(e, names);
             for arm in arms {
+                items(&arm.body, names);
                 if let Some(exit) = &arm.termination {
                     statement(&exit.1, names);
                 }

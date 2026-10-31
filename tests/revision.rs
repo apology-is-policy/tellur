@@ -60,7 +60,7 @@ fn inferred_contracts_are_checked_before_forward_callers() {
 fn inferred_alternatives_remain_exhaustive_and_payloads_path_checked() {
     rejects(
         "control main(bool b) exits auto { [entry]: delta choose(b) { yes => yes } [yes]: exit done; } control choose(bool b) exits auto { [entry]: delta b { true => yes, false => no } [yes]: exit yes; [no]: exit no; }",
-        "E_ARMS",
+        "E_UNCOVERED",
     );
     rejects(
         "control main(bool b) exits auto { [entry]: delta b { true => yes, false => no } [yes]: u32 x = 1; [entry]: exit done { x }; }",

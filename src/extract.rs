@@ -73,6 +73,7 @@ fn statement(s: &Statement, bound: &mut BTreeSet<String>, free: &mut BTreeSet<St
                     statement(&exit.1, &mut inner, free);
                 } else {
                     bound.extend(arm.bindings.iter().map(|f| f.name.clone()));
+                    items(&arm.body, bound, free);
                 }
             }
         }
@@ -143,11 +144,12 @@ fn declarations(
                                 mutable.insert(n.clone());
                             }
                         }
-                        Statement::Delta(_, _, arms) => names.extend(
-                            arms.iter()
-                                .filter(|a| a.termination.is_none())
-                                .flat_map(|a| a.bindings.iter().map(|f| f.name.clone())),
-                        ),
+                        Statement::Delta(_, _, arms) => {
+                            for arm in arms.iter().filter(|a| a.termination.is_none()) {
+                                names.extend(arm.bindings.iter().map(|f| f.name.clone()));
+                                declarations(&arm.body, names, mutable, cut);
+                            }
+                        }
                         _ => (),
                     }
                     if let Statement::ExitOutcome(e) | Statement::BindOutcome(_, _, e, _) = s {
@@ -378,8 +380,7 @@ pub fn extract_tail(
             let fields = o
                 .fields
                 .iter()
-                .enumerate()
-                .map(|(i, f)| format!("{} value_{i}", manifest::display_type(&f.ty)))
+                .map(|f| format!("{} {}", manifest::display_type(&f.ty), f.name))
                 .collect::<Vec<_>>();
             exits.push(if fields.is_empty() {
                 o.name.clone()

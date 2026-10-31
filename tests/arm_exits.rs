@@ -56,7 +56,7 @@ fn direct_exits_preserve_mixed_path_routing_and_inferred_contracts() {
         &MIXED.replace("false=>exit absent", "false=>exit done {false}"),
         "E_TYPE",
     );
-    rejects(&MIXED.replace(",false=>exit absent", ""), "E_ARMS");
+    rejects(&MIXED.replace(",false=>exit absent", ""), "E_UNCOVERED");
 }
 #[test]
 fn terminating_payloads_have_private_scopes_and_do_not_export_labels() {

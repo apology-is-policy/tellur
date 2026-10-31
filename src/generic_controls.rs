@@ -107,6 +107,7 @@ fn rewrite_statement(s: &mut Statement, b: &BTreeMap<String, String>) {
             rewrite_expr(e, b);
             for arm in arms {
                 rewrite_fields(&mut arm.bindings, b);
+                rewrite_items(&mut arm.body, b);
                 if let Some(exit) = &mut arm.termination {
                     rewrite_statement(&mut exit.1, b);
                 }
@@ -260,6 +261,7 @@ fn statement_calls(s: &Statement, at: Span, v: &mut Visit<'_>) -> Result<()> {
             expr_calls(e, at, v)?;
             for a in arms {
                 field_calls(&a.bindings, at, v)?;
+                item_calls(&a.body, v)?;
                 if let Some(exit) = &a.termination {
                     statement_calls(&exit.1, exit.0, v)?;
                 }

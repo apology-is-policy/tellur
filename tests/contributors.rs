@@ -25,7 +25,7 @@ fn captures_and_moves_keep_only_the_missing_tags_sources() {
         &format!(
             "{CHOOSE}control main() exits done {{\n auto saved=capture leaf(true);\n auto moved=saved;\n delta moved {{ready=>ready}} [ready]:exit done;}}"
         ),
-        "E_ARMS",
+        "E_UNCOVERED",
     );
     has(&e, "`missing` is produced by `leaf`");
     has(&e, "received from `leaf`");
@@ -38,7 +38,7 @@ fn stored_adapters_and_delayed_exit_retain_renaming_and_absorption() {
     let source = format!(
         "{CHOOSE}control adapt(bool flag) exits auto {{\n auto saved=capture leaf(flag);\n auto mapped=delta saved {{ready=>available {{}},missing=>unavailable {{}}}};\n exit mapped;}}\ncontrol main() exits done {{delta adapt(false) {{available=>ok}}[ok]:exit done;}}"
     );
-    let e = error(&source, "E_ARMS");
+    let e = error(&source, "E_UNCOVERED");
     has(&e, "`missing` is produced by `leaf`");
     has(&e, "`unavailable` is constructed by `adapt`");
     lacks(&e, "`ready`");
@@ -46,8 +46,9 @@ fn stored_adapters_and_delayed_exit_retain_renaming_and_absorption() {
     let e = error(
         &source
             .replace("available", "handled")
-            .replace("{handled=>ok}", "{}"),
-        "E_ARMS",
+            .replace("{handled=>ok}", "{}")
+            .replace("[ok]:exit done;", ""),
+        "E_UNCOVERED",
     );
     has(&e, "`ready` is produced by `leaf`");
     has(&e, "`missing` is produced by `leaf`");
@@ -56,9 +57,9 @@ fn stored_adapters_and_delayed_exit_retain_renaming_and_absorption() {
 fn merged_labels_retain_both_internal_contributors() {
     let e = error(
         &format!(
-            "{CHOOSE}control absorb() exits auto {{delta leaf(false) {{ready=>a,missing=>b}}[a | b]:exit handled;}}control main() exits done {{delta absorb() {{}}exit done;}}"
+            "{CHOOSE}control absorb() exits auto {{delta leaf(false) {{ready=>a,missing=>b}}[a | b]:exit handled;}}control main() exits done {{delta absorb() {{}}}}"
         ),
-        "E_ARMS",
+        "E_UNCOVERED",
     );
     has(&e, "`ready` is produced by `leaf`");
     has(&e, "`missing` is produced by `leaf`");
@@ -68,7 +69,7 @@ fn merged_labels_retain_both_internal_contributors() {
 fn nested_sum_and_record_payloads_preserve_field_identity() {
     let e = error(
         "outcome reply {left,right} struct pair {reply first;reply second;} variant box {packed {pair value},empty}\ncontrol main() exits done {\n reply first=reply.left {};\n reply second=reply.right {};\n box saved=box.packed {pair {first,second}};\n delta saved {packed {auto pair}=>packed,empty=>empty}\n [packed]:delta pair.first {} [empty]:exit done;}",
-        "E_ARMS",
+        "E_UNCOVERED",
     );
     assert!(e.notes.iter().any(|n| n.span.line == 3), "{e}");
     assert!(e.notes.iter().all(|n| n.span.line != 4), "{e}");
@@ -77,8 +78,8 @@ fn nested_sum_and_record_payloads_preserve_field_identity() {
 #[test]
 fn disjoint_bindings_are_filtered_by_the_handling_path() {
     let e = error(
-        "outcome reply {ready,missing}\ncontrol left() exits reply {exit missing;}\ncontrol right() exits reply {exit missing;}\ncontrol main(bool flag) exits done {delta flag {true=>a,false=>b}\n[a]:reply saved=capture left();\n[b]:reply saved=capture right();\n[a]:delta saved {} [b]:exit done;}",
-        "E_ARMS",
+        "outcome reply {ready,missing}\ncontrol left() exits reply {exit missing;}\ncontrol right() exits reply {exit missing;}\ncontrol main(bool flag) exits done {delta flag {true=>a,false=>b}\n[a]:reply saved=capture left();\n[b]:reply saved=capture right();\n[a]:delta saved {} [b]:exit delta saved {ready=>done {},missing=>done {}};}",
+        "E_UNCOVERED",
     );
     has(&e, "received from `left`");
     lacks(&e, "received from `right`");
@@ -87,7 +88,7 @@ fn disjoint_bindings_are_filtered_by_the_handling_path() {
 fn overwritten_values_do_not_report_stale_sources() {
     let e = error(
         "variant choice {old,new}\ncontrol main() exits done {\n mutable choice value=choice.old {};\n value=choice.new {};\n delta value {new=>new}[new]:exit done;}",
-        "E_ARMS",
+        "E_UNCOVERED",
     );
     assert!(
         e.notes.is_empty(),
@@ -95,7 +96,7 @@ fn overwritten_values_do_not_report_stale_sources() {
     );
     let e = error(
         "variant choice {old,new}\ncontrol main(bool flag) exits done {mutable choice value=choice.old {};delta flag {true=>a,false=>b}[a]:value=choice.new {};[a]:delta value {new=>new}[b | new]:exit done;}",
-        "E_ARMS",
+        "E_UNCOVERED",
     );
     assert!(e.notes.is_empty(), "{e}");
 }
@@ -103,7 +104,7 @@ fn overwritten_values_do_not_report_stale_sources() {
 fn mutable_calls_forget_unknown_updates() {
     let e = error(
         "variant choice {old,new}\ncontrol change(ref mutable choice value) exits done {deref value=choice.new {};exit done;}\ncontrol main() exits done {mutable choice value=choice.old {};change(borrow mutable value);delta value {new=>new}[new]:exit done;}",
-        "E_ARMS",
+        "E_UNCOVERED",
     );
     assert!(e.notes.is_empty(), "{e}");
 }
@@ -114,7 +115,7 @@ fn borrowed_matching_and_cloning_ordinary_variants_keep_known_sources() {
             &format!(
                 "variant choice {{ready,missing}} control main() exits done {{choice saved=choice.missing {{}};auto copy=clone(borrow saved);delta {operand} {{ready=>ready}}[ready]:exit done;}}"
             ),
-            "E_ARMS",
+            "E_UNCOVERED",
         );
         has(&e, "`missing` is constructed");
     }
@@ -146,9 +147,8 @@ fn stored_lineage_is_bounded_across_long_adapter_chains() {
             i - 1
         ));
     }
-    source
-        .push_str("control main() exits done {auto saved=capture f44();delta saved {}exit done;}");
-    let e = error(&source, "E_ARMS");
+    source.push_str("control main() exits done {auto saved=capture f44();delta saved {}}");
+    let e = error(&source, "E_UNCOVERED");
     assert_eq!(e.notes.len(), 33, "{e}");
     assert!(e.notes.last().unwrap().message.contains("omitted"));
 }
@@ -157,12 +157,12 @@ fn stored_lineage_is_bounded_across_long_adapter_chains() {
 fn field_replacement_retains_other_fields_only() {
     let e = error(
         "variant choice {old,new} struct pair {choice first;choice second;}\ncontrol main() exits done {\n mutable pair values=pair {first: choice.old {},second: choice.old {}};\n values.first=choice.new {};\n delta values.first {new=>new}[new]:exit done;}",
-        "E_ARMS",
+        "E_UNCOVERED",
     );
     assert!(e.notes.is_empty(), "{e}");
     let e = error(
         "variant choice {old,new} struct pair {choice first;choice second;}\ncontrol main() exits done {\n mutable pair values=pair {first: choice.old {},second: choice.old {}};\n values.first=choice.new {};\n delta values.second {new=>new}[new]:exit done;}",
-        "E_ARMS",
+        "E_UNCOVERED",
     );
     has(&e, "`old` is constructed");
     assert!(e.notes.iter().all(|n| n.span.line == 3), "{e}");
@@ -171,7 +171,7 @@ fn field_replacement_retains_other_fields_only() {
 fn loop_parameters_do_not_claim_the_initializer_as_every_iterations_source() {
     let e = error(
         "variant choice {old,new}\ncontrol main() exits done {loop retry(choice current=choice.old {}) {delta current {new=>new}[new]:exit done;}}",
-        "E_ARMS",
+        "E_UNCOVERED",
     );
     assert!(e.notes.is_empty(), "{e}");
 }
@@ -181,7 +181,7 @@ fn nested_adapters_keep_the_selected_outer_contributor() {
         &format!(
             "{CHOOSE}control nested() exits auto {{auto saved=delta leaf(false) {{ready=>available {{}},missing=>delta leaf(true) {{ready=>unavailable {{}},missing=>unavailable {{}}}}}};exit saved;}}control main() exits done {{delta nested() {{available=>available}}[available]:exit done;}}"
         ),
-        "E_ARMS",
+        "E_UNCOVERED",
     );
     has(&e, "`missing` is produced by `leaf`");
     has(&e, "`ready` is produced by `leaf`");

@@ -4,8 +4,16 @@ use crate::{Diagnostic, Result, SourceRange, Span};
 pub struct Expr {
     pub kind: ExprKind,
     pub range: SourceRange,
+    /// A possible implicit local binding, retained through module qualification.
+    pub local_spelling: Option<String>,
+    /// Public payload identity retained by compiler-generated forwarding bindings.
+    pub payload_name: Option<String>,
 }
 impl Expr {
+    pub(crate) fn with_payload_name(mut self, name: String) -> Self {
+        self.payload_name = Some(name);
+        self
+    }
     pub(crate) fn checked<T>(
         &self,
         fallback: Span,
@@ -52,7 +60,12 @@ pub enum ExprKind {
 }
 impl ExprKind {
     pub fn at(self, range: SourceRange) -> Expr {
-        Expr { kind: self, range }
+        Expr {
+            kind: self,
+            range,
+            local_spelling: None,
+            payload_name: None,
+        }
     }
     pub fn synthetic(self) -> Expr {
         self.at(SourceRange::default())
@@ -108,6 +121,8 @@ pub struct Arm {
     pub atom: String,
     /// A terminating arm has a private payload scope and no exported path atom.
     pub termination: Option<Box<(Span, Statement)>>,
+    /// A path-selected statement group; declarations remain available on this path.
+    pub body: Vec<Item>,
 }
 #[derive(Clone, Debug)]
 pub struct InlineArm {
@@ -1203,6 +1218,7 @@ impl Parser {
                         bindings,
                         atom,
                         termination: None,
+                        body: vec![],
                     },
                     result,
                 });
@@ -1371,6 +1387,9 @@ impl Parser {
                 self.brace_expr = false;
                 let operand = self.expr(0)?;
                 self.brace_expr = true;
+                if self.eat(";") {
+                    return Ok(Statement::Delta(site, operand, vec![]));
+                }
                 let modern = !self.eat("->");
                 self.layout.blocks.insert(self.pos);
                 let end = if modern {
@@ -1431,7 +1450,12 @@ impl Parser {
                     } else {
                         None
                     };
-                    let atom = if termination.is_some() {
+                    let body = if modern && termination.is_none() && self.at("{") {
+                        Some(self.body()?)
+                    } else {
+                        None
+                    };
+                    let atom = if termination.is_some() || body.is_some() {
                         outcome.rsplit('.').next().unwrap().into()
                     } else {
                         self.id()?
@@ -1443,6 +1467,7 @@ impl Parser {
                         bindings,
                         atom,
                         termination,
+                        body: body.unwrap_or_default(),
                     });
                     if !self.eat(",") {
                         break;

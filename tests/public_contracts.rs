@@ -106,8 +106,8 @@ fn missing_arms_show_origins_through_multiple_private_forwarders() {
     // An unknown old label is reported before missing labels; use an empty arm set.
     let source = source
         .replace("{old=>old}", "{}")
-        .replace("[old]:", "[entry]:");
-    let e = reject(&source, "E_ARMS");
+        .replace("[old]:exit done;", "");
+    let e = reject(&source, "E_UNCOVERED");
     assert_eq!(e.notes.len(), 3, "{e}");
     assert_eq!(
         e.notes.iter().map(|n| n.span.line).collect::<Vec<_>>(),
@@ -132,8 +132,8 @@ fn contributor_notes_are_bounded_on_long_forwarding_chains() {
             i - 1
         ));
     }
-    source.push_str("control main() exits done {delta f44() {}[entry]:exit done;}");
-    let e = reject(&source, "E_ARMS");
+    source.push_str("control main() exits done {delta f44() {}}");
+    let e = reject(&source, "E_UNCOVERED");
     assert_eq!(e.notes.len(), 33);
     assert!(e.notes.last().unwrap().message.contains("omitted"));
 }
@@ -181,7 +181,7 @@ fn native_public_boundary_preserves_execution_and_expansion() {
 fn declared_unproduced_outcomes_and_payload_changes_have_contributors() {
     let e = reject(
         "control leaf() exits ready,extra {exit ready;}control main() exits done {delta leaf() {ready=>ready}[ready]:exit done;}",
-        "E_ARMS",
+        "E_UNCOVERED",
     );
     assert!(
         e.notes

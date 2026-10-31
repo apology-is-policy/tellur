@@ -100,7 +100,7 @@ fn explicit_capture_annotations_and_handling_contracts_are_checked() {
         &format!(
             "control main(bool flag) exits done {{auto saved=capture choose(flag);delta saved {{empty=>no}} [no]:exit done;}}{PRODUCER}"
         ),
-        "E_ARMS",
+        "E_UNCOVERED",
     );
     rejects(
         "control view(&string text) exits auto {exit found {text};} control main() exits done {string text=\"local\";auto saved=capture view(&text);exit done;}",

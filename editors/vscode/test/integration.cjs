@@ -1028,6 +1028,32 @@ control main() exits done {
     assert.deepEqual(checkReport.diagnostics, []);
     assert.equal(jsonCheck.stderr, '');
     console.log('TELLUR_JSON_CHECK_EDITOR_TESTS_PASSED: bundled compiler versioned report and clean stdout');
+    const routingSource = await fs.readFile(path.join(__dirname, '../../../playground/identity_deltas.tellur'), 'utf8');
+    await replace(buildDocument, routingSource);
+    await waitFor(() => revisedDiagnostics().length === 0, 'identity routing and grouped arms');
+    const routingLines = routingSource.split('\n');
+    const payloadLine = routingLines.findIndex(line => line.includes('auto data'));
+    await waitFor(async () => {
+      const hovers = await vscode.commands.executeCommand('vscode.executeHoverProvider', buildUri, new vscode.Position(payloadLine, routingLines[payloadLine].indexOf('auto') + 1));
+      return hovers?.some(h => h.contents.some(c => c.value.includes('string data')));
+    }, 'grouped-arm inferred payload hover');
+    const routeLine = routingLines.findIndex(line => line.includes('[received.has_image]'));
+    await waitFor(async () => {
+      const hovers = await vscode.commands.executeCommand('vscode.executeHoverProvider', buildUri, new vscode.Position(routeLine, routingLines[routeLine].indexOf('[')));
+      return hovers?.some(h => h.contents.some(c => c.value.includes('received.has_image')));
+    }, 'qualified decision path hover');
+    const missingRoute = routingSource.replace(/\[received\.has_message\]:\s*emit\(text\);\s*exit done;/, '');
+    assert.notEqual(missingRoute, routingSource, 'remove the formatted message disposition');
+    await replace(buildDocument, missingRoute);
+    await waitFor(() => revisedDiagnostics().some(d => code(d) === 'E_UNCOVERED'), 'implicit outcome still requires a disposition');
+    await replace(buildDocument, routingSource);
+    await waitFor(() => revisedDiagnostics().length === 0, 'identity routing repair');
+    const routingRun = await vscode.commands.executeCommand('tellur.buildAndRun', {arguments:['--json'],output:path.join(root,'native output','identity-routing')});
+    assert.equal(routingRun.code, 0, routingRun.stderr);
+    const routingReport = JSON.parse(routingRun.stdout);
+    assert.equal(routingReport.outcome, 'done');
+    assert.deepEqual(routingReport.events.filter(e => e.kind === 'emit').map(e => e.message), ['pixels', 'message']);
+    console.log('TELLUR_IDENTITY_ROUTING_EDITOR_TESTS_PASSED: grouped auto hover, qualified path hover, omitted-arm coverage, repair and native execution');
     const settingsFolder = path.join(root, 'settings-app');
     await fs.mkdir(settingsFolder, {recursive:true});
     for (const file of ['main.tellur', 'settings.tellur', 'server.tellur', 'http.tellur', 'manifest.json', 'host.rs', 'Cargo.lock']) {

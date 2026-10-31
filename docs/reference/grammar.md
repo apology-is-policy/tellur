@@ -146,8 +146,9 @@ exit             = direct_exit ";" ;
 direct_exit      = "exit" (name ("{" trailing_list(expression)? "}")? | inline_delta) ;
 forwarding       = "forward" call ";" ;
 flat_delta       = (name "=")? "delta" expression
-                   "{" trailing_list(flat_arm) "}" ";"? ;
-flat_arm         = qualified_name payload_declaration? "=>" (name | direct_exit | "fault" expression) ;
+                   (";" | "{" trailing_list(flat_arm) "}" ";"?) ;
+flat_arm         = qualified_name payload_declaration? "=>"
+                   (name | direct_exit | "fault" expression | body) ;
 inline_delta     = "delta" expression "{" trailing_list(inline_arm) "}" ;
 inline_arm       = qualified_name payload_declaration? "=>"
                    ("[" name "]" ":")? outcome_expression ;

@@ -815,7 +815,7 @@ fn inferred_contracts_are_visible_in_outline_and_declaration_hover() {
         symbols[0]["detail"]
             .as_str()
             .unwrap()
-            .contains("ready { u32 value_0 }")
+            .contains("ready { u32 value }")
     );
     let hover = f.server.hover(&f.uri, 1, 9);
     assert!(
@@ -828,7 +828,7 @@ fn inferred_contracts_are_visible_in_outline_and_declaration_hover() {
         hover["contents"]["value"]
             .as_str()
             .unwrap()
-            .contains("ready { u32 value_0 }")
+            .contains("ready { u32 value }")
     );
     assert_eq!(f.server.hover(&f.uri, 0, 3), Value::Null);
     f.change(
@@ -2187,6 +2187,35 @@ fn history_text(hover: &Value) -> &str {
     hover["contents"]["value"]
         .as_str()
         .unwrap_or_else(|| panic!("missing hover: {hover}"))
+}
+
+#[test]
+fn identity_routes_grouped_bindings_and_qualified_paths_follow_editor_changes() {
+    let mut f = Fixture::new();
+    fs::write(
+        f.root.join("manifest.json"),
+        include_str!("../playground/manifest.json"),
+    )
+    .unwrap();
+    let source = r#"control choose(bool flag) exits ready {u32 number}, absent {
+    exit delta flag {true=>ready {7},false=>absent {}};
+}
+control main() exits done {
+    first = delta choose(true) {
+        ready {auto number} => { auto text = u32_text(number); }
+    }
+    [first.ready]: emit(text); exit done;
+    [first.absent]: exit done;
+}"#;
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    auto_hover(&f, source, "auto number", "u32 number");
+    auto_hover(&f, source, "auto text", "string text");
+    assert!(history_text(&history_hover(&f, source, "[first.ready]")).contains("first.ready"));
+    f.change(&source.replace("[first.absent]: exit done;", ""), 2);
+    assert_eq!(f.diagnostics()[0]["code"], "E_UNCOVERED");
+    f.change(source, 3);
+    assert_eq!(f.diagnostics(), json!([]));
 }
 
 #[test]

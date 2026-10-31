@@ -19,6 +19,16 @@ function tokens(text) {
   });
 }
 function has(list, text, scope) { assert.ok(list.some(t => t.text === text && t.scopes.includes(scope)), `${JSON.stringify(text)} should have ${scope}: ${JSON.stringify(list)}`); }
+test('identity deltas, named sites and grouped arms keep distinct syntax scopes', () => {
+  const ts = tokens('control main() exits done {\n first = delta read();\n second = delta read() {ready {auto text} => {emit(text);}}\n [first.ready & second.ready]: exit done;\n}');
+  has(ts, 'first', 'entity.name.label.tellur');
+  has(ts, 'second', 'entity.name.label.tellur');
+  has(ts, 'ready', 'entity.name.type.outcome.tellur');
+  has(ts, 'ready', 'constant.other.tellur');
+  has(ts, '.', 'punctuation.separator.tellur');
+  has(ts, 'text', 'variable.other.definition.tellur');
+  has(ts, 'emit', 'support.function.tellur');
+});
 test('payload inference ellipsis is one operator beside an outcome label', () => {
   const ts=tokens('control lookup() exits ready..., missing { exit ready { "hello" }; }');
   has(ts,'ready','entity.name.type.outcome.tellur');has(ts,'...','keyword.operator.tellur');

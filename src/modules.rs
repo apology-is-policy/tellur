@@ -480,6 +480,7 @@ impl Resolver<'_> {
         let result = (|| {
             match &mut e.kind {
                 ExprKind::Name(n) => {
+                    e.local_spelling = Some(n.clone());
                     if !self.locals.contains(n.split('.').next().unwrap())
                         && !self.type_parameters.contains(n.split('.').next().unwrap())
                     {
@@ -649,6 +650,7 @@ impl Resolver<'_> {
                     let outer = self.locals.clone();
                     self.locals
                         .extend(arm.bindings.iter().map(|f| f.name.clone()));
+                    self.items(&mut arm.body)?;
                     if let Some(exit) = &mut arm.termination {
                         self.statement(&mut exit.0, &mut exit.1)?;
                         self.locals = outer;
@@ -723,11 +725,12 @@ fn locals(region: &syntax::Region) -> BTreeSet<String> {
                                 outcome(e, names);
                             }
                             Statement::ExitOutcome(e) => outcome(e, names),
-                            Statement::Delta(_, _, arms) => names.extend(
-                                arms.iter()
-                                    .filter(|a| a.termination.is_none())
-                                    .flat_map(|a| a.bindings.iter().map(|f| f.name.clone())),
-                            ),
+                            Statement::Delta(_, _, arms) => {
+                                for arm in arms.iter().filter(|a| a.termination.is_none()) {
+                                    names.extend(arm.bindings.iter().map(|f| f.name.clone()));
+                                    items(&arm.body, names);
+                                }
+                            }
                             _ => (),
                         }
                     }

@@ -35,7 +35,8 @@ need explicit bracket mappings as well; references to such aggregates need both
 storage and contained-origin contracts. An unused generic public declaration must
 satisfy the same rule. See [explicit public contracts](../language-reference.md#explicit-public-contracts).
 
-For incompatible `forward` calls and missing delta arms, CLI notes and VS Code
+For incompatible `forward` calls, missing adapter arms and unfinished identity
+paths, CLI notes and VS Code
 related information can show producing exits, calls, captures and adapters. A
 private helper can absorb several input alternatives into one result: the result's
 notes retain those structural contributors. Notes also accompany incompatible
@@ -46,8 +47,8 @@ adapters, local record fields and nested sum payloads, direct borrowed decisions
 and merged path labels. Different fields and alternatives stay separate. Disjoint
 writes are filtered by the selected path; overwriting a value removes its old
 lineage on that path. This analysis does **not** narrow a value's type: every
-contract alternative still needs an arm, even if its only known construction was
-overwritten. A declared but unproduced control outcome points to its declaration.
+contract alternative still needs a disposition, even if its only known construction
+was overwritten. A declared but unproduced control outcome points to its declaration.
 
 <!-- tellur:reject E_ARMS -->
 ```tellur
@@ -57,8 +58,7 @@ control lookup() exits auto {
 control main() exits done {
     auto saved = capture lookup();
     auto adapted = delta saved { missing => unavailable {} };
-    delta adapted {}
-    exit done;
+    exit delta adapted {};
 }
 ```
 
@@ -231,11 +231,12 @@ control main() exits done {
 `auto` requests inference at a supported binding site; it is not a dynamically typed
 value. Empty collection literals similarly need a type from their context.
 
-## Exhaustiveness and availability: E_ARMS and E_UNAVAILABLE
+## Exhaustiveness and availability: E_ARMS, E_UNCOVERED and E_UNAVAILABLE
 
-Even a literal boolean decision requires both structural alternatives:
+Even a literal boolean decision requires dispositions for both structural
+alternatives. The omitted flat arm introduces `[false]`, which is unfinished here:
 
-<!-- tellur:reject E_ARMS -->
+<!-- tellur:reject E_UNCOVERED -->
 ```tellur
 control main() exits done {
     delta true { true => yes }

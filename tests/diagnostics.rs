@@ -468,7 +468,7 @@ fn json_notes_preserve_stored_adapter_locations_across_files() {
         "library.tellur",
         "pub control source() exits missing {exit missing;}",
     );
-    f.write("main.tellur","import \"library.tellur\" as lib;\ncontrol main() exits done {\nauto saved=capture lib.source();\nauto adapted=delta saved {missing=>unavailable {}};\ndelta adapted {}exit done;}");
+    f.write("main.tellur","import \"library.tellur\" as lib;\ncontrol main() exits done {\nauto saved=capture lib.source();\nauto adapted=delta saved {missing=>unavailable {}};\nexit delta adapted {};}");
     let report = f.report(&["check", "main.tellur", "--json"], false);
     let e = &report["diagnostics"][0];
     assert_eq!(e["code"], "E_ARMS");

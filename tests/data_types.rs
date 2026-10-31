@@ -136,7 +136,7 @@ fn distinct_variants_require_exhaustive_matching_and_nominal_assignment() {
     );
     rejects(
         "variant choice {yes,no} control main(choice value) exits done {delta value {yes=>selected}[selected]:exit done;}",
-        "E_ARMS",
+        "E_UNCOVERED",
     );
 }
 #[test]

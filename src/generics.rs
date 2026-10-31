@@ -370,6 +370,7 @@ impl Specializer<'_> {
                 self.expr(e, at)?;
                 for a in arms {
                     self.fields(&a.bindings, at)?;
+                    self.items(&a.body)?;
                     if let Some(exit) = &a.termination {
                         self.statement(exit.0, &exit.1)?;
                     }

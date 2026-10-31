@@ -1,7 +1,12 @@
 # Tellur language revision: controls, values, outcomes, and tasks
 
+The next implementation sequence is the accepted
+[control-flow and ownership revision](control-flow-revision.md): identity deltas,
+qualified decision paths, grouped arms, explicit ownership transfer, lexical
+contingency and supervised loops, followed by construction and lowering work.
+
 30 October 2026. This is the working revision plan, not a claim that all proposed
-features are implemented. Compiler **0.63.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
+features are implemented. Compiler **0.64.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
 lifetime checkpoints of milestone 2, the array/vector/map core of milestone 3,
 and implicit entry, inline/stored adapters, owned capture, named outcome contracts
 and checked forwarding in milestone 4. A first [semantic foundation](semantic-foundation.md)
@@ -226,8 +231,10 @@ comments rather than reproducing arbitrary column alignment.
 
 Direct arm termination, such as `missing => exit absent`, removes names for histories
 that immediately finish. It does not require replacing `[path]:` labels with braces.
-Multi-statement arm bodies and implicit qualified atom naming are separate syntax
-questions; neither is adopted by this roadmap revision.
+Release 0.64 adds grouped flat-arm statements and qualified decision-site paths.
+Omitted flat arms import producer outcomes and payload names; inline adapters remain
+exhaustive. See [delta routing](reference/delta-routing.md) and the
+[accepted revision checkpoints](control-flow-revision.md).
 
 Public contract enforcement and contract diffs must complement the contributor view:
 a new internal failure absorbed into an existing `failed` outcome may leave the

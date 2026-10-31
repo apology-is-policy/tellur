@@ -131,6 +131,7 @@ pub(crate) fn dependency_order(
     ) {
         if let Statement::Delta(_, _, arms) = statement {
             for arm in arms {
+                items(&arm.body, calls, manifest);
                 for field in &arm.bindings {
                     type_calls(&field.ty, calls, manifest);
                 }

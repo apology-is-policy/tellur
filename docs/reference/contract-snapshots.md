@@ -108,6 +108,8 @@ type/origin parameter order and positional public struct construction remain
 visible. Opaque structs list their public fields by name because callers cannot
 construct their full representation. Public parameter and payload names are
 retained; renaming them can produce a diff even when existing positional calls work.
+Identity-routing callers bind published payload names, so a payload rename can
+also require a source change in such callers.
 
 An added outcome deserves review because callers may match exhaustively. A changed
 borrow origin can change what a caller must keep alive. Neither change receives an

@@ -52,7 +52,7 @@ fn extracts_owned_tail_with_typed_inputs_and_preserves_surrounding_source() {
         vec![("available", "Bool"), ("text", "String")]
     );
     assert!(e.source.contains(
-        "control extracted(bool available, string text) exits { ready { string value_0 }, empty }"
+        "control extracted(bool available, string text) exits { ready { string text }, empty }"
     ));
     assert!(
         e.source
