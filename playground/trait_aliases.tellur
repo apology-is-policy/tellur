@@ -1,0 +1,54 @@
+outcome read_result<t> {
+    received { t value },
+    end
+}
+
+struct box<t> {
+    t value;
+
+    constructor(t input) {
+        self.value = move input;
+    }
+}
+
+struct message {
+    string text;
+}
+
+trait reader {
+    type item: clone;
+    control read(ref self input) exits read_result<item>;
+    control display(ref self input) exits done;
+}
+
+implement reader for message {
+    type item = string;
+
+    control read(ref self owner) exits read_result<item> {
+        exit received { clone(borrow owner.text) };
+    }
+
+    control display(ref self owner) exits done {
+        // Hover shows the trait's input name and the concrete message/string types.
+        delta reader<self>.read(owner) {
+            received { auto text } => received,
+            end => empty
+        }
+        [received]:
+            // item is this implementation's associated type, resolved to string.
+            auto saved = box<item>(move text);
+            emit(move saved.value);
+
+        [entry]: exit done;
+    }
+}
+
+outcome program_result {
+    @exit 0 done
+}
+
+control main() exits program_result {
+    message source = message { text: "Hello through lexical trait aliases" };
+    reader<message>.display(borrow source);
+    exit done;
+}

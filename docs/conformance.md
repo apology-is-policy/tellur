@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.80.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.81.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -2790,3 +2790,32 @@ implementation ownership diagnostics, invalid-source suppression, fresh repair a
 native output. Six compiler/server copies and nine packaged/installed payloads were
 verified at 0.80.0. Existing windows were not reloaded. Formatting and whitespace
 checks passed; earlier unaffected diagnostic/runtime/library evidence is reused.
+
+## 0.81 — Lexical call types and named result contracts
+
+P4d.3 resolves implementation-local `self` and associated-type aliases from the
+same checked snapshot used for call hover. Lexical aliases take precedence over
+same-named module types, including sibling aliases and imported traits/constructors.
+Ordinary generic helpers retain named result contracts after concrete associated
+projections are normalized in their defining module. Validated source outcome schemas
+restore declared origin mappings on alternatives. Private inferred mappings remain
+checked lifetime notes; hover does not invent public group arguments.
+
+Six LSP regressions cover lexical precedence, untitled documents, sibling aliases,
+imported declarations, fresh unsaved dependency changes and repair, associated named
+results, nested origin mappings and private inference. The runnable
+`playground/trait_aliases.tellur` exercises lexical trait dispatch and constructor
+types. Abstract generic calls and named boundaries retain selected-history feedback.
+The additional checked schemas are source-tooling metadata; executable IR,
+certificates, typing, ownership and fault semantics are unchanged.
+
+Final validation passed **298 Rust tests across 12 affected targets**, including
+all 135 LSP tests and three manual checks, plus **42 Node tests**. Traits, associated
+origins, generic controls/data, modules, public contracts, snapshots and certificates
+retain their native/expansion coverage. The initial focused sibling-alias fixture
+attempted an explicit move into a copy-valued argument; the corrected fixture uses
+two owned types and all six focused tests pass. Isolated VS Code confirmed lexical
+precedence, invalid-source suppression, fresh repair, named nested origins and native
+example output. Six compiler/server copies and nine packaged/installed payloads were
+verified at 0.81.0. Existing windows were not reloaded. Formatting and whitespace
+checks passed; earlier unaffected runtime/library/diagnostic evidence is reused.

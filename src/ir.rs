@@ -392,6 +392,9 @@ pub struct CheckedProgram {
     /// Normalized concrete associated types from the same checked source snapshot.
     /// Source tooling only; abstract definition witnesses are not retained here.
     pub(crate) associated_types: BTreeMap<String, String>,
+    /// Validated, specialized source outcome schemas for contract presentation.
+    /// Origin groups stay outside executable IR and certificates.
+    pub(crate) outcome_contracts: BTreeMap<String, crate::syntax::OutcomeContract>,
     /// Bounded source evidence; excluded from executable IR and certificates.
     pub(crate) contributors: BTreeMap<String, BTreeMap<String, Vec<crate::absorption::Raw>>>,
     pub(crate) selected_histories: Vec<crate::history::SelectedHistory>,

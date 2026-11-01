@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.80.0** implements the v0.1 checked core and the current language
+Compiler release **0.81.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -26,6 +26,11 @@ Release 0.80 adds concrete trait-call contracts, preserving the trait's names an
 origins while resolving associated types. Unsaved declarations refresh the contract;
 abstract generic calls retain selected-history feedback. Try `reader<text_source>.read`
 in [traits.tellur](playground/traits.tellur).
+
+Release 0.81 resolves implementation-local `self` and associated aliases in call
+hover, and preserves named generic result contracts with their origin mappings.
+Try [trait_aliases.tellur](playground/trait_aliases.tellur) and the helper call in
+[aggregate_traits.tellur](playground/aggregate_traits.tellur).
 
 Release 0.78 extends [control-declaration diagnostics](docs/reference/diagnostics-and-limits.md#control-declaration-batches)
 to independent named completion bindings. Public shapes, origin bindings and concrete

@@ -1,8 +1,8 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.80.0 -->
+<!-- tellur-reference-version: 0.81.0 -->
 
-This manual describes **compiler 0.80.0**, including the current ownership model,
+This manual describes **compiler 0.81.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -995,9 +995,18 @@ expression-type hover. Try the calls in
 
 A lexical type parameter keeps a call abstract even when a real type with the same
 name has a concrete implementation. Hover never borrows that unrelated signature.
-Calls spelled with implementation-local `self` or unqualified associated-type aliases
-also retain selected-history feedback for now; the contract lookup resolves explicit
-concrete type names and qualified associated-type selections.
+Since 0.81, calls inside an implementation also resolve its lexical `self` and
+associated-type aliases, including aliases defined through other associated types.
+These take precedence over same-named module types. Hover preserves the written
+callee spelling while showing concrete input and result contracts. Try
+[trait_aliases.tellur](../playground/trait_aliases.tellur).
+
+Ordinary generic helper calls also retain their named result contract when its type
+arguments contain concrete associated projections. Named borrowed results show the
+declared origin mappings on their alternatives; private inference still appears as
+checked lifetime notes when no mapping was authored. Try `prepare<text_editor>(...)`
+in [aggregate_traits.tellur](../playground/aggregate_traits.tellur). These mappings
+come from the validated source schema, rather than private implementation fields.
 
 ### Scoped intersections
 
@@ -2758,7 +2767,7 @@ General expression-type hover remains unsupported.
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and async tasks remain planned; they are not executable features of 0.80.0.
+and async tasks remain planned; they are not executable features of 0.81.0.
 ## Contingency and supervised boundaries
 
 The [contingency reference](reference/contingency.md) specifies `@contingent`,

@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-0.80.0-darwin-arm64.vsix` using **Extensions:
+1. Install the supplied `tellur-language-0.81.0-darwin-arm64.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -750,3 +750,14 @@ resolve in call targets and explicit type arguments. Generic-body calls remain
 abstract even if a real type has the same name as a type parameter. Try
 `playground/traits.tellur`; named boundaries and abstract calls retain selected-history
 feedback.
+
+## Lexical call types and named results in 0.81
+
+Hover inside an implementation now resolves its `self` and associated-type aliases,
+including sibling aliases, before looking up module types. Same-named nominal types
+do not override that lexical meaning. Generic helper calls also retain named result
+contracts after associated-type substitution, including explicit origin mappings on
+their alternatives. Unsaved edits refresh both views; invalid source suppresses stale
+contracts. Try `playground/trait_aliases.tellur` and `prepare<text_editor>(...)` in
+`playground/aggregate_traits.tellur`. Abstract generic calls and named boundaries
+retain their existing selected-history feedback.

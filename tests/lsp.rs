@@ -69,6 +69,176 @@ fn hover_at(f: &Fixture, source: &str, needle: &str) -> Value {
 }
 
 #[test]
+fn lexical_call_hover_resolves_self_and_associated_aliases_before_nominal_names() {
+    let mut f = Fixture::new();
+    let source = "struct item {u32 shadow;}\n".to_owned()
+        + include_str!("../playground/trait_aliases.tellur");
+    f.open(&source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let text = hover_at(&f, &source, "reader<self>.read(owner)").to_string();
+    assert!(
+        text.contains("control reader<self>.read(ref message input) exits read_result<string>"),
+        "{text}"
+    );
+    assert!(
+        text.contains("received { string value }") && text.contains("Selected histories"),
+        "{text}"
+    );
+    assert!(!text.contains("owner.text"), "{text}");
+    let h = hover_at(&f, &source, "box<item>(move text)");
+    let text = h["contents"]["value"].as_str().unwrap();
+    assert!(text.contains("constructor(string input)"), "{text}");
+    assert!(
+        !text.contains("shadow") && !text.contains("constructor(item input)"),
+        "{text}"
+    );
+    assert_eq!(
+        h["range"]["end"]["character"].as_u64().unwrap()
+            - h["range"]["start"]["character"].as_u64().unwrap(),
+        "box<item>".len() as u64
+    );
+}
+
+#[test]
+fn lexical_call_hover_uses_normalized_sibling_aliases_and_fresh_definitions() {
+    let mut f = Fixture::new();
+    f.uri = "untitled:lexical-call-hover".into();
+    let source = "struct box<t> {t value;constructor(t input) {self.value=move input;}}trait maker {type item:drop;type other;control wrap(item input) exits done;}implement maker for bool {type item=other;type other=string;control wrap(item owner) exits done {auto saved=box<item>(move owner);drop(saved);exit done;}}control main() exits done {exit done;}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    assert!(
+        hover_at(&f, source, "box<item>(move owner)")
+            .to_string()
+            .contains("constructor(string input)")
+    );
+    let changed = source.replace("type other=string", "type other=bytes");
+    f.change(&changed, 2);
+    assert_eq!(f.diagnostics(), json!([]));
+    assert!(
+        hover_at(&f, &changed, "box<item>(move owner)")
+            .to_string()
+            .contains("constructor(bytes input)")
+    );
+    let broken = changed.replace("self.value=move input;", "");
+    f.change(&broken, 3);
+    assert!(!f.diagnostics().as_array().unwrap().is_empty());
+    assert!(hover_at(&f, &broken, "box<item>(move owner)").is_null());
+    f.change(source, 4);
+    assert!(
+        hover_at(&f, source, "box<item>(move owner)")
+            .to_string()
+            .contains("constructor(string input)")
+    );
+}
+
+#[test]
+fn lexical_call_hover_resolves_imported_traits_and_constructors_in_local_implementations() {
+    let mut f = Fixture::new();
+    fs::write(f.root.join("library.tellur"), "pub struct box<t> {t secret;pub constructor(t input) {self.secret=move input;}}pub trait maker {type item:drop;control wrap(item input) exits done;control dispatch(item input) exits done;}").unwrap();
+    let source = "import \"library.tellur\" as one;import \"library.tellur\" as lib;struct target {u32 tag;}struct item {bool shadow;}implement lib.maker for target {type item=string;control wrap(item owner) exits done {auto saved=lib.box<item>(move owner);drop(saved);exit done;}control dispatch(item owner) exits done {forward lib.maker<self>.wrap(move owner);}}control main() exits done {lib.maker<target>.dispatch(\"hello\");exit done;}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let text = hover_at(&f, source, "lib.box<item>(move owner)").to_string();
+    assert!(
+        text.contains("pub constructor(string input)")
+            && text.contains("Constructs `lib.box<item>`"),
+        "{text}"
+    );
+    assert!(
+        !text.contains("secret") && !text.contains("_path_m_"),
+        "{text}"
+    );
+    let text = hover_at(&f, source, "lib.maker<self>.wrap(move owner)").to_string();
+    assert!(
+        text.contains("control lib.maker<self>.wrap(string input) exits done"),
+        "{text}"
+    );
+}
+
+#[test]
+fn lexical_call_hover_keeps_associated_named_contracts_and_nested_origin_bindings() {
+    let mut f = Fixture::new();
+    let source = include_str!("../playground/aggregate_traits.tellur");
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let text = hover_at(&f, source, "prepare<text_editor>(borrow").to_string();
+    assert!(
+        text.contains("exits preparation<string>[input, input['text]]"),
+        "{text}"
+    );
+    assert!(
+        text.contains("ready { edit_job<string>[input, input['text]] job }"),
+        "{text}"
+    );
+    assert!(
+        !text.contains("String") && !text.contains("_path_"),
+        "{text}"
+    );
+}
+
+#[test]
+fn lexical_call_hover_normalizes_named_helpers_in_their_defining_module() {
+    let mut f = Fixture::new();
+    fs::write(f.root.join("types.tellur"), "pub outcome view<t>['a] {found {ref t value <- 'a}}pub trait source {type item;}implement source for bool {type item=string;}").unwrap();
+    let library = f.root.join("api.tellur");
+    let uri = url::Url::from_file_path(&library).unwrap().to_string();
+    let valid = "import \"types.tellur\" as types;pub control peek<t:types.source>(ref types.source<t>.item input) exits types.view<types.source<t>.item>[input] {exit found {input};}";
+    fs::write(&library, valid).unwrap();
+    let source = "import \"types.tellur\" as kinds;import \"api.tellur\" as api;control main() exits done {string owner=\"hello\";delta api.peek<bool>(borrow owner) {found {auto text}=>found} [found]:emit(text);exit done;}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let text = hover_at(&f, source, "api.peek<bool>(borrow").to_string();
+    assert!(
+        text.contains("control api.peek<bool>(ref string input) exits kinds.view<string>[input]"),
+        "{text}"
+    );
+    assert!(
+        text.contains("found { ref string value from input }"),
+        "{text}"
+    );
+    assert!(!text.contains("_path_m_"), "{text}");
+    let changed = valid.replace("input", "fresh");
+    f.server.notification(
+        "textDocument/didOpen",
+        &json!({"textDocument":{"uri":uri,"version":1,"text":changed}}),
+    );
+    assert_eq!(f.diagnostics(), json!([]));
+    let text = hover_at(&f, source, "api.peek<bool>(borrow").to_string();
+    assert!(
+        text.contains("kinds.view<string>[fresh]") && text.contains("from fresh"),
+        "{text}"
+    );
+    f.server.notification(
+        "textDocument/didClose",
+        &json!({"textDocument":{"uri":uri}}),
+    );
+    assert!(
+        hover_at(&f, source, "api.peek<bool>(borrow")
+            .to_string()
+            .contains("from input")
+    );
+}
+
+#[test]
+fn lexical_call_hover_preserves_private_inference_without_inventing_group_arguments() {
+    let mut f = Fixture::new();
+    let source = "outcome view['a] {found {ref string value <- 'a}}control peek(ref string input) exits view {exit found {input};}control main() exits done {string owner=\"hi\";delta peek(borrow owner) {found {auto text}=>found} [found]:emit(text);exit done;}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let text = hover_at(&f, source, "peek(borrow owner)").to_string();
+    assert!(
+        text.contains("exits view")
+            && text.contains("found { ref string value }")
+            && text.contains("Checked return lifetimes"),
+        "{text}"
+    );
+    assert!(
+        !text.contains("['a]") && !text.contains("view[input]"),
+        "{text}"
+    );
+}
+
+#[test]
 fn trait_call_hover_preserves_declared_names_order_and_borrow_origins() {
     let mut f = Fixture::new();
     let source = "struct message {string secret;}\ntrait reader {type item: clone;control peek(ref self input) exits found {ref item value from input},missing;}\nimplement reader for message {type item=string;control peek(ref self owner) exits missing,found {ref item payload from owner} {exit found {borrow owner.secret};}}\ncontrol main() exits done {message source=message {\"hello\"};delta reader<message>.peek(borrow source) {found {auto text}=>shown,missing=>absent} [shown]:emit(text);[entry]:exit done;}";

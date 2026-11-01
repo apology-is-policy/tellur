@@ -209,6 +209,40 @@ fn scope_names(path: &Path, program: &CheckedProgram) -> BTreeMap<String, String
     names
 }
 
+fn normalized(name: &str, names: &BTreeMap<String, String>, program: &CheckedProgram) -> String {
+    crate::generics::substitute(
+        &crate::manifest::canonical_type(&renamed(name, names)),
+        &program.associated_types,
+    )
+}
+
+fn implementation_types(
+    unit: &Unit,
+    at: Span,
+    names: &BTreeMap<String, String>,
+    program: &CheckedProgram,
+) -> Option<BTreeMap<String, String>> {
+    let key = |s: Span| (s.line, s.column);
+    let Some(implementation) = unit.implementations.iter().find(|i| {
+        i.methods
+            .iter()
+            .any(|m| key(m.span) <= key(at) && key(at) < key(m.end))
+    }) else {
+        return Some(BTreeMap::new());
+    };
+    let target = normalized(&implementation.target, names, program);
+    let trait_name = normalized(&implementation.trait_name, names, program);
+    let mut bindings = BTreeMap::from([("self".into(), target.clone())]);
+    for associated in &implementation.associated {
+        let projection = format!("{trait_name}<{target}>.{}", associated.name);
+        bindings.insert(
+            associated.name.clone(),
+            program.associated_types.get(&projection)?.clone(),
+        );
+    }
+    Some(bindings)
+}
+
 fn checked_sources(
     server: &Server,
     uri: &str,
@@ -257,9 +291,12 @@ pub(super) fn hover(
         .map(|f| f.path.clone())
         .unwrap_or_default();
     let names = scope_names(&path, &program);
-    let resolved = crate::generics::substitute(
-        &crate::manifest::canonical_type(&renamed(written, &names)),
-        &program.associated_types,
+    let lexical_types = implementation_types(unit, at, &names, &program)?;
+    // Lexical aliases take precedence over same-named module declarations.
+    let resolved = normalized(
+        &crate::generics::substitute(written, &lexical_types),
+        &names,
+        &program,
     );
     let mut visible = BTreeMap::new();
     for (local, global) in &names {
@@ -447,13 +484,21 @@ pub(super) fn hover(
         let contract = source
             .exit_contract
             .as_ref()
-            .map(|n| crate::manifest::canonical_type(&renamed(n, &defining_names)))
+            .map(|n| normalized(n, &defining_names, &program))
             .filter(|name| {
                 matches!(
                     program.manifest().type_def(name),
                     Some(crate::manifest::TypeDef::Outcome { .. })
                 )
             });
+        if let Some(contract) = contract
+            .as_ref()
+            .and_then(|name| program.outcome_contracts.get(name))
+        {
+            // Reuse the validated source schema so named results keep each public
+            // origin mapping after concrete associated-type substitution.
+            crate::origins::bind_contract(&mut source, contract).ok()?;
+        }
         let alternatives = checked_exit_description(&checked.exits, &source);
         let exits = match &contract {
             Some(name) if source.exit_origins.is_empty() => display_type(name),

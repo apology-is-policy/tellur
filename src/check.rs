@@ -5088,6 +5088,11 @@ pub(crate) fn compile_concrete_unit(
     let program = ir::CheckedProgram {
         trait_contracts,
         associated_types: unit.trait_types,
+        outcome_contracts: unit
+            .contracts
+            .into_iter()
+            .map(|c| (c.name.clone(), c))
+            .collect(),
         contributors: signatures
             .into_iter()
             .filter(|(_, s)| s.region)
