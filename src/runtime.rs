@@ -209,8 +209,8 @@ fn evaluate(expr: &Expr, values: &mut BTreeMap<Id, Value>, base: Id) -> Result<V
                 return Err(error("interpreter invariant: non-record projection"));
             };
             fields
-                .get(*field)
-                .cloned()
+                .into_iter()
+                .nth(*field)
                 .ok_or_else(|| error("interpreter invariant: invalid projection"))
         }
         Expr::Construct(ty, name, fields) => Ok(Value::Construct {

@@ -3,6 +3,38 @@
 mod host;
 use host::{Host, V};
 use serde_json::{Value as Json, json};
+#[test]
+fn owned_projection_transfers_the_existing_buffer() {
+    let text = "owned buffer".repeat(1024);
+    let allocation = text.as_ptr();
+    let record = V::Construct {
+        ty: "message".into(),
+        name: "message".into(),
+        fields: vec![V::U32(7), V::String(text), V::Unit],
+    };
+    let V::String(selected) = host::project_owned(record, 1).unwrap() else {
+        panic!("expected the string field");
+    };
+    assert_eq!(selected.as_ptr(), allocation);
+    assert_eq!(selected, "owned buffer".repeat(1024));
+    assert!(host::project_owned(V::Unit, 0).is_err());
+}
+
+#[test]
+fn constructor_delivery_is_separate_from_outcomes_and_settlement() {
+    use host::Completion;
+    assert!(Completion::Constructed.constructed().is_ok());
+    assert!(Completion::Constructed.outcome().is_err());
+    assert!(Completion::Constructed.settled().is_err());
+    for completion in [
+        Completion::Outcome(("done".into(), vec![])),
+        Completion::Settled,
+        Completion::Fallthrough,
+        Completion::Process(23),
+    ] {
+        assert!(completion.constructed().is_err());
+    }
+}
 fn manifest() -> Json {
     serde_json::to_value(
         tellur::manifest::Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),

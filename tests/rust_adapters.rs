@@ -704,3 +704,44 @@ fn constructor_faults_release_initialized_fields_and_pending_arguments_once() {
         assert_eq!(fs::read_to_string(log).unwrap(), "drop 7\ndrop 7\ndrop 7\n");
     }
 }
+
+#[test]
+fn completed_constructor_transfers_fault_ownership_to_caller() {
+    let f = Fixture::new();
+    fs::write(f.root.join("host.rs"), RESOURCE_HOST).unwrap();
+    let mut config = resource_config();
+    config["types"][0]["fault"] = json!("release");
+    let source = r#"
+ struct complete {
+  counter owned;
+  constructor(counter owned) {self.owned=move owned;}
+ }
+ control main(string path) exits done {
+  fault boundary {
+   delta make(borrow path) {made {counter owned}=>made}
+   [made]:auto value=complete(move owned);
+   fault "after successful construction";
+  } contingency [] {terminate process 23;}
+ }
+ "#;
+    let p = compile(source, f.manifest(&config)).unwrap();
+    for (opt, p) in [(0, p.clone()), (2, p.expanded("main").unwrap())] {
+        let binary = f.root.join(format!("completed-constructor-{opt}"));
+        support::scenario_executable(&p)
+            .build_native("main", &binary, opt)
+            .unwrap();
+        let log = f.root.join(format!("completed-constructor-drop-{opt}"));
+        let output = Command::new(binary)
+            .args(["--json", "--"])
+            .arg(&log)
+            .output()
+            .unwrap();
+        assert_eq!(
+            output.status.code(),
+            Some(23),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(fs::read_to_string(log).unwrap(), "drop 7\n");
+    }
+}

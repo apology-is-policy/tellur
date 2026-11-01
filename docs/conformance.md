@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.67.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.68.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -2223,3 +2223,22 @@ VS Code session covering constructor/auto hovers, outline, unsaved diagnostics,
 formatting and native build/run. Live settings HTTP tests include source-fault 500
 handling followed by a successful request. Release compiler/server binaries,
 packaged VSIX and installed extension payloads were verified at 0.67.0.
+
+
+## 0.68 constructor delivery and frame lowering
+
+Native constructor calls deliver completed records into caller storage, using an
+internal completion marker rather than an outcome tag and payload vector. Partial
+fields remain in the constructor activation until successful initialization;
+failure leaves the caller destination unavailable. Tests cover real retained Rust
+owners released once on constructor failure and on a later caller fault after
+successful delivery. Ordinary outcome and administrative completion channels stay
+separate. Single-value completion bindings avoid an extra payload vector, while
+multi-value bindings still evaluate all values before installing them.
+
+Owned temporary field projections transfer the selected field in both execution
+engines; a buffer-identity test detects accidental cloning. Shared-place reads
+retain their existing semantics. These changes preserve instruction identities,
+source traces, evaluation order and fuel accounting. They do not establish a
+stable ABI, eliminate every record allocation or promise general physical copy
+elision.

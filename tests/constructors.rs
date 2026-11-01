@@ -59,6 +59,31 @@ fn owning_nested_construction_and_expansion() {
     assert_eq!(messages(&p.expanded("main").unwrap()), ["left", "right"]);
 }
 #[test]
+fn native_constructors_deliver_to_caller_storage() {
+    let p = checked(BASIC);
+    let native = support::scenario_executable(&p)
+        .native_source("main")
+        .unwrap();
+    let mut constructors = 0;
+    for function in native.split("fn region_").skip(1) {
+        let function = function.split("fn entry_").next().unwrap();
+        if !function
+            .lines()
+            .next()
+            .unwrap()
+            .contains("destination:usize")
+        {
+            continue;
+        }
+        constructors += 1;
+        assert!(function.contains("v[destination] = Some(constructed)"));
+        assert!(function.contains("return Ok(Completion::Constructed)"));
+        assert!(!function.contains("return Ok(Completion::Outcome"));
+    }
+    assert_eq!(constructors, 2);
+    assert!(native.contains("?.constructed()?"));
+}
+#[test]
 fn initialization_is_path_sensitive() {
     let good = r#"
 struct message { string text; constructor(bool flag) {

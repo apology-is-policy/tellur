@@ -15,6 +15,8 @@ use std::{
 pub type R<T> = Result<T, String>;
 pub type Outcome = (String, Vec<V>);
 pub enum Completion {
+    /// Internal constructor delivery; the completed value is in caller storage.
+    Constructed,
     Process(u8),
     Outcome(Outcome),
     Settled,
@@ -24,6 +26,13 @@ pub enum Completion {
     Fallthrough,
 }
 impl Completion {
+    pub fn constructed(self) -> R<()> {
+        match self {
+            Self::Constructed => Ok(()),
+            _ => Err("E_NATIVE: constructor did not initialize its destination".into()),
+        }
+    }
+
     pub fn outcome(self) -> R<Outcome> {
         match self {
             Self::Outcome(value) => Ok(value),
@@ -113,6 +122,18 @@ pub fn project(v: &V, fields: &[usize]) -> R<V> {
         v = fields.get(*index).ok_or("E_NATIVE: invalid field index")?;
     }
     Ok(v.clone())
+}
+/// The expression evaluator already owns its temporary; transfer the selected
+/// field without cloning its allocation. Static checking excludes obligations
+/// in discarded sibling fields.
+pub fn project_owned(value: V, index: usize) -> R<V> {
+    let V::Construct { fields, .. } = value else {
+        return Err("E_NATIVE: invalid field projection".into());
+    };
+    fields
+        .into_iter()
+        .nth(index)
+        .ok_or_else(|| "E_NATIVE: invalid field index".into())
 }
 pub fn address(
     values: &[Option<V>],

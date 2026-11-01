@@ -2,7 +2,7 @@
 //! Rust is a portable implementation bridge; the emitted program has no graph interpreter.
 use crate::{Diagnostic, Result, Span, ir::*};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fmt::Write as _,
     fs,
     hash::{Hash, Hasher},
@@ -72,7 +72,7 @@ fn expression(e: &Expr) -> String {
             "read_place(&v, base + {}, &{:?}, {})?",
             p.root, p.fields, p.indirect
         ),
-        Expr::Project(e, i) => format!("project(&({}), &[{i}])?", expression(e)),
+        Expr::Project(e, i) => format!("project_owned({}, {i})?", expression(e)),
         Expr::Construct(t, n, args) => format!(
             "V::Construct{{ty:{}.into(),name:{}.into(),fields:{}}}",
             string(t),
@@ -120,6 +120,8 @@ fn guard(g: &Guard) -> String {
     }
 }
 struct Generator<'a> {
+    constructors: BTreeSet<&'a str>,
+    constructing: bool,
     boundaries: BTreeMap<&'a str, (usize, usize)>,
     display_names: BTreeMap<&'a str, String>,
     names: BTreeMap<&'a str, usize>,
@@ -230,6 +232,15 @@ impl Generator<'_> {
                         expression(e)
                     );
                 }
+                Action::Exit(name, args) if self.constructing => {
+                    debug_assert_eq!(name, crate::constructors::COMPLETED);
+                    debug_assert_eq!(args.len(), 1);
+                    let _ = writeln!(self.code, "let constructed = {};", expression(&args[0]));
+                    for id in &self.slots {
+                        let _ = writeln!(self.code, "v[base + {id}] = None;");
+                    }
+                    self.code.push_str("v[destination] = Some(constructed);\nreturn Ok(Completion::Constructed);\n");
+                }
                 Action::Exit(name, args) => {
                     let _ = writeln!(self.code, "let fields = {};", expressions(args));
                     for id in &self.slots {
@@ -304,13 +315,23 @@ impl Generator<'_> {
                     unwind,
                     release,
                 } => {
-                    let _ = writeln!(
-                        self.code,
-                        "let mut fields:std::vec::IntoIter<V> = {}.into_iter();",
-                        expressions(&bindings.iter().map(|(_, e)| e.clone()).collect::<Vec<_>>())
-                    );
-                    for (id, _) in bindings {
-                        let _ = writeln!(self.code, "v[base + {id}] = fields.next();");
+                    if let [(id, value)] = bindings.as_slice() {
+                        let _ = writeln!(
+                            self.code,
+                            "let value = {}; v[base + {id}] = Some(value);",
+                            expression(value)
+                        );
+                    } else if !bindings.is_empty() {
+                        let _ = writeln!(
+                            self.code,
+                            "let mut fields:std::vec::IntoIter<V> = {}.into_iter();",
+                            expressions(
+                                &bindings.iter().map(|(_, e)| e.clone()).collect::<Vec<_>>()
+                            )
+                        );
+                        for (id, _) in bindings {
+                            let _ = writeln!(self.code, "v[base + {id}] = fields.next();");
+                        }
                     }
                     for id in release {
                         let _ = writeln!(self.code, "v[base + {id}] = None;");
@@ -325,6 +346,22 @@ impl Generator<'_> {
                     args,
                     arms,
                 } => {
+                    if let Operation::Region(name) = operation
+                        && self.constructors.contains(name.as_str())
+                    {
+                        debug_assert_eq!(arms.len(), 1);
+                        debug_assert_eq!(arms[0].slots.len(), 1);
+                        let destination = arms[0].slots[0];
+                        let atom = arms[0].atom;
+                        let _ = writeln!(
+                            self.code,
+                            "let args = {}; region_{}(host, &mut v, args, &mut vec![], base + {destination})?.constructed()?;\na[{atom}] = true;",
+                            expressions(args),
+                            self.names[name.as_str()]
+                        );
+                        self.code.push_str("}\n");
+                        continue;
+                    }
                     let call = match operation {
                         Operation::Collection(name) => format!(
                             "{{ let args={}; collection({},args,v)? }}",
@@ -387,7 +424,19 @@ impl CheckedProgram {
             .enumerate()
             .map(|(i, r)| (r.name.as_str(), i))
             .collect();
+        let constructors = self
+            .regions()
+            .filter(|r| {
+                r.is_constructor()
+                    && r.exits.len() == 1
+                    && r.exits[0].name == crate::constructors::COMPLETED
+                    && r.exits[0].fields.len() == 1
+            })
+            .map(|r| r.name.as_str())
+            .collect();
         let mut g = Generator {
+            constructors,
+            constructing: false,
             display_names: self
                 .regions()
                 .map(|r| (r.name.as_str(), self.runtime_name(&r.name)))
@@ -421,6 +470,12 @@ impl CheckedProgram {
         g.code.push_str("\n}\nuse support::*;\n");
         g.code.push_str(&crate::rust_host::source(self.manifest())?);
         for r in self.regions() {
+            g.constructing = g.constructors.contains(r.name.as_str());
+            let destination_parameter = if g.constructing {
+                ", destination:usize"
+            } else {
+                ""
+            };
             g.slots = r.slots.keys().copied().collect();
             let size = r
                 .slots
@@ -431,7 +486,7 @@ impl CheckedProgram {
                 .unwrap_or(0);
             let _ = writeln!(
                 g.code,
-                "fn region_{}(host:&mut Host, mut v:&mut Vec<Option<V>>, args:Vec<V>, handover:&mut Vec<V>)->R<Completion> {{\nhost.enter({})?;\nlet base=v.len(); v.resize(base + {size}, None);\nlet result=(|| {{\nlet mut a = vec![false; {size}];\nlet mut args = args.into_iter();",
+                "fn region_{}(host:&mut Host, mut v:&mut Vec<Option<V>>, args:Vec<V>, handover:&mut Vec<V>{destination_parameter})->R<Completion> {{\nhost.enter({})?;\nlet base=v.len(); v.resize(base + {size}, None);\nlet result=(|| {{\nlet mut a = vec![false; {size}];\nlet mut args = args.into_iter();",
                 g.names[r.name.as_str()],
                 string(&self.runtime_name(&r.name))
             );

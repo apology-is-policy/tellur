@@ -102,8 +102,15 @@ A call may borrow a fresh constructed ordinary value for the call duration under
 the existing [temporary-borrow restrictions](ownership-expressions.md#borrowing-a-temporary-for-a-call).
 The temporary cannot contain resources or references, and no returned borrow may
 escape it. `move` transfers ownership; it does not promise a particular machine
-instruction sequence or physical copy elision. Direct destination construction is
-separate pending lowering work.
+instruction sequence or physical copy elision.
+
+Since 0.68, native constructors deliver completed values into caller storage
+without an intermediate outcome tag or payload vector. Partial fields stay owned
+by the constructor until initialization completes. A later caller fault releases
+the completed value through the caller's frame. Selecting a field from an owned
+temporary transfers that field without cloning its allocation. Actual records,
+argument vectors and intermediate storage still exist; this is not a general
+zero-allocation or copy-elision guarantee.
 
 <!-- tellur:check -->
 ```tellur

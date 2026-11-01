@@ -22,8 +22,10 @@ syntax. Work is proceeding through the checkpoints below.
    contingency access. A handler cannot return an ordinary outcome or fall through.
 5. **Constructor procedures delivered in 0.67:** definite field initialization,
    nested owning expressions, generic forwarding and partial-fault cleanup.
-   Public fields still permit raw construction. Reference-bearing result contracts
-   and direct destination construction remain separate follow-up work.
+   Public fields still permit raw construction. **Native destination delivery in
+   0.68** removes temporary outcome packaging while preserving partial-field fault
+   ownership. Reference-bearing result contracts and broader allocation/copy elision
+   remain separate follow-up work.
 6. **Delivered for checkpoints 3–4 in 0.66:** reference, editor, formatter,
    native/reference parity and settings-server migration. **Constructor parity,
    editor support, reference, runnable example and settings request-context adoption
