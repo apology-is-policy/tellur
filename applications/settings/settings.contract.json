@@ -122,6 +122,77 @@
             "drop": null
           }
         },
+        "removal_result": {
+          "kind": "outcome",
+          "type_parameters": [],
+          "origin_parameters": [],
+          "alternatives": {
+            "commit_uncertain": [
+              {
+                "name": "message",
+                "type": "string",
+                "origins": [],
+                "referent_origins": [],
+                "from": null
+              }
+            ],
+            "invalid_file": [
+              {
+                "name": "message",
+                "type": "string",
+                "origins": [],
+                "referent_origins": [],
+                "from": null
+              }
+            ],
+            "invalid_key": [],
+            "missing": [],
+            "removed": [],
+            "storage_failed": [
+              {
+                "name": "message",
+                "type": "string",
+                "origins": [],
+                "referent_origins": [],
+                "from": null
+              }
+            ],
+            "too_large": []
+          },
+          "exit_codes": {},
+          "capabilities": {
+            "copy": null,
+            "clone": null,
+            "drop": null
+          }
+        },
+        "remove": {
+          "kind": "control",
+          "profile": "control",
+          "type_parameters": [],
+          "requirements": {},
+          "parameters": [
+            {
+              "name": "path",
+              "type": "ref string",
+              "origins": [],
+              "referent_origins": [],
+              "from": null
+            },
+            {
+              "name": "key",
+              "type": "ref string",
+              "origins": [],
+              "referent_origins": [],
+              "from": null
+            }
+          ],
+          "exits": {
+            "kind": "named",
+            "type": "@entry::removal_result",
+            "origins": []
+          }
+        },
         "set": {
           "kind": "control",
           "profile": "control",

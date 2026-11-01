@@ -3236,3 +3236,33 @@ trait-call contracts and native execution emitting `Hello through a trait`. Six
 binary copies and nine packaged/installed payloads match release 0.95.0. Existing
 windows were not reloaded. Formatting and whitespace checks passed. Executable
 formats and the accepted trait, ownership, origin and fault semantics are unchanged.
+
+## Settings key-removal follow-up on 0.95
+
+P5b.2c adds `settings.remove` and a `remove` CLI entry using the current compiler,
+`map_remove` and the shared JSON-file library. Invalid keys stop before reads; missing
+files/keys stop before encoding or writing. A successful replacement reports `removed`;
+preparation failures and uncertain replacement retain separate outcomes. Other keys
+survive, and removing the last key leaves an empty document. The public baseline adds
+only `remove` and `removal_result`; all existing public declarations are preserved.
+
+The policy test checks eleven scripted cases and expanded execution, including exact
+remaining-map arguments to encoding and no write on absence. The existing native
+application matrix now checks removal at O0/O2 before/after expansion, Unicode data,
+missing-file noncreation, repeat deletion, invalid keys, corrupted/oversized input,
+last-key removal, process statuses and the same scripted failures. Contract and
+contributor baselines include the new public operation. Source formatting was applied;
+existing compact dispositions in `main.tellur` were retained after preview.
+
+Final validation passed **45 Rust tests across six affected targets**, covering the
+settings CLI/server, shared JSON library, public/contributor snapshots and manual.
+Three live HTTP tests initially failed because the sandbox prohibited loopback socket
+binding; only those tests were rerun with local network permission, and all passed.
+The earlier successful checks are retained. No implementation correction was needed.
+
+The maintained native CLI was rebuilt and passed seven additional temporary-file
+commands covering statuses, missing-file noncreation, other-key preservation and
+last-key removal. Fresh LSP checking exposes both borrowed inputs and the removal
+result contract. Compiler/server/editor release 0.95 remains unchanged and installed;
+no new extension package or window reload was needed. Formatting and whitespace
+checks passed. Existing HTTP policy, host mechanisms and storage limits are preserved.

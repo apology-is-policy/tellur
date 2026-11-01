@@ -27,6 +27,10 @@ origins while resolving associated types. Unsaved declarations refresh the contr
 generic trait calls retain their abstract associated projections. Try `reader<text_source>.read`
 in [traits.tellur](playground/traits.tellur).
 
+The [settings CLI](applications/settings/README.md#remove-a-setting) now supports
+key removal through `--entry remove -- FILE KEY`, using the shared JSON-file library
+and distinct missing, failed and uncertain-replacement outcomes.
+
 Release 0.95 adds [trait-declaration diagnostic batches](docs/reference/diagnostics-and-limits.md#trait-declaration-preparation-batches):
 independent invalid trait contracts report together before implementation resolution,
 including unused declarations, public visibility and borrowed-result origins.

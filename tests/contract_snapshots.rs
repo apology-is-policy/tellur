@@ -440,7 +440,7 @@ fn settings_application_supplies_a_reviewable_unchanged_baseline() {
         Snapshot::from_json(&fs::read_to_string(root.join("settings.contract.json")).unwrap())
             .unwrap()
     );
-    assert_eq!(entry(&snapshot).as_object().unwrap().len(), 5);
+    assert_eq!(entry(&snapshot).as_object().unwrap().len(), 7);
     let source = fs::read_to_string(root.join("settings.tellur")).unwrap();
     let changed = source.replace("1048576", "2097152");
     let after =

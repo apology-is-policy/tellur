@@ -43,6 +43,9 @@ control get(string path, string key)
 control set(string path, string key, string value) exits settings.update_result {
     forward settings.set(borrow path, key, value);
 }
+control remove(string path, string key) exits settings.removal_result {
+    forward settings.remove(borrow path, borrow key);
+}
 
 // Terminal policy belongs to these entry contracts; nested controls return normally.
 outcome display_result {

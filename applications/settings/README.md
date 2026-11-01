@@ -47,6 +47,7 @@ cargo build --locked --release --bins
 
 ./applications/settings/build/main --entry set -- /tmp/tellur-settings.json theme dark
 ./applications/settings/build/main --entry get -- /tmp/tellur-settings.json theme
+./applications/settings/build/main --entry remove -- /tmp/tellur-settings.json theme
 ./applications/settings/build/main -- /tmp/tellur-settings.json
 ```
 
@@ -71,17 +72,37 @@ The launcher prints the final outcome and returns its configured OS status:
 
 | Completion | Status |
 | --- | --- |
-| `done`, `saved` | 0 |
+| `done`, `saved`, `removed` | 0 |
 | `failed`, `invalid_file`, `storage_failed`, `too_large` | 1 |
 | `invalid_key` | 2 |
 | `missing` | 3 |
 | `commit_uncertain` | 4 |
 
-`main` and `get` use annotated entry contracts in `main.tellur`. `set` uses a
-manifest entry mapping, keeping the reusable domain contract free of terminal
+`main` and `get` use annotated entry contracts in `main.tellur`. `set` and `remove`
+use manifest entry mappings, keeping the reusable domain contracts free of terminal
 policy. `--json` preserves the complete outcome/payload; scripts must still inspect
 it when distinguishing failure details. Execution faults report stderr and status 1.
 See [process entry semantics](../../docs/reference/process-entry.md).
+
+## Remove a setting
+
+`remove(path, key)` validates the key, loads the current map and removes only that
+entry. A missing file or absent key returns `missing` (status 3) without encoding or
+writing a document; it does not create an empty file. Removing the last key writes
+an empty JSON object. Other entries, including Unicode keys and values, are preserved.
+The old value is discarded rather than returned or printed.
+
+`removed` (status 0) means the replacement succeeded under the same storage profile
+as `set`. Invalid keys return status 2 before reading. Corrupt/oversized input and
+read, encoding or write preparation failures do not claim removal. If replacement
+fails after being attempted, `commit_uncertain` (status 4) requires inspection or
+reload; it is not proof that the key remains present. The 1 MiB limit, single-writer
+assumption and lack of a crash-durability guarantee still apply.
+
+The reusable `settings.remove(ref string path, ref string key)` control exposes
+`removal_result`, preserving each failure alternative without choosing a process
+status. It uses the existing shared JSON-file library. This addition is available
+through the CLI entry; HTTP endpoints remain those listed below.
 
 In VS Code, open `main.tellur` and use **Tellur: Build and Run**. Set the entry and
 arguments in workspace settings, for example:

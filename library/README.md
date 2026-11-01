@@ -25,6 +25,12 @@ chooses process exit codes or defaults for missing data. The settings applicatio
 maps `missing` to an empty configuration and several failures to `storage_failed`;
 another caller can preserve those distinctions.
 
+The settings application's `remove` control combines `load`, the built-in
+`map_remove` and `replace`. A missing key returns before encoding or writing, while
+a present key is reported removed only after `saved`. Replacement uncertainty stays
+visible. This is caller policy using the same library contracts; the library itself
+does not impose settings-key validation or read/modify/write transaction semantics.
+
 `load` reads at most `byte_limit + 1` bytes to detect overflow before decoding.
 Limits count UTF-8 bytes, not characters. The reader returns `missing` on the host's
 not-found error, `too_large` before attempting UTF-8 decoding when over the limit,

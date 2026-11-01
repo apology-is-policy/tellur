@@ -61,6 +61,10 @@ constructors. This completes the currently supported callable forms. Named
 boundaries do not accept generic parameters; their existing concrete call hover
 also works inside generic controls. Generic boundary declarations are not part of
 this tooling checkpoint or an accepted syntax extension.
+P5b.2c adds maintained settings key removal on compiler 0.95: borrowed inputs,
+map removal, no write for a missing key, explicit replacement uncertainty and a CLI
+entry using the shared JSON-file library. Public/contributor baselines and native
+application checks cover the added contract; no language or host extension is needed.
 Broader physical copy elision and suspended activation frames remain separate work.
 
 1 November 2026. This is the working revision plan, not a claim that all proposed
@@ -234,7 +238,8 @@ unimplemented syntax are promised.
 | P5a | Sustained application: persistent CLI | **Delivered in 0.45**: settings load/get/set, validation, strict JSON, bounded input/output, replacement uncertainty and live/scripted failure scenarios |
 | P5a.1 | Executable outcome status contracts | **Delivered in 0.48**: alternative annotations, exhaustive entry mappings, final-contract policy, exact exec status propagation, and settings/editor migration |
 | P5b.1 | Sustained application: blocking HTTP | **Delivered in 0.50**: loopback settings/lookup/update endpoints, Tellur policy, retained listeners/connections, framing/size/deadline limits, budget/idle shutdown and live/scripted cleanup evidence |
-| P5b.2 | Sustained application and library growth | **JSON files delivered in 0.75 (P5b.2a); loopback HTTP delivered as a source-library follow-up on 0.76 (P5b.2b):** shared source contracts and Rust modules, independent executables and maintained settings behavior. HTTP retains framing/size/deadline outcomes, owned handles, consuming completion and explicit contingent operations; routing and supervision stay in applications. Continue improving the application from concrete needs; signal-driven shutdown, richer HTTP and concurrency remain later work |
+| P5b.2 | Sustained application and library growth | **JSON files delivered in 0.75 (P5b.2a); loopback HTTP delivered as a source-library follow-up on 0.76 (P5b.2b):** shared source contracts and Rust modules, independent executables and maintained settings behavior. HTTP retains framing/size/deadline outcomes, owned handles, consuming completion and explicit contingent operations; routing and supervision stay in applications. Key removal delivered on 0.95 (P5b.2c), using existing JSON-file contracts. Continue improving the application from concrete needs; signal-driven shutdown, richer HTTP and concurrency remain later work |
+| P5b.2c | Sustained application: key removal | **Delivered on 0.95:** `settings.remove` and CLI entry, explicit missing/removed/failure outcomes, no write for absent keys, preservation of other entries, last-key empty document and replacement uncertainty. Reuses existing map and JSON-file contracts; O0/O2 native, expanded/scenario and snapshot evidence. HTTP policy and storage/concurrency guarantees are unchanged |
 | P6a | Boundary policy and execution evidence | **Delivered in 0.60:** agreed boundary termination without local catch/resume; bounded reference/native failure reports, observed activation IDs, source/expansion origins and explicit teardown limits. These IDs do not yet address storage |
 | P6b | Source faults and transitive contracts | **Delivered in 0.62:** source termination, public/trait fault permissions and private inference; live resources require explicit retained-owner release dispositions at faulting paths/calls. Fault-only controls omit `exits`. Faulting operators and no-fault annotations remain separate decisions |
 | P6c | Activation-owned storage | **Sequential slice delivered in 0.63:** invocation-local storage ranges, activation addresses, normal/fault retirement, protected parent storage and retained handover. Suspended frames/child-task retirement remain E1 prerequisites |

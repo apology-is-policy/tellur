@@ -620,6 +620,17 @@
         "commit_uncertain": 4,
         "too_large": 1
       }
+    },
+    "remove": {
+      "exit_codes": {
+        "removed": 0,
+        "missing": 3,
+        "invalid_key": 2,
+        "invalid_file": 1,
+        "storage_failed": 1,
+        "commit_uncertain": 4,
+        "too_large": 1
+      }
     }
   }
 }

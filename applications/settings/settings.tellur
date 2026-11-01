@@ -84,3 +84,40 @@ pub control get(ref string path, ref string key)
             too_large => too_large {}
         };
 }
+
+pub outcome removal_result {
+    removed,
+    missing,
+    invalid_key,
+    invalid_file { string message },
+    storage_failed { string message },
+    commit_uncertain { string message },
+    too_large
+}
+
+pub control remove(ref string path, ref string key) exits removal_result {
+    delta validate_key(key) {
+        valid => valid,
+        invalid => exit invalid_key
+    }
+    [valid]:
+        delta load(path) {
+            loaded { map<string, string> loaded_values } => loaded,
+            invalid_file { string message } => exit invalid_file { message },
+            storage_failed { string message } => exit storage_failed { message },
+            too_large => exit too_large
+        }
+    [loaded]:
+        mutable map<string, string> values = loaded_values;
+        delta map_remove(borrow mutable values, key) {
+            removed { string previous } => changed,
+            missing => exit missing
+        }
+    [changed]: exit delta json_file.replace(path, borrow values, 1048576) {
+        saved => removed {},
+        encode_failed { string message } => storage_failed { message },
+        write_failed { string message } => storage_failed { message },
+        commit_uncertain { string message } => commit_uncertain { message },
+        too_large => too_large {}
+    };
+}

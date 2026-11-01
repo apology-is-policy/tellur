@@ -107,9 +107,129 @@ fn settings_policy_keeps_failures_and_uncertain_effects_explicit() {
         assert_eq!(result, expanded.run(&scenario).unwrap());
     }
 }
+fn removal_cases() -> Vec<(Scenario, &'static str)> {
+    let read = vec![
+        call("text_trim", "trimmed", vec![text("theme")]),
+        call("file_read", "read", vec![text("json")]),
+        call(
+            "json_decode",
+            "decoded",
+            vec![Value::Construct {
+                ty: "map<String,String>".into(),
+                name: "map".into(),
+                fields: vec![text("locale"), text("čeština"), text("theme"), text("dark")],
+            }],
+        ),
+    ];
+    let mut cases = vec![];
+    let mut add = |calls, expected| {
+        cases.push((
+            Scenario {
+                entry: "remove".into(),
+                arguments: vec![text("settings.json"), text("theme")],
+                calls,
+            },
+            expected,
+        ))
+    };
+    for (outcome, expected, fields) in [
+        ("replaced", "removed", vec![]),
+        ("write_failed", "storage_failed", vec![text("disk full")]),
+        (
+            "commit_uncertain",
+            "commit_uncertain",
+            vec![text("replacement uncertain")],
+        ),
+        ("too_large", "too_large", vec![]),
+    ] {
+        let mut calls = read.clone();
+        calls.push(call("json_encode", "encoded", vec![text("remaining")]));
+        calls.push(call("file_replace", outcome, fields));
+        add(calls, expected);
+    }
+    let mut calls = read.clone();
+    calls.push(call("json_encode", "encode_failed", vec![text("encoding")]));
+    add(calls, "storage_failed");
+    for (outcome, expected, fields) in [
+        ("missing", "missing", vec![]),
+        ("read_failed", "storage_failed", vec![text("read")]),
+        ("too_large", "too_large", vec![]),
+    ] {
+        add(
+            vec![read[0].clone(), call("file_read", outcome, fields)],
+            expected,
+        );
+    }
+    add(
+        vec![
+            read[0].clone(),
+            read[1].clone(),
+            call("json_decode", "invalid", vec![text("invalid JSON")]),
+        ],
+        "invalid_file",
+    );
+    add(
+        vec![
+            read[0].clone(),
+            read[1].clone(),
+            call(
+                "json_decode",
+                "decoded",
+                vec![Value::Construct {
+                    ty: "map<String,String>".into(),
+                    name: "map".into(),
+                    fields: vec![text("other"), text("kept")],
+                }],
+            ),
+        ],
+        "missing",
+    );
+    cases.push((
+        Scenario {
+            entry: "remove".into(),
+            arguments: vec![text("settings.json"), text(" bad ")],
+            calls: vec![call("text_trim", "trimmed", vec![text("bad")])],
+        },
+        "invalid_key",
+    ));
+    cases
+}
+
+#[test]
+fn removal_only_persists_a_present_key_and_preserves_uncertain_commit() {
+    let p = program();
+    let expanded = p.expanded("remove").unwrap();
+    for (scenario, expected) in removal_cases() {
+        let result = p.run(&scenario).unwrap();
+        assert_eq!(result.outcome, expected);
+        assert_eq!(result, expanded.run(&scenario).unwrap());
+        for event in &result.events {
+            if let tellur::runtime::Event::Primitive {
+                operation,
+                arguments,
+                ..
+            } = event
+            {
+                if operation == "json_encode" {
+                    assert_eq!(
+                        arguments,
+                        &[Value::Construct {
+                            ty: "map<String,String>".into(),
+                            name: "map".into(),
+                            fields: vec![text("locale"), text("čeština")]
+                        }]
+                    );
+                }
+                if expected == "missing" || expected == "invalid_key" {
+                    assert!(!["json_encode", "file_replace"].contains(&operation.as_str()));
+                }
+            }
+        }
+    }
+}
 fn status(outcome: &str) -> i32 {
     match outcome {
-        "done" | "saved" | "replaced" => 0,
+        "done" | "saved" | "replaced" | "removed" => 0,
         "invalid_key" => 2,
         "missing" => 3,
         "commit_uncertain" => 4,
@@ -138,7 +258,7 @@ fn native_settings_persists_reloads_and_matches_scripted_failures() {
     for expanded in [false, true] {
         for opt in [0, 2] {
             let program = if expanded {
-                p.expanded("set").unwrap()
+                p.expanded("set").unwrap().expanded("remove").unwrap()
             } else {
                 p.clone()
             };
@@ -146,6 +266,11 @@ fn native_settings_persists_reloads_and_matches_scripted_failures() {
             program.build_native("main", &binary, opt).unwrap();
             let data = root.join(format!("data-{expanded}-{opt}.json"));
             let path = data.to_str().unwrap();
+            assert_eq!(
+                run(&binary, "remove", &[path, "theme"])["outcome"],
+                "missing"
+            );
+            assert!(!data.exists());
             assert_eq!(run(&binary, "get", &[path, "theme"])["outcome"], "missing");
             assert_eq!(
                 run(&binary, "set", &[path, "theme", "dark"])["outcome"],
@@ -170,9 +295,50 @@ fn native_settings_persists_reloads_and_matches_scripted_failures() {
                 "invalid_key"
             );
             assert_eq!(fs::read(&data).unwrap(), saved);
+            assert_eq!(
+                run(&binary, "set", &[path, "locale", "čeština"])["outcome"],
+                "saved"
+            );
+            assert_eq!(
+                run(&binary, "remove", &[path, "theme"])["outcome"],
+                "removed"
+            );
+            assert_eq!(
+                serde_json::from_slice::<Json>(&fs::read(&data).unwrap()).unwrap(),
+                json!({"locale":"čeština"})
+            );
+            let saved = fs::read(&data).unwrap();
+            let missing = run(&binary, "remove", &[path, "theme"]);
+            assert_eq!(missing["outcome"], "missing");
+            assert!(
+                missing["events"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .all(|event| event["operation"] != "file_replace"
+                        && event["operation"] != "json_encode")
+            );
+            assert_eq!(
+                run(&binary, "remove", &[path, " bad "])["outcome"],
+                "invalid_key"
+            );
+            assert_eq!(fs::read(&data).unwrap(), saved);
+            assert_eq!(
+                run(&binary, "remove", &[path, "locale"])["outcome"],
+                "removed"
+            );
+            assert_eq!(
+                serde_json::from_slice::<Json>(&fs::read(&data).unwrap()).unwrap(),
+                json!({})
+            );
             let huge = "x".repeat(1048577);
             fs::write(&data, huge).unwrap();
             assert_eq!(run(&binary, "get", &[path, "theme"])["outcome"], "failed");
+            assert_eq!(
+                run(&binary, "remove", &[path, "theme"])["outcome"],
+                "too_large"
+            );
+            assert_eq!(fs::metadata(&data).unwrap().len(), 1048577);
             for invalid in ["{", r#"{"x":1}"#, r#"{"x":"first","x":"second"}"#] {
                 fs::write(&data, invalid).unwrap();
                 assert_eq!(
@@ -180,8 +346,17 @@ fn native_settings_persists_reloads_and_matches_scripted_failures() {
                     "invalid_file"
                 );
                 assert_eq!(fs::read_to_string(&data).unwrap(), invalid);
+                assert_eq!(
+                    run(&binary, "remove", &[path, "theme"])["outcome"],
+                    "invalid_file"
+                );
+                assert_eq!(fs::read_to_string(&data).unwrap(), invalid);
             }
-            for (i, (scenario, expected)) in failure_cases().iter().enumerate() {
+            for (i, (scenario, expected)) in failure_cases()
+                .iter()
+                .chain(removal_cases().iter())
+                .enumerate()
+            {
                 let file = root.join(format!("case-{i}.json"));
                 fs::write(&file, serde_json::to_vec(scenario).unwrap()).unwrap();
                 let output = Command::new(&binary)

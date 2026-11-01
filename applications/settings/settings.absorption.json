@@ -138,6 +138,77 @@
               "drop": null
             }
           },
+          "removal_result": {
+            "kind": "outcome",
+            "type_parameters": [],
+            "origin_parameters": [],
+            "alternatives": {
+              "commit_uncertain": [
+                {
+                  "name": "message",
+                  "type": "string",
+                  "origins": [],
+                  "referent_origins": [],
+                  "from": null
+                }
+              ],
+              "invalid_file": [
+                {
+                  "name": "message",
+                  "type": "string",
+                  "origins": [],
+                  "referent_origins": [],
+                  "from": null
+                }
+              ],
+              "invalid_key": [],
+              "missing": [],
+              "removed": [],
+              "storage_failed": [
+                {
+                  "name": "message",
+                  "type": "string",
+                  "origins": [],
+                  "referent_origins": [],
+                  "from": null
+                }
+              ],
+              "too_large": []
+            },
+            "exit_codes": {},
+            "capabilities": {
+              "copy": null,
+              "clone": null,
+              "drop": null
+            }
+          },
+          "remove": {
+            "kind": "control",
+            "profile": "control",
+            "type_parameters": [],
+            "requirements": {},
+            "parameters": [
+              {
+                "name": "path",
+                "type": "ref string",
+                "origins": [],
+                "referent_origins": [],
+                "from": null
+              },
+              {
+                "name": "key",
+                "type": "ref string",
+                "origins": [],
+                "referent_origins": [],
+                "from": null
+              }
+            ],
+            "exits": {
+              "kind": "named",
+              "type": "@entry::removal_result",
+              "origins": []
+            }
+          },
           "set": {
             "kind": "control",
             "profile": "control",
@@ -1409,6 +1480,1438 @@
                 "module": "file:../../library/json_file.tellur",
                 "line": 19,
                 "column": 10
+              }
+            }
+          ],
+          "truncated": false
+        }
+      }
+    },
+    "@entry::remove": {
+      "generic_definition_only": false,
+      "outcomes": {
+        "commit_uncertain": {
+          "contributors": [
+            {
+              "kind": "produced",
+              "control": "@entry::load",
+              "operation": null,
+              "outcome": "loaded",
+              "site": "source:2",
+              "location": {
+                "module": "@entry",
+                "line": 20,
+                "column": 50
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "@entry::load",
+              "operation": null,
+              "outcome": "loaded",
+              "site": "source:3",
+              "location": {
+                "module": "@entry",
+                "line": 21,
+                "column": 20
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "@entry::remove",
+              "operation": null,
+              "outcome": "commit_uncertain",
+              "site": "source:14",
+              "location": {
+                "module": "@entry",
+                "line": 120,
+                "column": 48
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "@entry::validate_key",
+              "operation": null,
+              "outcome": "valid",
+              "site": "source:3",
+              "location": {
+                "module": "@entry",
+                "line": 33,
+                "column": 17
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "file:../../library/json_file.tellur::load",
+              "operation": null,
+              "outcome": "loaded",
+              "site": "source:3",
+              "location": {
+                "module": "file:../../library/json_file.tellur",
+                "line": 21,
+                "column": 55
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "file:../../library/json_file.tellur::load",
+              "operation": null,
+              "outcome": "missing",
+              "site": "source:5",
+              "location": {
+                "module": "file:../../library/json_file.tellur",
+                "line": 24,
+                "column": 20
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "file:../../library/json_file.tellur::replace",
+              "operation": null,
+              "outcome": "commit_uncertain",
+              "site": "source:6",
+              "location": {
+                "module": "file:../../library/json_file.tellur",
+                "line": 40,
+                "column": 48
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::load",
+              "operation": "file:../../library/json_file.tellur::load",
+              "outcome": "loaded",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 19,
+                "column": 10
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::load",
+              "operation": "file:../../library/json_file.tellur::load",
+              "outcome": "missing",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 19,
+                "column": 10
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::remove",
+              "operation": "@entry::load",
+              "outcome": "loaded",
+              "site": "source:3",
+              "location": {
+                "module": "@entry",
+                "line": 104,
+                "column": 9
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::remove",
+              "operation": "@entry::validate_key",
+              "outcome": "valid",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 99,
+                "column": 5
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::remove",
+              "operation": "file:../../library/json_file.tellur::replace",
+              "outcome": "commit_uncertain",
+              "site": "source:10",
+              "location": {
+                "module": "@entry",
+                "line": 116,
+                "column": 21
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::validate_key",
+              "operation": "text_trim",
+              "outcome": "trimmed",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 29,
+                "column": 5
+              }
+            },
+            {
+              "kind": "received",
+              "control": "file:../../library/json_file.tellur::load",
+              "operation": "file_read",
+              "outcome": "missing",
+              "site": "source:1",
+              "location": {
+                "module": "file:../../library/json_file.tellur",
+                "line": 19,
+                "column": 10
+              }
+            },
+            {
+              "kind": "received",
+              "control": "file:../../library/json_file.tellur::load",
+              "operation": "file_read",
+              "outcome": "read",
+              "site": "source:1",
+              "location": {
+                "module": "file:../../library/json_file.tellur",
+                "line": 19,
+                "column": 10
+              }
+            },
+            {
+              "kind": "received",
+              "control": "file:../../library/json_file.tellur::load",
+              "operation": "json_decode",
+              "outcome": "decoded",
+              "site": "source:2",
+              "location": {
+                "module": "file:../../library/json_file.tellur",
+                "line": 20,
+                "column": 33
+              }
+            },
+            {
+              "kind": "received",
+              "control": "file:../../library/json_file.tellur::replace",
+              "operation": "file_replace",
+              "outcome": "commit_uncertain",
+              "site": "source:3",
+              "location": {
+                "module": "file:../../library/json_file.tellur",
+                "line": 37,
+                "column": 21
+              }
+            },
+            {
+              "kind": "received",
+              "control": "file:../../library/json_file.tellur::replace",
+              "operation": "json_encode",
+              "outcome": "encoded",
+              "site": "source:1",
+              "location": {
+                "module": "file:../../library/json_file.tellur",
+                "line": 33,
+                "column": 5
+              }
+            }
+          ],
+          "truncated": false
+        },
+        "invalid_file": {
+          "contributors": [
+            {
+              "kind": "produced",
+              "control": "@entry::load",
+              "operation": null,
+              "outcome": "invalid_file",
+              "site": "source:4",
+              "location": {
+                "module": "@entry",
+                "line": 22,
+                "column": 39
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "@entry::remove",
+              "operation": null,
+              "outcome": "invalid_file",
+              "site": "source:4",
+              "location": {
+                "module": "@entry",
+                "line": 106,
+                "column": 48
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "@entry::validate_key",
+              "operation": null,
+              "outcome": "valid",
+              "site": "source:3",
+              "location": {
+                "module": "@entry",
+                "line": 33,
+                "column": 17
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "file:../../library/json_file.tellur::load",
+              "operation": null,
+              "outcome": "invalid",
+              "site": "source:4",
+              "location": {
+                "module": "file:../../library/json_file.tellur",
+                "line": 22,
+                "column": 43
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::load",
+              "operation": "file:../../library/json_file.tellur::load",
+              "outcome": "invalid",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 19,
+                "column": 10
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::remove",
+              "operation": "@entry::load",
+              "outcome": "invalid_file",
+              "site": "source:3",
+              "location": {
+                "module": "@entry",
+                "line": 104,
+                "column": 9
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::remove",
+              "operation": "@entry::validate_key",
+              "outcome": "valid",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 99,
+                "column": 5
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::validate_key",
+              "operation": "text_trim",
+              "outcome": "trimmed",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 29,
+                "column": 5
+              }
+            },
+            {
+              "kind": "received",
+              "control": "file:../../library/json_file.tellur::load",
+              "operation": "file_read",
+              "outcome": "read",
+              "site": "source:1",
+              "location": {
+                "module": "file:../../library/json_file.tellur",
+                "line": 19,
+                "column": 10
+              }
+            },
+            {
+              "kind": "received",
+              "control": "file:../../library/json_file.tellur::load",
+              "operation": "json_decode",
+              "outcome": "invalid",
+              "site": "source:2",
+              "location": {
+                "module": "file:../../library/json_file.tellur",
+                "line": 20,
+                "column": 33
+              }
+            }
+          ],
+          "truncated": false
+        },
+        "invalid_key": {
+          "contributors": [
+            {
+              "kind": "produced",
+              "control": "@entry::remove",
+              "operation": null,
+              "outcome": "invalid_key",
+              "site": "source:2",
+              "location": {
+                "module": "@entry",
+                "line": 101,
+                "column": 20
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "@entry::validate_key",
+              "operation": null,
+              "outcome": "invalid",
+              "site": "source:4",
+              "location": {
+                "module": "@entry",
+                "line": 34,
+                "column": 18
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::remove",
+              "operation": "@entry::validate_key",
+              "outcome": "invalid",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 99,
+                "column": 5
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::validate_key",
+              "operation": "text_trim",
+              "outcome": "trimmed",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 29,
+                "column": 5
+              }
+            }
+          ],
+          "truncated": false
+        },
+        "missing": {
+          "contributors": [
+            {
+              "kind": "produced",
+              "control": "@entry::load",
+              "operation": null,
+              "outcome": "loaded",
+              "site": "source:2",
+              "location": {
+                "module": "@entry",
+                "line": 20,
+                "column": 50
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "@entry::load",
+              "operation": null,
+              "outcome": "loaded",
+              "site": "source:3",
+              "location": {
+                "module": "@entry",
+                "line": 21,
+                "column": 20
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "@entry::remove",
+              "operation": null,
+              "outcome": "missing",
+              "site": "source:9",
+              "location": {
+                "module": "@entry",
+                "line": 114,
+                "column": 24
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "@entry::validate_key",
+              "operation": null,
+              "outcome": "valid",
+              "site": "source:3",
+              "location": {
+                "module": "@entry",
+                "line": 33,
+                "column": 17
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "file:../../library/json_file.tellur::load",
+              "operation": null,
+              "outcome": "loaded",
+              "site": "source:3",
+              "location": {
+                "module": "file:../../library/json_file.tellur",
+                "line": 21,
+                "column": 55
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "file:../../library/json_file.tellur::load",
+              "operation": null,
+              "outcome": "missing",
+              "site": "source:5",
+              "location": {
+                "module": "file:../../library/json_file.tellur",
+                "line": 24,
+                "column": 20
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::load",
+              "operation": "file:../../library/json_file.tellur::load",
+              "outcome": "loaded",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 19,
+                "column": 10
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::load",
+              "operation": "file:../../library/json_file.tellur::load",
+              "outcome": "missing",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 19,
+                "column": 10
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::remove",
+              "operation": "@entry::load",
+              "outcome": "loaded",
+              "site": "source:3",
+              "location": {
+                "module": "@entry",
+                "line": 104,
+                "column": 9
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::remove",
+              "operation": "@entry::validate_key",
+              "outcome": "valid",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 99,
+                "column": 5
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::validate_key",
+              "operation": "text_trim",
+              "outcome": "trimmed",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 29,
+                "column": 5
+              }
+            },
+            {
+              "kind": "received",
+              "control": "file:../../library/json_file.tellur::load",
+              "operation": "file_read",
+              "outcome": "missing",
+              "site": "source:1",
+              "location": {
+                "module": "file:../../library/json_file.tellur",
+                "line": 19,
+                "column": 10
+              }
+            },
+            {
+              "kind": "received",
+              "control": "file:../../library/json_file.tellur::load",
+              "operation": "file_read",
+              "outcome": "read",
+              "site": "source:1",
+              "location": {
+                "module": "file:../../library/json_file.tellur",
+                "line": 19,
+                "column": 10
+              }
+            },
+            {
+              "kind": "received",
+              "control": "file:../../library/json_file.tellur::load",
+              "operation": "json_decode",
+              "outcome": "decoded",
+              "site": "source:2",
+              "location": {
+                "module": "file:../../library/json_file.tellur",
+                "line": 20,
+                "column": 33
+              }
+            }
+          ],
+          "truncated": false
+        },
+        "removed": {
+          "contributors": [
+            {
+              "kind": "produced",
+              "control": "@entry::load",
+              "operation": null,
+              "outcome": "loaded",
+              "site": "source:2",
+              "location": {
+                "module": "@entry",
+                "line": 20,
+                "column": 50
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "@entry::load",
+              "operation": null,
+              "outcome": "loaded",
+              "site": "source:3",
+              "location": {
+                "module": "@entry",
+                "line": 21,
+                "column": 20
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "@entry::remove",
+              "operation": null,
+              "outcome": "removed",
+              "site": "source:11",
+              "location": {
+                "module": "@entry",
+                "line": 117,
+                "column": 18
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "@entry::validate_key",
+              "operation": null,
+              "outcome": "valid",
+              "site": "source:3",
+              "location": {
+                "module": "@entry",
+                "line": 33,
+                "column": 17
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "file:../../library/json_file.tellur::load",
+              "operation": null,
+              "outcome": "loaded",
+              "site": "source:3",
+              "location": {
+                "module": "file:../../library/json_file.tellur",
+                "line": 21,
+                "column": 55
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "file:../../library/json_file.tellur::load",
+              "operation": null,
+              "outcome": "missing",
+              "site": "source:5",
+              "location": {
+                "module": "file:../../library/json_file.tellur",
+                "line": 24,
+                "column": 20
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "file:../../library/json_file.tellur::replace",
+              "operation": null,
+              "outcome": "saved",
+              "site": "source:4",
+              "location": {
+                "module": "file:../../library/json_file.tellur",
+                "line": 38,
+                "column": 21
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::load",
+              "operation": "file:../../library/json_file.tellur::load",
+              "outcome": "loaded",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 19,
+                "column": 10
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::load",
+              "operation": "file:../../library/json_file.tellur::load",
+              "outcome": "missing",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 19,
+                "column": 10
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::remove",
+              "operation": "@entry::load",
+              "outcome": "loaded",
+              "site": "source:3",
+              "location": {
+                "module": "@entry",
+                "line": 104,
+                "column": 9
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::remove",
+              "operation": "@entry::validate_key",
+              "outcome": "valid",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 99,
+                "column": 5
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::remove",
+              "operation": "file:../../library/json_file.tellur::replace",
+              "outcome": "saved",
+              "site": "source:10",
+              "location": {
+                "module": "@entry",
+                "line": 116,
+                "column": 21
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::validate_key",
+              "operation": "text_trim",
+              "outcome": "trimmed",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 29,
+                "column": 5
+              }
+            },
+            {
+              "kind": "received",
+              "control": "file:../../library/json_file.tellur::load",
+              "operation": "file_read",
+              "outcome": "missing",
+              "site": "source:1",
+              "location": {
+                "module": "file:../../library/json_file.tellur",
+                "line": 19,
+                "column": 10
+              }
+            },
+            {
+              "kind": "received",
+              "control": "file:../../library/json_file.tellur::load",
+              "operation": "file_read",
+              "outcome": "read",
+              "site": "source:1",
+              "location": {
+                "module": "file:../../library/json_file.tellur",
+                "line": 19,
+                "column": 10
+              }
+            },
+            {
+              "kind": "received",
+              "control": "file:../../library/json_file.tellur::load",
+              "operation": "json_decode",
+              "outcome": "decoded",
+              "site": "source:2",
+              "location": {
+                "module": "file:../../library/json_file.tellur",
+                "line": 20,
+                "column": 33
+              }
+            },
+            {
+              "kind": "received",
+              "control": "file:../../library/json_file.tellur::replace",
+              "operation": "file_replace",
+              "outcome": "replaced",
+              "site": "source:3",
+              "location": {
+                "module": "file:../../library/json_file.tellur",
+                "line": 37,
+                "column": 21
+              }
+            },
+            {
+              "kind": "received",
+              "control": "file:../../library/json_file.tellur::replace",
+              "operation": "json_encode",
+              "outcome": "encoded",
+              "site": "source:1",
+              "location": {
+                "module": "file:../../library/json_file.tellur",
+                "line": 33,
+                "column": 5
+              }
+            }
+          ],
+          "truncated": false
+        },
+        "storage_failed": {
+          "contributors": [
+            {
+              "kind": "produced",
+              "control": "@entry::load",
+              "operation": null,
+              "outcome": "loaded",
+              "site": "source:2",
+              "location": {
+                "module": "@entry",
+                "line": 20,
+                "column": 50
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "@entry::load",
+              "operation": null,
+              "outcome": "loaded",
+              "site": "source:3",
+              "location": {
+                "module": "@entry",
+                "line": 21,
+                "column": 20
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "@entry::load",
+              "operation": null,
+              "outcome": "storage_failed",
+              "site": "source:5",
+              "location": {
+                "module": "@entry",
+                "line": 23,
+                "column": 43
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "@entry::remove",
+              "operation": null,
+              "outcome": "storage_failed",
+              "site": "source:12",
+              "location": {
+                "module": "@entry",
+                "line": 118,
+                "column": 45
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "@entry::remove",
+              "operation": null,
+              "outcome": "storage_failed",
+              "site": "source:13",
+              "location": {
+                "module": "@entry",
+                "line": 119,
+                "column": 44
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "@entry::remove",
+              "operation": null,
+              "outcome": "storage_failed",
+              "site": "source:5",
+              "location": {
+                "module": "@entry",
+                "line": 107,
+                "column": 50
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "@entry::validate_key",
+              "operation": null,
+              "outcome": "valid",
+              "site": "source:3",
+              "location": {
+                "module": "@entry",
+                "line": 33,
+                "column": 17
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "file:../../library/json_file.tellur::load",
+              "operation": null,
+              "outcome": "loaded",
+              "site": "source:3",
+              "location": {
+                "module": "file:../../library/json_file.tellur",
+                "line": 21,
+                "column": 55
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "file:../../library/json_file.tellur::load",
+              "operation": null,
+              "outcome": "missing",
+              "site": "source:5",
+              "location": {
+                "module": "file:../../library/json_file.tellur",
+                "line": 24,
+                "column": 20
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "file:../../library/json_file.tellur::load",
+              "operation": null,
+              "outcome": "read_failed",
+              "site": "source:6",
+              "location": {
+                "module": "file:../../library/json_file.tellur",
+                "line": 25,
+                "column": 43
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "file:../../library/json_file.tellur::replace",
+              "operation": null,
+              "outcome": "encode_failed",
+              "site": "source:2",
+              "location": {
+                "module": "file:../../library/json_file.tellur",
+                "line": 35,
+                "column": 45
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "file:../../library/json_file.tellur::replace",
+              "operation": null,
+              "outcome": "write_failed",
+              "site": "source:5",
+              "location": {
+                "module": "file:../../library/json_file.tellur",
+                "line": 39,
+                "column": 44
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::load",
+              "operation": "file:../../library/json_file.tellur::load",
+              "outcome": "loaded",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 19,
+                "column": 10
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::load",
+              "operation": "file:../../library/json_file.tellur::load",
+              "outcome": "missing",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 19,
+                "column": 10
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::load",
+              "operation": "file:../../library/json_file.tellur::load",
+              "outcome": "read_failed",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 19,
+                "column": 10
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::remove",
+              "operation": "@entry::load",
+              "outcome": "loaded",
+              "site": "source:3",
+              "location": {
+                "module": "@entry",
+                "line": 104,
+                "column": 9
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::remove",
+              "operation": "@entry::load",
+              "outcome": "storage_failed",
+              "site": "source:3",
+              "location": {
+                "module": "@entry",
+                "line": 104,
+                "column": 9
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::remove",
+              "operation": "@entry::validate_key",
+              "outcome": "valid",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 99,
+                "column": 5
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::remove",
+              "operation": "file:../../library/json_file.tellur::replace",
+              "outcome": "encode_failed",
+              "site": "source:10",
+              "location": {
+                "module": "@entry",
+                "line": 116,
+                "column": 21
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::remove",
+              "operation": "file:../../library/json_file.tellur::replace",
+              "outcome": "write_failed",
+              "site": "source:10",
+              "location": {
+                "module": "@entry",
+                "line": 116,
+                "column": 21
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::validate_key",
+              "operation": "text_trim",
+              "outcome": "trimmed",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 29,
+                "column": 5
+              }
+            },
+            {
+              "kind": "received",
+              "control": "file:../../library/json_file.tellur::load",
+              "operation": "file_read",
+              "outcome": "missing",
+              "site": "source:1",
+              "location": {
+                "module": "file:../../library/json_file.tellur",
+                "line": 19,
+                "column": 10
+              }
+            },
+            {
+              "kind": "received",
+              "control": "file:../../library/json_file.tellur::load",
+              "operation": "file_read",
+              "outcome": "read",
+              "site": "source:1",
+              "location": {
+                "module": "file:../../library/json_file.tellur",
+                "line": 19,
+                "column": 10
+              }
+            },
+            {
+              "kind": "received",
+              "control": "file:../../library/json_file.tellur::load",
+              "operation": "file_read",
+              "outcome": "read_failed",
+              "site": "source:1",
+              "location": {
+                "module": "file:../../library/json_file.tellur",
+                "line": 19,
+                "column": 10
+              }
+            },
+            {
+              "kind": "received",
+              "control": "file:../../library/json_file.tellur::load",
+              "operation": "json_decode",
+              "outcome": "decoded",
+              "site": "source:2",
+              "location": {
+                "module": "file:../../library/json_file.tellur",
+                "line": 20,
+                "column": 33
+              }
+            },
+            {
+              "kind": "received",
+              "control": "file:../../library/json_file.tellur::replace",
+              "operation": "file_replace",
+              "outcome": "write_failed",
+              "site": "source:3",
+              "location": {
+                "module": "file:../../library/json_file.tellur",
+                "line": 37,
+                "column": 21
+              }
+            },
+            {
+              "kind": "received",
+              "control": "file:../../library/json_file.tellur::replace",
+              "operation": "json_encode",
+              "outcome": "encode_failed",
+              "site": "source:1",
+              "location": {
+                "module": "file:../../library/json_file.tellur",
+                "line": 33,
+                "column": 5
+              }
+            },
+            {
+              "kind": "received",
+              "control": "file:../../library/json_file.tellur::replace",
+              "operation": "json_encode",
+              "outcome": "encoded",
+              "site": "source:1",
+              "location": {
+                "module": "file:../../library/json_file.tellur",
+                "line": 33,
+                "column": 5
+              }
+            }
+          ],
+          "truncated": false
+        },
+        "too_large": {
+          "contributors": [
+            {
+              "kind": "produced",
+              "control": "@entry::load",
+              "operation": null,
+              "outcome": "loaded",
+              "site": "source:2",
+              "location": {
+                "module": "@entry",
+                "line": 20,
+                "column": 50
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "@entry::load",
+              "operation": null,
+              "outcome": "loaded",
+              "site": "source:3",
+              "location": {
+                "module": "@entry",
+                "line": 21,
+                "column": 20
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "@entry::load",
+              "operation": null,
+              "outcome": "too_large",
+              "site": "source:6",
+              "location": {
+                "module": "@entry",
+                "line": 24,
+                "column": 22
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "@entry::remove",
+              "operation": null,
+              "outcome": "too_large",
+              "site": "source:15",
+              "location": {
+                "module": "@entry",
+                "line": 121,
+                "column": 22
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "@entry::remove",
+              "operation": null,
+              "outcome": "too_large",
+              "site": "source:6",
+              "location": {
+                "module": "@entry",
+                "line": 108,
+                "column": 26
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "@entry::validate_key",
+              "operation": null,
+              "outcome": "valid",
+              "site": "source:3",
+              "location": {
+                "module": "@entry",
+                "line": 33,
+                "column": 17
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "file:../../library/json_file.tellur::load",
+              "operation": null,
+              "outcome": "loaded",
+              "site": "source:3",
+              "location": {
+                "module": "file:../../library/json_file.tellur",
+                "line": 21,
+                "column": 55
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "file:../../library/json_file.tellur::load",
+              "operation": null,
+              "outcome": "missing",
+              "site": "source:5",
+              "location": {
+                "module": "file:../../library/json_file.tellur",
+                "line": 24,
+                "column": 20
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "file:../../library/json_file.tellur::load",
+              "operation": null,
+              "outcome": "too_large",
+              "site": "source:7",
+              "location": {
+                "module": "file:../../library/json_file.tellur",
+                "line": 26,
+                "column": 22
+              }
+            },
+            {
+              "kind": "produced",
+              "control": "file:../../library/json_file.tellur::replace",
+              "operation": null,
+              "outcome": "too_large",
+              "site": "source:7",
+              "location": {
+                "module": "file:../../library/json_file.tellur",
+                "line": 41,
+                "column": 22
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::load",
+              "operation": "file:../../library/json_file.tellur::load",
+              "outcome": "loaded",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 19,
+                "column": 10
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::load",
+              "operation": "file:../../library/json_file.tellur::load",
+              "outcome": "missing",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 19,
+                "column": 10
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::load",
+              "operation": "file:../../library/json_file.tellur::load",
+              "outcome": "too_large",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 19,
+                "column": 10
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::remove",
+              "operation": "@entry::load",
+              "outcome": "loaded",
+              "site": "source:3",
+              "location": {
+                "module": "@entry",
+                "line": 104,
+                "column": 9
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::remove",
+              "operation": "@entry::load",
+              "outcome": "too_large",
+              "site": "source:3",
+              "location": {
+                "module": "@entry",
+                "line": 104,
+                "column": 9
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::remove",
+              "operation": "@entry::validate_key",
+              "outcome": "valid",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 99,
+                "column": 5
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::remove",
+              "operation": "file:../../library/json_file.tellur::replace",
+              "outcome": "too_large",
+              "site": "source:10",
+              "location": {
+                "module": "@entry",
+                "line": 116,
+                "column": 21
+              }
+            },
+            {
+              "kind": "received",
+              "control": "@entry::validate_key",
+              "operation": "text_trim",
+              "outcome": "trimmed",
+              "site": "source:1",
+              "location": {
+                "module": "@entry",
+                "line": 29,
+                "column": 5
+              }
+            },
+            {
+              "kind": "received",
+              "control": "file:../../library/json_file.tellur::load",
+              "operation": "file_read",
+              "outcome": "missing",
+              "site": "source:1",
+              "location": {
+                "module": "file:../../library/json_file.tellur",
+                "line": 19,
+                "column": 10
+              }
+            },
+            {
+              "kind": "received",
+              "control": "file:../../library/json_file.tellur::load",
+              "operation": "file_read",
+              "outcome": "read",
+              "site": "source:1",
+              "location": {
+                "module": "file:../../library/json_file.tellur",
+                "line": 19,
+                "column": 10
+              }
+            },
+            {
+              "kind": "received",
+              "control": "file:../../library/json_file.tellur::load",
+              "operation": "file_read",
+              "outcome": "too_large",
+              "site": "source:1",
+              "location": {
+                "module": "file:../../library/json_file.tellur",
+                "line": 19,
+                "column": 10
+              }
+            },
+            {
+              "kind": "received",
+              "control": "file:../../library/json_file.tellur::load",
+              "operation": "json_decode",
+              "outcome": "decoded",
+              "site": "source:2",
+              "location": {
+                "module": "file:../../library/json_file.tellur",
+                "line": 20,
+                "column": 33
+              }
+            },
+            {
+              "kind": "received",
+              "control": "file:../../library/json_file.tellur::replace",
+              "operation": "file_replace",
+              "outcome": "too_large",
+              "site": "source:3",
+              "location": {
+                "module": "file:../../library/json_file.tellur",
+                "line": 37,
+                "column": 21
+              }
+            },
+            {
+              "kind": "received",
+              "control": "file:../../library/json_file.tellur::replace",
+              "operation": "json_encode",
+              "outcome": "encoded",
+              "site": "source:1",
+              "location": {
+                "module": "file:../../library/json_file.tellur",
+                "line": 33,
+                "column": 5
               }
             }
           ],
