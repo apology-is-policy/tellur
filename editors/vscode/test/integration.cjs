@@ -1061,7 +1061,7 @@ control main() exits done {
     for (const file of ['main.tellur', 'settings.tellur', 'server.tellur', 'http.tellur', 'manifest.json', 'host.rs', 'Cargo.lock']) {
       await fs.copyFile(path.join(__dirname, '../../../applications/settings', file), path.join(settingsFolder, file));
     }
-    for (const file of ['json_file.tellur', 'host/text_file.rs', 'host/json_string_map.rs']) {
+    for (const file of ['json_file.tellur', 'loopback_http.tellur', 'host/text_file.rs', 'host/json_string_map.rs', 'host/loopback_http.rs']) {
       const destination = path.join(root, 'shared-library', 'library', file);
       await fs.mkdir(path.dirname(destination), {recursive:true});
       await fs.copyFile(path.join(__dirname, '../../../library', file), destination);
@@ -1102,7 +1102,7 @@ control main() exits done {
     const serverDocument = await vscode.workspace.openTextDocument(serverUri);
     await vscode.window.showTextDocument(serverDocument);
     const serverSource = serverDocument.getText();
-    await replace(serverDocument, serverSource.replace('http_listener_release(listener);', ''));
+    await replace(serverDocument, serverSource.replace('transport.release(listener);', ''));
     await waitFor(() => vscode.languages.getDiagnostics(serverUri).some(d => code(d) === 'E_RESOURCE'), 'server listener completion diagnostic');
     await replace(serverDocument, serverSource);
     await waitFor(() => vscode.languages.getDiagnostics(serverUri).length === 0, 'server completion repair');

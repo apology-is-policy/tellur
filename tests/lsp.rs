@@ -2353,12 +2353,18 @@ fn rust_adapter_project_checks_unsaved_sources_without_loading_host_code() {
     .unwrap();
     fs::write(
         f.root.join("server.tellur"),
-        include_str!("../applications/settings/server.tellur"),
+        include_str!("../applications/settings/server.tellur")
+            .replace("../../library/loopback_http.tellur", "loopback_http.tellur"),
     )
     .unwrap();
     fs::write(
         f.root.join("http.tellur"),
         include_str!("../applications/settings/http.tellur"),
+    )
+    .unwrap();
+    fs::write(
+        f.root.join("loopback_http.tellur"),
+        include_str!("../library/loopback_http.tellur"),
     )
     .unwrap();
     // No host.rs or Cargo.lock exists: checking Tellur must not build or run Rust.

@@ -759,7 +759,7 @@ fn native_http_source_fault_sends_500_then_serves_next_request() {
             source=source.replace("exits response faults {", "exits response faults { delta (target == \"/injected-fault\") {true=>broken,false=>valid} [broken]: fault \"injected routing invariant\"; [valid]:");
         }
         if path.ends_with("server.tellur") {
-            source = source.replace("delta http_send(", "delta checked_send(");
+            source = source.replace("delta transport.send(", "delta checked_send(");
             source.push_str(r#"
                 control checked_send(ref http_connection connection, u32 status, ref string body,
                     ref string media, ref string allow) exits sent, failed {string message} {

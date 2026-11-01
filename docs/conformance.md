@@ -2618,3 +2618,45 @@ failure and repair, fresh imported parameter renaming and restoration, and nativ
 Unicode save/reload through shared Rust modules. All six staged binaries and all nine
 packaged/installed extension payloads were verified at 0.76.0. Existing user windows
 were not reloaded. Rust formatting and whitespace checks passed.
+
+## P5b.2b — Shared loopback transport on compiler 0.76
+
+`library/loopback_http.tellur` exposes seven public transport controls with named
+closed outcomes. It forwards the existing retained-resource primitives without
+absorbing framing, limit, timeout, disconnect or I/O alternatives. Listen/accept
+return owned handles; receive/send borrow them; close/release consume them.
+Only close and fixed failure reply are admitted as contingent operations. Boundaries,
+request budgets, route policy and restart points remain in the application.
+
+`library/host/loopback_http.rs` extracts the settings host's synchronous mechanisms
+through existing explicit Rust modules, re-exporting the same resource types and
+function signatures. The fixed framing, byte, deadline, response and bounded-close
+profile is preserved. A new repeat-receive guard makes its one-request protocol
+explicit for independent callers: a second receive reports the existing `failed`
+alternative before touching input or HEAD state. The prior application already
+received once. Response-start tracking continues to prevent duplicate transmission.
+
+The settings server now calls these public controls. Its settings-domain contract
+and contributor snapshots are byte-for-byte unchanged. `examples/http_hello` is an
+independent consumer without file or JSON mechanisms, using its own routes and the
+same explicit retained-connection contingency. The supplied source has no fault
+endpoint; tests inject faults into separate source loaders.
+
+Five library regressions cover scripted failure alternatives and original/expanded
+agreement, cleanup plus independent read/write errors, consuming completion and
+contingency permissions, native Unicode/HEAD/method/Origin handling, idle/configuration
+statuses, 500/next-request recovery, no second response after writing, and repeat-read
+rejection while preserving the first result. The maintained settings CLI and HTTP
+suites continue to cover persistence, protocol limits, deadlines, disconnections,
+O0/O2 scenario parity and source-fault cleanup through the extracted implementation.
+
+Final affected validation passed **142 distinct Rust tests across six targets**,
+including 113 LSP, 12 formatting, three manual, three settings CLI, six settings HTTP
+and five library tests. The isolated VS Code run used the final shared sources and
+passed imported contingent-call hover, listener obligation error/repair, native
+Unicode HTTP greeting and bounded shutdown. The documented standalone release build
+also passed idle completion and listener release. Rust/Tellur formatting and whitespace
+checks passed. Socket tests used approved local-network execution after sandboxed
+binding was denied. Compiler/server and production extension code are unchanged,
+so the existing 0.76 binaries, installed extension and their release evidence remain
+current; this checkpoint does not publish a duplicate compiler/VSIX release.

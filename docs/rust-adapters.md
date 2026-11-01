@@ -275,3 +275,10 @@ See [adapter tests](../tests/rust_adapters.rs) and
 [application scenarios](../tests/settings_application.rs). The maintained HTTP service
 uses retained host handles and explicit request contingency; asynchronous operations
 and cancellation contracts remain later checkpoints.
+
+The source-library follow-up on 0.76 also shares `library/host/loopback_http.rs`
+between the settings service and an [independent greeting server](../examples/http_hello/README.md).
+Both re-export the same `Listener`/`Connection` types and typed functions. Its Tellur
+facade preserves explicit consuming completion and contingent-call admission;
+application routes and supervision are separate. See the
+[bounded transport contract](../library/README.md#bounded-loopback-http).

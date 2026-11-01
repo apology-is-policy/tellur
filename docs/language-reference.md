@@ -2628,6 +2628,17 @@ signatures and explicitly selected [Rust source modules](rust-adapters.md#explic
 The [independent example](../examples/json_file/main.tellur) and settings service
 reuse the same files. There is no implicit standard-library import or package resolver.
 
+The [bounded loopback HTTP library](../library/README.md#bounded-loopback-http)
+similarly exposes `listen`, `accept`, `receive`, `send`, `close`, `release` and
+`reply_failure` through named closed contracts. Accepted listeners/connections are
+owned must-complete values; receive/send borrow a connection, while close/release
+consume their owners. `close` and `reply_failure` are admitted in contingency code.
+The caller defines routing, status policy and supervised recovery. The fixed
+synchronous transport profile includes explicit framing, byte and deadline limits;
+it is not a general HTTP or async implementation. The
+[independent greeting service](../examples/http_hello/README.md) demonstrates ordinary
+and emergency completion without the settings application's storage dependency.
+
 The playground manifest uses these snake_case contracts. Payload types are shown;
 parameter names are omitted. Other manifest primitives need a live adapter or a script.
 

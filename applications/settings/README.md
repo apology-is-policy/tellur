@@ -5,8 +5,8 @@ compiler 0.50, a sequential loopback HTTP service using the same domain module.
 
 `settings.tellur` owns defaults, key validation, lookup/update decisions and failure
 mapping. It imports the shared [JSON file library](../../library/README.md); `host.rs`
-re-exports file/JSON mechanisms from explicit Rust modules in `manifest.json` and
-implements text/socket mechanisms through typed adapters. The committed `Cargo.lock` makes native
+re-exports file/JSON/HTTP mechanisms from explicit Rust modules in `manifest.json` and
+implements text trimming through a typed adapter. The committed `Cargo.lock` makes native
 builds use the declared dependency graph.
 
 The extraction in 0.75 preserves the application's entry contracts and 1 MiB limits.
@@ -17,6 +17,17 @@ The public snapshot now includes the imported library module, and the contributo
 baseline records that extra call layer. The independent
 [JSON file example](../../examples/json_file/main.tellur) uses the same mechanisms
 without importing the settings service or its HTTP dependency.
+
+The HTTP library follow-up on 0.76 extracts the existing socket mechanisms into
+`library/host/loopback_http.rs`. `server.tellur` calls the public controls in
+[loopback_http.tellur](../../library/loopback_http.tellur). Routing, response policy,
+the request boundary, retained connection handover and supervised loop remain here.
+Transport limits, result alternatives and resource completion are unchanged. The
+shared transport additionally rejects repeated receives on one connection; this
+server already receives exactly once. The settings domain's public and contributor
+snapshots are byte-for-byte unchanged.
+The [independent greeting service](../../examples/http_hello/README.md) uses the same
+transport with its own endpoints and without file/JSON dependencies.
 
 Since compiler 0.54, validation and storage failures use direct arm exits such as
 `invalid => exit invalid_key`. The continuing success paths remain labeled; the

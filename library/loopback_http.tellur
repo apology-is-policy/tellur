@@ -1,0 +1,78 @@
+// Synchronous transport contracts. Routing, supervision and status policy belong
+// to callers. Supply the matching retained-resource primitives in the manifest.
+pub outcome listen_result {
+    listening { http_listener listener, string authority },
+    failed { string message }
+}
+
+pub outcome accept_result {
+    accepted { http_connection connection },
+    idle,
+    failed { string message }
+}
+
+pub outcome receive_result {
+    request { string method, string target, map<string, string> headers, string body },
+    malformed { string message },
+    headers_too_large,
+    body_too_large,
+    unsupported_transfer,
+    unsupported_expectation,
+    timed_out,
+    disconnected,
+    failed { string message }
+}
+
+pub outcome send_result {
+    sent,
+    failed { string message }
+}
+
+pub outcome close_result {
+    closed,
+    failed { string message }
+}
+
+pub outcome failure_reply_result {
+    sent,
+    unavailable,
+    failed { string message }
+}
+
+pub control listen(u32 port) exits listen_result {
+    forward http_listen(port);
+}
+
+pub control accept(ref http_listener listener, u32 idle_ms) exits accept_result {
+    forward http_accept(listener, idle_ms);
+}
+
+pub control receive(ref http_connection connection) exits receive_result {
+    forward http_receive(connection);
+}
+
+pub control send(
+    ref http_connection connection,
+    u32 status,
+    ref string body,
+    ref string media,
+    ref string allow
+) exits send_result {
+    forward http_send(connection, status, body, media, allow);
+}
+
+@contingent
+pub control close(http_connection connection) exits close_result {
+    forward http_connection_close(connection);
+}
+
+pub control release(http_listener listener) exits released {
+    forward http_listener_release(listener);
+}
+
+// Sends a fixed generic 500 only if ordinary transmission has not started.
+// This is a permitted emergency operation; it never recovers the failed work.
+@contingent
+pub control reply_failure(ref http_connection connection) exits failure_reply_result {
+    forward http_reply_failure(connection);
+}

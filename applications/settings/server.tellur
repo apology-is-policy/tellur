@@ -1,4 +1,5 @@
 import "http.tellur" as http;
+import "../../library/loopback_http.tellur" as transport;
 
 pub outcome service_result {
     @exit 0 completed,
@@ -34,7 +35,7 @@ pub control start(
         false => invalid
     }
     [invalid]: exit invalid_configuration;
-    [valid]: delta http_listen(port) {
+    [valid]: delta transport.listen(port) {
         listening { http_listener listener, string authority } => listening,
         failed { string listen_message } => unavailable
     }
@@ -48,7 +49,7 @@ pub control start(
             max_connections,
             idle_ms
         );
-        http_listener_release(listener);
+        transport.release(listener);
         exit delta result {
             completed => completed {},
             idle => idle {},
@@ -69,7 +70,7 @@ control run(
             underflow => finished
         }
         [finished]: exit completed;
-        [available]: delta http_accept(listener, idle_ms) {
+        [available]: delta transport.accept(listener, idle_ms) {
             accepted { http_connection connection } => accepted,
             idle => idle,
             failed { string accept_message } => unavailable
@@ -86,7 +87,7 @@ control run(
                     borrow context.authority,
                     borrow connection
                 );
-                auto close_result = capture http_connection_close(connection);
+                auto close_result = capture transport.close(connection);
 
                 delta exchange_result {
                     sent => sent,
@@ -102,8 +103,8 @@ control run(
                 [cleanup_failed]: emit(cleanup);
             } contingency [connection] {
                 emit(borrow @fault.message);
-                auto reply_result = capture http_reply_failure(borrow connection);
-                auto close_result = capture http_connection_close(connection);
+                auto reply_result = capture transport.reply_failure(borrow connection);
+                auto close_result = capture transport.close(connection);
 
                 delta reply_result {
                     sent => sent,
@@ -130,7 +131,7 @@ control exchange(
 ) exits sent, disconnected, failed { string message } {
     exit delta prepare(path, authority, connection) {
         prepared { u32 status, string body, string media, string allow } => [prepared]:
-            delta http_send(connection, status, borrow body, borrow media, borrow allow) {
+            delta transport.send(connection, status, borrow body, borrow media, borrow allow) {
                 sent => sent {},
                 failed { string message } => failed { message }
             },
@@ -152,7 +153,7 @@ control prepare(
     disconnected,
     failed { string message }
 {
-    exit delta http_receive(connection) {
+    exit delta transport.receive(connection) {
         request {
             string method,
             string target,

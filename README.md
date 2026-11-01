@@ -23,6 +23,11 @@ borrow contracts and fault permission alongside the selected histories. Imported
 contracts follow unsaved dependency edits; invalid source suppresses stale information.
 Try `json_file.load` in [the independent library example](examples/json_file/main.tellur).
 
+The source library also provides [bounded loopback HTTP](library/README.md#bounded-loopback-http)
+on the existing 0.76 compiler: shared transport contracts, retained connections and
+explicit contingency operations. Try the [independent greeting server](examples/http_hello/README.md).
+The settings service now uses both shared libraries while keeping its own policy.
+
 Release 0.75 starts the [shared source library](library/README.md): JSON string-map
 file loading/replacement, explicit failure contracts and reusable Rust adapter modules.
 The settings service and an [independent program](examples/json_file/main.tellur)

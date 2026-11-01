@@ -18,7 +18,10 @@ and an independent executable share its storage mechanisms while choosing their 
 defaults and failure policy. P4d now adds checked source and manifest call contracts
 alongside the selected-history explanation, including imported names, concrete generic
 calls and fresh unsaved dependencies. Specialized callable forms remain a bounded
-editor follow-up. Continue application-driven library work, with
+editor follow-up. P5b.2b now extracts bounded loopback HTTP transport, with public
+Tellur contracts, unchanged retained-resource mechanisms and an independent greeting
+service. This source-library checkpoint runs on the existing 0.76 compiler and editor.
+Continue application-driven library work, with
 preparation-phase and finer diagnostic recovery remaining explicit follow-ups.
 Broader physical copy elision and suspended activation frames remain separate work.
 
@@ -181,7 +184,7 @@ unimplemented syntax are promised.
 | P5a | Sustained application: persistent CLI | **Delivered in 0.45**: settings load/get/set, validation, strict JSON, bounded input/output, replacement uncertainty and live/scripted failure scenarios |
 | P5a.1 | Executable outcome status contracts | **Delivered in 0.48**: alternative annotations, exhaustive entry mappings, final-contract policy, exact exec status propagation, and settings/editor migration |
 | P5b.1 | Sustained application: blocking HTTP | **Delivered in 0.50**: loopback settings/lookup/update endpoints, Tellur policy, retained listeners/connections, framing/size/deadline limits, budget/idle shutdown and live/scripted cleanup evidence |
-| P5b.2 | Sustained application and library growth | **First extraction delivered in 0.75 (P5b.2a):** JSON string-map file library, shared Rust read/replace/JSON modules, independent executable, maintained settings behavior and explicit missing/invalid/preparation/uncertainty contracts. Continue extracting proven mechanisms and improving the application; signal-driven shutdown, richer HTTP and concurrency remain later work |
+| P5b.2 | Sustained application and library growth | **JSON files delivered in 0.75 (P5b.2a); loopback HTTP delivered as a source-library follow-up on 0.76 (P5b.2b):** shared source contracts and Rust modules, independent executables and maintained settings behavior. HTTP retains framing/size/deadline outcomes, owned handles, consuming completion and explicit contingent operations; routing and supervision stay in applications. Continue improving the application from concrete needs; signal-driven shutdown, richer HTTP and concurrency remain later work |
 | P6a | Boundary policy and execution evidence | **Delivered in 0.60:** agreed boundary termination without local catch/resume; bounded reference/native failure reports, observed activation IDs, source/expansion origins and explicit teardown limits. These IDs do not yet address storage |
 | P6b | Source faults and transitive contracts | **Delivered in 0.62:** source termination, public/trait fault permissions and private inference; live resources require explicit retained-owner release dispositions at faulting paths/calls. Fault-only controls omit `exits`. Faulting operators and no-fault annotations remain separate decisions |
 | P6c | Activation-owned storage | **Sequential slice delivered in 0.63:** invocation-local storage ranges, activation addresses, normal/fault retirement, protected parent storage and retained handover. Suspended frames/child-task retirement remain E1 prerequisites |

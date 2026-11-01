@@ -606,7 +606,8 @@
     },
     "modules": {
       "files": "../../library/host/text_file.rs",
-      "json": "../../library/host/json_string_map.rs"
+      "json": "../../library/host/json_string_map.rs",
+      "http": "../../library/host/loopback_http.rs"
     }
   },
   "launch": {

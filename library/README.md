@@ -1,7 +1,8 @@
 # Tellur source library
 
-This is the first reusable slice of the standard-library work, extracted from the
-maintained settings service in compiler 0.75. It uses explicit file imports and
+These first reusable slices of the standard-library work are extracted from the
+maintained settings service: JSON files in 0.75 and bounded loopback HTTP as a
+library follow-up on compiler 0.76. They use explicit file imports and
 manifest-selected Rust mechanisms. It is experimental source code, with no package
 resolver, implicit prelude or stable binary ABI.
 
@@ -82,3 +83,74 @@ The [library tests](../tests/json_file_library.rs) check outcome preservation an
 expansion, live byte limits, UTF-8/JSON failures, replacement uncertainty and cleanup.
 The existing settings CLI/server suites exercise the extracted implementation in
 its original application, including fault contingency and subsequent requests.
+
+## Bounded loopback HTTP
+
+Import [loopback_http.tellur](loopback_http.tellur) under a local namespace. Its
+seven public controls expose the transport's closed outcomes without choosing routes,
+ordinary response statuses or supervision policy. The retained opaque types
+`http_listener` and `http_connection` and matching `http_*` primitives must be supplied
+by the project manifest. The [independent hello service](../examples/http_hello/README.md)
+and [settings server](../applications/settings/server.tellur) use the same source.
+
+| Control | Inputs | Result contract |
+| --- | --- | --- |
+| `listen` | `u32 port` | `listen_result`: owned listener and authority, or `failed` |
+| `accept` | `ref http_listener listener, u32 idle_ms` | `accept_result`: owned connection, `idle`, or `failed` |
+| `receive` | `ref http_connection connection` | `receive_result`: owned method, target, headers and UTF-8 body, or a distinct framing, limit, deadline, disconnect or I/O outcome |
+| `send` | shared connection, status, shared body/media/Allow text | `send_result`: `sent` or `failed` |
+| `close` | owned connection | `close_result`: `closed` or `failed`; consumes the owner either way |
+| `release` | owned listener | `released`; consumes the owner |
+| `reply_failure` | shared connection | `failure_reply_result`: `sent`, `unavailable` or `failed` |
+
+`receive_result` preserves `malformed { string message }`, `headers_too_large`,
+`body_too_large`, `unsupported_transfer`, `unsupported_expectation`, `timed_out`,
+`disconnected` and `failed { string message }`. Other `failed` alternatives also
+carry a diagnostic string. Callers must complete each acquired owner explicitly,
+including after an I/O failure. Inputs borrowed for a call are not retained by its
+result. Received strings and header maps are owned; they do not borrow a socket buffer.
+Receive can be attempted only once per connection, including after a read failure.
+A second call returns `failed` immediately without reading or changing the first
+request's state. Send is likewise attempted at most once after metadata validation.
+
+Only `close` and `reply_failure` are marked `@contingent`; they remain callable in
+ordinary work as well. A contingency may use a retained connection to attempt a fixed
+generic 500 and complete it before recovery. `reply_failure` returns `unavailable`
+when transmission has already started, preventing a second response. A failed send
+may already have written bytes, so it does not promise rollback or retryability.
+The wrapper never turns a source fault into an outcome. A fault, if any, is handled
+by the caller's explicit boundary and its abandoned normal continuation stays abandoned.
+
+The implementation preserves the settings service's fixed synchronous development
+profile, adding the repeated-receive guard needed by independent callers:
+
+- Listen only on IPv4 loopback; one HTTP/1.1 request per connection. Port 0 is allowed.
+- Require CRLF and one nonempty Host header; reject duplicate headers and non-origin-form
+  targets. At most 64 headers and 16 KiB of header bytes.
+- Accept one decimal Content-Length, defaulting to zero. Request bodies are at most
+  1 MiB and must be UTF-8. Transfer encodings and Expect are unsupported; conflicting
+  transfer encoding and length are malformed. Pipelined requests are never processed.
+- Share a two-second deadline for request reads; allow two seconds for sending, with
+  a 2 MiB response body limit. HEAD suppresses body bytes while retaining its length.
+- Support statuses 200, 400, 403, 404, 405, 408, 413, 415, 417, 431, 500 and 501;
+  media types are `application/json` and `text/plain; charset=utf-8`. Allow metadata
+  is validated. Responses close the connection and carry no-store/nosniff headers.
+- Complete connections by half-closing writes, draining at most 1 MiB + 16 KiB for
+  at most 100 ms, then releasing the descriptor. This is not a delivery guarantee.
+
+The caller chooses Host matching, browser-origin policy and route interpretation.
+`accept` validates an idle timeout of 1..60,000 ms. Listen, accept, read, write and
+completion operations are blocking; these deadlines do not define an async scheduler.
+There is no TLS, authentication or concurrency in this profile.
+
+[host/loopback_http.rs](host/loopback_http.rs) is embedded by explicit `rust.modules`
+and depends on the project's locked `httparse` version. The root adapter re-exports
+`Listener`, `Connection` and the seven primitive functions. See the standalone
+[manifest](../examples/http_hello/manifest.json) and [adapter](../examples/http_hello/host.rs).
+This uses the existing typed Rust source boundary and retained-resource rules;
+it creates no stable Rust binary ABI, future/executor contract or coroutine restriction.
+
+[Library tests](../tests/loopback_http_library.rs) check forwarding and cleanup,
+contingency admission, independent live routes, Unicode/HEAD behavior, idle shutdown,
+invalid configuration and fault recovery. The full maintained settings HTTP regression
+also runs through these shared controls and transport mechanisms.
