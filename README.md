@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.98.0** implements the v0.1 checked core and the current language
+Compiler release **0.99.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -30,6 +30,11 @@ in [traits.tellur](playground/traits.tellur).
 The [settings CLI](applications/settings/README.md#remove-a-setting) now supports
 key removal through `--entry remove -- FILE KEY`, using the shared JSON-file library
 and distinct missing, failed and uncertain-replacement outcomes.
+
+Release 0.99 adds [persistent reference execution](docs/reference/execution-failures.md#stepping-a-reference-execution):
+the host Rust API can pause between checked instructions and resume with the same
+live state, effects and fault context. This enables the next async work without
+adding source task or scheduling syntax.
 
 Release 0.98 starts the [async execution foundation](docs/async-execution.md): related
 runtime contexts share unique activation IDs even when their lifetimes overlap.

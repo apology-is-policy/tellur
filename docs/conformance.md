@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.98.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.99.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -3363,3 +3363,44 @@ frontend/editor behavior reuses the 0.97 Node and isolated VS Code evidence, wit
 relevant source hashes checked. Existing windows were not reloaded. Formatting and
 whitespace checks passed. The next independent E1b step is persistent reference
 continuations; the spawned-child fault decision remains pending.
+
+## 0.99 — Persistent reference continuations
+
+E1b replaces recursive reference control calls, loops and named/lexical boundary
+traversal with explicit continuation frames. Current instruction positions, caller
+facts, borrowed storage, result delivery, retained handover and contingency context
+survive a host pause. The same engine drives the existing synchronous APIs; normal
+outcomes, administrative settlement/process termination and source faults remain
+separate. Native lowering and executable formats are unchanged.
+
+`start_execution(scenario, fuel)` prepares a scripted reference simulation;
+`advance(quota)` returns `Paused`, `Complete(result)` once, then `Finished` on every
+later call. Zero quota performs no entry validation, instruction or effect. A quota
+counts attempted instructions including guard skips; it does not refill fuel.
+Return/unwind bookkeeping drains before pausing, and a terminal failure cannot resume.
+Dropping this host object abandons a simulation; it is not language cancellation or
+resource settlement. No source tasks, readiness scheduler or async syntax is enabled.
+
+New partition tests cover borrowed constructor values and mutation across calls,
+named/lexical and nested boundaries, escalation and secondary faults, successful and
+failed resource cleanup outcomes, process termination, driver/entry/result errors,
+zero quota and interleaved independent sessions. Each finite specimen is compared
+across every tested fuel boundary and several instruction partitions; expansion is
+included where relevant. An internal test checks bounded live frames, slots and facts
+through 1,000 single-instruction pauses and terminal fuel exhaustion. The initial
+nested lexical test included an unreachable `exit` after an always-faulting inner
+boundary; the checker correctly rejected it and the specimen was corrected.
+
+Validation: 286 Rust tests passed across 24 targets, combining the five affected
+fault/boundary/native-frame suites and the new retirement unit with 18 broader
+runtime, transformation, manual and stepping targets. Validated regression/unit
+runs from before the version-only bump are reused. The final seven-case partition
+suite passed; no full-suite rerun is claimed. Native/reference agreement includes
+both optimization levels, expansions, storage/borrow behavior and fuel reports.
+
+Release 0.99.0 built successfully. Six compiler/server binary copies, the version and
+capability handshake, and nine packaged/installed payloads were verified. Unchanged
+frontend/editor code reuses the earlier Node and isolated VS Code evidence; existing
+windows were not reloaded. Formatting and whitespace checks passed. Source async
+contracts and scoped scheduling remain separate work, with the existing child-fault
+question still pending.

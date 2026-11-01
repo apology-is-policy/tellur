@@ -101,7 +101,11 @@ cannot reuse an invocation ID; their active chains and fault state remain separa
 This is [E1 activation groundwork](async-execution.md), not a scheduler or an answer
 to the open spawned-child fault propagation question.
 
-Recursion and concurrency remain unsupported. Async lowering must make suspended
+Since 0.99, reference call/loop/boundary continuations persist across host stepping
+pauses. Fixed fuel, source-fault handover and sequential reports retain their existing
+behavior. This does not yet introduce source suspension or tasks.
+
+Recursion and concurrency remain unsupported. Native async lowering must make suspended
 frames persistent and settle children/loans before retirement; native offsets alone
 do not provide a scheduler, pinning protocol or coroutine ABI.
 

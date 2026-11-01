@@ -73,7 +73,7 @@ application checks cover the added contract; no language or host extension is ne
 Broader physical copy elision and suspended activation frames remain separate work.
 
 1 November 2026. This is the working revision plan, not a claim that all proposed
-features are implemented. Compiler **0.98.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
+features are implemented. Compiler **0.99.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
 lifetime checkpoints of milestone 2, the array/vector/map core of milestone 3,
 and implicit entry, inline/stored adapters, owned capture, named outcome contracts
 and checked forwarding in milestone 4. A first [semantic foundation](semantic-foundation.md)
@@ -272,9 +272,10 @@ do not block this design work. E2 remains the native coroutine target.
 | C3 | Remaining adapter ergonomics | Direct arm exits delivered in P3 (0.54), grouped multi-statement arms and qualified sites in 0.64; whole-outcome binding and broader expression adapters remain design work |
 | D1 | Explicit runtime polymorphism | Queued: erasure rules, borrowed/owned storage, opaque graph boundaries |
 | D2 | Stateful protocols and effect contracts | General annotation/execution-mode flags explicitly deferred; current permission is only `@contingent`. Queued: sequence obligations, justified algebraic laws, groundwork for tasks |
-| E1 | Async reference execution | **Foundation in 0.98 (E1a):** [runtime audit, shared activation identities and staged plan](async-execution.md). Persistent continuations, source task ownership, suspension, scoped scheduling and cancellation remain ahead; spawned-child fault propagation is an open author decision |
+| E1 | Async reference execution | **Foundations in 0.98–0.99 (E1a/E1b):** [runtime audit, shared activation identities and staged plan](async-execution.md). Persistent reference continuations are implemented; source task ownership, suspension, scoped scheduling and cancellation remain ahead; spawned-child fault propagation is an open author decision |
 | E1a | Async activation groundwork | **Delivered in 0.98:** related execution contexts allocate unique monotonic invocation IDs before joining; separate fault state/active chains, no completed history, exhaustion checks and existing sequential reference/native report parity. No scheduler or source async syntax |
-| E1b | Persistent reference continuations | Next independent implementation: explicit step/resume state with unchanged synchronous effects, outcomes, fuel, faults, loans and expansion behavior under different step partitions. Source task/suspension contracts follow separately |
+| E1b | Persistent reference continuations | **Delivered in 0.99:** explicit call/loop/boundary frames and host step/resume API; quota pauses preserve synchronous effects, outcomes, fixed fuel, faults, loans and expansion observations. No source task or scheduler syntax |
+| E1c | Cold tasks and consuming await | Next: settle source suspension/runtime-entry and disposal contracts, then implement eager argument transfer, owned handles and captured loans. The pending spawned-child fault question does not authorize a policy by default |
 | E2 | Native coroutine lowering | Preserved architectural target: direct LLVM coroutine primitives, pinned-toolchain experiment, frame lifetime rules and schedule-based differential tests; I1 must keep this route open |
 | T1 | Stronger source transformations | Hold current scope during P1–P5: extraction correspondence, continuation cuts, source-level lift and editor actions |
 | R1 | Mathematical foundations | Maintain existing evidence; defer extensions during P1–P5: preservation judgments, richer protocol abstractions, infinite/causal behavior, mechanization |

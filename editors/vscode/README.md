@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-0.98.0-darwin-arm64.vsix` using **Extensions:
+1. Install the supplied `tellur-language-0.99.0-darwin-arm64.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -930,3 +930,10 @@ The bundled compiler shares an execution-local activation ID allocator between
 related runtime contexts. Existing sequential native reports preserve their IDs and
 source information. This is groundwork for async execution; no task syntax, scheduler
 or new highlighting is enabled. Editor behavior is unchanged.
+
+## Reference runtime foundation in 0.99
+
+The bundled compiler uses persistent reference continuations. Its host Rust API can
+pause and resume a scripted simulation without changing instruction fuel or fault
+handling. Native Build and Run, source syntax, highlighting and diagnostics are
+unchanged. There is no source task or readiness scheduler yet.

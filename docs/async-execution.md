@@ -4,10 +4,11 @@
 [Fault boundaries](faults-and-activations.md) ·
 [Current feature status](reference/support-status.md)
 
-1 November 2026. This is an E1 design and implementation plan. Compiler 0.98 adds
-shared activation identity allocation, a prerequisite for overlapping execution
-contexts. It does **not** implement source tasks, suspension, scheduling or async
-I/O. Proposed execution rules below are not new executable syntax.
+1 November 2026. This is an E1 design and implementation plan. Compilers 0.98–0.99 add
+shared activation identity allocation and persistent reference continuations,
+prerequisites for overlapping execution contexts. They do **not** implement source
+tasks, source suspension, scheduling or async I/O. Proposed execution rules below
+are not new executable syntax.
 
 ## Existing direction
 
@@ -31,17 +32,30 @@ transfer, synchronization traits and general annotation flags are not introduced
 
 ## What the current runtime does
 
-The [reference interpreter](../src/runtime.rs) invokes controls recursively through
-`Machine::invoke` and recursively traverses loop/boundary instruction lists through
-`execute`. Local decision facts, position in an instruction list and return handling
-currently live in Rust stack frames. A language suspension therefore cannot be
-implemented just by retaining the current values map.
+Before 0.99, the reference interpreter invoked controls recursively through
+`Machine::invoke` and traversed loop/boundary instruction lists through `execute`.
+Local decisions, instruction positions and return handling lived in Rust stack
+frames. Retaining only the values map was insufficient to pause execution.
+
+In 0.99, [explicit continuations](../src/runtime/continuation.rs) hold invocation
+returns, decision delivery, loop restarts, and named/lexical work and contingency
+transitions. Caller facts and storage bases survive nested calls. Borrowed values
+continue to address the same live storage. Normal return and fault unwinding retire
+the same slots as before; completed loop iterations do not accumulate continuations.
+
+The [host stepping API](reference/execution-failures.md#stepping-a-reference-execution)
+can pause before a checked instruction, retain its execution state, and resume later.
+A zero quota does nothing; terminal results are delivered once and cannot resume.
+Quota is independent of fixed fuel, whose exhaustion remains terminal. Ordinary
+`run` APIs drive the same engine to completion. This is a scripted reference
+simulation mechanism, not source `await`, cancellation or an I/O readiness scheduler.
 
 Reference values already use invocation-specific logical slot ranges. A reference
 identifies storage and projections rather than a Rust vector element pointer.
 The [native generator](../src/native.rs) uses dense activation-local offsets, but its
 ordinary function calls and arena retirement still rely on sequential execution.
-Both mechanisms are useful foundations; neither is a persistent coroutine frame.
+The reference continuations now persist between host calls. Native frames still need
+a separate suspension and retirement protocol; they are not LLVM coroutine frames.
 
 The [fault tracker](../src/fault.rs) records one active chain and bounded causes.
 Child trackers isolate a named/lexical boundary's diagnostics; they are not tasks,
@@ -110,7 +124,7 @@ specified before general `spawn`. An atomic ID allocator makes no choice here.
 | Checkpoint | Deliverable and evidence | Dependencies |
 | --- | --- | --- |
 | E1a | Runtime audit and shared activation identity allocator; interleaved children, independent failure state, no reuse after return, overflow, and sequential reference/native report parity | Independent of the pending child-fault choice; delivered in 0.98 |
-| E1b | Persistent reference continuations and explicit step/resume protocol; preserve current synchronous outcomes, fuel, effects, faults, loans and expansion observations under different step partitions | Does not require selecting a child-fault policy; no source async claim from this refactor alone |
+| E1b | Persistent reference continuations and explicit step/resume protocol; current synchronous outcomes, fuel, effects, faults, loans and expansion observations preserved under different step partitions | Delivered in 0.99; independent of the pending child-fault policy; no source async claim |
 | E1c | Bounded cold tasks and consuming await; eager argument transfer, no body effects before drive, fixed result contracts, task ownership and retained borrows | Settle source runtime entry/suspension effect contracts and disposal rules before enabling syntax |
 | E1d | Scoped spawn and deterministic readiness; two overlapping children, duplicate/stale wake handling and owner settlement | Resolve the pending fault propagation/ownership decision and keep sibling dispositions explicit |
 | E1e | Explicit cooperative cancellation and suspending cleanup; normal completion races, cleanup failures and no abandoned losers | Define cancellation observation and cleanup admission; no implicit cancellation exception |

@@ -132,6 +132,44 @@ Clear those arguments when returning to a different program. Failure reports do 
 create static editor diagnostics: they describe one observed execution, whereas
 hover/explanation reports describe structural possibilities from checking.
 
+## Stepping a reference execution
+
+Since 0.99, the Rust host API can drive a checked scripted simulation incrementally:
+
+```rust
+let mut execution = program.start_execution(&scenario, 100_000);
+loop {
+    match execution.advance(32) {
+        tellur::runtime::ExecutionProgress::Paused => {
+            // Retain `execution` and call advance again when the host chooses.
+        }
+        tellur::runtime::ExecutionProgress::Complete(result) => break result,
+        tellur::runtime::ExecutionProgress::Finished => unreachable!(),
+    }
+}
+```
+
+`program` and `scenario` are existing checked-program and scenario values. Preparing
+an execution performs no entry evaluation or effects. `advance(0)` makes no progress.
+A positive quota permits that many attempted checked instructions, including guarded
+instructions that do not select their action. Return, retirement and fault-unwinding
+bookkeeping drains before the next pause; it consumes no extra instruction fuel.
+The quota is not a wall-clock limit or a bound on work within one expression/primitive.
+
+The total fuel supplied at creation remains fixed. A stepping pause does not refill
+it or turn exhaustion into a normal result. Pending calls, loop facts, borrowed
+storage and fault/contingency context survive pauses. `events()` exposes only effects
+already observed; completion moves them into the normal result or failure.
+`Complete` delivers that result once. Further calls return `Finished`, including
+after a fault, host error, fuel failure or process termination.
+
+This is a host testing/embedding API for scripted simulation. Dropping a paused
+session abandons that simulation; it does not implement Tellur cancellation, settle
+resources, or grant permission to discard a future language task. No source
+`spawn`/`await`, readiness handling, concurrency or scheduler policy is implied.
+The existing `run`, `run_with_limit`, `run_detailed` and `run_completion` APIs drive
+this same engine without exposing pauses. The CLI and VS Code workflow are unchanged.
+
 ## Reading the report
 
 The envelope is `format: "tellur.execution-failure"`, `version: 1`. It contains:
