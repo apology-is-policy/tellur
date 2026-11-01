@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-0.75.0-darwin-arm64.vsix` using **Extensions:
+1. Install the supplied `tellur-language-0.76.0-darwin-arm64.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -82,7 +82,7 @@ during typing, with up to 32 per check. Dependent statements and failed callers 
 to avoid cascades. Expression diagnostics select their source ranges; other
 diagnostics may point to a token, statement or declaration. Structural
 witnesses describe what *may* reach a point, not proven feasible input values.
-Declaration hover shows checked control contracts. **Format Document** formats the
+Declaration and ordinary call-name hovers show checked control contracts. **Format Document** formats the
 current buffer while preserving labels, explicit groups, comments and literals.
 Completion, rename and cross-file references are not implemented.
 
@@ -692,3 +692,18 @@ share storage code with distinct application policy. Module metadata is checked
 without loading Rust code; Build and Run reads the configured sources and checks
 the generated Rust interface. Paths resolve from the manifest, including when the
 native output is placed elsewhere. See the [library guide](https://github.com/apology-is-policy/tellur/blob/main/library/README.md).
+
+## Call-site contract hover in 0.76
+
+Hover over `json_file.load` in `examples/json_file/main.tellur` to see checked
+parameter types, its named completion contract and alternatives, followed by the
+selected histories. Local/imported controls, concrete explicit generic calls and
+manifest primitives are supported. Borrow origins, inferred private return lifetimes,
+fault permissions, primitive effects and immediate/blocking host execution stay
+visible; public controls do not expose private field paths.
+
+Unsaved dependency edits refresh signatures. Invalid arguments or dependencies
+suppress stale hover. The callee range excludes value arguments; other positions
+retain their existing feedback. Constructors, trait dispatch, named boundaries and
+abstract generic-body calls retain selected-history feedback for now. See the
+[call-site reference](https://github.com/apology-is-policy/tellur/blob/main/docs/language-reference.md#call-site-contract-hover).

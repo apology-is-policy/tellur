@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.75.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.76.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -2581,3 +2581,40 @@ match the final release artifacts; all nine packaged and installed extension pay
 were verified. The isolated VS Code run passed selected-history hover, unsaved argument
 error/repair and native Unicode save/reload through the shared modules. Existing user
 windows were not reloaded.
+
+## 0.76 checked call-site contracts
+
+P4d adds contracts at authored callee names while retaining selected-history feedback.
+The AST walk covers calls inside expressions, captures, stored/inline adapters,
+statement arms, groups, scopes and loops. Ordinary local/imported controls, concrete
+explicit generic specializations and manifest primitives resolve against a successful
+current check. The displayed declaration uses checked types and outcomes, declared
+public origins, inferred private return lifetimes and fault permission. Public calls
+do not expose implementation field paths. Named outcome contracts list alternatives;
+manifest primitives include borrowing/consuming modes, effects, contingency admission,
+immediate/blocking Rust execution and pure-expression behavior.
+
+The module loader retains nonserialized import metadata for editor lookup. Definition
+text is captured by the same loader that checked it; hover does not re-read a different
+disk version. Caller aliases and whole-identifier substitutions preserve nominal names
+without prefix collisions or internal module identifiers. Transitive types with no
+caller import use explicitly explanatory file-qualified identities. Serialized source
+maps and executable representations are unchanged.
+
+Ten added LSP regressions cover fresh unsaved dependencies and repairs, UTF-16 ranges,
+parenthesized calls, comments/arguments, inferred faults and borrowed results, concrete
+generics, private layout protection, public grouped results, manifest modes/effects,
+nested call sites, transitive nominal identities and untitled documents. Trait dispatch,
+constructors, named boundaries and abstract generic-body calls retain their existing
+selection hover; no generic expression-type hover or new language syntax is claimed.
+
+Final affected-suite validation passed **232 distinct Rust tests across eight targets**,
+including all **113 LSP tests** and all three manual checks, plus **42 Node tests**.
+Module/native parity, diagnostic recovery, contract snapshots, absorption and explanation
+checks passed. The unchanged execution implementation retains the 0.75 full-suite
+baseline rather than claiming a repeated full native/HTTP run for this editor change.
+The isolated VS Code test passed combined contract/selection hover, unsaved argument
+failure and repair, fresh imported parameter renaming and restoration, and native
+Unicode save/reload through shared Rust modules. All six staged binaries and all nine
+packaged/installed extension payloads were verified at 0.76.0. Existing user windows
+were not reloaded. Rust formatting and whitespace checks passed.

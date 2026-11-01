@@ -1,8 +1,8 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.75.0 -->
+<!-- tellur-reference-version: 0.76.0 -->
 
-This manual describes **compiler 0.75.0**, including the current ownership model,
+This manual describes **compiler 0.76.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -943,6 +943,37 @@ unsaved imports. Invalid source has no stale or guessed selection. Generic bodie
 use their universally checked definition, independent of concrete callers.
 See [history_hover.tellur](../playground/history_hover.tellur) for an executable
 example. This adds editor feedback; it does not change path or lifetime semantics.
+
+### Call-site contract hover
+
+Hover over the callee name in `json_file.load(...)` to see its checked parameter
+types and completion contract, followed by the existing selected-history explanation.
+The contract includes outcome payload types, explicit public origin mappings and
+`faults` permission. A named outcome contract also lists its alternatives. Private
+inferred outcomes and return lifetimes are shown from the checked body; public
+contracts retain their declared abstraction without exposing private field paths.
+
+Local and imported source controls, concrete explicit generic calls and manifest
+primitives are supported. Calls nested in expressions, captures, adapters, groups,
+statement arms and loops use the same lookup. Manifest hover includes borrowing or
+consuming parameter modes, declared effects, contingency admission and, for Rust
+adapters, immediate/blocking execution. Pure builtins explain expression use versus
+delta use. No host source is loaded to produce this information.
+
+Imported names use the caller's aliases. A type from a transitive dependency with no
+local import is displayed with its defining file, for example `types.tellur::token`;
+that is a display identity, not Tellur import syntax. The highlighted range covers
+the qualified callee, including explicit type arguments, rather than its value
+arguments. Literals, comments and argument expressions retain their existing hover
+behavior.
+
+Contracts come from a successful check of the current document and its unsaved
+dependencies. Editing an imported signature refreshes the hover; a failed check
+suppresses it rather than showing an old signature. Specialized calls through traits,
+constructors or named boundaries, and calls requiring abstract generic-body lookup,
+currently retain the existing selected-history feedback. This is not general
+expression-type hover. Try the calls in
+[the JSON file example](../examples/json_file/main.tellur).
 
 ### Scoped intersections
 
@@ -2682,14 +2713,17 @@ Do not mix old primitive outcome names with the revised playground manifest.
 Editor settings: `tellurLanguage.compilerPath`, `serverPath`, `manifestPath`,
 `programArguments`, and `releaseBuild`. The entry setting is still named
 `tellurLanguage.entryRegion` for compatibility; it selects the control to run. The
-extension reports bounded independent-control diagnostics (one per body, up to 32). Hover supports control and named-outcome declaration names and inferred `auto`
-bindings/contracts, plus [selected-history feedback](#selected-history-hover) on executable code.
-It does not yet provide general expression or call-site type hover.
+extension reports bounded independent-control, statement and disjoint-path diagnostics
+with a shared 32-error budget; see [recovery limits](reference/diagnostics-and-limits.md).
+Hover supports control and named-outcome declarations, inferred `auto` bindings/contracts,
+[call-site contracts](#call-site-contract-hover), and
+[selected-history feedback](#selected-history-hover) on executable code.
+General expression-type hover remains unsupported.
 
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and async tasks remain planned; they are not executable features of 0.75.0.
+and async tasks remain planned; they are not executable features of 0.76.0.
 ## Contingency and supervised boundaries
 
 The [contingency reference](reference/contingency.md) specifies `@contingent`,

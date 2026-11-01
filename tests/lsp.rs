@@ -57,6 +57,300 @@ impl Drop for Fixture {
     }
 }
 const VALID: &str = "region main() exits Done { [Entry]: exit Done; }";
+
+fn hover_at(f: &Fixture, source: &str, needle: &str) -> Value {
+    let offset = source.find(needle).unwrap();
+    let prefix = &source[..offset];
+    f.server.hover(
+        &f.uri,
+        prefix.bytes().filter(|b| *b == b'\n').count() as u64,
+        prefix.rsplit('\n').next().unwrap().encode_utf16().count() as u64,
+    )
+}
+
+#[test]
+fn call_hover_resolves_imports_aliases_and_fresh_unsaved_contracts() {
+    let mut f = Fixture::new();
+    let library = f.root.join("library.tellur");
+    let uri = url::Url::from_file_path(&library).unwrap().to_string();
+    let definition = "pub outcome reply {ready {u32 value}} pub control read(u32 number) exits reply {exit ready {number};}";
+    fs::write(&library, definition).unwrap();
+    let source = "import \"library.tellur\" as one; import \"library.tellur\" as lib;\ncontrol main() exits auto {forward lib.read(7);}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let h = hover_at(&f, source, "lib.read(7)");
+    let text = h["contents"]["value"].as_str().unwrap();
+    assert!(
+        text.contains("control lib.read(u32 number) exits lib.reply"),
+        "{text}"
+    );
+    assert!(
+        text.contains("ready { u32 value }") && text.contains("Selected histories"),
+        "{text}"
+    );
+    assert_eq!(
+        h["range"]["end"]["character"].as_u64().unwrap()
+            - h["range"]["start"]["character"].as_u64().unwrap(),
+        8
+    );
+    assert!(!text.contains("_path_m_"));
+    let changed = definition
+        .replace("u32 value", "string value")
+        .replace("ready {number}", "ready {\"fresh\"}");
+    f.server.notification(
+        "textDocument/didOpen",
+        &json!({"textDocument":{"uri":uri,"version":1,"text":changed}}),
+    );
+    let h = hover_at(&f, source, "read(7)").to_string();
+    assert!(h.contains("string value"), "{h}");
+    f.server.notification("textDocument/didChange", &json!({"textDocument":{"uri":uri,"version":2},"contentChanges":[{"text":"pub control broken("}]}));
+    assert!(hover_at(&f, source, "lib.read(7)").is_null());
+    f.server.notification(
+        "textDocument/didClose",
+        &json!({"textDocument":{"uri":uri}}),
+    );
+    assert!(
+        hover_at(&f, source, "lib.read(7)")
+            .to_string()
+            .contains("u32 value")
+    );
+}
+
+#[test]
+fn call_hover_has_precise_names_and_leaves_arguments_comments_and_strings_alone() {
+    let mut f = Fixture::new();
+    let source = "control leaf(u32 input) exits auto {exit ready {input};}\ncontrol main() exits auto {emit(\"🙂 leaf(7)\"); exit delta (leaf // gap leaf(9)\n (7)) {ready {u32 value} => done {}}; }";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let h = hover_at(&f, source, "leaf //");
+    assert!(
+        h.to_string()
+            .contains("control leaf(u32 input) exits ready"),
+        "{h}"
+    );
+    assert_eq!(
+        h["range"]["end"]["character"].as_u64().unwrap()
+            - h["range"]["start"]["character"].as_u64().unwrap(),
+        4
+    );
+    assert!(
+        !hover_at(&f, source, "leaf(7)")
+            .to_string()
+            .contains("Control contract")
+    );
+    assert!(hover_at(&f, source, "leaf(9)").is_null());
+    assert!(hover_at(&f, source, "gap").is_null());
+    assert!(
+        !hover_at(&f, source, "7))")
+            .to_string()
+            .contains("Control contract")
+    );
+}
+
+#[test]
+fn call_hover_shows_checked_inference_origins_and_fault_permission() {
+    let mut f = Fixture::new();
+    let source = "control peek(ref string input) exits auto {exit found {input};}\ncontrol fail(string reason) faults {fault reason;}\ncontrol main() exits done {string text=\"a\";delta peek(borrow text) {found {ref string item}=>found} [found]: fail(\"reason\");}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let peek = hover_at(&f, source, "peek(borrow").to_string();
+    assert!(
+        peek.contains("ref string input") && peek.contains("inferred"),
+        "{peek}"
+    );
+    assert!(
+        peek.contains("Checked return lifetimes") && peek.contains("borrows `input`"),
+        "{peek}"
+    );
+    let fail = hover_at(&f, source, "fail(\"").to_string();
+    assert!(
+        fail.contains("control fail(string reason) faults"),
+        "{fail}"
+    );
+    f.change(&source.replace("string text=\"a\"", "u32 text=\"a\""), 2);
+    assert!(hover_at(&f, source, "peek(borrow").is_null());
+}
+
+#[test]
+fn call_hover_specializes_concrete_generic_calls_without_name_prefix_collisions() {
+    let mut f = Fixture::new();
+    let library = f.root.join("library.tellur");
+    fs::write(&library, "pub struct item {pub u32 value;} pub struct item_extra {pub string text;} pub control echo<t>(t value) exits ready {t value} {exit ready {value};}").unwrap();
+    let source = "import \"library.tellur\" as lib; control main() exits auto {forward lib.echo<lib.item_extra>(lib.item_extra {text: \"hi\"});}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let h = hover_at(&f, source, "lib.echo<").to_string();
+    assert!(h.contains("control lib.echo<lib.item_extra>(lib.item_extra value) exits ready { lib.item_extra value }"), "{h}");
+    assert!(!h.contains("_path_m_"));
+}
+
+#[test]
+fn call_hover_preserves_public_origins_without_exposing_private_layouts() {
+    let mut f = Fixture::new();
+    fs::write(f.root.join("library.tellur"), "pub struct message {string secret;} pub control make() exits made {message value} {exit made {message {secret: \"hi\"}};} pub control peek(ref message input) exits found {ref string value from input} {exit found {borrow input.secret};}").unwrap();
+    let source = "import \"library.tellur\" as lib;control main() exits auto {delta lib.make() {made {lib.message value}=>made} [made]:delta lib.peek(borrow value) {found {ref string text}=>found} [found]: emit(text); exit done;}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let h = hover_at(&f, source, "lib.peek(").to_string();
+    assert!(
+        h.contains("ref lib.message input") && h.contains("from input"),
+        "{h}"
+    );
+    assert!(!h.contains("secret"), "{h}");
+}
+
+#[test]
+fn call_hover_keeps_public_grouped_result_mappings() {
+    let mut f = Fixture::new();
+    fs::write(
+        f.root.join("library.tellur"),
+        r#"
+        pub struct pair['left, 'right] {
+            pub ref string left <- 'left;
+            pub ref string right <- 'right;
+        }
+        pub control join(ref string first, ref string second)
+            exits ready {pair[first, second] value}
+        { exit ready {pair {left: first, right: second}}; }
+    "#,
+    )
+    .unwrap();
+    let source = "import \"library.tellur\" as lib;control main() exits done {string a=\"a\";string b=\"b\";delta lib.join(borrow a,borrow b) {ready {auto value}=>got} [got]:emit(value.left);emit(value.right);exit done;}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let h = hover_at(&f, source, "lib.join(").to_string();
+    assert!(h.contains("lib.pair[first, second] value"), "{h}");
+    assert!(h.contains("ref string first, ref string second"), "{h}");
+}
+
+#[test]
+fn primitive_call_hover_includes_modes_effects_and_host_execution() {
+    let mut f = Fixture::new();
+    fs::write(
+        f.root.join("manifest.json"),
+        include_str!("../examples/json_file/manifest.json"),
+    )
+    .unwrap();
+    let source = "control main() exits auto {forward file_read(borrow \"unused\", 17);}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let h = hover_at(&f, source, "file_read(").to_string();
+    assert!(
+        h.contains("Manifest primitive") && h.contains("file_read(ref string path, u32 limit)"),
+        "{h}"
+    );
+    assert!(
+        h.contains("file.read")
+            && h.contains("Host execution: blocking")
+            && h.contains("Selected histories"),
+        "{h}"
+    );
+    assert!(!f.root.join("host.rs").exists());
+    let decoded = "control main() exits auto {forward json_decode(\"{}\");}";
+    f.change(decoded, 2);
+    assert_eq!(f.diagnostics(), json!([]));
+    assert!(
+        hover_at(&f, decoded, "json_decode(")
+            .to_string()
+            .contains("Consume-mode inputs: `text`")
+    );
+}
+
+#[test]
+fn call_hover_tracks_captures_inline_adapters_statement_arms_and_pure_arguments() {
+    let mut f = Fixture::new();
+    fs::write(
+        f.root.join("manifest.json"),
+        include_str!("../playground/manifest.json"),
+    )
+    .unwrap();
+    let source = r#"
+        control one(u32 input) exits ready {u32 value} {exit ready {input};}
+        control noop() exits done {exit done;}
+        control main() exits auto {
+            auto saved = capture one(1);
+            delta saved {ready {u32 first} => got}
+            [got]: {
+                noop();
+                emit(concat("a", u32_text(first)));
+                auto adapted = delta one(2) {ready {u32 second} => done {}};
+                delta adapted {done => {
+                    exit delta one(3) {ready {u32 third} => done {}};
+                }}
+            }
+        }
+    "#;
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    for needle in ["one(1)", "one(2)", "one(3)"] {
+        let h = hover_at(&f, source, needle).to_string();
+        assert!(
+            h.contains("control one(u32 input) exits ready { u32 value }")
+                && h.contains("Selected histories"),
+            "{needle}: {h}"
+        );
+    }
+    assert!(
+        hover_at(&f, source, "noop();")
+            .to_string()
+            .contains("control noop() exits done")
+    );
+    for needle in ["concat(\"", "u32_text(first)"] {
+        let h = hover_at(&f, source, needle).to_string();
+        assert!(
+            h.contains("Manifest primitive") && h.contains("Pure builtin"),
+            "{h}"
+        );
+    }
+}
+
+#[test]
+fn call_hover_uses_distinct_display_identities_for_unimported_transitive_types() {
+    let mut f = Fixture::new();
+    fs::write(
+        f.root.join("types.tellur"),
+        "pub struct token {pub u32 value;}",
+    )
+    .unwrap();
+    fs::write(f.root.join("library.tellur"), "import \"types.tellur\" as data;pub control make() exits made {data.token value} {exit made {data.token {value: 3}};}").unwrap();
+    let source = "import \"library.tellur\" as lib;struct token {string local;}control main() exits auto {forward lib.make();}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let h = hover_at(&f, source, "lib.make()").to_string();
+    assert!(
+        h.contains("types.tellur::token value") && h.contains("display identities"),
+        "{h}"
+    );
+    assert!(!h.contains("_path_m_"), "{h}");
+}
+
+#[test]
+fn call_hover_handles_untitled_sources_and_does_not_guess_abstract_instantiations() {
+    let mut f = Fixture::new();
+    f.uri = "untitled:call-hover".into();
+    let source =
+        "control leaf() exits auto {exit ready {7};}control main() exits auto {forward leaf();}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    assert!(
+        hover_at(&f, source, "leaf();")
+            .to_string()
+            .contains("control leaf() exits ready")
+    );
+    let generic = "control echo<t>(t value) exits auto {exit ready {value};}control wrap<t>(t value) exits auto {forward echo<t>(value);}control main() exits auto {forward wrap<u32>(7);}";
+    f.change(generic, 2);
+    assert_eq!(f.diagnostics(), json!([]));
+    let abstract_call = hover_at(&f, generic, "echo<t>(value)").to_string();
+    assert!(
+        !abstract_call.contains("Control contract"),
+        "{abstract_call}"
+    );
+    let concrete = hover_at(&f, generic, "wrap<u32>(7)").to_string();
+    assert!(
+        concrete.contains("control wrap<u32>(u32 value) exits ready"),
+        "{concrete}"
+    );
+}
 #[test]
 fn absorption_snapshots_show_unsaved_internal_changes_across_imports() {
     let mut f = Fixture::new();

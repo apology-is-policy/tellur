@@ -19,6 +19,10 @@ pub struct SourceFile {
     pub line_count: usize,
     /// Internal declaration identity -> original source spelling.
     pub names: BTreeMap<String, String>,
+    /// Resolved imports from this check, for editor name lookup without a second
+    /// filesystem resolution. Not part of exported source-map formats.
+    #[serde(skip)]
+    pub(crate) imports: BTreeMap<String, PathBuf>,
 }
 #[derive(Clone, Debug)]
 pub struct ModuleError {
@@ -990,6 +994,11 @@ fn resolve(
         combined.regions.extend(unit.regions);
         sources.push(SourceFile {
             path: file.path.clone(),
+            imports: file
+                .imports
+                .iter()
+                .map(|(name, target)| (name.clone(), files[*target].path.clone()))
+                .collect(),
             start_line: offset + 1,
             line_count: file.lines,
             names: file

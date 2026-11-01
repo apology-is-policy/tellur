@@ -15,14 +15,15 @@ paths, nested groups/scopes, statement arms and loop bodies, preserving full aut
 selectors and conservative fault/adapter barriers. P5b.2a now extracts the first shared
 JSON file library, backed by I1b.2a's explicit Rust source modules. The settings service
 and an independent executable share its storage mechanisms while choosing their own
-defaults and failure policy. The shared-library example exposed the next small
-editor gap: show imported callee contracts at call sites alongside the existing
-selected-history explanation (P4d). Continue application-driven library work, with
+defaults and failure policy. P4d now adds checked source and manifest call contracts
+alongside the selected-history explanation, including imported names, concrete generic
+calls and fresh unsaved dependencies. Specialized callable forms remain a bounded
+editor follow-up. Continue application-driven library work, with
 preparation-phase and finer diagnostic recovery remaining explicit follow-ups.
 Broader physical copy elision and suspended activation frames remain separate work.
 
 1 November 2026. This is the working revision plan, not a claim that all proposed
-features are implemented. Compiler **0.75.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
+features are implemented. Compiler **0.76.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
 lifetime checkpoints of milestone 2, the array/vector/map core of milestone 3,
 and implicit entry, inline/stored adapters, owned capture, named outcome contracts
 and checked forwarding in milestone 4. A first [semantic foundation](semantic-foundation.md)
@@ -176,7 +177,7 @@ unimplemented syntax are promised.
 | I1b.2 | Broader Rust reuse | **Explicit source modules delivered in 0.75 (I1b.2a):** manifest-relative embedded child modules, exact wrapper checks, shared sources and one locked dependency graph. Richer data boundaries, exclusive foreign mutation and package ergonomics remain application-driven follow-ups; stable binary ABI and LTO remain later layers |
 | P3 | Readable path labels and direct dispositions | **Grouping/layout in 0.53; direct exits in 0.54; selected-history hover in 0.55**: resolved selectors, aliases, local arm facts, one-iteration loop context, bounded origins and fresh unsaved checking. The planned P3 slice is complete; multi-statement arm syntax remains separate |
 | P4 | Explain, format and contract changes | **P4a delivered in 0.56:** whole-document CLI/editor formatting preserving labels, grouping, comments and literals; 0.61 adds configurable wrapping and the author’s inline-label style. **P4b.1 delivered in 0.57:** checked public snapshots/diffs, symbolic permissions, editor export and an application baseline. **P4b.2 delivered in 0.58:** typed bounded contributor evidence, separate public/evidence diffs, source sites, editor export and an application baseline. **P4c delivered in 0.59:** source-position and targeted outcome queries, private roots, readable Markdown/structured JSON and editor actions. This planned tooling slice is complete; loop-carried/indirect/cross-call payload lineage and generic root evidence remain explicit follow-ups. All reports distinguish structural evidence from feasible inputs |
-| P4d | Call-site contract hover | Application-driven follow-up from 0.75: imported library calls currently expose selected histories rather than the callee signature. Show the checked callee contract while preserving the selection explanation and fresh unsaved checking |
+| P4d | Call-site contract hover | **Bounded slice delivered in 0.76:** checked local/imported controls, concrete explicit generic calls and manifest primitives; typed inputs, closed outcomes, public origins, private inferred lifetimes, faults, effects and host execution alongside selected histories. Fresh unsaved source snapshots and caller aliases; no private layout leakage. Trait dispatch, constructors, named boundaries and abstract generic-body calls retain existing selection feedback pending specialized contract presentation |
 | P5a | Sustained application: persistent CLI | **Delivered in 0.45**: settings load/get/set, validation, strict JSON, bounded input/output, replacement uncertainty and live/scripted failure scenarios |
 | P5a.1 | Executable outcome status contracts | **Delivered in 0.48**: alternative annotations, exhaustive entry mappings, final-contract policy, exact exec status propagation, and settings/editor migration |
 | P5b.1 | Sustained application: blocking HTTP | **Delivered in 0.50**: loopback settings/lookup/update endpoints, Tellur policy, retained listeners/connections, framing/size/deadline limits, budget/idle shutdown and live/scripted cleanup evidence |

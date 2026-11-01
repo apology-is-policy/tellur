@@ -34,16 +34,35 @@ exports.run = async function (root) {
     edit.replace(uri, new vscode.Range(document.positionAt(0), document.positionAt(document.getText().length)), text);
     assert.ok(await vscode.workspace.applyEdit(edit));
   }
-  await waitFor(async () => {
-    const position = document.positionAt(source.indexOf('json_file.load') + 'json_file.'.length);
+  async function hoverText() {
+    const position = document.positionAt(document.getText().indexOf('json_file.load') + 'json_file.'.length);
     const hover = await vscode.commands.executeCommand('vscode.executeHoverProvider', uri, position);
-    return diagnostics().length === 0 && hover?.some(h => h.contents.some(c => String(c.value).includes('Selected histories')));
-  }, 'library call selection hover');
+    return (hover ?? []).flatMap(h => h.contents.map(c => String(c.value))).join('\n');
+  }
+  await waitFor(async () => {
+    const text = await hoverText();
+    return diagnostics().length === 0 && text.includes('Selected histories') &&
+      text.includes('control json_file.load(ref string path, u32 byte_limit) exits json_file.load_result');
+  }, 'library call contract and selection hover');
   await replace(source.replace('1048576', 'false'));
   await waitFor(() => diagnostics().some(d => code(d) === 'E_TYPE'), 'unsaved library argument error');
+  assert.ok(!(await hoverText()).includes('Control contract'), 'broken arguments must suppress contract hover');
   await replace(source);
   await waitFor(() => diagnostics().length === 0, 'library argument repair');
   await document.save();
+  const libraryUri = vscode.Uri.file(path.join(fixture, 'library/json_file.tellur'));
+  const library = await vscode.workspace.openTextDocument(libraryUri);
+  const librarySource = library.getText();
+  async function replaceLibrary(text) {
+    const edit = new vscode.WorkspaceEdit();
+    edit.replace(libraryUri, new vscode.Range(library.positionAt(0), library.positionAt(library.getText().length)), text);
+    assert.ok(await vscode.workspace.applyEdit(edit));
+  }
+  await replaceLibrary(librarySource.replaceAll('byte_limit', 'read_limit'));
+  await waitFor(async () => (await hoverText()).includes('u32 read_limit'), 'unsaved imported contract refresh');
+  await replaceLibrary(librarySource);
+  await waitFor(async () => (await hoverText()).includes('u32 byte_limit'), 'restored imported contract');
+  await library.save();
   const data = path.join(fixture, 'data.json');
   await fs.rm(data, {force:true});
   const output = path.join(root, 'native output', 'source-library');
@@ -61,6 +80,6 @@ exports.run = async function (root) {
   assert.equal(report.outcome, 'done');
   const message = report.events.find(e => e.kind === 'emit').message;
   assert.deepEqual(JSON.parse(message), {' padded ':'🙂'});
-  await fs.writeFile(path.join(fixture, 'passed.txt'), 'library call selection hover, unsaved argument error and repair, shared native modules, independent save/reload and Unicode payload passed\n');
-  console.log('TELLUR_SOURCE_LIBRARY_EDITOR_TESTS_PASSED: selected-history hover, unsaved repair, shared modules and native Unicode save/reload');
+  await fs.writeFile(path.join(fixture, 'passed.txt'), 'library call contract and selection hover, unsaved argument error and repair, fresh imported contract edits, shared native modules, independent save/reload and Unicode payload passed\n');
+  console.log('TELLUR_CALL_CONTRACT_EDITOR_TESTS_PASSED: contract and selection hover, unsaved repair and imported signature refresh, shared modules and native Unicode save/reload');
 };
