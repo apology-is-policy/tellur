@@ -1,9 +1,11 @@
 # Tellur language revision: controls, values, outcomes, and tasks
 
-The next implementation sequence is the accepted
-[control-flow and ownership revision](control-flow-revision.md): identity deltas,
-qualified decision paths, grouped arms, explicit ownership transfer, lexical
-contingency and supervised loops, followed by construction and lowering work.
+The accepted [control-flow and ownership revision](control-flow-revision.md) is
+delivered through constructor destination delivery and compact native frames.
+The next design checkpoint is CF5c: explicit result-origin contracts for
+reference-bearing constructors, followed by checked initialization, caller-loan
+propagation, module/editor support and native parity. Broader physical copy elision
+and suspended activation frames remain separate work.
 
 1 November 2026. This is the working revision plan, not a claim that all proposed
 features are implemented. Compiler **0.68.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split

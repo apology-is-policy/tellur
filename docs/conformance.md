@@ -2256,3 +2256,16 @@ construction and returned exclusive borrows, before and after expansion at both
 optimization levels. Existing boundary, stored-reference and real retained-resource
 suites exercise the same mapping. This remains synchronous activation storage;
 suspended frames, scheduling and LLVM coroutine lowering are subsequent work.
+
+Release validation: all 980 Rust tests across 70 nonempty targets passed, alongside
+41 Node editor tests and an isolated VS Code session covering constructor/auto
+hover, outline, unsaved diagnostics and repair, formatting and native build/run.
+The maintained manual checks 72 accepted examples, 25 expected diagnostics,
+15 context fragments and 247 local links. Live HTTP checks include source-fault
+500 handling followed by a successful next request; the release settings CLI also
+reads its sample configuration successfully. Compiler/LSP binaries, packaged VSIX
+and installed extension payloads were verified at 0.68.0.
+
+For this release's settings `serve` entry, generated frame capacity falls from
+633 value slots and 633 decision slots to 5 and 4 respectively. This measures that
+control's storage reservation, not total process memory or execution speed.
