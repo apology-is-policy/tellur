@@ -5506,3 +5506,89 @@ fn constructor_definition_batches_refresh_unsaved_imported_files_independently()
         initial
     );
 }
+
+#[test]
+fn type_annotation_ranges_follow_utf16_unsaved_signatures_and_fresh_hover() {
+    let mut f = Fixture::new();
+    let valid = "control note() exits done {emit(\"😀\");exit done;} control probe(ref // 😃\r\n string input\r\n) exits done {exit done;}\r\ncontrol main() exits done {auto text=\"x\";probe(borrow text);exit done;}";
+    f.open(valid);
+    assert_eq!(f.diagnostics(), json!([]));
+    let initial = hover_at(&f, valid, "auto text");
+    assert!(initial.to_string().contains("string"));
+    let invalid = valid.replace("string input", "absent_type input");
+    f.change(&invalid, 2);
+    let errors = f.diagnostics();
+    assert_eq!(errors.as_array().unwrap().len(), 1, "{errors}");
+    assert_eq!(errors[0]["code"], "E_MANIFEST");
+    let line = invalid.split('\n').nth(1).unwrap();
+    let start = invalid[..invalid.find("ref //").unwrap()]
+        .encode_utf16()
+        .count();
+    let end = line[..line.find(" input").unwrap()].encode_utf16().count();
+    assert_eq!(
+        errors[0]["range"],
+        json!({"start":{"line":0,"character":start},"end":{"line":1,"character":end}})
+    );
+    assert!(hover_at(&f, &invalid, "auto text").is_null());
+    f.change(valid, 3);
+    assert_eq!(f.diagnostics(), json!([]));
+    assert_eq!(hover_at(&f, valid, "auto text"), initial);
+}
+
+#[test]
+fn type_annotation_ranges_keep_multiline_imported_constructor_types_on_repair() {
+    let mut f = Fixture::new();
+    let path = f.root.join("messages.tellur");
+    let uri = url::Url::from_file_path(&path).unwrap().to_string();
+    let valid = include_str!("../playground/constructor_access/messages.tellur");
+    fs::write(&path, valid).unwrap();
+    let source = include_str!("../playground/constructor_access/main.tellur");
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let initial = hover_at(&f, source, "messages.message(\"First constructor\")");
+    for (version, annotation) in [
+        (
+            1,
+            "vector<\r\n        //😀\r\n        string,\r\n        u32\r\n    >",
+        ),
+        (2, "vector<string, u32>"),
+    ] {
+        let broken = valid.replacen(
+            "constructor(string text)",
+            &format!("constructor({annotation} text)"),
+            1,
+        );
+        if version == 1 {
+            f.server.notification(
+                "textDocument/didOpen",
+                &json!({"textDocument":{"uri":uri,"version":version,"text":broken}}),
+            );
+        } else {
+            f.server.notification("textDocument/didChange", &json!({"textDocument":{"uri":uri,"version":version},"contentChanges":[{"text":broken}]}));
+        }
+        let errors = f.diagnostics();
+        assert_eq!(errors.as_array().unwrap().len(), 1, "{errors}");
+        assert_eq!(errors[0]["code"], "E_MANIFEST");
+        let location = &errors[0]["relatedInformation"][0]["location"];
+        assert_eq!(location["uri"], uri);
+        let at = broken.find(annotation).unwrap();
+        let position = |offset| {
+            let prefix = &broken[..offset];
+            json!({"line":prefix.bytes().filter(|b|*b==b'\n').count(),"character":prefix.rsplit('\n').next().unwrap().encode_utf16().count()})
+        };
+        assert_eq!(
+            location["range"],
+            json!({"start":position(at),"end":position(at+annotation.len())})
+        );
+        assert!(hover_at(&f, source, "messages.message(\"First constructor\")").is_null());
+    }
+    f.server.notification(
+        "textDocument/didClose",
+        &json!({"textDocument":{"uri":uri}}),
+    );
+    assert_eq!(f.diagnostics(), json!([]));
+    assert_eq!(
+        hover_at(&f, source, "messages.message(\"First constructor\")"),
+        initial
+    );
+}

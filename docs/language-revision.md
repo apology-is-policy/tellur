@@ -54,7 +54,9 @@ Unused traits, public visibility and result origins retain their rules. P2o batc
 independent constructor-definition preparation errors within one parsed file, staging
 generated controls until all definitions pass. Import traversal still stops at the
 first failing file, and later initialization/type/ownership checking stays separate.
-Remaining shared preparation and more precise recovery stay diagnostic follow-ups. P4d.5 adds ordinary symbolic generic call contracts using
+P2p retains written type-annotation ranges through module resolution, generic
+substitution and source-field validation, including typed delta bindings. Broader
+contract/contributor locations and shared preparation remain follow-ups. P4d.5 adds ordinary symbolic generic call contracts using
 checked definition metadata, with abstract types, named origins, inferred lifetimes
 and bounded anonymous payload rendering. P4d.6 adds symbolic trait-call contracts
 scoped to each checked generic definition, retaining declared names, associated
@@ -71,7 +73,7 @@ application checks cover the added contract; no language or host extension is ne
 Broader physical copy elision and suspended activation frames remain separate work.
 
 1 November 2026. This is the working revision plan, not a claim that all proposed
-features are implemented. Compiler **0.96.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
+features are implemented. Compiler **0.97.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
 lifetime checkpoints of milestone 2, the array/vector/map core of milestone 3,
 and implicit entry, inline/stored adapters, owned capture, named outcome contracts
 and checked forwarding in milestone 4. A first [semantic foundation](semantic-foundation.md)
@@ -185,6 +187,13 @@ work alongside the sustained application (P5), with small Rust adapter work (I1)
 concrete library needs. It does not wait for all P2–P4 tooling. No dates or
 unimplemented syntax are promised.
 
+The next major feature group is E1: turn the accepted async outline below into a
+bounded reference-execution checkpoint. Review suspension, scoped task ownership,
+cancellation and fault-boundary settlement before introducing executable syntax.
+The delivered P2/P4 slices provide the current tooling baseline; remaining diagnostic
+ranges and shared preparation recovery can proceed from concrete editing needs and
+do not block this design work. E2 remains the native coroutine target.
+
 | ID | Checkpoint | Status / completion boundary |
 | --- | --- | --- |
 | A1 | Source structs and ordinary variants; nominal one-field wrappers | **Delivered in 0.17**: declarations, typing/ownership, runnable example, native and editor checks |
@@ -217,7 +226,7 @@ unimplemented syntax are promised.
 | C1b.3c.1 | Local shared-reference collection elements | **Delivered in 0.43**: arrays/vectors/maps, direct lookup, branch-sensitive insertion, removal/conversion, independent copies, conservative source unions, native/editor coverage |
 | P1a | Stable public contracts | **Delivered in 0.44**: explicit public outcome/payload/origin contracts, private inference, unused generic checks and bounded direct-forwarding contributor notes in CLI/editor |
 | P1b | Outcome contributor coverage | **Bounded slice delivered in 0.46**: captures/moves, local record/sum payloads, stored/nested adapters, delayed exits and label merges; guarded writes exclude overwritten sources. Loop-carried values, indirect aliases, dynamic collections and cross-call payload lineage remain future work |
-| P2 | Structured diagnostics | **Reports in 0.47; ranges in 0.51; independent-body errors in 0.52**: bounded CLI/LSP batches, failed-caller suppression, source ranges, witnesses and fresh hover. Straight-line body recovery delivered in 0.73 (P2a); path/scope recovery delivered in 0.74 (P2b); control declarations in 0.77 (P2c), named completion bindings in 0.78 (P2d), named boundary bodies in 0.83 (P2e), lexical work in 0.84 (P2f), lexical handlers in 0.85 (P2g), explicit exit adapters in 0.86 (P2h), explicit stored adapters in 0.87 (P2i), constructor-call preparation in 0.91 (P2j), generic-bound preparation in 0.92 (P2k), inferred stored adapters in 0.93 (P2l), inferred exit adapters in 0.94 (P2m), trait declarations in 0.95 (P2n), constructor definitions in 0.96 (P2o); follow-ups: shared preparation and broader contract/contributor ranges |
+| P2 | Structured diagnostics | **Reports in 0.47; ranges in 0.51; independent-body errors in 0.52**: bounded CLI/LSP batches, failed-caller suppression, source ranges, witnesses and fresh hover. Straight-line body recovery delivered in 0.73 (P2a); path/scope recovery delivered in 0.74 (P2b); control declarations in 0.77 (P2c), named completion bindings in 0.78 (P2d), named boundary bodies in 0.83 (P2e), lexical work in 0.84 (P2f), lexical handlers in 0.85 (P2g), explicit exit adapters in 0.86 (P2h), explicit stored adapters in 0.87 (P2i), constructor-call preparation in 0.91 (P2j), generic-bound preparation in 0.92 (P2k), inferred stored adapters in 0.93 (P2l), inferred exit adapters in 0.94 (P2m), trait declarations in 0.95 (P2n), constructor definitions in 0.96 (P2o), type annotations in 0.97 (P2p); follow-ups: shared preparation and broader contract/contributor ranges |
 | P2a | Straight-line statement recovery | **Delivered in 0.73:** independent local errors, transitive value/loan suppression, fresh body replay, one 32-error budget, module/generic/constructor/editor coverage. Decisions, nested bodies and terminal checks remain conservative boundaries |
 | P2b | Path and scope diagnostic recovery | **Delivered in 0.74:** uncertainty by selected domain, independent disjoint paths, nested groups/lexical scopes, statement arms, terminal statements and loop bodies; full-selector joins, conservative fault/adapter/header barriers, fresh replay and editor/import coverage |
 | P2c | Control-declaration diagnostic batches | **Delivered in 0.77:** independent public contract shapes and concrete signature checks, one error per declaration within the failed phase, 32-error budget, imported/generic locations, no partial program or stale hover. Shared types, trait preparation, generic expansion and cycles retain conservative barriers |
@@ -233,6 +242,7 @@ unimplemented syntax are promised.
 | P2m | Inferred exit-adapter diagnostics | **Delivered in 0.94:** terminal replay under `exits auto` and selected payload inference, including same/distinct labels, nested adapters, forwarding, scopes/loops and generic/imported sources. Each payload infers independently; clean shapes, resources and loans retain checks. Partial contracts and dependent callers/hover remain unavailable. Captures, uncertain entries, headers and fault-context terminals remain barriers |
 | P2n | Trait-declaration diagnostics | **Delivered in 0.95:** one error per independent trait for local members, method profiles, type shapes, public visibility and result origins; unused declarations, imports/unsaved repair and the 32-error budget. Shared identities/origin schemas remain earlier barriers; failed declarations block implementations, associated substitutions, generic expansion and bodies with no partial witnesses or hover |
 | P2o | Constructor-definition diagnostics | **Delivered in 0.96:** one preparation error per constructor within a parsed file, including unused generics, origin arity, partial-self accesses and forbidden exits/isolation. Generated controls commit atomically; imported locations and the 32-error budget survive. Parsing and first-failing-file import order remain barriers; later initialization, type and ownership checking stays separate |
+| P2p | Written type-annotation diagnostic ranges | **Delivered in 0.97:** authored field/parameter/payload/pattern type ranges survive imports, aliases, generic substitution and named payload reuse; manifest storage validation, signature type checks, trait validation and binding mismatches use them. Unicode/CRLF, internal line comments and multiline types retain exact endpoints. Whole-contract/origin clauses, some visibility/normalization checks, local annotations and contributor notes remain bounded follow-ups |
 | I1a | Owned-data Rust adapters | **Delivered in 0.45**: typed wrapper/result generation, registry dependencies and explicit locking, owned scalar/collection data, shared call borrows, blocking/immediate classification and scripted/live conformance |
 | I1b.1 | Retained host resource foundation | **Delivered in 0.49**: opaque must-complete Rust owners, direct shared/consuming calls, explicit resource return on retry, checked runtime identities, teardown fallback and live/scripted/editor evidence |
 | I1b.2 | Broader Rust reuse | **Explicit source modules delivered in 0.75 (I1b.2a):** manifest-relative embedded child modules, exact wrapper checks, shared sources and one locked dependency graph. Richer data boundaries, exclusive foreign mutation and package ergonomics remain application-driven follow-ups; stable binary ABI and LTO remain later layers |

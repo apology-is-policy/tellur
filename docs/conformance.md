@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.96.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.97.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -3298,3 +3298,36 @@ and `Second constructor`. Six binary copies and nine packaged/installed payloads
 match release 0.96.0. Existing windows were not reloaded. Formatting and whitespace
 checks passed. Executable formats and the accepted ownership, origin and fault
 semantics are unchanged.
+
+## 0.97 — Written type-annotation diagnostic ranges
+
+P2p stores source type ranges on parsed fields, parameters, payloads and patterns.
+Module qualification shifts both endpoints; generic substitution and named payload
+reuse retain the original spelling and location. Signature/trait/generic validation,
+typed binding mismatches and ordered manifest storage-field validation attach those
+ranges without changing error codes, validation order or accepted programs. Existing
+child locations take precedence; synthetic fields do not invent source widths.
+
+Five diagnostic tests cover data/variant/outcome fields, signatures, constructors,
+unused generic controls/data, traits, legacy name-first types, typed delta patterns,
+repeated payload names, line comments, multiline/Unicode/CRLF text, transitive aliases,
+private/missing imported members, named payload reuse, batches and first-error APIs.
+Two LSP tests cover UTF-16 positions, unsaved multiline/compact constructor annotations,
+original related locations and restored hover. Initial probes corrected unsupported
+block comments, collision with the manifest's `read` operation, and existing
+`E_MANIFEST` classifications. They also exposed the manifest-backed validation path;
+ordered source field ranges and zero-location manifest type errors now retain the
+authored annotation there. No validation rule or phase was reordered.
+
+Final validation passed **443 Rust tests across 17 affected targets**, including all
+182 LSP tests, 61 diagnostic tests and three manual checks, plus **42 Node tests**.
+Source data, generic, trait, lifetime, borrowed-constructor, adapter, module, formatting,
+contract-snapshot and certificate suites retain valid-program/native and expansion
+evidence. The broader run passed without further corrections; unaffected recovery,
+application and library evidence is reused.
+
+Isolated VS Code verified exact multiline/compact imported ranges, current unsaved
+locations, unavailable stale hover, repair and native execution emitting both
+constructor messages. Six binary copies and nine packaged/installed payloads match
+release 0.97.0. Existing windows were not reloaded. Formatting and whitespace checks
+passed. Executable formats and accepted ownership, origin and fault rules are unchanged.

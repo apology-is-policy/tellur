@@ -274,7 +274,8 @@ impl Specializer<'_> {
     }
     fn fields(&mut self, fs: &[Field], at: Span) -> Result<()> {
         for f in fs {
-            self.require(&f.ty, at, 0)?;
+            self.require(&f.ty, at, 0)
+                .map_err(|e| f.type_error(e, at))?;
         }
         Ok(())
     }
@@ -529,7 +530,8 @@ pub(crate) fn instantiate(
         }
         let mut edges = BTreeSet::new();
         for f in d.fields() {
-            s.validate_type(&f.ty, d.parameters(), d.span())?;
+            s.validate_type(&f.ty, d.parameters(), d.span())
+                .map_err(|e| f.type_error(e, d.span()))?;
             dependencies(&f.ty, d.parameters(), &mut edges);
         }
         graph.insert(d.name().into(), edges);
@@ -543,7 +545,8 @@ pub(crate) fn instantiate(
     for d in &declarations {
         if d.parameters().is_empty() {
             for f in d.fields() {
-                s.require(&f.ty, d.span(), 0)?;
+                s.require(&f.ty, d.span(), 0)
+                    .map_err(|e| f.type_error(e, d.span()))?;
             }
         }
     }

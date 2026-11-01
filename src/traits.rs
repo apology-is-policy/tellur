@@ -417,16 +417,20 @@ pub(crate) fn lower(
                 .iter()
                 .chain(signature.exits.iter().flat_map(|o| &o.fields))
             {
-                check_decl_type(&f.ty, &params, &arities, method.span)?;
+                check_decl_type(&f.ty, &params, &arities, method.span)
+                    .map_err(|e| f.type_error(e, method.span))?;
                 if d.public
                     && leaves(&f.ty)
                         .iter()
                         .any(|t| !params.contains(t) && private.contains(t))
                 {
-                    return Err(Diagnostic::new(
-                        "E_VISIBILITY",
+                    return Err(f.type_error(
+                        Diagnostic::new(
+                            "E_VISIBILITY",
+                            method.span,
+                            "public trait signature exposes a private type",
+                        ),
                         method.span,
-                        "public trait signature exposes a private type",
                     ));
                 }
             }

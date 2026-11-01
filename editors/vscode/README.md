@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-0.96.0-darwin-arm64.vsix` using **Extensions:
+1. Install the supplied `tellur-language-0.97.0-darwin-arm64.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -909,3 +909,17 @@ invalid field initializations in `messages.tellur` produce separate diagnostics 
 the caller, with related locations in the dependency. Repairing each definition
 updates diagnostics; constructor contracts return only when the checked program is
 valid. The repaired program builds and runs through the normal editor command.
+
+## Written type ranges in 0.97
+
+Type errors in supported declaration, signature and typed-pattern checks now select
+the complete written annotation, including multiline generic types and reference
+prefixes. Imported related locations use the current unsaved dependency text;
+generic substitution does not replace source ranges with generated-name widths.
+Whole-contract/origin checks, some later validation and contributor notes still have
+point locations. Error codes and checking order are unchanged.
+
+The isolated regression changes a constructor parameter in
+`playground/constructor_access/messages.tellur` to an invalid multiline type, then a
+compact equivalent. It verifies both exact related ranges, unavailable stale hover,
+repair and native execution from the caller.

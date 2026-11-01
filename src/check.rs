@@ -2786,7 +2786,7 @@ impl Checker<'_> {
                     .iter()
                     .enumerate()
                     .map(|(j, f)| syntax::Field {
-                        type_span: Span::default(),
+                        type_range: crate::SourceRange::default(),
                         origins: vec![],
                         referent_origins: vec![],
                         name: format!("$identity_{serial}_{i}_{j}"),
@@ -2874,7 +2874,7 @@ impl Checker<'_> {
                     .iter()
                     .enumerate()
                     .map(|(j, f)| syntax::Field {
-                        type_span: Span::default(),
+                        type_range: crate::SourceRange::default(),
                         origins: vec![],
                         referent_origins: vec![],
                         name: format!("$payload_{serial}_{i}_{j}"),
@@ -3658,7 +3658,7 @@ impl Checker<'_> {
                         .fields
                         .iter()
                         .map(|f| syntax::Field {
-                            type_span: Span::default(),
+                            type_range: crate::SourceRange::default(),
                             origins: vec![],
                             referent_origins: vec![],
                             name: f.name.clone(),
@@ -3690,7 +3690,7 @@ impl Checker<'_> {
                         .iter()
                         .enumerate()
                         .map(|(j, f)| syntax::Field {
-                            type_span: Span::default(),
+                            type_range: crate::SourceRange::default(),
                             origins: vec![],
                             referent_origins: vec![],
                             name: format!("$identity_{serial}_{index}_{j}"),
@@ -3823,16 +3823,17 @@ impl Checker<'_> {
             for (field_index, (binding, field)) in
                 arm.bindings.iter().zip(&outcome.fields).enumerate()
             {
-                if binding.type_span.line != 0 {
+                if binding.type_range.start.line != 0 {
                     self.inferred_bindings.push(InferredBinding {
                         control: self.result.name.clone(),
                         display_type: self.manifest.display_inferred_type(&field.ty),
-                        span: binding.type_span,
+                        span: binding.type_range.start,
                         name: binding.name.clone(),
                     });
                 }
                 if binding.ty != "auto" {
-                    self.expect_binding_type(&field.ty, &binding.ty, span)?;
+                    self.expect_binding_type(&field.ty, &binding.ty, span)
+                        .map_err(|e| binding.type_error(e, span))?;
                 }
                 if let Some((mutable, inner)) = manifest::reference_inner(&field.ty) {
                     if self.find_value(&binding.name).is_some()
@@ -4545,7 +4546,33 @@ pub(crate) fn compile_concrete_unit(
         .collect::<Vec<_>>();
     declarations.sort_by_key(|(_, span)| (span.line, span.column));
     let declaration_spans = declarations.into_iter().collect();
-    manifest.validate_at(&declaration_spans)?;
+    let field_ranges = unit
+        .data
+        .iter()
+        .map(|d| {
+            let fields: Vec<_> = match &d.body {
+                syntax::DataBody::Struct(fields) => fields.iter().collect(),
+                syntax::DataBody::Variant(outcomes) => {
+                    outcomes.iter().flat_map(|o| &o.fields).collect()
+                }
+            };
+            (
+                d.name.clone(),
+                fields.into_iter().map(|f| f.type_range).collect(),
+            )
+        })
+        .chain(unit.contracts.iter().map(|d| {
+            (
+                d.name.clone(),
+                d.outcomes
+                    .iter()
+                    .flat_map(|o| &o.fields)
+                    .map(|f| f.type_range)
+                    .collect(),
+            )
+        }))
+        .collect();
+    manifest.validate_with_field_ranges(&declaration_spans, &field_ranges)?;
     let trait_contracts = crate::traits::check_contracts(
         &unit.trait_checks,
         &parsed,
@@ -4603,7 +4630,7 @@ pub(crate) fn compile_concrete_unit(
                         .fields
                         .iter()
                         .map(|f| syntax::Field {
-                            type_span: Span::default(),
+                            type_range: crate::SourceRange::default(),
                             origins: vec![],
                             referent_origins: vec![],
                             name: f.name.clone(),
@@ -4693,15 +4720,15 @@ pub(crate) fn compile_concrete_unit(
         let mut names = BTreeSet::new();
         for f in &region.parameters {
             if let Some((_, inner)) = manifest::reference_inner(&f.ty) {
-                crate::origins::input_type(inner, &origin_schemas, &manifest, region.span)?;
+                crate::origins::input_type(inner, &origin_schemas, &manifest, region.span).map_err(|e| f.type_error(e, region.span))?;
                 crate::origins::borrowed_input_type(
                     inner,
                     &origin_schemas,
                     &manifest,
                     region.span,
-                )?;
+                ).map_err(|e| f.type_error(e, region.span))?;
             } else {
-                crate::origins::input_type(&f.ty, &origin_schemas, &manifest, region.span)?;
+                crate::origins::input_type(&f.ty, &origin_schemas, &manifest, region.span).map_err(|e| f.type_error(e, region.span))?;
             }
             if !names.insert(&f.name) {
                 return Err(Diagnostic::new("E_NAME", region.span, "duplicate parameter"));
@@ -4714,7 +4741,7 @@ pub(crate) fn compile_concrete_unit(
             }
             let mut fields = BTreeSet::new();
             for f in &o.fields {
-                crate::origins::result_type(&f.ty, &origin_schemas, &manifest, region.span)?;
+                crate::origins::result_type(&f.ty, &origin_schemas, &manifest, region.span).map_err(|e| f.type_error(e, region.span))?;
                 if !fields.insert(&f.name) {
                     return Err(Diagnostic::new("E_NAME", region.span, "duplicate exit field"));
                 }

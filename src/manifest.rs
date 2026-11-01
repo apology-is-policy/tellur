@@ -657,6 +657,14 @@ impl Manifest {
         self.validate_at(&BTreeMap::new())
     }
     pub(crate) fn validate_at(&self, spans: &BTreeMap<String, Span>) -> Result<()> {
+        self.validate_with_field_ranges(spans, &BTreeMap::new())
+    }
+    /// Source field ranges are indexed in record/constructor declaration order.
+    pub(crate) fn validate_with_field_ranges(
+        &self,
+        spans: &BTreeMap<String, Span>,
+        field_ranges: &BTreeMap<String, Vec<crate::SourceRange>>,
+    ) -> Result<()> {
         if let Some(ty) = self.type_def("fault_report") {
             let valid = matches!(ty, TypeDef::Record{fields,..} if fields.iter().map(|f|(f.name.as_str(),f.ty.as_str())).collect::<Vec<_>>() == vec![("message","String"),("stack","vector<String>"),("sites","vector<String>")]);
             if !valid {
@@ -734,8 +742,16 @@ impl Manifest {
                         constructors.iter().flat_map(|c| c.fields.iter()).collect()
                     }
                 };
-                for f in &fields {
-                    self.check_storage(&f.ty, true)?;
+                for (index, f) in fields.iter().enumerate() {
+                    self.check_storage(&f.ty, true).map_err(|e| {
+                        match field_ranges
+                            .get(ty.name())
+                            .and_then(|ranges| ranges.get(index))
+                        {
+                            Some(range) if range.start.line != 0 => e.with_range(*range),
+                            _ => e,
+                        }
+                    })?;
                 }
                 dependencies.insert(
                     ty.name().into(),
@@ -758,7 +774,9 @@ impl Manifest {
                 Ok(())
             })();
             result.map_err(|mut e| {
-                e.span = spans.get(ty.name()).copied().unwrap_or_default();
+                if e.end.is_none() {
+                    e.span = spans.get(ty.name()).copied().unwrap_or_default();
+                }
                 e
             })?;
         }

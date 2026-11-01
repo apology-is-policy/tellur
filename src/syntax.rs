@@ -80,13 +80,27 @@ pub enum Mask {
 }
 #[derive(Clone, Debug)]
 pub struct Field {
-    /// Start of the source type, retained for editor inference information.
-    pub type_span: Span,
+    /// Written type only, excluding the binding name and origin mappings.
+    pub type_range: SourceRange,
     pub origins: Vec<OriginArgument>,
     /// Bracket mappings on a schema reference field with a separate storage arrow.
     pub referent_origins: Vec<OriginArgument>,
     pub name: String,
     pub ty: String,
+}
+impl Field {
+    /// Attach authored type coordinates without overwriting a more specific child error.
+    pub(crate) fn type_error(&self, mut error: Diagnostic, fallback: Span) -> Diagnostic {
+        if error.end.is_none()
+            && self.type_range.start.line != 0
+            && (error.span.line == 0
+                || error.span == fallback
+                || error.span == self.type_range.start)
+        {
+            error = error.with_range(self.type_range);
+        }
+        error
+    }
 }
 /// Source-level origin names have a scope distinct from values and types.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -623,6 +637,7 @@ impl Parser {
         };
         let type_span = self.here();
         let ty = self.ty()?;
+        let type_range = self.range_from(type_span);
         let origins = self.origin_arguments()?;
         let name = if let Some(n) = name { n } else { self.id()? };
         Ok(Field {
@@ -630,7 +645,7 @@ impl Parser {
             ty,
             origins,
             referent_origins: vec![],
-            type_span,
+            type_range,
         })
     }
     fn ordinary_field(&mut self) -> Result<Field> {
@@ -1472,7 +1487,7 @@ impl Parser {
                                 .is_some_and(|t| t.is(",") || t.is(")"))
                             {
                                 bindings.push(Field {
-                                    type_span: Span::default(),
+                                    type_range: crate::SourceRange::default(),
                                     origins: vec![],
                                     referent_origins: vec![],
                                     name: self.id()?,

@@ -493,9 +493,13 @@ impl Resolver<'_> {
     }
     fn fields(&self, fields: &mut [syntax::Field], span: Span) -> Result<()> {
         for f in fields {
-            f.ty = self.ty(&f.ty, span)?;
-            if f.type_span.line != 0 {
-                f.type_span.line += self.offset;
+            f.ty = self.ty(&f.ty, span).map_err(|mut error| {
+                error.diagnostic = f.type_error(error.diagnostic, span);
+                error
+            })?;
+            if f.type_range.start.line != 0 {
+                f.type_range.start.line += self.offset;
+                f.type_range.end.line += self.offset;
             }
         }
         Ok(())

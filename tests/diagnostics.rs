@@ -1498,3 +1498,193 @@ fn constructor_definition_batches_share_one_file_budget() {
         assert_eq!(error["position"]["line"], n + 1);
     }
 }
+
+#[test]
+fn type_annotation_ranges_cover_declarations_signatures_traits_and_patterns() {
+    let f = Fixture::new();
+    for (source, selected, code) in [
+        (
+            "struct data {vector<string,u32> values;}",
+            "vector<string,u32>",
+            "E_MANIFEST",
+        ),
+        (
+            "variant data {ready {vector<string,u32> values}}",
+            "vector<string,u32>",
+            "E_MANIFEST",
+        ),
+        (
+            "variant data {first {u32 value}, second {vector<string,u32> value}}",
+            "vector<string,u32>",
+            "E_MANIFEST",
+        ),
+        (
+            "outcome data {ready {vector<string,u32> values}}",
+            "vector<string,u32>",
+            "E_MANIFEST",
+        ),
+        (
+            "control probe(ref absent_type input) exits done {exit done;}",
+            "ref absent_type",
+            "E_MANIFEST",
+        ),
+        (
+            "control probe() exits ready {ref absent_type value} {exit ready {};}",
+            "ref absent_type",
+            "E_MANIFEST",
+        ),
+        (
+            "control probe<t>(vector<t,u32> input) exits done {drop(input);exit done;}",
+            "vector<t,u32>",
+            "E_MANIFEST",
+        ),
+        (
+            "trait reader {control probe(vector<string,u32> input) exits done;}",
+            "vector<string,u32>",
+            "E_TRAIT",
+        ),
+        (
+            "struct data {string text;constructor(vector<string,u32> input) {self.text=\"x\";}}",
+            "vector<string,u32>",
+            "E_MANIFEST",
+        ),
+        (
+            "region probe(input: vector<String,U32>) exits Done {exit Done;}",
+            "vector<String,U32>",
+            "E_MANIFEST",
+        ),
+        (
+            "control produce() exits ready {u32 value} {exit ready {1};}control main() exits done {delta produce() {ready {bool value}=>known} [known]: exit done;}",
+            "bool",
+            "E_TYPE",
+        ),
+    ] {
+        f.write("main.tellur", source);
+        let report = f.report(&["check", "main.tellur", "--json"], false);
+        let error = &report["diagnostics"][0];
+        assert_eq!(error["code"], code, "{source}: {report}");
+        assert_eq!(
+            error["range"],
+            selected_range(source, selected),
+            "{source}: {report}"
+        );
+        assert_eq!(error["position"], error["range"]["start"]);
+    }
+}
+
+#[test]
+fn type_annotation_ranges_preserve_written_comments_multiline_and_legacy_types() {
+    let f = Fixture::new();
+    for (source, selected) in [
+        (
+            "// 😀\r\ncontrol probe( ref // 😃\r\n absent_type input // after\r\n) exits done {exit done;}",
+            "ref // 😃\r\n absent_type",
+        ),
+        (
+            "struct data {\r\n    vector<\r\n        // 😀\r\n        string,\r\n        u32\r\n    > values; // after\r\n}",
+            "vector<\r\n        // 😀\r\n        string,\r\n        u32\r\n    >",
+        ),
+        (
+            "region probe(input: & // 🙂\n absent_type) exits Done {exit Done;}",
+            "& // 🙂\n absent_type",
+        ),
+    ] {
+        f.write("main.tellur", source);
+        let report = f.report(&["check", "main.tellur", "--json"], false);
+        assert_eq!(
+            report["diagnostics"][0]["range"],
+            selected_range(source, selected),
+            "{report}"
+        );
+    }
+}
+
+#[test]
+fn type_annotation_ranges_preserve_transitive_imported_aliases_and_visibility() {
+    let f = Fixture::new();
+    f.write(
+        "types.tellur",
+        "struct hidden {string text;}pub struct visible {pub string text;}",
+    );
+    for (annotation, code) in [
+        ("vector<types.hidden>", "E_VISIBILITY"),
+        ("vector<types.absent>", "E_NAME"),
+    ] {
+        let library = format!(
+            "import \"types.tellur\" as types;\r\n// 🙂\r\npub control probe(\r\n    {annotation} input\r\n) exits done {{drop(input);exit done;}}\r\n"
+        );
+        f.write("library.tellur", &library);
+        f.write("middle.tellur", "import \"library.tellur\" as lib;");
+        f.write(
+            "main.tellur",
+            "import \"middle.tellur\" as middle;control main() exits done {exit done;}",
+        );
+        let report = f.report(&["check", "main.tellur", "--json"], false);
+        let error = &report["diagnostics"][0];
+        assert_eq!(error["code"], code, "{report}");
+        assert_eq!(
+            error["path"],
+            f.root.join("library.tellur").to_str().unwrap()
+        );
+        assert_eq!(error["range"], selected_range(&library, annotation));
+    }
+}
+
+#[test]
+fn type_annotation_ranges_keep_original_generic_definition_and_named_payload_locations() {
+    let f = Fixture::new();
+    let library =
+        "// original definition\r\npub struct bag<t> {\r\n    vector<t,u32> values;\r\n}\r\n";
+    f.write("library.tellur", library);
+    f.write("main.tellur", "import \"library.tellur\" as lib;control probe(lib.bag<string> input) exits done {drop(input);exit done;}");
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    assert_eq!(
+        report["diagnostics"][0]["path"],
+        f.root.join("library.tellur").to_str().unwrap()
+    );
+    assert_eq!(
+        report["diagnostics"][0]["range"],
+        selected_range(library, "vector<t,u32>")
+    );
+    let library = "struct hidden {string text;}\noutcome reply {ready {hidden value}}\npub trait reader {control probe() exits reply;}";
+    f.write("library.tellur", library);
+    f.write(
+        "main.tellur",
+        "import \"library.tellur\" as lib;control main() exits done {exit done;}",
+    );
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    assert_eq!(report["diagnostics"][0]["code"], "E_VISIBILITY", "{report}");
+    let start = library.find("hidden value").unwrap();
+    assert_eq!(
+        report["diagnostics"][0]["range"],
+        json!({"start":scalar_position(library,start),"end":scalar_position(library,start+6)})
+    );
+}
+
+#[test]
+fn type_annotation_ranges_keep_batches_first_error_apis_and_non_type_points() {
+    let source = "control first(\n ref absent_first input\n) exits done {exit done;}\ncontrol second() exits ready {\n absent_second value\n} {exit ready {}; }";
+    let manifest = Manifest::from_json(include_str!("../playground/manifest.json")).unwrap();
+    let batch = tellur::check_source(source, manifest.clone()).unwrap_err();
+    assert_eq!(batch.errors.len(), 2, "{batch}");
+    for (e, selected) in batch
+        .errors
+        .iter()
+        .zip(["ref absent_first", "absent_second"])
+    {
+        assert_eq!(e.code, "E_MANIFEST");
+        let range = json!({"start":{"line":e.span.line,"column":e.span.column},"end":e.end.as_deref().unwrap()});
+        assert_eq!(range, selected_range(source, selected));
+    }
+    assert_eq!(
+        tellur::compile(source, manifest.clone()).unwrap_err(),
+        batch.errors[0]
+    );
+    let point =
+        tellur::compile("pub control probe() exits auto {exit done;}", manifest).unwrap_err();
+    assert_eq!(point.code, "E_PUBLIC_CONTRACT");
+    assert!(
+        point.end.is_none(),
+        "unrelated contract-shape diagnostics remain points"
+    );
+}

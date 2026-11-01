@@ -154,11 +154,49 @@ Parser errors select the unexpected token; an error at end of input has an empty
 range. Imported-file diagnostics point to the original file; VS Code includes
 that location as related information and uses the current unsaved dependency text.
 
-This does not turn every diagnostic into an expression error. Path coverage,
-exit contracts, declaration errors, contributor notes and some specialized boundary
-checks still carry source points. Their JSON `range` is null, and VS Code uses its
-existing token-sized selection. Hover information continues to come from the
-current checked source rather than a stale successful version.
+Expressions and the type annotations below have independent source ranges. Other
+checks can still carry source points: their JSON `range` is null and VS Code uses
+its existing token-sized selection. Hover information always comes from the current
+checked source rather than a stale successful version.
+
+## Type-annotation locations
+
+Since 0.97, parsed field, parameter, payload and typed-pattern annotations retain
+their complete **written type**. Type validation in source data/outcomes, control and
+constructor signatures, generic data/control preparation and trait declarations can
+select that annotation. Typed delta-binding mismatches do likewise. Module lookup
+and trait-visibility errors discovered while validating such types also select them.
+
+<!-- tellur:reject E_MANIFEST -->
+```tellur
+struct settings {
+    vector<
+        string,
+        u32
+    > entries;
+}
+```
+
+`vector` takes one element type. This error selects from `vector` through `>`, across
+all four lines; it excludes the binding name `entries` and following semicolon.
+References include their written `ref mutable` (or legacy `&`) prefix. Source types
+retain whitespace and line comments inside the annotation, but exclude trailing
+comments, origin brackets/arrows, `from` clauses and binding names. Legacy
+`name: type` fields select the type, without the name or colon.
+
+Imports preserve both endpoints in the original file; unsaved dependencies supply
+the text used for editor UTF-16 conversion. Generic substitution preserves the
+authored spelling, including a type parameter, rather than estimating a range from
+a longer lowered type name. Reused named-outcome payload annotations keep their
+original declaration locations. CLI JSON continues to use one-based Unicode scalar
+coordinates; LSP uses zero-based UTF-16 coordinates.
+
+This is not a range for every declaration error. Whole-contract shape/origin errors,
+associated normalization, some later public-interface checks, local variable type
+annotations, contributor notes and checks without authored field metadata retain
+their existing locations. Synthetic fields have no invented annotation range.
+More precise child errors keep their own coordinates. Diagnostic codes, phase order,
+batch limits and acceptance rules are unchanged.
 
 ## Independent body errors
 
