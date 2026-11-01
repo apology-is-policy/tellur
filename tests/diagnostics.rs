@@ -1991,3 +1991,150 @@ fn local_type_ranges_preserve_batches_first_errors_and_capture_mismatch_points()
     assert_eq!(error.span.column, source.find("u32 value").unwrap() + 1);
     assert!(error.end.is_none());
 }
+
+#[test]
+fn public_type_ranges_select_authored_interfaces_after_body_checking() {
+    let f = Fixture::new();
+    for (source, selected) in [
+        (
+            "struct hidden {u32 n;} pub struct box {pub vector<hidden> value;}",
+            "vector<hidden>",
+        ),
+        (
+            "struct hidden {u32 n;} pub variant choice {yes {option<hidden> value},no}",
+            "option<hidden>",
+        ),
+        (
+            "struct hidden {u32 n;} pub outcome answer {yes {option<hidden> value},no}",
+            "option<hidden>",
+        ),
+        (
+            "struct hidden {u32 n;} pub control probe(ref hidden value) exits done {drop(value);exit done;}",
+            "ref hidden",
+        ),
+        (
+            "struct hidden {u32 n;} pub control probe() exits ready {option<hidden> value} {exit ready {none {}};}",
+            "option<hidden>",
+        ),
+        (
+            "struct hidden {u32 n;} pub struct box<t> {pub map<string,hidden> values;t data;}",
+            "map<string,hidden>",
+        ),
+        (
+            "control produce() exits done {exit done;}pub control consume(outcome<produce> value) exits done {exit delta value {done => done {}};}",
+            "outcome<produce>",
+        ),
+        (
+            "struct hidden {u32 n;} pub control probe<t>(ref t input) exits ready {option<hidden> value} {drop(input);exit ready {none {}};}",
+            "option<hidden>",
+        ),
+    ] {
+        f.write("main.tellur", source);
+        let report = f.report(&["check", "main.tellur", "--json"], false);
+        assert_eq!(
+            report["diagnostics"][0]["code"], "E_VISIBILITY",
+            "{source}: {report}"
+        );
+        assert_eq!(
+            report["diagnostics"][0]["range"],
+            selected_range(source, selected),
+            "{source}: {report}"
+        );
+    }
+}
+
+#[test]
+fn public_type_ranges_preserve_imported_multiline_spelling_and_aliases() {
+    let f = Fixture::new();
+    f.write("types.tellur", "pub struct visible {pub u32 n;}");
+    f.write(
+        "main.tellur",
+        "import \"library.tellur\" as library; control main() exits done {exit done;}",
+    );
+    for (body, selected) in [
+        (
+            "pub struct box {pub map<\r\n // 😀\r\n string,\r\n hidden\r\n > data;}",
+            "map<\r\n // 😀\r\n string,\r\n hidden\r\n >",
+        ),
+        (
+            "pub control probe(ref\r\n hidden value) exits done {drop(value);exit done;}",
+            "ref\r\n hidden",
+        ),
+        (
+            "pub control probe() exits ready {vector<hidden> values} {exit ready {[]};}",
+            "vector<hidden>",
+        ),
+        (
+            "pub struct box {pub pair<types.visible,hidden> value;}",
+            "pair<types.visible,hidden>",
+        ),
+    ] {
+        let source = format!(
+            "import \"types.tellur\" as types;\r\nstruct hidden {{u32 n;}}\r\npub struct pair<a,b> {{pub a left;pub b right;}}\r\n// 😀\r\n{body}"
+        );
+        f.write("library.tellur", &source);
+        let report = f.report(&["check", "main.tellur", "--json"], false);
+        let error = &report["diagnostics"][0];
+        assert_eq!(error["code"], "E_VISIBILITY", "{report}");
+        assert!(
+            error["path"].as_str().unwrap().ends_with("library.tellur"),
+            "{report}"
+        );
+        assert_eq!(
+            error["range"],
+            selected_range(&source, selected),
+            "{report}"
+        );
+    }
+}
+
+#[test]
+fn public_type_ranges_keep_visibility_phase_order_and_unannotated_contract_points() {
+    let f = Fixture::new();
+    // A later public data field is still checked before control signatures.
+    let source = "struct hidden {u32 n;}pub control probe(ref hidden value) exits done {drop(value);exit done;}pub struct box {pub vector<hidden> values;}";
+    f.write("main.tellur", source);
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    assert_eq!(report["diagnostics"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        report["diagnostics"][0]["range"],
+        selected_range(source, "vector<hidden>")
+    );
+    let errors = check_errors(source);
+    let first = compile(
+        source,
+        Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+    )
+    .unwrap_err();
+    assert_eq!(errors.errors.len(), 1);
+    assert_eq!(first, errors.errors[0]);
+    // A body error still stops checking before this late visibility phase.
+    let source = "struct hidden {u32 n;}pub control probe(ref hidden value) exits done {u32 count=true;drop(value);exit done;}";
+    f.write("main.tellur", source);
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    assert_eq!(report["diagnostics"][0]["code"], "E_TYPE");
+    assert_eq!(
+        report["diagnostics"][0]["range"],
+        selected_range(source, "true")
+    );
+    // Source data validation still precedes generated producer outcome types.
+    let source =
+        "control produce() exits done {exit done;}pub struct box {pub outcome<produce> value;}";
+    f.write("main.tellur", source);
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    assert_eq!(report["diagnostics"][0]["code"], "E_MANIFEST");
+    assert_eq!(
+        report["diagnostics"][0]["range"],
+        selected_range(source, "outcome<produce>")
+    );
+    // Whole named-contract references have no authored Field annotation.
+    let source = "outcome hidden {done}pub control probe() exits hidden {exit done;}";
+    f.write("main.tellur", source);
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    assert_eq!(report["diagnostics"][0]["code"], "E_VISIBILITY");
+    assert!(report["diagnostics"][0]["range"].is_null());
+    assert_eq!(
+        report["diagnostics"][0]["position"],
+        scalar_position(source, source.find("pub control").unwrap())
+    );
+}

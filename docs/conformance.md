@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.101.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.102.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -3486,3 +3486,42 @@ not a full-suite claim. Unchanged runtime, fault, native-generator and editor
 production sources match the earlier foundation evidence. Six binary copies and
 nine packaged/installed payloads match 0.101.0; compiler/LSP version and capability
 checks passed. The source backup excludes the protected unrelated C# file.
+
+## 0.102 — Public interface type-annotation locations
+
+P2s retains authored type metadata until the late public-interface visibility check.
+Private or producer-indexed types exposed by a public field, control parameter or
+explicit result payload select the written annotation instead of only the enclosing
+declaration. Public structs, variants and named outcomes retain their field ranges;
+generic definitions and imported aliases keep their original spelling and endpoints.
+Whole named-contract references and generated associated-type checks without an
+authored field annotation keep their existing source points.
+
+Three diagnostic tests cover these interfaces, multiline/CRLF source with Unicode
+comments, imported and nested generic types, producer-indexed control parameters,
+symbolic generic results and first-error APIs. The phase-order test keeps earlier
+body/data validation failures ahead of late visibility checking and keeps public data
+before control signatures. Source data referring to a producer outcome still fails
+its earlier manifest check; this checkpoint does not move that validation. No source
+acceptance, visibility policy, batch behavior or error ordering has changed.
+
+The LSP regression verifies exact UTF-16 related locations for unsaved imported
+public field types, no stale inferred hover, and repair. The isolated VS Code test
+adds an unused public data declaration to the imported counter derived from
+`playground/count.tellur`, changes it to expose a private type in multiline and
+compact forms, restores it, and runs the native counter to emit 1 through 5.
+
+Validation: **361 Rust tests across eight selected targets**, **42 Node tests**, and
+the isolated editor/native check passed. Constructors retain the passing evidence
+from the initial run; the corrected diagnostic fixture and remaining seven targets
+use the final run. The initial fixture incorrectly expected a late visibility error
+for producer-indexed source data; it now explicitly preserves the earlier manifest
+error. This is not a full-suite claim. Runtime, parser, core body checker, native generator and
+editor production sources are unchanged from 0.101. Six binary copies and nine
+packaged/installed payloads match 0.102.0; compiler/LSP version and capability checks
+passed. Existing user windows were not reloaded; the source backup excludes the
+protected unrelated C# file.
+
+The existing async entry-syntax question remains unchanged. Both previously accepted
+task fault/settlement policies remain recorded; this independent diagnostics slice
+does not select a source async spelling or add task execution.

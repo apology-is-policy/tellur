@@ -1103,13 +1103,23 @@ fn locate(sources: &[SourceFile], mut diagnostic: Diagnostic) -> ModuleError {
     }
 }
 
+struct PublicControl {
+    name: String,
+    span: Span,
+    parameters: Vec<syntax::TypeAnnotation>,
+    exits: BTreeMap<String, Vec<syntax::TypeAnnotation>>,
+}
 pub(crate) struct PublicInterfaces {
     private: BTreeSet<String>,
-    controls: Vec<(String, Span)>,
-    fields: Vec<(String, Span, Vec<String>)>,
+    controls: Vec<PublicControl>,
+    fields: Vec<(syntax::TypeAnnotation, Span, Vec<String>)>,
 }
 impl PublicInterfaces {
     pub(crate) fn new(unit: &syntax::Unit) -> Self {
+        let annotation = |f: &syntax::Field| syntax::TypeAnnotation {
+            ty: f.ty.clone(),
+            range: f.type_range,
+        };
         let private = unit
             .data
             .iter()
@@ -1126,7 +1136,16 @@ impl PublicInterfaces {
             .regions
             .iter()
             .filter(|r| r.public)
-            .map(|r| (r.name.clone(), r.span))
+            .map(|r| PublicControl {
+                name: r.name.clone(),
+                span: r.span,
+                parameters: r.parameters.iter().map(annotation).collect(),
+                exits: r
+                    .exits
+                    .iter()
+                    .map(|o| (o.name.clone(), o.fields.iter().map(annotation).collect()))
+                    .collect(),
+            })
             .collect();
         let mut fields = vec![];
         for check in &unit.trait_checks {
@@ -1135,7 +1154,7 @@ impl PublicInterfaces {
                     check
                         .associated
                         .iter()
-                        .map(|t| (t.clone(), check.span, vec![])),
+                        .map(|t| (t.clone().into(), check.span, vec![])),
                 );
             }
         }
@@ -1145,12 +1164,12 @@ impl PublicInterfaces {
                     DataBody::Struct(fs) => fields.extend(
                         fs.iter()
                             .filter(|f| data.public_fields.contains(&f.name))
-                            .map(|f| (f.ty.clone(), data.span, data.type_parameters.clone())),
+                            .map(|f| (annotation(f), data.span, data.type_parameters.clone())),
                     ),
                     DataBody::Variant(os) => fields.extend(
                         os.iter()
                             .flat_map(|o| &o.fields)
-                            .map(|f| (f.ty.clone(), data.span, data.type_parameters.clone())),
+                            .map(|f| (annotation(f), data.span, data.type_parameters.clone())),
                     ),
                 }
             }
@@ -1159,7 +1178,7 @@ impl PublicInterfaces {
             if contract.public {
                 fields.extend(contract.outcomes.iter().flat_map(|o| &o.fields).map(|f| {
                     (
-                        f.ty.clone(),
+                        annotation(f),
                         contract.span,
                         contract.type_parameters.clone(),
                     )
@@ -1174,7 +1193,7 @@ impl PublicInterfaces {
                     .map_or(contract.as_str(), |(base, _)| base);
                 if unit.contracts.iter().any(|c| c.name == base) {
                     fields.push((
-                        contract.clone(),
+                        contract.clone().into(),
                         region.span,
                         region.type_parameters.clone(),
                     ));
@@ -1206,15 +1225,25 @@ impl PublicInterfaces {
             Ok(())
         };
         for (ty, span, parameters) in &self.fields {
-            check(ty, *span, parameters)?;
+            check(ty, *span, parameters).map_err(|e| ty.type_error(e, *span))?;
         }
-        for (name, span) in &self.controls {
-            let region = program.region(name).unwrap();
-            for p in &region.parameters {
-                check(&p.ty, *span, &[])?;
+        for source in &self.controls {
+            let region = program.region(&source.name).unwrap();
+            for (index, p) in region.parameters.iter().enumerate() {
+                check(&p.ty, source.span, &[]).map_err(|e| match source.parameters.get(index) {
+                    Some(ty) => ty.type_error(e, source.span),
+                    None => e,
+                })?;
             }
-            for f in region.exits.iter().flat_map(|o| &o.fields) {
-                check(&f.ty, *span, &[])?;
+            for outcome in &region.exits {
+                for (index, f) in outcome.fields.iter().enumerate() {
+                    check(&f.ty, source.span, &[]).map_err(|e| {
+                        match source.exits.get(&outcome.name).and_then(|fs| fs.get(index)) {
+                            Some(ty) => ty.type_error(e, source.span),
+                            None => e,
+                        }
+                    })?;
+                }
             }
         }
         Ok(())

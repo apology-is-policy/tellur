@@ -224,6 +224,27 @@ Capture compatibility and other checks that previously had only a statement poin
 keep that point; the type range is not assigned to every declaration error. `auto`
 inference and generated temporary bindings have no invented annotation range.
 
+Since 0.102, the late public-interface visibility check also selects authored types:
+public struct fields, variant/outcome payloads, control parameters and explicit
+control result payloads. For example, this selects `vector<hidden>` because a public
+field cannot expose a private type:
+
+<!-- tellur:reject E_VISIBILITY -->
+```tellur
+struct hidden {
+    u32 value;
+}
+pub struct container {
+    pub vector<hidden> values;
+}
+```
+
+The same rule covers producer-indexed `outcome<operation>` types in public interfaces.
+The checker still validates bodies before this phase and reports its existing first
+visibility error, checking exported data before control signatures. No extra batch
+or new visibility rule is introduced. Whole named-contract references and generated
+associated-type checks without authored type metadata retain their declaration points.
+
 Imports preserve both endpoints in the original file; unsaved dependencies supply
 the text used for editor UTF-16 conversion. Generic substitution preserves the
 authored spelling, including a type parameter, rather than estimating a range from
@@ -232,7 +253,7 @@ original declaration locations. CLI JSON continues to use one-based Unicode scal
 coordinates; LSP uses zero-based UTF-16 coordinates.
 
 This is not a range for every declaration error. Whole-contract shape/origin errors,
-associated normalization, some later public-interface checks, contributor notes
+associated normalization, whole named-contract visibility checks, contributor notes
 and checks without authored type metadata retain
 their existing locations. Synthetic fields have no invented annotation range.
 More precise child errors keep their own coordinates. Diagnostic codes, phase order,
