@@ -5266,3 +5266,78 @@ fn inferred_stored_adapter_diagnostics_keep_imported_arm_locations_and_labels() 
     assert_eq!(f.diagnostics(), json!([]));
     assert_eq!(hover_at(&f, source, "jobs.choose(true)"), initial);
 }
+
+#[test]
+fn inferred_exit_adapter_diagnostics_refresh_selected_payload_and_call_hover() {
+    let mut f = Fixture::new();
+    let source = "control choose(bool flag) exits ready... {\nexit delta flag {\ntrue=>ready {1 < 2},\nfalse=>ready {2 < 3}\n};}\ncontrol main() exits auto {auto saved=capture choose(true);exit saved;}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let initial = hover_at(&f, source, "auto saved");
+    assert!(initial.to_string().contains("outcome<choose>"), "{initial}");
+    assert!(
+        hover_at(&f, source, "choose(true)")
+            .to_string()
+            .contains("bool")
+    );
+    let broken = source
+        .replace("1 < 2", "1 < true")
+        .replace("2 < 3", "2 < false");
+    f.change(&broken, 2);
+    let errors = f.diagnostics();
+    assert_eq!(errors.as_array().unwrap().len(), 2, "{errors}");
+    for (error, line) in errors.as_array().unwrap().iter().zip([2, 3]) {
+        assert_eq!(error["code"], "E_TYPE");
+        assert_eq!(error["range"]["start"]["line"], line);
+    }
+    assert!(hover_at(&f, &broken, "auto saved").is_null());
+    assert!(hover_at(&f, &broken, "choose(true)").is_null());
+    let partial = broken.replace("1 < true", "1 < 2");
+    f.change(&partial, 3);
+    assert_eq!(f.diagnostics().as_array().unwrap().len(), 1);
+    assert!(hover_at(&f, &partial, "auto saved").is_null());
+    f.change(source, 4);
+    assert_eq!(f.diagnostics(), json!([]));
+    assert_eq!(hover_at(&f, source, "auto saved"), initial);
+    assert!(
+        hover_at(&f, source, "choose(true)")
+            .to_string()
+            .contains("Control contract")
+    );
+}
+
+#[test]
+fn inferred_exit_adapter_diagnostics_preserve_imported_generic_ranges() {
+    let mut f = Fixture::new();
+    let dependency = f.root.join("jobs.tellur");
+    let uri = url::Url::from_file_path(&dependency).unwrap().to_string();
+    let valid = "control choose<t>(t input,bool flag) exits auto {\nexit delta flag {\ntrue=>ready {input,1 < 2},\nfalse=>ready {input,2 < 3}\n};}\npub control start() exits ready {string input,bool value_1} {forward choose<string>(\"hello\",true);}";
+    fs::write(&dependency, valid).unwrap();
+    let source = "import \"jobs.tellur\" as jobs;control main() exits auto {forward jobs.start();}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let initial = hover_at(&f, source, "jobs.start()");
+    assert!(initial.to_string().contains("Control contract"));
+    let broken = valid
+        .replace("1 < 2", "1 < true")
+        .replace("2 < 3", "2 < false");
+    f.server.notification(
+        "textDocument/didOpen",
+        &json!({"textDocument":{"uri":uri,"version":1,"text":broken}}),
+    );
+    let errors = f.diagnostics();
+    assert_eq!(errors.as_array().unwrap().len(), 2, "{errors}");
+    for (error, line) in errors.as_array().unwrap().iter().zip([2, 3]) {
+        assert_eq!(error["code"], "E_TYPE");
+        let location = &error["relatedInformation"][0]["location"];
+        assert_eq!(location["uri"], uri);
+        assert_eq!(location["range"]["start"]["line"], line);
+    }
+    assert!(hover_at(&f, source, "jobs.start()").is_null());
+    f.server.notification(
+        "textDocument/didClose",
+        &json!({"textDocument":{"uri":uri}}),
+    );
+    assert_eq!(f.diagnostics(), json!([]));
+    assert_eq!(hover_at(&f, source, "jobs.start()"), initial);
+}

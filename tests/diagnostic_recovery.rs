@@ -425,11 +425,9 @@ fn explicit_exit_adapters_replay_owned_and_borrowed_payloads_cleanly() {
 }
 
 #[test]
-fn exit_adapter_headers_inferred_exits_and_uncertain_stored_labels_remain_barriers() {
+fn exit_adapter_headers_and_uncertain_stored_labels_remain_barriers() {
     for source in [
         "control choose(bool flag) exits ready {u32 value} {exit delta flag {true=>ready {true}};}",
-        "control choose(bool flag) exits auto {exit delta flag {true=>ready {missing},false=>ready {also_missing}};}",
-        "control choose(bool flag) exits ready... {exit delta flag {true=>ready {missing},false=>ready {also_missing}};}",
         "control choose(bool flag) exits done {auto saved=delta flag {true=>ready {missing},false=>ready {also_missing}};exit done;}",
     ] {
         let batch = errors(source);
@@ -1321,4 +1319,142 @@ fn inferred_stored_forwarding_leaves_share_result_label_uncertainty() {
         "variant input {left,right}control choose(input value,bool flag) exits done {auto saved=delta flag {true=>left {absent_value},false=>delta value {left=>forward,right=>other {also_missing}}};exit done;}",
         &["E_NAME", "E_NAME"],
     );
+}
+
+#[test]
+fn inferred_exit_adapters_recover_same_and_distinct_labels_without_partial_contracts() {
+    for contract in ["auto", "ready...", "ready..., other..."] {
+        let label = if contract.contains("other") {
+            "other"
+        } else {
+            "ready"
+        };
+        codes(
+            &format!(
+                "control choose(bool flag) exits {contract} {{exit delta flag {{true=>ready {{absent_first}},false=>{label} {{absent_second}}}};}} control caller() exits done {{forward choose(true);}}"
+            ),
+            &["E_NAME", "E_NAME"],
+        );
+    }
+    // An omitted payload cannot establish a shape. Clean occurrences still must
+    // agree, and selected inference never silently turns a bare label into data.
+    codes(
+        "control choose(bool a,bool b) exits ready..., empty {exit delta a {true=>ready {absent_first},false=>delta b {true=>ready {1},false=>ready {false}}};}",
+        &["E_NAME", "E_TYPE"],
+    );
+    codes(
+        "control choose(bool flag) exits ready..., empty {exit delta flag {true=>ready {},false=>empty {1}};}",
+        &["E_INFER", "E_ARITY"],
+    );
+    codes(
+        "control choose(bool a,bool b) exits auto {exit delta a {true=>ready {absent_first},false=>delta b {true=>ready {1},false=>ready {1,2}}};}",
+        &["E_NAME", "E_INFER"],
+    );
+}
+
+#[test]
+fn inferred_exit_payloads_do_not_gain_context_from_other_arms() {
+    let source = "control choose(bool flag) exits auto {vector<string> words=[\"hello\"];exit delta flag {true=>ready {move words,absent_first},false=>ready {[],0}};}";
+    codes(source, &["E_NAME", "E_INFER"]);
+    // Unlike stored adapters, this remains invalid after repairing the first arm.
+    codes(&source.replace("absent_first", "0"), &["E_INFER"]);
+    let repaired = source
+        .replace("absent_first", "0")
+        .replace("[],0", "move words,0");
+    check_source(
+        &repaired,
+        Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+    )
+    .unwrap();
+}
+
+#[test]
+fn inferred_exit_adapters_preserve_nested_scopes_loops_and_full_selectors() {
+    for wrapper in ["{body}", "[entry] over &: {{body}}", "loop work {{body}}"] {
+        let body = "exit delta flag {true=>[inner]:delta flag {true=>left {absent_first},false=>right {absent_second}},false=>last {absent_third}};";
+        let body = wrapper.replace("{body}", body);
+        codes(
+            &format!("control choose(bool flag) exits auto {{{body}}}"),
+            &["E_NAME", "E_NAME", "E_NAME"],
+        );
+    }
+    codes(
+        "control choose(bool flag,bool other) exits auto {delta flag {true=>selected,false=>separate}[selected]:exit delta other {true=>left {absent_first},false=>right {absent_second}};[separate]:string third=7;exit done;[entry]:bool hidden=8;}",
+        &["E_NAME", "E_NAME", "E_TYPE"],
+    );
+}
+
+#[test]
+fn inferred_exit_adapters_replay_moves_loans_and_clean_obligations() {
+    for value in ["handle", "string", "ref string", "ref mutable string"] {
+        codes(
+            &format!(
+                "control choose(bool flag,{value} input) exits auto {{exit delta flag {{true=>left {{input,absent_first}},false=>right {{input,absent_second}}}};}}"
+            ),
+            &["E_NAME", "E_NAME"],
+        );
+    }
+    codes(
+        "control choose(bool flag,handle resource) exits auto {exit delta flag {true=>ready {absent_first},false=>other {1}};}",
+        &["E_NAME", "E_RESOURCE"],
+    );
+    codes(
+        "control choose(bool flag) exits auto {string local=\"local\";exit delta flag {true=>ready {absent_first},false=>other {borrow local}};}",
+        &["E_NAME", "E_LIFETIME"],
+    );
+    // Same-label borrow contracts are inferred from independently checked exits.
+    codes(
+        "control choose(bool flag,ref string left,ref string right) exits ready... {exit delta flag {true=>ready {left,absent_first},false=>ready {right,absent_second}};}",
+        &["E_NAME", "E_NAME"],
+    );
+}
+
+#[test]
+fn inferred_exit_adapters_keep_header_fault_and_uncertain_entry_barriers() {
+    codes(
+        "control choose(bool flag) exits auto {exit delta flag {true=>ready {absent_first},false=>delta flag {true=>ready {absent_second}}};}",
+        &["E_NAME", "E_ARMS"],
+    );
+    codes(
+        "control choose(bool flag) exits auto {string first=7;exit delta flag {true=>ready {absent_first},false=>other {absent_second}};}",
+        &["E_TYPE"],
+    );
+    codes(
+        "control main(bool flag) exits auto {fault boundary {exit delta flag {true=>ready {absent_first},false=>other {absent_second}};}contingency [] {terminate process 1;}}",
+        &["E_NAME"],
+    );
+    codes(
+        "control main(bool flag) exits done {fault boundary {}contingency [flag] {exit delta flag {true=>ready {absent_first},false=>other {absent_second}};}exit done;}",
+        &["E_CONTINGENCY_EXIT"],
+    );
+}
+
+#[test]
+fn inferred_exit_adapters_forward_and_share_generic_recovery_budget() {
+    codes(
+        "control choose<t>(t input,bool flag) exits auto {exit delta flag {true=>ready {input,absent_first},false=>ready {input,absent_second}};}",
+        &["E_NAME", "E_NAME"],
+    );
+    codes(
+        "variant input {left,right}control choose(input value,bool flag) exits ready... {exit delta flag {true=>ready {absent_first},false=>delta value {left=>forward,right=>forward}};}",
+        &["E_NAME", "E_EXIT", "E_EXIT"],
+    );
+    fn nested(depth: usize, serial: &mut usize) -> String {
+        if depth == 0 {
+            *serial += 1;
+            return format!("ready {{absent_{serial}}}");
+        }
+        format!(
+            "delta flag {{true=>{},false=>{}}}",
+            nested(depth - 1, serial),
+            nested(depth - 1, serial)
+        )
+    }
+    let batch = errors(&format!(
+        "control choose(bool flag) exits auto {{exit {};}}",
+        nested(6, &mut 0)
+    ));
+    assert!(batch.limit_reached, "{batch}");
+    assert_eq!(batch.errors.len(), tellur::diagnostics::MAX_DIAGNOSTICS);
+    assert!(batch.errors.iter().all(|e| e.code == "E_NAME"), "{batch}");
 }

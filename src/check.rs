@@ -2180,13 +2180,9 @@ impl Checker<'_> {
         if !self.recovery_statement(statement, span, domain) {
             return Ok(());
         }
-        // Stored adapters isolate uncertain inferred labels. Inferred exits still
-        // share the containing control's result contract across arms.
-        let barrier = usize::from(
-            matches!(statement, Statement::Capture(..))
-                || (matches!(statement, Statement::ExitOutcome(..))
-                    && (self.infer_exits || !self.infer_payloads.is_empty())),
-        );
+        // Exit payloads infer independently, exactly like ordinary terminal
+        // exits. Stored adapters additionally isolate contextual label inference.
+        let barrier = usize::from(matches!(statement, Statement::Capture(..)));
         self.recovery.barriers += barrier;
         let previous = std::mem::replace(&mut self.expression_guard, guard.clone());
         let result = self.statement_inner(guard.clone(), domain, statement, span);

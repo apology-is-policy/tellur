@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-0.93.0-darwin-arm64.vsix` using **Extensions:
+1. Install the supplied `tellur-language-0.94.0-darwin-arm64.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -875,3 +875,12 @@ The complete stored result and its continuation remain unavailable until repaire
 hover never shows a partial inferred type. Nested arms and imported/generic locations
 follow the same shared 32-error budget. Inferred exits, headers and fault contexts
 retain conservative barriers.
+
+## Inferred exit-adapter diagnostics in 0.94
+
+The inferred `successor` helper in `playground/adapters.tellur` now reports independent
+payload errors across its terminal arms. This also applies to selected `ready...`
+contracts and repeated exit labels. Payload expressions infer independently; no
+partial exit contract or inferred hover is published while errors remain. Imported
+and generic source locations, nested paths, ownership checks and the 32-error budget
+are preserved. Headers, captures and fault-context terminals remain conservative.

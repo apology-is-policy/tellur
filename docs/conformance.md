@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.93.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.94.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -3175,3 +3175,33 @@ copies and nine packaged/installed payloads match release 0.93.0. Existing windo
 were not reloaded. Formatting and whitespace checks passed; earlier unrelated
 preparation, trait and library evidence remains valid. Executable formats and the
 accepted ownership, origin and fault semantics are unchanged.
+
+## 0.94 — Inferred exit-adapter diagnostics
+
+P2m removes the inferred-exit wrapper barrier from terminal replay. Each exit payload
+already infers independently; clean occurrences still unify arity/types, while
+omitted terminals cannot publish contracts or make dependent callers checkable.
+Stored-adapter contextual inference retains its distinct label quarantine. No
+executable lowering, ownership, origin or fault rules change.
+
+Six recovery tests cover same/distinct labels, selective inference, empty collections,
+clean consistency, nested paths, scopes/loops, moves, returned loans, resource and
+lifetime failures, forwarding, headers, fault contexts, unused generic definitions
+and the shared budget. One CLI test covers imported generic ranges with Unicode/CRLF
+and first-error compatibility. Two LSP tests cover unsaved repairs and fresh inferred
+and call contracts. The initial LSP probe expected payload detail on a named outcome
+binding hover; it now checks the named binding type and the separate call contract.
+The implementation did not need correction.
+
+Final validation passed **453 Rust tests across 16 affected targets**, including all
+176 LSP tests, 46 diagnostic tests, 65 recovery tests and three manual checks, plus
+**42 Node tests**. The affected inference, forwarding, adapter, outcome, origin,
+module, generic, boundary and certificate suites preserve valid-program/native
+behavior and expansion evidence. The broader run passed without further corrections.
+
+Isolated VS Code verified two inferred exit payload errors, exact ranges, independent
+repairs, no partial inferred signature, restored call hover and native execution
+returning 42. Six binaries and nine packaged/installed payloads match release 0.94.0.
+Existing windows were not reloaded. Formatting and whitespace checks passed. Earlier
+unrelated trait, preparation and library evidence remains valid; this checkpoint does
+not change executable formats or the accepted ownership, origin and fault semantics.

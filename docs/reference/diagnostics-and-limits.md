@@ -9,7 +9,8 @@ recovery across disjoint paths and nested scopes; 0.77 collects independent
 public-shape and signature errors, and 0.78 adds named completion bindings. Release
 0.83 extends statement recovery to named boundary work and contingency bodies, and
 0.84 adds lexical boundary work bodies; 0.85 adds lexical contingency handlers;
-0.86 adds explicit exit-adapter arms; 0.87 adds explicitly typed stored-adapter arms.
+0.86 adds explicit exit-adapter arms; 0.87 adds explicitly typed stored-adapter arms,
+0.93 inferred stored adapters, and 0.94 inferred exit adapters.
 Fixing an error
 may expose another within that body or a dependent control. The precise
 message wording may improve between releases. The negative examples here are checked
@@ -533,8 +534,8 @@ independent arms keep their original guards, ownership and borrow checks. Partia
 moved resource arguments and returned references are reconstructed from clean state
 on each replay. Real resource-completion errors on clean arms remain diagnostics.
 
-`exits auto`, selected payload inference (`ready...`), and captures retain their
-existing recovery barriers. Explicit stored adapters follow the rules below.
+Inferred exit adapters follow the rules below since 0.94. Captures retain their
+existing recovery barriers. Explicit stored adapters have their own recovery rules.
 Decision operands, patterns and coverage
 must validate before their results can be checked; a nested header error stops that
 adapter's replay. Entering an adapter from an already uncertain history still stalls
@@ -544,7 +545,45 @@ budget and complete-check requirement for hover apply.
 
 Try changing payload expressions in the explicit `main` adapter of
 [adapters.tellur](../../playground/adapters.tellur). Its inferred `successor` helper
-continues to use first-error adapter checking.
+also supports independent payload diagnostics since 0.94.
+
+## Inferred exit-adapter recovery
+
+Since 0.94, terminal arms of `exit delta` also recover under private `exits auto`
+and selected payload inference (`ready...`). Independent errors can appear together
+even when the arms produce the same exit label:
+
+<!-- tellur:reject E_TYPE -->
+```tellur
+control choose(bool flag) exits ready... {
+    exit delta flag {
+        true  => ready { 1 < true },
+        false => ready { 2 < false }
+    };
+}
+```
+
+Each inferred exit payload is typed independently, as it is for ordinary `exit`
+statements. Successful occurrences must agree on payload arity and types; one arm
+does not provide contextual types for another. For example, an unannotated empty
+collection remains invalid even if a previous exit uses a typed collection. This
+differs from [inferred stored adapters](#inferred-stored-adapter-recovery), whose
+later same-label payloads can depend on earlier contextual inference. Diagnostic
+recovery does not change either inference rule.
+
+Replay omits failed terminals, blocks their selected histories, and checks independent
+arms from clean state. Nested adapters, implicit forwarding, disjoint outer labels,
+scopes, loops and unused generic bodies follow the same 32-error budget. Returned
+borrows and moves retain ordinary checks; resource and lifetime failures on clean
+arms remain real diagnostics. Selected inferred labels still require nonempty
+payloads, while bare declared labels remain nullary.
+
+The control's partial contract is never published. Dependent callers and their hover
+wait for a complete successful check. Decision headers, uncertain entry histories,
+captures and fault-context terminals retain their barriers. This does not introduce
+contextual exit inference, fault recovery or any new executable syntax. Try invalid
+payload expressions in the inferred `successor` helper in
+[adapters.tellur](../../playground/adapters.tellur).
 
 ## Type context: E_TYPE and E_INFER
 
@@ -958,8 +997,9 @@ continuations and joins touching the stalled domain stay suppressed; disjoint ou
 histories remain checkable with their original selectors. The 32-error budget covers
 all arms and controls, including unused generic definitions.
 
-Inferred **exit** adapters, decision headers, already uncertain entry histories and
-fault-context adapters retain their existing barriers. Repairing an arm does not
+Inferred exit adapters have the separate recovery rules above since 0.94. Decision
+headers, already uncertain entry histories and fault-context adapters retain their
+existing barriers. Repairing an arm does not
 make a partially checked program executable or available to hover. Try invalid
 expressions in the `ready` and `empty` payloads of the first `auto saved` adapter in
 [stored_adapters.tellur](../../playground/stored_adapters.tellur); restoring the complete
