@@ -4,7 +4,8 @@
 
 The compiler reports diagnostic codes, source locations and explanations. Since
 0.52, checking collects errors from independent control bodies; 0.73 also recovers
-across independent straight-line statements within a body. Fixing an error
+across independent straight-line statements within a body. Release 0.74 extends
+recovery across disjoint paths and nested scopes. Fixing an error
 may expose another within that body or a dependent control. The precise
 message wording may improve between releases. The negative examples here are checked
 for their stated code, so they also serve as small regression cases.
@@ -190,7 +191,7 @@ single-error return types and select the first diagnostic from that batch.
 
 ## Statement recovery
 
-Since 0.73, an error in a top-level declaration, assignment, `drop`, `emit` or
+Since 0.73, an error in a declaration, assignment, `drop`, `emit` or
 single-completion call can be followed by diagnostics from independent subsequent
 statements. For example, both bad initializers below are reported; the use of
 `count` is suppressed until its declaration is repaired.
@@ -213,16 +214,58 @@ Reference carriers and their source owners are conservatively linked; touching
 one can suppress diagnostics involving other live references. This deliberately
 prefers missing a secondary error to reporting one based on uncertain loan state.
 
-Recovery stops before the next decision, capture, outcome adapter, path alias,
-nested scope, loop, boundary or terminal disposition. Errors inside nested bodies
-remain first-error-only. A faulting call's whole-state resource check can also stop
-recovery. Final coverage, result inference and constructor completion checks are
-not run on a replay with omissions. Independent controls are still checked.
+Final coverage, result inference and constructor completion checks are not run on
+a replay with omissions. Independent controls are still checked. Release 0.74
+tracks uncertainty by selected history, as described below.
 
 The existing **32-error budget** covers both statements and controls. Successful
 programs use the ordinary checking path; diagnostic replays never publish contracts,
 hover bindings or executable code. No syntax or valid-program semantics change.
 Try the editable [diagnostics example](../../playground/diagnostics.tellur).
+
+## Path and scope recovery
+
+Since 0.74, uncertainty from a failed statement belongs to that statement's full
+selected domain. A disjoint path retains its normal type, ownership and loan
+checking. Flat labels, path aliases, nested groups, lexical scopes and statement
+arm bodies can therefore contribute independent diagnostics within one control.
+Direct arm exits and ordinary `exit`, `forward` and `again` statements can also
+report independent errors on separate paths. Loop bodies use the same policy;
+uncertain loop completion does not produce a further coverage diagnostic.
+
+<!-- tellur:reject E_TYPE -->
+```tellur
+control inspect(bool flag) exits done {
+    delta flag { true => left, false => right }
+    [left]: u32 count = true; exit done;
+    [right]: {
+        string title = 7;
+        exit done;
+    }
+}
+```
+
+Both initializer errors appear together. The failed declaration on `left` does
+not suppress the independent error on `right`. The same rule applies to ownership
+diagnostics: an uncertain reference on one path does not hide a real conflicting
+borrow on a disjoint path. Within an uncertain path, dependent values and reference
+carriers remain conservatively linked, as in straight-line recovery.
+
+When an uncertain path reaches a new decision, capture, adapter, fault boundary,
+loop entry or terminal disposition, that history is **stalled** for this diagnostic
+pass. Later statements selecting it are omitted. A selector that joins a stalled
+history with another history stalls the whole selection: the checker never reports
+an error by silently narrowing the authored selector to its remaining paths.
+Independent selectors can still be checked. A missing selector after an omission
+stops its containing body, since the omitted decision may have introduced that name.
+
+Fault boundaries and their contingencies, inline outcome adapters, decision-header
+errors, and scope/loop setup or completion errors retain conservative first-error
+limits. A whole-state fault-resource check stalls an uncertain history. Final
+resource checks are suppressed for uncertain scope domains, while clean disjoint
+paths retain their normal checks. No recovery result becomes executable or supplies
+partial inferred hover. The same 32-error budget covers all controls and paths.
+Try [path_diagnostics.tellur](../../playground/path_diagnostics.tellur).
 
 ## Type context: E_TYPE and E_INFER
 

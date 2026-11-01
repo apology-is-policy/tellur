@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.73.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.74.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -2484,3 +2484,50 @@ sends a 500 response for a source fault before serving the next request successf
 Formatting and whitespace checks passed. All six local compiler/server copies match
 the 0.73.0 release artifacts; all nine packaged and installed extension payloads were
 verified. Existing user VS Code windows were not reloaded.
+
+## 0.74 path and scope diagnostic recovery
+
+P2b carries diagnostic uncertainty on the selected BDD domain. Omitting a failed
+statement taints its read, written and declared values on that domain; disjoint
+paths retain ordinary ownership and loan checking. Fresh replay now covers flat
+path labels and aliases, nested groups and lexical scopes, statement-arm bodies,
+direct/ordinary exits, forwarding and loop-body/backedge statements. No replay
+publishes inferred contracts, hover bindings, selected histories or executable IR.
+
+Structural operations reached on an uncertain history stall that history. A later
+selector touching stalled histories is suppressed in full; it is never narrowed to
+the remaining histories. Unknown selectors after omissions stop their containing
+body. Final scope resource checks are suppressed for uncertain scope domains;
+clean disjoint paths still check resources. Damaged loop completion does not invent
+coverage errors. Fault boundaries and contingencies, inline outcome adapters,
+decision headers and scope/loop setup/completion retain conservative limits.
+
+The recovery suite covers separate flat paths, aliases, nested groups and lexical
+continuations, statement arms, direct arm exits, new decisions on clean paths,
+path-local loan witnesses, mixed-selector suppression, unknown-selector boundaries,
+resource completion, loop backedges, generic and constructor bodies, fault/adapter
+barriers and one shared 32-error budget. Imported CLI ranges and unsaved LSP
+diagnostics preserve their source locations and fresh-hover rules. The earlier
+nested-body first-error assertion now expects both independent nested errors.
+
+Review caught and corrected an enclosing-decision suppression bug: a clean branch's
+`E_FAULT_RESOURCE` must not disappear merely because another branch is uncertain.
+The new regression and CLI before/after comparison verify both the independent type
+error and that clean-branch fault obligation. Suppression applies only to the leaf
+statement whose own selected domain is uncertain. The first full-suite run was
+stopped for this correction; final verification uses the corrected source.
+
+`playground/path_diagnostics.tellur` is a runnable editing exercise with a flat path
+and a nested group. The same broken source reports one initializer error with 0.73
+and both with 0.74. The isolated VS Code checkpoint verifies both precise expression
+ranges, independent partial repairs, unavailable inferred hover while broken,
+a fresh changed type after repair, and native Build and Run of both paths.
+
+Final corrected-source validation passed **1,060 Rust tests across 75 nonempty
+targets** and **42 Node editor tests**. The manual checked **76 accepted examples,
+30 expected diagnostics, 15 context fragments and 263 local links**. The full suite
+includes native original/expanded parity, retained-resource fault cleanup and the
+HTTP source-fault 500/next-request test. Formatting and whitespace checks passed.
+All six local compiler/server copies match the final 0.74.0 release artifacts;
+all nine packaged and installed extension payloads were verified. The final isolated
+VS Code run used those rebuilt binaries. Existing user windows were not reloaded.

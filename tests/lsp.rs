@@ -301,6 +301,29 @@ fn statement_errors_repair_independently_and_hover_uses_only_fully_checked_sourc
 }
 
 #[test]
+fn nested_branch_errors_clear_independently_without_stale_hover() {
+    let mut f = Fixture::new();
+    let source = "control main(bool flag) exits done {\n auto title=\"current\";\n delta flag {true=>yes,false=>no}\n [yes]: {u32 first=1;exit done;}\n [no] over &: {string second=\"ok\";exit done;}\n}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    assert!(f.server.hover(&f.uri, 1, 1).to_string().contains("string"));
+    let broken = source
+        .replace("first=1", "first=true")
+        .replace("second=\"ok\"", "second=7");
+    f.change(&broken, 2);
+    let diagnostics = f.diagnostics();
+    assert_eq!(diagnostics.as_array().unwrap().len(), 2);
+    assert_eq!(diagnostics[0]["range"]["start"]["line"], 3);
+    assert_eq!(diagnostics[1]["range"]["start"]["line"], 4);
+    assert!(f.server.hover(&f.uri, 1, 1).is_null());
+    f.change(&broken.replace("first=true", "first=1"), 3);
+    assert_eq!(f.diagnostics().as_array().unwrap().len(), 1);
+    f.change(&source.replace("title=\"current\"", "title=7"), 4);
+    assert_eq!(f.diagnostics(), json!([]));
+    assert!(f.server.hover(&f.uri, 1, 1).to_string().contains("u32"));
+}
+
+#[test]
 fn independent_imported_errors_follow_unsaved_repairs_and_closing_buffers() {
     let mut f = Fixture::new();
     let path = f.root.join("library.tellur");

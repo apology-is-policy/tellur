@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.73.0** implements the v0.1 checked core and the current language
+Compiler release **0.74.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -16,6 +16,12 @@ a reference interpreter, graph expansion, native compiler, language server, and
 VS Code build/run commands. The [revision plan](docs/language-revision.md) separates
 delivered features from the remaining reference, slice, outcome-expression and async work. The language is still
 fluid; this is an experimental implementation, not a production compiler.
+
+Release 0.74 extends diagnostic recovery across disjoint paths, grouped and lexical
+scopes, statement arms and loop bodies. Errors on one path no longer hide independent
+errors on another; joins touching stalled histories remain conservative. Try
+[path_diagnostics.tellur](playground/path_diagnostics.tellur) and the
+[path recovery rules](docs/reference/diagnostics-and-limits.md#path-and-scope-recovery).
 
 Release 0.73 reports independent errors within straight-line control code, alongside
 errors from independent controls. Dependent statements are suppressed, with a shared

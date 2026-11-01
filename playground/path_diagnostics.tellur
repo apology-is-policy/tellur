@@ -1,0 +1,31 @@
+outcome program_result {
+    @exit 0 done
+}
+
+// Change count to true and summary to 7 to see both path-local type errors.
+// The detailed path uses a flat label; the brief path demonstrates a nested group.
+control display(bool detailed) exits done {
+    auto title = "Detailed";
+    delta detailed {
+        true => full,
+        false => brief
+    }
+
+    [full]:
+        u32 count = 3;
+        u32 dependent = count;
+        emit(borrow title);
+        exit done;
+
+    [brief]: {
+        string summary = "Brief";
+        emit(borrow summary);
+        exit done;
+    }
+}
+
+control main() exits program_result {
+    display(true);
+    display(false);
+    exit done;
+}

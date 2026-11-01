@@ -389,6 +389,26 @@ fn imported_statement_batches_keep_ranges_and_share_the_cli_budget() {
     assert_eq!(report["diagnostics"].as_array().unwrap().len(), 32);
     assert_eq!(report["diagnostics_limited"], true);
 }
+
+#[test]
+fn imported_nested_branches_keep_their_authored_source_ranges() {
+    let f = Fixture::new();
+    f.write("library.tellur", "pub control broken(bool flag) exits done {\n delta flag {true=>yes,false=>no}\n [yes]: {u32 first=true;exit done;}\n [no] over &: {string second=7;exit done;}\n}");
+    f.write(
+        "main.tellur",
+        "import \"library.tellur\" as lib;\ncontrol main() exits done {forward lib.broken(true);}",
+    );
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    let errors = report["diagnostics"].as_array().unwrap();
+    assert_eq!(errors.len(), 2, "{report}");
+    assert_eq!(errors[0]["range"]["start"], json!({"line":3,"column":20}));
+    assert_eq!(errors[1]["range"]["start"], json!({"line":4,"column":30}));
+    for error in errors {
+        assert!(error["path"].as_str().unwrap().ends_with("library.tellur"));
+        assert_eq!(error["code"], "E_TYPE");
+    }
+    assert!(report["summary"].is_null());
+}
 impl Drop for Fixture {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.root);

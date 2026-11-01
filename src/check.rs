@@ -2175,10 +2175,30 @@ impl Checker<'_> {
         statement: &Statement,
         span: Span,
     ) -> Result<()> {
+        if !self.recovery_statement(statement, span, domain) {
+            return Ok(());
+        }
+        let barrier = usize::from(matches!(
+            statement,
+            Statement::Capture(..)
+                | Statement::BindOutcome(..)
+                | Statement::ExitOutcome(..)
+                | Statement::Boundary { .. }
+        ));
+        self.recovery.barriers += barrier;
         let previous = std::mem::replace(&mut self.expression_guard, guard.clone());
         let result = self.statement_inner(guard.clone(), domain, statement, span);
         self.expression_guard = previous;
+        self.recovery.barriers -= barrier;
         if let Err(error) = result {
+            if error.code == "E_FAULT_RESOURCE"
+                && recovery::leaf(statement)
+                && self.recovery_uncertain(domain)
+            {
+                self.recovery_block(domain);
+                return Ok(());
+            }
+            self.recovery_error(statement, span, &error);
             return Err(if matches!(statement, Statement::Exit(..)) {
                 self.with_path_contributors(error, &guard, domain)
             } else {
@@ -4125,17 +4145,14 @@ impl Checker<'_> {
         }
     }
     fn items(&mut self, items: &[Item], outer: Guard, context: Formula) -> Result<()> {
-        self.recovery.depth += 1;
+        let continuation = self.future_names.clone();
         let result = self.items_inner(items, outer, context);
-        self.recovery.depth -= 1;
+        self.future_names = continuation;
         result
     }
     fn items_inner(&mut self, items: &[Item], outer: Guard, context: Formula) -> Result<()> {
         let continuation = self.future_names.clone();
         for (index, item) in items.iter().enumerate() {
-            if self.recovery.active && !matches!(item, Item::Guard(..)) {
-                return Ok(());
-            }
             let mut future = continuation.clone();
             crate::liveness::items(&items[index + 1..], &mut future);
             self.future_names = future.clone();
@@ -4144,6 +4161,11 @@ impl Checker<'_> {
             self.expire_loans(&live);
             match item {
                 Item::Loop(span, name, parameters, body, supervised) => {
+                    let domain = self.bdd.minus(context, self.dead);
+                    if self.recovery_uncertain(domain) {
+                        self.recovery_block(domain);
+                        continue;
+                    }
                     if index + 1 != items.len() {
                         return Err(self.error(
                             "E_LOOP",
@@ -4158,7 +4180,6 @@ impl Checker<'_> {
                             "lexically nested loops are not supported",
                         ));
                     }
-                    let domain = self.bdd.minus(context, self.dead);
                     if domain == FALSE {
                         return Err(self.error(
                             "E_EMPTY",
@@ -4232,7 +4253,9 @@ impl Checker<'_> {
                     });
                     self.items(body, Guard::True, domain)?;
                     let uncovered = self.bdd.minus(domain, self.dead);
-                    if uncovered != FALSE {
+                    if self.recovery_uncertain(domain) {
+                        self.recovery_block(domain);
+                    } else if uncovered != FALSE {
                         return Err(self.uncovered(
                             *span,
                             "loop has histories with no exit or again",
@@ -4279,8 +4302,9 @@ impl Checker<'_> {
                             format!("path `{name}` already exists"),
                         ));
                     }
-                    let (guard, domain) = self.mask(mask, *span)?;
-                    let domain = self.bdd.and(context, domain);
+                    let Some((guard, domain)) = self.recovery_mask(mask, *span, context)? else {
+                        return Ok(());
+                    };
                     self.record_selection(
                         *span,
                         syntax::SelectionKind::Alias,
@@ -4295,11 +4319,6 @@ impl Checker<'_> {
                 }
                 Item::Guard(mask, statements) => {
                     for (index, (span, statement)) in statements.iter().enumerate() {
-                        match self.recovery_statement(statement, *span) {
-                            None => return Ok(()),
-                            Some(false) => continue,
-                            Some(true) => {}
-                        }
                         let mut live = future.clone();
                         for (_, s) in &statements[index..] {
                             crate::liveness::statement(s, &mut live);
@@ -4309,28 +4328,26 @@ impl Checker<'_> {
                         for (_, s) in &statements[index + 1..] {
                             crate::liveness::statement(s, &mut self.future_names);
                         }
-                        let (guard, domain) = self.mask(mask, *span)?;
-                        let domain = self.bdd.and(context, domain);
+                        let Some((guard, domain)) = self.recovery_mask(mask, *span, context)?
+                        else {
+                            return Ok(());
+                        };
                         self.record_selection(
                             *span,
                             syntax::SelectionKind::Statement,
                             &outer.clone().and(guard.clone()),
                             domain,
                         );
-                        if let Err(error) =
-                            self.statement(outer.clone().and(guard), domain, statement, *span)
-                        {
-                            if self.recovery.active && error.code == "E_FAULT_RESOURCE" {
-                                return Ok(());
-                            }
-                            self.recovery_error(statement, *span, &error);
-                            return Err(error);
-                        }
+                        self.statement(outer.clone().and(guard), domain, statement, *span)?;
                     }
                 }
                 Item::Group(span, mask, body) => {
-                    let (guard, domain) = self.mask(mask, *span)?;
-                    let domain = self.bdd.and(context, domain);
+                    let Some((guard, domain)) = self.recovery_mask(mask, *span, context)? else {
+                        return Ok(());
+                    };
+                    if self.recovery_blocked(domain) {
+                        continue;
+                    }
                     self.record_selection(
                         *span,
                         syntax::SelectionKind::Scope,
@@ -4340,8 +4357,12 @@ impl Checker<'_> {
                     self.items(body, outer.clone().and(guard), domain)?;
                 }
                 Item::Over(span, mask, body) => {
-                    let (guard, domain) = self.mask(mask, *span)?;
-                    let domain = self.bdd.and(context, domain);
+                    let Some((guard, domain)) = self.recovery_mask(mask, *span, context)? else {
+                        return Ok(());
+                    };
+                    if self.recovery_blocked(domain) {
+                        continue;
+                    }
                     self.record_selection(
                         *span,
                         syntax::SelectionKind::Scope,
@@ -4350,7 +4371,9 @@ impl Checker<'_> {
                     );
                     self.scopes.push(Scope::default());
                     self.items(body, outer.clone().and(guard), domain)?;
-                    self.resources(domain, *span, Some(self.scopes.len() - 1))?;
+                    if !self.recovery_uncertain(domain) {
+                        self.resources(domain, *span, Some(self.scopes.len() - 1))?;
+                    }
                     let slots = self
                         .scopes
                         .last()

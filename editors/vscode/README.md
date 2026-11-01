@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-0.73.0-darwin-arm64.vsix` using **Extensions:
+1. Install the supplied `tellur-language-0.74.0-darwin-arm64.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -77,7 +77,7 @@ another file; relative paths are resolved against the workspace folder. Manifest
 edits take effect after saving. With no valid manifest, syntax diagnostics still
 work and a warning explains that type/coverage/resource checks did not run.
 
-The server reports independent control and straight-line statement errors, debounced
+The server reports independent control, statement and disjoint-path errors, debounced
 during typing, with up to 32 per check. Dependent statements and failed callers are suppressed
 to avoid cascades. Expression diagnostics select their source ranges; other
 diagnostics may point to a token, statement or declaration. Structural
@@ -669,3 +669,16 @@ boundaries and exits. Whole-state fault-resource checks can also stop recovery.
 The 32-error budget is shared across statements and controls; no partial checked
 program or inferred hover escapes a failed check. See the
 [precise recovery limits](https://github.com/apology-is-policy/tellur/blob/main/docs/reference/diagnostics-and-limits.md#statement-recovery).
+
+## Path and scope diagnostics in 0.74
+
+Open `playground/path_diagnostics.tellur`. Change `count = 3` to `count = true`
+and `summary = "Brief"` to `summary = 7`: both path-local initializer errors appear,
+including the one inside the nested group. Repair either independently; inferred
+`auto` hover returns only after the complete program checks again.
+
+Recovery also works inside lexical scopes, statement arms and loop bodies. It keeps
+full path selectors: a join touching a stalled history is suppressed, not narrowed.
+Fault boundaries/contingencies, inline adapters, decision headers and scope/loop
+setup or completion retain conservative limits. See the
+[path recovery reference](https://github.com/apology-is-policy/tellur/blob/main/docs/reference/diagnostics-and-limits.md#path-and-scope-recovery).
