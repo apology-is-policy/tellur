@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-0.88.0-darwin-arm64.vsix` using **Extensions:
+1. Install the supplied `tellur-language-0.89.0-darwin-arm64.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -827,3 +827,11 @@ bounds, named result origins, inferred payloads and private checked return lifet
 Anonymous payloads use bounded type rendering without internal compiler names.
 Unsaved edits refresh the signature; invalid sources suppress it. Abstract trait,
 constructor and boundary calls retain their existing selected-history feedback.
+
+## Symbolic trait call contracts in 0.89
+
+Hover `reader<r>.peek(input)` inside `playground/borrowed_traits.tellur`. The trait's
+names, associated projections, origins and fault permissions remain abstract and
+independent of concrete implementations. Named results retain their alternatives
+and nested origin mappings. Edits refresh the interface; invalid bounds or
+contracts suppress it. Abstract constructor and boundary calls remain follow-ups.

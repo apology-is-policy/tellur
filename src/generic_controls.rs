@@ -628,9 +628,12 @@ pub(crate) fn compile(
             template.span,
         ));
     }
-    let checked = (|| {
+    let (checked, abstract_sources) = (|| {
         let symbolic = Expander::new(symbolic_unit).finish(&seeds)?;
+        let abstract_sources = symbolic.unit.regions.iter()
+            .filter(|r| r.abstract_signature).cloned().collect::<Vec<_>>();
         crate::check::compile_concrete_unit(symbolic.unit, symbolic_manifest, visibility, &symbolic.arguments)
+            .map(|checked| (checked, abstract_sources))
     })().map_err(|errors| errors.map(|mut error| {
         for (internal, name) in &parameters {
             error.message = error.message.replace(internal, name);
@@ -716,6 +719,14 @@ pub(crate) fn compile(
         {
             crate::origins::bind_contract(&mut source_contract, contract)?;
         }
+        if source_contract
+            .exit_contract
+            .as_ref()
+            .is_some_and(|name| !checked.manifest().is_outcome(name))
+        {
+            // A lone nullary exit is parsed with a possible contract name too.
+            source_contract.exit_contract = None;
+        }
         for (field, slot) in source_contract
             .parameters
             .iter_mut()
@@ -739,11 +750,59 @@ pub(crate) fn compile(
             })
             .map(|(internal, source)| (internal.clone(), source.clone()))
             .collect();
+        let arguments = application(seed).unwrap().1;
+        let mut trait_contracts = BTreeMap::new();
+        for source in &abstract_sources {
+            let Some((application, _)) = crate::collection_support::qualified_member(&source.name)
+            else {
+                continue;
+            };
+            let Some((_, targets)) = generic(application) else {
+                continue;
+            };
+            if targets.len() != 1 || !arguments.contains(&targets[0]) {
+                continue;
+            }
+            let mut source = source.clone();
+            source.body.clear();
+            rewrite_region(&mut source, &checked.associated_types);
+            if let Some(name) = &source.exit_contract {
+                if let Some(contract) = checked.outcome_contracts.get(name) {
+                    crate::origins::bind_contract(&mut source, contract)?;
+                } else if let Some(outcomes) = checked.manifest().outcomes(name) {
+                    source.exits = outcomes
+                        .iter()
+                        .map(|o| Outcome {
+                            name: o.name.clone(),
+                            fields: o
+                                .fields
+                                .iter()
+                                .map(|f| Field {
+                                    type_span: Span::default(),
+                                    origins: vec![],
+                                    referent_origins: vec![],
+                                    name: f.name.clone(),
+                                    ty: f.ty.clone(),
+                                })
+                                .collect(),
+                        })
+                        .collect();
+                } else {
+                    // The parser also records a possible named contract for a
+                    // lone nullary exit. Checking resolved it as an ordinary label.
+                    source.exit_contract = None;
+                }
+            }
+            rewrite_region(&mut source, &parameters);
+            source.name = substitute(&source.name, &parameters);
+            trait_contracts.insert(source.name.clone(), source);
+        }
         result.generic_controls.push(ir::GenericControl {
             source_contract,
             return_lifetimes,
             display_exits,
             display_bindings,
+            trait_contracts,
             contingent: region.contingent,
             faults: region.faults,
             name: template.name.clone(),

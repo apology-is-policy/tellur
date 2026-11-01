@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.88.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.89.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -3018,5 +3018,36 @@ certificates retain native/expansion coverage. Isolated VS Code verified symboli
 named contracts, checked borrow origins, failed-check invalidation, repaired/renamed
 parameter display and native execution emitting `Ada`. Six binary copies and nine
 packaged/installed payloads were verified at 0.88.0. Existing windows were not reloaded.
+Formatting and whitespace checks passed; unchanged diagnostic, runtime and library
+evidence is reused.
+
+## 0.89 — Symbolic trait-call contracts
+
+P4d.6 retains checked abstract trait interfaces per generic definition and its
+distinct seeded inputs. Hover shows the trait's parameter/payload names, associated
+projections, named alternatives, direct and nested origin mappings, and declared
+fault/contingency permissions. It cannot select an unrelated concrete witness or
+mix equal parameter spellings across definitions. Both concrete and symbolic trait
+calls share the interface renderer. A possible contract name on a parsed lone
+nullary exit is now resolved before presentation, keeping ordinary labels distinct
+from actual named outcomes.
+
+Six new LSP regressions cover unused definitions, concrete-name shadowing, nested
+named origins, multiple bounds/inputs, fault-only and contingent methods, imported
+contracts, unsaved invalidation/repair and bound removal. Existing abstract-negative
+cases now require symbolic contracts and continued separation from concrete types.
+One focused expectation used an extra closing apostrophe in a group selector and
+was corrected to the existing syntax. Abstract constructor and boundary calls
+remain separate presentation work; typing, ownership and runtime behavior are unchanged.
+
+Final validation passed **313 Rust tests across 14 affected targets**, including
+all 163 LSP tests and three manual checks, plus **42 Node tests**. Eight affected
+targets completed before two old absent-hover assertions failed; those passes were
+reused, then the corrected LSP suite and remaining targets passed. Generic data and
+controls, trait bounds/origins, public contracts, constructors, snapshots and
+certificates retain native/expansion coverage. Isolated VS Code confirmed symbolic
+associated types and origins, invalidation/repair, changed trait binding names and
+native execution of `playground/borrowed_traits.tellur`. Six binary copies and nine
+packaged/installed payloads were verified at 0.89.0. Existing windows were not reloaded.
 Formatting and whitespace checks passed; unchanged diagnostic, runtime and library
 evidence is reused.

@@ -69,6 +69,191 @@ fn hover_at(f: &Fixture, source: &str, needle: &str) -> Value {
 }
 
 #[test]
+fn symbolic_trait_hover_preserves_associated_types_declared_names_and_origins() {
+    let mut f = Fixture::new();
+    let source = "trait reader {type item:clone;control peek(ref self input) exits found {ref item value from input};}\ncontrol get<t:reader>(ref t owner) exits auto {forward reader<t>.peek(owner);}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let h = hover_at(&f, source, "reader<t>.peek(owner)");
+    let text = h["contents"]["value"].as_str().unwrap();
+    assert!(text.contains("control reader<t>.peek(ref t input) exits found { ref reader<t>.item value from input }"),"{text}");
+    assert!(
+        text.contains("declared trait bound") && text.contains("Selected histories"),
+        "{text}"
+    );
+    assert!(
+        !text.contains("_path_")
+            && !text.contains("$0$")
+            && !text.contains("Checked return lifetimes"),
+        "{text}"
+    );
+    assert_eq!(
+        h["range"]["end"]["character"].as_u64().unwrap()
+            - h["range"]["start"]["character"].as_u64().unwrap(),
+        14
+    );
+    let instantiated = format!(
+        "{source}\nstruct t {{string hidden;}} implement reader for t {{type item=string;control peek(ref self owner) exits found {{ref item result from owner}} {{exit found {{borrow owner.hidden}};}}}} control main() exits done {{t owner=t {{hidden:\"value\"}};delta get<t>(borrow owner) {{found {{auto value}}=>ready}}[ready]:emit(value);exit done;}}"
+    );
+    f.change(&instantiated, 2);
+    assert_eq!(f.diagnostics(), json!([]));
+    assert_eq!(hover_at(&f, &instantiated, "reader<t>.peek(owner)"), h);
+}
+
+#[test]
+fn symbolic_trait_hover_preserves_named_nested_origin_contracts() {
+    let mut f = Fixture::new();
+    let source = include_str!("fixtures/aggregate_traits.tellur");
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let h = hover_at(&f, source, "editor<e>.prepare(input)").to_string();
+    assert!(h.contains("control editor<e>.prepare(ref mutable text_view<editor<e>.item> input) exits preparation<editor<e>.item>[input, input['text]]"),"{h}");
+    assert!(
+        h.contains("ready { edit_job<editor<e>.item>[input, input['text]] job }")
+            && h.contains("unavailable"),
+        "{h}"
+    );
+    assert!(
+        !h.contains("string") && !h.contains("owner") && !h.contains("_path_"),
+        "{h}"
+    );
+}
+
+#[test]
+fn symbolic_trait_hover_preserves_declared_fault_and_contingency_permissions() {
+    let mut f = Fixture::new();
+    let source = "trait task {@contingent control ping(self input) exits done faults;control quiet(self input) exits done;control stop(self input) faults;}\ncontrol first<t:task>(t value) exits done faults {forward task<t>.ping(value);}\ncontrol second<t:task>(t value) exits done {forward task<t>.quiet(value);}\ncontrol third<t:task>(t value) faults {task<t>.stop(value);}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let ping = hover_at(&f, source, "task<t>.ping(value)").to_string();
+    assert!(
+        ping.contains("@contingent")
+            && ping.contains("control task<t>.ping(t input) exits done faults"),
+        "{ping}"
+    );
+    let quiet = hover_at(&f, source, "task<t>.quiet(value)").to_string();
+    assert!(
+        quiet.contains("control task<t>.quiet(t input) exits done")
+            && !quiet.contains("@contingent")
+            && !quiet.contains(" faults"),
+        "{quiet}"
+    );
+    let stop = hover_at(&f, source, "task<t>.stop(value)").to_string();
+    assert!(
+        stop.contains("control task<t>.stop(t input) faults") && !stop.contains(" exits "),
+        "{stop}"
+    );
+}
+
+#[test]
+fn symbolic_trait_hover_scopes_same_named_parameters_and_multiple_bounds() {
+    let mut f = Fixture::new();
+    let source = "trait reader {type item:drop;control read(self input) exits ready {item value};}\ntrait writer {control write(self destination,string text) exits done;}\ncontrol first<t:reader>(t value) exits auto {forward reader<t>.read(value);}\ncontrol second<t:writer>(t target) exits done {forward writer<t>.write(target,\"value\");}\ncontrol third<a:reader,b:writer>(a source,b target) exits auto {writer<b>.write(target,\"value\");forward reader<a>.read(source);}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    for (needle, expected) in [
+        (
+            "reader<t>.read(value)",
+            "reader<t>.read(t input) exits ready { reader<t>.item value }",
+        ),
+        (
+            "writer<t>.write(target",
+            "writer<t>.write(t destination, string text) exits done",
+        ),
+        (
+            "writer<b>.write(target",
+            "writer<b>.write(b destination, string text) exits done",
+        ),
+        (
+            "reader<a>.read(source)",
+            "reader<a>.read(a input) exits ready { reader<a>.item value }",
+        ),
+    ] {
+        let h = hover_at(&f, source, needle).to_string();
+        assert!(h.contains(expected), "{h}");
+        assert!(
+            !h.contains("_path_") && !h.contains("$0$") && !h.contains("$1$"),
+            "{h}"
+        );
+    }
+}
+
+#[test]
+fn symbolic_trait_hover_keeps_import_aliases_and_refreshes_unsaved_contracts() {
+    let mut f = Fixture::new();
+    let library = f.root.join("reader.tellur");
+    let uri = url::Url::from_file_path(&library).unwrap().to_string();
+    let original = "pub outcome reply<t>['a] {found {ref t text <- 'a}} pub trait reader {type item:clone;control peek(ref self source) exits reply<item>[source];}";
+    fs::write(&library, original).unwrap();
+    let source = "import \"reader.tellur\" as reading;control get<t:reading.reader>(ref t input) exits auto {forward reading.reader<t>.peek(input);}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let before = hover_at(&f, source, "reading.reader<t>.peek(input)").to_string();
+    assert!(before.contains("control reading.reader<t>.peek(ref t source) exits reading.reply<reading.reader<t>.item>[source]"),"{before}");
+    assert!(
+        before.contains("found { ref reading.reader<t>.item text from source }"),
+        "{before}"
+    );
+    f.server.notification("textDocument/didOpen",&json!({"textDocument":{"uri":uri,"version":1,"text":original.replace("found","available")}}));
+    assert_eq!(f.diagnostics(), json!([]));
+    assert!(
+        hover_at(&f, source, "reading.reader<t>.peek(input)")
+            .to_string()
+            .contains("available { ref reading.reader<t>.item text from source }")
+    );
+    f.server.notification("textDocument/didChange",&json!({"textDocument":{"uri":uri,"version":2},"contentChanges":[{"text":original.replace("[source]","[missing]")}]}));
+    assert!(!f.diagnostics().as_array().unwrap().is_empty());
+    assert!(hover_at(&f, source, "reading.reader<t>.peek(input)").is_null());
+    f.server.notification(
+        "textDocument/didClose",
+        &json!({"textDocument":{"uri":uri}}),
+    );
+    assert_eq!(f.diagnostics(), json!([]));
+    assert_eq!(
+        hover_at(&f, source, "reading.reader<t>.peek(input)").to_string(),
+        before
+    );
+}
+
+#[test]
+fn symbolic_trait_hover_rechecks_bound_removal_and_ordinary_nullary_exits() {
+    let mut f = Fixture::new();
+    let source = "trait sink {control put(self input) exits done;}control send<t:sink>(t value) exits done {forward sink<t>.put(value);}control wrap<t:sink>(t value) exits done {forward send<t>(value);}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let ordinary = hover_at(&f, source, "send<t>(value)").to_string();
+    assert!(
+        ordinary.contains("exits done") && !ordinary.contains("Contract alternatives"),
+        "{ordinary}"
+    );
+    f.change(&source.replace("send<t:sink>", "send<t>"), 2);
+    assert!(!f.diagnostics().as_array().unwrap().is_empty());
+    assert!(
+        hover_at(
+            &f,
+            &source.replace("send<t:sink>", "send<t>"),
+            "sink<t>.put(value)"
+        )
+        .is_null()
+    );
+    f.change(source, 3);
+    assert_eq!(f.diagnostics(), json!([]));
+    assert!(
+        hover_at(&f, source, "sink<t>.put(value)")
+            .to_string()
+            .contains("Trait control contract")
+    );
+    let named = format!("outcome done {{done}}{source}");
+    f.change(&named, 4);
+    assert_eq!(f.diagnostics(), json!([]));
+    assert!(
+        hover_at(&f, &named, "sink<t>.put(value)")
+            .to_string()
+            .contains("Contract alternatives: `done`")
+    );
+}
+
+#[test]
 fn symbolic_call_hover_expands_anonymous_payloads_without_renaming_fields() {
     let mut f = Fixture::new();
     let source = "control store<t:drop>(t t) exits auto {auto saved=delta true {true=>ready {t},false=>empty {}};exit carried {saved};}\ncontrol wrap<item:drop>(item value) exits auto {forward store<item>(value);}";
@@ -997,10 +1182,12 @@ fn trait_call_hover_keeps_named_nested_contracts_and_declared_group_selectors() 
         !text.contains("owner") && !text.contains("_path_"),
         "{text}"
     );
+    let symbolic = hover_at(&f, &source, "editor<e>.prepare(input)").to_string();
     assert!(
-        !hover_at(&f, &source, "editor<e>.prepare(input)")
-            .to_string()
-            .contains("Trait control contract")
+        symbolic.contains("preparation<editor<e>.item>[input, input['text]]")
+            && symbolic.contains("declared trait bound")
+            && !symbolic.contains("string"),
+        "{symbolic}"
     );
 }
 
@@ -1030,10 +1217,12 @@ fn trait_call_hover_never_confuses_lexical_parameters_with_concrete_types() {
     let source = "struct value {u32 number;}trait reader {control read(ref self input) exits ready {u32 number};}implement reader for value {control read(ref self owner) exits ready {u32 output} {exit ready {owner.number};}}\ncontrol wrap<value:reader>(ref value input) exits ready {u32 number} {forward reader<value>.read(input);}\ncontrol main() exits done {value owner=value {7};delta reader<value>.read(borrow owner) {ready {auto number}=>read} [read]:drop(number);exit done;}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
+    let symbolic = hover_at(&f, source, "reader<value>.read(input)").to_string();
     assert!(
-        !hover_at(&f, source, "reader<value>.read(input)")
-            .to_string()
-            .contains("Trait control contract")
+        symbolic.contains("control reader<value>.read(ref value input) exits ready { u32 number }")
+            && symbolic.contains("declared trait bound")
+            && !symbolic.contains("output"),
+        "{symbolic}"
     );
     assert!(
         hover_at(&f, source, "reader<value>.read(borrow")
@@ -1160,10 +1349,15 @@ fn trait_call_hover_handles_untitled_and_keeps_abstract_calls_independent() {
             .to_string()
             .contains("control sink<string>.put(string input) exits done")
     );
+    let abstract_hover = hover_at(&f, source, "sink<t>.put(").to_string();
     assert!(
-        !hover_at(&f, source, "sink<t>.put(")
-            .to_string()
-            .contains("Trait control contract")
+        abstract_hover.contains("control sink<t>.put(t input) exits done"),
+        "{abstract_hover}"
+    );
+    assert!(
+        abstract_hover.contains("declared trait bound")
+            && !abstract_hover.contains("Contract alternatives"),
+        "{abstract_hover}"
     );
 }
 

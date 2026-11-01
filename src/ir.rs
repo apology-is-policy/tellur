@@ -375,6 +375,8 @@ pub struct GenericControl {
     /// Materialized anonymous payload descriptions and their abstract type names.
     pub(crate) display_exits: Vec<crate::manifest::Outcome>,
     pub(crate) display_bindings: BTreeMap<String, String>,
+    /// Declared trait interfaces for this definition's distinct abstract inputs.
+    pub(crate) trait_contracts: BTreeMap<String, crate::syntax::Region>,
     pub contingent: bool,
     pub faults: bool,
     pub name: String,

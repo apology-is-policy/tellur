@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.88.0** implements the v0.1 checked core and the current language
+Compiler release **0.89.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -24,8 +24,12 @@ ordered result origins, fault permission and selected histories. Try hovering ov
 
 Release 0.80 adds concrete trait-call contracts, preserving the trait's names and
 origins while resolving associated types. Unsaved declarations refresh the contract;
-abstract trait calls retain selected-history feedback. Try `reader<text_source>.read`
+generic trait calls retain their abstract associated projections. Try `reader<text_source>.read`
 in [traits.tellur](playground/traits.tellur).
+
+Release 0.89 adds symbolic trait-call [hover](docs/language-reference.md#call-site-contract-hover):
+associated types, declared names, origin groups and fault permissions stay tied to
+the enclosing generic definition and its trait bounds.
 
 Release 0.88 adds symbolic ordinary generic [call hover](docs/language-reference.md#call-site-contract-hover):
 abstract types, declared bounds, named origins and inferred return lifetimes follow

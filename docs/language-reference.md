@@ -1,8 +1,8 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.88.0 -->
+<!-- tellur-reference-version: 0.89.0 -->
 
-This manual describes **compiler 0.88.0**, including the current ownership model,
+This manual describes **compiler 0.89.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -987,7 +987,7 @@ behavior.
 
 Contracts come from a successful check of the current document and its unsaved
 dependencies. Editing an imported signature refreshes the hover; a failed check
-suppresses it rather than showing an old signature. Abstract constructor, trait and
+suppresses it rather than showing an old signature. Abstract constructor and
 boundary calls retain selected-history feedback; ordinary symbolic generic calls
 are described below. This is not general expression-type hover. Try the calls in
 [the JSON file example](../examples/json_file/main.tellur).
@@ -1000,6 +1000,16 @@ associated-type arguments, declared bounds, named result origins, private inferr
 payloads and checked return lifetimes follow the definition. Anonymous result types
 use the same bounded rendering as inferred-type hover; payload names are preserved.
 No concrete implementation or caller is chosen to manufacture the signature.
+
+Since 0.89, trait calls inside generic controls also show the declared interface.
+For `reader<r>.peek(input)` in [borrowed_traits.tellur](../playground/borrowed_traits.tellur),
+`r` and `reader<r>.t_item` remain abstract. Parameter names, payload names, origin
+mappings and fault/contingency permissions come from the trait, regardless of a
+concrete implementation's names or narrower behavior. Named outcomes retain their
+alternatives and nested origin groups. The lookup is scoped to the enclosing
+checked generic definition, so equal parameter spellings in different controls
+cannot mix contracts. Removing a required bound or invalidating a declaration
+suppresses the hover until repaired.
 
 A lexical type parameter keeps a call abstract even when a real type with the same
 name has a concrete implementation. Hover never borrows that unrelated signature.
@@ -2783,7 +2793,7 @@ General expression-type hover remains unsupported.
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and async tasks remain planned; they are not executable features of 0.88.0.
+and async tasks remain planned; they are not executable features of 0.89.0.
 ## Contingency and supervised boundaries
 
 The [contingency reference](reference/contingency.md) specifies `@contingent`,

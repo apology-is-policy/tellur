@@ -186,3 +186,13 @@ bound is inferred from current implementations.
 See [the reference](language-reference.md#aggregate-trait-origin-contracts),
 [the example](../playground/aggregate_traits.tellur) and
 [regression coverage](../tests/aggregate_traits.rs).
+
+## Symbolic call hover (0.89)
+
+A trait call in a generic control shows the declared interface with abstract
+associated projections, such as `reader<r>.t_item`. Names, origin mappings and
+fault/contingency permissions come from the trait declaration. The source metadata
+belongs to that checked generic definition; concrete callers cannot specialize the
+hover or grant it extra permissions. Named outcomes include their alternatives and
+nested groups. Unsaved changes refresh the contract, and invalid sources suppress
+it. See [call hover](language-reference.md#call-site-contract-hover).

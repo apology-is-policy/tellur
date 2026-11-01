@@ -114,11 +114,7 @@ fn items<'a>(body: &'a [Item], out: &mut Vec<&'a Expr>) {
         }
     }
 }
-fn call_at<'a>(
-    unit: &'a Unit,
-    text: &str,
-    at: Span,
-) -> Option<(&'a str, SourceRange, &'a [String])> {
+fn call_at<'a>(unit: &'a Unit, text: &str, at: Span) -> Option<(&'a str, SourceRange, &'a Region)> {
     let mut calls = vec![];
     for r in unit
         .regions
@@ -128,18 +124,14 @@ fn call_at<'a>(
     {
         let mut expressions = vec![];
         items(&r.body, &mut expressions);
-        calls.extend(
-            expressions
-                .into_iter()
-                .map(|e| (e, r.type_parameters.as_slice())),
-        );
+        calls.extend(expressions.into_iter().map(|e| (e, r)));
     }
     let tokens = lex(text).ok()?;
     let key = |s: Span| (s.line, s.column);
     let hit = tokens
         .iter()
         .find(|t| key(t.span) <= key(at) && key(at) < key(t.end))?;
-    for (e, parameters) in calls {
+    for (e, caller) in calls {
         let ExprKind::Call(name, _) = &e.kind else {
             unreachable!()
         };
@@ -161,7 +153,7 @@ fn call_at<'a>(
                     start: first.span,
                     end: last.end,
                 },
-                parameters,
+                caller,
             ));
         }
     }
@@ -260,6 +252,56 @@ fn checked_sources(
         crate::check_source(&server.documents.get(uri)?.text, manifest).ok()?
     };
     Some((program, sources))
+}
+
+fn trait_description(
+    written: &str,
+    source: &Region,
+    outcomes: &[crate::manifest::Outcome],
+    contract: Option<&str>,
+    symbolic: bool,
+) -> String {
+    let alternatives = checked_exit_description(outcomes, source);
+    let exits = match contract {
+        Some(name) if source.exit_origins.is_empty() => display_type(name),
+        Some(name) => format!(
+            "{}[{}]",
+            display_type(name),
+            source
+                .exit_origins
+                .iter()
+                .map(OriginArgument::display)
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        None => alternatives.clone(),
+    };
+    format!(
+        "**Trait control contract**\n\n```tellur\n{}control {}({}){}\n```{}\n\n{}",
+        if source.contingent_contract == Some(true) {
+            "@contingent\n"
+        } else {
+            ""
+        },
+        display_type(written),
+        source
+            .parameters
+            .iter()
+            .map(|f| source_field(f, false))
+            .collect::<Vec<_>>()
+            .join(", "),
+        completion_description(&exits, source.fault_contract == Some(true)),
+        if contract.is_some() {
+            format!("\n\nContract alternatives: `{alternatives}`.")
+        } else {
+            String::new()
+        },
+        if symbolic {
+            "Static dispatch through the declared trait bound. The implementing type and its associated types remain abstract; no concrete implementation is selected."
+        } else {
+            "Static dispatch through the declared trait contract. Associated types are resolved for this implementing type."
+        }
+    )
 }
 
 fn generic_description(written: &str, resolved: &str, program: &CheckedProgram) -> Option<String> {
@@ -362,7 +404,8 @@ pub(super) fn hover(
 ) -> Option<Value> {
     let text = &server.documents.get(uri)?.text;
     let at = scalar_span(text, line, character)?;
-    let (written, range, parameters) = call_at(unit, text, at)?;
+    let (written, range, caller) = call_at(unit, text, at)?;
+    let parameters = &caller.type_parameters;
     let abstract_names: BTreeMap<_, _> = parameters
         .iter()
         .enumerate()
@@ -420,7 +463,40 @@ pub(super) fn hover(
         }
     }
     let mut description = if abstract_call {
-        generic_description(written, &resolved, &program)?
+        generic_description(written, &resolved, &program).or_else(|| {
+            let enclosing = names.get(&caller.name).unwrap_or(&caller.name);
+            let checked = program
+                .generic_controls()
+                .iter()
+                .find(|g| &g.name == enclosing)?;
+            let source = checked.trait_contracts.iter().find_map(|(name, source)| {
+                (crate::generics::substitute(name, &abstract_names) == resolved).then_some(source)
+            })?;
+            let mut source = source.clone();
+            crate::generic_controls::rewrite_region(&mut source, &abstract_names);
+            let outcomes = source
+                .exits
+                .iter()
+                .map(|o| crate::manifest::Outcome {
+                    name: o.name.clone(),
+                    fields: o
+                        .fields
+                        .iter()
+                        .map(|f| crate::manifest::Field {
+                            name: f.name.clone(),
+                            ty: f.ty.clone(),
+                        })
+                        .collect(),
+                })
+                .collect::<Vec<_>>();
+            Some(trait_description(
+                written,
+                &source,
+                &outcomes,
+                source.exit_contract.as_deref(),
+                true,
+            ))
+        })?
     } else if let Some(source) = program.trait_contracts.get(&resolved) {
         // This is the conformance-checked trait contract, not the implementing
         // body's narrower evidence or its independently chosen binding names.
@@ -447,41 +523,12 @@ pub(super) fn hover(
                 })
                 .collect()
         };
-        let alternatives = checked_exit_description(&outcomes, source);
-        let exits = match contract {
-            Some(name) if source.exit_origins.is_empty() => display_type(name),
-            Some(name) => format!(
-                "{}[{}]",
-                display_type(name),
-                source
-                    .exit_origins
-                    .iter()
-                    .map(OriginArgument::display)
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            ),
-            None => alternatives.clone(),
-        };
-        format!(
-            "**Trait control contract**\n\n```tellur\n{}control {}({}){}\n```{}\n\nStatic dispatch through the declared trait contract. Associated types are resolved for this implementing type.",
-            if source.contingent_contract == Some(true) {
-                "@contingent\n"
-            } else {
-                ""
-            },
-            display_type(written),
-            source
-                .parameters
-                .iter()
-                .map(|f| source_field(f, false))
-                .collect::<Vec<_>>()
-                .join(", "),
-            completion_description(&exits, source.fault_contract == Some(true)),
-            if contract.is_some() {
-                format!("\n\nContract alternatives: `{alternatives}`.")
-            } else {
-                String::new()
-            }
+        trait_description(
+            written,
+            source,
+            &outcomes,
+            contract.map(String::as_str),
+            false,
         )
     } else if let Some(checked) = program.region(&crate::constructors::control_name(&resolved)) {
         let base = generic(&resolved).map_or(resolved.as_str(), |(base, _)| base);
