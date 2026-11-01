@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-0.76.0-darwin-arm64.vsix` using **Extensions:
+1. Install the supplied `tellur-language-0.77.0-darwin-arm64.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -707,3 +707,13 @@ suppress stale hover. The callee range excludes value arguments; other positions
 retain their existing feedback. Constructors, trait dispatch, named boundaries and
 abstract generic-body calls retain selected-history feedback for now. See the
 [call-site reference](https://github.com/apology-is-policy/tellur/blob/main/docs/language-reference.md#call-site-contract-hover).
+
+## Declaration diagnostics in 0.77
+
+Independent public-contract and concrete-signature errors now appear together,
+including imported and generic declarations. Each preparation phase reports at most
+one error per control within the 32-error budget. Later phases and bodies wait until
+the failed declarations are repaired; inferred and call-site hover remain unavailable
+while the program is invalid. Shared type/trait preparation retains conservative
+stopping points. Try `playground/declaration_diagnostics.tellur`, or see the
+[phase rules](https://github.com/apology-is-policy/tellur/blob/main/docs/reference/diagnostics-and-limits.md#control-declaration-batches).

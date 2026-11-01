@@ -4398,7 +4398,7 @@ impl Checker<'_> {
 pub fn compile(source: &str, manifest: Manifest) -> Result<CheckedProgram> {
     check_source(source, manifest).map_err(crate::Diagnostics::first)
 }
-/// Check independent control bodies, collecting a bounded diagnostic batch.
+/// Check independent declarations and bodies, collecting bounded phase-local batches.
 pub fn check_source(source: &str, manifest: Manifest) -> crate::CheckResult<CheckedProgram> {
     let mut unit = syntax::parse_unit(source)?;
     crate::constructors::prepare(&mut unit)?;
@@ -4417,9 +4417,7 @@ pub(crate) fn compile_unit(
     manifest: Manifest,
     visibility: &crate::modules::Visibility,
 ) -> crate::CheckResult<CheckedProgram> {
-    for region in &unit.regions {
-        contracts::public_shape(region)?;
-    }
+    crate::diagnostics::collect_checks(unit.regions.iter().map(contracts::public_shape))?;
     let mut visibility = visibility.clone();
     let mut unit = crate::traits::lower(unit, &manifest, &mut visibility)?;
     crate::constructors::rewrite_calls(&mut unit, &visibility)?;
@@ -4617,26 +4615,29 @@ pub(crate) fn compile_concrete_unit(
             },
         );
     }
-    for region in &parsed {
+    let mut operation_names = signatures.keys().cloned().collect::<BTreeSet<_>>();
+    let declared = crate::diagnostics::collect_checks(parsed.iter().map(|region| -> Result<_> {
+        // Reserve every authored name, including an invalid declaration's name,
+        // so a later duplicate remains an independent declaration error.
+        let duplicate = !operation_names.insert(region.name.clone());
         if region.boundary.is_some()
             && region
                 .parameters
                 .iter()
                 .any(|p| manifest.contains_references(&p.ty))
         {
-            return Err(Diagnostic::new("E_BOUNDARY", region.span, "boundary inputs must own their data; borrowed inputs and stored references cannot cross an isolation boundary").into());
+            return Err(Diagnostic::new("E_BOUNDARY", region.span, "boundary inputs must own their data; borrowed inputs and stored references cannot cross an isolation boundary"));
         }
         contracts::public_origins(region, &origin_schemas)?;
-        if signatures.contains_key(&region.name)
+        if duplicate
             || crate::collections::is_operation(&region.name)
             || crate::collections::is_length(&region.name)
         {
-            return Err((Diagnostic::new(
+            return Err(Diagnostic::new(
                 "E_NAME",
                 region.span,
                 format!("duplicate operation `{}`", region.name),
-            ))
-            .into());
+            ));
         }
         let mut names = BTreeSet::new();
         for f in &region.parameters {
@@ -4652,25 +4653,23 @@ pub(crate) fn compile_concrete_unit(
                 crate::origins::input_type(&f.ty, &origin_schemas, &manifest, region.span)?;
             }
             if !names.insert(&f.name) {
-                return Err((Diagnostic::new("E_NAME", region.span, "duplicate parameter")).into());
+                return Err(Diagnostic::new("E_NAME", region.span, "duplicate parameter"));
             }
         }
         let mut names = BTreeSet::new();
         for o in &region.exits {
             if !names.insert(&o.name) {
-                return Err((Diagnostic::new("E_NAME", region.span, "duplicate exit")).into());
+                return Err(Diagnostic::new("E_NAME", region.span, "duplicate exit"));
             }
             let mut fields = BTreeSet::new();
             for f in &o.fields {
                 crate::origins::result_type(&f.ty, &origin_schemas, &manifest, region.span)?;
                 if !fields.insert(&f.name) {
-                    return Err(
-                        (Diagnostic::new("E_NAME", region.span, "duplicate exit field")).into(),
-                    );
+                    return Err(Diagnostic::new("E_NAME", region.span, "duplicate exit field"));
                 }
             }
         }
-        signatures.insert(
+        Ok((
             region.name.clone(),
             Signature {
                 entry_only: syntax::entry_only(&region.body),
@@ -4736,8 +4735,9 @@ pub(crate) fn compile_concrete_unit(
                     &origin_schemas,
                 )?,
             },
-        );
-    }
+        ))
+    }))?;
+    signatures.extend(declared);
     let mut regions = BTreeMap::new();
     let mut selected_histories = vec![];
     let mut inferred_bindings = vec![];

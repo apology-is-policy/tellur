@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.76.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.77.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -2660,3 +2660,39 @@ checks passed. Socket tests used approved local-network execution after sandboxe
 binding was denied. Compiler/server and production extension code are unchanged,
 so the existing 0.76 binaries, installed extension and their release evidence remain
 current; this checkpoint does not publish a duplicate compiler/VSIX release.
+
+## 0.77 — Bounded control-declaration diagnostics
+
+P2c collects independent failures within public contract-shape checking and concrete
+control-signature preparation. Each declaration contributes at most its first error
+in that phase. The 32-error budget and conservative limit notice apply before body
+checking as well. Failed phases discard every successful sibling result; no partial
+signature environment or checked program reaches downstream checking or hover.
+All authored operation names are reserved before signature validation, preserving
+duplicate-name checks even when an earlier declaration is invalid.
+
+Shared parsing, module/name resolution, type layouts, named-contract binding, trait
+preparation, generic expansion and graph cycles keep their existing barriers. The
+first failed phase prevents dependent phases from running. Valid-source typing,
+ownership, origins, paths and fault rules are unchanged. Single-error compilation
+APIs continue to return the first diagnostic from the failed phase.
+
+Five diagnostic regressions cover independent public shapes, concrete signatures and
+borrow origins, phase barriers during repair, both budgets, imported source points,
+generic public declarations and shared-layout failure. Two LSP regressions check
+unsaved root/imported declarations, independent repair and suppression/restoration
+of call-site hover. The new `playground/declaration_diagnostics.tellur` provides a
+valid example with two independently editable declarations and a native result of 36.
+
+Final validation passed **361 Rust tests across 18 targets**, including all 28
+diagnostic tests, 115 LSP tests and three manual checks, plus **42 Node tests**.
+The broader checks include concrete/generic traits, generic data/controls, module
+privacy, constructor and borrowed-result contracts, lexical boundaries and source
+faults, with their existing native expansion/parity scenarios. The first isolated
+editor run caught a missing process-status mapping in the example; its final named
+contract now declares done/overflow statuses explicitly. The final run passed both
+declaration batches, partial/full repair, fresh hover and native result 36. All six
+compiler/server copies and all nine packaged/installed extension payloads were
+verified at 0.77.0. Existing windows were not reloaded. Formatting and whitespace
+checks passed; unchanged execution/library evidence remains valid outside this
+affected-suite run.

@@ -69,6 +69,85 @@ fn hover_at(f: &Fixture, source: &str, needle: &str) -> Value {
 }
 
 #[test]
+fn declaration_errors_repair_independently_before_call_hover_returns() {
+    let mut f = Fixture::new();
+    let source = "control one(u32 input,u32 other) exits done {exit done;}\ncontrol two(u32 value,u32 other) exits done {exit done;}\ncontrol main() exits done {one(1,2);two(3,4);exit done;}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    assert!(
+        hover_at(&f, source, "one(1")
+            .to_string()
+            .contains("Control contract")
+    );
+    let broken = source
+        .replace("u32 input,u32 other", "u32 input,u32 input")
+        .replace("u32 value,u32 other", "u32 value,u32 value");
+    f.change(&broken, 2);
+    let errors = f.diagnostics();
+    assert_eq!(errors.as_array().unwrap().len(), 2, "{errors}");
+    for (line, error) in errors.as_array().unwrap().iter().enumerate() {
+        assert_eq!(error["code"], "E_NAME");
+        assert_eq!(error["range"]["start"]["line"], line);
+    }
+    assert!(hover_at(&f, &broken, "one(1").is_null());
+    let partial = broken.replace("u32 input,u32 input", "u32 input,u32 other");
+    f.change(&partial, 3);
+    assert_eq!(f.diagnostics().as_array().unwrap().len(), 1);
+    assert!(hover_at(&f, &partial, "one(1").is_null());
+    f.change(source, 4);
+    assert_eq!(f.diagnostics(), json!([]));
+    assert!(
+        hover_at(&f, source, "one(1")
+            .to_string()
+            .contains("u32 other")
+    );
+}
+
+#[test]
+fn unsaved_imported_public_declarations_batch_and_refresh_after_repairs() {
+    let mut f = Fixture::new();
+    let dependency = f.root.join("library.tellur");
+    let uri = url::Url::from_file_path(&dependency).unwrap().to_string();
+    let valid =
+        "pub control first() exits done {exit done;}\npub control second() exits done {exit done;}";
+    fs::write(&dependency, valid).unwrap();
+    let source =
+        "import \"library.tellur\" as lib;control main() exits done {forward lib.first();}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let broken = valid.replace("exits done", "exits auto");
+    f.server.notification(
+        "textDocument/didOpen",
+        &json!({"textDocument":{"uri":uri,"version":1,"text":broken}}),
+    );
+    let errors = f.diagnostics();
+    assert_eq!(errors.as_array().unwrap().len(), 2, "{errors}");
+    for (line, error) in errors.as_array().unwrap().iter().enumerate() {
+        assert_eq!(error["code"], "E_PUBLIC_CONTRACT");
+        let location = &error["relatedInformation"][0]["location"];
+        assert_eq!(location["uri"], uri);
+        assert_eq!(location["range"]["start"]["line"], line);
+    }
+    assert!(hover_at(&f, source, "lib.first()").is_null());
+    let partial = broken.replacen("exits auto", "exits done", 1);
+    f.server.notification(
+        "textDocument/didChange",
+        &json!({"textDocument":{"uri":uri,"version":2},"contentChanges":[{"text":partial}]}),
+    );
+    assert_eq!(f.diagnostics().as_array().unwrap().len(), 1);
+    f.server.notification(
+        "textDocument/didClose",
+        &json!({"textDocument":{"uri":uri}}),
+    );
+    assert_eq!(f.diagnostics(), json!([]));
+    assert!(
+        hover_at(&f, source, "lib.first()")
+            .to_string()
+            .contains("control lib.first() exits done")
+    );
+}
+
+#[test]
 fn call_hover_resolves_imports_aliases_and_fresh_unsaved_contracts() {
     let mut f = Fixture::new();
     let library = f.root.join("library.tellur");

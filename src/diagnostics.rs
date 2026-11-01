@@ -51,3 +51,34 @@ impl<E: std::fmt::Display> std::fmt::Display for Diagnostics<E> {
 impl<E: std::error::Error> std::error::Error for Diagnostics<E> {}
 
 pub type CheckResult<T, E = Diagnostic> = std::result::Result<T, Diagnostics<E>>;
+
+/// Collect independent checks within one preparation phase. A failed phase
+/// discards every successful value and prevents all dependent phases from running.
+pub(crate) fn collect_checks<T, E>(
+    checks: impl IntoIterator<Item = std::result::Result<T, E>>,
+) -> CheckResult<Vec<T>, E> {
+    let mut values = vec![];
+    let mut errors = vec![];
+    for result in checks {
+        match result {
+            Ok(value) => values.push(value),
+            Err(error) => {
+                errors.push(error);
+                if errors.len() == MAX_DIAGNOSTICS {
+                    return Err(Diagnostics {
+                        errors,
+                        limit_reached: true,
+                    });
+                }
+            }
+        }
+    }
+    if errors.is_empty() {
+        Ok(values)
+    } else {
+        Err(Diagnostics {
+            errors,
+            limit_reached: false,
+        })
+    }
+}

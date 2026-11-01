@@ -21,12 +21,14 @@ calls and fresh unsaved dependencies. Specialized callable forms remain a bounde
 editor follow-up. P5b.2b now extracts bounded loopback HTTP transport, with public
 Tellur contracts, unchanged retained-resource mechanisms and an independent greeting
 service. This source-library checkpoint runs on the existing 0.76 compiler and editor.
-Continue application-driven library work, with
-preparation-phase and finer diagnostic recovery remaining explicit follow-ups.
+P2c now batches independent public contract-shape and concrete signature errors,
+with strict phase barriers and fresh editor checking. Continue application-driven
+library work, with shared preparation and finer fault/adapter diagnostic recovery
+remaining explicit follow-ups.
 Broader physical copy elision and suspended activation frames remain separate work.
 
 1 November 2026. This is the working revision plan, not a claim that all proposed
-features are implemented. Compiler **0.76.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
+features are implemented. Compiler **0.77.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
 lifetime checkpoints of milestone 2, the array/vector/map core of milestone 3,
 and implicit entry, inline/stored adapters, owned capture, named outcome contracts
 and checked forwarding in milestone 4. A first [semantic foundation](semantic-foundation.md)
@@ -172,9 +174,10 @@ unimplemented syntax are promised.
 | C1b.3c.1 | Local shared-reference collection elements | **Delivered in 0.43**: arrays/vectors/maps, direct lookup, branch-sensitive insertion, removal/conversion, independent copies, conservative source unions, native/editor coverage |
 | P1a | Stable public contracts | **Delivered in 0.44**: explicit public outcome/payload/origin contracts, private inference, unused generic checks and bounded direct-forwarding contributor notes in CLI/editor |
 | P1b | Outcome contributor coverage | **Bounded slice delivered in 0.46**: captures/moves, local record/sum payloads, stored/nested adapters, delayed exits and label merges; guarded writes exclude overwritten sources. Loop-carried values, indirect aliases, dynamic collections and cross-call payload lineage remain future work |
-| P2 | Structured diagnostics | **Reports in 0.47; ranges in 0.51; independent-body errors in 0.52**: bounded CLI/LSP batches, failed-caller suppression, source ranges, witnesses and fresh hover. Straight-line body recovery delivered in 0.73 (P2a); path/scope recovery delivered in 0.74 (P2b); follow-ups: preparation-phase and remaining fault/adapter recovery, broader contract/contributor ranges |
+| P2 | Structured diagnostics | **Reports in 0.47; ranges in 0.51; independent-body errors in 0.52**: bounded CLI/LSP batches, failed-caller suppression, source ranges, witnesses and fresh hover. Straight-line body recovery delivered in 0.73 (P2a); path/scope recovery delivered in 0.74 (P2b); control declarations in 0.77 (P2c); follow-ups: shared preparation and remaining fault/adapter recovery, broader contract/contributor ranges |
 | P2a | Straight-line statement recovery | **Delivered in 0.73:** independent local errors, transitive value/loan suppression, fresh body replay, one 32-error budget, module/generic/constructor/editor coverage. Decisions, nested bodies and terminal checks remain conservative boundaries |
 | P2b | Path and scope diagnostic recovery | **Delivered in 0.74:** uncertainty by selected domain, independent disjoint paths, nested groups/lexical scopes, statement arms, terminal statements and loop bodies; full-selector joins, conservative fault/adapter/header barriers, fresh replay and editor/import coverage |
+| P2c | Control-declaration diagnostic batches | **Delivered in 0.77:** independent public contract shapes and concrete signature checks, one error per declaration within the failed phase, 32-error budget, imported/generic locations, no partial program or stale hover. Shared types, named-contract binding, trait preparation, generic expansion and cycles retain conservative barriers |
 | I1a | Owned-data Rust adapters | **Delivered in 0.45**: typed wrapper/result generation, registry dependencies and explicit locking, owned scalar/collection data, shared call borrows, blocking/immediate classification and scripted/live conformance |
 | I1b.1 | Retained host resource foundation | **Delivered in 0.49**: opaque must-complete Rust owners, direct shared/consuming calls, explicit resource return on retry, checked runtime identities, teardown fallback and live/scripted/editor evidence |
 | I1b.2 | Broader Rust reuse | **Explicit source modules delivered in 0.75 (I1b.2a):** manifest-relative embedded child modules, exact wrapper checks, shared sources and one locked dependency graph. Richer data boundaries, exclusive foreign mutation and package ergonomics remain application-driven follow-ups; stable binary ABI and LTO remain later layers |

@@ -5,7 +5,8 @@
 The compiler reports diagnostic codes, source locations and explanations. Since
 0.52, checking collects errors from independent control bodies; 0.73 also recovers
 across independent straight-line statements within a body. Release 0.74 extends
-recovery across disjoint paths and nested scopes. Fixing an error
+recovery across disjoint paths and nested scopes; 0.77 also collects independent
+control-declaration errors in two preparation phases. Fixing an error
 may expose another within that body or a dependent control. The precise
 message wording may improve between releases. The negative examples here are checked
 for their stated code, so they also serve as small regression cases.
@@ -179,15 +180,43 @@ unavailable until the current program checks successfully; declared syntax can
 still appear in outline or hover.
 
 Recovery is deliberately bounded. Parsing, import/name resolution, shared type
-and contract validation, generic expansion and graph-cycle failures still stop
-at their first error. Generic definition bodies may report several errors during
-the universal checking phase; a failed phase prevents later concrete checking.
-Broader recovery across these preparation phases remains future work.
+validation, named-contract binding, trait lowering/conformance, generic expansion
+and graph-cycle failures still stop at their first error. Independent control
+declarations use the two batches described below. Generic definition bodies may
+report several errors during universal checking; a failed phase prevents later
+concrete checking. Broader recovery across shared preparation remains future work.
 
 Compiler integrations can use `check_source`, `check_file` or
 `modules::check_with_loader`, which return a `Diagnostics` batch on failure.
 The existing `compile`/`compile_file`/`compile_with_loader` APIs retain their
 single-error return types and select the first diagnostic from that batch.
+
+## Control-declaration batches
+
+Compiler 0.77 checks independent declarations within two preparation phases:
+
+1. Public contract shape: each public control must declare its exit labels and
+   payload types, or name a declared outcome contract. Several public `exits auto`
+   or `ready...` declarations can be diagnosed together, including generic controls.
+2. Concrete signature preparation: after shared types and named contracts resolve,
+   each control checks boundary input ownership, explicit public return origins,
+   operation/parameter/exit names, supported input/result types and declared borrow
+   summaries. Errors in separate controls can appear together.
+
+Each phase reports at most one error per control and shares the existing 32-error
+budget. The first failed phase stops compilation: later phases and all body checks
+remain unavailable until those declaration errors are repaired. Successful siblings
+never supply a partially valid program or stale inferred/call-site hover. A later
+declaration cannot reuse an earlier declaration's operation name just because that
+earlier declaration has another error.
+
+This is not recovery within a shared layout or a parser error. Fixing a declaration
+may expose another error in that declaration, a later preparation phase, or a body.
+CLI JSON preserves the original diagnostic code and source point; existing ranges
+remain present where supported. Imports keep their defining-file locations, and the
+single-error compiler APIs still return the first diagnostic in the failed phase.
+Try [declaration_diagnostics.tellur](../../playground/declaration_diagnostics.tellur):
+rename both secondary parameters to `value`, then repair them independently.
 
 ## Statement recovery
 

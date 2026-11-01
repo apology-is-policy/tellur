@@ -190,6 +190,135 @@ fn check_errors(source: &str) -> tellur::Diagnostics {
 }
 
 #[test]
+fn public_shape_errors_batch_before_dependent_preparation_and_bodies() {
+    let source = "pub control first() exits auto {exit done;}\npub control second() exits ready... {exit ready {1};}\ncontrol body() exits done {u32 bad=true;exit done;}";
+    let errors = check_errors(source);
+    assert_eq!(
+        errors
+            .errors
+            .iter()
+            .map(|e| (e.code, e.span.line))
+            .collect::<Vec<_>>(),
+        vec![("E_PUBLIC_CONTRACT", 1), ("E_PUBLIC_CONTRACT", 2)]
+    );
+    assert!(!errors.limit_reached);
+    let partial = source.replace("exits auto", "exits done");
+    let errors = check_errors(&partial);
+    assert_eq!(errors.errors.len(), 1);
+    assert_eq!(errors.errors[0].span.line, 2);
+    let repaired = partial.replace("ready...", "ready {u32 value}");
+    let errors = check_errors(&repaired);
+    assert_eq!(errors.errors.len(), 1);
+    assert_eq!(
+        (errors.errors[0].code, errors.errors[0].span.line),
+        ("E_TYPE", 3)
+    );
+}
+
+#[test]
+fn signature_errors_batch_one_per_control_without_partial_body_checking() {
+    let source = "control first(u32 input,u32 input) exits done {exit done;}\npub control second(ref string input) exits found {ref string a,ref string b} {exit found {input,input};}\ncontrol third(ref string input) exits found {ref string value from missing} {exit found {input};}\ncontrol body() exits done {u32 bad=true;exit done;}";
+    let errors = check_errors(source);
+    assert_eq!(
+        errors
+            .errors
+            .iter()
+            .map(|e| (e.code, e.span.line))
+            .collect::<Vec<_>>(),
+        vec![("E_NAME", 1), ("E_PUBLIC_CONTRACT", 2), ("E_LIFETIME", 3)],
+        "{errors}"
+    );
+    let first = compile(
+        source,
+        Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+    )
+    .unwrap_err();
+    assert_eq!(first, errors.errors[0]);
+    let repaired = source
+        .replace("u32 input,u32 input", "u32 input,u32 other")
+        .replace(
+            "ref string a,ref string b",
+            "ref string a from input,ref string b from input",
+        )
+        .replace("from missing", "from input");
+    let errors = check_errors(&repaired);
+    assert_eq!(errors.errors.len(), 1, "{errors}");
+    assert_eq!(
+        (errors.errors[0].code, errors.errors[0].span.line),
+        ("E_TYPE", 4)
+    );
+}
+
+#[test]
+fn each_declaration_phase_respects_the_diagnostic_budget() {
+    for public in [true, false] {
+        let source = (0..40)
+            .map(|i| {
+                if public {
+                    format!("pub control bad_{i}() exits auto {{exit done;}}\n")
+                } else {
+                    format!("control bad_{i}(u32 input,u32 input) exits done {{exit done;}}\n")
+                }
+            })
+            .collect::<String>();
+        let errors = check_errors(&source);
+        assert_eq!(errors.errors.len(), 32, "{errors}");
+        assert!(errors.limit_reached);
+        assert_eq!(
+            errors
+                .errors
+                .iter()
+                .map(|e| e.span.line)
+                .collect::<Vec<_>>(),
+            (1..=32).collect::<Vec<_>>()
+        );
+    }
+}
+
+#[test]
+fn imported_declaration_batches_keep_source_names_locations_and_first_error_api() {
+    let f = Fixture::new();
+    f.write(
+        "main.tellur",
+        "import \"bad.tellur\" as bad;control main() exits done {exit done;}",
+    );
+    f.write("bad.tellur", "// 🙂\npub control first(ref string input) exits found {ref string value} {exit found {input};}\npub control second(u32 input,u32 input) exits done {exit done;}");
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    let errors = report["diagnostics"].as_array().unwrap();
+    assert_eq!(errors.len(), 2, "{report}");
+    assert_eq!(errors[0]["code"], "E_PUBLIC_CONTRACT");
+    assert_eq!(errors[1]["code"], "E_NAME");
+    assert_eq!(errors[0]["position"]["line"], 2);
+    assert_eq!(errors[1]["position"]["line"], 3);
+    assert!(
+        errors
+            .iter()
+            .all(|e| e["path"].as_str().unwrap().ends_with("bad.tellur"))
+    );
+    assert!(!report.to_string().contains("_path_m_"));
+    assert!(report["summary"].is_null());
+    let manifest = Manifest::from_json(include_str!("../playground/manifest.json")).unwrap();
+    let first = tellur::compile_file(f.root.join("main.tellur"), manifest).unwrap_err();
+    assert_eq!(first.diagnostic.code, "E_PUBLIC_CONTRACT");
+    assert_eq!(first.diagnostic.span.line, 2);
+}
+
+#[test]
+fn generic_public_shapes_batch_but_shared_layout_failures_still_stop_the_phase() {
+    let errors = check_errors(
+        "pub control one<t>(t input) exits auto {exit ready {input};}\npub control two<t>(t input) exits ready... {exit ready {input};}",
+    );
+    assert_eq!(errors.errors.len(), 2, "{errors}");
+    assert!(errors.errors.iter().all(|e| e.code == "E_PUBLIC_CONTRACT"));
+    let errors = check_errors(
+        "struct broken {missing field;}\ncontrol first(u32 x,u32 x) exits done {exit done;}\ncontrol second(u32 x,u32 x) exits done {exit done;}",
+    );
+    assert_eq!(errors.errors.len(), 1, "{errors}");
+    assert_eq!(errors.errors[0].code, "E_MANIFEST");
+    assert!(!errors.limit_reached);
+}
+
+#[test]
 fn independent_bodies_report_in_source_order_and_skip_failed_call_chains() {
     let source = "control caller() exits done {forward middle();}\ncontrol independent() exits done {string value = 7; exit done;}\ncontrol middle() exits auto {forward broken();}\ncontrol broken() exits auto {u32 value = true; exit ready {value};}\ncontrol typed(outcome<broken> saved) exits done {delta saved {} exit done;}";
     let errors = check_errors(source);

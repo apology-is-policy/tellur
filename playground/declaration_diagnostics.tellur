@@ -1,0 +1,27 @@
+// Try renaming offset and factor to value in their parameter declarations.
+// Both duplicate-parameter errors appear before any dependent body checks.
+// Alternatively, change both public exit contracts to auto: both declarations
+// are diagnosed. Restore the declarations to recover checked call hover.
+pub control shifted(u32 value, u32 offset) exits sum { u32 value }, overflow {
+    forward checked_add(value, offset);
+}
+
+pub control scaled(u32 value, u32 factor) exits product { u32 value }, overflow {
+    forward checked_mul(value, factor);
+}
+
+outcome program_result {
+    @exit 0 done { u32 value },
+    @exit 1 overflow
+}
+
+control main() exits program_result {
+    delta shifted(10, 2) {
+        sum { u32 total } => shifted,
+        overflow => exit overflow
+    }
+    [shifted]: exit delta scaled(total, 3) {
+        product { u32 value } => done { value },
+        overflow => overflow {}
+    };
+}
