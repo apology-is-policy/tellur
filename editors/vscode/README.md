@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-0.86.0-darwin-arm64.vsix` using **Extensions:
+1. Install the supplied `tellur-language-0.87.0-darwin-arm64.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -810,3 +810,11 @@ ownership and borrow checks. Stored adapters, inferred results and decision head
 retain conservative barriers. Try two bad payload expressions in the explicit
 `main` adapter of `playground/adapters.tellur`; repairs clear errors independently
 and call hover returns only after the complete source checks.
+
+## Explicit stored-adapter diagnostics in 0.87
+
+A stored adapter with a declared outcome type can report independent arm errors
+in one batch. Its uncertain result and continuation stay suppressed until repaired;
+clean arms retain their resource and lifetime checks. Try invalid payloads in both
+arms of the `message_result message` binding in `playground/stored_adapters.tellur`.
+Inferred stored types, headers and fault-context adapters remain conservative.

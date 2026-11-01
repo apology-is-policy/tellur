@@ -9,7 +9,8 @@ recovery across disjoint paths and nested scopes; 0.77 collects independent
 public-shape and signature errors, and 0.78 adds named completion bindings. Release
 0.83 extends statement recovery to named boundary work and contingency bodies, and
 0.84 adds lexical boundary work bodies; 0.85 adds lexical contingency handlers;
-0.86 adds explicit exit-adapter arms. Fixing an error
+0.86 adds explicit exit-adapter arms; 0.87 adds explicitly typed stored-adapter arms.
+Fixing an error
 may expose another within that body or a dependent control. The precise
 message wording may improve between releases. The negative examples here are checked
 for their stated code, so they also serve as small regression cases.
@@ -320,7 +321,7 @@ an error by silently narrowing the authored selector to its remaining paths.
 Independent selectors can still be checked. A missing selector after an omission
 stops its containing body, since the omitted decision may have introduced that name.
 
-Stored/inferred outcome adapters, decision-header errors, and scope/loop setup or
+Inferred outcome adapters, decision-header errors, and scope/loop setup or
 completion errors retain conservative first-error
 limits. A whole-state fault-resource check stalls an uncertain history. Final
 resource checks are suppressed for uncertain scope domains, while clean disjoint
@@ -456,8 +457,9 @@ independent arms keep their original guards, ownership and borrow checks. Partia
 moved resource arguments and returned references are reconstructed from clean state
 on each replay. Real resource-completion errors on clean arms remain diagnostics.
 
-`exits auto`, selected payload inference (`ready...`), stored adapters, and captures
-retain their existing recovery barriers. Decision operands, patterns and coverage
+`exits auto`, selected payload inference (`ready...`), and captures retain their
+existing recovery barriers. Explicit stored adapters follow the rules below.
+Decision operands, patterns and coverage
 must validate before their results can be checked; a nested header error stops that
 adapter's replay. Entering an adapter from an already uncertain history still stalls
 that history. Fault-context terminal recovery remains conservative. No missing arm,
@@ -810,6 +812,38 @@ control main() exits done { exit done; }
 This is a navigation aid, not an exhaustive stable diagnostic API. Similar invalid
 programs can fail at different checking stages. Structural witnesses show *possible
 modeled histories*, not proved concrete inputs.
+
+## Explicit stored-adapter recovery
+
+Since 0.87, a stored adapter with an explicit outcome type can report independent
+payload errors together. The containing control may infer its own exits: the
+adapter's declared target supplies the complete payload shape.
+
+<!-- tellur:reject E_TYPE -->
+```tellur
+outcome answer { ready { u32 value } }
+
+control choose(bool flag) exits answer {
+    answer saved = delta flag {
+        true  => ready { true },
+        false => ready { "wrong" }
+    };
+    exit saved;
+}
+```
+
+Both arms are reported. An erroneous arm makes the entire binding uncertain:
+recovery restores its parent scope and history, discards the partial sink, and
+stalls the binding's full selected domain. It does not define `saved`, infer a
+replacement type, or continue through its uses. Independent outer histories keep
+their original selectors and checking. Nested adapters share the same error budget.
+
+Clean arms still check their own resource completion and reject references to
+arm-local storage. Such retirement errors remain barriers. Stored adapters with an
+inferred type (`auto saved = delta ...`), captures, decision headers and adapters in
+fault contexts retain conservative first-error behavior. A successful full check is
+still required for hover and execution. Try the explicit `message_result message`
+adapter in [stored_adapters.tellur](../../playground/stored_adapters.tellur).
 
 ## Implementation budgets and operational limits
 

@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.86.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.87.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -2962,3 +2962,31 @@ restored call hover and native execution of `playground/adapters.tellur` returni
 42. Six binary copies and nine packaged/installed payloads were verified at 0.86.0.
 Existing windows were not reloaded. Formatting and whitespace checks passed;
 unaffected boundary, trait and application/library evidence is reused.
+
+## 0.87 — Diagnostic recovery across explicitly typed stored adapters
+
+P2i collects independent payload errors under an explicit stored outcome type.
+An uncertain binding restores its parent scopes, history and instruction list,
+then stalls its full selected domain without defining a partial result. Nested
+arms and disjoint outer paths retain their original selection. Clean arms still
+check resource completion and prohibit references to arm-local storage. Inferred
+sinks, captures, headers and fault-context adapters retain conservative barriers.
+
+Six recovery regressions cover result/continuation suppression, nested arms,
+scope and loop retirement, prior terminated histories, partial resource moves,
+returned references, clean resource/lifetime errors, generic definitions and the
+shared 32-error budget. Two LSP regressions cover partial/full repairs, suppressed
+result-type hover, fresh call contracts and unsaved imported nested-arm locations.
+A new scope fixture initially included an extra colon before `over &:`; correcting
+that fixture resolved its parser error without changing the implementation.
+
+Final validation passed **407 Rust tests across 14 affected targets**, including
+all 52 recovery tests, 34 structured diagnostic tests, 149 LSP tests and three manual
+checks, plus **42 Node tests**. The three suites completed before the fixture failure
+were reused; the failed target and remaining targets then passed. Adapter, stored
+adapter, named-outcome, outcome-origin, generic-control, loop, boundary, module and
+certificate suites retain native/expansion coverage. Isolated VS Code confirmed
+exact error tokens, partial/full repair, restored call hover and native execution
+of `playground/stored_adapters.tellur`. Six binary copies and nine packaged/installed
+payloads were verified at 0.87.0. Existing windows were not reloaded. Formatting and
+whitespace checks passed; unaffected trait and application/library evidence is reused.

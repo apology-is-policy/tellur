@@ -69,6 +69,85 @@ fn hover_at(f: &Fixture, source: &str, needle: &str) -> Value {
 }
 
 #[test]
+fn explicit_stored_adapter_diagnostics_repair_before_publishing_result_types() {
+    let mut f = Fixture::new();
+    let source = "outcome result {ready {u32 value}}\ncontrol choose(bool flag) exits result {\nresult saved=delta flag {\ntrue=>ready {1},\nfalse=>ready {2}\n};\nauto next=saved;exit next;}\ncontrol main() exits result {forward choose(true);}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    assert!(
+        hover_at(&f, source, "auto next")
+            .to_string()
+            .contains("result")
+    );
+    let broken = source
+        .replace("ready {1}", "ready {true}")
+        .replace("ready {2}", "ready {false}");
+    f.change(&broken, 2);
+    let errors = f.diagnostics();
+    assert_eq!(errors.as_array().unwrap().len(), 2, "{errors}");
+    for (error, line) in errors.as_array().unwrap().iter().zip([3, 4]) {
+        assert_eq!(error["code"], "E_TYPE");
+        assert_eq!(error["range"]["start"]["line"], line);
+    }
+    assert!(hover_at(&f, &broken, "auto next").is_null());
+    assert!(hover_at(&f, &broken, "choose(true)").is_null());
+    let partial = broken.replace("ready {true}", "ready {1}");
+    f.change(&partial, 3);
+    assert_eq!(f.diagnostics().as_array().unwrap().len(), 1);
+    assert!(hover_at(&f, &partial, "auto next").is_null());
+    f.change(source, 4);
+    assert_eq!(f.diagnostics(), json!([]));
+    assert!(
+        hover_at(&f, source, "auto next")
+            .to_string()
+            .contains("result")
+    );
+    assert!(
+        hover_at(&f, source, "choose(true)")
+            .to_string()
+            .contains("exits result")
+    );
+}
+
+#[test]
+fn explicit_stored_adapter_diagnostics_preserve_imported_nested_arm_locations() {
+    let mut f = Fixture::new();
+    let library = f.root.join("jobs.tellur");
+    let uri = url::Url::from_file_path(&library).unwrap().to_string();
+    let source = "pub outcome result {ready {u32 value}}\npub control choose(bool flag) exits result {\nresult saved=delta flag {\ntrue=>delta flag {true=>ready {1},false=>ready {2}},\nfalse=>ready {3}\n};exit saved;}";
+    fs::write(&library, source).unwrap();
+    let caller = "import \"jobs.tellur\" as jobs;control main() exits jobs.result {forward jobs.choose(true);}";
+    f.open(caller);
+    assert_eq!(f.diagnostics(), json!([]));
+    let broken = source
+        .replace("ready {1}", "ready {true}")
+        .replace("ready {3}", "ready {false}");
+    f.server.notification(
+        "textDocument/didOpen",
+        &json!({"textDocument":{"uri":uri,"version":1,"text":broken}}),
+    );
+    let errors = f.diagnostics();
+    assert_eq!(errors.as_array().unwrap().len(), 2, "{errors}");
+    for (error, line) in errors.as_array().unwrap().iter().zip([3, 4]) {
+        assert_eq!(error["code"], "E_TYPE");
+        let location = &error["relatedInformation"][0]["location"];
+        assert_eq!(location["uri"], uri);
+        assert_eq!(location["range"]["start"]["line"], line);
+    }
+    assert!(hover_at(&f, caller, "jobs.choose(true)").is_null());
+    f.server.notification(
+        "textDocument/didClose",
+        &json!({"textDocument":{"uri":uri}}),
+    );
+    assert_eq!(f.diagnostics(), json!([]));
+    assert!(
+        hover_at(&f, caller, "jobs.choose(true)")
+            .to_string()
+            .contains("exits jobs.result")
+    );
+}
+
+#[test]
 fn explicit_exit_adapter_diagnostics_repair_independently_before_hover_returns() {
     let mut f = Fixture::new();
     let source = "control choose(bool flag) exits ready {u32 value} {\nexit delta flag {\ntrue=>ready {1},\nfalse=>ready {2}\n};}\ncontrol main() exits ready {u32 value} {forward choose(true);}";

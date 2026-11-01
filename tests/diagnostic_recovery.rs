@@ -189,6 +189,188 @@ fn codes(source: &str, expected: &[&str]) {
 }
 
 #[test]
+fn explicit_stored_adapters_recover_independent_arms_and_retire_the_result() {
+    codes(
+        "outcome result {ready {u32 value}} control choose(bool flag) exits done {result saved=delta flag {true=>ready {true},false=>ready {\"bad\"}};emit(saved);string hidden=7;exit done;}",
+        &["E_TYPE", "E_TYPE"],
+    );
+    codes(
+        "outcome result {ready {u32 value},missing} control choose(bool flag) exits done {result saved=delta flag {true=>unknown {},false=>ready {}};exit saved;}",
+        &["E_OUTCOME", "E_ARITY"],
+    );
+    // The target type is explicit even when the enclosing control infers exits.
+    codes(
+        "outcome result {ready {u32 value}} control choose(bool flag) exits auto {result saved=delta flag {true=>ready {true},false=>ready {\"bad\"}};exit saved;}",
+        &["E_TYPE", "E_TYPE"],
+    );
+}
+
+#[test]
+fn explicit_stored_adapter_recovery_preserves_nested_and_outer_domains() {
+    codes(
+        r#"outcome result {ready {u32 value}}
+        control choose(bool flag,bool other) exits done {
+            delta flag {true=>selected,false=>separate}
+            [selected]: result saved=delta other {
+                true=>delta flag {true=>ready {true},false=>ready {"bad"}},
+                false=>ready {false}
+            };
+            emit(saved);
+            [separate]: string fourth=7;exit done;
+            [entry]: bool hidden=8;
+        }"#,
+        &["E_TYPE", "E_TYPE", "E_TYPE", "E_TYPE"],
+    );
+    // Restoring the parent must preserve an already completed disjoint history.
+    codes(
+        r#"outcome result {ready {u32 value}}
+        control choose(bool flag) exits done {
+            delta flag {true=>finished,false=>pending}
+            [finished]: exit done;
+            [pending]: result saved=delta flag {true=>ready {true},false=>ready {"bad"}};
+            [entry]: string hidden=7;
+        }"#,
+        &["E_TYPE", "E_TYPE"],
+    );
+}
+
+#[test]
+fn explicit_stored_adapter_recovery_replays_ownership_and_borrows() {
+    codes(
+        r#"outcome result {ready {handle owned,u32 value}}
+        control choose(bool flag,handle resource) exits done {
+            result saved=delta flag {true=>ready {move resource,true},false=>ready {move resource,"bad"}};
+            exit done;
+        }"#,
+        &["E_TYPE", "E_TYPE"],
+    );
+    codes(
+        r#"outcome result['a] {ready {ref string value <- 'a,u32 count}}
+        control choose(bool flag,ref string input) exits done {
+            result saved=delta flag {true=>ready {input,true},false=>ready {input,"bad"}};
+            exit done;
+        }"#,
+        &["E_TYPE", "E_TYPE"],
+    );
+    // An omitted arm's local owner cannot create a completion cascade; clean
+    // independent arms still have to complete their own payload resources.
+    codes(
+        r#"outcome result {ready {u32 value}}
+        variant input {left {handle owned},right {handle owned}}
+        control choose(input value) exits done {
+            result saved=delta value {left {auto owned}=>ready {true},right {auto owned}=>ready {1}};
+            exit done;
+        }"#,
+        &["E_TYPE", "E_RESOURCE"],
+    );
+}
+
+#[test]
+fn explicit_stored_adapter_recovery_respects_scope_loop_and_fault_barriers() {
+    codes(
+        r#"outcome result['a] {ready {ref string value <- 'a,u32 count}}
+        control choose(bool flag) exits done {
+            mutable string owner="before";
+            delta flag {true=>selected,false=>separate}
+            [selected] over &: {
+                result saved=delta flag {
+                    true=>ready {borrow owner,1},false=>ready {borrow owner,true}
+                };
+                emit(saved);
+            }
+            [separate]: owner="after";u32 second=false;exit done;
+            [entry]: string hidden=7;
+        }"#,
+        &["E_TYPE", "E_TYPE"],
+    );
+    codes(
+        r#"outcome result {ready {u32 value}}
+        control choose(bool flag) exits done {
+            loop next(bool again_flag=flag) {
+                result saved=delta again_flag {true=>ready {true},false=>ready {"bad"}};
+                again next(again_flag);
+            }
+        }"#,
+        &["E_TYPE", "E_TYPE"],
+    );
+    codes(
+        r#"outcome result {ready {u32 value}}
+        control choose(bool flag) exits done {
+            string earlier=7;
+            result saved=delta flag {true=>ready {true},false=>ready {"bad"}};
+            exit done;
+        }"#,
+        &["E_TYPE"],
+    );
+    codes(
+        r#"outcome result {ready {u32 value}}
+        control main(bool flag) exits done {
+            fault boundary {
+                result saved=delta flag {true=>ready {true},false=>ready {"bad"}};
+            } contingency [] {terminate process 1;}
+            exit done;
+        }"#,
+        &["E_TYPE"],
+    );
+    codes(
+        r#"outcome result {ready {u32 value}}
+        control main(bool flag) exits done {
+            fault boundary {} contingency [flag] {
+                result saved=delta flag {true=>ready {true},false=>ready {"bad"}};
+                terminate process 1;
+            }
+            exit done;
+        }"#,
+        &["E_TYPE"],
+    );
+}
+
+#[test]
+fn explicit_stored_adapter_recovery_keeps_headers_and_lifetimes_real() {
+    codes(
+        "outcome result {ready {u32 value}} control choose(bool flag) exits done {result saved=delta flag {true=>ready {true},false=>delta flag {true=>ready {\"bad\"}}};exit done;}",
+        &["E_TYPE", "E_ARMS"],
+    );
+    codes(
+        r#"outcome result['a] {ready {ref string value <- 'a,u32 count}}
+        variant input {left {string value},right {string value}}
+        control choose(input value) exits done {
+            result saved=delta value {
+                left {auto word}=>ready {borrow word,true},
+                right {auto word}=>ready {borrow word,1}
+            };
+            exit done;
+        }"#,
+        &["E_TYPE", "E_LIFETIME"],
+    );
+}
+
+#[test]
+fn explicit_stored_adapter_arms_share_the_budget_and_check_generic_definitions() {
+    codes(
+        "outcome result<t> {ready {t value,u32 count}} control choose<t>(t input,bool flag) exits done {result<t> saved=delta flag {true=>ready {input,true},false=>ready {input,\"bad\"}};exit done;}",
+        &["E_TYPE", "E_TYPE"],
+    );
+    fn nested(depth: usize) -> String {
+        if depth == 0 {
+            return "ready {true}".into();
+        }
+        format!(
+            "delta flag {{true=>{},false=>{}}}",
+            nested(depth - 1),
+            nested(depth - 1)
+        )
+    }
+    let batch = errors(&format!(
+        "outcome result {{ready {{u32 value}}}} control choose(bool flag) exits done {{result saved={};exit done;}}",
+        nested(6)
+    ));
+    assert!(batch.limit_reached, "{batch}");
+    assert_eq!(batch.errors.len(), tellur::diagnostics::MAX_DIAGNOSTICS);
+    assert!(batch.errors.iter().all(|e| e.code == "E_TYPE"));
+}
+
+#[test]
 fn explicit_exit_adapters_recover_independent_terminal_arms() {
     codes(
         "control choose(bool flag) exits ready {u32 value} {exit delta flag {true=>ready {true},false=>ready {\"wrong\"}};} control caller() exits ready {u32 value} {forward choose(true);}",
@@ -243,13 +425,12 @@ fn explicit_exit_adapters_replay_owned_and_borrowed_payloads_cleanly() {
 }
 
 #[test]
-fn exit_adapter_headers_inference_and_stored_results_remain_barriers() {
+fn exit_adapter_headers_and_inferred_stored_results_remain_barriers() {
     for source in [
         "control choose(bool flag) exits ready {u32 value} {exit delta flag {true=>ready {true}};}",
         "control choose(bool flag) exits auto {exit delta flag {true=>ready {missing},false=>ready {also_missing}};}",
         "control choose(bool flag) exits ready... {exit delta flag {true=>ready {missing},false=>ready {also_missing}};}",
         "control choose(bool flag) exits done {auto saved=delta flag {true=>ready {missing},false=>ready {also_missing}};exit done;}",
-        "outcome result {ready {u32 value}} control choose(bool flag) exits done {result saved=delta flag {true=>ready {true},false=>ready {\"bad\"}};exit done;}",
     ] {
         let batch = errors(source);
         assert_eq!(batch.errors.len(), 1, "{batch}");

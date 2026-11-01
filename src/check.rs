@@ -2178,12 +2178,12 @@ impl Checker<'_> {
         if !self.recovery_statement(statement, span, domain) {
             return Ok(());
         }
-        // Explicit exit adapters reuse terminal replay per selected arm. Stored
-        // adapters and inferred result shapes still share state across arms.
+        // Explicit adapters reuse terminal replay per selected arm. Inferred
+        // result shapes still share state across arms.
         let barrier = usize::from(
             matches!(
                 statement,
-                Statement::Capture(..) | Statement::BindOutcome(..)
+                Statement::Capture(..) | Statement::BindOutcome(_, None, ..)
             ) || (matches!(statement, Statement::ExitOutcome(..))
                 && (self.infer_exits || !self.infer_payloads.is_empty())),
         );
@@ -2998,7 +2998,20 @@ impl Checker<'_> {
             outcomes: vec![],
             writes: vec![],
         };
+        let before = (!self.recovery.omitted.is_empty())
+            .then(|| (self.scopes.clone(), self.dead, self.result.code.len()));
         self.lower_outcome(e, guard, domain, Some(&mut sink))?;
+        if self.recovery_uncertain(domain) {
+            // A partial sink is not an initialized outcome. Retire the whole
+            // binding history while keeping disjoint outer histories checkable.
+            let (before_scopes, before_dead, before_code) =
+                before.expect("uncertainty requires diagnostic replay");
+            self.scopes = before_scopes;
+            self.dead = before_dead;
+            self.result.code.truncate(before_code);
+            self.recovery_block(domain);
+            return Ok(());
+        }
         if sink.writes.is_empty() {
             return Err(self.error(
                 "E_INFER",
@@ -3049,12 +3062,31 @@ impl Checker<'_> {
             | syntax::OutcomeExpr::Construct(s, ..)
             | syntax::OutcomeExpr::Delta(s, ..) => *s,
         };
+        // Use the existing terminal dependency/replay policy for explicit stored
+        // payloads. This synthetic node is diagnostic-only: it emits no exit and
+        // does not change the containing control's normal completion contract.
+        let stored_terminal = match e {
+            syntax::OutcomeExpr::Construct(_, name, args)
+                if sink.as_ref().is_some_and(|s| s.expected.is_some()) =>
+            {
+                Some(Statement::Exit(name.clone(), args.clone()))
+            }
+            _ => None,
+        };
+        if let Some(statement) = &stored_terminal
+            && !self.recovery_statement(statement, at, domain)
+        {
+            return Ok(());
+        }
         self.record_selection(at, syntax::SelectionKind::Outcome, &guard, domain);
         let previous = std::mem::replace(&mut self.expression_guard, guard.clone());
         let result = self
             .lower_outcome_inner(e, guard.clone(), domain, sink)
             .map_err(|error| self.with_path_contributors(error, &guard, domain));
         self.expression_guard = previous;
+        if let (Some(statement), Err(error)) = (&stored_terminal, &result) {
+            self.recovery_error(statement, at, error);
+        }
         result
     }
     fn lower_outcome_inner(
@@ -4042,7 +4074,9 @@ impl Checker<'_> {
                     &arm.result
                 };
                 self.lower_outcome(result, branch_guard.clone(), selected, sink.as_deref_mut())?;
-                if let Some(sink) = sink.as_ref() {
+                if let Some(sink) = sink.as_ref()
+                    && !self.recovery_uncertain(selected)
+                {
                     self.check_sum_scope(&sink.loans, arm.span)?;
                     self.resources(selected, arm.span, Some(self.scopes.len() - 1))?;
                     let slots = self
