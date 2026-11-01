@@ -241,6 +241,9 @@ impl Checker<'_> {
 
     pub(super) fn stored_type(&self, e: &syntax::Expr, span: Span) -> Result<Option<String>> {
         e.checked(span, |span| {
+            if let Some(ty) = self.projection_type(e, span)? {
+                return Ok(Some(ty));
+            }
             if let syntax::ExprKind::Move(value) = &e.kind {
                 return self.stored_type(value, span);
             }
@@ -332,6 +335,9 @@ impl Checker<'_> {
         span: Span,
         moving: bool,
     ) -> Result<StoredValue> {
+        if let Some(local) = self.materialize_projection(e, domain, span)? {
+            return self.stored_value(&local, expected, domain, span, moving);
+        }
         if let syntax::ExprKind::Call(name, _) = &e.kind
             && crate::constructors::is_control(name)
         {

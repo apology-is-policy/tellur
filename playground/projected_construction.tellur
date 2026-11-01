@@ -1,0 +1,40 @@
+struct text_view['source] {
+    ref string text <- 'source;
+    string heading;
+
+    constructor(ref string input)[input] {
+        self.text = input;
+        self.heading = "Fresh projection";
+    }
+}
+
+struct text_edit['source] {
+    ref mutable string text <- 'source;
+
+    constructor(ref mutable string input)[input] {
+        self.text = input;
+    }
+}
+
+outcome program_result {
+    @exit 0 done
+}
+
+control main() exits program_result {
+    mutable string owner = "borrowed payload";
+    auto title = text_view(borrow owner).heading;
+    emit(move title);
+
+    // This reference retains owner, independently of the temporary record.
+    ref auto text = text_view(borrow owner).text;
+    emit(text);
+
+    // The shared reference's last use above allows exclusive access here.
+    ref mutable auto edit = text_edit(borrow mutable owner).text;
+    deref edit = "edited payload";
+    emit(edit);
+
+    owner = "owner released";
+    emit(borrow owner);
+    exit done;
+}

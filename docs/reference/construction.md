@@ -268,6 +268,76 @@ constructor calls, and their results can pass through ordinary calls, exits,
 captures and adapters. Existing origin-schema and generic restrictions still
 apply; generic parameters do not acquire an unknown nested origin shape.
 
+## Projecting fresh results
+
+Since 0.71, a field can be selected directly from a fresh reference-bearing
+constructor result or raw record. Chained fields use ordinary transparent reference
+access. The constructor runs once, at that expression's place in evaluation order.
+Only a selected adapter arm runs its expressions.
+
+<!-- tellur:check -->
+```tellur
+struct text_edit['source] {
+    ref mutable string text <- 'source;
+
+    constructor(ref mutable string input)[input] {
+        self.text = input;
+    }
+}
+
+control main() exits done {
+    mutable string owner = "before";
+    ref mutable auto text = text_edit(borrow mutable owner).text;
+    deref text = "after";
+    emit(text);
+    owner = "released";
+    exit done;
+}
+```
+
+The selected reference retains the external `owner`; it does not borrow the
+anonymous record's storage. Shared references stay shared, and exclusive references
+transfer their existing permission. Unselected reference fields do not prolong
+unrelated loans. A nested record, option, variant or outcome field carries its own
+contained origins. Selected owned fields transfer without an implicit clone.
+Returned references still need the ordinary public origin contract.
+
+Projection cannot silently abandon completion obligations. At each owned step in a
+field chain, an unselected resource or named-outcome field requires you to bind the
+whole result first and explicitly dispose of its obligations. Selecting that
+resource or outcome itself is allowed when no sibling obligation is abandoned.
+References to external records do not make their other fields owned by the
+temporary. Existing checks still forbid moving owned values out of borrowed storage.
+Fault dispositions remain required for live resources before and after projection.
+
+<!-- tellur:reject E_TEMPORARY -->
+```tellur
+outcome completion { done }
+struct pending['a] {
+    ref string text <- 'a;
+    completion work;
+
+    constructor(ref string input)[input] {
+        self.text = input;
+        self.work = done {};
+    }
+}
+
+control main() exits done {
+    string owner = "must handle work too";
+    auto text = pending(borrow owner).text;
+    emit(text);
+    exit done;
+}
+```
+
+This does not make the fresh record's own storage an escaping borrow source.
+For example, `auto text = borrow mixed(borrow owner).owned;` cannot retain a
+reference to an owned string inside that temporary. Move the string into a named
+local first, then borrow the local. Borrowing the whole reference-bearing temporary
+still requires a named owner. These rules do not promise immediate destruction of
+anonymous storage, zero allocations or general physical copy elision.
+
 ## Faults and contingency
 
 A private constructor infers transitive fault permission. A public constructor
@@ -292,8 +362,8 @@ existing administrative recovery rules.
 ## Current boundaries and editor support
 
 Raw construction and ordinary factory controls remain available. Bind a constructed
-reference-bearing result before
-projecting its fields or borrowing the whole result. Constructors do not add
+reference-bearing result before borrowing the whole result, or when unselected
+fields have completion obligations. Constructors do not add
 overloads, default arguments, delegation, custom destructors, inheritance or
 implicit conversions.
 
@@ -309,8 +379,10 @@ and request recovery behavior are unchanged.
 
 Try [construction.tellur](../../playground/construction.tellur),
 [borrowed_construction.tellur](../../playground/borrowed_construction.tellur) and
-[composed_construction.tellur](../../playground/composed_construction.tellur).
+[composed_construction.tellur](../../playground/composed_construction.tellur), plus
+[projected_construction.tellur](../../playground/projected_construction.tellur).
 Compiler/runtime checks are in [constructors.rs](../../tests/constructors.rs) and
 [borrowed_constructors.rs](../../tests/borrowed_constructors.rs), with composition in
-[borrowed_composition.rs](../../tests/borrowed_composition.rs); actual retained-owner
+[borrowed_composition.rs](../../tests/borrowed_composition.rs) and fresh projections in
+[borrowed_projections.rs](../../tests/borrowed_projections.rs); actual retained-owner
 fault cleanup is checked in [rust_adapters.rs](../../tests/rust_adapters.rs).

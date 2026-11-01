@@ -278,16 +278,21 @@ impl Checker<'_> {
         domain: Formula,
         span: Span,
     ) -> Result<Option<Vec<syntax::Expr>>> {
-        if !args.iter().any(has_call) {
+        let projections = args
+            .iter()
+            .map(|arg| self.projection_type(arg, span))
+            .collect::<Result<Vec<_>>>()?;
+        if !args.iter().any(has_call) && projections.iter().all(Option::is_none) {
             return Ok(None);
         }
         // Check the original list before staging erases nested call accesses.
         // In particular, an earlier returned borrow must conflict with a later
         // constructor's exclusive borrow of the same owner.
         let mut parameters = vec![];
-        for (arg, annotation) in args.iter().zip(expected) {
+        for ((arg, annotation), projection) in args.iter().zip(expected).zip(&projections) {
             let reference = annotation
                 .as_deref()
+                .or(projection.as_deref())
                 .and_then(manifest::reference_inner)
                 .map(|(mutable, _)| mutable)
                 .or(self
@@ -306,6 +311,8 @@ impl Checker<'_> {
         self.argument_aliases(args, &parameters, domain, span)?;
         let mut result = vec![];
         for (index, (arg, annotation)) in args.iter().zip(expected).enumerate() {
+            let projected = self.materialize_projection(arg, domain, span)?;
+            let arg = projected.as_ref().unwrap_or(arg);
             // Reference arguments retain their addresses. The full-list alias
             // check protects them through later argument evaluation.
             if annotation

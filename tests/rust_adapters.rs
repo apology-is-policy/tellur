@@ -900,3 +900,70 @@ control main(string path) exits done {counter remaining} {
     config["types"][0]["fault"] = json!("release");
     compile(source, f.manifest(&config)).unwrap();
 }
+
+#[test]
+fn projected_resource_keeps_fault_ownership_before_and_after_delivery() {
+    let f = Fixture::new();
+    fs::write(f.root.join("host.rs"), RESOURCE_HOST).unwrap();
+    let mut config = resource_config();
+    config["types"][0]["fault"] = json!("release");
+    let source = r#"
+struct owner['a] {
+    ref string text <- 'a;
+    counter owned;
+    constructor(ref string input,counter owned,bool broken)[input] {
+        self.text=input;
+        self.owned=move owned;
+        delta broken {true=>fault "partial",false=>complete}
+    }
+}
+control main(string path,bool broken) exits done {
+    fault boundary {
+        string text="reference";
+        delta make(borrow path) {made {counter value}=>made}
+        [made]: auto projected=owner(borrow text,move value,broken).owned;
+        fault "after projection";
+    } contingency [] {terminate process 23;}
+}
+"#;
+    assert_eq!(
+        compile(
+            &source.replace("broken).owned", "broken).text"),
+            f.manifest(&config)
+        )
+        .unwrap_err()
+        .code,
+        "E_TEMPORARY"
+    );
+    assert_eq!(
+        compile(source, f.manifest(&resource_config()))
+            .unwrap_err()
+            .code,
+        "E_FAULT_RESOURCE"
+    );
+    let p = compile(source, f.manifest(&config)).unwrap();
+    for (opt, p) in [(0, p.clone()), (2, p.expanded("main").unwrap())] {
+        let binary = f.root.join(format!("projected-resource-{opt}"));
+        support::scenario_executable(&p)
+            .build_native("main", &binary, opt)
+            .unwrap();
+        for broken in ["true", "false"] {
+            let log = f
+                .root
+                .join(format!("projected-resource-{opt}-{broken}.log"));
+            let output = Command::new(&binary)
+                .args(["--json", "--"])
+                .arg(&log)
+                .arg(broken)
+                .output()
+                .unwrap();
+            assert_eq!(
+                output.status.code(),
+                Some(23),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert_eq!(fs::read_to_string(log).unwrap(), "drop 7\n");
+        }
+    }
+}

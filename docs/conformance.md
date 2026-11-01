@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.70.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.71.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -2353,3 +2353,42 @@ a mutating nested constructor followed by a borrow of the same source requires
 separate declarations even when the first call returns no borrow. This limitation
 is documented and queued for initializer access precision; the release does not
 claim that every safe sequential initializer arrangement is accepted.
+
+
+## 0.71 fresh borrowed result projections
+
+Direct and chained field access now works on fresh reference-bearing constructor
+results and raw records. The checker materializes the completed record when the
+expression is evaluated, then uses ordinary place and contained-origin rules.
+Selecting an external reference retains its source and permission; selecting an
+owned field transfers it. It does not extend temporary-owned storage or permit a
+local reference to escape through a fresh result.
+
+Every owning step of the projection checks unselected fields for resource or
+outcome completion obligations. A selected resource or outcome can be transferred;
+otherwise a named owner is required to handle the remaining fields explicitly.
+Checks also preserve private fields across imported generic constructors. No new
+syntax, reference rebinding, asynchronous runtime behavior or copy-elision promise
+is introduced. The existing conservative list-wide alias rule remains documented
+and is the next construction follow-up.
+
+Coverage includes shared/exclusive references, nested generic records, options,
+carrier references with both storage and contained origins, returned borrows,
+cloning, direct external mutation, independent unselected loans, collection
+reference arguments, selected adapter arms and written evaluation order. The native
+matrix covers shared, nested, absent-option, exclusive and carrier cases before and
+after expansion at O0/O2, compared with complete reference execution reports.
+Retained Rust resource tests verify exactly-once fault release before and after
+field delivery, and reject missing fault dispositions.
+
+The maintained reference and `playground/projected_construction.tellur` accompany
+this checkpoint. Editor coverage checks inferred owning/shared/mutable types on
+`auto`, constructor outline, unsaved borrow errors and repair, formatting and native
+execution in an isolated VS Code instance.
+
+Release validation: all 1,021 Rust tests across 73 nonempty targets and all 42 Node
+editor tests passed. The isolated VS Code checkpoint passed with the release
+compiler and language server. Manual validation covers 75 accepted examples,
+27 expected diagnostics, 15 context fragments and 256 local links. Live HTTP fault
+recovery still sends 500 and serves the next request. The packaged VSIX and installed
+extension's nine payloads were verified against the 0.71.0 release staging files.

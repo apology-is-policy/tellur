@@ -2776,3 +2776,48 @@ fn composed_constructor_hover_and_unsaved_loan_diagnostics() {
         tellur::format::source(&formatted, Default::default()).unwrap()
     );
 }
+
+#[test]
+fn projected_constructor_auto_hovers_and_unsaved_loan_diagnostics() {
+    let mut f = Fixture::new();
+    let source = include_str!("../playground/projected_construction.tellur");
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    for (needle, inferred) in [
+        ("auto title", "string title"),
+        ("ref auto text", "ref string text"),
+        ("ref mutable auto edit", "ref mutable string edit"),
+    ] {
+        let (line, text) = source
+            .lines()
+            .enumerate()
+            .find(|(_, l)| l.contains(needle))
+            .unwrap();
+        let column = text.find("auto").unwrap();
+        assert!(
+            f.server
+                .hover(&f.uri, line as u64, column as u64)
+                .to_string()
+                .contains(inferred),
+            "{inferred}"
+        );
+    }
+    f.change(
+        &source.replace("emit(text);", "owner = \"too early\"; emit(text);"),
+        2,
+    );
+    assert!(
+        f.diagnostics()
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|d| d["code"] == "E_LOAN")
+    );
+    f.change(source, 3);
+    assert_eq!(f.diagnostics(), json!([]));
+    let formatted = tellur::format::source(source, Default::default()).unwrap();
+    assert_eq!(
+        formatted,
+        tellur::format::source(&formatted, Default::default()).unwrap()
+    );
+}

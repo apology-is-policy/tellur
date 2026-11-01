@@ -39,6 +39,7 @@ mod construction;
 mod contracts;
 mod contributors;
 mod lexical;
+mod projections;
 mod public;
 mod stored;
 mod sums;
@@ -443,6 +444,9 @@ impl Checker<'_> {
         }
         expression.checked(span, |span| {
             if let syntax::ExprKind::Deref(inner) = &expression.kind {
+                if self.projection_type(inner, span)?.is_some() {
+                    return Ok(None);
+                }
                 let (_, _, loan, holder) =
                     self.reference_source(inner, span)?.ok_or_else(|| {
                         self.error(
@@ -1138,6 +1142,8 @@ impl Checker<'_> {
         domain: Formula,
         span: Span,
     ) -> Result<()> {
+        let projected = self.materialize_projection(target, domain, span)?;
+        let target = projected.as_ref().unwrap_or(target);
         if let syntax::ExprKind::Name(name) = &target.kind
             && self.find_loan(name).is_some()
         {
@@ -1230,6 +1236,9 @@ impl Checker<'_> {
             syntax::ExprKind::Borrow(e) | syntax::ExprKind::BorrowMutable(e) => e.as_ref(),
             _ => arg,
         };
+        if let Some(ty) = self.projection_type(e, span)? {
+            return Ok(manifest::reference_inner(&ty).map_or(ty.clone(), |(_, t)| t.into()));
+        }
         if let Some((_, _, loan, _)) = self.reference_source(e, span)? {
             return Ok(loan.target.ty);
         }
@@ -1288,6 +1297,8 @@ impl Checker<'_> {
     ) -> Result<(Expr, String)> {
         let local = self.local_expression(expr);
         let expr = local.as_ref().unwrap_or(expr);
+        let projected = self.materialize_projection(expr, domain, span)?;
+        let expr = projected.as_ref().unwrap_or(expr);
         expr.checked(span, |span| {
         use syntax::ExprKind as S;
         if let S::Move(value) = &expr.kind {
@@ -1349,6 +1360,11 @@ impl Checker<'_> {
                     return Ok((Expr::Length(Box::new(values.remove(0))),"U32".into()));
                 }
                 if name == "clone" {
+                    if let [arg] = args.as_slice()
+                        && let Some(local) = self.materialize_projection(arg, domain, span)?
+                    {
+                        return self.expr_expected(&S::Call(name.clone(), vec![local]).at(expr.range), domain, moving, span, expected);
+                    }
                     let dereferenced;
                     let value = match args.as_slice() {
                         [syntax::Expr { kind: S::Borrow(value), .. }] => value.as_ref(),
@@ -1957,9 +1973,9 @@ impl Checker<'_> {
                         }
                     }
                 }
-                syntax::ExprKind::Project(base, _) | syntax::ExprKind::Unary(base) => {
-                    self.accesses(base, &Mode::Value, span, uses)?
-                }
+                syntax::ExprKind::Project(base, _)
+                | syntax::ExprKind::Deref(base)
+                | syntax::ExprKind::Unary(base) => self.accesses(base, &Mode::Value, span, uses)?,
                 syntax::ExprKind::Binary(_, a, b) => {
                     self.accesses(a, &Mode::Value, span, uses)?;
                     self.accesses(b, &Mode::Value, span, uses)?;
@@ -2383,6 +2399,8 @@ impl Checker<'_> {
                 );
             }
             Statement::Bind(name, annotation, expression, mutable) => {
+                let projected = self.materialize_projection(expression, domain, span)?;
+                let expression = projected.as_ref().unwrap_or(expression);
                 if name.starts_with("$field_")
                     && self
                         .manifest
@@ -2443,6 +2461,8 @@ impl Checker<'_> {
                 self.emit(guard, Action::Bind(id, expr), span);
             }
             Statement::Drop(expression) => {
+                let projected = self.materialize_projection(expression, domain, span)?;
+                let expression = projected.as_ref().unwrap_or(expression);
                 let expression = if let syntax::ExprKind::Move(value) = &expression.kind {
                     value.as_ref()
                 } else {
@@ -2503,6 +2523,8 @@ impl Checker<'_> {
                 self.assignment(target, expression, guard, domain, span)?;
             }
             Statement::Emit(expression) => {
+                let projected = self.materialize_projection(expression, domain, span)?;
+                let expression = projected.as_ref().unwrap_or(expression);
                 let dereferenced;
                 let expression = if self.reference_source(expression, span)?.is_some() {
                     dereferenced = syntax::ExprKind::Borrow(Box::new(
@@ -3115,13 +3137,22 @@ impl Checker<'_> {
                 temporary.insert(index);
             }
         }
-        if temporary.is_empty() && !args.iter().any(crate::constructors::has_call) {
+        let projections = args
+            .iter()
+            .map(|arg| self.projection_type(arg, span))
+            .collect::<Result<Vec<_>>>()?;
+        if temporary.is_empty()
+            && !args.iter().any(crate::constructors::has_call)
+            && projections.iter().all(Option::is_none)
+        {
             return Ok(None);
         }
         self.argument_aliases(args, &sig.parameters, domain, span)?;
         let mut staged = Vec::new();
         let mut release = Vec::new();
         for (index, (arg, parameter)) in args.iter().zip(&sig.parameters).enumerate() {
+            let projected = self.materialize_projection(arg, domain, span)?;
+            let arg = projected.as_ref().unwrap_or(arg);
             let (value, ty, mutable, borrowed) = if temporary.contains(&index) {
                 let (mutable, ty) = manifest::reference_inner(&parameter.ty)
                     .unwrap_or((false, parameter.ty.as_str()));
@@ -3207,6 +3238,11 @@ impl Checker<'_> {
                 "a constructor produces a value; bind or pass type(arguments) as a value",
             ));
         }
+        let previous = std::mem::replace(&mut self.expression_guard, guard.clone());
+        let projected = self.materialize_projection(operand, domain, span);
+        self.expression_guard = previous;
+        let projected = projected?;
+        let operand = projected.as_ref().unwrap_or(operand);
         let temporaries = self.temporary_arguments(operand, &guard, domain, span)?;
         let operand = temporaries.as_ref().map_or(operand, |(call, _)| call);
         if let Some(site) = site

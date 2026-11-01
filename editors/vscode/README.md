@@ -4,12 +4,12 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-0.70.0-darwin-arm64.vsix` using **Extensions:
+1. Install the supplied `tellur-language-0.71.0-darwin-arm64.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
 3. Open `playground/hello.tellur` and click **▶** or **Tellur: Build and Run** (`⌘⌥R`).
-   Try `playground/composed_construction.tellur`, `playground/borrowed_construction.tellur`, `playground/construction.tellur`, `playground/named_outcomes.tellur`, `stored_adapters.tellur`, `adapters.tellur`, `outcomes.tellur`, `collections.tellur`, `references.tellur`, and `count.tellur` next.
+   Try `playground/projected_construction.tellur`, `playground/composed_construction.tellur`, `playground/borrowed_construction.tellur`, `playground/construction.tellur`, `playground/named_outcomes.tellur`, `stored_adapters.tellur`, `adapters.tellur`, `outcomes.tellur`, `collections.tellur`, `references.tellur`, and `count.tellur` next.
 4. Read `docs/language-reference.md` for the detailed language reference.
 
 The package contains both `tellur-lsp` and `tellurc`. Native builds require the Rust/Cargo
@@ -135,8 +135,8 @@ migration notes in `docs/language-reference.md` in the compiler checkout.
 
 `tellurLanguage.serverPath` overrides the server executable. Otherwise the extension
 uses its bundled server, then `target/debug/tellur-lsp` from a development checkout,
-then `tellur-lsp` on PATH. The packaged server matches the 0.47.0 compiler; rebuild or
-override it when experimenting with compiler changes.
+then `tellur-lsp` on PATH. The packaged server and compiler match the extension
+version; rebuild or override them when experimenting with compiler changes.
 
 For another platform, build the Rust server and set the executable path. The source
 extension is platform-independent; the supplied VSIX is explicitly `darwin-arm64`.

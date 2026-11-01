@@ -1011,3 +1011,31 @@ fn imported_private_borrowed_representation_composes_inside_public_raw_storage()
     );
     f.reject("E_VISIBILITY");
 }
+
+#[test]
+fn fresh_imported_constructor_projections_preserve_origins_and_field_privacy() {
+    let f = Fixture::new();
+    let library = "pub struct view<t>['a] {pub ref t value <- 'a;string hidden;pub constructor(ref t input)[input] {self.value=input;self.hidden=\"private\";}}";
+    f.write("library.tellur", library);
+    let source = "import \"library.tellur\" as lib;control main() exits done {mutable string owner=\"projected\";ref auto text=lib.view<string>(borrow owner).value;emit(text);owner=\"released\";exit done;}";
+    f.write("main.tellur", source);
+    same(&f.check().unwrap());
+    f.write(
+        "main.tellur",
+        &source.replace("emit(text);", "owner=\"early\";emit(text);"),
+    );
+    f.reject("E_LOAN");
+    f.write(
+        "main.tellur",
+        &source
+            .replace("ref auto text", "auto text")
+            .replace(").value", ").hidden"),
+    );
+    f.reject("E_VISIBILITY");
+    f.write("main.tellur", source);
+    f.write(
+        "library.tellur",
+        &library.replace("pub constructor", "constructor"),
+    );
+    f.reject("E_PRIVATE");
+}
