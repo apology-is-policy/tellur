@@ -9,12 +9,14 @@ and sum payloads. CF5e now projects fields from fresh reference-bearing results,
 preserving external loans and unselected completion obligations. CF5f now checks
 initializer accesses sequentially, ending nonescaping call borrows while preserving
 returned loans and pending resource obligations. This completes the construction
-follow-up group; the practical queue returns to P2 diagnostic recovery and P5
-application-driven library work.
+follow-up group. P2a now adds bounded straight-line statement recovery, with
+dependent-value suppression and clean diagnostic replay. The next diagnostic slice
+is recovery across decisions and nested scopes; P5 application-driven library work
+continues alongside it.
 Broader physical copy elision and suspended activation frames remain separate work.
 
 1 November 2026. This is the working revision plan, not a claim that all proposed
-features are implemented. Compiler **0.72.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
+features are implemented. Compiler **0.73.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
 lifetime checkpoints of milestone 2, the array/vector/map core of milestone 3,
 and implicit entry, inline/stored adapters, owned capture, named outcome contracts
 and checked forwarding in milestone 4. A first [semantic foundation](semantic-foundation.md)
@@ -160,7 +162,8 @@ unimplemented syntax are promised.
 | C1b.3c.1 | Local shared-reference collection elements | **Delivered in 0.43**: arrays/vectors/maps, direct lookup, branch-sensitive insertion, removal/conversion, independent copies, conservative source unions, native/editor coverage |
 | P1a | Stable public contracts | **Delivered in 0.44**: explicit public outcome/payload/origin contracts, private inference, unused generic checks and bounded direct-forwarding contributor notes in CLI/editor |
 | P1b | Outcome contributor coverage | **Bounded slice delivered in 0.46**: captures/moves, local record/sum payloads, stored/nested adapters, delayed exits and label merges; guarded writes exclude overwritten sources. Loop-carried values, indirect aliases, dynamic collections and cross-call payload lineage remain future work |
-| P2 | Structured diagnostics | **Reports in 0.47; ranges in 0.51; independent-body errors in 0.52**: bounded CLI/LSP batches, failed-caller suppression, source ranges, witnesses and fresh hover. Follow-ups: within-body/preparation-phase recovery and broader contract/contributor ranges |
+| P2 | Structured diagnostics | **Reports in 0.47; ranges in 0.51; independent-body errors in 0.52**: bounded CLI/LSP batches, failed-caller suppression, source ranges, witnesses and fresh hover. Straight-line body recovery delivered in 0.73 (P2a); follow-ups: structural/nested-body and preparation-phase recovery, broader contract/contributor ranges |
+| P2a | Straight-line statement recovery | **Delivered in 0.73:** independent local errors, transitive value/loan suppression, fresh body replay, one 32-error budget, module/generic/constructor/editor coverage. Decisions, nested bodies and terminal checks remain conservative boundaries |
 | I1a | Owned-data Rust adapters | **Delivered in 0.45**: typed wrapper/result generation, registry dependencies and explicit locking, owned scalar/collection data, shared call borrows, blocking/immediate classification and scripted/live conformance |
 | I1b.1 | Retained host resource foundation | **Delivered in 0.49**: opaque must-complete Rust owners, direct shared/consuming calls, explicit resource return on retry, checked runtime identities, teardown fallback and live/scripted/editor evidence |
 | I1b.2 | Broader Rust reuse | Application-driven follow-up: richer data boundaries, exclusive foreign mutation and dependency/package ergonomics; stable binary ABI and LTO remain later layers |

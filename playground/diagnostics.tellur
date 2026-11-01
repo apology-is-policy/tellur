@@ -1,0 +1,17 @@
+// Try changing count's initializer to true and subtitle's initializer to 7.
+// Both type errors appear together. The dependent declaration is skipped until
+// count is repaired; it does not produce a misleading follow-on error.
+outcome program_result {
+    @exit 0 done
+}
+
+control main() exits program_result {
+    auto title = "Diagnostics";
+    u32 count = 3;
+    string subtitle = "Ready";
+    u32 dependent = count;
+
+    emit(borrow title);
+    emit(borrow subtitle);
+    exit done;
+}

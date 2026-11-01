@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-0.72.0-darwin-arm64.vsix` using **Extensions:
+1. Install the supplied `tellur-language-0.73.0-darwin-arm64.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -77,8 +77,8 @@ another file; relative paths are resolved against the workspace folder. Manifest
 edits take effect after saving. With no valid manifest, syntax diagnostics still
 work and a warning explains that type/coverage/resource checks did not run.
 
-The server reports bounded independent-control errors, debounced during typing,
-with one primary error per body and up to 32 per check. Failed callers are suppressed
+The server reports independent control and straight-line statement errors, debounced
+during typing, with up to 32 per check. Dependent statements and failed callers are suppressed
 to avoid cascades. Expression diagnostics select their source ranges; other
 diagnostics may point to a token, statement or declaration. Structural
 witnesses describe what *may* reach a point, not proven feasible input values.
@@ -568,7 +568,7 @@ contracts or misleading follow-on errors. Repairing a helper makes its callers
 eligible for checking again. Unsaved imported files participate in the same check.
 `auto` hover is unavailable while the current program is invalid and returns after
 repair. Parsing and shared declaration failures still stop at their first error;
-recovery within a damaged body remains future work.
+0.73 adds the bounded statement recovery described below.
 
 ## Direct arm exits (0.54)
 
@@ -656,3 +656,16 @@ Try `playground/contingency.tellur` with entry `main` and no program arguments. 
 handles one source fault, then runs another request. The updated settings server
 uses the same mechanism for per-request isolation. Faults never become ordinary
 outcomes. See [the full reference](https://github.com/apology-is-policy/tellur/blob/main/docs/reference/contingency.md).
+
+## Statement diagnostics in 0.73
+
+Open `playground/diagnostics.tellur` and change `count = 3` to `count = true`,
+and `subtitle = "Ready"` to `subtitle = 7`. Problems shows both initializer errors.
+The dependent use of `count` does not produce a follow-on error. Repair either
+initializer to remove its diagnostic; repair both to restore inferred `auto` hover.
+
+Recovery uses fresh compiler state and stops at decisions, nested scopes, loops,
+boundaries and exits. Whole-state fault-resource checks can also stop recovery.
+The 32-error budget is shared across statements and controls; no partial checked
+program or inferred hover escapes a failed check. See the
+[precise recovery limits](https://github.com/apology-is-policy/tellur/blob/main/docs/reference/diagnostics-and-limits.md#statement-recovery).

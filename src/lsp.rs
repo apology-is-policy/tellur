@@ -320,7 +320,7 @@ impl Server {
                             && let Some(last) = errors.errors.last_mut()
                         {
                             last.diagnostic.message.push_str(
-                                " (diagnostic limit reached; remaining controls may be unchecked)",
+                                " (diagnostic limit reached; remaining statements or controls may be unchecked)",
                             );
                         }
                         errors

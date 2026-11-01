@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.72.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.73.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -2437,3 +2437,50 @@ release binaries. Manual validation covers 76 accepted examples, 28 expected
 diagnostics, 15 context fragments and 260 local links. Live HTTP fault recovery
 still sends 500 and serves the next request. All nine packaged and installed
 extension payloads were verified against the final 0.72.0 staging files.
+
+## 0.73 straight-line statement diagnostic recovery
+
+P2a extends the bounded diagnostic batch inside a control. Failed top-level
+declarations, assignments, drops, emits and single-completion calls can be followed
+by independent statement errors. A diagnostic-only replay starts from fresh checker
+state, omits previously failed statements and suppresses statements depending on
+their read, written or declared values. Record fields taint their whole carrier;
+references and source owners are conservatively linked, including nested carriers.
+
+Replay never publishes inferred contracts, hover bindings, selected histories or
+executable IR. Failed controls and their callers remain suppressed as before.
+Coverage, result inference and constructor completion are not checked on a body
+with omissions. The 32-error budget is shared between statements and controls.
+
+Recovery deliberately stops at decisions, captures/adapters, aliases, nested scopes,
+loops, boundaries and terminal dispositions. Nested-body errors remain first-only.
+A whole-state fault-resource error also stops replay, avoiding conclusions about
+resources whose earlier transfer or completion is uncertain. Preparation-phase
+recovery and finer path/field precision remain separate checkpoints.
+
+`tests/diagnostic_recovery.rs` covers independent and transitive value errors,
+partially moved call arguments, direct and nested reference aliases, independent
+ownership witnesses, final resource/coverage suppression, fault-obligation barriers,
+structural and termination barriers, generic definitions, constructors and the shared
+budget. `tests/diagnostics.rs` adds imported CLI batches with exact source ranges;
+`tests/lsp.rs` adds unsaved same-body diagnostics, partial repairs and fresh inferred
+hover after a complete repair. Existing parsing/shared-declaration tests keep their
+first-error expectations; the former same-body first-error assertion is replaced by
+the explicit recovery suite.
+
+`playground/diagnostics.tellur` is a runnable editing exercise. The real VS Code
+checkpoint changes two initializers, verifies both expression ranges and dependent
+suppression, repairs them independently, checks a changed inferred type, then builds
+and runs the restored program. The initial editor run caught the example's missing
+process-status annotation; the corrected example declares `@exit 0 done`, and the
+final isolated editor run passed. The same broken source reports one error with
+0.72 and both independent errors with 0.73.
+
+Validation: **1,045 Rust tests across 75 nonempty targets** and **42 Node editor
+tests** passed. The manual checked **76 accepted examples, 29 expected diagnostics,
+15 context fragments and 262 local links**. The full run includes native constructor
+and borrowing parity, retained-resource fault cleanup, and the live HTTP test that
+sends a 500 response for a source fault before serving the next request successfully.
+Formatting and whitespace checks passed. All six local compiler/server copies match
+the 0.73.0 release artifacts; all nine packaged and installed extension payloads were
+verified. Existing user VS Code windows were not reloaded.

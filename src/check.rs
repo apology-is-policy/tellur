@@ -41,6 +41,7 @@ mod contributors;
 mod lexical;
 mod projections;
 mod public;
+mod recovery;
 mod stored;
 mod sums;
 
@@ -175,6 +176,7 @@ struct LoopContext {
     scope: usize,
 }
 struct Checker<'a> {
+    recovery: recovery::Recovery,
     expression_guard: Guard,
     constructing: bool,
     boundaries: Vec<lexical::BoundaryContext>,
@@ -4123,8 +4125,17 @@ impl Checker<'_> {
         }
     }
     fn items(&mut self, items: &[Item], outer: Guard, context: Formula) -> Result<()> {
+        self.recovery.depth += 1;
+        let result = self.items_inner(items, outer, context);
+        self.recovery.depth -= 1;
+        result
+    }
+    fn items_inner(&mut self, items: &[Item], outer: Guard, context: Formula) -> Result<()> {
         let continuation = self.future_names.clone();
         for (index, item) in items.iter().enumerate() {
+            if self.recovery.active && !matches!(item, Item::Guard(..)) {
+                return Ok(());
+            }
             let mut future = continuation.clone();
             crate::liveness::items(&items[index + 1..], &mut future);
             self.future_names = future.clone();
@@ -4284,6 +4295,11 @@ impl Checker<'_> {
                 }
                 Item::Guard(mask, statements) => {
                     for (index, (span, statement)) in statements.iter().enumerate() {
+                        match self.recovery_statement(statement, *span) {
+                            None => return Ok(()),
+                            Some(false) => continue,
+                            Some(true) => {}
+                        }
                         let mut live = future.clone();
                         for (_, s) in &statements[index..] {
                             crate::liveness::statement(s, &mut live);
@@ -4301,7 +4317,15 @@ impl Checker<'_> {
                             &outer.clone().and(guard.clone()),
                             domain,
                         );
-                        self.statement(outer.clone().and(guard), domain, statement, *span)?;
+                        if let Err(error) =
+                            self.statement(outer.clone().and(guard), domain, statement, *span)
+                        {
+                            if self.recovery.active && error.code == "E_FAULT_RESOURCE" {
+                                return Ok(());
+                            }
+                            self.recovery_error(statement, *span, &error);
+                            return Err(error);
+                        }
                     }
                 }
                 Item::Group(span, mask, body) => {
@@ -4713,247 +4737,270 @@ pub(crate) fn compile_concrete_unit(
         let saved_next = next;
         let saved_bindings = inferred_bindings.len();
         let saved_histories = selected_histories.len();
-        let checked: Result<()> = (|| {
-            for f in &source.parameters {
-                if let Some((_, inner)) = manifest::reference_inner(&f.ty) {
-                    crate::origins::input_type(inner, &origin_schemas, &manifest, source.span)?;
-                    crate::origins::borrowed_input_type(
-                        inner,
-                        &origin_schemas,
-                        &manifest,
-                        source.span,
-                    )?;
-                } else {
-                    crate::origins::input_type(&f.ty, &origin_schemas, &manifest, source.span)?;
-                }
-            }
-            for f in source.exits.iter().flat_map(|o| &o.fields) {
-                crate::origins::result_type(&f.ty, &origin_schemas, &manifest, source.span)?;
-            }
-            let mut checker = Checker {
-                expression_guard: Guard::True,
-                constructing: false,
-                boundaries: vec![],
-                handler: None,
-                contingent_contract: source.contingent_contract,
-                fault_contract: source.fault_contract,
-                selected_histories: vec![],
-                selection_facts: BTreeMap::new(),
-                forwarded_exits: BTreeMap::new(),
-                forwarding: None,
-                inferred_bindings: vec![],
-                contained_inputs: BTreeMap::new(),
-                origin_schemas: &origin_schemas,
-                declared_stored: signatures[&source.name].stored_returns.clone(),
-                declared_returns: signatures[&source.name].borrow_returns.clone(),
-                manifest: &mut manifest,
-                signatures: &signatures,
-                next: &mut next,
-                bdd: Bdd::default(),
-                dead: FALSE,
-                scopes: vec![Scope::default()],
-                atom_formulas: BTreeMap::new(),
-                loop_context: None,
-                infer_exits: source.infer_exits,
-                infer_payloads: source.infer_payloads.clone(),
-                pending_payloads: source.infer_payloads.clone(),
-                modern: source.modern,
-                future_names: BTreeSet::new(),
-                identity_diagnostics: vec![],
-                visibility,
-                type_bindings: &source.type_bindings,
-                result: Region {
-                    contingent: source.contingent_contract.unwrap_or(true),
-                    contingency: source.contingency,
-                    boundary: None,
-                    faults: source.fault_contract.unwrap_or(false),
-                    stored_returns: signatures[&source.name].stored_returns.clone(),
-                    borrow_returns: signatures[&source.name].borrow_returns.clone(),
-                    name: source.name.clone(),
-                    parameters: vec![],
-                    exits: signatures[&source.name].outcomes.clone(),
-                    slots: BTreeMap::new(),
-                    atoms: BTreeMap::new(),
-                    code: vec![],
-                },
-            };
-            checker.scopes[0]
-                .paths
-                .insert("Entry".into(), (Guard::True, TRUE));
-            for param in &source.parameters {
-                let borrowed = param.ty.starts_with('&');
-                let (mutable, ty) =
-                    manifest::reference_inner(&param.ty).unwrap_or((false, &param.ty));
-                let key = if borrowed {
-                    format!("$borrowed_{}", param.name)
-                } else {
-                    param.name.clone()
-                };
-                let id = checker.define(&key, &param.ty, TRUE, source.span)?;
-                if borrowed {
-                    checker.result.slots.get_mut(&id).unwrap().name = param.name.clone();
-                    let binding = checker.scopes[0].values.get_mut(&key).unwrap();
-                    binding.borrowed = true;
-                    binding.owned.clear();
-                    let loan_id = checker.fresh();
-                    checker.scopes[0].loans.insert(
-                        param.name.clone(),
-                        Loan {
-                            contents: vec![],
-                            sum_leaf: None,
-                            id: loan_id,
-                            target: ResolvedPlace {
-                                carriers: vec![],
-                                scope: 0,
-                                name: key,
-                                place: Place {
-                                    indirect: true,
-                                    root: id,
-                                    fields: vec![],
-                                },
-                                ty: ty.into(),
-                                via: None,
-                            },
-                            origins: vec![LoanOrigin {
-                                permissions: vec![],
-                                guard: false,
-                                place: Place {
-                                    root: id,
-                                    fields: vec![],
-                                    indirect: true,
-                                },
-                                opaque: false,
-                            }],
-                            parents: vec![],
-                            mutable,
-                            active: TRUE,
-                            defined: TRUE,
-                            holder: None,
-                        },
-                    );
-                }
-                checker
-                    .result
-                    .parameters
-                    .push(checker.result.slots[&id].clone());
-            }
-            if let Some(b) = &source.boundary {
-                for p in &source.parameters {
-                    if checker.manifest.contains_references(&p.ty) {
-                        return Err(Diagnostic::new(
-                            "E_BOUNDARY",
+        let mut omitted = vec![];
+        loop {
+            let mut recover_at = None;
+            let checked: Result<()> = (|| {
+                for f in &source.parameters {
+                    if let Some((_, inner)) = manifest::reference_inner(&f.ty) {
+                        crate::origins::input_type(inner, &origin_schemas, &manifest, source.span)?;
+                        crate::origins::borrowed_input_type(
+                            inner,
+                            &origin_schemas,
+                            &manifest,
                             source.span,
-                            "boundary inputs must own their data; borrowed inputs and stored references cannot cross an isolation boundary",
-                        ));
+                        )?;
+                    } else {
+                        crate::origins::input_type(&f.ty, &origin_schemas, &manifest, source.span)?;
                     }
                 }
-                checker.result.boundary = Some(Boundary {
-                    handler: b.handler.clone(),
-                    retained: b
-                        .retained
-                        .iter()
-                        .map(|n| {
-                            checker
-                                .result
-                                .parameters
-                                .iter()
-                                .find(|p| &p.name == n)
-                                .unwrap()
-                                .id
-                        })
-                        .collect(),
-                });
-            }
-            checker.initialize_contained_inputs(source.span)?;
-            if source.abstract_signature {
-                if checker.manifest.abstract_types.is_empty() {
-                    return Err(Diagnostic::new(
-                        "E_INTERNAL",
+                for f in source.exits.iter().flat_map(|o| &o.fields) {
+                    crate::origins::result_type(&f.ty, &origin_schemas, &manifest, source.span)?;
+                }
+                let mut checker = Checker {
+                    recovery: recovery::Recovery::new(omitted.clone()),
+                    expression_guard: Guard::True,
+                    constructing: false,
+                    boundaries: vec![],
+                    handler: None,
+                    contingent_contract: source.contingent_contract,
+                    fault_contract: source.fault_contract,
+                    selected_histories: vec![],
+                    selection_facts: BTreeMap::new(),
+                    forwarded_exits: BTreeMap::new(),
+                    forwarding: None,
+                    inferred_bindings: vec![],
+                    contained_inputs: BTreeMap::new(),
+                    origin_schemas: &origin_schemas,
+                    declared_stored: signatures[&source.name].stored_returns.clone(),
+                    declared_returns: signatures[&source.name].borrow_returns.clone(),
+                    manifest: &mut manifest,
+                    signatures: &signatures,
+                    next: &mut next,
+                    bdd: Bdd::default(),
+                    dead: FALSE,
+                    scopes: vec![Scope::default()],
+                    atom_formulas: BTreeMap::new(),
+                    loop_context: None,
+                    infer_exits: source.infer_exits,
+                    infer_payloads: source.infer_payloads.clone(),
+                    pending_payloads: source.infer_payloads.clone(),
+                    modern: source.modern,
+                    future_names: BTreeSet::new(),
+                    identity_diagnostics: vec![],
+                    visibility,
+                    type_bindings: &source.type_bindings,
+                    result: Region {
+                        contingent: source.contingent_contract.unwrap_or(true),
+                        contingency: source.contingency,
+                        boundary: None,
+                        faults: source.fault_contract.unwrap_or(false),
+                        stored_returns: signatures[&source.name].stored_returns.clone(),
+                        borrow_returns: signatures[&source.name].borrow_returns.clone(),
+                        name: source.name.clone(),
+                        parameters: vec![],
+                        exits: signatures[&source.name].outcomes.clone(),
+                        slots: BTreeMap::new(),
+                        atoms: BTreeMap::new(),
+                        code: vec![],
+                    },
+                };
+                checker.scopes[0]
+                    .paths
+                    .insert("Entry".into(), (Guard::True, TRUE));
+                for param in &source.parameters {
+                    let borrowed = param.ty.starts_with('&');
+                    let (mutable, ty) =
+                        manifest::reference_inner(&param.ty).unwrap_or((false, &param.ty));
+                    let key = if borrowed {
+                        format!("$borrowed_{}", param.name)
+                    } else {
+                        param.name.clone()
+                    };
+                    let id = checker.define(&key, &param.ty, TRUE, source.span)?;
+                    if borrowed {
+                        checker.result.slots.get_mut(&id).unwrap().name = param.name.clone();
+                        let binding = checker.scopes[0].values.get_mut(&key).unwrap();
+                        binding.borrowed = true;
+                        binding.owned.clear();
+                        let loan_id = checker.fresh();
+                        checker.scopes[0].loans.insert(
+                            param.name.clone(),
+                            Loan {
+                                contents: vec![],
+                                sum_leaf: None,
+                                id: loan_id,
+                                target: ResolvedPlace {
+                                    carriers: vec![],
+                                    scope: 0,
+                                    name: key,
+                                    place: Place {
+                                        indirect: true,
+                                        root: id,
+                                        fields: vec![],
+                                    },
+                                    ty: ty.into(),
+                                    via: None,
+                                },
+                                origins: vec![LoanOrigin {
+                                    permissions: vec![],
+                                    guard: false,
+                                    place: Place {
+                                        root: id,
+                                        fields: vec![],
+                                        indirect: true,
+                                    },
+                                    opaque: false,
+                                }],
+                                parents: vec![],
+                                mutable,
+                                active: TRUE,
+                                defined: TRUE,
+                                holder: None,
+                            },
+                        );
+                    }
+                    checker
+                        .result
+                        .parameters
+                        .push(checker.result.slots[&id].clone());
+                }
+                if let Some(b) = &source.boundary {
+                    for p in &source.parameters {
+                        if checker.manifest.contains_references(&p.ty) {
+                            return Err(Diagnostic::new(
+                                "E_BOUNDARY",
+                                source.span,
+                                "boundary inputs must own their data; borrowed inputs and stored references cannot cross an isolation boundary",
+                            ));
+                        }
+                    }
+                    checker.result.boundary = Some(Boundary {
+                        handler: b.handler.clone(),
+                        retained: b
+                            .retained
+                            .iter()
+                            .map(|n| {
+                                checker
+                                    .result
+                                    .parameters
+                                    .iter()
+                                    .find(|p| &p.name == n)
+                                    .unwrap()
+                                    .id
+                            })
+                            .collect(),
+                    });
+                }
+                checker.initialize_contained_inputs(source.span)?;
+                if source.abstract_signature {
+                    if checker.manifest.abstract_types.is_empty() {
+                        return Err(Diagnostic::new(
+                            "E_INTERNAL",
+                            source.span,
+                            "abstract trait signature escaped definition checking",
+                        ));
+                    }
+                    regions.insert(source.name.clone(), checker.result);
+                    return Ok(());
+                }
+                let construction = checker.initialize_constructor(source)?;
+                let body = checker.items(&source.body, Guard::True, TRUE);
+                recover_at = checker.recovery.candidate;
+                body?;
+                // A diagnostic replay never runs final coverage/resource checks and
+                // never publishes inferred contracts, editor data or executable IR.
+                if !omitted.is_empty() {
+                    return Ok(());
+                }
+                if let Some((ty, fields)) = construction {
+                    checker.finish_constructor(&ty, &fields, source.end)?;
+                }
+                let live = checker.bdd.not(checker.dead);
+                if live != FALSE {
+                    return Err(checker.uncovered(
                         source.span,
-                        "abstract trait signature escaped definition checking",
+                        "region has histories with no explicit exit",
+                        live,
                     ));
                 }
-                regions.insert(source.name.clone(), checker.result);
-                return Ok(());
+                if source.infer_exits && checker.result.exits.is_empty() && !checker.result.faults {
+                    return Err(Diagnostic::new(
+                        "E_INFER",
+                        source.span,
+                        "exits auto requires at least one explicit exit; annotate a non-returning control's contract",
+                    ));
+                }
+                if !checker.pending_payloads.is_empty() {
+                    return Err(Diagnostic::new(
+                        "E_INFER",
+                        source.span,
+                        format!(
+                            "cannot infer payloads for exits never produced by the checked body: {}; write their explicit payload types",
+                            checker
+                                .pending_payloads
+                                .iter()
+                                .cloned()
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        ),
+                    ));
+                }
+                let mut contributors = checker.outcome_contributors();
+                for (name, notes) in &signatures[&source.name].contributors {
+                    contributors
+                        .entry(name.clone())
+                        .or_insert_with(|| notes.clone());
+                }
+                selected_histories.extend(checker.selected_histories);
+                inferred_bindings.extend(checker.inferred_bindings);
+                let mut result = checker.result;
+                crate::origins::normalize(&mut result, &origin_schemas, &manifest, source.span)?;
+                if let Some(manifest::TypeDef::Variant { constructors, .. }) = manifest
+                    .types
+                    .iter_mut()
+                    .find(|t| t.name() == format!("outcome<{}>", source.name))
+                {
+                    *constructors = result.exits.clone();
+                }
+                signatures.get_mut(&source.name).unwrap().contributors = contributors;
+                signatures.get_mut(&source.name).unwrap().outcomes = result.exits.clone();
+                signatures.get_mut(&source.name).unwrap().faults = result.faults;
+                signatures.get_mut(&source.name).unwrap().contingent = result.contingent;
+                if let Some(b) = &result.boundary {
+                    signatures.get_mut(&source.name).unwrap().supervision_faults =
+                        signatures[&b.handler].faults;
+                }
+                signatures.get_mut(&source.name).unwrap().borrow_returns =
+                    result.borrow_returns.clone();
+                signatures.get_mut(&source.name).unwrap().stored_returns =
+                    result.stored_returns.clone();
+                regions.insert(source.name.clone(), result);
+                Ok(())
+            })();
+            if let Err(error) = checked {
+                manifest = saved_manifest.clone();
+                next = saved_next;
+                inferred_bindings.truncate(saved_bindings);
+                selected_histories.truncate(saved_histories);
+                failed.insert(index);
+                errors.push(error);
+                if errors.len() == crate::diagnostics::MAX_DIAGNOSTICS {
+                    limit_reached = true;
+                    break;
+                }
+                if let Some(span) = recover_at {
+                    omitted.push(span);
+                    continue;
+                }
+            } else if !omitted.is_empty() {
+                manifest = saved_manifest.clone();
+                next = saved_next;
             }
-            let construction = checker.initialize_constructor(source)?;
-            checker.items(&source.body, Guard::True, TRUE)?;
-            if let Some((ty, fields)) = construction {
-                checker.finish_constructor(&ty, &fields, source.end)?;
-            }
-            let live = checker.bdd.not(checker.dead);
-            if live != FALSE {
-                return Err(checker.uncovered(
-                    source.span,
-                    "region has histories with no explicit exit",
-                    live,
-                ));
-            }
-            if source.infer_exits && checker.result.exits.is_empty() && !checker.result.faults {
-                return Err(Diagnostic::new(
-                    "E_INFER",
-                    source.span,
-                    "exits auto requires at least one explicit exit; annotate a non-returning control's contract",
-                ));
-            }
-            if !checker.pending_payloads.is_empty() {
-                return Err(Diagnostic::new(
-                    "E_INFER",
-                    source.span,
-                    format!(
-                        "cannot infer payloads for exits never produced by the checked body: {}; write their explicit payload types",
-                        checker
-                            .pending_payloads
-                            .iter()
-                            .cloned()
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    ),
-                ));
-            }
-            let mut contributors = checker.outcome_contributors();
-            for (name, notes) in &signatures[&source.name].contributors {
-                contributors
-                    .entry(name.clone())
-                    .or_insert_with(|| notes.clone());
-            }
-            selected_histories.extend(checker.selected_histories);
-            inferred_bindings.extend(checker.inferred_bindings);
-            let mut result = checker.result;
-            crate::origins::normalize(&mut result, &origin_schemas, &manifest, source.span)?;
-            if let Some(manifest::TypeDef::Variant { constructors, .. }) = manifest
-                .types
-                .iter_mut()
-                .find(|t| t.name() == format!("outcome<{}>", source.name))
-            {
-                *constructors = result.exits.clone();
-            }
-            signatures.get_mut(&source.name).unwrap().contributors = contributors;
-            signatures.get_mut(&source.name).unwrap().outcomes = result.exits.clone();
-            signatures.get_mut(&source.name).unwrap().faults = result.faults;
-            signatures.get_mut(&source.name).unwrap().contingent = result.contingent;
-            if let Some(b) = &result.boundary {
-                signatures.get_mut(&source.name).unwrap().supervision_faults =
-                    signatures[&b.handler].faults;
-            }
-            signatures.get_mut(&source.name).unwrap().borrow_returns =
-                result.borrow_returns.clone();
-            signatures.get_mut(&source.name).unwrap().stored_returns =
-                result.stored_returns.clone();
-            regions.insert(source.name.clone(), result);
-            Ok(())
-        })();
-        if let Err(error) = checked {
-            manifest = saved_manifest;
-            next = saved_next;
-            inferred_bindings.truncate(saved_bindings);
-            selected_histories.truncate(saved_histories);
-            failed.insert(index);
-            errors.push(error);
-            if errors.len() == crate::diagnostics::MAX_DIAGNOSTICS {
-                limit_reached = true;
-                break;
-            }
+            break;
+        }
+        if limit_reached {
+            break;
         }
     }
     if !errors.is_empty() {

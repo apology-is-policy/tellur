@@ -6,7 +6,7 @@ pub const MAX_DIAGNOSTICS: usize = 32;
 #[derive(Clone, Debug)]
 pub struct Diagnostics<E = Diagnostic> {
     pub errors: Vec<E>,
-    /// Collection stopped at the budget; remaining controls may be unchecked.
+    /// Collection stopped at the budget; remaining statements or controls may be unchecked.
     pub limit_reached: bool,
 }
 impl<E> From<E> for Diagnostics<E> {
@@ -42,7 +42,7 @@ impl<E: std::fmt::Display> std::fmt::Display for Diagnostics<E> {
         if self.limit_reached {
             write!(
                 f,
-                "\nnote: diagnostic limit reached; remaining controls may be unchecked"
+                "\nnote: diagnostic limit reached; remaining statements or controls may be unchecked"
             )?;
         }
         Ok(())

@@ -3,7 +3,8 @@
 [Language reference](../language-reference.md) · [Feature status](support-status.md)
 
 The compiler reports diagnostic codes, source locations and explanations. Since
-0.52, checking collects errors from independent control bodies. Fixing an error
+0.52, checking collects errors from independent control bodies; 0.73 also recovers
+across independent straight-line statements within a body. Fixing an error
 may expose another within that body or a dependent control. The precise
 message wording may improve between releases. The negative examples here are checked
 for their stated code, so they also serve as small regression cases.
@@ -73,7 +74,8 @@ not traced. Calls summarize their result alternatives rather than substituting
 caller argument histories. Unknown indirect writes, calls with exclusive-reference
 parameters and collection operations conservatively forget stored-value lineage
 on the affected histories. Their actual ownership, typing and exhaustiveness
-checks still run normally. Recovery within a failed body remains future work.
+checks still run normally. [Statement recovery](#statement-recovery) has separate,
+conservative limits.
 
 ## Machine-readable checking
 
@@ -95,7 +97,7 @@ policy. The legacy `pathc` command accepts the same option.
 | `ok` | Whether the check succeeded |
 | `position_encoding` | `one_based_unicode_scalars`; columns count Unicode scalar values, not bytes or UTF-16 units |
 | `diagnostics` | Empty on success; one or more diagnostics on failure, capped at 32 |
-| `diagnostics_limited` | True when collection reached the 32-error budget; remaining controls may be unchecked |
+| `diagnostics_limited` | True when collection reached the 32-error budget; remaining statements or controls may be unchecked |
 | `summary` | Counts `controls` and `generic_definitions` on success; null on failure |
 
 Each diagnostic contains `code`, `message`, `path`, `position`, `range`, `notes`
@@ -154,7 +156,8 @@ current checked source rather than a stale successful version.
 ## Independent body errors
 
 Since 0.52, textual `check`, `check --json` and the language server collect the
-first error from each independent control body in the current checking phase.
+errors from independent control bodies in the current checking phase. Since 0.73,
+some bodies can contribute several errors through statement recovery below.
 They check dependencies before callers, then report errors in source order within
 the module graph. If a body fails, its partial inferred contracts, bindings and
 ownership state are discarded. Callers and controls whose types depend on that
@@ -178,14 +181,48 @@ Recovery is deliberately bounded. Parsing, import/name resolution, shared type
 and contract validation, generic expansion and graph-cycle failures still stop
 at their first error. Generic definition bodies may report several errors during
 the universal checking phase; a failed phase prevents later concrete checking.
-Within a failed control, later statements and resource/coverage checks are not
-used to invent further diagnostics. Statement-level recovery and broader recovery
-across these preparation phases remain future work.
+Broader recovery across these preparation phases remains future work.
 
 Compiler integrations can use `check_source`, `check_file` or
 `modules::check_with_loader`, which return a `Diagnostics` batch on failure.
 The existing `compile`/`compile_file`/`compile_with_loader` APIs retain their
 single-error return types and select the first diagnostic from that batch.
+
+## Statement recovery
+
+Since 0.73, an error in a top-level declaration, assignment, `drop`, `emit` or
+single-completion call can be followed by diagnostics from independent subsequent
+statements. For example, both bad initializers below are reported; the use of
+`count` is suppressed until its declaration is repaired.
+
+<!-- tellur:reject E_TYPE -->
+```tellur
+control main() exits done {
+    u32 count = true;
+    string title = 7;
+    u32 dependent = count;
+    exit done;
+}
+```
+
+The checker restarts the body from clean ownership and inference state for each
+additional diagnostic. In these diagnostic-only passes it omits failed statements
+and dependent statements. Every value read, written or declared by an omitted
+statement becomes uncertain, including its whole record when a field is involved.
+Reference carriers and their source owners are conservatively linked; touching
+one can suppress diagnostics involving other live references. This deliberately
+prefers missing a secondary error to reporting one based on uncertain loan state.
+
+Recovery stops before the next decision, capture, outcome adapter, path alias,
+nested scope, loop, boundary or terminal disposition. Errors inside nested bodies
+remain first-error-only. A faulting call's whole-state resource check can also stop
+recovery. Final coverage, result inference and constructor completion checks are
+not run on a replay with omissions. Independent controls are still checked.
+
+The existing **32-error budget** covers both statements and controls. Successful
+programs use the ordinary checking path; diagnostic replays never publish contracts,
+hover bindings or executable code. No syntax or valid-program semantics change.
+Try the editable [diagnostics example](../../playground/diagnostics.tellur).
 
 ## Type context: E_TYPE and E_INFER
 
