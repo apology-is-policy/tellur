@@ -614,9 +614,18 @@ impl Resolver<'_> {
                 || c.contains('<')
                 || self.type_parameters.contains(c))
         {
-            *c = self.ty(c, region.span)?;
+            let mut annotation = syntax::TypeAnnotation {
+                ty: c.clone(),
+                range: region.exit_contract_range,
+            };
+            self.annotation(&mut annotation, region.span)?;
+            *c = annotation.ty;
         }
         self.items(&mut region.body)?;
+        if region.exit_contract_range.start.line != 0 {
+            region.exit_contract_range.start.line += self.offset;
+            region.exit_contract_range.end.line += self.offset;
+        }
         region.span.line += self.offset;
         region.name_span.line += self.offset;
         region.end.line += self.offset;
@@ -1000,10 +1009,19 @@ fn resolve(
                     || contract.contains('.')
                     || contract.contains('<')
                 {
-                    *contract = r.ty(contract, region.span)?;
+                    let mut annotation = syntax::TypeAnnotation {
+                        ty: contract.clone(),
+                        range: region.exit_contract_range,
+                    };
+                    r.annotation(&mut annotation, region.span)?;
+                    *contract = annotation.ty;
                 }
             }
             r.items(&mut region.body)?;
+            if region.exit_contract_range.start.line != 0 {
+                region.exit_contract_range.start.line += offset;
+                region.exit_contract_range.end.line += offset;
+            }
             region.span.line += offset;
             region.name_span.line += offset;
             region.end.line += offset;
@@ -1193,7 +1211,10 @@ impl PublicInterfaces {
                     .map_or(contract.as_str(), |(base, _)| base);
                 if unit.contracts.iter().any(|c| c.name == base) {
                     fields.push((
-                        contract.clone().into(),
+                        syntax::TypeAnnotation {
+                            ty: contract.clone(),
+                            range: region.exit_contract_range,
+                        },
                         region.span,
                         region.type_parameters.clone(),
                     ));

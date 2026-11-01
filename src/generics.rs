@@ -556,7 +556,7 @@ pub(crate) fn instantiate(
             s.fields(&o.fields, r.span)?;
         }
         if let Some(ty) = &r.exit_contract {
-            s.require(ty, r.span, 0)?;
+            s.require(ty, r.span, 0).map_err(|e| r.exit_type_error(e))?;
         }
         s.items(&r.body)?;
     }

@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.103.0** implements the v0.1 checked core and the current language
+Compiler release **0.104.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -52,7 +52,8 @@ accepted prompt child-fault propagation policy separately from implemented behav
 Release 0.97 adds [written type-annotation ranges](docs/reference/diagnostics-and-limits.md#type-annotation-locations):
 field, parameter, payload and typed-pattern errors can select the full source type,
 including multiline annotations and imported aliases. Release 0.101 extends this
-to local variable types; 0.102 adds late public-interface visibility checks. Generated
+to local variable types; 0.102 adds late public-interface visibility checks, and 0.104
+adds named completion types after `exits`, including imported and generic spellings. Generated
 type names never supply guessed source widths.
 
 Release 0.96 adds [constructor-definition diagnostic batches](docs/reference/diagnostics-and-limits.md#constructor-definition-preparation-batches):

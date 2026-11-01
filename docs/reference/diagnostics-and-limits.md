@@ -242,8 +242,30 @@ pub struct container {
 The same rule covers producer-indexed `outcome<operation>` types in public interfaces.
 The checker still validates bodies before this phase and reports its existing first
 visibility error, checking exported data before control signatures. No extra batch
-or new visibility rule is introduced. Whole named-contract references and generated
-associated-type checks without authored type metadata retain their declaration points.
+or new visibility rule is introduced. Generated associated-type checks without
+authored type metadata retain their declaration points.
+
+Since 0.104, a named completion type after `exits` also has an authored range.
+Module lookup, generic type preparation, trait completion-type validation and public
+visibility errors select that type, including qualified names and multiline generic
+arguments. For `exits replies.answer<string>[input]`, the type range ends at `>`;
+the origin mapping `[input]` is a separate contract and is not included. A private
+named contract still cannot appear in a public signature, even with nullary exits.
+
+<!-- tellur:reject E_VISIBILITY -->
+```tellur
+outcome internal_reply {
+    done
+}
+pub control work() exits internal_reply {
+    exit done;
+}
+```
+
+A lone bare label such as `exits done` still means a nullary alternative when it
+does not name a declared outcome type. Explicit braced contracts and `exits auto`
+keep their existing meaning. This location metadata does not change resolution,
+public visibility, origin checking or generic compatibility.
 
 Imports preserve both endpoints in the original file; unsaved dependencies supply
 the text used for editor UTF-16 conversion. Generic substitution preserves the
@@ -253,8 +275,7 @@ original declaration locations. CLI JSON continues to use one-based Unicode scal
 coordinates; LSP uses zero-based UTF-16 coordinates.
 
 This is not a range for every declaration error. Whole-contract shape/origin errors,
-associated normalization, whole named-contract visibility checks, contributor notes
-and checks without authored type metadata retain
+associated normalization, contributor notes and checks without authored type metadata retain
 their existing locations. Synthetic fields have no invented annotation range.
 More precise child errors keep their own coordinates. Diagnostic codes, phase order,
 batch limits and acceptance rules are unchanged.

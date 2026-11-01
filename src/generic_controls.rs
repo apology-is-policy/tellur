@@ -315,7 +315,7 @@ fn calls(r: &Region, v: &mut Visit<'_>) -> Result<()> {
         field_calls(&o.fields, r.span, v)?;
     }
     if let Some(t) = &r.exit_contract {
-        type_calls(t, r.span, v)?;
+        type_calls(t, r.span, v).map_err(|e| r.exit_type_error(e))?;
     }
     item_calls(&r.body, v)
 }

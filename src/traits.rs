@@ -95,10 +95,10 @@ fn declared_signature(r: &Region, contracts: &BTreeMap<String, OutcomeContract>)
     if let Some(c) = &r.exit_contract {
         if let Some(contract) = contracts.get(c) {
             if !contract.type_parameters.is_empty() {
-                return Err(signature_error(
+                return Err(r.exit_type_error(signature_error(
                     r.span,
                     "named trait exit contract has the wrong type arity",
-                ));
+                )));
             }
             crate::origins::bind_contract(&mut signature, contract)?;
             return Ok(signature);
@@ -108,10 +108,10 @@ fn declared_signature(r: &Region, contracts: &BTreeMap<String, OutcomeContract>)
             .unwrap_or((c.as_str(), vec![]));
         if let Some(d) = contracts.get(base) {
             if d.type_parameters.len() != args.len() {
-                return Err(signature_error(
+                return Err(r.exit_type_error(signature_error(
                     r.span,
                     "named trait exit contract has the wrong type arity",
-                ));
+                )));
             }
             let bindings = d.type_parameters.iter().cloned().zip(args).collect();
             let mut contract = d.clone();
@@ -408,7 +408,8 @@ pub(crate) fn lower(
             if let Some(c) = &method.exit_contract {
                 let base = generic(c).map_or(c.as_str(), |(b, _)| b);
                 if generic(c).is_some() || arities.contains_key(base) || params.contains(base) {
-                    check_decl_type(c, &params, &arities, method.span)?;
+                    check_decl_type(c, &params, &arities, method.span)
+                        .map_err(|e| method.exit_type_error(e))?;
                 }
             }
             let signature = declared_signature(method, &contracts)?;
@@ -442,11 +443,11 @@ pub(crate) fn lower(
                         .iter()
                         .any(|t| !params.contains(t) && private.contains(t))
                 {
-                    return Err(Diagnostic::new(
+                    return Err(method.exit_type_error(Diagnostic::new(
                         "E_VISIBILITY",
                         method.span,
                         "public trait exposes a private exit contract",
-                    ));
+                    )));
                 }
                 if (arities.contains_key(base) || params.contains(base) || generic(c).is_some())
                     && !contracts.contains_key(base)
@@ -455,10 +456,10 @@ pub(crate) fn lower(
                         Some(manifest::TypeDef::Outcome { .. })
                     )
                 {
-                    return Err(signature_error(
+                    return Err(method.exit_type_error(signature_error(
                         method.span,
                         "trait exit contract must be an outcome type",
-                    ));
+                    )));
                 }
             }
         }

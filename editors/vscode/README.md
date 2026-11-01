@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-0.103.0-darwin-arm64.vsix` using **Extensions:
+1. Install the supplied `tellur-language-0.104.0-darwin-arm64.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -971,3 +971,13 @@ The bundled reference executor validates a whole argument list before installing
 frame. Failed argument or activation admission leaves no partial parameter storage.
 Source syntax, diagnostics, highlighting and native Build and Run behavior are
 unchanged; source tasks and scheduling remain planned.
+
+
+## Named completion type diagnostics in 0.104
+
+Invalid or private completion types after `exits` now select their full written
+type, including qualified names, generic arguments and multiline spelling. Separate
+origin mappings retain their own contract meaning and are excluded from the type
+range. Imported unsaved changes refresh the exact location and invalidate stale
+hover until repaired. The isolated editor check edits a generic public helper's
+named contract, repairs it, then builds and runs the importing counter.

@@ -2089,7 +2089,7 @@ fn public_type_ranges_preserve_imported_multiline_spelling_and_aliases() {
 }
 
 #[test]
-fn public_type_ranges_keep_visibility_phase_order_and_unannotated_contract_points() {
+fn public_type_ranges_keep_visibility_phase_order_and_named_contract_locations() {
     let f = Fixture::new();
     // A later public data field is still checked before control signatures.
     let source = "struct hidden {u32 n;}pub control probe(ref hidden value) exits done {drop(value);exit done;}pub struct box {pub vector<hidden> values;}";
@@ -2127,14 +2127,151 @@ fn public_type_ranges_keep_visibility_phase_order_and_unannotated_contract_point
         report["diagnostics"][0]["range"],
         selected_range(source, "outcome<produce>")
     );
-    // Whole named-contract references have no authored Field annotation.
+    // Whole named-contract references retain their own authored type annotation.
     let source = "outcome hidden {done}pub control probe() exits hidden {exit done;}";
     f.write("main.tellur", source);
     let report = f.report(&["check", "main.tellur", "--json"], false);
     assert_eq!(report["diagnostics"][0]["code"], "E_VISIBILITY");
-    assert!(report["diagnostics"][0]["range"].is_null());
+    let at = source.rfind("hidden").unwrap();
     assert_eq!(
-        report["diagnostics"][0]["position"],
-        scalar_position(source, source.find("pub control").unwrap())
+        report["diagnostics"][0]["range"],
+        json!({"start":scalar_position(source,at),"end":scalar_position(source,at+6)})
     );
+}
+
+#[test]
+fn named_completion_type_ranges_cover_generic_and_trait_validation() {
+    let f = Fixture::new();
+    for (source, selected, code) in [
+        (
+            "outcome reply<t> {done} control probe() exits reply<u32,bool> {exit done;}",
+            "reply<u32,bool>",
+            "E_GENERIC",
+        ),
+        (
+            "outcome hidden<t> {done} pub control probe() exits hidden< // 😀\r\n u32\r\n > {exit done;}",
+            "hidden< // 😀\r\n u32\r\n >",
+            "E_VISIBILITY",
+        ),
+        (
+            "outcome hidden<t> {done} pub control probe<t>() exits hidden<t> {exit done;}",
+            "hidden<t>",
+            "E_VISIBILITY",
+        ),
+        (
+            "outcome reply<t> {done} trait reader {control read(ref self input) exits reply<u32,bool>;}",
+            "reply<u32,bool>",
+            "E_TRAIT",
+        ),
+        (
+            "outcome hidden<t> {done} pub trait reader {control read(ref self input) exits hidden<u32>;}",
+            "hidden<u32>",
+            "E_VISIBILITY",
+        ),
+        (
+            "trait reader {control read(ref self input) exits vector<u32>;}",
+            "vector<u32>",
+            "E_TRAIT_SIGNATURE",
+        ),
+    ] {
+        f.write("main.tellur", source);
+        let report = f.report(&["check", "main.tellur", "--json"], false);
+        let error = &report["diagnostics"][0];
+        assert_eq!(error["code"], code, "{source}: {report}");
+        // A generic name can occur in both declaration and use; select the use.
+        let at = source.rfind(selected).unwrap();
+        assert_eq!(
+            error["range"],
+            json!({"start":scalar_position(source,at),"end":scalar_position(source,at+selected.len())}),
+            "{source}: {report}"
+        );
+    }
+}
+
+#[test]
+fn named_completion_type_ranges_preserve_imports_and_exclude_origins() {
+    let f = Fixture::new();
+    f.write(
+        "types.tellur",
+        "pub outcome reply<t> {done} outcome hidden {done}",
+    );
+    f.write(
+        "main.tellur",
+        "import \"library.tellur\" as library; control main() exits done {exit done;}",
+    );
+    for (body, selected, code) in [
+        (
+            "pub control probe(ref string input) exits types.missing[input] {exit done;}",
+            "types.missing",
+            "E_NAME",
+        ),
+        (
+            "pub control probe() exits types.hidden {exit done;}",
+            "types.hidden",
+            "E_VISIBILITY",
+        ),
+        (
+            "pub control probe() exits types.reply<\r\n // 😀\r\n u32, bool\r\n > {exit done;}",
+            "types.reply<\r\n // 😀\r\n u32, bool\r\n >",
+            "E_GENERIC",
+        ),
+        (
+            "pub trait reader {control read(ref self input) exits types.reply<\r\n u32,bool\r\n >;}",
+            "types.reply<\r\n u32,bool\r\n >",
+            "E_TRAIT",
+        ),
+        (
+            "outcome hidden<t> {done} pub control probe<t>() exits hidden< t > {exit done;}",
+            "hidden< t >",
+            "E_VISIBILITY",
+        ),
+    ] {
+        let source = format!("import \"types.tellur\" as types;\r\n// 😀\r\n{body}");
+        f.write("library.tellur", &source);
+        let report = f.report(&["check", "main.tellur", "--json"], false);
+        let error = &report["diagnostics"][0];
+        assert_eq!(error["code"], code, "{report}");
+        assert!(
+            error["path"].as_str().unwrap().ends_with("library.tellur"),
+            "{report}"
+        );
+        assert_eq!(
+            error["range"],
+            selected_range(&source, selected),
+            "{report}"
+        );
+    }
+}
+
+#[test]
+fn named_completion_type_ranges_preserve_origin_and_body_error_points() {
+    let source =
+        "outcome reply {done} control probe(ref string input) exits reply[input] {exit done;}";
+    let errors = check_errors(source);
+    assert_eq!(errors.errors[0].code, "E_ORIGIN");
+    assert!(errors.errors[0].end.is_none());
+    let first = compile(
+        source,
+        Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+    )
+    .unwrap_err();
+    assert_eq!(first, errors.errors[0]);
+    let source =
+        "outcome hidden {done} pub control probe() exits hidden {u32 value=true;exit done;}";
+    let error = compile(
+        source,
+        Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+    )
+    .unwrap_err();
+    assert_eq!(error.code, "E_TYPE");
+    assert_eq!(error.span.column, source.find("true").unwrap() + 1);
+    assert_eq!(error.end.unwrap().column, source.find("true").unwrap() + 5);
+    for exits in ["done", "{done}", "auto"] {
+        let source = format!("control probe() exits {exits} {{exit done;}}");
+        compile(
+            &source,
+            Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+        )
+        .unwrap();
+    }
 }

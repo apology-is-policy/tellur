@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.103.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.104.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -3561,3 +3561,36 @@ capture contracts, cancellation and scheduling remain ahead. The async audit now
 identifies synchronous checker loan retirement and immediate fault-permission checks
 that must be separated for source deferral. The existing `run` versus `runtime`
 entry-syntax question remains unchanged; neither form is implemented or selected.
+
+
+## 0.104 — Named completion type locations
+
+P2t preserves the written completion type after `exits` independently of its origin
+mapping. Qualified names and generic arguments keep their authored endpoints through
+module offsets, specialization and trait normalization. Name/type preparation errors
+and public named-contract visibility errors select that range. Generated declarations
+have no fabricated location. Bare nullary labels, explicit inline contracts, inferred
+exits, origin/shape errors, first-error ordering and body-before-visibility checks keep
+their existing behavior.
+
+Three new CLI regressions cover local/imported and generic/trait contracts, unknown
+qualified names, wrong type arity, private contracts, Unicode comments and multiline
+spelling. They check that ranges exclude origin arguments, origin errors retain their
+points, initializer errors retain their expression ranges, and bare-label/auto/inline
+resolution remains valid. A prior public visibility test now expects the authored
+named type. One new LSP regression edits an imported generic public helper's contract,
+checks precise UTF-16 related locations and absent stale hover, then repairs it.
+
+Validation: **439 Rust tests across fourteen selected targets** and **42 Node tests**
+passed. Targets cover diagnostics, LSP, modules, generics, traits, aggregate/trait origin
+contracts, named outcomes, constructors, public snapshots, formatting and the manual;
+existing native/expanded comparisons are included. No full-suite claim is made.
+The first focused LSP assertion accidentally selected the declaration's same-spelled
+type; it was corrected to select the completion use. Production code did not change
+for that correction. The isolated editor test checks multiline/compact unsaved
+contracts and repair, then builds and runs the counter to emit 1 through 5.
+
+Compiler/LSP version checks, six binary copies and nine packaged/installed payloads
+are verified for 0.104.0. Existing user windows are not reloaded, and the source
+backup excludes the protected unrelated C# file. No runtime semantics, async entry
+spelling or task permissions change; the existing async design question remains open.

@@ -247,9 +247,16 @@ pub struct Region {
     /// Declared labels whose nonempty payloads are inferred from the body.
     pub infer_payloads: std::collections::BTreeSet<String>,
     pub exit_contract: Option<String>,
+    /// Authored completion type only; excludes its separate origin arguments.
+    pub exit_contract_range: SourceRange,
     pub exit_origins: Vec<OriginArgument>,
     pub modern: bool,
     pub body: Vec<Item>,
+}
+impl Region {
+    pub(crate) fn exit_type_error(&self, error: Diagnostic) -> Diagnostic {
+        type_error(self.exit_contract_range, error, self.span)
+    }
 }
 #[derive(Clone, Debug)]
 pub struct Boundary {
@@ -727,16 +734,21 @@ impl Parser {
         let mut infer_payloads = std::collections::BTreeSet::new();
         let mut return_origins = std::collections::BTreeMap::new();
         let mut exit_contract = None;
+        let mut exit_contract_range = SourceRange::default();
         let mut exit_origins = vec![];
         if !infer_exits && !fault_only {
             let wrapped = self.eat("{");
             let mut bare = true;
             loop {
                 let saved = self.pos;
+                let name_start = self.here();
                 let mut name = self.qualified()?;
                 if self.at("<") {
                     self.pos = saved;
                     name = self.ty()?;
+                }
+                if exits.is_empty() {
+                    exit_contract_range = self.range_from(name_start);
                 }
                 let bindings = self.origin_arguments()?;
                 if !bindings.is_empty() {
@@ -839,6 +851,11 @@ impl Parser {
             exits,
             infer_exits,
             infer_payloads,
+            exit_contract_range: if exit_contract.is_some() {
+                exit_contract_range
+            } else {
+                SourceRange::default()
+            },
             exit_contract,
             exit_origins,
             modern,
@@ -1793,6 +1810,7 @@ pub(crate) fn parse_with_layout(source: &str) -> Result<(Unit, Vec<Token>, crate
                 infer_exits: false,
                 infer_payloads: Default::default(),
                 exit_contract: None,
+                exit_contract_range: SourceRange::default(),
                 exit_origins: vec![],
                 modern: true,
                 body,
@@ -1967,6 +1985,7 @@ pub(crate) fn parse_with_layout(source: &str) -> Result<(Unit, Vec<Token>, crate
                             infer_exits: false,
                             infer_payloads: Default::default(),
                             exit_contract: None,
+                            exit_contract_range: SourceRange::default(),
                             exit_origins,
                             modern: true,
                             body,
