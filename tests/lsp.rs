@@ -69,6 +69,165 @@ fn hover_at(f: &Fixture, source: &str, needle: &str) -> Value {
 }
 
 #[test]
+fn constructor_call_hover_has_checked_inputs_origins_and_exact_callee_range() {
+    let mut f = Fixture::new();
+    let source = "struct view['a] {ref mutable string hidden <- 'a;constructor(ref mutable string input)[input] {self.hidden=input;}}\ncontrol main() exits done {mutable string owner=\"hello\";auto result=(view(borrow mutable owner));emit(result.hidden);exit done;}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let h = hover_at(&f, source, "view(borrow");
+    let text = h["contents"]["value"].as_str().unwrap();
+    assert!(
+        text.contains("Constructor contract") && text.contains("Constructs `view`"),
+        "{text}"
+    );
+    assert!(
+        text.contains("constructor(ref mutable string input)[input]"),
+        "{text}"
+    );
+    assert!(
+        text.contains("['a]") && text.contains("Selected histories"),
+        "{text}"
+    );
+    assert!(
+        !text.contains("hidden")
+            && !text.contains("$constructor")
+            && !text.contains("$constructed"),
+        "{text}"
+    );
+    assert_eq!(
+        h["range"]["end"]["character"].as_u64().unwrap()
+            - h["range"]["start"]["character"].as_u64().unwrap(),
+        4
+    );
+    assert!(
+        !hover_at(&f, source, "borrow mutable owner")
+            .to_string()
+            .contains("Constructor contract")
+    );
+    let broken = source.replace("[input]", "[missing]");
+    f.change(&broken, 2);
+    assert_eq!(f.diagnostics()[0]["code"], "E_ORIGIN");
+    assert!(hover_at(&f, &broken, "view(borrow").is_null());
+    f.change(source, 3);
+    assert!(
+        hover_at(&f, source, "view(borrow")
+            .to_string()
+            .contains("[input]")
+    );
+}
+
+#[test]
+fn constructor_call_hover_specializes_imports_without_private_layouts() {
+    let mut f = Fixture::new();
+    let dependency = f.root.join("types.tellur");
+    let uri = url::Url::from_file_path(&dependency).unwrap().to_string();
+    let valid = "pub struct box<t> {t secret;pub constructor(t input) {self.secret=move input;}}";
+    fs::write(&dependency, valid).unwrap();
+    let source = "import \"types.tellur\" as one;import \"types.tellur\" as lib;control main() exits done {auto value=lib.box<string>(\"hello\");drop(value);exit done;}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let h = hover_at(&f, source, "lib.box<string>");
+    let text = h["contents"]["value"].as_str().unwrap();
+    assert!(
+        text.contains("Constructs `lib.box<string>`")
+            && text.contains("pub constructor(string input)"),
+        "{text}"
+    );
+    assert!(
+        !text.contains("secret") && !text.contains("_path_m_") && !text.contains("$constructor"),
+        "{text}"
+    );
+    assert_eq!(
+        h["range"]["end"]["character"].as_u64().unwrap()
+            - h["range"]["start"]["character"].as_u64().unwrap(),
+        15
+    );
+    let changed = valid.replace("input", "fresh");
+    f.server.notification(
+        "textDocument/didOpen",
+        &json!({"textDocument":{"uri":uri,"version":1,"text":changed}}),
+    );
+    assert_eq!(f.diagnostics(), json!([]));
+    assert!(
+        hover_at(&f, source, "lib.box<string>")
+            .to_string()
+            .contains("constructor(string fresh)")
+    );
+    let broken = changed.replace("self.secret=move fresh;", "");
+    f.server.notification(
+        "textDocument/didChange",
+        &json!({"textDocument":{"uri":uri,"version":2},"contentChanges":[{"text":broken}]}),
+    );
+    assert!(!f.diagnostics().as_array().unwrap().is_empty());
+    assert!(hover_at(&f, source, "lib.box<string>").is_null());
+    f.server.notification(
+        "textDocument/didClose",
+        &json!({"textDocument":{"uri":uri}}),
+    );
+    assert!(
+        hover_at(&f, source, "lib.box<string>")
+            .to_string()
+            .contains("constructor(string input)")
+    );
+}
+
+#[test]
+fn constructor_call_hover_tracks_inferred_faults_and_nested_call_names() {
+    let mut f = Fixture::new();
+    let source = "struct message {string text;constructor(string input) {self.text=move input;}}\nstruct envelope {message inner;constructor(message input) {self.inner=move input;}}\ncontrol main() exits done {auto value=envelope(message(\"hello\"));emit(move value.inner.text);exit done;}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    assert!(
+        hover_at(&f, source, "envelope(message")
+            .to_string()
+            .contains("constructor(message input)")
+    );
+    assert!(
+        hover_at(&f, source, "message(\"hello")
+            .to_string()
+            .contains("constructor(string input)")
+    );
+    let faulting = source.replace("self.text=move input;", "fault \"unavailable\";");
+    f.change(&faulting, 2);
+    assert_eq!(f.diagnostics(), json!([]));
+    let text = hover_at(&f, &faulting, "message(\"hello").to_string();
+    assert!(
+        text.contains("constructor(string input) faults") && text.contains("execution boundary"),
+        "{text}"
+    );
+    assert!(
+        hover_at(&f, &faulting, "envelope(message")
+            .to_string()
+            .contains("constructor(message input)")
+    );
+    f.change(source, 3);
+    assert!(
+        !hover_at(&f, source, "message(\"hello")
+            .to_string()
+            .contains(" faults")
+    );
+}
+
+#[test]
+fn constructor_call_hover_handles_untitled_and_leaves_abstract_calls_uninstantiated() {
+    let mut f = Fixture::new();
+    f.uri = "untitled:constructor-hover".into();
+    let source = "struct box<t> {t value;constructor(t input) {self.value=move input;}}\ncontrol make<t>(t input) exits ready {box<t> value} {exit ready {box<t>(move input)};}\ncontrol main() exits done {auto value=box<u32>(7);drop(value);exit done;}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    assert!(
+        hover_at(&f, source, "box<u32>(7)")
+            .to_string()
+            .contains("constructor(u32 input)")
+    );
+    assert!(
+        !hover_at(&f, source, "box<t>(move")
+            .to_string()
+            .contains("Constructor contract")
+    );
+}
+
+#[test]
 fn named_completion_bindings_repair_independently_without_stale_hover() {
     let mut f = Fixture::new();
     let source = "outcome view['a] {found {ref string value <- 'a}}\ncontrol first(ref string input) exits view[input] {exit found {input};}\ncontrol second(ref string input) exits view[input] {exit found {input};}\ncontrol main() exits done {string owner=\"hello\";delta first(borrow owner) {found {auto text}=>shown} [shown]: emit(text);exit done;}";

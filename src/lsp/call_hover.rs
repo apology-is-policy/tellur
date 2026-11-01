@@ -268,7 +268,57 @@ pub(super) fn hover(
             }
         }
     }
-    let mut description = if let Some(checked) = program.region(&resolved) {
+    let mut description = if let Some(checked) =
+        program.region(&crate::constructors::control_name(&resolved))
+    {
+        let base = generic(&resolved).map_or(resolved.as_str(), |(base, _)| base);
+        let (definition_path, local) = program
+            .source_files()
+            .iter()
+            .find_map(|f| f.names.get(base).map(|local| (&f.path, local.as_str())))
+            .or_else(|| {
+                unit.data
+                    .iter()
+                    .any(|d| d.name == base)
+                    .then_some((&path, base))
+            })?;
+        let definition = match sources.get(definition_path) {
+            Some(text) => parse_unit(text).ok()?,
+            None if definition_path == &path => unit.clone(),
+            None => return None,
+        };
+        let data = definition.data.iter().find(|d| d.name == local)?;
+        let mut source = data.constructor.as_ref()?.clone();
+        // Use the checked specialization, but keep authored parameter and group
+        // names. Constructor implementation fields are never part of this hover.
+        for (parameter, checked) in source.parameters.iter_mut().zip(&checked.parameters) {
+            parameter.ty = checked.ty.clone();
+        }
+        source.fault_contract = Some(checked.faults);
+        source.contingent_contract = Some(checked.contingent);
+        let origins = if data.origin_parameters.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "\n\nResult origin groups: `[{}]`; the constructor's bracket arguments map to these groups in order.",
+                data.origin_parameters
+                    .iter()
+                    .map(|name| format!("'{name}"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        };
+        format!(
+            "**Constructor contract**\n\nConstructs `{}`.\n\n```tellur\n{}\n```{origins}\n\nNormal completion yields the initialized value.{}",
+            display_type(written),
+            constructor_description(&source),
+            if checked.faults {
+                " Faults propagate to the caller's execution boundary."
+            } else {
+                ""
+            }
+        )
+    } else if let Some(checked) = program.region(&resolved) {
         if checked.boundary.is_some() || checked.contingency || checked.is_constructor() {
             return None;
         }

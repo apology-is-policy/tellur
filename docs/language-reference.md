@@ -1,8 +1,8 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.78.0 -->
+<!-- tellur-reference-version: 0.79.0 -->
 
-This manual describes **compiler 0.78.0**, including the current ownership model,
+This manual describes **compiler 0.79.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -960,6 +960,14 @@ consuming parameter modes, declared effects, contingency admission and, for Rust
 adapters, immediate/blocking execution. Pure builtins explain expression use versus
 delta use. No host source is loaded to produce this information.
 
+Since 0.79, declared constructor calls also show the constructed type and checked
+`constructor(...)` signature. Concrete generic inputs are substituted; authored
+parameter names, result-origin mappings and ordered group names remain visible.
+The signature includes checked fault and contingency permission, including private
+inference. It does not display implementation fields or internal completion labels.
+Try `text_pair(...)` and `editable_text(...)` in
+[borrowed_construction.tellur](../playground/borrowed_construction.tellur).
+
 Imported names use the caller's aliases. A type from a transitive dependency with no
 local import is displayed with its defining file, for example `types.tellur::token`;
 that is a display identity, not Tellur import syntax. The highlighted range covers
@@ -969,8 +977,8 @@ behavior.
 
 Contracts come from a successful check of the current document and its unsaved
 dependencies. Editing an imported signature refreshes the hover; a failed check
-suppresses it rather than showing an old signature. Specialized calls through traits,
-constructors or named boundaries, and calls requiring abstract generic-body lookup,
+suppresses it rather than showing an old signature. Specialized calls through traits
+or named boundaries, and calls requiring abstract generic-body lookup,
 currently retain the existing selected-history feedback. This is not general
 expression-type hover. Try the calls in
 [the JSON file example](../examples/json_file/main.tellur).
@@ -2734,7 +2742,7 @@ General expression-type hover remains unsupported.
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and async tasks remain planned; they are not executable features of 0.78.0.
+and async tasks remain planned; they are not executable features of 0.79.0.
 ## Contingency and supervised boundaries
 
 The [contingency reference](reference/contingency.md) specifies `@contingent`,

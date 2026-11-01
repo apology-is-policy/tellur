@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-0.78.0-darwin-arm64.vsix` using **Extensions:
+1. Install the supplied `tellur-language-0.79.0-darwin-arm64.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -704,7 +704,7 @@ visible; public controls do not expose private field paths.
 
 Unsaved dependency edits refresh signatures. Invalid arguments or dependencies
 suppress stale hover. The callee range excludes value arguments; other positions
-retain their existing feedback. Constructors, trait dispatch, named boundaries and
+retain their existing feedback. Constructor calls gain contracts in 0.79 below. Trait dispatch, named boundaries and
 abstract generic-body calls retain selected-history feedback for now. See the
 [call-site reference](https://github.com/apology-is-policy/tellur/blob/main/docs/language-reference.md#call-site-contract-hover).
 
@@ -727,3 +727,14 @@ Repairing one removes its diagnostic; repairing both restores checked call contr
 and `auto` hover. The existing 32-error budget and dependent-phase barriers apply.
 Shared schema failures remain conservative, and valid programs keep their existing
 borrowing and execution semantics.
+
+## Constructor call hover in 0.79
+
+Hover over a constructor call to see the constructed type and checked constructor
+signature, including concrete generic inputs, ordered result-origin groups and
+fault/contingency permission. It uses current unsaved definitions and the import
+alias at the call, and does not list private fields. Invalid source suppresses stale
+contracts. Try `text_pair(...)` and `editable_text(...)` in
+`playground/borrowed_construction.tellur`; selected histories remain underneath.
+Trait dispatch, named boundaries and abstract generic-body calls retain their
+existing selected-history feedback.

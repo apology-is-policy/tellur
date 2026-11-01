@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.78.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.79.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -2727,3 +2727,32 @@ partial/full repair, fresh call and `auto` hover, and both native borrowed-view
 outputs. Six binary copies and nine packaged/installed payloads were verified at
 0.78.0. Existing windows were not reloaded. Formatting and whitespace checks passed;
 unchanged runtime/library evidence is reused outside this affected-suite run.
+
+## 0.79 — Constructor call contracts in hover
+
+P4d.1 extends checked call-site hover to declared constructors. The callee range
+shows the constructed type and specialized input types, authored parameter names,
+ordered result-origin groups and checked fault/contingency permission. Imported
+aliases and exact unsaved source snapshots use the existing call-hover machinery.
+Private implementation fields and internal constructor/completion names are not
+displayed. The existing selected-history explanation remains below the contract.
+Raw brace construction, trait dispatch, named boundaries and abstract generic-body
+calls retain their existing feedback. Compiler and runtime semantics are unchanged.
+
+Four LSP regressions cover borrowed origin contracts and precise ranges,
+private imported generic constructors, unsaved dependency edits and repair, nested
+call selection, inferred faults, untitled documents and conservative abstract-call
+fallback. The existing `playground/borrowed_construction.tellur` demonstrates both
+shared and exclusive constructor call contracts and independent source release.
+
+Final validation passed **213 Rust tests across seven affected targets**, including
+all 121 LSP tests and three manual checks, plus **42 Node tests**. Constructor,
+borrowed-constructor, generic-data and module suites retain their native parity
+coverage. Isolated VS Code confirmed both constructor contracts, ordered groups,
+invalid-source suppression, fresh parameter/origin names after repair, and all four
+native output lines. Its first run expected `E_TYPE` for a Boolean reference-field
+initializer; the compiler correctly reports `E_BORROW`, and the corrected harness
+also checks the exact `true` range. Six binary copies and nine packaged/installed
+payloads were verified at 0.79.0. Formatting and whitespace checks passed; existing
+windows were not reloaded. The 0.78 diagnostic/contract evidence remains valid
+outside this editor change; no unchanged full-suite rerun is claimed.
