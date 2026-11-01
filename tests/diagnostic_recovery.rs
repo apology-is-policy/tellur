@@ -503,9 +503,9 @@ fn loop_body_errors_do_not_create_backedge_or_coverage_cascades() {
 }
 
 #[test]
-fn lexical_handlers_and_inline_outcome_adapters_remain_recovery_barriers() {
+fn handler_terminals_and_inline_outcome_adapters_remain_recovery_barriers() {
     for body in [
-        "fault boundary {exit done;} contingency [] {u32 first=true;string second=7;terminate process 1;}",
+        "fault boundary {exit done;} contingency [] {exit done;u32 first=true;string second=7;}",
         "exit delta true {true=>done {7},false=>done {true}};",
     ] {
         let source = format!(
@@ -606,14 +606,14 @@ fn lexical_work_keeps_retained_owner_checks_and_skips_uncertain_handover() {
 }
 
 #[test]
-fn lexical_work_headers_handlers_and_supervisor_state_keep_their_barriers() {
+fn lexical_work_headers_and_supervisor_state_keep_their_rules() {
     codes(
         "control main() exits done {fault boundary {u32 hidden=true;string also_hidden=7;} contingency [missing] {terminate process 1;}exit done;}",
         &["E_BOUNDARY_CAPTURE"],
     );
     codes(
-        "control main() exits done {fault boundary {} contingency [] {u32 first=true;string hidden=7;terminate process 1;}exit done;}",
-        &["E_TYPE"],
+        "control main() exits done {fault boundary {} contingency [] {u32 first=true;string second=7;terminate process 1;}exit done;}",
+        &["E_TYPE", "E_TYPE"],
     );
     codes(
         r#"control main() exits done {
@@ -642,6 +642,149 @@ fn lexical_work_uses_one_budget_and_recovers_inside_ordinary_loops() {
         "control main() exits done {fault boundary {loop work {u32 first=true;string second=7;exit done;}} contingency [] {terminate process 1;}exit done;}",
         &["E_TYPE", "E_TYPE"],
     );
+}
+
+#[test]
+fn lexical_handler_recovers_leaf_errors_after_clean_work_only() {
+    codes(
+        r#"control main() exits done {
+            fault boundary {} contingency [] {
+                u32 first=true;emit(first);string second=7;terminate process 1;
+            }
+            bool hidden=8;exit done;
+        }
+        control other() exits done {u32 third=false;exit done;}"#,
+        &["E_TYPE", "E_TYPE", "E_TYPE"],
+    );
+    codes(
+        "control main() exits done {fault boundary {u32 first=true;string second=7;} contingency [] {bool hidden=8;string also_hidden=9;terminate process 1;}exit done;}",
+        &["E_TYPE", "E_TYPE"],
+    );
+}
+
+#[test]
+fn lexical_handler_restores_normal_state_and_parent_entry_before_outer_checks() {
+    codes(
+        r#"control main(bool flag) exits done {
+            string owner="before";
+            delta flag {true=>yes,false=>no}
+            [yes]: fault boundary {drop(owner);} contingency [] {
+                u32 first=true;string second=7;terminate process 1;
+            }
+            [no]: emit(borrow owner);bool third=8;exit done;
+        }"#,
+        &["E_TYPE", "E_TYPE", "E_TYPE"],
+    );
+    codes(
+        r#"control main(bool flag) exits done {
+            delta flag {true=>yes,false=>no}
+            [yes]: fault boundary {} contingency [] {
+                u32 first=true;string second=7;terminate process 1;
+            }
+            [entry]: bool hidden=8;
+            [no]: string also_hidden=9;exit done;
+        }"#,
+        &["E_TYPE", "E_TYPE"],
+    );
+}
+
+#[test]
+fn lexical_handler_nested_failure_stalls_outer_work_and_its_handler() {
+    codes(
+        r#"control main() exits done {
+            fault boundary {
+                fault boundary {} contingency [] {
+                    u32 first=true;string second=7;escalate;
+                }
+                bool hidden=8;
+            } contingency [] {string also_hidden=9;terminate process 1;}
+            exit done;
+        }"#,
+        &["E_TYPE", "E_TYPE"],
+    );
+}
+
+#[test]
+fn lexical_handler_fault_admission_stalls_uncertainty_but_checks_clean_paths() {
+    for (no_path, expected) in [
+        ("string second=7;", vec!["E_TYPE", "E_TYPE"]),
+        ("danger();", vec!["E_TYPE", "E_FAULT_RESOURCE"]),
+    ] {
+        codes(
+            &format!(
+                r#"@contingent control danger() exits done faults {{exit done;}}
+            control main(handle resource,bool flag) exits done {{
+                fault boundary {{}} contingency [resource,flag] {{
+                    delta flag {{true=>yes,false=>no}}
+                    [yes] over &: {{u32 first=true;danger();bool hidden=8;}}
+                    [no]: {no_path}
+                    [entry]: terminate process 1;
+                }}
+                exit done;
+            }}"#
+            ),
+            &expected,
+        );
+    }
+}
+
+#[test]
+fn lexical_handler_recovery_preserves_fault_mode_capture_and_terminal_rules() {
+    codes(
+        r#"pub control ordinary() exits done {exit done;}
+        control main() exits done {
+            string private="outside";
+            fault boundary {} contingency [] {
+                u32 first=true;ordinary();emit(private);string second=7;
+                terminate process 1;
+            }
+            exit done;
+        }"#,
+        &["E_TYPE", "E_CONTINGENT", "E_CONTINGENCY_CAPTURE", "E_TYPE"],
+    );
+    codes(
+        "control main() exits done {fault boundary {} contingency [] {u32 first=true;auto forged=borrow mutable @fault.message;string second=7;terminate process 1;}exit done;}",
+        &["E_TYPE", "E_MUTABILITY", "E_TYPE"],
+    );
+    // Illegal ordinary return is still a terminal barrier on a clean history.
+    codes(
+        "control main() exits done {fault boundary {} contingency [] {exit done;u32 hidden=true;}exit done;}",
+        &["E_CONTINGENCY_EXIT"],
+    );
+    // A clean administrative terminal still requires completion of its owners.
+    codes(
+        "control main(handle resource) exits done {fault boundary {} contingency [resource] {terminate process 1;u32 hidden=true;}exit done;}",
+        &["E_RESOURCE"],
+    );
+}
+
+#[test]
+fn lexical_handler_loops_and_disjoint_paths_share_the_diagnostic_budget() {
+    codes(
+        r#"control main(bool flag) exits done {
+            fault boundary {} contingency [flag] {
+                delta flag {true=>yes,false=>no}
+                [yes] over &: {u32 first=true;string second=7;}
+                [no]: bool third=8;
+                [entry]: terminate process 1;
+            }
+            exit done;
+        }"#,
+        &["E_TYPE", "E_TYPE", "E_TYPE"],
+    );
+    codes(
+        "control main() exits done {fault boundary {} contingency [] {loop cleanup {u32 first=true;string second=7;terminate process 1;}}exit done;}",
+        &["E_TYPE", "E_TYPE"],
+    );
+    let body = (0..40)
+        .map(|i| format!("u32 bad_{i}=true;\n"))
+        .collect::<String>();
+    let batch = errors(&format!(
+        "control main() exits done {{fault boundary {{}} contingency [] {{{body}terminate process 1;}}exit done;}}"
+    ));
+    assert!(batch.limit_reached);
+    assert_eq!(batch.errors.len(), tellur::diagnostics::MAX_DIAGNOSTICS);
+    assert!(batch.errors.iter().all(|e| e.code == "E_TYPE"));
 }
 
 #[test]

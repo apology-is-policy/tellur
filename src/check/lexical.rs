@@ -364,6 +364,17 @@ impl Checker<'_> {
             protected,
         });
         self.items(handler, Guard::True, domain)?;
+        if self.recovery_uncertain(domain) {
+            // The normal work checked cleanly, but an incomplete contingency
+            // cannot establish safe retirement or recovery. Discard only this
+            // diagnostic attempt and stall the entire boundary history.
+            self.handler = None;
+            self.scopes = normal_scopes;
+            self.dead = normal_dead;
+            self.result.code = outer_code;
+            self.recovery_block(domain);
+            return Ok(());
+        }
         let live = self.bdd.minus(domain, self.dead);
         if live != FALSE {
             return Err(self.fail_domain(

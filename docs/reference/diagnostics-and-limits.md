@@ -8,7 +8,7 @@ across independent straight-line statements within a body. Release 0.74 extends
 recovery across disjoint paths and nested scopes; 0.77 collects independent
 public-shape and signature errors, and 0.78 adds named completion bindings. Release
 0.83 extends statement recovery to named boundary work and contingency bodies, and
-0.84 adds lexical boundary work bodies. Fixing an error
+0.84 adds lexical boundary work bodies; 0.85 adds lexical contingency handlers. Fixing an error
 may expose another within that body or a dependent control. The precise
 message wording may improve between releases. The negative examples here are checked
 for their stated code, so they also serve as small regression cases.
@@ -319,7 +319,7 @@ an error by silently narrowing the authored selector to its remaining paths.
 Independent selectors can still be checked. A missing selector after an omission
 stops its containing body, since the omitted decision may have introduced that name.
 
-Lexical contingency handlers, inline outcome adapters, decision-header
+Inline outcome adapters, decision-header
 errors, and scope/loop setup or completion errors retain conservative first-error
 limits. A whole-state fault-resource check stalls an uncertain history. Final
 resource checks are suppressed for uncertain scope domains, while clean disjoint
@@ -358,8 +358,8 @@ failure on an uncertain history stalls that history instead of producing another
 diagnostic. The same failures on a clean disjoint history are still reported and
 stop that body's replay. Temporary call scopes are retired even when such a check
 stalls a path. Administrative dispositions, new decisions, supervision, lexical fault
-boundaries and inline adapters remain barriers after an omission. Lexical contingency
-handlers retain their earlier first-error limits; lexical work is described below.
+boundaries and inline adapters remain barriers after an omission. Lexical work and
+handler recovery are described below.
 
 Try introducing two independent bad local initializers in the work or contingency
 of [contingency.tellur](../../playground/contingency.tellur), then repairing them one
@@ -391,15 +391,47 @@ paths remain checkable. An outer selector joining a stalled path with a clean pa
 stalls the complete selection; the parent entry selector keeps its original meaning.
 Nested boundaries apply this rule at each enclosing boundary.
 
-Capture/setup errors and lexical contingency handlers retain their first-error
-limits. Repairing work can expose a handler error; repairing that error can expose
-another. Fault-resource checks, retained-owner checks and supervisor protection keep
+Capture/setup errors retain their first-error limits. Repairing work can expose
+handler errors; independent handler errors are collected since 0.85. Fault-resource
+checks, retained-owner checks and supervisor protection keep
 their existing rules. No diagnostic replay runs a handler or emits a partial program.
 This is editor/checker recovery, not recovery from a running program's source fault.
 
 Try independent bad initializers in the work of
 [recovery.tellur](../../playground/recovery.tellur). After all errors are repaired,
 the example still handles the first request's fault and runs the next request.
+
+## Lexical contingency handler recovery
+
+Since 0.85, independent leaf errors in a lexical `contingency` can be collected
+after its work checks cleanly. Handler paths, ordinary nested scopes and loops use
+the same bounded dependency and uncertainty rules. Work errors still suppress the
+attached handler until repaired.
+
+<!-- tellur:reject E_TYPE -->
+```tellur
+control main() exits done {
+    fault boundary {} contingency [] {
+        u32 count = true;
+        string description = 7;
+        terminate process 1;
+    }
+    exit done;
+}
+```
+
+Both initializers are diagnosed. An uncertain handler stalls the whole boundary
+domain before its coverage and retirement checks; the checker restores normal-work
+parent state and clears the temporary handler context. Disjoint outer histories
+remain checkable, while joined selectors stall completely. Uncertainty from a nested
+handler also prevents its enclosing work from claiming a valid continuation or handover.
+
+Recovery never relaxes contingency call permissions, capture access, immutable
+`@fault`, retained-owner obligations or resource completion. Clean-path violations
+remain diagnostics. Fault-admission failures on uncertain histories stall those
+histories. Administrative dispositions and new decisions remain barriers after an
+omission; clean terminal errors still stop replay. The shared 32-error budget and
+requirement for a fully checked program before hover/build are unchanged.
 
 ## Type context: E_TYPE and E_INFER
 

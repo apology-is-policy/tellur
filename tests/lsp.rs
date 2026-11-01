@@ -69,6 +69,81 @@ fn hover_at(f: &Fixture, source: &str, needle: &str) -> Value {
 }
 
 #[test]
+fn lexical_handler_diagnostics_repair_independently_and_refresh_inferred_types() {
+    let mut f = Fixture::new();
+    let source = "control main() exits done {\nfault boundary {} contingency [] {\nu32 first=1;\nstring second=\"ready\";\nauto message=borrow @fault.message;\nterminate process 1;\n}\nexit done;}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    assert!(
+        hover_at(&f, source, "auto message")
+            .to_string()
+            .contains("ref string")
+    );
+    let broken = source
+        .replace("first=1", "first=true")
+        .replace("second=\"ready\"", "second=7");
+    f.change(&broken, 2);
+    let errors = f.diagnostics();
+    assert_eq!(errors.as_array().unwrap().len(), 2, "{errors}");
+    for (error, line) in errors.as_array().unwrap().iter().zip([2, 3]) {
+        assert_eq!(error["code"], "E_TYPE");
+        assert_eq!(error["range"]["start"]["line"], line);
+    }
+    assert!(hover_at(&f, &broken, "auto message").is_null());
+    let partial = broken.replace("first=true", "first=1");
+    f.change(&partial, 3);
+    assert_eq!(f.diagnostics().as_array().unwrap().len(), 1);
+    assert!(hover_at(&f, &partial, "auto message").is_null());
+    let repaired = source.replace("borrow @fault.message", "9");
+    f.change(&repaired, 4);
+    assert_eq!(f.diagnostics(), json!([]));
+    let hover = hover_at(&f, &repaired, "auto message").to_string();
+    assert!(
+        hover.contains("u32") && !hover.contains("ref string"),
+        "{hover}"
+    );
+}
+
+#[test]
+fn lexical_handler_diagnostics_keep_imported_disjoint_locations_and_dependency_suppression() {
+    let mut f = Fixture::new();
+    let library = f.root.join("jobs.tellur");
+    let uri = url::Url::from_file_path(&library).unwrap().to_string();
+    let source = "pub control process(bool flag) exits done faults {\nfault boundary {exit done;} contingency [flag] {\ndelta flag {true=>yes,false=>no}\n[yes]:u32 first=1;escalate;\n[no]:string second=\"ready\";escalate;\n}}";
+    fs::write(&library, source).unwrap();
+    let caller =
+        "import \"jobs.tellur\" as jobs;control main() exits done {forward jobs.process(true);}";
+    f.open(caller);
+    assert_eq!(f.diagnostics(), json!([]));
+    let broken = source
+        .replace("first=1", "first=true")
+        .replace("second=\"ready\"", "second=7");
+    f.server.notification(
+        "textDocument/didOpen",
+        &json!({"textDocument":{"uri":uri,"version":1,"text":broken}}),
+    );
+    let errors = f.diagnostics();
+    assert_eq!(errors.as_array().unwrap().len(), 2, "{errors}");
+    for (error, line) in errors.as_array().unwrap().iter().zip([3, 4]) {
+        assert_eq!(error["code"], "E_TYPE");
+        let location = &error["relatedInformation"][0]["location"];
+        assert_eq!(location["uri"], uri);
+        assert_eq!(location["range"]["start"]["line"], line);
+    }
+    assert!(hover_at(&f, caller, "jobs.process(true)").is_null());
+    f.server.notification(
+        "textDocument/didClose",
+        &json!({"textDocument":{"uri":uri}}),
+    );
+    assert_eq!(f.diagnostics(), json!([]));
+    assert!(
+        hover_at(&f, caller, "jobs.process(true)")
+            .to_string()
+            .contains("control jobs.process(bool flag) exits done faults")
+    );
+}
+
+#[test]
 fn lexical_work_diagnostics_repair_before_handler_errors_and_inferred_hover() {
     let mut f = Fixture::new();
     let source = include_str!("../playground/recovery.tellur")
@@ -113,7 +188,7 @@ fn lexical_work_diagnostics_repair_before_handler_errors_and_inferred_hover() {
         .replace("work_count=true", "work_count=1")
         .replace("work_text=7", "work_text=\"ready\"");
     f.change(&handler_broken, 3);
-    assert_eq!(f.diagnostics().as_array().unwrap().len(), 1);
+    assert_eq!(f.diagnostics().as_array().unwrap().len(), 2);
     assert!(hover_at(&f, &handler_broken, "auto view").is_null());
     let partial = handler_broken.replace("report_count=false", "report_count=1");
     f.change(&partial, 4);

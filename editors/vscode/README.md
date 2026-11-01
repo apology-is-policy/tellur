@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-0.84.0-darwin-arm64.vsix` using **Extensions:
+1. Install the supplied `tellur-language-0.85.0-darwin-arm64.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -781,14 +781,23 @@ retained-owner/fault-resource checks stay suppressed. A failed handler suppresse
 its dependent work and supervisors until repaired. The 32-error budget is shared.
 Try two invalid local initializers in `playground/contingency.tellur`; repairs clear
 errors independently, and hover returns only after the complete source checks.
-Lexical work gains recovery in 0.84 below; lexical handlers and inline adapters remain
-conservative recovery barriers.
+Lexical work gains recovery in 0.84 below; lexical handlers gain recovery in 0.85 below; inline adapters remain conservative
+recovery barriers.
 
 ## Lexical boundary work diagnostics in 0.84
 
 Independent local errors inside `fault boundary` work now appear together, including
 nested work, paths and ordinary scopes. An uncertain work body stalls its entire
 boundary history before handler and outer continuation checks; independent outer
-paths keep their checks. Capture headers and lexical handlers retain first-error
-limits. Try two invalid initializers in `playground/recovery.tellur`; inferred hover
+paths keep their checks. Capture headers retain first-error limits; lexical handlers
+gain recovery in 0.85 below. Try two invalid initializers in `playground/recovery.tellur`; inferred hover
 returns only after every error is repaired. Native fault/recovery behavior is unchanged.
+
+## Lexical contingency diagnostics in 0.85
+
+After lexical work checks cleanly, independent errors inside its contingency now
+appear together. Fault-mode permissions, capture access, immutable `@fault` and
+resource obligations remain enforced. An uncertain handler stalls the whole boundary
+history while preserving disjoint outer checks. Try two invalid initializers in the
+handler of `playground/recovery.tellur`; partial repairs clear errors independently,
+and inferred hover refreshes only after every error is repaired.

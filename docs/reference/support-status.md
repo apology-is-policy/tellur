@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.84.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.85.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -65,7 +65,7 @@ with complete schemas for every nested reference layer.
 | Maintained application | Persistent settings CLI and bounded sequential loopback HTTP; Tellur routing/validation/cleanup and Rust mechanisms | Limited HTTP profile; no concurrency, task cancellation or crash-durable transaction guarantee |
 | CLI and native build | Check, execute, build standalone executable through Rust/Cargo and LLVM; dense per-activation storage | No direct LLVM coroutine lowering |
 | [Formatting](formatting.md) | CLI stdout/check/write and VS Code Format Document; configurable width, multiline lists/conditions, inline label dispositions; token, comment and literal preservation | Whole documents; soft width target, no comment reflow, range formatting or project-wide discovery |
-| VS Code | Highlighting, unsaved diagnostics with related forwarding locations, Outline, declaration, constructor, concrete trait, ordinary call and supervision contracts, lexical implementation aliases, named result origins, inferred `auto` hover, bounded selected-history hover, build/run | Bounded declaration/body/statement/path diagnostics, including named work/contingency and lexical work; lexical handler recovery remains limited; hover requires a successful check. Abstract generic calls and general expression-type hover remain follow-ups |
+| VS Code | Highlighting, unsaved diagnostics with related forwarding locations, Outline, declaration, constructor, concrete trait, ordinary call and supervision contracts, lexical implementation aliases, named result origins, inferred `auto` hover, bounded selected-history hover, build/run | Bounded declaration/body/statement/path diagnostics, including named and lexical work/contingency; header, terminal and adapter recovery remains limited; hover requires a successful check. Abstract generic calls and general expression-type hover remain follow-ups |
 | Source libraries | JSON string-map files and bounded loopback HTTP, shared with the settings application and independent examples | Explicit imports and manifest primitives; synchronous fixed profiles, no package resolver or general HTTP/async stack |
 | Expansion | Checked rewrite certificates, retained invocation/decision provenance | Not arbitrary equivalence or termination checking |
 | [Contract snapshots](contract-snapshots.md) | Checked public declarations across the explicit import graph, symbolic permissions, stable JSON, structural diffs and editor export | No automatic compatibility verdict or ABI promise |

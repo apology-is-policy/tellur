@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.84.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.85.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -2909,3 +2909,31 @@ partial/full repair, restored `ref string` inference hover and native recovery a
 one handled fault. Six compiler/server copies and nine packaged/installed payloads
 were verified at 0.84.0. Existing windows were not reloaded. Formatting and whitespace
 checks passed; unaffected trait/origin and application/library evidence is reused.
+
+## 0.85 — Diagnostic recovery inside lexical contingency
+
+P2g collects independent leaf errors in lexical handlers after their work checks
+cleanly. An uncertain handler restores normal-work parent scopes/history/code, clears
+the temporary handler context and stalls the entire boundary domain before coverage
+or retirement checks. Disjoint outer paths retain their state and checking; parent
+entry selectors preserve full joins. Nested handler uncertainty propagates through
+enclosing work, preventing an unsupported continuation or handover.
+
+Six recovery regressions cover work dependency, ordinary scopes, paths/loops,
+normal-parent restoration, nested handlers, retained-resource fault admission,
+contingency-only calls, capture access, immutable fault reports, clean terminal
+errors and the shared 32-error budget. Two LSP regressions cover handler repairs,
+changing inferred types, imported disjoint errors and failed-caller suppression.
+Existing staged work/handler coverage now expects independent handler diagnostics.
+Capture/setup, administrative-terminal and inline-adapter barriers remain explicit;
+valid-program typing, fault handling, resource completion and runtime are unchanged.
+
+Final validation passed **375 Rust tests across 12 affected targets**, including
+all 40 recovery tests, 34 structured diagnostic tests, 145 LSP tests and three manual
+checks, plus **42 Node tests**. Native/expansion evidence remains covered by boundary,
+fault, constructor, ownership, loop, module and certificate suites. Isolated VS Code
+passed work-before-handler batches, exact token ranges, partial/full repair, fresh
+handler inference from `ref string` to `u32`, and native recovery after one handled
+fault. Six binary copies and nine packaged/installed payloads were verified at
+0.85.0. Existing windows were not reloaded. Formatting and whitespace checks passed;
+unaffected trait/origin and application/library evidence is reused.
