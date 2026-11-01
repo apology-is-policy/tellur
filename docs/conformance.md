@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.100.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.101.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -3444,3 +3444,45 @@ and native execution of the existing counter producing 1 through 5. Six binary c
 and nine packaged/installed payloads match release 0.100.0; compiler/LSP version and
 capability checks passed. Existing windows were not reloaded. Formatting and
 whitespace checks passed.
+
+## 0.101 — Local type-annotation locations and accepted task policies
+
+P2r retains a local declaration's written type separately from its normalized type.
+Ordinary bindings, captures and stored adapters keep that range through module lookup,
+import offsets, generic preparation and substitution. Ordinary type validation and
+stored adapter target validation select the full annotation. Binding modifiers,
+names, trailing comments and initializers are excluded. Generated constructor and
+projection bindings carry no invented type coordinates.
+
+Three diagnostic regressions cover multiline/CRLF types with Unicode line comments,
+modern and legacy reference prefixes, private imported types, generic data and
+producer arity, symbolic type substitution, adapters, body batches and first-error
+APIs. Initializer mismatches retain their expression/child ranges; capture
+compatibility retains its existing statement point. The new LSP regression covers
+unsaved imported type changes, UTF-16 conversion, suppression of stale hover and
+restoration after repair. No acceptance rule, validation order or recovery policy
+has changed.
+
+The isolated editor test derives an imported counter from `playground/count.tellur`.
+It edits the local text type to invalid multiline and compact annotations, verifies
+related ranges in the dependency, repairs the document and restores its call hover.
+Native Build and Run then emits 1 through 5 and exits `done`. The test uses its own
+VS Code profile; existing user windows are not reloaded.
+
+The author also accepted two E1 policies: an escaping spawned-child fault reaches
+its owning boundary at the next scheduler safe point, stopping ordinary parent and
+sibling work and settling resources before contingency; even a never-started task
+must be awaited or transferred, with no ordinary explicit discard. These are design
+decisions, not executable task features. The separate synchronous-entry question
+(`run` operation versus lexical runtime block) remains open. The
+[async audit](async-execution.md) records the accepted rules, pending question and
+capture/loan/temporary-storage requirements.
+
+Validation: **528 Rust tests across 18 selected targets**, **42 Node tests**, and the
+isolated editor/native check passed. Targets include diagnostics, LSP, recovery,
+modules, generic controls/data, traits, construction and borrowed construction,
+projections, outcomes, references, formatting, revision and manual checks. This is
+not a full-suite claim. Unchanged runtime, fault, native-generator and editor
+production sources match the earlier foundation evidence. Six binary copies and
+nine packaged/installed payloads match 0.101.0; compiler/LSP version and capability
+checks passed. The source backup excludes the protected unrelated C# file.

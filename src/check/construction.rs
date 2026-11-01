@@ -337,7 +337,12 @@ impl Checker<'_> {
             self.statement_inner(
                 self.expression_guard.clone(),
                 domain,
-                &Statement::Bind(name.clone(), annotation.clone(), arg.clone(), false),
+                &Statement::Bind(
+                    name.clone(),
+                    annotation.clone().map(Into::into),
+                    arg.clone(),
+                    false,
+                ),
                 arg.span(span),
             )?;
             let mut staged = syntax::ExprKind::Name(name).at(arg.range);

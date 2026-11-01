@@ -491,6 +491,17 @@ impl Resolver<'_> {
         }
         self.name(ty, span, Some(true))
     }
+    fn annotation(&self, annotation: &mut syntax::TypeAnnotation, span: Span) -> Result<()> {
+        annotation.ty = self.ty(annotation, span).map_err(|mut error| {
+            error.diagnostic = annotation.type_error(error.diagnostic, span);
+            error
+        })?;
+        if annotation.range.start.line != 0 {
+            annotation.range.start.line += self.offset;
+            annotation.range.end.line += self.offset;
+        }
+        Ok(())
+    }
     fn fields(&self, fields: &mut [syntax::Field], span: Span) -> Result<()> {
         for f in fields {
             f.ty = self.ty(&f.ty, span).map_err(|mut error| {
@@ -650,14 +661,14 @@ impl Resolver<'_> {
         match s {
             Statement::Bind(name, ty, e, _) | Statement::Capture(name, ty, e, _) => {
                 if let Some(t) = ty {
-                    *t = self.ty(t, *at)?;
+                    self.annotation(t, *at)?;
                 }
                 self.expr(e, *at)?;
                 self.locals.insert(name.clone());
             }
             Statement::BindOutcome(name, ty, e, _) => {
                 if let Some(t) = ty {
-                    *t = self.ty(t, *at)?;
+                    self.annotation(t, *at)?;
                 }
                 self.outcome(e)?;
                 self.locals.insert(name.clone());

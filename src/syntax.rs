@@ -90,17 +90,49 @@ pub struct Field {
 }
 impl Field {
     /// Attach authored type coordinates without overwriting a more specific child error.
-    pub(crate) fn type_error(&self, mut error: Diagnostic, fallback: Span) -> Diagnostic {
-        if error.end.is_none()
-            && self.type_range.start.line != 0
-            && (error.span.line == 0
-                || error.span == fallback
-                || error.span == self.type_range.start)
-        {
-            error = error.with_range(self.type_range);
-        }
-        error
+    pub(crate) fn type_error(&self, error: Diagnostic, fallback: Span) -> Diagnostic {
+        type_error(self.type_range, error, fallback)
     }
+}
+/// A local type and its authored spelling location. Rewrites change only `ty`.
+#[derive(Clone, Debug)]
+pub struct TypeAnnotation {
+    pub ty: String,
+    pub range: SourceRange,
+}
+impl TypeAnnotation {
+    pub(crate) fn type_error(&self, error: Diagnostic, fallback: Span) -> Diagnostic {
+        type_error(self.range, error, fallback)
+    }
+}
+impl std::ops::Deref for TypeAnnotation {
+    type Target = str;
+    fn deref(&self) -> &str {
+        &self.ty
+    }
+}
+impl From<String> for TypeAnnotation {
+    /// Generated bindings have no authored type location.
+    fn from(ty: String) -> Self {
+        Self {
+            ty,
+            range: SourceRange::default(),
+        }
+    }
+}
+impl From<&str> for TypeAnnotation {
+    fn from(ty: &str) -> Self {
+        ty.to_owned().into()
+    }
+}
+fn type_error(range: SourceRange, mut error: Diagnostic, fallback: Span) -> Diagnostic {
+    if error.end.is_none()
+        && range.start.line != 0
+        && (error.span.line == 0 || error.span == fallback || error.span == range.start)
+    {
+        error = error.with_range(range);
+    }
+    error
 }
 /// Source-level origin names have a scope distinct from values and types.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -166,16 +198,16 @@ pub enum Statement {
     Escalate,
     Forward(Expr),
     Invoke(Expr),
-    Bind(String, Option<String>, Expr, bool),
+    Bind(String, Option<TypeAnnotation>, Expr, bool),
     Assign(Expr, Expr),
     Drop(Expr),
     Emit(Expr),
     Fault(Expr),
     Exit(String, Vec<Expr>),
     ExitOutcome(OutcomeExpr),
-    BindOutcome(String, Option<String>, OutcomeExpr, bool),
+    BindOutcome(String, Option<TypeAnnotation>, OutcomeExpr, bool),
     ExitName(String),
-    Capture(String, Option<String>, Expr, bool),
+    Capture(String, Option<TypeAnnotation>, Expr, bool),
     Again(String, Vec<Expr>),
     Delta(Option<String>, Expr, Vec<Arm>),
 }
@@ -1421,37 +1453,27 @@ impl Parser {
                         self.pos = saved;
                         self.layout.angles.truncate(angles);
                     }
+                    let type_start = self.here();
                     let ty = self.ty()?;
+                    let range = self.range_from(type_start);
+                    let annotation = (ty != "auto").then_some(TypeAnnotation { ty, range });
                     let name = self.id()?;
                     self.need("=")?;
                     if self.at("delta") || self.at("Δ") {
                         let expression = self.outcome_expr()?;
                         self.need(";")?;
                         return Ok(Statement::BindOutcome(
-                            name,
-                            (ty != "auto").then_some(ty),
-                            expression,
-                            mutable,
+                            name, annotation, expression, mutable,
                         ));
                     }
                     if self.eat("capture") {
                         let operation = self.expr(0)?;
                         self.need(";")?;
-                        return Ok(Statement::Capture(
-                            name,
-                            (ty != "auto").then_some(ty),
-                            operation,
-                            mutable,
-                        ));
+                        return Ok(Statement::Capture(name, annotation, operation, mutable));
                     }
                     let expression = self.expr(0)?;
                     self.need(";")?;
-                    return Ok(Statement::Bind(
-                        name,
-                        (ty != "auto").then_some(ty),
-                        expression,
-                        mutable,
-                    ));
+                    return Ok(Statement::Bind(name, annotation, expression, mutable));
                 };
                 if !self.eat("Δ") {
                     self.need("delta")?;

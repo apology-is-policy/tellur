@@ -2501,7 +2501,7 @@ impl Checker<'_> {
                 if let Some(expected) = annotation {
                     self.manifest.check_type(expected).map_err(|mut error| {
                         error.span = span;
-                        error
+                        expected.type_error(error, span)
                     })?;
                 }
                 let (expr, ty) =
@@ -2755,15 +2755,7 @@ impl Checker<'_> {
             }
             Statement::ExitOutcome(e) => self.exit_outcome(e, guard, domain)?,
             Statement::BindOutcome(name, annotation, e, mutable) => {
-                self.bind_outcome(
-                    name,
-                    annotation.as_deref(),
-                    e,
-                    *mutable,
-                    guard,
-                    domain,
-                    span,
-                )?;
+                self.bind_outcome(name, annotation.as_ref(), e, *mutable, guard, domain, span)?;
             }
             Statement::Delta(site, operand, arms) => {
                 self.decision(guard, domain, site, operand, arms, span, None, None)?
@@ -2964,7 +2956,7 @@ impl Checker<'_> {
     fn bind_outcome(
         &mut self,
         name: &str,
-        annotation: Option<&str>,
+        annotation: Option<&syntax::TypeAnnotation>,
         e: &syntax::OutcomeExpr,
         mutable: bool,
         guard: Guard,
@@ -2972,12 +2964,17 @@ impl Checker<'_> {
         span: Span,
     ) -> Result<()> {
         let expected = if let Some(ty) = annotation {
-            self.manifest.check_local_storage(ty)?;
+            self.manifest
+                .check_local_storage(ty)
+                .map_err(|e| ty.type_error(e, span))?;
             if !self.manifest.is_outcome(ty) {
-                return Err(self.error(
-                    "E_OUTCOME",
+                return Err(ty.type_error(
+                    self.error(
+                        "E_OUTCOME",
+                        span,
+                        "an adapter binding requires an outcome type",
+                    ),
                     span,
-                    "an adapter binding requires an outcome type",
                 ));
             }
             Some(self.manifest.outcomes(ty).unwrap())
@@ -2985,7 +2982,7 @@ impl Checker<'_> {
             None
         };
         let ty = annotation
-            .map(str::to_owned)
+            .map(|a| a.ty.clone())
             .unwrap_or_else(|| format!("outcome<$adapter_{}>", self.fresh()));
         let mut sink = OutcomeBinding {
             loans: vec![],

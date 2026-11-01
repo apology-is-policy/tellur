@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.100.0** implements the v0.1 checked core and the current language
+Compiler release **0.101.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -43,12 +43,12 @@ adding source task or scheduling syntax.
 Release 0.98 starts the [async execution foundation](docs/async-execution.md): related
 runtime contexts share unique activation IDs even when their lifetimes overlap.
 Source tasks, suspension and scheduling remain planned; the design records the
-outstanding child-fault decision separately from implemented behavior.
+accepted prompt child-fault propagation policy separately from implemented behavior.
 
 Release 0.97 adds [written type-annotation ranges](docs/reference/diagnostics-and-limits.md#type-annotation-locations):
 field, parameter, payload and typed-pattern errors can select the full source type,
-including multiline annotations and imported aliases. Generated type names never
-supply guessed source widths.
+including multiline annotations and imported aliases. Release 0.101 extends this
+to local variable types. Generated type names never supply guessed source widths.
 
 Release 0.96 adds [constructor-definition diagnostic batches](docs/reference/diagnostics-and-limits.md#constructor-definition-preparation-batches):
 independent invalid constructors within one file report together, including unused

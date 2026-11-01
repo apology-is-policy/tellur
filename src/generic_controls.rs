@@ -77,13 +77,13 @@ fn rewrite_statement(s: &mut Statement, b: &BTreeMap<String, String>) {
     match s {
         Statement::Bind(_, ty, e, _) | Statement::Capture(_, ty, e, _) => {
             if let Some(t) = ty {
-                *t = substitute(t, b);
+                t.ty = substitute(t, b);
             }
             rewrite_expr(e, b);
         }
         Statement::BindOutcome(_, ty, e, _) => {
             if let Some(t) = ty {
-                *t = substitute(t, b);
+                t.ty = substitute(t, b);
             }
             rewrite_outcome(e, b);
         }
@@ -240,13 +240,13 @@ fn statement_calls(s: &Statement, at: Span, v: &mut Visit<'_>) -> Result<()> {
     match s {
         Statement::Bind(_, ty, e, _) | Statement::Capture(_, ty, e, _) => {
             if let Some(t) = ty {
-                type_calls(t, at, v)?;
+                type_calls(t, at, v).map_err(|e| t.type_error(e, at))?;
             }
             expr_calls(e, at, v)?;
         }
         Statement::BindOutcome(_, ty, e, _) => {
             if let Some(t) = ty {
-                type_calls(t, at, v)?;
+                type_calls(t, at, v).map_err(|e| t.type_error(e, at))?;
             }
             outcome_calls(e, v)?;
         }

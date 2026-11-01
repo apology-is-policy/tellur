@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-0.100.0-darwin-arm64.vsix` using **Extensions:
+1. Install the supplied `tellur-language-0.101.0-darwin-arm64.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -946,3 +946,12 @@ substitution and legacy fields retain their original endpoints. Initializer erro
 stay on their expressions. The isolated editor test derives an imported counter from
 `playground/count.tellur`, checks exact multiline/compact ranges and fresh hover after
 repair, then builds and runs it to emit 1 through 5. No source async syntax is enabled.
+
+## Local type diagnostics in 0.101
+
+Invalid local type annotations now retain their authored locations through imports,
+generic substitution and declaration checking. This also covers preparation of
+`capture` and stored adapter types. Initializer errors retain their expression
+locations; capture compatibility keeps its existing statement point. An isolated
+editor test edits multiline/compact local types in an imported counter, verifies
+unsaved ranges and hover repair, then builds and runs the restored program.

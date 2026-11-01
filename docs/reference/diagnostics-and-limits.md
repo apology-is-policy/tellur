@@ -204,6 +204,26 @@ child expression, as does an `again` argument error. Duplicate parameter names,
 loop placement and other structural errors retain their existing locations.
 This changes coordinates, not which types, loops or histories are accepted.
 
+Since 0.101, local variable annotations retain their written ranges as well. Module
+lookup and generic preparation errors use them for ordinary declarations, `capture`
+and stored `delta` adapters. Ordinary local type validation and stored adapter target
+validation select the annotation, including multiline types and reference prefixes.
+The binding modifier `mutable`, name, trailing comments and initializer are excluded.
+
+<!-- tellur:reject E_MANIFEST -->
+```tellur
+control main() exits done {
+    vector<string, u32> entries = [];
+    exit done;
+}
+```
+
+Here the error selects `vector<string, u32>`. By contrast, `u32 count = true;`
+selects `true`; `vector<u32> numbers = [1, true];` selects the invalid element.
+Capture compatibility and other checks that previously had only a statement point
+keep that point; the type range is not assigned to every declaration error. `auto`
+inference and generated temporary bindings have no invented annotation range.
+
 Imports preserve both endpoints in the original file; unsaved dependencies supply
 the text used for editor UTF-16 conversion. Generic substitution preserves the
 authored spelling, including a type parameter, rather than estimating a range from
@@ -212,8 +232,8 @@ original declaration locations. CLI JSON continues to use one-based Unicode scal
 coordinates; LSP uses zero-based UTF-16 coordinates.
 
 This is not a range for every declaration error. Whole-contract shape/origin errors,
-associated normalization, some later public-interface checks, local variable type
-annotations, contributor notes and checks without authored field metadata retain
+associated normalization, some later public-interface checks, contributor notes
+and checks without authored type metadata retain
 their existing locations. Synthetic fields have no invented annotation range.
 More precise child errors keep their own coordinates. Diagnostic codes, phase order,
 batch limits and acceptance rules are unchanged.

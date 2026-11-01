@@ -1837,3 +1837,157 @@ fn loop_type_ranges_cover_generic_producer_arguments_and_preserve_again_expressi
         );
     }
 }
+
+#[test]
+fn local_type_annotations_select_types_and_preserve_initializer_errors() {
+    let f = Fixture::new();
+    for (body, selected, code) in [
+        (
+            "vector<string,u32> value=[];",
+            "vector<string,u32>",
+            "E_MANIFEST",
+        ),
+        (
+            "mutable vector<\r\n // 😀\r\n string, u32\r\n > // trailing\r\n value=[];",
+            "vector<\r\n // 😀\r\n string, u32\r\n >",
+            "E_MANIFEST",
+        ),
+        ("&Absent value=true;", "&Absent", "E_MANIFEST"),
+        (
+            "ref mutable absent value=true;",
+            "ref mutable absent",
+            "E_MANIFEST",
+        ),
+        (
+            "vector<string,u32> value=delta produce() {done => done {}};",
+            "vector<string,u32>",
+            "E_MANIFEST",
+        ),
+        (
+            "u32 value=delta produce() {done => done {}};",
+            "u32",
+            "E_OUTCOME",
+        ),
+        ("u32 value=true;", "true", "E_TYPE"),
+        ("vector<u32> values=[1,true];", "true", "E_TYPE"),
+        (
+            "string text=\"x\";ref u32 value=borrow text;",
+            "borrow text",
+            "E_TYPE",
+        ),
+        ("string value=u32_text(true);", "true", "E_TYPE"),
+    ] {
+        let source = format!(
+            "control produce() exits done {{exit done;}} control main() exits done {{{body}exit done;}}"
+        );
+        f.write("main.tellur", &source);
+        let report = f.report(&["check", "main.tellur", "--json"], false);
+        let error = &report["diagnostics"][0];
+        assert_eq!(error["code"], code, "{source}: {report}");
+        assert_eq!(
+            error["range"],
+            selected_range(&source, selected),
+            "{source}: {report}"
+        );
+        assert_eq!(error["position"], error["range"]["start"]);
+    }
+}
+
+#[test]
+fn local_type_ranges_cover_capture_adapters_imports_and_generic_preparation() {
+    let f = Fixture::new();
+    f.write(
+        "types.tellur",
+        "struct hidden {u32 n;} pub struct visible {u32 n;}",
+    );
+    f.write("main.tellur", "import \"library.tellur\" as library;control main() exits done {library.probe();exit done;}");
+    for (header, annotation, code) in [
+        (
+            "import \"types.tellur\" as types;\r\n",
+            "types.hidden",
+            "E_VISIBILITY",
+        ),
+        (
+            "struct box<t> {t value;}\r\n",
+            "box<u32,string>",
+            "E_GENERIC",
+        ),
+        (
+            "control maker<t>() exits done {exit done;}\r\n",
+            "outcome<maker<u32,string>>",
+            "E_GENERIC",
+        ),
+    ] {
+        for initializer in [
+            "true",
+            "capture produce()",
+            "delta produce() {done => done {}}",
+        ] {
+            let source = format!(
+                "{header}// 😀\r\ncontrol produce() exits done {{exit done;}}\r\npub control probe() exits done {{\r\n {annotation} result={initializer};exit done;\r\n}}"
+            );
+            f.write("library.tellur", &source);
+            let report = f.report(&["check", "main.tellur", "--json"], false);
+            let error = &report["diagnostics"][0];
+            assert_eq!(error["code"], code, "{source}: {report}");
+            assert!(
+                error["path"].as_str().unwrap().ends_with("library.tellur"),
+                "{report}"
+            );
+            assert_eq!(
+                error["range"],
+                selected_range(&source, annotation),
+                "{source}: {report}"
+            );
+        }
+    }
+    for initializer in ["[]", "delta produce() {done => done {}}"] {
+        let source = format!(
+            "control produce() exits done {{exit done;}} control probe<t>(t input) exits done {{vector<t,u32> result={initializer};drop(input);exit done;}} control main() exits done {{probe<string>(\"x\");exit done;}}"
+        );
+        f.write("main.tellur", &source);
+        let report = f.report(&["check", "main.tellur", "--json"], false);
+        assert_eq!(report["diagnostics"][0]["code"], "E_MANIFEST", "{report}");
+        assert_eq!(
+            report["diagnostics"][0]["range"],
+            selected_range(&source, "vector<t,u32>"),
+            "{report}"
+        );
+    }
+}
+
+#[test]
+fn local_type_ranges_preserve_batches_first_errors_and_capture_mismatch_points() {
+    let source = "control first() exits done {vector<string,u32> values=[];exit done;}\ncontrol second() exits done {ref absent value=true;exit done;}";
+    let errors = check_errors(source);
+    assert_eq!(errors.errors.len(), 2, "{errors}");
+    for (error, annotation) in errors
+        .errors
+        .iter()
+        .zip(["vector<string,u32>", "ref absent"])
+    {
+        let range = selected_range(source, annotation);
+        assert_eq!(serde_json::to_value(error.span).unwrap(), range["start"]);
+        assert_eq!(
+            serde_json::to_value(error.end.as_ref().unwrap()).unwrap(),
+            range["end"]
+        );
+    }
+    let first = compile(
+        source,
+        Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+    )
+    .unwrap_err();
+    assert_eq!(first, errors.errors[0]);
+    // Capture compatibility is not type validation. Preserve its existing point
+    // rather than assigning the declared type's range to an initializer mismatch.
+    let source = "control produce() exits done {exit done;} control main() exits done {u32 value=capture produce();exit done;}";
+    let error = compile(
+        source,
+        Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+    )
+    .unwrap_err();
+    assert_eq!(error.code, "E_TYPE");
+    assert_eq!(error.span.column, source.find("u32 value").unwrap() + 1);
+    assert!(error.end.is_none());
+}

@@ -228,7 +228,7 @@ pub(crate) fn prepare(unit: &mut Unit) -> crate::CheckResult<()> {
                         })?;
                         *s = Statement::Bind(
                             field_name(&path[0]),
-                            Some(ty.clone()),
+                            Some(ty.clone().into()),
                             value.clone(),
                             false,
                         );

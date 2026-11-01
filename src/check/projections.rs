@@ -121,7 +121,7 @@ impl Checker<'_> {
                 self.statement_inner(
                     self.expression_guard.clone(),
                     domain,
-                    &Statement::Bind(name.clone(), Some(ty), root.clone(), false),
+                    &Statement::Bind(name.clone(), Some(ty.into()), root.clone(), false),
                     root.span(span),
                 )?;
                 let mut local = S::Name(name).at(root.range);

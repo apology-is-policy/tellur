@@ -93,27 +93,25 @@ loan/retention requirements and fault domain. A stored outcome needs none of tha
 execution machinery. Task completion cannot be represented merely by stuffing a
 fault into an outcome payload.
 
-## Pending decision: unhandled spawned-child faults
+## Accepted decision: unhandled spawned-child faults
 
-A question is open with the language author. **Neither option is implemented or
-accepted by this document.** The decision concerns a fault escaping a child's own
-boundaries; an inner boundary that already settles the fault remains isolated.
+Accepted by the language author on 1 November 2026: a fault escaping a spawned
+child's own boundaries faults its owning boundary at the next cooperative scheduler
+safe point. Ordinary parent and sibling continuations stop; resource settlement must
+finish before contingency or supervised recovery. Propagation does not wait for an
+`await`. An inner boundary that already settles the fault remains isolated.
 
-| Choice | Observable consequence |
-| --- | --- |
-| Recommended: fault the owning boundary promptly | At the next cooperative scheduler safe point, its ordinary parent/sibling continuations stop. Resource settlement must finish before contingency or supervised recovery. The fault does not wait for an `await`. |
-| Alternative: propagate when awaited | The child's fault stays in a separate pending fault channel until observation; ordinary owner work can continue meanwhile. Unobserved failure at scope exit and the boundary that owns eventual propagation need further rules. |
+This preserves the rule that ordinary execution cannot continue inside a failed
+boundary. The placement of `await` cannot redirect emergency control flow. Admission
+checks must account for everything the boundary could abandon, including resources
+currently held by siblings.
 
-The recommendation fits the existing rule that ordinary execution does not continue
-inside a failed boundary. It also avoids making the placement of `await` a way to
-redirect emergency control flow. It requires admission checks for everything the
-boundary could abandon, including resources currently held by siblings.
-
-Neither choice permits a fault to become `failed`, `cancelled`, a boolean, or any
-other normal outcome. Nor does stopping siblings assert that their fallible cleanup
-succeeded. Fault disposition and cooperative cancellation must remain distinct.
-A request boundary can send its emergency response only after child loans end and
-retained response capabilities are safe to hand over.
+The fault cannot become `failed`, `cancelled`, a boolean, or another normal outcome.
+Stopping siblings does not assert that their fallible cleanup succeeded. Fault
+disposition and cooperative cancellation remain distinct. A request boundary can
+send its emergency response only after child loans end and retained response
+capabilities are safe to hand over. This is an accepted design rule, not an
+implemented scheduler feature.
 
 The owner-scope relationship, moving handles across fault boundaries, deterministic
 selection of multiple escaping faults, and secondary settlement failures must be
@@ -140,28 +138,72 @@ is unsound. A named owner or an explicit checked task-owned backing allocation i
 required before enabling that case. Existing grouped/contained origin contracts must
 survive capture and delivery, not collapse to the return contract's outer type.
 
-### Pending decision: discarding never-started tasks
+### Accepted decision: never-started tasks must be settled
 
-A separate question is open with the author: must even a never-started task be
-awaited or transferred, or may explicit `drop(pending)` discard it when every captured
-value is droppable? The initial recommendation is an await/transfer obligation, in
-line with mandatory handling of completed outcomes. **Neither choice is implemented
-or accepted here.** This question does not permit cancellation by dropping running
-work, and does not change the existing prohibition on hidden detach.
+Accepted by the language author on 1 November 2026: even a never-started deferred
+task must be awaited or have its ownership transferred. Normal execution cannot
+discard it with `drop(pending)`, even when all captured values are droppable. Task
+ownership is not Copy or Clone; transferring the handle also transfers its pending
+work, captures, loans and completion obligation. This initial rule keeps planned
+work from being silently forgotten.
 
-Do not infer the answer from `ExecutionSession` being droppable in the host API:
-that object is a scripted simulation, with an explicitly different contract.
-While the question is pending, source task disposal and task capability derivation
-must remain unimplemented. Independent diagnostic work can continue alongside E1.
+This does not permit cancellation by dropping running work or hidden detach. A fault
+still terminates ordinary execution through the owning boundary's checked fault
+dispositions; it does not satisfy normal completion by pretending the task ran.
+The host `ExecutionSession` remains a scripted simulation with a different disposal
+contract. These source task rules are accepted for E1c but not yet executable.
+
+### Pending entry-syntax decision
+
+The accepted direction requires an explicit runtime boundary when synchronous code
+starts async work. The remaining question is its source form:
+
+| Choice | Source shape and meaning |
+| --- | --- |
+| Recommended: explicit `run` operation | `delta run startup(args) { ... }` drives the async operation and its owned scope to settlement, then exposes normal outcomes through the existing delta syntax. |
+| Alternative: lexical runtime block | `runtime { ... }` allows `await` inside a synchronous caller's explicit runtime scope. |
+
+This question is open with the author. Neither spelling is implemented or accepted
+here. In either form, the runtime boundary is not a fault boundary: faults keep their
+emergency channel and propagate to the surrounding fault boundary. Scheduler scope
+settlement cannot leave detached children or borrowed storage behind.
+
+### E1c admission and representation work
+
+The two accepted task policies do not make the current instruction quota a scheduler
+or `capture` a cold task. The next implementation needs these distinct pieces:
+
+- Preserve a control's async permission in source signatures, checked calls and
+  public contracts. Ordinary calls must not acquire an implicit suspension effect.
+- Evaluate deferred arguments in their written order, retaining their owners and
+  loans in task state. Body effects and body faults occur only when driven; argument
+  construction and its faults remain immediate.
+- Represent pending captures separately from the result contract. A task can hold
+  a must-complete owner or borrow even if all eventual outcomes have empty payloads.
+  Copy/clone/drop capability checks must not derive permission from that result alone.
+- Consume a handle exactly once on await or transfer. On normal paths, scope exit
+  cannot silently retire it. On fault paths, check captured owners' dispositions
+  before unwinding and release borrowers before retained-resource handover.
+- Retain stable storage for the suspended caller, the child and any task-owned
+  argument backing storage. Bound unsupported public capture/origin shapes explicitly
+  rather than erasing those requirements behind `task<result>`.
+- Add a separate await-delivery continuation. Existing `ExecutionSession` pause and
+  fuel behavior remains the reference observation mechanism, not source suspension.
+
+Acceptance must cover argument effects before body effects, no execution merely from
+creating/moving a task, duplicate consumption and dropped-task rejection, a borrowed
+capture protecting its owner until settlement, a fault during argument construction,
+a fault before the task starts, and normal payload/origin delivery. Source entry
+spelling remains pending; implementation must not choose it by timeout.
 
 ## Implementation sequence
 
 | Checkpoint | Deliverable and evidence | Dependencies |
 | --- | --- | --- |
-| E1a | Runtime audit and shared activation identity allocator; interleaved children, independent failure state, no reuse after return, overflow, and sequential reference/native report parity | Independent of the pending child-fault choice; delivered in 0.98 |
-| E1b | Persistent reference continuations and explicit step/resume protocol; current synchronous outcomes, fuel, effects, faults, loans and expansion observations preserved under different step partitions | Delivered in 0.99; independent of the pending child-fault policy; no source async claim |
-| E1c | Bounded cold tasks and consuming await; eager argument transfer, no body effects before drive, fixed result contracts, task ownership and retained borrows | Settle source runtime entry/suspension effect contracts and disposal rules before enabling syntax |
-| E1d | Scoped spawn and deterministic readiness; two overlapping children, duplicate/stale wake handling and owner settlement | Resolve the pending fault propagation/ownership decision and keep sibling dispositions explicit |
+| E1a | Runtime audit and shared activation identity allocator; interleaved children, independent failure state, no reuse after return, overflow, and sequential reference/native report parity | Delivered in 0.98; shared identity is independent of scheduling policy |
+| E1b | Persistent reference continuations and explicit step/resume protocol; current synchronous outcomes, fuel, effects, faults, loans and expansion observations preserved under different step partitions | Delivered in 0.99; no source async claim |
+| E1c | Bounded cold tasks and consuming await; eager argument transfer, no body effects before drive, fixed result contracts, task ownership and retained borrows | Await/transfer obligation accepted; settle source runtime entry/suspension effect contracts before enabling syntax |
+| E1d | Scoped spawn and deterministic readiness; two overlapping children, duplicate/stale wake handling and owner settlement | Prompt owner-boundary fault propagation accepted; specify ownership transfers, sibling dispositions and deterministic multiple-fault selection |
 | E1e | Explicit cooperative cancellation and suspending cleanup; normal completion races, cleanup failures and no abandoned losers | Define cancellation observation and cleanup admission; no implicit cancellation exception |
 | E2 | Pinned native coroutine experiment, then checked lowering and schedule-based differential validation | Reference semantics and legal frame retirement must precede native destruction |
 

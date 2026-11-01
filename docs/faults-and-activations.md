@@ -98,8 +98,10 @@ addressing as a semantic comparison target.
 Since 0.98, child trackers share an execution-local identity allocator instead of
 copying a counter and merging it only at return. Overlapping diagnostic contexts
 cannot reuse an invocation ID; their active chains and fault state remain separate.
-This is [E1 activation groundwork](async-execution.md), not a scheduler or an answer
-to the open spawned-child fault propagation question.
+This is [E1 activation groundwork](async-execution.md), not a scheduler. The accepted
+async policy sends an escaping spawned-child fault to its owning boundary at the next
+scheduler safe point, stopping ordinary work and settling resources before contingency.
+That policy still requires scoped task implementation.
 
 Since 0.99, reference call/loop/boundary continuations persist across host stepping
 pauses. Fixed fuel, source-fault handover and sequential reports retain their existing

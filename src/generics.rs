@@ -347,7 +347,7 @@ impl Specializer<'_> {
             | Statement::Fault(e) => self.expr(e, at)?,
             Statement::Bind(_, ty, e, _) | Statement::Capture(_, ty, e, _) => {
                 if let Some(ty) = ty {
-                    self.require(ty, at, 0)?;
+                    self.require(ty, at, 0).map_err(|e| ty.type_error(e, at))?;
                 }
                 self.expr(e, at)?;
             }
@@ -363,7 +363,7 @@ impl Specializer<'_> {
             Statement::ExitOutcome(e) => self.outcome(e)?,
             Statement::BindOutcome(_, ty, e, _) => {
                 if let Some(ty) = ty {
-                    self.require(ty, at, 0)?;
+                    self.require(ty, at, 0).map_err(|e| ty.type_error(e, at))?;
                 }
                 self.outcome(e)?;
             }
