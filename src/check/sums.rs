@@ -50,6 +50,17 @@ impl Checker<'_> {
             if args.len() != outcome.fields.len() {
                 return Err(self.error("E_ARITY", span, "wrong variant payload arity"));
             }
+            let staged = self.stage_values(
+                args,
+                &outcome
+                    .fields
+                    .iter()
+                    .map(|field| Some(field.ty.clone()))
+                    .collect::<Vec<_>>(),
+                domain,
+                span,
+            )?;
+            let args = staged.as_deref().unwrap_or(args);
             let mut values = vec![];
             let mut loans = vec![];
             for (payload, (arg, field)) in args.iter().zip(&outcome.fields).enumerate() {

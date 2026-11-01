@@ -134,6 +134,65 @@ currently have no bounds, so generic bodies must work for unconstrained values:
 borrowing and forwarding are allowed; copying or cloning requires a capability
 that an unconstrained parameter does not provide.
 
+## Composing borrowed storage
+
+Since 0.70, raw record initializers and variant, option and named-outcome payloads
+can contain declared constructor calls even when the enclosing value stores
+references. The two forms compose directly: braces assemble fields, while
+parentheses run a declared constructor.
+
+<!-- tellur:check -->
+```tellur
+struct text_view['a] {
+    ref string text <- 'a;
+
+    constructor(ref string input)[input] {
+        self.text = input;
+    }
+}
+
+struct message['a] {
+    option<text_view>['a] body;
+}
+
+control main() exits done {
+    mutable string owner = "borrowed payload";
+    auto value = message { some { text_view(borrow owner) } };
+    delta value.body {
+        some { auto body } => present,
+        none => absent
+    }
+
+    [present]: emit(body.text);
+    [entry]:
+        owner = "released";
+        exit done;
+}
+```
+
+Named fields evaluate in written order, even when that differs from declaration
+order. Earlier values are retained before later constructors run. If a later
+initializer faults, earlier resources still need their declared fault disposition;
+no partial aggregate is delivered. Once assembly completes, the resulting value
+owns those resources and carries the contained loans.
+
+Borrow conflicts are checked across the initializer list. A constructor cannot
+mutate a source retained by an earlier field. Shared and exclusive references keep
+their ordinary permissions, tagged payloads are accessed only on their selected
+paths, and each field retains its sources until its last use. This does not extend
+a temporary owner's lifetime or allow a reference to escape local storage.
+
+The current list-wide alias check is conservative. A constructor that mutates a
+source can conflict with a later field borrowing that source, even when the
+constructor returns an ordinary owning value and has already finished. Bind that
+constructor's result in a separate declaration first. More precise tracking of
+each initializer's call-duration access is planned; this is a checker limitation,
+not a requirement to keep a completed call's borrow alive.
+
+The same composition works inside constructor field initialization, ordinary
+arguments, control results, captures and selected adapter arms. Nested generic
+types and imported constructors retain their existing visibility and origin rules.
+
 ## Reference-bearing results
 
 A constructor that returns stored references declares their origins in brackets
@@ -232,10 +291,8 @@ existing administrative recovery rules.
 
 ## Current boundaries and editor support
 
-Raw construction and ordinary factory controls remain available. When a raw
-reference-bearing record or sum initializer contains a declared constructor call,
-bind the constructed value separately first. That broader composition is a separate
-staging checkpoint. Also bind a constructed reference-bearing result before
+Raw construction and ordinary factory controls remain available. Bind a constructed
+reference-bearing result before
 projecting its fields or borrowing the whole result. Constructors do not add
 overloads, default arguments, delegation, custom destructors, inheritance or
 implicit conversions.
@@ -250,8 +307,10 @@ The [settings server](../../applications/settings/server.tellur) uses a construc
 to prepare an owned request context before its fault boundary. Its public interface
 and request recovery behavior are unchanged.
 
-Try [construction.tellur](../../playground/construction.tellur) and
-[borrowed_construction.tellur](../../playground/borrowed_construction.tellur).
+Try [construction.tellur](../../playground/construction.tellur),
+[borrowed_construction.tellur](../../playground/borrowed_construction.tellur) and
+[composed_construction.tellur](../../playground/composed_construction.tellur).
 Compiler/runtime checks are in [constructors.rs](../../tests/constructors.rs) and
-[borrowed_constructors.rs](../../tests/borrowed_constructors.rs); actual retained-owner
+[borrowed_constructors.rs](../../tests/borrowed_constructors.rs), with composition in
+[borrowed_composition.rs](../../tests/borrowed_composition.rs); actual retained-owner
 fault cleanup is checked in [rust_adapters.rs](../../tests/rust_adapters.rs).

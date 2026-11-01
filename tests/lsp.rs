@@ -2737,3 +2737,42 @@ fn borrowed_constructor_origin_hover_and_unsaved_diagnostics() {
         tellur::format::source(&formatted, Default::default()).unwrap()
     );
 }
+
+#[test]
+fn composed_constructor_hover_and_unsaved_loan_diagnostics() {
+    let mut f = Fixture::new();
+    let source = include_str!("../playground/composed_construction.tellur");
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let line = source
+        .lines()
+        .position(|l| l.contains("auto value ="))
+        .unwrap();
+    assert!(
+        f.server
+            .hover(&f.uri, line as u64, 4)
+            .to_string()
+            .contains("message value")
+    );
+    f.change(
+        &source.replace(
+            "emit(body.text);",
+            "owner = \"too early\"; emit(body.text);",
+        ),
+        2,
+    );
+    assert!(
+        f.diagnostics()
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|d| d["code"] == "E_LOAN")
+    );
+    f.change(source, 3);
+    assert_eq!(f.diagnostics(), json!([]));
+    let formatted = tellur::format::source(source, Default::default()).unwrap();
+    assert_eq!(
+        formatted,
+        tellur::format::source(&formatted, Default::default()).unwrap()
+    );
+}

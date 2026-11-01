@@ -1,0 +1,44 @@
+struct heading {
+    string text;
+
+    constructor(string text) {
+        self.text = move text;
+    }
+}
+
+struct text_view['source] {
+    ref string text <- 'source;
+
+    constructor(ref string input)[input] {
+        self.text = input;
+    }
+}
+
+struct message['body] {
+    heading title;
+    option<text_view>['body] body;
+}
+
+outcome program_result {
+    @exit 0 done
+}
+
+control main() exits program_result {
+    mutable string owner = "borrowed payload";
+    auto value = message {
+        title: heading("Composed message"),
+        body: some { text_view(borrow owner) }
+    };
+
+    emit(borrow value.title.text);
+    delta value.body {
+        some { auto body } => present,
+        none => absent
+    }
+
+    [present]: emit(body.text);
+    [entry]:
+        owner = "owner released";
+        emit(borrow owner);
+        exit done;
+}

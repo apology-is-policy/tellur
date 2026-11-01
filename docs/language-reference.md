@@ -1,8 +1,8 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.69.0 -->
+<!-- tellur-reference-version: 0.70.0 -->
 
-This manual describes **compiler 0.69.0**, including the current ownership model,
+This manual describes **compiler 0.70.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -362,6 +362,9 @@ See [struct constructors](reference/construction.md) for visibility, evaluation
 order, faults, generic forwarding and reference-bearing results. Since 0.69,
 `constructor(ref string input)[input]` maps the result's origin groups to its
 inputs. It uses the same origin checks as ordinary control results.
+Constructor calls also compose inside raw reference-bearing record fields and
+variant, option and named-outcome payloads; earlier initializers remain owned while
+later calls execute. See [composing borrowed storage](reference/construction.md#composing-borrowed-storage).
 
 ## Outcomes, payloads and paths
 
@@ -2669,7 +2672,7 @@ It does not yet provide general expression or call-site type hover.
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and async tasks remain planned; they are not executable features of 0.69.0.
+and async tasks remain planned; they are not executable features of 0.70.0.
 ## Contingency and supervised boundaries
 
 The [contingency reference](reference/contingency.md) specifies `@contingent`,

@@ -982,3 +982,32 @@ fn imported_generic_borrowed_constructors_preserve_public_origins_and_privacy() 
     f.write("library.tellur", &library.replace("[input]", "[missing]"));
     f.reject("E_ORIGIN");
 }
+
+#[test]
+fn imported_private_borrowed_representation_composes_inside_public_raw_storage() {
+    let f = Fixture::new();
+    let library = "pub struct view<t>['a] {ref t value <- 'a;pub constructor(ref t input)[input] {self.value=input;}}pub struct packet['a] {pub view<string>['a] value;}pub control show(packet input) exits done {emit(input.value.value);exit done;}";
+    f.write("library.tellur", library);
+    let source = "import \"library.tellur\" as lib;control main() exits done {mutable string owner=\"nested\";auto packet=lib.packet {value:lib.view<string>(borrow owner)};lib.show(move packet);owner=\"released\";exit done;}";
+    f.write("main.tellur", source);
+    same(&f.check().unwrap());
+    f.write(
+        "main.tellur",
+        &source.replace(
+            "lib.show(move packet);",
+            "owner=\"too early\";lib.show(move packet);",
+        ),
+    );
+    f.reject("E_LOAN");
+    f.write("main.tellur", source);
+    f.write(
+        "library.tellur",
+        &library.replace("pub constructor", "constructor"),
+    );
+    f.reject("E_PRIVATE");
+    f.write(
+        "library.tellur",
+        &library.replace("pub view<string>", "view<string>"),
+    );
+    f.reject("E_VISIBILITY");
+}

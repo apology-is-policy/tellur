@@ -26,7 +26,9 @@ syntax. Work is proceeding through the checkpoints below.
    0.68** removes temporary outcome packaging while preserving partial-field fault
    ownership. **Reference-bearing constructors in 0.69** declare result origins as
    `constructor(...)[input, other['a]]`, with checked caller loans and nested fields.
-   Constructor calls inside raw borrowed aggregates and broader allocation/copy
+   **Raw borrowed aggregate composition in 0.70** permits nested constructor calls
+   in record fields and sum payloads while preserving evaluation order and fault
+   ownership. Projections from fresh borrowed results and broader allocation/copy
    elision remain follow-up work.
 6. **Delivered for checkpoints 3–4 in 0.66:** reference, editor, formatter,
    native/reference parity and settings-server migration. **Constructor parity,

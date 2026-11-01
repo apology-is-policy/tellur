@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.69.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.70.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -2313,3 +2313,43 @@ examples, 26 expected diagnostics, 15 context fragments and 250 local links.
 Live HTTP tests include a source-fault 500 followed by a successful next request.
 Release compiler/LSP binaries, packaged VSIX and installed extension payloads were
 verified at 0.69.0.
+
+## 0.70 raw borrowed aggregate composition
+
+Raw record fields and variant, option and named-outcome payloads can contain
+declared constructor calls when the aggregate stores references. The checker stages
+earlier values before later calls, preserving written named-field order and
+retaining owned resources and contained loans until complete assembly. A fault in
+a later initializer cannot abandon an earlier resource or deliver a partial value.
+Existing argument-alias checks protect earlier shared/exclusive references.
+
+Coverage includes generic/imported constructors, private inner representations in
+public raw storage, independent field last use, explicit moves, nested optional
+tags, factory returns and capture, selected adapter arms and constructor field
+initialization across local scopes. Negative cases reject conflicting access,
+wrong origins, private construction and temporary-owner escapes. Native/reference
+comparisons run before and after expansion at O0/O2. Retained Rust resources are
+released exactly once on both later-initializer faults and post-assembly faults;
+an always-faulting final initializer still requires earlier resources to declare
+their fault disposition.
+
+The reference, roadmap, editor checks and `playground/composed_construction.tellur`
+accompany the feature. No new syntax, origin rules or borrowed-collection contracts
+are introduced. Bind a reference-bearing constructor result before projecting its
+fields or borrowing the whole temporary; direct result projections remain the next
+construction checkpoint. The runtime remains synchronous.
+
+Release validation: all 1,009 Rust tests across 72 nonempty targets passed. A final
+focused retainer check covers local raw composition, explicit move and surviving
+shared copies. All 42 Node editor tests and the isolated VS Code checkpoint passed;
+the latter checks origin/auto hovers, outline, unsaved borrow diagnostics and repair,
+formatting and native execution of the new example. The manual checks 74 accepted
+examples, 26 expected diagnostics, 15 context fragments and 253 local links.
+Live HTTP tests retain fault-500-then-next-request behavior. Release compiler/LSP
+binaries, packaged VSIX and installed extension payloads were verified at 0.70.0.
+
+A manual comparison also records the existing conservative list-wide alias check:
+a mutating nested constructor followed by a borrow of the same source requires
+separate declarations even when the first call returns no borrow. This limitation
+is documented and queued for initializer access precision; the release does not
+claim that every safe sequential initializer arrangement is accepted.

@@ -345,13 +345,6 @@ impl Checker<'_> {
             }
             return self.stored_value(value, expected, domain, span, true);
         }
-        if crate::constructors::has_call(e) && self.manifest.contains_references(expected) {
-            return Err(self.error(
-                "E_CONSTRUCTOR",
-                span,
-                "bind constructed owning values before assembling reference-bearing storage",
-            ));
-        }
         if let Some((mutable, inner)) = manifest::reference_inner(expected) {
             let source = self.reference_source(e, span)?;
             if let Some((_, _, loan, _)) = &source {
@@ -554,9 +547,20 @@ impl Checker<'_> {
                 "record initializer must supply every field exactly once",
             ));
         }
+        // Preserve written initializer order, including named fields. Pending
+        // values stay in owning slots until every constructor has completed;
+        // their contained loans remain live while later initializers execute.
+        let staged = if initializers.iter().any(|(_, value)| crate::constructors::has_call(value)) {
+            let args = initializers.iter().map(|(_, value)| (*value).clone()).collect::<Vec<_>>();
+            let annotations = initializers.iter().map(|(index, _)| Some(fields[*index].ty.clone())).collect::<Vec<_>>();
+            self.stage_values(&args, &annotations, domain, span)?
+        } else {
+            None
+        };
         let mut values = vec![];
         let mut loans = vec![];
-        for (index, value) in initializers {
+        for (position, (index, value)) in initializers.into_iter().enumerate() {
+            let value = staged.as_ref().map_or(value, |args| &args[position]);
             let stored = self.stored_value(value, &fields[index].ty, domain, span, true)?;
             values.push((index, stored.expression));
             loans.extend(stored.loans.into_iter().map(|(mut path, id)| {

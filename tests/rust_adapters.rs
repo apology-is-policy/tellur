@@ -763,6 +763,7 @@ struct borrowed_owner['a] {
         [complete]: emit(self.text);
     }
 }
+
 control main(string path, bool broken) exits done {
     fault boundary {
         string text = "external reference";
@@ -803,4 +804,99 @@ control main(string path, bool broken) exits done {
             assert_eq!(fs::read_to_string(log).unwrap(), "drop 7\n");
         }
     }
+}
+
+#[test]
+fn raw_borrowed_assembly_faults_keep_pending_and_delivered_resources_owned() {
+    let f = Fixture::new();
+    fs::write(f.root.join("host.rs"), RESOURCE_HOST).unwrap();
+    let mut config = resource_config();
+    config["types"][0]["fault"] = json!("release");
+    let source = r#"
+struct borrowed_owner['a] {
+    ref string text <- 'a;
+    counter owned;
+    constructor(ref string text, counter owned)[text] {
+        self.text = text;
+        self.owned = move owned;
+    }
+}
+struct marker {
+    bool done;
+    constructor(bool broken) {
+        delta broken {true => fault "later initializer", false => complete}
+        [complete]: self.done = true;
+    }
+}
+struct group['a] {counter first; borrowed_owner['a] second; marker third;}
+variant packet['a] {packed {group['a] value}, empty}
+control main(string path, bool broken) exits done {
+    fault boundary {
+        string text = "external reference";
+        delta make(borrow path) {made {counter first} => first}
+        [first]: delta make(borrow path) {made {counter second} => second}
+        [second]: packet value = packed {group {
+            first: move first,
+            second: borrowed_owner(borrow text, move second),
+            third: marker(broken)
+        }};
+        fault "after assembly";
+    } contingency [] {terminate process 23;}
+}
+"#;
+    assert_eq!(
+        compile(source, f.manifest(&resource_config()))
+            .unwrap_err()
+            .code,
+        "E_FAULT_RESOURCE"
+    );
+    let p = compile(source, f.manifest(&config)).unwrap();
+    for (opt, p) in [(0, p.clone()), (2, p.expanded("main").unwrap())] {
+        let binary = f.root.join(format!("raw-borrowed-assembly-{opt}"));
+        support::scenario_executable(&p)
+            .build_native("main", &binary, opt)
+            .unwrap();
+        for broken in ["true", "false"] {
+            let log = f
+                .root
+                .join(format!("raw-borrowed-assembly-{opt}-{broken}.log"));
+            let output = Command::new(&binary)
+                .args(["--json", "--"])
+                .arg(&log)
+                .arg(broken)
+                .output()
+                .unwrap();
+            assert_eq!(
+                output.status.code(),
+                Some(23),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert_eq!(fs::read_to_string(log).unwrap(), "drop 7\ndrop 7\n");
+        }
+    }
+}
+
+#[test]
+fn pending_raw_resource_needs_a_fault_disposition_even_when_assembly_never_completes() {
+    let f = Fixture::new();
+    let source = r#"
+struct stop {bool value;constructor(){fault "last initializer";}}
+struct pending['a] {counter owned;ref string text <- 'a;stop last;}
+control main(string path) exits done {counter remaining} {
+    delta make(borrow path) {made {counter owned}=>made}
+    [made]: string text="live";
+    auto value=pending {move owned,borrow text,stop()};
+    exit done {value.owned};
+}
+"#;
+    assert_eq!(
+        compile(source, f.manifest(&resource_config()))
+            .unwrap_err()
+            .code,
+        "E_FAULT_RESOURCE"
+    );
+    let mut config = resource_config();
+    config["types"][0]["fault"] = json!("release");
+    compile(source, f.manifest(&config)).unwrap();
 }

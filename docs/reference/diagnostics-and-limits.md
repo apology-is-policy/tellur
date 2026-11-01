@@ -513,7 +513,7 @@ control main() exits done { exit done; }
 | Family | What to inspect |
 | --- | --- |
 | `E_LEX`, `E_LITERAL`, `E_PARSE` | Tokens, supported escapes/literals, delimiters and required semicolons |
-| `E_CONSTRUCTOR` | Unsupported constructor operation: partial `self` escape, explicit exit, local isolation or inline composition inside raw reference-bearing aggregates; see [constructors](construction.md). Missing and repeated field initialization use `E_UNAVAILABLE` and `E_REDEFINE`; missing result-origin mappings use `E_ORIGIN` |
+| `E_CONSTRUCTOR` | Unsupported constructor operation: partial `self` escape, explicit exit or local isolation; see [constructors](construction.md). Missing and repeated field initialization use `E_UNAVAILABLE` and `E_REDEFINE`; missing result-origin mappings use `E_ORIGIN` |
 | `E_NAME`, `E_SHADOW`, `E_REDEFINE` | Name resolution, duplicate names, disjoint definitions and forbidden outer-value shadowing |
 | `E_UNCOVERED`, `E_TERMINATED`, `E_EMPTY` | Missing completion, overlapping work after exit, or an empty structural selection |
 | `E_FAULT_CONTRACT` | A public or trait control needs explicit source-fault permission |

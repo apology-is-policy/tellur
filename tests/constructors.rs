@@ -322,13 +322,13 @@ fn constructor_fault_reports_use_source_names_and_never_deliver_partial_values()
     );
 }
 #[test]
-fn borrowed_constructors_require_origins_and_raw_inline_assembly_stays_gated() {
+fn borrowed_constructors_require_origins_and_allow_raw_inline_assembly() {
     rejects(
         "struct view['a] {ref string text <- 'a;constructor(ref string text){self.text=text;}}",
         "E_ORIGIN",
     );
     let s = r#"struct text {string value;constructor(string value){self.value=move value;}}struct view {ref string reference;text owned;}control main() exits done {string owner="owner";auto mixed=view {borrow owner,text("owned")};emit(borrow mixed.owned.value);drop(mixed);exit done;}"#;
-    rejects(s, "E_CONSTRUCTOR");
+    assert_eq!(messages(&checked(s)), ["owned"]);
     checked(&s.replace(
         "auto mixed=view {borrow owner,text(\"owned\")};",
         "auto value=text(\"owned\");auto mixed=view {borrow owner,move value};",
