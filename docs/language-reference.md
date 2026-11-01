@@ -1,8 +1,8 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.79.0 -->
+<!-- tellur-reference-version: 0.80.0 -->
 
-This manual describes **compiler 0.79.0**, including the current ownership model,
+This manual describes **compiler 0.80.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -968,6 +968,16 @@ inference. It does not display implementation fields or internal completion labe
 Try `text_pair(...)` and `editable_text(...)` in
 [borrowed_construction.tellur](../playground/borrowed_construction.tellur).
 
+Since 0.80, a concrete trait call such as `reader<text_source>.read(...)` shows
+the validated trait-side signature. Associated types are resolved, while parameter
+names, payload names, outcome order and origin anchors come from the trait's public
+contract. An implementation may choose different binding names without changing
+this presentation. Named contracts list their alternatives; fault and contingency
+permission follow the trait declaration, even when an implementation needs less.
+Private fields and body-derived origin projections are not displayed. Concrete
+associated-type selections in call targets and explicit type arguments are resolved
+from the same checked snapshot. Try [traits.tellur](../playground/traits.tellur).
+
 Imported names use the caller's aliases. A type from a transitive dependency with no
 local import is displayed with its defining file, for example `types.tellur::token`;
 that is a display identity, not Tellur import syntax. The highlighted range covers
@@ -977,11 +987,17 @@ behavior.
 
 Contracts come from a successful check of the current document and its unsaved
 dependencies. Editing an imported signature refreshes the hover; a failed check
-suppresses it rather than showing an old signature. Specialized calls through traits
-or named boundaries, and calls requiring abstract generic-body lookup,
+suppresses it rather than showing an old signature. Named boundaries and calls
+requiring abstract generic-body lookup
 currently retain the existing selected-history feedback. This is not general
 expression-type hover. Try the calls in
 [the JSON file example](../examples/json_file/main.tellur).
+
+A lexical type parameter keeps a call abstract even when a real type with the same
+name has a concrete implementation. Hover never borrows that unrelated signature.
+Calls spelled with implementation-local `self` or unqualified associated-type aliases
+also retain selected-history feedback for now; the contract lookup resolves explicit
+concrete type names and qualified associated-type selections.
 
 ### Scoped intersections
 
@@ -2742,7 +2758,7 @@ General expression-type hover remains unsupported.
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and async tasks remain planned; they are not executable features of 0.79.0.
+and async tasks remain planned; they are not executable features of 0.80.0.
 ## Contingency and supervised boundaries
 
 The [contingency reference](reference/contingency.md) specifies `@contingent`,

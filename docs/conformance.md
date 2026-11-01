@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.79.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.80.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -2756,3 +2756,37 @@ also checks the exact `true` range. Six binary copies and nine packaged/installe
 payloads were verified at 0.79.0. Formatting and whitespace checks passed; existing
 windows were not reloaded. The 0.78 diagnostic/contract evidence remains valid
 outside this editor change; no unchanged full-suite rerun is claimed.
+
+## 0.80 — Concrete trait call contracts in hover
+
+P4d.2 retains the trait-side signatures already validated by conformance checking,
+along with normalized associated types, as source-tooling metadata. Hover at an
+explicit concrete trait call shows declared parameter/payload names, outcome order,
+public origin anchors and fault/contingency permission. Implementation binding
+names and private body projections do not replace that contract. Named source and
+manifest outcomes list their alternatives. Concrete associated-type selections in
+call targets and type arguments resolve against the same checked snapshot.
+
+The lookup preserves lexical generic scope: a type parameter cannot accidentally
+select a same-named real type's implementation or constructor. Abstract calls,
+implementation-local `self`/unqualified associated aliases, and named boundaries
+retain existing selected-history feedback. Result types are formatted before origin
+brackets are added, preserving lowercase builtin spellings inside generic payloads.
+Executable IR, certificates, typing, ownership and fault semantics are unchanged.
+
+Eight LSP regressions cover independent trait/implementation names and outcome order,
+borrowed and nested named origins, imported aliases and unsaved repairs, declared
+permissions, manifest-only completions, untitled/abstract calls, generic shadowing,
+and concrete associated-type selections across trait, constructor and ordinary calls.
+The existing `playground/traits.tellur` provides the runnable editor example.
+
+Final validation passed **292 Rust tests across 12 affected targets**, including
+all 129 LSP tests and three manual checks, plus **42 Node tests**. Trait conformance,
+aggregate origins, generic controls, modules, public contracts, snapshots, faults,
+boundaries and certificates retain their native/expansion coverage. The manual checks
+were repeated only after documenting the final lookup boundary and are counted once.
+Isolated VS Code passed trait-side parameter/payload names, associated types,
+implementation ownership diagnostics, invalid-source suppression, fresh repair and
+native output. Six compiler/server copies and nine packaged/installed payloads were
+verified at 0.80.0. Existing windows were not reloaded. Formatting and whitespace
+checks passed; earlier unaffected diagnostic/runtime/library evidence is reused.

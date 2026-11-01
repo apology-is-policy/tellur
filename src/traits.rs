@@ -701,7 +701,8 @@ pub(crate) fn check_contracts(
     contracts: &[OutcomeContract],
     schemas: &crate::origins::Schemas,
     m: &Manifest,
-) -> Result<()> {
+) -> Result<BTreeMap<String, Region>> {
+    let mut signatures = BTreeMap::new();
     let contracts = contracts
         .iter()
         .map(|c| (c.name.clone(), c.clone()))
@@ -781,9 +782,12 @@ pub(crate) fn check_contracts(
                     ),
                 ));
             }
+            // Retain the validated trait-side names and origins for source tooling.
+            // Implementation parameter/payload names may legitimately differ.
+            signatures.insert(expected.name.clone(), expected);
         }
     }
-    Ok(())
+    Ok(signatures)
 }
 
 pub(crate) fn has_witness(checks: &[TraitCheck], trait_name: &str, target: &str) -> bool {

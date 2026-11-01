@@ -114,7 +114,11 @@ fn items<'a>(body: &'a [Item], out: &mut Vec<&'a Expr>) {
         }
     }
 }
-fn call_at<'a>(unit: &'a Unit, text: &str, at: Span) -> Option<(&'a str, SourceRange)> {
+fn call_at<'a>(
+    unit: &'a Unit,
+    text: &str,
+    at: Span,
+) -> Option<(&'a str, SourceRange, &'a [String])> {
     let mut calls = vec![];
     for r in unit
         .regions
@@ -122,14 +126,20 @@ fn call_at<'a>(unit: &'a Unit, text: &str, at: Span) -> Option<(&'a str, SourceR
         .chain(unit.data.iter().filter_map(|d| d.constructor.as_ref()))
         .chain(unit.implementations.iter().flat_map(|i| &i.methods))
     {
-        items(&r.body, &mut calls);
+        let mut expressions = vec![];
+        items(&r.body, &mut expressions);
+        calls.extend(
+            expressions
+                .into_iter()
+                .map(|e| (e, r.type_parameters.as_slice())),
+        );
     }
     let tokens = lex(text).ok()?;
     let key = |s: Span| (s.line, s.column);
     let hit = tokens
         .iter()
         .find(|t| key(t.span) <= key(at) && key(at) < key(t.end))?;
-    for e in calls {
+    for (e, parameters) in calls {
         let ExprKind::Call(name, _) = &e.kind else {
             unreachable!()
         };
@@ -151,6 +161,7 @@ fn call_at<'a>(unit: &'a Unit, text: &str, at: Span) -> Option<(&'a str, SourceR
                     start: first.span,
                     end: last.end,
                 },
+                parameters,
             ));
         }
     }
@@ -226,7 +237,16 @@ pub(super) fn hover(
 ) -> Option<Value> {
     let text = &server.documents.get(uri)?.text;
     let at = scalar_span(text, line, character)?;
-    let (written, range) = call_at(unit, text, at)?;
+    let (written, range, parameters) = call_at(unit, text, at)?;
+    let abstract_names = parameters
+        .iter()
+        .map(|name| (name.clone(), "$abstract".into()))
+        .collect();
+    if crate::generics::substitute(written, &abstract_names) != written {
+        // A lexical type parameter may shadow a real type with a concrete witness.
+        // Never select that witness for an abstract call in a generic body.
+        return None;
+    }
     // A call name must not fall back to a stale signature after any source error.
     let Some((program, sources)) = checked_sources(server, uri) else {
         return Some(Value::Null);
@@ -237,7 +257,10 @@ pub(super) fn hover(
         .map(|f| f.path.clone())
         .unwrap_or_default();
     let names = scope_names(&path, &program);
-    let resolved = crate::manifest::canonical_type(&renamed(written, &names));
+    let resolved = crate::generics::substitute(
+        &crate::manifest::canonical_type(&renamed(written, &names)),
+        &program.associated_types,
+    );
     let mut visible = BTreeMap::new();
     for (local, global) in &names {
         visible.entry(global.clone()).or_insert(local.clone());
@@ -268,9 +291,69 @@ pub(super) fn hover(
             }
         }
     }
-    let mut description = if let Some(checked) =
-        program.region(&crate::constructors::control_name(&resolved))
-    {
+    let mut description = if let Some(source) = program.trait_contracts.get(&resolved) {
+        // This is the conformance-checked trait contract, not the implementing
+        // body's narrower evidence or its independently chosen binding names.
+        let contract = source
+            .exit_contract
+            .as_ref()
+            .filter(|name| program.manifest().is_outcome(name));
+        let outcomes = if let Some(name) = contract {
+            program.manifest().outcomes(name)?.to_vec()
+        } else {
+            source
+                .exits
+                .iter()
+                .map(|o| crate::manifest::Outcome {
+                    name: o.name.clone(),
+                    fields: o
+                        .fields
+                        .iter()
+                        .map(|f| crate::manifest::Field {
+                            name: f.name.clone(),
+                            ty: f.ty.clone(),
+                        })
+                        .collect(),
+                })
+                .collect()
+        };
+        let alternatives = checked_exit_description(&outcomes, source);
+        let exits = match contract {
+            Some(name) if source.exit_origins.is_empty() => display_type(name),
+            Some(name) => format!(
+                "{}[{}]",
+                display_type(name),
+                source
+                    .exit_origins
+                    .iter()
+                    .map(OriginArgument::display)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+            None => alternatives.clone(),
+        };
+        format!(
+            "**Trait control contract**\n\n```tellur\n{}control {}({}){}\n```{}\n\nStatic dispatch through the declared trait contract. Associated types are resolved for this implementing type.",
+            if source.contingent_contract == Some(true) {
+                "@contingent\n"
+            } else {
+                ""
+            },
+            display_type(written),
+            source
+                .parameters
+                .iter()
+                .map(|f| source_field(f, false))
+                .collect::<Vec<_>>()
+                .join(", "),
+            completion_description(&exits, source.fault_contract == Some(true)),
+            if contract.is_some() {
+                format!("\n\nContract alternatives: `{alternatives}`.")
+            } else {
+                String::new()
+            }
+        )
+    } else if let Some(checked) = program.region(&crate::constructors::control_name(&resolved)) {
         let base = generic(&resolved).map_or(resolved.as_str(), |(base, _)| base);
         let (definition_path, local) = program
             .source_files()
@@ -373,9 +456,10 @@ pub(super) fn hover(
             });
         let alternatives = checked_exit_description(&checked.exits, &source);
         let exits = match &contract {
-            Some(name) if source.exit_origins.is_empty() => name.clone(),
+            Some(name) if source.exit_origins.is_empty() => display_type(name),
             Some(name) => format!(
-                "{name}[{}]",
+                "{}[{}]",
+                display_type(name),
                 source
                     .exit_origins
                     .iter()

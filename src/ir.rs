@@ -386,6 +386,12 @@ pub(crate) struct InferredBinding {
 }
 #[derive(Clone, Debug)]
 pub struct CheckedProgram {
+    /// Validated trait-side signatures for source tooling, excluded from executable
+    /// IR and certificates. Names and origin anchors belong to the trait declaration.
+    pub(crate) trait_contracts: BTreeMap<String, crate::syntax::Region>,
+    /// Normalized concrete associated types from the same checked source snapshot.
+    /// Source tooling only; abstract definition witnesses are not retained here.
+    pub(crate) associated_types: BTreeMap<String, String>,
     /// Bounded source evidence; excluded from executable IR and certificates.
     pub(crate) contributors: BTreeMap<String, BTreeMap<String, Vec<crate::absorption::Raw>>>,
     pub(crate) selected_histories: Vec<crate::history::SelectedHistory>,

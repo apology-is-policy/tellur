@@ -1473,7 +1473,7 @@ fn checked_exit_description(
                 if !source.origins.is_empty() {
                     f.ty = format!(
                         "{}[{}]",
-                        f.ty,
+                        display_type(&f.ty),
                         source
                             .origins
                             .iter()

@@ -4496,7 +4496,7 @@ pub(crate) fn compile_concrete_unit(
     declarations.sort_by_key(|(_, span)| (span.line, span.column));
     let declaration_spans = declarations.into_iter().collect();
     manifest.validate_at(&declaration_spans)?;
-    crate::traits::check_contracts(
+    let trait_contracts = crate::traits::check_contracts(
         &unit.trait_checks,
         &parsed,
         &unit.contracts,
@@ -5086,6 +5086,8 @@ pub(crate) fn compile_concrete_unit(
         })
         .collect();
     let program = ir::CheckedProgram {
+        trait_contracts,
+        associated_types: unit.trait_types,
         contributors: signatures
             .into_iter()
             .filter(|(_, s)| s.region)
