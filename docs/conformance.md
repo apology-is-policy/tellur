@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.82.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.83.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -2846,3 +2846,37 @@ fault followed by the next request. Six binaries and nine packaged/installed
 payloads were verified at 0.82.0. Existing windows were not reloaded. Formatting
 and whitespace checks passed; unaffected 0.81 trait/origin and earlier runtime,
 diagnostic and library evidence remains valid.
+
+## 0.83 — Diagnostic recovery in named boundary bodies
+
+P2e extends fresh statement replay to independent leaf errors in named boundary
+work and contingency bodies. Disjoint histories and ordinary nested scopes retain
+their checks. A failed handler suppresses its dependent work body, and failed
+boundaries suppress supervisors. The existing 32-error budget remains shared;
+replays publish no partial executable program, inferred hover or public contract.
+
+Fault admission inspects all retained and live owners. Its retention/fault-resource
+failures stall uncertain histories rather than producing misleading secondary
+diagnostics; clean-path failures remain real barriers. Temporary call scopes now
+retire even after a failed call, preserving the scope of later disjoint checks.
+Lexical boundaries and inline adapters remain first-error barriers, and omissions
+still stall histories at administrative dispositions or new control-flow structure.
+Valid-program typing, resource completion, fault behavior and runtime are unchanged.
+
+Six diagnostic regressions cover dependency suppression, paths/scopes, ownership
+witnesses, retained-owner and resource barriers, fault-only calls, contingency
+permissions/terminals and the global budget. Two LSP regressions cover unsaved
+handler/work repairs, imported disjoint-path errors, precise ranges and fresh hover.
+The initial terminal test expected `E_OUTCOME`; the actual undeclared named-handler
+exit diagnostic is `E_EXIT`, and the corrected test passes.
+
+Final validation passed **359 Rust tests across 12 affected targets**, including
+all 28 recovery tests, 34 structured diagnostic tests, 141 LSP tests and three
+manual checks, plus **42 Node tests**. Named/lexical boundaries, source faults,
+constructors, ownership, loops, modules and certificates retain native/expansion
+coverage. Isolated VS Code confirmed two handler errors before dependent work
+errors, exact highlighted tokens, partial/full repairs, stale-hover suppression and
+native supervision with one handled fault followed by the next request. Six binary
+copies and nine packaged/installed payloads were verified at 0.83.0. Existing windows
+were not reloaded. Formatting and whitespace checks passed; earlier unaffected
+trait/origin and application/library evidence is reused.

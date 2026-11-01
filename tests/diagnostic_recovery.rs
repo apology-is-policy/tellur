@@ -189,6 +189,149 @@ fn codes(source: &str, expected: &[&str]) {
 }
 
 #[test]
+fn named_boundary_leaf_errors_recover_with_dependent_supervisors_suppressed() {
+    codes(
+        r#"boundary request(string context) retains context {
+            u32 first=true; emit(first); string second=7; terminate;
+        } contingency(string reason) {terminate;}
+        control caller() exits done {supervise request("test");u32 hidden=false;exit done;}
+        control independent() exits done {bool third=8;exit done;}"#,
+        &["E_TYPE", "E_TYPE", "E_TYPE"],
+    );
+    // A failed handler also suppresses its dependent work body and supervisor.
+    codes(
+        r#"boundary request(string context) retains context {
+            u32 hidden=true; terminate;
+        } contingency(string reason) {
+            u32 first=true; emit(first); string second=7; terminate;
+        }
+        control caller() exits done {supervise request("test");u32 hidden=false;exit done;}
+        control independent() exits done {bool third=8;exit done;}"#,
+        &["E_TYPE", "E_TYPE", "E_TYPE"],
+    );
+}
+
+#[test]
+fn named_boundary_recovery_preserves_disjoint_paths_scopes_and_real_ownership_errors() {
+    for body in [
+        "delta flag {true=>yes,false=>no}[yes]: {u32 first=true;string second=7;terminate;}[no]:bool third=8;terminate;",
+        "delta flag {true=>yes,false=>no}[yes] over &: {u32 first=true;string second=7;}[no]:bool third=8;[entry]:terminate;",
+    ] {
+        codes(
+            &format!(
+                "boundary request(bool flag) {{{body}}} contingency(string reason) {{terminate;}}"
+            ),
+            &["E_TYPE", "E_TYPE", "E_TYPE"],
+        );
+    }
+    let batch = errors(
+        r#"boundary request(string context) retains context {
+            string owner="before"; auto moved=move owner;
+            u32 first=true; emit(borrow owner); string second=7; terminate;
+        } contingency(string reason) {terminate;}"#,
+    );
+    assert_eq!(
+        batch.errors.iter().map(|e| e.code).collect::<Vec<_>>(),
+        ["E_TYPE", "E_MOVED", "E_TYPE"],
+        "{batch}"
+    );
+    assert!(batch.errors[1].witness.is_some());
+}
+
+#[test]
+fn named_boundary_fault_admission_stalls_uncertain_paths_without_leaking_call_scopes() {
+    codes(
+        r#"control danger() exits done faults {exit done;}
+        boundary request(string context,bool flag) retains context {
+            delta flag {true=>yes,false=>no}
+            [yes] over &: {drop(context);u32 first=true;danger();bool hidden=7;}
+            [no]: string second=7; terminate;
+        } contingency(string reason) {terminate;}"#,
+        &["E_TYPE", "E_TYPE"],
+    );
+    codes(
+        r#"control danger() exits done faults {exit done;}
+        boundary request(handle resource,bool flag) {
+            delta flag {true=>yes,false=>no}
+            [yes] over &: {u32 first=true;danger();bool hidden=7;}
+            [no]: string second=7; terminate;
+        } contingency(string reason) {terminate;}"#,
+        &["E_TYPE", "E_TYPE"],
+    );
+    // Fault-only invocations have no ordinary result scope, but the same barrier.
+    codes(
+        r#"control danger() faults {fault "broken";}
+        boundary request(string context) retains context {
+            drop(context);u32 first=true;danger();string hidden=7;terminate;
+        } contingency(string reason) {terminate;}"#,
+        &["E_TYPE"],
+    );
+}
+
+#[test]
+fn named_boundary_clean_fault_obligations_remain_real_barriers() {
+    for (parameter, retain, before, code) in [
+        (
+            "string context",
+            "retains context",
+            "drop(context);",
+            "E_BOUNDARY_RETAIN",
+        ),
+        ("handle resource", "", "", "E_FAULT_RESOURCE"),
+    ] {
+        codes(
+            &format!(
+                "control danger() exits done faults {{exit done;}} boundary request({parameter},bool flag) {retain} {{delta flag {{true=>yes,false=>no}}[yes]:u32 first=true;terminate;[no]:{before}danger();string hidden=7;terminate;}} contingency(string reason) {{terminate;}}"
+            ),
+            &["E_TYPE", code],
+        );
+    }
+}
+
+#[test]
+fn named_contingency_recovery_keeps_permissions_and_administrative_dispositions() {
+    codes(
+        r#"pub control ordinary() exits done {exit done;}
+        boundary request() {terminate;}
+        contingency(string reason) {u32 first=true;ordinary();string second=7;terminate;}"#,
+        &["E_TYPE", "E_CONTINGENT", "E_TYPE"],
+    );
+    for terminal in ["terminate;", "escalate;", "fault reason;"] {
+        codes(
+            &format!(
+                "boundary request() {{terminate;}} contingency(string reason) {{u32 first=true;string second=7;{terminal}bool hidden=8;}}"
+            ),
+            &["E_TYPE", "E_TYPE"],
+        );
+    }
+    // Illegal ordinary exit stays the first-error barrier when the path is clean.
+    codes(
+        "boundary request() {terminate;} contingency(string reason) {exit done;u32 hidden=true;}",
+        &["E_EXIT"],
+    );
+}
+
+#[test]
+fn named_boundary_recovery_uses_the_existing_global_diagnostic_budget() {
+    let body = (0..40)
+        .map(|i| format!("u32 bad_{i}=true;\n"))
+        .collect::<String>();
+    for source in [
+        format!(
+            "boundary request() {{{body}terminate;}} contingency(string reason) {{terminate;}}"
+        ),
+        format!(
+            "boundary request() {{terminate;}} contingency(string reason) {{{body}terminate;}}"
+        ),
+    ] {
+        let batch = errors(&source);
+        assert!(batch.limit_reached);
+        assert_eq!(batch.errors.len(), tellur::diagnostics::MAX_DIAGNOSTICS);
+        assert!(batch.errors.iter().all(|e| e.code == "E_TYPE"));
+    }
+}
+
+#[test]
 fn flat_paths_report_independent_errors_after_each_others_exits() {
     codes(
         r#"control main(bool flag) exits done {

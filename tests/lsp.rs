@@ -69,6 +69,92 @@ fn hover_at(f: &Fixture, source: &str, needle: &str) -> Value {
 }
 
 #[test]
+fn named_boundary_diagnostics_repair_handler_then_work_before_hover_returns() {
+    let mut f = Fixture::new();
+    let source = "boundary request(string context) retains context {\nu32 work_count=1;\nstring work_text=\"ready\";\nterminate;\n} contingency(string reason) {\nu32 report_count=1;\nstring report_text=\"handled\";\nterminate;\n}\ncontrol main() exits done {supervise request(\"test\");exit done;}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    assert!(
+        hover_at(&f, source, "request(\"test\")")
+            .to_string()
+            .contains("Boundary contract")
+    );
+    let broken = source
+        .replace("work_count=1", "work_count=true")
+        .replace("work_text=\"ready\"", "work_text=7")
+        .replace("report_count=1", "report_count=false")
+        .replace("report_text=\"handled\"", "report_text=8");
+    f.change(&broken, 2);
+    let diagnostics = f.diagnostics();
+    assert_eq!(diagnostics.as_array().unwrap().len(), 2, "{diagnostics}");
+    for (error, line) in diagnostics.as_array().unwrap().iter().zip([5, 6]) {
+        assert_eq!(error["code"], "E_TYPE");
+        assert_eq!(error["range"]["start"]["line"], line);
+    }
+    assert!(hover_at(&f, &broken, "request(\"test\")").is_null());
+    let work_broken = broken
+        .replace("report_count=false", "report_count=1")
+        .replace("report_text=8", "report_text=\"handled\"");
+    f.change(&work_broken, 3);
+    let diagnostics = f.diagnostics();
+    assert_eq!(diagnostics.as_array().unwrap().len(), 2, "{diagnostics}");
+    for (error, line) in diagnostics.as_array().unwrap().iter().zip([1, 2]) {
+        assert_eq!(error["code"], "E_TYPE");
+        assert_eq!(error["range"]["start"]["line"], line);
+    }
+    let partial = work_broken.replace("work_count=true", "work_count=1");
+    f.change(&partial, 4);
+    assert_eq!(f.diagnostics().as_array().unwrap().len(), 1);
+    assert!(hover_at(&f, &partial, "request(\"test\")").is_null());
+    f.change(source, 5);
+    assert_eq!(f.diagnostics(), json!([]));
+    assert!(
+        hover_at(&f, source, "request(\"test\")")
+            .to_string()
+            .contains("retains context")
+    );
+}
+
+#[test]
+fn named_boundary_diagnostics_follow_unsaved_imports_and_disjoint_paths() {
+    let mut f = Fixture::new();
+    let library = f.root.join("jobs.tellur");
+    let uri = url::Url::from_file_path(&library).unwrap().to_string();
+    let source = "pub boundary request(bool flag) {\ndelta flag {true=>yes,false=>no}\n[yes]:u32 first=1;terminate;\n[no]:string second=\"ready\";terminate;\n} contingency(string reason) {terminate;}";
+    fs::write(&library, source).unwrap();
+    let caller = "import \"jobs.tellur\" as jobs;control main() exits done {supervise jobs.request(true);exit done;}";
+    f.open(caller);
+    assert_eq!(f.diagnostics(), json!([]));
+    let broken = source
+        .replace("first=1", "first=true")
+        .replace("second=\"ready\"", "second=7");
+    f.server.notification(
+        "textDocument/didOpen",
+        &json!({"textDocument":{"uri":uri,"version":1,"text":broken}}),
+    );
+    let direct = f.server.diagnostics(&uri)["diagnostics"].clone();
+    assert_eq!(direct.as_array().unwrap().len(), 2, "{direct}");
+    for (error, line) in direct.as_array().unwrap().iter().zip([2, 3]) {
+        assert_eq!(error["code"], "E_TYPE");
+        assert_eq!(error["range"]["start"]["line"], line);
+        assert!(!error.to_string().contains("_path_m_"));
+    }
+    let propagated = f.diagnostics();
+    assert_eq!(propagated.as_array().unwrap().len(), 2, "{propagated}");
+    assert!(hover_at(&f, caller, "jobs.request(true)").is_null());
+    f.server.notification(
+        "textDocument/didClose",
+        &json!({"textDocument":{"uri":uri}}),
+    );
+    assert_eq!(f.diagnostics(), json!([]));
+    assert!(
+        hover_at(&f, caller, "jobs.request(true)")
+            .to_string()
+            .contains("pub boundary jobs.request(bool flag)")
+    );
+}
+
+#[test]
 fn boundary_call_hover_distinguishes_handled_faults_and_outcome_free_completion() {
     let mut f = Fixture::new();
     let source = include_str!("../playground/contingency.tellur");

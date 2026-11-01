@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-0.82.0-darwin-arm64.vsix` using **Extensions:
+1. Install the supplied `tellur-language-0.83.0-darwin-arm64.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -772,3 +772,13 @@ supervision produces no outcome or fault value, and that escaping contingency
 abandons the supervisor continuation. Imported aliases and unsaved declarations
 refresh normally; invalid source suppresses stale contracts. Try both supervision
 sites in `playground/contingency.tellur`.
+
+## Named boundary diagnostic recovery in 0.83
+
+Independent local errors in named boundary work and contingency bodies now appear
+together. Disjoint paths retain their own checks; dependent values and uncertain
+retained-owner/fault-resource checks stay suppressed. A failed handler suppresses
+its dependent work and supervisors until repaired. The 32-error budget is shared.
+Try two invalid local initializers in `playground/contingency.tellur`; repairs clear
+errors independently, and hover returns only after the complete source checks.
+Lexical fault boundaries and inline adapters remain conservative recovery barriers.

@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.82.0** implements the v0.1 checked core and the current language
+Compiler release **0.83.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -26,6 +26,10 @@ Release 0.80 adds concrete trait-call contracts, preserving the trait's names an
 origins while resolving associated types. Unsaved declarations refresh the contract;
 abstract generic calls retain selected-history feedback. Try `reader<text_source>.read`
 in [traits.tellur](playground/traits.tellur).
+
+Release 0.83 extends [diagnostic recovery](docs/reference/diagnostics-and-limits.md#named-boundary-body-recovery)
+to independent errors in named boundary work and contingency bodies. Retained-owner
+checks stay conservative, and failed handlers suppress their dependent work and supervisors.
 
 Release 0.82 adds named boundary contracts at `supervise` calls: owned inputs,
 retained parameters and permission for faults to escape contingency. Hover makes

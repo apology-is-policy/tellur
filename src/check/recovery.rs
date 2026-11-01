@@ -179,10 +179,17 @@ impl Checker<'_> {
             && self.recovery.barriers == 0
             && self.boundaries.is_empty()
             && self.handler.is_none()
-            && self.result.boundary.is_none()
-            && !self.result.contingency
-            && (leaf(statement) || terminal(statement))
-            && !matches!(error.code, "E_FAULT_RESOURCE" | "E_TERMINATED" | "E_EMPTY")
+            // Named work and contingency are independently replayed bodies.
+            // Their administrative terminals stay barriers; lexical isolation
+            // above still needs a separate scope/state restoration policy.
+            && (leaf(statement)
+                || (self.result.boundary.is_none()
+                    && !self.result.contingency
+                    && terminal(statement)))
+            && !matches!(
+                error.code,
+                "E_FAULT_RESOURCE" | "E_BOUNDARY_RETAIN" | "E_TERMINATED" | "E_EMPTY"
+            )
         {
             self.recovery.candidate = Some(span);
         }

@@ -2191,10 +2191,12 @@ impl Checker<'_> {
         self.expression_guard = previous;
         self.recovery.barriers -= barrier;
         if let Err(error) = result {
-            if error.code == "E_FAULT_RESOURCE"
+            if matches!(error.code, "E_FAULT_RESOURCE" | "E_BOUNDARY_RETAIN")
                 && recovery::leaf(statement)
                 && self.recovery_uncertain(domain)
             {
+                // Fault admission checks all live/retained owners, beyond the
+                // statement's explicit inputs. Do not diagnose uncertain state.
                 self.recovery_block(domain);
                 return Ok(());
             }
@@ -2348,11 +2350,17 @@ impl Checker<'_> {
                     body: vec![],
                 };
                 self.scopes.push(Scope::default());
-                self.decision(guard, domain, &None, operand, &[pattern], span, None, None)?;
-                if let Some((Guard::Atom(id), _)) = self.path(&atom) {
+                let result =
+                    self.decision(guard, domain, &None, operand, &[pattern], span, None, None);
+                if result.is_ok()
+                    && let Some((Guard::Atom(id), _)) = self.path(&atom)
+                {
                     self.result.atoms.insert(id, sig.outcomes[0].name.clone());
                 }
+                // A diagnostic replay can stall a failed call and continue on a
+                // disjoint path. Its temporary scope must not leak into that path.
                 self.scopes.pop();
+                result?;
             }
             Statement::Supervise(operand) => {
                 self.contingent_call(false, span)?;

@@ -6,7 +6,8 @@ The compiler reports diagnostic codes, source locations and explanations. Since
 0.52, checking collects errors from independent control bodies; 0.73 also recovers
 across independent straight-line statements within a body. Release 0.74 extends
 recovery across disjoint paths and nested scopes; 0.77 collects independent
-public-shape and signature errors, and 0.78 adds named completion bindings. Fixing an error
+public-shape and signature errors, and 0.78 adds named completion bindings. Release
+0.83 extends statement recovery to named boundary work and contingency bodies. Fixing an error
 may expose another within that body or a dependent control. The precise
 message wording may improve between releases. The negative examples here are checked
 for their stated code, so they also serve as small regression cases.
@@ -317,13 +318,51 @@ an error by silently narrowing the authored selector to its remaining paths.
 Independent selectors can still be checked. A missing selector after an omission
 stops its containing body, since the omitted decision may have introduced that name.
 
-Fault boundaries and their contingencies, inline outcome adapters, decision-header
+Lexical fault boundaries and their contingencies, inline outcome adapters, decision-header
 errors, and scope/loop setup or completion errors retain conservative first-error
 limits. A whole-state fault-resource check stalls an uncertain history. Final
 resource checks are suppressed for uncertain scope domains, while clean disjoint
 paths retain their normal checks. No recovery result becomes executable or supplies
 partial inferred hover. The same 32-error budget covers all controls and paths.
 Try [path_diagnostics.tellur](../../playground/path_diagnostics.tellur).
+
+## Named boundary body recovery
+
+Since 0.83, independent declaration, assignment, `drop`, `emit` and call-statement
+errors can be collected inside a named `boundary` or its attached `contingency`.
+Disjoint paths and ordinary nested scopes use the same uncertainty rules above.
+For example, both initializers below are diagnosed:
+
+<!-- tellur:reject E_TYPE -->
+```tellur
+boundary request() {
+    u32 count = true;
+    string description = 7;
+    terminate;
+}
+contingency(string reason) {
+    terminate;
+}
+```
+
+Work and contingency are checked as separate bodies with fresh replay state. A
+failed contingency suppresses its dependent work body; a failed boundary suppresses
+its supervisors. Repairing the handler can therefore expose errors in the work.
+The 32-error budget remains shared, and no failed check publishes partial contracts,
+inferred hover or executable code.
+
+A potentially faulting call checks every retained and live must-complete owner,
+including owners absent from its written arguments. A retention or fault-resource
+failure on an uncertain history stalls that history instead of producing another
+diagnostic. The same failures on a clean disjoint history are still reported and
+stop that body's replay. Temporary call scopes are retired even when such a check
+stalls a path. Administrative dispositions, new decisions, supervision, lexical fault
+boundaries and inline adapters remain barriers after an omission. Lexical boundary
+bodies and handlers still have their earlier first-error limits.
+
+Try introducing two independent bad local initializers in the work or contingency
+of [contingency.tellur](../../playground/contingency.tellur), then repairing them one
+at a time. The supervision hover returns only after the complete source checks.
 
 ## Type context: E_TYPE and E_INFER
 
