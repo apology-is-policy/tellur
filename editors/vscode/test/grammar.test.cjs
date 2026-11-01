@@ -298,3 +298,9 @@ test('lexical recovery keywords and ambient fault have distinct scopes', () => {
   has(ts,'@fault','variable.language.fault.tellur');
   assert.ok(!tokens('// @fault\n"@fault"').some(t=>t.scopes.includes('variable.language.fault.tellur')));
 });
+test('struct constructors distinguish declarations, calls and self fields', () => {
+  const ts = tokens('struct message {\n string text;\n @contingent pub constructor(string text) { self.text = move text; }\n}\nauto value = message("hello");');
+  has(ts, 'constructor', 'keyword.declaration.tellur');
+  has(ts, '@contingent', 'storage.modifier.annotation.tellur');
+  has(ts, 'move', 'keyword.operator.tellur');
+});

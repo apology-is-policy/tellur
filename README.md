@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.66.0** implements the v0.1 checked core and the current language
+Compiler release **0.67.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -16,6 +16,11 @@ a reference interpreter, graph expansion, native compiler, language server, and
 VS Code build/run commands. The [revision plan](docs/language-revision.md) separates
 delivered features from the remaining reference, slice, outcome-expression and async work. The language is still
 fluid; this is an experimental implementation, not a production compiler.
+
+Release 0.67 adds [declared struct constructors](docs/reference/construction.md):
+checked field initialization, nested owning calls, generic forwarding and partial-fault
+cleanup. Public fields still permit raw brace construction. VS Code shows constructors
+in the outline and inferred types on `auto`. Try [construction.tellur](playground/construction.tellur).
 
 Release 0.66 adds [lexical fault boundaries and supervised recovery](docs/reference/contingency.md):
 attached contingency blocks, retained owners, immutable `@fault`, preserved loop

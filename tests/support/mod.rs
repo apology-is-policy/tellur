@@ -4,6 +4,7 @@ pub fn scenario_executable(program: &tellur::CheckedProgram) -> tellur::CheckedP
     let mut configured = program.clone();
     for region in program.regions().filter(|r| {
         r.boundary.is_none()
+            && !r.is_constructor()
             && !r.contingency
             && !r.parameters.iter().any(|p| p.ty.starts_with('&'))
     }) {

@@ -14,6 +14,7 @@ in the roadmap have not yet added execution semantics to these terms.
 | Capability | A compiler-derived permission such as `copy`, `clone` or `drop`. These sealed capabilities currently differ from user-defined traits. |
 | Carrier | A record that stores references to other owners. Its own storage and the externally borrowed storage are different lifetime sources. |
 | Completion | One invocation finishing through an outcome label with its payload. A failure label is still a normal completion. |
+| Constructor | A struct initialization procedure, invoked as `type(arguments)`, that produces a complete owning value after checking every field. Variant tags and raw brace forms also construct values but do not execute this procedure. |
 | Control | A callable unit with typed parameters, a closed exit contract and a checked body. It was called a region in the original syntax. |
 | Copy | Permission to duplicate a value implicitly on ordinary use. Shared references are Copy; exclusive references are not. |
 | Delta | An exhaustive decision over a control completion, boolean or closed tagged value. It produces path facts, directly exits selected histories, or produces an inline adapted outcome. |
@@ -42,6 +43,7 @@ in the roadmap have not yet added execution semantics to these terms.
 | Payload | The ordered values carried by an alternative. Payloads may be empty, copied, moved, borrowed or resource-bearing according to their types. |
 | Place | Addressable storage, such as a local binding, record field or dereferenced reference. Borrowing requires a suitable place. |
 | Protocol model | A finite graph abstracting observable operation/completion sequences. It forgets values and is not a complete program semantics. |
+| Raw construction | Direct assembly with `type { ... }`. Field visibility controls its availability independently of declared constructors. |
 | Reborrow | A child reference created under an existing reference's authority. Its liveness can temporarily restrict use of that parent. |
 | Resource | A must-complete value whose obligation must be consumed or transferred on every relevant completion/restart. |
 | Retainer | A live value/reference that preserves a dependency on an owner. Copies can introduce independent retainers. |

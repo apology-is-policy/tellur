@@ -457,6 +457,7 @@ impl CheckedProgram {
         for r in self.regions() {
             let id = g.names[r.name.as_str()];
             if r.boundary.is_some()
+                || r.is_constructor()
                 || r.contingency
                 || r.parameters.iter().any(|p| p.ty.starts_with('&'))
             {

@@ -29,7 +29,7 @@ Avoid keyword names in user declarations. The main modern vocabulary is:
 
 | Purpose | Words |
 | --- | --- |
-| Declarations and modules | `control`, `boundary`, `contingency`, `retains`, `struct`, `variant`, `outcome`, `trait`, `implement`, `type`, `import`, `as`, `pub` |
+| Declarations and modules | `control`, `boundary`, `contingency`, `retains`, `struct`, `constructor`, `variant`, `outcome`, `trait`, `implement`, `type`, `import`, `as`, `pub` |
 | Completion and control flow | `exits`, `exit`, `delta`, `forward`, `capture`, `path`, `over`, `loop`, `again`, `fault`, `faults`, `supervise`, `terminate`, `escalate` |
 | Types and access | `auto`, `mutable`, `ref`, `borrow`, `deref`, `from`, `self` |
 | Capabilities and operations | `copy`, `clone`, `drop`, `emit`, `@contingent` |

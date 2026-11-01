@@ -1,0 +1,45 @@
+// Declared constructors initialize every field on each completing path.
+// Public fields still permit raw brace construction.
+struct greeting {
+    pub string text;
+
+    constructor(string name, bool formal) {
+        delta formal {
+            true => formal,
+            false => casual
+        }
+
+        [formal]: self.text = concat("Good day, ", move name);
+        [casual]: self.text = concat("Hello, ", move name);
+    }
+}
+
+struct letter {
+    greeting salutation;
+    string body;
+
+    constructor(greeting salutation, string body) {
+        self.salutation = move salutation;
+        self.body = move body;
+    }
+}
+
+control display(ref letter value) exits done {
+    emit(borrow value.salutation.text);
+    emit(borrow value.body);
+    exit done;
+}
+
+outcome program_result {
+    @exit 0 done
+}
+
+control main() exits program_result {
+    auto note = letter(greeting("Ada", false), "Built from nested owning values.");
+    display(borrow note);
+    display(borrow letter(greeting("Grace", true), "A temporary lives through this call."));
+
+    greeting custom = greeting { text: "Welcome, Tellur!" };
+    emit(move custom.text);
+    exit done;
+}

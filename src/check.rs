@@ -35,6 +35,7 @@ fn unique_payload_names(fields: &mut [manifest::Field]) {
     }
 }
 mod collection_loans;
+mod construction;
 mod contracts;
 mod contributors;
 mod lexical;
@@ -173,6 +174,8 @@ struct LoopContext {
     scope: usize,
 }
 struct Checker<'a> {
+    expression_guard: Guard,
+    constructing: bool,
     boundaries: Vec<lexical::BoundaryContext>,
     handler: Option<lexical::HandlerContext>,
     contingent_contract: Option<bool>,
@@ -274,7 +277,14 @@ impl Checker<'_> {
         id
     }
     fn error(&self, code: &'static str, span: Span, message: impl Into<String>) -> Diagnostic {
-        Diagnostic::new(code, span, message)
+        Diagnostic::new(
+            code,
+            span,
+            message
+                .into()
+                .replace("$field_", "self.")
+                .replace("$constructor", ".constructor"),
+        )
     }
     fn witness_paths(&self, f: Formula) -> Vec<String> {
         let assignment = self
@@ -360,7 +370,11 @@ impl Checker<'_> {
                 format!("`{name}` is already a reference binding"),
             ));
         }
-        let scope = self.scopes.len() - 1;
+        let scope = if name.starts_with("$field_") {
+            0
+        } else {
+            self.scopes.len() - 1
+        };
         let binding = if let Some((i, mut binding)) = self.find_value(name) {
             if i != scope {
                 return Err(self.error(
@@ -1319,6 +1333,9 @@ impl Checker<'_> {
             },
             S::Borrow(_) | S::BorrowMutable(_) => Err(self.error("E_LIFETIME", span, "a reference must be bound locally, passed to a borrowed parameter, or returned through a reference exit")),
             S::Call(name, args) => {
+                if crate::constructors::is_control(name) {
+                    return self.constructor_value(expr, domain, span);
+                }
                 if crate::collections::is_length(name) {
                     if args.len()!=1 { return Err(self.error("E_ARITY",span,"length expects one borrowed collection")); }
                     let ty=self.collection_type(&args[0],span)?;
@@ -1396,7 +1413,13 @@ impl Checker<'_> {
                 Ok((Expr::Not(Box::new(e)), "Bool".into()))
             }
             S::Binary(op, left, right) => {
-                let (a, ta) = self.expr(left, domain, false, span)?;
+                if crate::constructors::has_call(right) && ["&&", "||"].contains(&op.as_str()) {
+                    return self.effectful_boolean(op, left, right, domain, span);
+                }
+                let (mut a, ta) = self.expr(left, domain, false, span)?;
+                if crate::constructors::has_call(right) {
+                    a = self.freeze_value(a, &ta, domain, span)?;
+                }
                 let (b, tb) = self.expr(right, domain, false, span)?;
                 self.expect_type(&tb, &ta, span).map_err(|e| right.locate(e, span))?;
                 if ["&&", "||"].contains(&op.as_str()) {
@@ -1655,6 +1678,16 @@ impl Checker<'_> {
             ));
         }
         self.argument_aliases(args, parameters, domain, span)?;
+        let staged = self.stage_values(
+            args,
+            &parameters
+                .iter()
+                .map(|p| Some(p.ty.clone()))
+                .collect::<Vec<_>>(),
+            domain,
+            span,
+        )?;
+        let args = staged.as_deref().unwrap_or(args);
         let first_argument_loan = *self.next;
         let result = args.iter()
             .zip(parameters)
@@ -2086,7 +2119,10 @@ impl Checker<'_> {
         statement: &Statement,
         span: Span,
     ) -> Result<()> {
-        if let Err(error) = self.statement_inner(guard.clone(), domain, statement, span) {
+        let previous = std::mem::replace(&mut self.expression_guard, guard.clone());
+        let result = self.statement_inner(guard.clone(), domain, statement, span);
+        self.expression_guard = previous;
+        if let Err(error) = result {
             return Err(if matches!(statement, Statement::Exit(..)) {
                 self.with_path_contributors(error, &guard, domain)
             } else {
@@ -2377,13 +2413,8 @@ impl Checker<'_> {
                         .map_err(|e| expression.locate(e, span))?;
                 }
                 let id = self.define(name, &ty, domain, span)?;
-                let binding = self
-                    .scopes
-                    .last_mut()
-                    .unwrap()
-                    .values
-                    .get_mut(name)
-                    .unwrap();
+                let scope = self.find_value(name).unwrap().0;
+                let binding = self.scopes[scope].values.get_mut(name).unwrap();
                 if binding.defined != domain && binding.mutable != *mutable {
                     return Err(self.error(
                         "E_MUTABILITY",
@@ -2485,6 +2516,16 @@ impl Checker<'_> {
                 self.emit(guard, Action::Fault(value), span);
             }
             Statement::Exit(name, args) => {
+                let expected = self
+                    .result
+                    .exits
+                    .iter()
+                    .find(|o| o.name == *name)
+                    .filter(|o| o.fields.len() == args.len())
+                    .map(|o| o.fields.iter().map(|f| Some(f.ty.clone())).collect())
+                    .unwrap_or_else(|| vec![None; args.len()]);
+                let staged = self.stage_values(args, &expected, domain, span)?;
+                let args = staged.as_ref().unwrap_or(args);
                 if self.infer_exits || self.infer_payloads.contains(name) {
                     if self.infer_payloads.contains(name) && args.is_empty() {
                         return Err(self.error("E_INFER", span, format!("exit `{name}...` requires a nonempty payload; remove ... for a payload-free exit")));
@@ -2903,8 +2944,12 @@ impl Checker<'_> {
             | syntax::OutcomeExpr::Delta(s, ..) => *s,
         };
         self.record_selection(at, syntax::SelectionKind::Outcome, &guard, domain);
-        self.lower_outcome_inner(e, guard.clone(), domain, sink)
-            .map_err(|error| self.with_path_contributors(error, &guard, domain))
+        let previous = std::mem::replace(&mut self.expression_guard, guard.clone());
+        let result = self
+            .lower_outcome_inner(e, guard.clone(), domain, sink)
+            .map_err(|error| self.with_path_contributors(error, &guard, domain));
+        self.expression_guard = previous;
+        result
     }
     fn lower_outcome_inner(
         &mut self,
@@ -2949,6 +2994,12 @@ impl Checker<'_> {
                         format!("inconsistent payload arity for outcome `{name}`"),
                     ));
                 }
+                let annotations = expected
+                    .as_ref()
+                    .map(|fs| fs.iter().map(|f| Some(f.ty.clone())).collect())
+                    .unwrap_or_else(|| vec![None; args.len()]);
+                let staged = self.stage_values(args, &annotations, domain, *span)?;
+                let args = staged.as_ref().unwrap_or(args);
                 let mut fields = vec![];
                 let mut values = vec![];
                 for (index, arg) in args.iter().enumerate() {
@@ -3039,14 +3090,15 @@ impl Checker<'_> {
         }
         let mut temporary = BTreeSet::new();
         for (index, (arg, parameter)) in args.iter().zip(&sig.parameters).enumerate() {
-            if manifest::reference_inner(&parameter.ty).is_some()
+            if (manifest::reference_inner(&parameter.ty).is_some()
+                || self.argument_mode(parameter) == Mode::Borrow)
                 && let S::Borrow(value) | S::BorrowMutable(value) = &arg.kind
                 && self.resolve_place(value, span)?.is_none()
             {
                 temporary.insert(index);
             }
         }
-        if temporary.is_empty() {
+        if temporary.is_empty() && !args.iter().any(crate::constructors::has_call) {
             return Ok(None);
         }
         self.argument_aliases(args, &sig.parameters, domain, span)?;
@@ -3054,7 +3106,8 @@ impl Checker<'_> {
         let mut release = Vec::new();
         for (index, (arg, parameter)) in args.iter().zip(&sig.parameters).enumerate() {
             let (value, ty, mutable, borrowed) = if temporary.contains(&index) {
-                let (mutable, ty) = manifest::reference_inner(&parameter.ty).unwrap();
+                let (mutable, ty) = manifest::reference_inner(&parameter.ty)
+                    .unwrap_or((false, parameter.ty.as_str()));
                 if self.manifest.linear(ty) || self.manifest.contains_references(ty) {
                     return Err(self.error("E_TEMPORARY", arg.span(span), "bind resource-containing or reference-bearing temporary owners before borrowing them"));
                 }
@@ -3127,6 +3180,16 @@ impl Checker<'_> {
         inline: Option<&[syntax::InlineArm]>,
         mut sink: Option<&mut OutcomeBinding>,
     ) -> Result<()> {
+        if let syntax::ExprKind::Call(name, _) = &operand.kind
+            && crate::constructors::is_control(name)
+            && !self.constructing
+        {
+            return Err(self.error(
+                "E_CONSTRUCTOR",
+                span,
+                "a constructor produces a value; bind or pass type(arguments) as a value",
+            ));
+        }
         let temporaries = self.temporary_arguments(operand, &guard, domain, span)?;
         let operand = temporaries.as_ref().map_or(operand, |(call, _)| call);
         if let Some(site) = site
@@ -4015,6 +4078,8 @@ impl Checker<'_> {
                             return Err(self.error("E_NAME", *span, "duplicate loop parameter"));
                         }
                     }
+                    let previous_guard =
+                        std::mem::replace(&mut self.expression_guard, outer.clone());
                     let initial = self.arguments(
                         &parameters
                             .iter()
@@ -4024,6 +4089,7 @@ impl Checker<'_> {
                         domain,
                         *span,
                     )?;
+                    self.expression_guard = previous_guard;
                     // Outer linear obligations must enter through explicit loop parameters.
                     self.resources(domain, *span, None)?;
                     let old_slots: BTreeSet<_> = self.result.slots.keys().copied().collect();
@@ -4190,7 +4256,8 @@ pub fn compile(source: &str, manifest: Manifest) -> Result<CheckedProgram> {
 }
 /// Check independent control bodies, collecting a bounded diagnostic batch.
 pub fn check_source(source: &str, manifest: Manifest) -> crate::CheckResult<CheckedProgram> {
-    let unit = syntax::parse_unit(source)?;
+    let mut unit = syntax::parse_unit(source)?;
+    crate::constructors::prepare(&mut unit)?;
     if let Some(import) = unit.imports.first() {
         return Err(Diagnostic::new(
             "E_IMPORT",
@@ -4210,7 +4277,8 @@ pub(crate) fn compile_unit(
         contracts::public_shape(region)?;
     }
     let mut visibility = visibility.clone();
-    let unit = crate::traits::lower(unit, &manifest, &mut visibility)?;
+    let mut unit = crate::traits::lower(unit, &manifest, &mut visibility)?;
+    crate::constructors::rewrite_calls(&mut unit, &visibility)?;
     crate::generic_controls::compile(unit, manifest, &visibility)
 }
 pub(crate) fn compile_concrete_unit(
@@ -4566,6 +4634,8 @@ pub(crate) fn compile_concrete_unit(
                 crate::origins::result_type(&f.ty, &origin_schemas, &manifest, source.span)?;
             }
             let mut checker = Checker {
+                expression_guard: Guard::True,
+                constructing: false,
                 boundaries: vec![],
                 handler: None,
                 contingent_contract: source.contingent_contract,
@@ -4709,7 +4779,11 @@ pub(crate) fn compile_concrete_unit(
                 regions.insert(source.name.clone(), checker.result);
                 return Ok(());
             }
+            let construction = checker.initialize_constructor(source)?;
             checker.items(&source.body, Guard::True, TRUE)?;
+            if let Some((ty, fields)) = construction {
+                checker.finish_constructor(&ty, &fields, source.end)?;
+            }
             let live = checker.bdd.not(checker.dead);
             if live != FALSE {
                 return Err(checker.uncovered(

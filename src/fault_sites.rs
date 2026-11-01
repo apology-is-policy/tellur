@@ -23,6 +23,9 @@ impl CheckedProgram {
                     .join(", ")
             );
         }
+        if let Some(ty) = name.strip_suffix("$constructor") {
+            return format!("{}.constructor", self.runtime_name(ty));
+        }
         self.source_files()
             .iter()
             .find_map(|s| s.names.get(name))
@@ -53,7 +56,7 @@ impl CheckedProgram {
                                 }
                             }
                         }
-                        text
+                        text.replace("$constructor", ".constructor")
                     })
                     .collect();
                 out.insert(

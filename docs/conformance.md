@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.66.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.67.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -2167,7 +2167,7 @@ edits for a document already in canonical form.
 All **68 maintained sources** check. The manual validates **68 accepted examples**,
 **22 expected diagnostics**, **15 context fragments** and **229 local links**.
 Compiler/LSP binaries and the packaged and installed extension are synchronized at
-0.66.0. This historical checkpoint preceded the lexical supervision work delivered below; constructor declarations remain queued.
+0.66.0. This historical checkpoint preceded the lexical supervision work delivered below; constructor declarations arrived in 0.67 below.
 
 
 ## Lexical isolation and recovery (0.66)
@@ -2193,3 +2193,33 @@ Manual validation covers 70 accepted examples, 24 expected diagnostics, 15 expli
 identified context fragments and 232 local links. Local compiler/LSP binaries and
 VS Code package/install payloads are verified at 0.66.0. The runtime remains
 synchronous, with owned captures and the documented supervisor-access restrictions.
+
+## 0.67 constructor procedures
+
+Structs can declare one constructor with path-sensitive, exactly-once field
+initialization and implicit normal completion. Constructor expressions preserve
+written argument/field order and boolean short-circuiting; pending arguments and
+initialized fields remain owned if a later call faults. Generic bodies forward
+unconstrained values without assuming cloning. Public constructor contracts are
+separate from public-field raw constructibility, following the author's choice.
+
+Tests cover missing/read-before-init/repeated initialization, disjoint paths,
+private/public and imported generic construction, temporary borrows, nested calls,
+selected histories, explicit fault/contingency permissions, native/expanded parity,
+and actual Rust retained owners released once after partial construction failure.
+The import loader keeps parsing off its recursive traversal stack, preserving the
+256-file budget diagnostic. Constructor-local isolation and reference-bearing
+results remain explicitly gated; direct destination lowering remains queued.
+
+The maintained reference, `playground/construction.tellur`, formatter, public
+snapshots, constructor outline/hover, inferred `auto` hovers and unsaved diagnostics
+accompany the compiler change. The VS Code integration harness exercises these
+features through native build/run. The settings server constructs owned request
+context before isolation; live HTTP checks retain the 500-then-next-request behavior.
+
+Final checkpoint validation: 974 Rust tests across 69 nonempty targets (the full
+regression suite plus final focused runs), 41 Node editor tests, and an isolated
+VS Code session covering constructor/auto hovers, outline, unsaved diagnostics,
+formatting and native build/run. Live settings HTTP tests include source-fault 500
+handling followed by a successful request. Release compiler/server binaries,
+packaged VSIX and installed extension payloads were verified at 0.67.0.

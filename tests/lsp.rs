@@ -2650,3 +2650,49 @@ fn lexical_recovery_and_fault_report_hovers_and_diagnostics() {
             .contains("Executable entry only")
     );
 }
+
+#[test]
+fn constructor_outline_hover_and_inferred_locals_follow_unsaved_edits() {
+    let mut f = Fixture::new();
+    let source = "struct message {\n string text;\n constructor(string input) {\n  auto value=move input;\n  self.text=move value;\n }\n}\ncontrol main() exits done {\n auto text=message(\"hello\");\n emit(move text.text);exit done;\n}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let symbols = f.server.symbols(&f.uri);
+    let record = symbols
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["name"] == "message")
+        .unwrap();
+    assert_eq!(record["children"][0]["name"], "constructor");
+    assert_eq!(record["children"][0]["kind"], 9);
+    let hover = f.server.hover(&f.uri, 2, 3).to_string();
+    assert!(hover.contains("constructor(string input)"), "{hover}");
+    assert!(hover.contains("Raw brace construction"), "{hover}");
+    let hover = f.server.hover(&f.uri, 3, 3).to_string();
+    assert!(hover.contains("string value"), "{hover}");
+    let hover = f.server.hover(&f.uri, 8, 2).to_string();
+    assert!(hover.contains("message text"), "{hover}");
+    f.change(
+        &source.replace("  self.text=move value;", "  emit(borrow self.text);"),
+        2,
+    );
+    assert!(
+        f.diagnostics()
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|d| d["code"] == "E_UNAVAILABLE")
+    );
+    f.change(source, 3);
+    assert_eq!(f.diagnostics(), json!([]));
+    let formatted = tellur::format::source(source, Default::default()).unwrap();
+    assert!(
+        formatted.contains("constructor(string input) {"),
+        "{formatted}"
+    );
+    assert_eq!(
+        formatted,
+        tellur::format::source(&formatted, Default::default()).unwrap()
+    );
+}

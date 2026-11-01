@@ -923,3 +923,39 @@ pub control run() exits unavailable {forward adapt();}"#,
     }
     assert!(!e.to_string().contains("_path_m_"), "{e}");
 }
+
+#[test]
+fn constructors_respect_visibility_without_sealing_public_fields() {
+    let f = Fixture::new();
+    f.write(
+        "library.tellur",
+        "pub struct message {pub string text;pub constructor(string text){self.text=move text;}}",
+    );
+    f.write("main.tellur", "import \"library.tellur\" as lib;control main() exits done {auto first=lib.message(\"constructed\");auto second=lib.message {text:\"raw\"};emit(move first.text);emit(move second.text);exit done;}");
+    same(&f.check().unwrap());
+    f.write(
+        "library.tellur",
+        "pub struct message {pub string text;constructor(string text){self.text=move text;}}",
+    );
+    f.reject("E_PRIVATE");
+    f.write("main.tellur", "import \"library.tellur\" as lib;control main() exits done {auto value=lib.message {text:\"raw\"};emit(move value.text);exit done;}");
+    f.check().unwrap();
+    f.write(
+        "library.tellur",
+        "pub struct message {string text;pub constructor(string text){self.text=move text;}}",
+    );
+    f.reject("E_VISIBILITY");
+    f.write("main.tellur", "import \"library.tellur\" as lib;control main() exits done {auto value=lib.message(\"constructed\");drop(value);exit done;}");
+    f.check().unwrap();
+    f.write("library.tellur", "pub struct message {string text;pub constructor(string text){emit(borrow self.text);self.text=move text;}}");
+    let e = f.reject("E_UNAVAILABLE");
+    assert!(e.diagnostic.message.contains("self.text"), "{e}");
+}
+
+#[test]
+fn imported_generic_constructor_forwards_owned_private_representation() {
+    let f = Fixture::new();
+    f.write("library.tellur","pub struct box<t> {t value;pub constructor(t value){self.value=move value;}}pub control show(box<string> value) exits done {emit(move value.value);exit done;}");
+    f.write("main.tellur","import \"library.tellur\" as lib;control main() exits done {lib.show(lib.box<string>(\"generic\"));exit done;}");
+    same(&f.check().unwrap());
+}

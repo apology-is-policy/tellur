@@ -326,6 +326,13 @@ impl Checker<'_> {
         span: Span,
         moving: bool,
     ) -> Result<StoredValue> {
+        if crate::constructors::has_call(e) && self.manifest.contains_references(expected) {
+            return Err(self.error(
+                "E_CONSTRUCTOR",
+                e.span(span),
+                "bind constructed owning values before assembling reference-bearing storage",
+            ));
+        }
         e.checked(span, |span| {
         if let syntax::ExprKind::Move(value) = &e.kind {
             if !moving {

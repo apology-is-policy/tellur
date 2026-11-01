@@ -356,3 +356,12 @@ fn runnable_example_preserves_native_behavior_at_o0_o2_before_and_after_expansio
     }
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn extracts_a_tail_that_constructs_values_without_exposing_internal_completions() {
+    let source = "struct message {string text;constructor(string text){self.text=move text;}}\ncontrol main() exits done {\n string text=\"extracted\";\n auto value=message(move text);\n emit(move value.text);exit done;\n}";
+    let result = extract(source, "auto value=message");
+    assert!(!result.source.contains("$constructed"));
+    assert!(!result.source.contains("$constructor"));
+    same(source, &result, vec![]);
+}

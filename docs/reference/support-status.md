@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.66.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.67.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -28,6 +28,7 @@ The linked regression suites give more detailed acceptance and rejection evidenc
 
 | Area | Current support | Boundary / next work | Evidence |
 | --- | --- | --- | --- |
+| Declared constructors | One private/public constructor, path-sensitive field initialization, owning/generic nested calls, fault cleanup, editor support | Reference-bearing results, constructor-local isolation, overloads and physical destination lowering remain queued | [Construction](construction.md), [tests](../../tests/constructors.rs) |
 | Owning values | Copy/move/explicit clone/disposal, assignment, partial record moves, explicit move expressions and nested owning construction | No user-defined copy/clone/drop behavior or guaranteed physical copy elision | [Owning expressions](ownership-expressions.md), [value tests](../../tests/values.rs), [capabilities](../../tests/capabilities.rs) |
 | Direct references | Shared/exclusive calls and returns, reborrowing, last use, field separation, call-duration ordinary temporary borrows | No escaping temporary borrows, reference rebinding or references to references | [Reference tests](../../tests/references.rs), [owning expression tests](../../tests/explicit_moves.rs) |
 | Local reference fields | Nested structs, extraction, independent retainers and field last use | Assignment/rebinding of reference-bearing storage remains gated | [Stored record tests](../../tests/stored_records.rs) |
@@ -99,6 +100,6 @@ Lexical boundaries, retained owning captures, structured immutable `@fault`,
 supervised recovery preserving loop state, and entry-only process termination are
 implemented in both engines and expansion certificates. The settings HTTP server
 uses this form. Reference-bearing captures, direct protected-work access to
-supervisor state, nested tail loops, asynchronous boundaries and constructor
-bodies remain unsupported. Protocol graph analysis and source extraction reject
+supervisor state, nested tail loops and asynchronous boundaries remain unsupported.
+Constructor bodies are supported in 0.67; isolation inside them remains gated. Protocol graph analysis and source extraction reject
 lexical isolation rather than erasing its administrative edges.

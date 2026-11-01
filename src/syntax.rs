@@ -231,6 +231,7 @@ pub enum DataBody {
 }
 #[derive(Clone, Debug)]
 pub struct DataDeclaration {
+    pub constructor: Option<Region>,
     pub origin_parameters: Vec<String>,
     pub type_parameters: Vec<String>,
     pub public: bool,
@@ -1873,10 +1874,70 @@ pub(crate) fn parse_with_layout(source: &str) -> Result<(Unit, Vec<Token>, crate
             p.layout.blocks.insert(p.pos);
             p.need("{")?;
             let mut public_fields = std::collections::BTreeSet::new();
+            let mut constructor = None;
             let body = if record {
                 let mut fields = vec![];
                 while !p.at("}") {
+                    let at = p.here();
+                    let contingent = if p.eat("@") {
+                        p.need("contingent")?;
+                        true
+                    } else {
+                        false
+                    };
                     let visible = p.eat("pub");
+                    let constructor_name_span = p.here();
+                    if p.eat("constructor") {
+                        if constructor.is_some() {
+                            return Err(p.error("a struct may declare only one constructor"));
+                        }
+                        let parameters = p.fields()?;
+                        let faults = if p.eat("faults") {
+                            Some(true)
+                        } else if visible {
+                            Some(false)
+                        } else {
+                            None
+                        };
+                        let body = p.body()?;
+                        constructor = Some(Region {
+                            contingent_contract: if contingent {
+                                Some(true)
+                            } else if visible {
+                                Some(false)
+                            } else {
+                                None
+                            },
+                            boundary: None,
+                            contingency: false,
+                            return_origins: Default::default(),
+                            abstract_signature: false,
+                            type_parameters: type_parameters.clone(),
+                            type_bounds: type_parameters
+                                .iter()
+                                .map(|p| (p.clone(), vec![]))
+                                .collect(),
+                            type_bindings: Default::default(),
+                            public: visible,
+                            fault_contract: faults,
+                            span: at,
+                            name_span: constructor_name_span,
+                            end: p.tokens[p.pos - 1].span,
+                            name: crate::constructors::control_name(&name),
+                            parameters,
+                            exits: vec![],
+                            infer_exits: false,
+                            infer_payloads: Default::default(),
+                            exit_contract: None,
+                            exit_origins: vec![],
+                            modern: true,
+                            body,
+                        });
+                        continue;
+                    }
+                    if contingent {
+                        return Err(p.error("@contingent annotates a constructor, not a field"));
+                    }
                     let mut field = p.field()?;
                     if p.eat("<-") {
                         if !field.origins.is_empty()
@@ -1913,6 +1974,7 @@ pub(crate) fn parse_with_layout(source: &str) -> Result<(Unit, Vec<Token>, crate
             };
             p.need("}")?;
             data.push(DataDeclaration {
+                constructor,
                 origin_parameters,
                 type_parameters,
                 public,

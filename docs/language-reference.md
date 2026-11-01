@@ -1,8 +1,8 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.66.0 -->
+<!-- tellur-reference-version: 0.67.0 -->
 
-This manual describes **compiler 0.66.0**, including the current ownership model,
+This manual describes **compiler 0.67.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -32,6 +32,7 @@ These are static checks, not claims that every example was executed against live
 The companion chapters provide quick lookup:
 
 - [Lexical structure and precedence](reference/lexical-structure.md): names, comments, literals, operators and punctuation.
+- [Struct constructors](reference/construction.md): definite field initialization, raw construction visibility, nesting and partial-fault cleanup.
 - [Core grammar](reference/grammar.md): schematic syntax for modern source programs.
 - [Diagnostics and limits](reference/diagnostics-and-limits.md): rejected programs, repairs and implementation budgets.
 - [Feature status](reference/support-status.md): implemented boundaries and queued features.
@@ -273,6 +274,8 @@ manifest. Both support nested expression calls, and compute without scripted hos
 calls or observable primitive events. Calling them through delta is also allowed.
 Only these implemented builtin contracts can currently be marked pure; a single
 outcome or empty effects list alone does not authorize expression invocation.
+Declared [struct constructors](reference/construction.md) are a separate value-producing
+form: their bodies may perform checked operations or fault.
 
 ## Structs, variants and distinct wrappers
 
@@ -349,6 +352,14 @@ controls and individual struct fields to expose them across imports. Generic
 bounds on data parameters and recursive layouts remain unsupported. Local struct
 reference fields are supported; see [stored references](#stored-references-in-local-structs). One-field structs supply distinct wrappers without a new keyword.
 See `playground/data_types.tellur` and [the accepted type-system direction](type-system.md).
+
+### Declared constructors
+
+A struct can declare one `constructor(...) { ... }`. Calling `type(arguments)`
+executes it; `self.field = value;` initializes a field, and normal fallthrough
+requires every field to be present. Public fields still allow raw brace construction.
+See [struct constructors](reference/construction.md) for visibility, evaluation
+order, faults, generic forwarding and current reference-bearing restrictions.
 
 ## Outcomes, payloads and paths
 
@@ -2656,7 +2667,7 @@ It does not yet provide general expression or call-site type hover.
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and async tasks remain planned; they are not executable features of 0.66.0.
+and async tasks remain planned; they are not executable features of 0.67.0.
 ## Contingency and supervised boundaries
 
 The [contingency reference](reference/contingency.md) specifies `@contingent`,

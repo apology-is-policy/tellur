@@ -5,8 +5,8 @@ The next implementation sequence is the accepted
 qualified decision paths, grouped arms, explicit ownership transfer, lexical
 contingency and supervised loops, followed by construction and lowering work.
 
-30 October 2026. This is the working revision plan, not a claim that all proposed
-features are implemented. Compiler **0.66.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
+1 November 2026. This is the working revision plan, not a claim that all proposed
+features are implemented. Compiler **0.67.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
 lifetime checkpoints of milestone 2, the array/vector/map core of milestone 3,
 and implicit entry, inline/stored adapters, owned capture, named outcome contracts
 and checked forwarding in milestone 4. A first [semantic foundation](semantic-foundation.md)
@@ -30,7 +30,7 @@ P4c: bounded source-position and targeted outcome queries in the CLI and editor,
 including private controls and explicit limits. Release 0.60 starts P6a with the
 agreed execution-boundary fault model, observed invocation identities and bounded
 runtime failure reports. Release 0.62 delivers source fault termination and transitive
-permissions. Activation-owned storage is next, followed by checked isolation. See [the fault/activation plan](faults-and-activations.md).
+permissions. Activation-owned storage and lexical isolation are now delivered through 0.66. See [the fault/activation plan](faults-and-activations.md).
 Keep using this application as a maintained example;
 further reference expansion remains driven by application evidence.
 
@@ -166,7 +166,8 @@ unimplemented syntax are promised.
 | P6b | Source faults and transitive contracts | **Delivered in 0.62:** source termination, public/trait fault permissions and private inference; live resources require explicit retained-owner release dispositions at faulting paths/calls. Fault-only controls omit `exits`. Faulting operators and no-fault annotations remain separate decisions |
 | P6c | Activation-owned storage | **Sequential slice delivered in 0.63:** invocation-local storage ranges, activation addresses, normal/fault retirement, protected parent storage and retained handover. Suspended frames/child-task retirement remain E1 prerequisites |
 | P6d | Isolated boundaries | **Named form in 0.63; lexical form in 0.66:** attached contingency, retained-owner handover, supervised loop recovery preserving state, immutable `@fault`, entry-only process termination, checked contingent calls/traits and real HTTP 500/next-request evidence. Broader capability admission and async children remain separate checkpoints |
-| CF5 | Constructor declarations and destination lowering | **Next:** definite field initialization, partial-failure cleanup, then direct destination construction where ownership/ABI permit. See the [accepted revision](control-flow-revision.md) |
+| CF5a | Constructor declarations | **Delivered in 0.67:** path-sensitive initialization, owning/generic nested calls, partial-fault cleanup, public/raw visibility independence, editor/reference/native parity. Reference-bearing results use ordinary construction controls for now |
+| CF5b | Destination lowering | **Next:** eliminate avoidable construction storage transfers where ownership/ABI permit, preserving evaluation order and fault ownership. Reference-bearing constructor contracts remain a separate design checkpoint. See the [accepted revision](control-flow-revision.md) |
 | C1b.3c.2 | Local exclusive-reference collection elements | Deferred pending application evidence: permission transfer, direct reborrowing, dynamic removal splits and carrier invalidation |
 | C1b.3c.3 | Nested and public borrowed-collection contracts | Deferred pending application evidence: element origin schemas, nested carriers, generic/trait boundaries and stored outcomes |
 | C1c | Generic loan propagation and reference state | Deferred pending application evidence: contained loans across generic calls, assignments and adapters; rebinding/reborrowing |

@@ -879,6 +879,14 @@ impl CheckedProgram {
         let result = (|| {
             if self
                 .region(&scenario.entry)
+                .is_some_and(|r| r.is_constructor())
+            {
+                return Err(error(
+                    "constructors produce values and cannot be executable entries",
+                ));
+            }
+            if self
+                .region(&scenario.entry)
                 .is_some_and(|r| r.boundary.is_some() || r.contingency)
             {
                 return Err(error(

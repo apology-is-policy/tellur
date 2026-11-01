@@ -561,3 +561,29 @@ fn process_termination_changes_public_call_authority() {
     assert_eq!(entry(&after)["main"]["entry_only"], true);
     assert_ne!(before, after);
 }
+
+#[test]
+fn constructor_contract_is_attached_to_the_struct_and_raw_visibility_is_independent() {
+    let f = Fixture::new();
+    let source = "pub struct message {pub string text;@contingent pub constructor(string text) {self.text=move text;}}";
+    let before = f.snapshot(source);
+    let declarations = entry(&before);
+    assert_eq!(declarations.as_object().unwrap().len(), 1);
+    assert_eq!(declarations["message"]["constructor"]["contingent"], true);
+    assert_eq!(declarations["message"]["constructor"]["faults"], false);
+    assert_eq!(declarations["message"]["constructible"], true);
+    assert_eq!(
+        before,
+        f.snapshot(&source.replace(
+            "self.text=move text;",
+            "emit(borrow text);self.text=move text;"
+        ))
+    );
+    let changed = f.snapshot(&source.replace("pub constructor", "constructor"));
+    assert_ne!(before, changed);
+    assert!(entry(&changed)["message"].get("constructor").is_none());
+    assert_eq!(entry(&changed)["message"]["constructible"], true);
+    let opaque = f.snapshot(&source.replace("pub string text", "string text"));
+    assert_eq!(entry(&opaque)["message"]["constructible"], false);
+    assert!(entry(&opaque)["message"].get("constructor").is_some());
+}

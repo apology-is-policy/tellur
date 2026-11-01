@@ -7,6 +7,17 @@ pub outcome service_result {
     @exit 2 invalid_configuration
 }
 
+// Prepare owned request data before entering the isolated boundary.
+struct request_context {
+    string path;
+    string authority;
+
+    constructor(ref string path, ref string authority) {
+        self.path = clone(path);
+        self.authority = clone(authority);
+    }
+}
+
 pub control start(
     ref string path,
     u32 port,
@@ -68,12 +79,11 @@ control run(
         [accepted]:
             // Update supervisor state before isolating the request.
             remaining = next;
-            string request_path = clone(path);
-            string request_authority = clone(authority);
+            auto context = request_context(path, authority);
             fault boundary {
                 auto exchange_result = capture exchange(
-                    borrow request_path,
-                    borrow request_authority,
+                    borrow context.path,
+                    borrow context.authority,
                     borrow connection
                 );
                 auto close_result = capture http_connection_close(connection);

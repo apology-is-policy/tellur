@@ -211,5 +211,15 @@
       "}"
     ],
     "description": "Checked control callable from contingency code"
+  },
+  "Constructor": {
+    "prefix": "constructor",
+    "body": [
+      "constructor(${1:string} ${2:value}) {",
+      "    self.${3:field} = move ${2:value};",
+      "    $0",
+      "}"
+    ],
+    "description": "Owning struct constructor with implicit completion after field initialization"
   }
 }

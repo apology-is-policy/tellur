@@ -437,6 +437,11 @@ mod borrow_return_entries {
 }
 
 impl Region {
+    /// Internal owning procedure for a source struct constructor, never an entry.
+    pub fn is_constructor(&self) -> bool {
+        crate::constructors::is_control(&self.name)
+    }
+
     /// This control may only be selected as an executable entry, never called.
     pub fn entry_only(&self) -> bool {
         fn scan(code: &[Instruction]) -> bool {

@@ -54,7 +54,7 @@ impl Visibility {
         self.controls.insert(name, module);
     }
 
-    fn external(&self, caller: &str, ty: &str) -> bool {
+    pub(crate) fn external(&self, caller: &str, ty: &str) -> bool {
         let caller = crate::collection_support::generic(caller).map_or(caller, |(base, _)| base);
         let ty = crate::collection_support::generic(ty).map_or(ty, |(base, _)| base);
         self.types
@@ -157,6 +157,44 @@ impl<F: FnMut(&Path) -> std::io::Result<String>> Loader<F> {
                 "module graph exceeds 256 files",
             ));
         }
+        let (id, imports) = self.register(path.clone(), origin, at)?;
+        for import in imports {
+            if import.alias.starts_with(PREFIX)
+                || self.files[id].imports.contains_key(&import.alias)
+                || self.files[id].symbols.contains_key(&import.alias)
+            {
+                return Err(error(
+                    &path,
+                    import.span,
+                    "E_NAME",
+                    format!("reserved or duplicate import namespace `{}`", import.alias),
+                ));
+            }
+            if Path::new(&import.path).is_absolute() || import.path.is_empty() {
+                return Err(error(
+                    &path,
+                    import.span,
+                    "E_IMPORT",
+                    "import paths must be nonempty relative file paths",
+                ));
+            }
+            let target = self.load(
+                &path.parent().unwrap().join(&import.path),
+                Some((&path, import.span)),
+            )?;
+            self.files[id].imports.insert(import.alias, target);
+        }
+        self.active.remove(&path);
+        Ok(id)
+    }
+    /// Keep parsing and symbol registration off the recursive import walk's
+    /// stack. A legal 256-file chain must reach its budget diagnostic reliably.
+    fn register(
+        &mut self,
+        path: PathBuf,
+        origin: &Path,
+        at: Span,
+    ) -> Result<(usize, Vec<syntax::Import>)> {
         let source = (self.read)(&path).map_err(|e| {
             error(
                 origin,
@@ -174,7 +212,11 @@ impl<F: FnMut(&Path) -> std::io::Result<String>> Loader<F> {
                 "module sources exceed 8 MiB",
             ));
         }
-        let unit = syntax::parse_unit(&source).map_err(|diagnostic| ModuleError {
+        let mut unit = syntax::parse_unit(&source).map_err(|diagnostic| ModuleError {
+            path: path.clone(),
+            diagnostic,
+        })?;
+        crate::constructors::prepare(&mut unit).map_err(|diagnostic| ModuleError {
             path: path.clone(),
             diagnostic,
         })?;
@@ -236,34 +278,7 @@ impl<F: FnMut(&Path) -> std::io::Result<String>> Loader<F> {
             imports: BTreeMap::new(),
             symbols,
         });
-        for import in imports {
-            if import.alias.starts_with(PREFIX)
-                || self.files[id].imports.contains_key(&import.alias)
-                || self.files[id].symbols.contains_key(&import.alias)
-            {
-                return Err(error(
-                    &path,
-                    import.span,
-                    "E_NAME",
-                    format!("reserved or duplicate import namespace `{}`", import.alias),
-                ));
-            }
-            if Path::new(&import.path).is_absolute() || import.path.is_empty() {
-                return Err(error(
-                    &path,
-                    import.span,
-                    "E_IMPORT",
-                    "import paths must be nonempty relative file paths",
-                ));
-            }
-            let target = self.load(
-                &path.parent().unwrap().join(&import.path),
-                Some((&path, import.span)),
-            )?;
-            self.files[id].imports.insert(import.alias, target);
-        }
-        self.active.remove(&path);
-        Ok(id)
+        Ok((id, imports))
     }
 }
 pub(crate) fn source_identity(path: &Path) -> std::io::Result<PathBuf> {
@@ -839,6 +854,13 @@ fn resolve(
                     }
                 }
             }
+            if let Some(c) = &mut data.constructor {
+                r.fields(&mut c.parameters, c.span)?;
+                c.name = crate::constructors::control_name(&data.name);
+                c.span.line += offset;
+                c.name_span.line += offset;
+                c.end.line += offset;
+            }
             data.span.line += offset;
             data.name_span.line += offset;
             data.end.line += offset;
@@ -911,6 +933,23 @@ fn resolve(
             }
             let declared_locals = locals(region);
             r.locals = region.parameters.iter().map(|p| p.name.clone()).collect();
+            if crate::constructors::is_control(&region.name) {
+                let ty = &region.exits[0].fields[0].ty;
+                let base =
+                    crate::collection_support::generic(ty).map_or(ty.as_str(), |(base, _)| base);
+                if let Some(data) = unit.data.iter().find(|d| {
+                    d.name == base
+                        || d.name == file.symbols.get(base).map_or(base, |s| s.global.as_str())
+                }) {
+                    if let DataBody::Struct(fields) = &data.body {
+                        r.locals.extend(
+                            fields
+                                .iter()
+                                .map(|f| crate::constructors::field_name(&f.name)),
+                        );
+                    }
+                }
+            }
             for n in &declared_locals {
                 if n.starts_with(PREFIX) || file.imports.contains_key(n) {
                     return Err((r.fail(

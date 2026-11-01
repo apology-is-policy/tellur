@@ -20,10 +20,14 @@ syntax. Work is proceeding through the checkpoints below.
 4. **Delivered in 0.66:** structured handler-local `@fault`, explicit process termination, retained-owner
    capture and request-resource completion. Failed frames and loans retire before
    contingency access. A handler cannot return an ordinary outcome or fall through.
-5. Constructor declarations with definite field initialization and partial-failure
-   cleanup; direct destination construction where the ABI and ownership permit.
+5. **Constructor procedures delivered in 0.67:** definite field initialization,
+   nested owning expressions, generic forwarding and partial-fault cleanup.
+   Public fields still permit raw construction. Reference-bearing result contracts
+   and direct destination construction remain separate follow-up work.
 6. **Delivered for checkpoints 3–4 in 0.66:** reference, editor, formatter,
-   native/reference parity and settings-server migration. Repeat for constructors.
+   native/reference parity and settings-server migration. **Constructor parity,
+   editor support, reference, runnable example and settings request-context adoption
+   delivered in 0.67.**
 
 Each delivered checkpoint must update this list and the language reference with
 its actual scope and limitations. Existing named 0.63 boundaries remain a

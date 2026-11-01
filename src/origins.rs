@@ -113,6 +113,7 @@ fn error(at: Span, text: impl Into<String>) -> Diagnostic {
 pub(crate) fn schemas(unit: &syntax::Unit) -> Result<Schemas> {
     let mut declarations = unit.data.clone();
     declarations.extend(unit.contracts.iter().map(|c| syntax::DataDeclaration {
+        constructor: None,
         origin_parameters: c.origin_parameters.clone(),
         type_parameters: c.type_parameters.clone(),
         public: c.public,

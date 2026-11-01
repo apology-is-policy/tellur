@@ -361,7 +361,12 @@ impl Server {
             } else {
                 10
             };
-            symbols.push(json!({"name":data.name,"detail":data_description(data),"kind":kind,
+            let children = data.constructor.iter().map(|c| json!({
+                "name":"constructor", "detail":constructor_description(c), "kind":9,
+                "range":{"start":position(&doc.text,c.span),"end":position(&doc.text,Span{column:c.end.column+1,..c.end})},
+                "selectionRange":diagnostic_range(&doc.text,c.name_span)
+            })).collect::<Vec<_>>();
+            symbols.push(json!({"name":data.name,"detail":data_description(data),"kind":kind,"children":children,
                 "range":{"start":position(&doc.text,data.span),"end":position(&doc.text,Span{column:data.end.column+1,..data.end})},
                 "selectionRange":diagnostic_range(&doc.text,data.name_span)}));
         }
@@ -641,6 +646,29 @@ impl Server {
             return json!({"contents":{"kind":"markdown","value":format!("```tellur\n{description}\n```\n\nExplicit trait/type selection uses `trait_name<type>.member`. Implementations are checked for ownership, exit contracts, coherence and privacy; calls dispatch statically.")},"range":diagnostic_range(&doc.text,at)});
         }
         for data in &unit.data {
+            if let Some(c) = &data.constructor
+                && hit(c.name_span)
+            {
+                let Ok(program) = self.checked(uri) else {
+                    return Value::Null;
+                };
+                let faults = program
+                    .region(&c.name)
+                    .map(|r| r.faults)
+                    .or_else(|| {
+                        program
+                            .generic_controls()
+                            .iter()
+                            .find(|g| g.name == c.name)
+                            .map(|g| g.faults)
+                    })
+                    .unwrap_or(c.fault_contract == Some(true));
+                return json!({"contents":{"kind":"markdown","value":format!(
+                    "```tellur\n{}\n```\n\nConstructs `{}`. Every field must be initialized exactly once on each normally completing history. No partial `self` can escape.{} Raw brace construction remains available wherever field visibility permits it.",
+                    constructor_description(c), data.name,
+                    if faults { " May fault; initialized fields and pending inputs retain their resource obligations." } else { "" }
+                )},"range":diagnostic_range(&doc.text,c.name_span)});
+            }
             let range = diagnostic_range(&doc.text, data.name_span);
             if range["start"]["line"] == line
                 && character >= range["start"]["character"].as_u64().unwrap()
@@ -1090,6 +1118,28 @@ impl Server {
         Ok(())
     }
 }
+fn constructor_description(c: &syntax::Region) -> String {
+    format!(
+        "{}{}constructor({}){}",
+        if c.contingent_contract == Some(true) {
+            "@contingent "
+        } else {
+            ""
+        },
+        if c.public { "pub " } else { "" },
+        c.parameters
+            .iter()
+            .map(|f| source_field(f, false))
+            .collect::<Vec<_>>()
+            .join(", "),
+        if c.fault_contract == Some(true) {
+            " faults"
+        } else {
+            ""
+        }
+    )
+}
+
 fn data_description(data: &syntax::DataDeclaration) -> String {
     let groups = if data.origin_parameters.is_empty() {
         String::new()
@@ -1115,6 +1165,11 @@ fn data_description(data: &syntax::DataDeclaration) -> String {
             fields
                 .iter()
                 .map(|f| format!("{};", source_field(f, true)))
+                .chain(
+                    data.constructor
+                        .iter()
+                        .map(|c| format!("{} {{ ... }}", constructor_description(c)))
+                )
                 .collect::<Vec<_>>()
                 .join(" ")
         ),

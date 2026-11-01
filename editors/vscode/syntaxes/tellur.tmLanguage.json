@@ -84,6 +84,7 @@
     },
     "declarations": {
       "patterns": [
+        {"name": "keyword.declaration.tellur", "match": "\\bconstructor\\b(?=\\s*\\()"},
         {
           "name": "storage.modifier.annotation.tellur",
           "match": "@contingent\\b"
@@ -367,7 +368,7 @@
         },
         {
           "name": "keyword.control.tellur",
-          "match": "\\b(?:control|region|boundary|retains|contingency|supervise|supervised|recover|process|terminate|escalate|exits|faults|fault|from|exit|again|loop|over|path|delta|capture)\\b|\u0394|\\bforward\\b(?!\\s*[({])"
+          "match": "\\b(?:constructor|control|region|boundary|retains|contingency|supervise|supervised|recover|process|terminate|escalate|exits|faults|fault|from|exit|again|loop|over|path|delta|capture)\\b|\u0394|\\bforward\\b(?!\\s*[({])"
         },
         {
           "name": "support.function.tellur",

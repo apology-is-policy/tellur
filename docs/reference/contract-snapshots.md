@@ -46,6 +46,11 @@ The source needs a file identity and a valid manifest. Save untitled source firs
 If checking fails, the command reports the error and opens no partial or cached
 snapshot. The extension must be running in a trusted workspace.
 
+A public struct's constructor contract is separate from its `constructible` flag:
+the flag describes raw brace construction, which remains available when all fields
+are public. Adding a constructor does not revoke that permission. Private
+constructors and their bodies are omitted.
+
 ## What the snapshot includes
 
 The snapshot has `format: "tellur.public-contracts"` and `version: 1`. Its `modules`
@@ -65,7 +70,7 @@ entry can change its identity. Source paths must be UTF-8.
 | Declaration | Captured contract |
 | --- | --- |
 | Public control | Ownership profile, ordered parameters, type parameters and requirements; explicit inline outcomes or named completion contract; direct and contained result origins |
-| Public struct | Public fields, origin groups, type parameters, external constructibility, copy/clone/drop permissions |
+| Public struct | Public fields, origin groups, type parameters, raw external constructibility, optional public constructor parameters/faults/contingency permission, copy/clone/drop permissions |
 | Public variant | Named alternatives, ordered payloads, origin groups, type parameters and permissions |
 | Public named outcome | Alternatives, payloads, origin groups, type parameters, `@exit` statuses and mandatory handling |
 | Public trait | Associated-type requirements and operation signatures |

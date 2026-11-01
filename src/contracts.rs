@@ -63,6 +63,14 @@ pub struct Control {
     pub parameters: Vec<Field>,
     pub exits: Exits,
 }
+/// Public construction procedure, separate from raw field visibility.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Constructor {
+    pub parameters: Vec<Field>,
+    pub faults: bool,
+    pub contingent: bool,
+}
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Profile {
@@ -100,6 +108,8 @@ pub enum Declaration {
         origin_parameters: Vec<String>,
         fields: Vec<Field>,
         constructible: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        constructor: Option<Constructor>,
         capabilities: Capabilities,
     },
     Variant {
@@ -553,7 +563,11 @@ pub(crate) fn checked(
             .declarations
             .insert(local.clone(), declaration);
     };
-    for region in unit.regions.iter().filter(|r| r.public) {
+    for region in unit
+        .regions
+        .iter()
+        .filter(|r| r.public && !crate::constructors::is_control(&r.name))
+    {
         let control = b.control(region, &[]);
         insert(&region.name, Declaration::Control(control), &b.names);
     }
@@ -580,6 +594,17 @@ pub(crate) fn checked(
                     origin_parameters: data.origin_parameters.clone(),
                     fields,
                     constructible,
+                    constructor: data.constructor.as_ref().filter(|c| c.public).map(|c| {
+                        Constructor {
+                            parameters: c
+                                .parameters
+                                .iter()
+                                .map(|f| b.field(f, &data.type_parameters))
+                                .collect(),
+                            faults: c.fault_contract == Some(true),
+                            contingent: c.contingent_contract == Some(true),
+                        }
+                    }),
                     capabilities,
                 }
             }
@@ -693,6 +718,7 @@ pub(crate) fn checked(
                 origin_parameters: vec![],
                 fields: fields(fs, &mut b),
                 constructible: true,
+                constructor: None,
                 capabilities,
             },
             TypeDef::Variant { constructors, .. } | TypeDef::Outcome { constructors, .. } => {

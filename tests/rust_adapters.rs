@@ -652,3 +652,55 @@ fn contingency_handover_releases_child_locals_and_preserves_parent_resources() {
         "drop 7\nclose\ndrop 7\nclose\ndrop 7\n"
     );
 }
+
+#[test]
+fn constructor_faults_release_initialized_fields_and_pending_arguments_once() {
+    let f = Fixture::new();
+    fs::write(f.root.join("host.rs"), RESOURCE_HOST).unwrap();
+    let mut config = resource_config();
+    config["types"][0]["fault"] = json!("release");
+    let source = r#"
+ struct partial {counter first;counter second;string unfinished;
+  constructor(string path) {
+   delta make(borrow path) {made {counter value}=>first}
+   [first]:self.first=move value;
+   delta make(borrow path) {made {counter next}=>second}
+   [second]:self.second=move next;fault "constructor failed";
+  }
+ }
+ struct pending {counter owned;partial value;constructor(counter owned,partial value){self.owned=move owned;self.value=move value;}}
+ control main(string path) exits done {
+  fault boundary {
+   delta make(borrow path) {made {counter retained}=>made}
+   [made]:auto value=pending(move retained,partial(path));
+   fault "unreachable";
+  } contingency [] {terminate process 23;}
+ }
+ "#;
+    assert_eq!(
+        compile(source, f.manifest(&resource_config()))
+            .unwrap_err()
+            .code,
+        "E_FAULT_RESOURCE"
+    );
+    let p = compile(source, f.manifest(&config)).unwrap();
+    for (opt, p) in [(0, p.clone()), (2, p.expanded("main").unwrap())] {
+        let binary = f.root.join(format!("constructor-fault-{opt}"));
+        support::scenario_executable(&p)
+            .build_native("main", &binary, opt)
+            .unwrap();
+        let log = f.root.join(format!("constructor-drop-{opt}"));
+        let output = Command::new(binary)
+            .args(["--json", "--"])
+            .arg(&log)
+            .output()
+            .unwrap();
+        assert_eq!(
+            output.status.code(),
+            Some(23),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(fs::read_to_string(log).unwrap(), "drop 7\ndrop 7\ndrop 7\n");
+    }
+}
