@@ -62,7 +62,7 @@ with complete schemas for every nested reference layer.
 | --- | --- | --- |
 | Rust source adapters | Typed wrappers, closed result enums, owned scalar/collection data, direct opaque retained resources, call-duration shared borrows, explicit dependencies and locked builds | No stable binary ABI, foreign returned borrows, exclusive mutation, aggregate resource boundary or async adapters |
 | Maintained application | Persistent settings CLI and bounded sequential loopback HTTP; Tellur routing/validation/cleanup and Rust mechanisms | Limited HTTP profile; no concurrency, task cancellation or crash-durable transaction guarantee |
-| CLI and native build | Check, execute, build standalone executable through Rust/Cargo and LLVM | No direct LLVM coroutine lowering |
+| CLI and native build | Check, execute, build standalone executable through Rust/Cargo and LLVM; dense per-activation storage | No direct LLVM coroutine lowering |
 | [Formatting](formatting.md) | CLI stdout/check/write and VS Code Format Document; configurable width, multiline lists/conditions, inline label dispositions; token, comment and literal preservation | Whole documents; soft width target, no comment reflow, range formatting or project-wide discovery |
 | VS Code | Highlighting, unsaved diagnostics with related forwarding locations, Outline, declaration contracts, inferred `auto` hover, bounded selected-history hover, build/run | Bounded independent-body diagnostics; hover requires a successful check and is not general expression hover |
 | Expansion | Checked rewrite certificates, retained invocation/decision provenance | Not arbitrary equivalence or termination checking |

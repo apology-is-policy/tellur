@@ -80,5 +80,7 @@ ignore that alternative. Local `ref` declarations do not extend temporary lifeti
 
 Moves express semantic ownership. They do not promise that every physical byte
 transfer is elided. The current native backend moves its runtime values without
-an implicit language-level clone; destination construction and the eventual native
-ABI remain separate optimization work.
+an implicit language-level clone. Native constructors now deliver completed values
+into caller storage without temporary outcome packaging; see
+[construction lowering](construction.md#calls-order-and-temporaries). Broader physical
+copy elision and a stable native ABI remain separate work.

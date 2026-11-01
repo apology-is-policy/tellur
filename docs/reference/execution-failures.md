@@ -218,6 +218,8 @@ separately. Other executor errors, including fuel exhaustion, remain inconclusiv
 Neither analysis proves general behavioral equivalence or termination.
 
 Value storage now uses activation-local ranges with checked retained-owner handover.
+Since 0.68, native frame capacity depends on that control's local value and decision
+storage, independently of unrelated declarations and global instruction IDs.
 Execution remains sequential. Diagnostic activation IDs do
 not enable recursion, simultaneous invocations, async execution or borrowed values
 across suspension. Those require the [activation storage and isolation checkpoints](../faults-and-activations.md#checkpoints-and-decision-points).

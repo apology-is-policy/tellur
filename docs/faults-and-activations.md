@@ -87,6 +87,14 @@ slot number. Every normal/error return retires that invocation's remaining stora
 a boundary extracts its retained owners before retirement. Native storage uses a
 sequential arena with frame offsets; the reference executor allocates distinct
 logical ranges. These are implementation addresses, not source-visible lifetimes.
+Since 0.68, native value slots and decision atoms use separate dense layouts within
+each activation. Global checked instruction IDs still identify source evidence;
+they no longer determine frame capacity. References address arena slots, not Rust
+vector element pointers, so growing the arena preserves existing references. Loop
+reset, retained handover, contingency retirement and completed constructor delivery
+all use the same local layout. The reference executor keeps its independent logical
+addressing as a semantic comparison target.
+
 Recursion and concurrency remain unsupported. Async lowering must make suspended
 frames persistent and settle children/loans before retirement; native offsets alone
 do not provide a scheduler, pinning protocol or coroutine ABI.

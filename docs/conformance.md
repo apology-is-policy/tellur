@@ -2242,3 +2242,17 @@ retain their existing semantics. These changes preserve instruction identities,
 source traces, evaluation order and fuel accounting. They do not establish a
 stable ABI, eliminate every record allocation or promise general physical copy
 elision.
+
+Native activation frames now use separate dense maps for values and decisions.
+Unrelated declarations cannot inflate a control's frame capacity. Instruction IDs,
+loop/recovery targets and source provenance remain unchanged. The same storage
+mapping covers ordinary calls, constructor destinations, borrowed inputs/results,
+loop reset, named retention and lexical boundary retirement. The reference engine
+retains its independent logical address representation.
+
+Regression tests check local capacity with 128 unrelated controls and compare
+native/reference behavior at every instruction-budget cutoff through nested
+construction and returned exclusive borrows, before and after expansion at both
+optimization levels. Existing boundary, stored-reference and real retained-resource
+suites exercise the same mapping. This remains synchronous activation storage;
+suspended frames, scheduling and LLVM coroutine lowering are subsequent work.

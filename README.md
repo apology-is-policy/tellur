@@ -19,7 +19,8 @@ fluid; this is an experimental implementation, not a production compiler.
 
 Release 0.68 improves constructor lowering: completed values enter caller storage
 without an intermediate outcome payload, and owned temporary projections transfer
-the selected field without cloning its buffer. Source syntax stays the same.
+the selected field without cloning its buffer. Native activation frames now reserve
+only their local value/decision storage. Source syntax stays the same.
 
 Release 0.67 adds [declared struct constructors](docs/reference/construction.md):
 checked field initialization, nested owning calls, generic forwarding and partial-fault
