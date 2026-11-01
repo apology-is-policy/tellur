@@ -1,0 +1,40 @@
+// Hover on box<item>(...) and view<item>(...) inside the generic controls.
+// Their contracts keep item abstract, including the borrowed result origin.
+struct box<item> {
+    item value;
+
+    constructor(item input) {
+        self.value = move input;
+    }
+}
+
+struct view<item>['source] {
+    ref item value <- 'source;
+
+    constructor(ref item input)[input] {
+        self.value = input;
+    }
+}
+
+control wrap<item>(item input) exits ready { box<item> value } {
+    exit ready { box<item>(move input) };
+}
+
+control inspect<item>(ref item input) exits ready { view<item>[input] value } {
+    exit ready { view<item>(input) };
+}
+
+control main() exits process_result {
+    delta wrap<string>("Hello through generic construction") {
+        ready { auto boxed } => wrapped
+    }
+    [wrapped]: delta inspect<string>(borrow boxed.value) {
+        ready { auto result } => viewed
+    }
+    [viewed]: emit(result.value);
+    [entry]: exit done;
+}
+
+outcome process_result {
+    @exit 0 done
+}

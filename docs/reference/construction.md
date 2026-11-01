@@ -461,8 +461,11 @@ over a constructor call also shows its checked input types, result type, ordered
 origin groups and fault/contingency permission, including concrete generic calls
 and imported constructors. The signature keeps the authored parameter names and
 uses the current unsaved defining source. Private fields are not displayed. Invalid
-source suppresses the call contract until repaired. Abstract calls inside generic
-bodies still use their existing selected-history feedback. Hovering `auto` reports
+source suppresses the call contract until repaired. Since 0.90, calls inside generic
+controls and constructors show symbolic input types, including nested and
+associated-type arguments. They preserve shared/exclusive borrows, ordered origin
+groups and checked permissions independently of concrete callers. Try
+[generic_construction.tellur](../../playground/generic_construction.tellur). Hovering `auto` reports
 the inferred constructed type or a constructor-local binding's type. Missing-field
 and ownership diagnostics update for unsaved source. Formatting preserves flat
 path labels and wraps constructor argument lists using the normal width settings.

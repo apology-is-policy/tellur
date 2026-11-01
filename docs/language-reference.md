@@ -1,8 +1,8 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.89.0 -->
+<!-- tellur-reference-version: 0.90.0 -->
 
-This manual describes **compiler 0.89.0**, including the current ownership model,
+This manual describes **compiler 0.90.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -987,9 +987,8 @@ behavior.
 
 Contracts come from a successful check of the current document and its unsaved
 dependencies. Editing an imported signature refreshes the hover; a failed check
-suppresses it rather than showing an old signature. Abstract constructor and
-boundary calls retain selected-history feedback; ordinary symbolic generic calls
-are described below. This is not general expression-type hover. Try the calls in
+suppresses it rather than showing an old signature. Symbolic generic calls are
+described below. This is not general expression-type hover. Try the calls in
 [the JSON file example](../examples/json_file/main.tellur).
 
 Since 0.88, ordinary generic helper calls inside generic bodies show a **symbolic
@@ -1010,6 +1009,17 @@ alternatives and nested origin groups. The lookup is scoped to the enclosing
 checked generic definition, so equal parameter spellings in different controls
 cannot mix contracts. Removing a required bound or invalidating a declaration
 suppresses the hover until repaired.
+
+Since 0.90, constructor calls inside generic controls or constructors also show
+a symbolic contract. `box<item>(move input)` in
+[generic_construction.tellur](../playground/generic_construction.tellur) shows
+`constructor(item input)`, even without a concrete caller. Borrowed constructors
+preserve shared/exclusive modes, result-origin bindings and ordered group names.
+Nested and associated-type arguments remain abstract, and fault/contingency
+permission comes from the checked definition. Private fields and internal
+constructor completion labels remain hidden. Named boundaries currently have no
+generic parameters; their concrete call contracts are also available inside
+generic bodies.
 
 A lexical type parameter keeps a call abstract even when a real type with the same
 name has a concrete implementation. Hover never borrows that unrelated signature.
@@ -2793,7 +2803,7 @@ General expression-type hover remains unsupported.
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and async tasks remain planned; they are not executable features of 0.89.0.
+and async tasks remain planned; they are not executable features of 0.90.0.
 ## Contingency and supervised boundaries
 
 The [contingency reference](reference/contingency.md) specifies `@contingent`,

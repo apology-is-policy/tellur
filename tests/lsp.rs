@@ -1233,9 +1233,9 @@ fn trait_call_hover_never_confuses_lexical_parameters_with_concrete_types() {
     f.change(constructor, 2);
     assert_eq!(f.diagnostics(), json!([]));
     assert!(
-        !hover_at(&f, constructor, "box<value>(move input)")
+        hover_at(&f, constructor, "box<value>(move input)")
             .to_string()
-            .contains("Constructor contract")
+            .contains("Symbolic call contract")
     );
     assert!(
         hover_at(&f, constructor, "box<value>(value {7})")
@@ -1502,7 +1502,7 @@ fn constructor_call_hover_tracks_inferred_faults_and_nested_call_names() {
 }
 
 #[test]
-fn constructor_call_hover_handles_untitled_and_leaves_abstract_calls_uninstantiated() {
+fn constructor_call_hover_handles_untitled_with_symbolic_contracts() {
     let mut f = Fixture::new();
     f.uri = "untitled:constructor-hover".into();
     let source = "struct box<t> {t value;constructor(t input) {self.value=move input;}}\ncontrol make<t>(t input) exits ready {box<t> value} {exit ready {box<t>(move input)};}\ncontrol main() exits done {auto value=box<u32>(7);drop(value);exit done;}";
@@ -1514,9 +1514,9 @@ fn constructor_call_hover_handles_untitled_and_leaves_abstract_calls_uninstantia
             .contains("constructor(u32 input)")
     );
     assert!(
-        !hover_at(&f, source, "box<t>(move")
+        hover_at(&f, source, "box<t>(move")
             .to_string()
-            .contains("Constructor contract")
+            .contains("constructor(t input)")
     );
 }
 
@@ -4848,5 +4848,168 @@ fn sequential_initializer_hover_and_retained_borrow_diagnostics() {
     assert_eq!(
         formatted,
         tellur::format::source(&formatted, Default::default()).unwrap()
+    );
+}
+
+#[test]
+fn symbolic_constructor_hover_preserves_borrow_modes_and_ordered_origins() {
+    let mut f = Fixture::new();
+    let source = "struct pair<t>['left, 'right] {ref t hidden_left <- 'left;ref mutable t hidden_right <- 'right;constructor(ref t first, ref mutable t second)[first, second] {self.hidden_left=first;self.hidden_right=second;}}control make<item>(ref item a, ref mutable item b) exits ready {pair<item>[a,b] value} {exit ready {pair<item>(a,b)};}control main() exits done {exit done;}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let h = hover_at(&f, source, "pair<item>(a,b)");
+    let text = h["contents"]["value"].as_str().unwrap();
+    for expected in [
+        "Constructs `pair<item>`",
+        "constructor(ref item first, ref mutable item second)[first, second]",
+        "['left, 'right]",
+        "Symbolic call contract",
+        "Selected histories",
+    ] {
+        assert!(text.contains(expected), "missing {expected}: {text}");
+    }
+    for hidden in [
+        "hidden_left",
+        "hidden_right",
+        "$constructor",
+        "$constructed",
+        "$0$",
+        "_path_",
+    ] {
+        assert!(!text.contains(hidden), "{text}");
+    }
+    assert_eq!(
+        h["range"]["end"]["character"].as_u64().unwrap()
+            - h["range"]["start"]["character"].as_u64().unwrap(),
+        "pair<item>".len() as u64
+    );
+    let broken = source.replace("[first, second]", "[second, first]");
+    f.change(&broken, 2);
+    assert!(!f.diagnostics().as_array().unwrap().is_empty());
+    assert!(hover_at(&f, &broken, "pair<item>(a,b)").is_null());
+    f.change(source, 3);
+    assert_eq!(hover_at(&f, source, "pair<item>(a,b)"), h);
+}
+
+#[test]
+fn symbolic_constructor_hover_refreshes_imported_aliases_and_privacy() {
+    let mut f = Fixture::new();
+    let dependency = f.root.join("types.tellur");
+    let uri = url::Url::from_file_path(&dependency).unwrap().to_string();
+    let valid = "pub struct box<t> {t secret;pub constructor(t input) {self.secret=move input;}}";
+    fs::write(&dependency, valid).unwrap();
+    let source = "import \"types.tellur\" as first;import \"types.tellur\" as lib;control make<item>(item input) exits ready {lib.box<item> value} {exit ready {lib.box<item>(move input)};}control main() exits done {exit done;}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let h = hover_at(&f, source, "lib.box<item>(move");
+    let text = h["contents"]["value"].as_str().unwrap();
+    assert!(
+        text.contains("Constructs `lib.box<item>`") && text.contains("pub constructor(item input)"),
+        "{text}"
+    );
+    assert!(
+        !text.contains("secret") && !text.contains("_path_") && !text.contains("first.box"),
+        "{text}"
+    );
+    let changed = valid.replace("input", "fresh");
+    f.server.notification(
+        "textDocument/didOpen",
+        &json!({"textDocument":{"uri":uri,"version":1,"text":changed}}),
+    );
+    assert_eq!(f.diagnostics(), json!([]));
+    assert!(
+        hover_at(&f, source, "lib.box<item>(move")
+            .to_string()
+            .contains("constructor(item fresh)")
+    );
+    let broken = changed.replace("pub constructor", "constructor");
+    f.server.notification(
+        "textDocument/didChange",
+        &json!({"textDocument":{"uri":uri,"version":2},"contentChanges":[{"text":broken}]}),
+    );
+    assert!(!f.diagnostics().as_array().unwrap().is_empty());
+    assert!(hover_at(&f, source, "lib.box<item>(move").is_null());
+    f.server.notification(
+        "textDocument/didClose",
+        &json!({"textDocument":{"uri":uri}}),
+    );
+    assert_eq!(hover_at(&f, source, "lib.box<item>(move"), h);
+}
+
+#[test]
+fn symbolic_constructor_hover_tracks_fault_and_contingency_permissions() {
+    let mut f = Fixture::new();
+    let source = "pub struct box<t> {t value;@contingent pub constructor(t input) {self.value=move input;}}@contingent control make<item>(item input) exits ready {box<item> value} {exit ready {box<item>(move input)};}control main() exits done {exit done;}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let h = hover_at(&f, source, "box<item>(move").to_string();
+    assert!(
+        h.contains("@contingent pub constructor(item input)") && !h.contains(" faults"),
+        "{h}"
+    );
+    // The initialized unconstrained value remains live; fault-disposition rules
+    // still apply. Use a borrowed parameter so the faulting definition is valid.
+    let faulting = "struct view<t>['a] {ref t value <- 'a;constructor(ref t input)[input] {fault \"unavailable\";}}control make<item>(ref item input) exits ready {view<item>[input] value} {exit ready {view<item>(input)};}control main() exits done {exit done;}";
+    f.change(faulting, 2);
+    assert_eq!(f.diagnostics(), json!([]));
+    let h = hover_at(&f, faulting, "view<item>(input)").to_string();
+    assert!(
+        h.contains("constructor(ref item input)[input] faults") && h.contains("execution boundary"),
+        "{h}"
+    );
+    let repaired = faulting.replace("fault \"unavailable\";", "self.value=input;");
+    f.change(&repaired, 3);
+    assert_eq!(f.diagnostics(), json!([]));
+    assert!(
+        !hover_at(&f, &repaired, "view<item>(input)")
+            .to_string()
+            .contains(" faults")
+    );
+    let invalid = source.replace("@contingent pub constructor", "pub constructor");
+    f.change(&invalid, 4);
+    assert!(!f.diagnostics().as_array().unwrap().is_empty());
+    assert!(hover_at(&f, &invalid, "box<item>(move").is_null());
+}
+
+#[test]
+fn symbolic_constructor_hover_keeps_nested_and_associated_type_arguments() {
+    let mut f = Fixture::new();
+    let source = "trait reader {type item;}struct box<t> {t hidden;constructor(t input) {self.hidden=move input;}}control wrap<r:reader>(reader<r>.item input) exits auto {exit ready {box<box<reader<r>.item>>(box<reader<r>.item>(move input))};}control main() exits done {exit done;}";
+    f.open(&source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let outer = hover_at(&f, &source, "box<box<reader<r>.item>>").to_string();
+    assert!(
+        outer.contains("constructor(box<reader<r>.item> input)"),
+        "{outer}"
+    );
+    let inner = hover_at(&f, &source, "box<reader<r>.item>(move").to_string();
+    assert!(
+        inner.contains("constructor(reader<r>.item input)"),
+        "{inner}"
+    );
+    for text in [outer, inner] {
+        assert!(
+            text.contains("Symbolic call contract")
+                && !text.contains("hidden")
+                && !text.contains("_path_"),
+            "{text}"
+        );
+    }
+}
+
+#[test]
+fn symbolic_constructor_hover_inside_constructor_uses_lexical_parameters() {
+    let mut f = Fixture::new();
+    let source = "struct t {u32 number;}struct box<v> {v value;constructor(v input) {self.value=move input;}}struct envelope<t> {box<t> hidden;constructor(t input) {self.hidden=box<t>(move input);}}control main() exits done {auto value=envelope<string>(\"hello\");drop(value);exit done;}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let h = hover_at(&f, source, "box<t>(move").to_string();
+    assert!(
+        h.contains("constructor(t input)") && h.contains("Symbolic call contract"),
+        "{h}"
+    );
+    assert!(
+        !h.contains("string") && !h.contains("number") && !h.contains("hidden"),
+        "{h}"
     );
 }

@@ -304,6 +304,117 @@ fn trait_description(
     )
 }
 
+fn constructor_source(
+    base: &str,
+    program: &CheckedProgram,
+    sources: &BTreeMap<PathBuf, String>,
+    path: &Path,
+    unit: &Unit,
+) -> Option<(Region, Vec<String>)> {
+    let (definition_path, local) = program
+        .source_files()
+        .iter()
+        .find_map(|f| {
+            f.names
+                .get(base)
+                .map(|local| (f.path.as_path(), local.as_str()))
+        })
+        .or_else(|| {
+            unit.data
+                .iter()
+                .any(|d| d.name == base)
+                .then_some((path, base))
+        })?;
+    let definition = match sources.get(definition_path) {
+        Some(text) => parse_unit(text).ok()?,
+        None if definition_path == path => unit.clone(),
+        None => return None,
+    };
+    let data = definition.data.iter().find(|d| d.name == local)?;
+    Some((
+        data.constructor.as_ref()?.clone(),
+        data.origin_parameters.clone(),
+    ))
+}
+
+fn constructor_contract(written: &str, source: &Region, groups: &[String]) -> String {
+    let origins = if groups.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "\n\nResult origin groups: `[{}]`; the constructor's bracket arguments map to these groups in order.",
+            groups
+                .iter()
+                .map(|name| format!("'{name}"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    };
+    format!(
+        "**Constructor contract**\n\nConstructs `{}`.\n\n```tellur\n{}\n```{origins}\n\nNormal completion yields the initialized value.{}",
+        display_type(written),
+        constructor_description(source),
+        if source.fault_contract == Some(true) {
+            " Faults propagate to the caller's execution boundary."
+        } else {
+            ""
+        }
+    )
+}
+
+fn generic_requirements(checked: &crate::ir::GenericControl, arguments: &[&str]) -> String {
+    let requirements = checked
+        .type_parameters
+        .iter()
+        .zip(arguments)
+        .filter_map(|(name, argument)| {
+            let bounds = &checked.type_bounds[name];
+            (!bounds.is_empty())
+                .then(|| format!("`{}: {}`", display_type(argument), bounds.join(" + ")))
+        })
+        .collect::<Vec<_>>();
+    if requirements.is_empty() {
+        String::new()
+    } else {
+        format!("\n\nDeclared requirements: {}.", requirements.join(", "))
+    }
+}
+
+const SYMBOLIC_CONTRACT: &str = "Symbolic call contract from the universally checked generic definition; type parameters remain abstract here.";
+
+fn generic_constructor_description(
+    written: &str,
+    resolved: &str,
+    program: &CheckedProgram,
+    sources: &BTreeMap<PathBuf, String>,
+    path: &Path,
+    unit: &Unit,
+) -> Option<String> {
+    let (base, arguments) = generic(resolved)?;
+    let name = crate::constructors::control_name(base);
+    let checked = program.generic_controls().iter().find(|g| g.name == name)?;
+    if arguments.len() != checked.type_parameters.len() {
+        return None;
+    }
+    let bindings = checked
+        .type_parameters
+        .iter()
+        .cloned()
+        .zip(arguments.iter().map(|a| (*a).to_owned()))
+        .collect();
+    let mut contract = checked.source_contract.clone();
+    crate::generic_controls::rewrite_region(&mut contract, &bindings);
+    let (mut source, groups) = constructor_source(base, program, sources, path, unit)?;
+    source.parameters = contract.parameters;
+    source.fault_contract = Some(checked.faults);
+    source.contingent_contract = Some(checked.contingent);
+    Some(format!(
+        "{}\n\n{SYMBOLIC_CONTRACT}{}",
+        constructor_contract(written, &source, &groups),
+        generic_requirements(checked, &arguments)
+    ))
+}
+
 fn generic_description(written: &str, resolved: &str, program: &CheckedProgram) -> Option<String> {
     let (base, arguments) = generic(resolved)?;
     let checked = program.generic_controls().iter().find(|g| g.name == base)?;
@@ -347,18 +458,8 @@ fn generic_description(written: &str, resolved: &str, program: &CheckedProgram) 
         ),
         None => alternatives.clone(),
     };
-    let requirements = checked
-        .type_parameters
-        .iter()
-        .zip(&arguments)
-        .filter_map(|(name, argument)| {
-            let bounds = &checked.type_bounds[name];
-            (!bounds.is_empty())
-                .then(|| format!("`{}: {}`", display_type(argument), bounds.join(" + ")))
-        })
-        .collect::<Vec<_>>();
     Some(format!(
-        "**Control contract**\n\n```tellur\n{}control {}({}){}\n```\n\nSymbolic call contract from the universally checked generic definition; type parameters remain abstract here.{}{}{}{}",
+        "**Control contract**\n\n```tellur\n{}control {}({}){}\n```\n\n{SYMBOLIC_CONTRACT}{}{}{}{}",
         if checked.contingent {
             "@contingent\n"
         } else {
@@ -372,11 +473,7 @@ fn generic_description(written: &str, resolved: &str, program: &CheckedProgram) 
             .collect::<Vec<_>>()
             .join(", "),
         completion_description(&exits, checked.faults),
-        if requirements.is_empty() {
-            String::new()
-        } else {
-            format!("\n\nDeclared requirements: {}.", requirements.join(", "))
-        },
+        generic_requirements(checked, &arguments),
         if source.infer_exits || !source.infer_payloads.is_empty() {
             "\n\nPayloads/outcomes inferred from the checked generic body."
         } else {
@@ -463,40 +560,45 @@ pub(super) fn hover(
         }
     }
     let mut description = if abstract_call {
-        generic_description(written, &resolved, &program).or_else(|| {
-            let enclosing = names.get(&caller.name).unwrap_or(&caller.name);
-            let checked = program
-                .generic_controls()
-                .iter()
-                .find(|g| &g.name == enclosing)?;
-            let source = checked.trait_contracts.iter().find_map(|(name, source)| {
-                (crate::generics::substitute(name, &abstract_names) == resolved).then_some(source)
-            })?;
-            let mut source = source.clone();
-            crate::generic_controls::rewrite_region(&mut source, &abstract_names);
-            let outcomes = source
-                .exits
-                .iter()
-                .map(|o| crate::manifest::Outcome {
-                    name: o.name.clone(),
-                    fields: o
-                        .fields
-                        .iter()
-                        .map(|f| crate::manifest::Field {
-                            name: f.name.clone(),
-                            ty: f.ty.clone(),
-                        })
-                        .collect(),
-                })
-                .collect::<Vec<_>>();
-            Some(trait_description(
-                written,
-                &source,
-                &outcomes,
-                source.exit_contract.as_deref(),
-                true,
-            ))
-        })?
+        generic_description(written, &resolved, &program)
+            .or_else(|| {
+                generic_constructor_description(written, &resolved, &program, &sources, &path, unit)
+            })
+            .or_else(|| {
+                let enclosing = names.get(&caller.name).unwrap_or(&caller.name);
+                let checked = program
+                    .generic_controls()
+                    .iter()
+                    .find(|g| &g.name == enclosing)?;
+                let source = checked.trait_contracts.iter().find_map(|(name, source)| {
+                    (crate::generics::substitute(name, &abstract_names) == resolved)
+                        .then_some(source)
+                })?;
+                let mut source = source.clone();
+                crate::generic_controls::rewrite_region(&mut source, &abstract_names);
+                let outcomes = source
+                    .exits
+                    .iter()
+                    .map(|o| crate::manifest::Outcome {
+                        name: o.name.clone(),
+                        fields: o
+                            .fields
+                            .iter()
+                            .map(|f| crate::manifest::Field {
+                                name: f.name.clone(),
+                                ty: f.ty.clone(),
+                            })
+                            .collect(),
+                    })
+                    .collect::<Vec<_>>();
+                Some(trait_description(
+                    written,
+                    &source,
+                    &outcomes,
+                    source.exit_contract.as_deref(),
+                    true,
+                ))
+            })?
     } else if let Some(source) = program.trait_contracts.get(&resolved) {
         // This is the conformance-checked trait contract, not the implementing
         // body's narrower evidence or its independently chosen binding names.
@@ -532,23 +634,7 @@ pub(super) fn hover(
         )
     } else if let Some(checked) = program.region(&crate::constructors::control_name(&resolved)) {
         let base = generic(&resolved).map_or(resolved.as_str(), |(base, _)| base);
-        let (definition_path, local) = program
-            .source_files()
-            .iter()
-            .find_map(|f| f.names.get(base).map(|local| (&f.path, local.as_str())))
-            .or_else(|| {
-                unit.data
-                    .iter()
-                    .any(|d| d.name == base)
-                    .then_some((&path, base))
-            })?;
-        let definition = match sources.get(definition_path) {
-            Some(text) => parse_unit(text).ok()?,
-            None if definition_path == &path => unit.clone(),
-            None => return None,
-        };
-        let data = definition.data.iter().find(|d| d.name == local)?;
-        let mut source = data.constructor.as_ref()?.clone();
+        let (mut source, groups) = constructor_source(base, &program, &sources, &path, unit)?;
         // Use the checked specialization, but keep authored parameter and group
         // names. Constructor implementation fields are never part of this hover.
         for (parameter, checked) in source.parameters.iter_mut().zip(&checked.parameters) {
@@ -556,28 +642,7 @@ pub(super) fn hover(
         }
         source.fault_contract = Some(checked.faults);
         source.contingent_contract = Some(checked.contingent);
-        let origins = if data.origin_parameters.is_empty() {
-            String::new()
-        } else {
-            format!(
-                "\n\nResult origin groups: `[{}]`; the constructor's bracket arguments map to these groups in order.",
-                data.origin_parameters
-                    .iter()
-                    .map(|name| format!("'{name}"))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            )
-        };
-        format!(
-            "**Constructor contract**\n\nConstructs `{}`.\n\n```tellur\n{}\n```{origins}\n\nNormal completion yields the initialized value.{}",
-            display_type(written),
-            constructor_description(&source),
-            if checked.faults {
-                " Faults propagate to the caller's execution boundary."
-            } else {
-                ""
-            }
-        )
+        constructor_contract(written, &source, &groups)
     } else if let Some(checked) = program.region(&resolved) {
         if checked.contingency || checked.is_constructor() {
             return None;

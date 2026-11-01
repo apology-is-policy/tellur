@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.89.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.90.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -3051,3 +3051,35 @@ native execution of `playground/borrowed_traits.tellur`. Six binary copies and n
 packaged/installed payloads were verified at 0.89.0. Existing windows were not reloaded.
 Formatting and whitespace checks passed; unchanged diagnostic, runtime and library
 evidence is reused.
+
+## 0.90 — Symbolic constructor contracts
+
+P4d.7 uses the universally checked constructor template for calls inside generic
+controls and constructors. It keeps abstract, nested and associated-type arguments,
+shared/exclusive modes, authored parameter names, result-origin mappings, ordered
+group names and checked fault/contingency permission. Imported aliases and unsaved
+definitions come from the same successful check. No private layout, synthetic
+completion label or convenient concrete witness is exposed. Existing concrete
+constructor presentation shares the source lookup and renderer.
+
+Five new LSP tests cover independent origins, imported privacy and edits, fault and
+contingency permissions, nested associated types and lexical constructor parameters.
+Two older abstract-absence assertions now require symbolic contracts. The initial
+permission probe incorrectly expected an unannotated private constructor to lose
+its inferred contingency admission; the final test uses an explicit public contract.
+Named boundaries have no generic parameter syntax, so the roadmap's abstract
+boundary-hover entry was removed rather than adding a new language feature.
+
+Final validation passed **263 Rust tests across nine affected targets**, including
+all 168 LSP tests and three manual checks, plus **42 Node tests**. The first run
+passed six targets before two existing LSP fixtures failed due to an accidental
+test-only rename. Those fixtures were restored; the final three targets passed,
+and earlier unaffected passes are retained in the combined evidence. No compiler
+changes were needed after the release build.
+
+Isolated VS Code verified symbolic inputs, borrowed result groups, failed-check
+suppression, fresh parameter names, repair and native execution emitting
+`Hello through generic construction`. Six binary copies and nine packaged/installed
+payloads were verified at 0.90.0. Existing windows were not reloaded. Formatting and
+whitespace checks passed. Executable IR, certificates, ownership and fault semantics
+are unchanged; earlier diagnostic/runtime/library evidence is reused.

@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-0.89.0-darwin-arm64.vsix` using **Extensions:
+1. Install the supplied `tellur-language-0.90.0-darwin-arm64.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -825,8 +825,8 @@ Hover `identity<item>(value)` inside `playground/generic_controls.tellur`: the
 contract retains `item`, independently of concrete callers. It includes declared
 bounds, named result origins, inferred payloads and private checked return lifetimes.
 Anonymous payloads use bounded type rendering without internal compiler names.
-Unsaved edits refresh the signature; invalid sources suppress it. Abstract trait,
-constructor and boundary calls retain their existing selected-history feedback.
+Unsaved edits refresh the signature; invalid sources suppress it. Subsequent
+releases add symbolic trait and constructor calls below.
 
 ## Symbolic trait call contracts in 0.89
 
@@ -834,4 +834,15 @@ Hover `reader<r>.peek(input)` inside `playground/borrowed_traits.tellur`. The tr
 names, associated projections, origins and fault permissions remain abstract and
 independent of concrete implementations. Named results retain their alternatives
 and nested origin mappings. Edits refresh the interface; invalid bounds or
-contracts suppress it. Abstract constructor and boundary calls remain follow-ups.
+contracts suppress it. Symbolic constructors follow in 0.90.
+
+## Symbolic constructor contracts in 0.90
+
+Hover `box<item>(move input)` or `view<item>(input)` inside
+`playground/generic_construction.tellur`. The checked contract preserves abstract
+types, shared/exclusive input modes, ordered result origins and permissions. Calls
+inside constructors and nested or associated-type arguments work the same way.
+Private fields and compiler-generated completion names are hidden. Unsaved
+parameter edits refresh the contract; invalid initialization suppresses it until
+repaired. Named boundaries do not declare generic parameters; their existing
+concrete supervision hover remains available in generic bodies.
