@@ -425,7 +425,7 @@ fn explicit_exit_adapters_replay_owned_and_borrowed_payloads_cleanly() {
 }
 
 #[test]
-fn exit_adapter_headers_and_inferred_stored_results_remain_barriers() {
+fn exit_adapter_headers_inferred_exits_and_uncertain_stored_labels_remain_barriers() {
     for source in [
         "control choose(bool flag) exits ready {u32 value} {exit delta flag {true=>ready {true}};}",
         "control choose(bool flag) exits auto {exit delta flag {true=>ready {missing},false=>ready {also_missing}};}",
@@ -1134,5 +1134,191 @@ fn clean_branch_fault_obligations_are_not_swallowed_by_an_enclosing_decision() {
         }
     }"#,
         &["E_TYPE", "E_FAULT_RESOURCE"],
+    );
+}
+
+#[test]
+fn inferred_stored_adapters_recover_distinct_labels_without_partial_results() {
+    for exits in ["done", "auto"] {
+        codes(
+            &format!(
+                "control choose(bool flag) exits {exits} {{auto saved=delta flag {{true=>left {{absent_value}},false=>right {{also_missing}}}};emit(saved);string hidden=7;exit done;}}"
+            ),
+            &["E_NAME", "E_NAME"],
+        );
+    }
+    codes(
+        "control choose(bool flag) exits done {auto saved=delta flag {true=>left {concat(true,\"a\")},false=>right {concat(1,\"b\")}};exit done;}",
+        &["E_TYPE", "E_TYPE"],
+    );
+}
+
+#[test]
+fn inferred_stored_adapters_quarantine_same_label_contextual_inference() {
+    let source = "control choose(bool flag,bool other) exits auto {vector<string> words=[\"hello\"];auto saved=delta flag {true=>ready {move words,absent_value},false=>delta other {true=>ready {[],0},false=>separate {other_missing}}};exit saved;}";
+    codes(source, &["E_NAME", "E_NAME"]);
+    // Prove that the empty payload needs the omitted arm's context, and that
+    // repairing the two real errors yields an ordinary valid inferred result.
+    tellur::check_source(
+        &source
+            .replace("other_missing", "0")
+            .replace("absent_value", "0"),
+        Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+    )
+    .unwrap();
+    for later in [
+        "ready {also_missing}",
+        "ready {}",
+        "ready {\"different\",1,2}",
+    ] {
+        codes(
+            &format!(
+                "control choose(bool flag) exits done {{auto saved=delta flag {{true=>ready {{absent_value}},false=>{later}}};exit done;}}"
+            ),
+            &["E_NAME"],
+        );
+    }
+    // A clean first occurrence still establishes a real consistency constraint.
+    codes(
+        "control choose(bool flag,bool other) exits done {auto saved=delta flag {true=>ready {1},false=>delta other {true=>ready {\"wrong\"},false=>separate {absent_value}}};exit done;}",
+        &["E_TYPE", "E_NAME"],
+    );
+}
+
+#[test]
+fn inferred_stored_adapters_preserve_nested_and_disjoint_domains() {
+    codes(
+        r#"control choose(bool flag,bool other) exits done {
+        delta flag {true=>selected,false=>separate}
+        [selected]: auto saved=delta other {
+            true=>delta flag {true=>one {first_missing},false=>two {second_missing}},
+            false=>three {third_missing}
+        };
+        emit(saved);
+        [separate]: string fourth=7;exit done;
+        [entry]: bool hidden=8;
+    }"#,
+        &["E_NAME", "E_NAME", "E_NAME", "E_TYPE"],
+    );
+    // Label uncertainty belongs to one sink, not a whole control or later sink.
+    codes(
+        r#"control choose(bool flag) exits done {
+        delta flag {true=>left,false=>right}
+        [left]: auto first=delta flag {true=>ready {absent_value},false=>empty {}};
+        [right]: auto second=delta flag {true=>ready {also_missing},false=>empty {}};
+        [entry]: exit done;
+    }"#,
+        &["E_NAME", "E_NAME"],
+    );
+    codes(
+        r#"control choose(bool flag) exits done {
+        delta flag {true=>finished,false=>pending}
+        [finished]: exit done;
+        [pending]: auto saved=delta flag {true=>one {absent_value},false=>two {also_missing}};
+        [entry]: string hidden=7;
+    }"#,
+        &["E_NAME", "E_NAME"],
+    );
+}
+
+#[test]
+fn inferred_stored_adapters_replay_moves_and_borrows_without_retirement_cascades() {
+    codes(
+        "control choose(bool flag,handle resource) exits done {auto saved=delta flag {true=>left {move resource,absent_value},false=>right {move resource,also_missing}};exit done;}",
+        &["E_NAME", "E_NAME"],
+    );
+    codes(
+        "control choose(bool flag,ref string input) exits done {auto saved=delta flag {true=>left {input,absent_value},false=>right {input,also_missing}};exit done;}",
+        &["E_NAME", "E_NAME"],
+    );
+    // Clean independent arms still must complete payload owners and retain no
+    // reference to storage which dies at the arm boundary.
+    codes(
+        "variant input {left {handle owned},right {handle owned}}control choose(input value) exits done {auto saved=delta value {left {auto owned}=>bad {absent_value},right {auto owned}=>good {1}};exit done;}",
+        &["E_NAME", "E_RESOURCE"],
+    );
+    codes(
+        "variant input {left {string word},right {string word}}control choose(input value) exits done {auto saved=delta value {left {auto word}=>bad {absent_value},right {auto word}=>good {borrow word}};exit done;}",
+        &["E_NAME", "E_LIFETIME"],
+    );
+}
+
+#[test]
+fn inferred_stored_adapters_keep_scope_loop_header_and_fault_barriers() {
+    codes(
+        r#"control choose(bool flag) exits done {
+        mutable string owner="before";
+        delta flag {true=>selected,false=>separate}
+        [selected] over &: {
+            auto saved=delta flag {true=>left {borrow owner,absent_value},false=>right {borrow owner,also_missing}};
+            emit(saved);
+        }
+        [separate]: owner="after";u32 other=false;exit done;
+        [entry]: string hidden=7;
+    }"#,
+        &["E_NAME", "E_NAME", "E_TYPE"],
+    );
+    codes(
+        "control choose(bool flag) exits done {loop work(bool again_flag=flag) {auto saved=delta again_flag {true=>left {absent_value},false=>right {also_missing}};again work(again_flag);}}",
+        &["E_NAME", "E_NAME"],
+    );
+    codes(
+        "control choose(bool flag) exits done {string earlier=7;auto saved=delta flag {true=>left {absent_value},false=>right {also_missing}};exit done;}",
+        &["E_TYPE"],
+    );
+    codes(
+        "control choose(bool flag) exits done {auto saved=delta flag {true=>left {absent_value},false=>delta flag {true=>right {also_missing}}};exit done;}",
+        &["E_NAME", "E_ARMS"],
+    );
+    codes(
+        "control main(bool flag) exits done {fault boundary {auto saved=delta flag {true=>left {absent_value},false=>right {also_missing}};} contingency [] {terminate process 1;}exit done;}",
+        &["E_NAME"],
+    );
+    codes(
+        "control main(bool flag) exits done {fault boundary {} contingency [flag] {auto saved=delta flag {true=>left {absent_value},false=>right {also_missing}};terminate process 1;}exit done;}",
+        &["E_NAME"],
+    );
+}
+
+#[test]
+fn inferred_stored_adapters_share_the_budget_and_check_unused_generic_bodies() {
+    codes(
+        "control choose<t>(t input,bool flag) exits done {auto saved=delta flag {true=>left {input,absent_value},false=>right {input,also_missing}};exit done;}",
+        &["E_NAME", "E_NAME"],
+    );
+    fn tree(depth: usize, index: usize) -> String {
+        if depth == 0 {
+            return format!("result_{index} {{missing_{index}}}");
+        }
+        format!(
+            "delta flag {{true=>{},false=>{}}}",
+            tree(depth - 1, index * 2),
+            tree(depth - 1, index * 2 + 1)
+        )
+    }
+    let batch = errors(&format!(
+        "control choose(bool flag) exits done {{auto saved={};exit done;}}",
+        tree(6, 1)
+    ));
+    assert_eq!(
+        batch.errors.len(),
+        tellur::diagnostics::MAX_DIAGNOSTICS,
+        "{batch}"
+    );
+    assert!(batch.limit_reached);
+    assert!(batch.errors.iter().all(|e| e.code == "E_NAME"));
+}
+
+#[test]
+fn inferred_stored_forwarding_leaves_share_result_label_uncertainty() {
+    codes(
+        "control choose(bool flag) exits done {auto saved=delta flag {true=>true {absent_value},false=>forward};exit done;}",
+        &["E_NAME"],
+    );
+    // An explicitly constructed failing label also suppresses later implicit
+    // forwarding of that label, without suppressing a different failing result.
+    codes(
+        "variant input {left,right}control choose(input value,bool flag) exits done {auto saved=delta flag {true=>left {absent_value},false=>delta value {left=>forward,right=>other {also_missing}}};exit done;}",
+        &["E_NAME", "E_NAME"],
     );
 }

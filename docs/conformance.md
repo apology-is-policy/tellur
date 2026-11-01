@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.92.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.93.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -3141,3 +3141,37 @@ and nine packaged/installed payloads match release 0.92.0. Existing windows were
 reloaded. Formatting and whitespace checks passed; unchanged constructor, statement
 recovery and runtime/library evidence is reused. The accepted bounds, ownership,
 origin and fault semantics and executable formats are unchanged.
+
+## 0.93 — Inferred stored-adapter diagnostics
+
+P2l reuses terminal replay for inferred stored payloads, with sink-local uncertain
+result labels. Omitting a construction or forwarding result quarantines that label;
+later occurrences are skipped before their contextual typing can invent a secondary
+error. Distinct labels retain independent checks. Any uncertain sink restores its
+parent state, discards writes and blocks its whole binding domain before publishing
+a value or inferred outcome type. Inferred exit contracts, decision headers and
+fault-context adapters retain their existing barriers.
+
+Seven recovery tests cover distinct/same labels, contextual empty collections,
+clean shape consistency, implicit forwarding, nested/disjoint domains, sink isolation,
+moves, loans, resource/lifetime retirement, scopes, loops, phase barriers, generic
+bodies and the budget. Two LSP tests cover independent repairs, newly exposed
+same-label errors, imported locations and no partial hover. One CLI test covers
+generic imported ranges with Unicode/CRLF and first-error compatibility.
+Initial probes used `missing`, a valid nullary constructor in the playground manifest;
+fixtures now use unambiguously undefined names. A LSP fixture using `concat` was
+updated to load its playground manifest. Neither issue required a production fix.
+
+Final validation passed **428 Rust tests across 14 affected targets**, including all
+174 LSP tests, 45 diagnostic tests, 59 recovery tests and three manual checks, plus
+**42 Node tests**. Adapter, outcome, origin, generic, module, boundary and certificate
+checks retain valid-program and native execution evidence.
+
+Isolated VS Code verified independent inferred payload errors, exact expression
+ranges, partial/full repair, absence of partial inferred hover and native execution
+returning `hello from a stored adapter`. An initial isolated launch omitted the
+extension-development flag; it was stopped and corrected before testing. Six binary
+copies and nine packaged/installed payloads match release 0.93.0. Existing windows
+were not reloaded. Formatting and whitespace checks passed; earlier unrelated
+preparation, trait and library evidence remains valid. Executable formats and the
+accepted ownership, origin and fault semantics are unchanged.

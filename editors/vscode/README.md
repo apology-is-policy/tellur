@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-0.92.0-darwin-arm64.vsix` using **Extensions:
+1. Install the supplied `tellur-language-0.93.0-darwin-arm64.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -864,3 +864,14 @@ generic interfaces. One error is reported per control under the shared 32-error
 budget, including unused definitions. Imported locations and unsaved repairs stay
 current. Checked hover returns only after the full source checks; trait resolution
 and later type/ownership checks remain blocked while the bound phase is invalid.
+
+## Inferred stored-adapter diagnostics in 0.93
+
+The first `auto saved` adapter in `playground/stored_adapters.tellur` now supports
+independent errors in distinct result labels. For example, invalid expressions in
+both `ready` and `empty` payloads report together. Later occurrences of an uncertain
+label stay suppressed because they may depend on its missing inferred payload shape.
+The complete stored result and its continuation remain unavailable until repaired;
+hover never shows a partial inferred type. Nested arms and imported/generic locations
+follow the same shared 32-error budget. Inferred exits, headers and fault contexts
+retain conservative barriers.

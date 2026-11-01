@@ -218,6 +218,8 @@ struct OutcomeBinding {
     expected: Option<Vec<manifest::Outcome>>,
     outcomes: Vec<manifest::Outcome>,
     writes: Vec<usize>,
+    /// Diagnostic replay only: later occurrences cannot infer from an omitted arm.
+    uncertain_labels: BTreeSet<String>,
 }
 impl Checker<'_> {
     fn uncovered(&mut self, span: Span, message: &str, live: Formula) -> Diagnostic {
@@ -2178,14 +2180,12 @@ impl Checker<'_> {
         if !self.recovery_statement(statement, span, domain) {
             return Ok(());
         }
-        // Explicit adapters reuse terminal replay per selected arm. Inferred
-        // result shapes still share state across arms.
+        // Stored adapters isolate uncertain inferred labels. Inferred exits still
+        // share the containing control's result contract across arms.
         let barrier = usize::from(
-            matches!(
-                statement,
-                Statement::Capture(..) | Statement::BindOutcome(_, None, ..)
-            ) || (matches!(statement, Statement::ExitOutcome(..))
-                && (self.infer_exits || !self.infer_payloads.is_empty())),
+            matches!(statement, Statement::Capture(..))
+                || (matches!(statement, Statement::ExitOutcome(..))
+                    && (self.infer_exits || !self.infer_payloads.is_empty())),
         );
         self.recovery.barriers += barrier;
         let previous = std::mem::replace(&mut self.expression_guard, guard.clone());
@@ -2997,11 +2997,12 @@ impl Checker<'_> {
             expected,
             outcomes: vec![],
             writes: vec![],
+            uncertain_labels: BTreeSet::new(),
         };
         let before = (!self.recovery.omitted.is_empty())
             .then(|| (self.scopes.clone(), self.dead, self.result.code.len()));
         self.lower_outcome(e, guard, domain, Some(&mut sink))?;
-        if self.recovery_uncertain(domain) {
+        if !sink.uncertain_labels.is_empty() || self.recovery_uncertain(domain) {
             // A partial sink is not an initialized outcome. Retire the whole
             // binding history while keeping disjoint outer histories checkable.
             let (before_scopes, before_dead, before_code) =
@@ -3055,28 +3056,36 @@ impl Checker<'_> {
         e: &syntax::OutcomeExpr,
         guard: Guard,
         domain: Formula,
-        sink: Option<&mut OutcomeBinding>,
+        mut sink: Option<&mut OutcomeBinding>,
     ) -> Result<()> {
         let at = match e {
             syntax::OutcomeExpr::Forward(s)
             | syntax::OutcomeExpr::Construct(s, ..)
             | syntax::OutcomeExpr::Delta(s, ..) => *s,
         };
-        // Use the existing terminal dependency/replay policy for explicit stored
-        // payloads. This synthetic node is diagnostic-only: it emits no exit and
+        // Use the existing terminal dependency/replay policy for stored payloads.
+        // This synthetic node is diagnostic-only: it emits no exit and
         // does not change the containing control's normal completion contract.
         let stored_terminal = match e {
-            syntax::OutcomeExpr::Construct(_, name, args)
-                if sink.as_ref().is_some_and(|s| s.expected.is_some()) =>
-            {
+            syntax::OutcomeExpr::Construct(_, name, args) if sink.is_some() => {
                 Some(Statement::Exit(name.clone(), args.clone()))
             }
             _ => None,
         };
-        if let Some(statement) = &stored_terminal
-            && !self.recovery_statement(statement, at, domain)
-        {
-            return Ok(());
+        if let Some(statement @ Statement::Exit(name, _)) = &stored_terminal {
+            let target = sink.as_deref_mut().unwrap();
+            if target.uncertain_labels.contains(name) {
+                // Contextual inference (including empty collection payloads)
+                // may have depended on the skipped occurrence of this label.
+                self.recovery_block(domain);
+                return Ok(());
+            }
+            if !self.recovery_statement(statement, at, domain) {
+                if target.expected.is_none() {
+                    target.uncertain_labels.insert(name.clone());
+                }
+                return Ok(());
+            }
         }
         self.record_selection(at, syntax::SelectionKind::Outcome, &guard, domain);
         let previous = std::mem::replace(&mut self.expression_guard, guard.clone());

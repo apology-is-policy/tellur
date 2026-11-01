@@ -915,11 +915,55 @@ replacement type, or continue through its uses. Independent outer histories keep
 their original selectors and checking. Nested adapters share the same error budget.
 
 Clean arms still check their own resource completion and reject references to
-arm-local storage. Such retirement errors remain barriers. Stored adapters with an
-inferred type (`auto saved = delta ...`), captures, decision headers and adapters in
-fault contexts retain conservative first-error behavior. A successful full check is
+arm-local storage. Such retirement errors remain barriers. Inferred stored adapters
+follow the rules below; captures, decision headers and adapters in fault contexts
+retain conservative first-error behavior. A successful full check is
 still required for hover and execution. Try the explicit `message_result message`
 adapter in [stored_adapters.tellur](../../playground/stored_adapters.tellur).
+
+## Inferred stored-adapter recovery
+
+Since 0.93, `auto saved = delta ...` can report independent payload errors for
+distinct result labels. No target type is invented to make recovery possible.
+
+<!-- tellur:reject E_TYPE -->
+```tellur
+control choose(bool flag) exits auto {
+    auto saved = delta flag {
+        true  => left { 1 < true },
+        false => right { 2 < false }
+    };
+    exit saved;
+}
+```
+
+Both comparisons are invalid independently, so both are reported. After omitting a
+failed arm during diagnostic replay, later constructions of that same result label
+are suppressed. Their payload shape or contextual types may have depended on the
+omitted occurrence—for example, an empty collection may need a preceding arm's
+collection type. The rule also covers implicit `forward` results. Label uncertainty
+belongs to that one stored binding, including its nested adapters; a different
+binding on a disjoint outer path has its own inference state.
+
+This is deliberately conservative: a later arm with that label may contain another
+real error, which appears after repairing the earlier one. Successfully checked
+occurrences still establish ordinary same-label payload consistency before any
+failure. Distinct labels retain normal ownership and borrow checking, including
+resource completion and rejection of references to arm-local storage.
+
+Any uncertain result makes the whole stored binding unavailable. Recovery restores
+the parent scope/history, discards partial writes, and stalls the binding's complete
+selected domain before defining a value or inferred outcome type. Uses of that value,
+continuations and joins touching the stalled domain stay suppressed; disjoint outer
+histories remain checkable with their original selectors. The 32-error budget covers
+all arms and controls, including unused generic definitions.
+
+Inferred **exit** adapters, decision headers, already uncertain entry histories and
+fault-context adapters retain their existing barriers. Repairing an arm does not
+make a partially checked program executable or available to hover. Try invalid
+expressions in the `ready` and `empty` payloads of the first `auto saved` adapter in
+[stored_adapters.tellur](../../playground/stored_adapters.tellur); restoring the complete
+source restores its inferred-type and call contracts.
 
 ## Implementation budgets and operational limits
 

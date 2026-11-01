@@ -5179,3 +5179,90 @@ fn generic_bound_preparation_refreshes_imported_private_traits_independently() {
     assert_eq!(f.diagnostics(), json!([]));
     assert_eq!(hover_at(&f, source, "req.one<string>"), h);
 }
+
+#[test]
+fn inferred_stored_adapter_diagnostics_repair_before_publishing_partial_types() {
+    let mut f = Fixture::new();
+    fs::write(
+        f.root.join("manifest.json"),
+        include_str!("../playground/manifest.json"),
+    )
+    .unwrap();
+    let source = "control choose(bool flag) exits auto {\nauto saved=delta flag {\ntrue=>left {concat(\"a\",\"b\")},\nfalse=>right {concat(\"c\",\"d\")}\n};auto next=saved;exit next;}\ncontrol main() exits auto {forward choose(true);}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let initial = hover_at(&f, source, "auto next");
+    assert!(initial.to_string().contains("left") && initial.to_string().contains("right"));
+    let broken = source
+        .replace("concat(\"a\",\"b\")", "concat(true,\"b\")")
+        .replace("concat(\"c\",\"d\")", "concat(false,\"d\")");
+    f.change(&broken, 2);
+    let errors = f.diagnostics();
+    assert_eq!(errors.as_array().unwrap().len(), 2, "{errors}");
+    for (e, line) in errors.as_array().unwrap().iter().zip([2, 3]) {
+        assert_eq!(e["code"], "E_TYPE");
+        assert_eq!(e["range"]["start"]["line"], line);
+    }
+    assert!(hover_at(&f, &broken, "auto saved").is_null());
+    assert!(hover_at(&f, &broken, "auto next").is_null());
+    assert!(hover_at(&f, &broken, "choose(true)").is_null());
+    let partial = broken.replace("concat(true,\"b\")", "concat(\"a\",\"b\")");
+    f.change(&partial, 3);
+    assert_eq!(f.diagnostics().as_array().unwrap().len(), 1);
+    assert!(hover_at(&f, &partial, "auto next").is_null());
+    f.change(source, 4);
+    assert_eq!(f.diagnostics(), json!([]));
+    assert_eq!(hover_at(&f, source, "auto next"), initial);
+    assert!(
+        hover_at(&f, source, "choose(true)")
+            .to_string()
+            .contains("Control contract")
+    );
+}
+
+#[test]
+fn inferred_stored_adapter_diagnostics_keep_imported_arm_locations_and_labels() {
+    let mut f = Fixture::new();
+    let dependency = f.root.join("jobs.tellur");
+    let uri = url::Url::from_file_path(&dependency).unwrap().to_string();
+    let valid = "pub control choose(bool flag) exits left {u32 value},right {u32 value} {\nauto saved=delta flag {\ntrue=>delta flag {true=>left {1},false=>left {2}},\nfalse=>right {3}\n};exit saved;}";
+    fs::write(&dependency, valid).unwrap();
+    let source =
+        "import \"jobs.tellur\" as jobs;control main() exits auto {forward jobs.choose(true);}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let initial = hover_at(&f, source, "jobs.choose(true)");
+    assert!(initial.to_string().contains("Control contract"));
+    let broken = valid
+        .replace("left {1}", "left {absent_first}")
+        .replace("left {2}", "left {absent_dependent}")
+        .replace("right {3}", "right {absent_other}");
+    f.server.notification(
+        "textDocument/didOpen",
+        &json!({"textDocument":{"uri":uri,"version":1,"text":broken}}),
+    );
+    let errors = f.diagnostics();
+    assert_eq!(errors.as_array().unwrap().len(), 2, "{errors}");
+    for (e, line) in errors.as_array().unwrap().iter().zip([2, 3]) {
+        assert_eq!(e["code"], "E_NAME");
+        let related = &e["relatedInformation"][0]["location"];
+        assert_eq!(related["uri"], uri);
+        assert_eq!(related["range"]["start"]["line"], line);
+    }
+    assert!(!errors.to_string().contains("absent_dependent"));
+    assert!(hover_at(&f, source, "jobs.choose(true)").is_null());
+    let partial = broken.replace("left {absent_first}", "left {1}");
+    f.server.notification(
+        "textDocument/didChange",
+        &json!({"textDocument":{"uri":uri,"version":2},"contentChanges":[{"text":partial}]}),
+    );
+    let errors = f.diagnostics();
+    assert_eq!(errors.as_array().unwrap().len(), 2, "{errors}");
+    assert!(errors.to_string().contains("absent_dependent"));
+    f.server.notification(
+        "textDocument/didClose",
+        &json!({"textDocument":{"uri":uri}}),
+    );
+    assert_eq!(f.diagnostics(), json!([]));
+    assert_eq!(hover_at(&f, source, "jobs.choose(true)"), initial);
+}

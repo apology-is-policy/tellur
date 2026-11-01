@@ -1176,3 +1176,31 @@ fn generic_bound_preparation_uses_the_shared_budget() {
         }
     }
 }
+
+#[test]
+fn inferred_stored_adapter_batches_keep_generic_import_ranges_and_first_error_api() {
+    let f = Fixture::new();
+    let library = "// 🙂 inferred arms\r\npub control choose<t>(t input,bool flag) exits left {t value,u32 count},right {t value,u32 count} {\r\nauto saved=delta flag {\r\ntrue=>left {input,absent_first},\r\nfalse=>right {input,absent_second}\r\n};exit saved;}";
+    f.write("jobs.tellur", library);
+    f.write("main.tellur","import \"jobs.tellur\" as jobs;control main() exits auto {forward jobs.choose<string>(\"owned\",true);}");
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    let errors = report["diagnostics"].as_array().unwrap();
+    assert_eq!(errors.len(), 2, "{report}");
+    for (e, selected) in errors.iter().zip(["absent_first", "absent_second"]) {
+        assert_eq!(e["code"], "E_NAME");
+        assert_eq!(e["range"], selected_range(library, selected));
+        assert_eq!(e["path"], f.root.join("jobs.tellur").to_str().unwrap());
+    }
+    assert!(report["summary"].is_null());
+    let m = Manifest::from_json(include_str!("../playground/manifest.json")).unwrap();
+    let first = tellur::compile_file(f.root.join("main.tellur"), m).unwrap_err();
+    assert_eq!(first.diagnostic.code, "E_NAME");
+    assert_eq!(first.diagnostic.span.line, 4);
+    f.write(
+        "jobs.tellur",
+        &library
+            .replace("absent_first", "1")
+            .replace("absent_second", "2"),
+    );
+    f.report(&["check", "main.tellur", "--json"], true);
+}

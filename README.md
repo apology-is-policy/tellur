@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.92.0** implements the v0.1 checked core and the current language
+Compiler release **0.93.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -26,6 +26,10 @@ Release 0.80 adds concrete trait-call contracts, preserving the trait's names an
 origins while resolving associated types. Unsaved declarations refresh the contract;
 generic trait calls retain their abstract associated projections. Try `reader<text_source>.read`
 in [traits.tellur](playground/traits.tellur).
+
+Release 0.93 adds [inferred stored-adapter diagnostics](docs/reference/diagnostics-and-limits.md#inferred-stored-adapter-recovery):
+distinct result labels can report errors together. Later arms sharing an uncertain
+label are suppressed, and the partial result never supplies a type or continuation.
 
 Release 0.92 adds [generic-bound diagnostic batches](docs/reference/diagnostics-and-limits.md#generic-bound-preparation-batches):
 independent invalid requirements report together before trait resolution, including
