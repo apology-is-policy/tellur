@@ -1,7 +1,13 @@
 //! Runtime failure context shared by the reference executor and generated programs.
 //! Activation identities describe invocations; they are not storage/frame addresses.
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::{
+    collections::BTreeMap,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
+};
 
 pub const MAX_ACTIVATIONS: usize = 32;
 pub const MAX_EXPANSION_CALLS: usize = 32;
@@ -165,14 +171,16 @@ struct Active {
     current_site: Option<usize>,
 }
 /// Retains only active invocations. Loop iterations and completed calls do not
-/// accumulate history. Once a report is captured, this tracker cannot resume.
+/// accumulate history. Child trackers share an execution-local identity allocator,
+/// but have independent active chains and fault state. Once a report is captured,
+/// this tracker cannot resume. A tracker is diagnostic context, not a task scheduler.
 #[derive(Default, Debug)]
 pub struct Tracker {
     cause: Option<Box<Report>>,
     kind: Kind,
     sites: BTreeMap<usize, Site>,
     active: Vec<Active>,
-    next: u64,
+    identities: Arc<AtomicU64>,
     failed: bool,
 }
 impl Tracker {
@@ -182,12 +190,15 @@ impl Tracker {
     pub fn child(&self) -> Self {
         Self {
             sites: self.sites.clone(),
-            next: self.next,
+            identities: Arc::clone(&self.identities),
             ..Self::default()
         }
     }
+    /// Keep sequential join compatibility; related trackers already share allocation.
+    /// This does not merge active chains, fault state or completed invocation history.
     pub fn absorb(&mut self, child: &Self) {
-        self.next = self.next.max(child.next);
+        self.identities
+            .fetch_max(child.identities.load(Ordering::Relaxed), Ordering::Relaxed);
     }
     pub fn with_cause(&mut self, mut report: Report) {
         // A bounded causal chain, even with nested boundary escalation.
@@ -214,12 +225,17 @@ impl Tracker {
         if self.failed {
             return Err("execution boundary has already failed".into());
         }
-        self.next = self
-            .next
-            .checked_add(1)
-            .ok_or("activation identity space exhausted")?;
+        // Allocation orders identities only, not program effects or task scheduling.
+        // Failed allocation leaves the counter saturated, so IDs can never wrap/recur.
+        let id = self
+            .identities
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |last| {
+                last.checked_add(1)
+            })
+            .map_err(|_| "activation identity space exhausted")?
+            + 1;
         self.active.push(Active {
-            id: self.next,
+            id,
             parent: self.active.last().map(|a| a.id),
             control: control.into(),
             called_at: self.active.last().and_then(|a| a.current_site),
@@ -269,5 +285,124 @@ impl Tracker {
             omitted_activations: omitted,
             site: location(self.active.last().and_then(|a| a.current_site)),
         }
+    }
+}
+
+#[cfg(test)]
+mod identity_tests {
+    use super::*;
+
+    fn report(tracker: &mut Tracker) -> Report {
+        tracker.failure("test", Phase::Execution, "test report")
+    }
+
+    #[test]
+    fn overlapping_children_share_ids_without_joining_or_merging_active_chains() {
+        let mut root = Tracker::default();
+        root.enter("root").unwrap();
+        let mut first = root.child();
+        let mut second = root.child();
+        first.enter("first").unwrap();
+        second.enter("second").unwrap();
+        first.enter("nested").unwrap();
+        second.leave();
+        second.enter("replacement").unwrap();
+        root.enter("parent_helper").unwrap();
+        let first = report(&mut first);
+        let second = report(&mut second);
+        let root = report(&mut root);
+        assert_eq!(
+            first
+                .activations
+                .iter()
+                .map(|a| (a.id, a.parent))
+                .collect::<Vec<_>>(),
+            [(2, None), (4, Some(2))]
+        );
+        assert_eq!(
+            second
+                .activations
+                .iter()
+                .map(|a| (a.id, a.parent))
+                .collect::<Vec<_>>(),
+            [(5, None)]
+        );
+        assert_eq!(
+            root.activations
+                .iter()
+                .map(|a| (a.id, a.parent))
+                .collect::<Vec<_>>(),
+            [(1, None), (6, Some(1))]
+        );
+    }
+
+    #[test]
+    fn child_failure_state_is_local_and_does_not_choose_a_scheduling_policy() {
+        let mut root = Tracker::default();
+        root.enter("root").unwrap();
+        let mut failed = root.child();
+        let mut separate = root.child();
+        failed.enter("work").unwrap();
+        failed.source_fault();
+        let cause = report(&mut failed);
+        assert_eq!(cause.kind, Kind::SourceFault);
+        assert!(failed.enter("forbidden_resume").is_err());
+        assert!(!separate.is_source_fault());
+        separate.enter("independent_context").unwrap();
+        let separate_report = report(&mut separate);
+        assert_eq!(separate_report.activations[0].id, 3);
+        assert!(separate_report.cause.is_none());
+        root.absorb(&separate);
+        root.absorb(&failed);
+        root.enter("later").unwrap();
+        let root_report = report(&mut root);
+        assert_eq!(root_report.activations[1].id, 4);
+        assert!(!root.is_source_fault());
+        // The executor, not identity allocation, decides whether a context may run.
+    }
+
+    #[test]
+    fn nested_children_and_completed_calls_keep_monotonic_ids_and_fresh_roots() {
+        let mut root = Tracker::default();
+        let mut child = root.child();
+        let mut grandchild = child.child();
+        for _ in 0..2048 {
+            grandchild.enter("completed").unwrap();
+            grandchild.leave();
+        }
+        root.absorb(&grandchild);
+        child.absorb(&root);
+        root.enter("parent").unwrap();
+        child.enter("child").unwrap();
+        grandchild.enter("grandchild").unwrap();
+        assert_eq!(report(&mut root).activations[0].id, 2049);
+        assert_eq!(report(&mut child).activations[0].id, 2050);
+        let last = report(&mut grandchild);
+        assert_eq!(last.activations.len(), 1);
+        assert_eq!(last.activations[0].id, 2051);
+        assert_eq!(last.omitted_activations, 0);
+        let mut fresh = Tracker::default();
+        fresh.enter("fresh_entry").unwrap();
+        assert_eq!(report(&mut fresh).activations[0].id, 1);
+    }
+
+    #[test]
+    fn shared_identity_exhaustion_never_wraps_or_partially_enters() {
+        let mut root = Tracker::default();
+        root.identities.store(u64::MAX - 1, Ordering::Relaxed);
+        let mut first = root.child();
+        let mut second = root.child();
+        first.enter("last").unwrap();
+        assert_eq!(
+            second.enter("overflow"),
+            Err("activation identity space exhausted".into())
+        );
+        assert_eq!(
+            root.enter("still_exhausted"),
+            Err("activation identity space exhausted".into())
+        );
+        assert!(report(&mut second).activations.is_empty());
+        assert!(report(&mut root).activations.is_empty());
+        assert_eq!(report(&mut first).activations[0].id, u64::MAX);
     }
 }

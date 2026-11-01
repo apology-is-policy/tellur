@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-0.97.0-darwin-arm64.vsix` using **Extensions:
+1. Install the supplied `tellur-language-0.98.0-darwin-arm64.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -923,3 +923,10 @@ The isolated regression changes a constructor parameter in
 `playground/constructor_access/messages.tellur` to an invalid multiline type, then a
 compact equivalent. It verifies both exact related ranges, unavailable stale hover,
 repair and native execution from the caller.
+
+## Runtime foundation in 0.98
+
+The bundled compiler shares an execution-local activation ID allocator between
+related runtime contexts. Existing sequential native reports preserve their IDs and
+source information. This is groundwork for async execution; no task syntax, scheduler
+or new highlighting is enabled. Editor behavior is unchanged.

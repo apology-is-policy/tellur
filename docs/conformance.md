@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.97.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.98.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -3331,3 +3331,35 @@ locations, unavailable stale hover, repair and native execution emitting both
 constructor messages. Six binary copies and nine packaged/installed payloads match
 release 0.97.0. Existing windows were not reloaded. Formatting and whitespace checks
 passed. Executable formats and accepted ownership, origin and fault rules are unchanged.
+
+## 0.98 — Async audit and shared activation identities
+
+E1a audits recursive reference execution, native sequential frames and task/fault
+requirements in `docs/async-execution.md`. Spawned-child fault timing is explicitly
+pending the author's decision; the implementation does not choose a policy.
+
+Related fault trackers now share one execution-local monotonic allocator. They keep
+independent active chains, source-fault flags and causes; overflow cannot wrap or
+partially enter an invocation. Completed calls do not accumulate history, and fresh
+entry executions restart numbering. The same tracker code is embedded in native
+programs. Allocation establishes identity uniqueness only, not scheduling or memory
+synchronization of Tellur effects.
+
+Four focused tests cover children created before either joins, interleaved nested
+invocations, local failure/frozen trackers, reordered joins, 2,048 completed calls,
+fresh roots and exhausted allocation across siblings. Source tasks, suspension,
+cancellation and scheduling remain unimplemented; no new grammar is claimed.
+
+Validation: 68 Rust tests passed across eight targets (library unit tests, faults,
+source faults, named and lexical boundaries, native frames, native host and manual).
+The four new identity tests also run when the shared fault source is compiled in
+the native-host harness. Existing sequential native/reference reports, resource
+handover, fuel limits and expansion observations retain their regression evidence.
+No full-suite rerun is claimed.
+
+The release build and fresh compiler/LSP version/capability handshake passed; six
+binary copies and nine packaged/installed payloads match release 0.98.0. Unchanged
+frontend/editor behavior reuses the 0.97 Node and isolated VS Code evidence, with
+relevant source hashes checked. Existing windows were not reloaded. Formatting and
+whitespace checks passed. The next independent E1b step is persistent reference
+continuations; the spawned-child fault decision remains pending.

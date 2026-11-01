@@ -95,6 +95,12 @@ reset, retained handover, contingency retirement and completed constructor deliv
 all use the same local layout. The reference executor keeps its independent logical
 addressing as a semantic comparison target.
 
+Since 0.98, child trackers share an execution-local identity allocator instead of
+copying a counter and merging it only at return. Overlapping diagnostic contexts
+cannot reuse an invocation ID; their active chains and fault state remain separate.
+This is [E1 activation groundwork](async-execution.md), not a scheduler or an answer
+to the open spawned-child fault propagation question.
+
 Recursion and concurrency remain unsupported. Async lowering must make suspended
 frames persistent and settle children/loans before retirement; native offsets alone
 do not provide a scheduler, pinning protocol or coroutine ABI.

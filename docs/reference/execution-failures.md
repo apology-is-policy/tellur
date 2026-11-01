@@ -153,6 +153,12 @@ The envelope is `format: "tellur.execution-failure"`, `version: 1`. It contains:
   one-based Unicode scalar coordinates. Instruction-budget checks happen before
   evaluating the instruction's guard, so this site does not assert that its effects ran.
 
+Since 0.98, related runtime contexts share allocation of invocation IDs, so overlapping
+context lifetimes cannot reuse an ID. Fresh entry executions still start from 1;
+active chains, fault states and causes remain separate. IDs describe invocations,
+not task scheduling or memory synchronization. Source async execution is still
+unavailable; see the [async implementation plan](../async-execution.md).
+
 Source sites carry a source control, optional file path/label and up to 32 expansion
 origins, with an explicit omission count. Paths come from compilation and may reveal
 the build machine's source directory. Sources compiled from strings have no file path.
