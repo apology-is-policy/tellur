@@ -189,6 +189,120 @@ fn codes(source: &str, expected: &[&str]) {
 }
 
 #[test]
+fn explicit_exit_adapters_recover_independent_terminal_arms() {
+    codes(
+        "control choose(bool flag) exits ready {u32 value} {exit delta flag {true=>ready {true},false=>ready {\"wrong\"}};} control caller() exits ready {u32 value} {forward choose(true);}",
+        &["E_TYPE", "E_TYPE"],
+    );
+    codes(
+        "outcome result {ready {u32 value},missing} control choose(bool flag) exits result {exit delta flag {true=>unknown {},false=>ready {true}};}",
+        &["E_EXIT", "E_TYPE"],
+    );
+    codes(
+        "control choose(bool flag) exits done {exit delta flag {true=>done {7},false=>done {true}};}",
+        &["E_ARITY", "E_ARITY"],
+    );
+}
+
+#[test]
+fn explicit_exit_adapters_recover_nested_arms_without_narrowing_outer_selectors() {
+    codes(
+        r#"control choose(bool flag,bool other) exits ready {u32 value} {
+            delta flag {true=>selected,false=>separate}
+            [selected]: exit delta other {
+                true=>[inner]: delta flag {true=>ready {true},false=>ready {"bad"}},
+                false=>ready {false}
+            };
+            [separate]: string fourth=7;exit ready {1};
+            [entry]: bool hidden=8;
+        }"#,
+        &["E_TYPE", "E_TYPE", "E_TYPE", "E_TYPE"],
+    );
+}
+
+#[test]
+fn explicit_exit_adapters_replay_owned_and_borrowed_payloads_cleanly() {
+    codes(
+        r#"control choose(bool flag,handle resource) exits ready {handle owned,u32 value} {
+            exit delta flag {true=>ready {move resource,true},false=>ready {move resource,"bad"}};
+        }"#,
+        &["E_TYPE", "E_TYPE"],
+    );
+    codes(
+        r#"control choose(bool flag,ref string input)
+            exits ready {ref string value from input,u32 count} {
+            exit delta flag {true=>ready {input,true},false=>ready {input,"bad"}};
+        }"#,
+        &["E_TYPE", "E_TYPE"],
+    );
+    // Resource completion remains real on the independent clean arm.
+    codes(
+        "control choose(bool flag,handle resource) exits ready {u32 value} {exit delta flag {true=>ready {true},false=>ready {1}};}",
+        &["E_TYPE", "E_RESOURCE"],
+    );
+}
+
+#[test]
+fn exit_adapter_headers_inference_and_stored_results_remain_barriers() {
+    for source in [
+        "control choose(bool flag) exits ready {u32 value} {exit delta flag {true=>ready {true}};}",
+        "control choose(bool flag) exits auto {exit delta flag {true=>ready {missing},false=>ready {also_missing}};}",
+        "control choose(bool flag) exits ready... {exit delta flag {true=>ready {missing},false=>ready {also_missing}};}",
+        "control choose(bool flag) exits done {auto saved=delta flag {true=>ready {missing},false=>ready {also_missing}};exit done;}",
+        "outcome result {ready {u32 value}} control choose(bool flag) exits done {result saved=delta flag {true=>ready {true},false=>ready {\"bad\"}};exit done;}",
+    ] {
+        let batch = errors(source);
+        assert_eq!(batch.errors.len(), 1, "{batch}");
+    }
+    // Header errors of a nested decision stop this adapter's replay.
+    codes(
+        "control choose(bool flag) exits ready {u32 value} {exit delta flag {true=>ready {true},false=>delta flag {true=>ready {\"bad\"}}};}",
+        &["E_TYPE", "E_ARMS"],
+    );
+}
+
+#[test]
+fn exit_adapter_recovery_does_not_cross_uncertain_entry_or_fault_contexts() {
+    codes(
+        "control choose(bool flag) exits ready {u32 value} {string first=7;exit delta flag {true=>ready {true},false=>ready {\"bad\"}};}",
+        &["E_TYPE"],
+    );
+    codes(
+        "control main(bool flag) exits ready {u32 value} {fault boundary {exit delta flag {true=>ready {true},false=>ready {\"bad\"}};} contingency [] {terminate process 1;}}",
+        &["E_TYPE"],
+    );
+    codes(
+        "control main(bool flag) exits done {fault boundary {} contingency [flag] {exit delta flag {true=>done {},false=>done {}};}exit done;}",
+        &["E_CONTINGENCY_EXIT"],
+    );
+}
+
+#[test]
+fn explicit_exit_adapter_arms_share_one_global_budget_and_original_generic_locations() {
+    codes(
+        "control choose<t>(t input,bool flag) exits ready {t value,u32 count} {exit delta flag {true=>ready {input,true},false=>ready {input,\"bad\"}};}",
+        &["E_TYPE", "E_TYPE"],
+    );
+    fn nested(depth: usize) -> String {
+        if depth == 0 {
+            return "ready {true}".into();
+        }
+        format!(
+            "delta flag {{true=>{},false=>{}}}",
+            nested(depth - 1),
+            nested(depth - 1)
+        )
+    }
+    let batch = errors(&format!(
+        "control choose(bool flag) exits ready {{u32 value}} {{exit {};}}",
+        nested(6)
+    ));
+    assert!(batch.limit_reached, "{batch}");
+    assert_eq!(batch.errors.len(), tellur::diagnostics::MAX_DIAGNOSTICS);
+    assert!(batch.errors.iter().all(|e| e.code == "E_TYPE"));
+}
+
+#[test]
 fn named_boundary_leaf_errors_recover_with_dependent_supervisors_suppressed() {
     codes(
         r#"boundary request(string context) retains context {
@@ -503,10 +617,10 @@ fn loop_body_errors_do_not_create_backedge_or_coverage_cascades() {
 }
 
 #[test]
-fn handler_terminals_and_inline_outcome_adapters_remain_recovery_barriers() {
+fn handler_terminals_and_stored_outcome_adapters_remain_recovery_barriers() {
     for body in [
         "fault boundary {exit done;} contingency [] {exit done;u32 first=true;string second=7;}",
-        "exit delta true {true=>done {7},false=>done {true}};",
+        "auto saved=delta true {true=>ready {missing},false=>ready {also_missing}};exit done;",
     ] {
         let source = format!(
             "control main() exits done {{{body}}} control other() exits done {{u32 bad=true;string second=7;exit done;}}"

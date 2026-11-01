@@ -8,7 +8,8 @@ across independent straight-line statements within a body. Release 0.74 extends
 recovery across disjoint paths and nested scopes; 0.77 collects independent
 public-shape and signature errors, and 0.78 adds named completion bindings. Release
 0.83 extends statement recovery to named boundary work and contingency bodies, and
-0.84 adds lexical boundary work bodies; 0.85 adds lexical contingency handlers. Fixing an error
+0.84 adds lexical boundary work bodies; 0.85 adds lexical contingency handlers;
+0.86 adds explicit exit-adapter arms. Fixing an error
 may expose another within that body or a dependent control. The precise
 message wording may improve between releases. The negative examples here are checked
 for their stated code, so they also serve as small regression cases.
@@ -319,8 +320,8 @@ an error by silently narrowing the authored selector to its remaining paths.
 Independent selectors can still be checked. A missing selector after an omission
 stops its containing body, since the omitted decision may have introduced that name.
 
-Inline outcome adapters, decision-header
-errors, and scope/loop setup or completion errors retain conservative first-error
+Stored/inferred outcome adapters, decision-header errors, and scope/loop setup or
+completion errors retain conservative first-error
 limits. A whole-state fault-resource check stalls an uncertain history. Final
 resource checks are suppressed for uncertain scope domains, while clean disjoint
 paths retain their normal checks. No recovery result becomes executable or supplies
@@ -432,6 +433,40 @@ remain diagnostics. Fault-admission failures on uncertain histories stall those
 histories. Administrative dispositions and new decisions remain barriers after an
 omission; clean terminal errors still stop replay. The shared 32-error budget and
 requirement for a fully checked program before hover/build are unchanged.
+
+## Explicit exit-adapter recovery
+
+Since 0.86, independent terminal arms of `exit delta` in an ordinary control can
+report errors together when the control's entire result shape is explicit. Both
+payload errors below are reported:
+
+<!-- tellur:reject E_TYPE -->
+```tellur
+control choose(bool flag) exits ready { u32 value } {
+    exit delta flag {
+        true  => ready { true },
+        false => ready { "wrong" }
+    };
+}
+```
+
+This reuses terminal replay on each selected arm, including nested adapters and
+named result contracts. Failed arms and their dependent histories are omitted;
+independent arms keep their original guards, ownership and borrow checks. Partially
+moved resource arguments and returned references are reconstructed from clean state
+on each replay. Real resource-completion errors on clean arms remain diagnostics.
+
+`exits auto`, selected payload inference (`ready...`), stored adapters, and captures
+retain their existing recovery barriers. Decision operands, patterns and coverage
+must validate before their results can be checked; a nested header error stops that
+adapter's replay. Entering an adapter from an already uncertain history still stalls
+that history. Fault-context terminal recovery remains conservative. No missing arm,
+partial inferred outcome or executable program is synthesized. The same 32-error
+budget and complete-check requirement for hover apply.
+
+Try changing payload expressions in the explicit `main` adapter of
+[adapters.tellur](../../playground/adapters.tellur). Its inferred `successor` helper
+continues to use first-error adapter checking.
 
 ## Type context: E_TYPE and E_INFER
 

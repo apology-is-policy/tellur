@@ -2178,10 +2178,15 @@ impl Checker<'_> {
         if !self.recovery_statement(statement, span, domain) {
             return Ok(());
         }
-        let barrier = usize::from(matches!(
-            statement,
-            Statement::Capture(..) | Statement::BindOutcome(..) | Statement::ExitOutcome(..)
-        ));
+        // Explicit exit adapters reuse terminal replay per selected arm. Stored
+        // adapters and inferred result shapes still share state across arms.
+        let barrier = usize::from(
+            matches!(
+                statement,
+                Statement::Capture(..) | Statement::BindOutcome(..)
+            ) || (matches!(statement, Statement::ExitOutcome(..))
+                && (self.infer_exits || !self.infer_payloads.is_empty())),
+        );
         self.recovery.barriers += barrier;
         let previous = std::mem::replace(&mut self.expression_guard, guard.clone());
         let result = self.statement_inner(guard.clone(), domain, statement, span);

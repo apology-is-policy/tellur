@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-0.85.0-darwin-arm64.vsix` using **Extensions:
+1. Install the supplied `tellur-language-0.86.0-darwin-arm64.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -801,3 +801,12 @@ resource obligations remain enforced. An uncertain handler stalls the whole boun
 history while preserving disjoint outer checks. Try two invalid initializers in the
 handler of `playground/recovery.tellur`; partial repairs clear errors independently,
 and inferred hover refreshes only after every error is repaired.
+
+## Explicit exit-adapter diagnostics in 0.86
+
+Independent terminal arms of `exit delta` now report errors together when the
+control has a fully explicit result shape. Nested arms preserve their own guards,
+ownership and borrow checks. Stored adapters, inferred results and decision headers
+retain conservative barriers. Try two bad payload expressions in the explicit
+`main` adapter of `playground/adapters.tellur`; repairs clear errors independently
+and call hover returns only after the complete source checks.

@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.85.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.86.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -2937,3 +2937,28 @@ handler inference from `ref string` to `u32`, and native recovery after one hand
 fault. Six binary copies and nine packaged/installed payloads were verified at
 0.85.0. Existing windows were not reloaded. Formatting and whitespace checks passed;
 unaffected trait/origin and application/library evidence is reused.
+
+## 0.86 — Diagnostic recovery across explicit exit-adapter arms
+
+P2h reuses terminal replay beneath `exit delta` when the control's entire result
+shape is explicit. Independent arms can report payload, arity and exit-name errors
+together, including nested, named and generic adapters. Fresh replay preserves
+borrow and resource state; a clean arm still reports real completion obligations.
+Stored/captured adapters, inferred result shapes, decision headers and fault-context
+terminals retain conservative barriers. No partial checked program is published.
+
+Six recovery regressions cover independent and nested arms, full selected-domain
+joins, owned and borrowed payloads, real resource errors, inferred/stored barriers,
+uncertain entry, fault contexts and the shared 32-error budget. Two LSP regressions
+cover independent repairs, precise source locations, unsaved imported nested arms
+and checked call hover returning only after all errors are repaired.
+
+Final validation passed **370 Rust tests across 12 affected targets**, including
+all 46 recovery tests, 34 structured diagnostic tests, 147 LSP tests and three manual
+checks, plus **42 Node tests**. Adapter, stored-adapter, named-outcome, outcome-origin,
+generic-control, module and certificate suites retain native/expansion coverage.
+Isolated VS Code verified two arm errors at their exact tokens, partial/full repair,
+restored call hover and native execution of `playground/adapters.tellur` returning
+42. Six binary copies and nine packaged/installed payloads were verified at 0.86.0.
+Existing windows were not reloaded. Formatting and whitespace checks passed;
+unaffected boundary, trait and application/library evidence is reused.
