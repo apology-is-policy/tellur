@@ -300,6 +300,18 @@ impl Checker<'_> {
             .insert("Entry".into(), (Guard::True, domain));
         let work_scope = self.scopes.len() - 1;
         self.items(body, Guard::True, domain)?;
+        if self.recovery_uncertain(domain) {
+            // Work with omissions cannot establish either a normal continuation
+            // or a valid handover to contingency. Retire this diagnostic-only
+            // attempt, restore the parent, and stall the whole authored boundary
+            // domain. Disjoint outer histories keep their original state.
+            self.scopes = before_scopes;
+            self.dead = before_dead;
+            self.result.code = outer_code;
+            self.boundaries.pop();
+            self.recovery_block(domain);
+            return Ok(());
+        }
         let live = self.bdd.minus(domain, self.dead);
         self.resources(live, span, Some(work_scope))?;
         self.scopes.pop();

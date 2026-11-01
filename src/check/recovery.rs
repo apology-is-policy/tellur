@@ -177,13 +177,13 @@ impl Checker<'_> {
     pub(super) fn recovery_error(&mut self, statement: &Statement, span: Span, error: &Diagnostic) {
         if self.recovery.candidate.is_none()
             && self.recovery.barriers == 0
-            && self.boundaries.is_empty()
             && self.handler.is_none()
             // Named work and contingency are independently replayed bodies.
-            // Their administrative terminals stay barriers; lexical isolation
-            // above still needs a separate scope/state restoration policy.
+            // Lexical work retires its whole boundary on an uncertain replay.
+            // Handlers and administrative terminals stay conservative barriers.
             && (leaf(statement)
-                || (self.result.boundary.is_none()
+                || (self.boundaries.is_empty()
+                    && self.result.boundary.is_none()
                     && !self.result.contingency
                     && terminal(statement)))
             && !matches!(

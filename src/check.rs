@@ -2180,10 +2180,7 @@ impl Checker<'_> {
         }
         let barrier = usize::from(matches!(
             statement,
-            Statement::Capture(..)
-                | Statement::BindOutcome(..)
-                | Statement::ExitOutcome(..)
-                | Statement::Boundary { .. }
+            Statement::Capture(..) | Statement::BindOutcome(..) | Statement::ExitOutcome(..)
         ));
         self.recovery.barriers += barrier;
         let previous = std::mem::replace(&mut self.expression_guard, guard.clone());

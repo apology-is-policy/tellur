@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.83.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.84.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -2880,3 +2880,32 @@ native supervision with one handled fault followed by the next request. Six bina
 copies and nine packaged/installed payloads were verified at 0.83.0. Existing windows
 were not reloaded. Formatting and whitespace checks passed; earlier unaffected
 trait/origin and application/library evidence is reused.
+
+## 0.84 — Diagnostic recovery inside lexical boundary work
+
+P2f collects independent leaf errors inside lexical `fault boundary` work. Disjoint
+work paths, ordinary scopes, loop bodies and nested boundary work use fresh replay.
+If work becomes uncertain, the checker restores its entry scopes, live-history state
+and outer code, then stalls the whole authored boundary domain before checking the
+handler or outer continuation. Independent outer histories remain checkable; parent
+entry selectors and joins keep their original full meaning. This diagnostic-only
+retirement cannot publish a partial program or alter runtime fault handling.
+
+Six recovery regressions cover handler/continuation suppression, disjoint outer
+histories, parent entry joins, nested boundaries, retained-owner admission, capture
+errors, supervisor state, loops and the shared 32-error budget. Two LSP regressions
+cover staged work/handler repairs, exact source lines, imported locations and fresh
+inferred/call hover. Initial fixtures attempted to reuse an existing path atom and
+expected `E_NAME` for an invalid capture; the fixtures now respect fresh path names
+and the actual `E_BOUNDARY_CAPTURE` diagnostic. Lexical handlers, capture/setup
+failures and inline adapters retain their conservative first-error limits.
+
+Final validation passed **367 Rust tests across 12 affected targets**, including
+all 34 recovery tests, 34 structured diagnostic tests, 143 LSP tests and three manual
+checks, plus **42 Node tests**. Boundary, source-fault, ownership, loop, constructor,
+module and certificate suites retain native/expansion coverage. Isolated VS Code
+confirmed two work errors before first-error handler diagnostics, exact token ranges,
+partial/full repair, restored `ref string` inference hover and native recovery after
+one handled fault. Six compiler/server copies and nine packaged/installed payloads
+were verified at 0.84.0. Existing windows were not reloaded. Formatting and whitespace
+checks passed; unaffected trait/origin and application/library evidence is reused.

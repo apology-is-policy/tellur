@@ -69,6 +69,104 @@ fn hover_at(f: &Fixture, source: &str, needle: &str) -> Value {
 }
 
 #[test]
+fn lexical_work_diagnostics_repair_before_handler_errors_and_inferred_hover() {
+    let mut f = Fixture::new();
+    let source = include_str!("../playground/recovery.tellur")
+        .replace(
+            "fault boundary {",
+            "fault boundary {\n u32 work_count=1;\n string work_text=\"ready\";",
+        )
+        .replace(
+            "contingency [context] {",
+            "contingency [context] {\n u32 report_count=1;\n string report_text=\"handled\";",
+        );
+    f.open(&source);
+    assert_eq!(f.diagnostics(), json!([]));
+    assert!(
+        hover_at(&f, &source, "auto view")
+            .to_string()
+            .contains("ref string")
+    );
+    let broken = source
+        .replace("work_count=1", "work_count=true")
+        .replace("work_text=\"ready\"", "work_text=7")
+        .replace("report_count=1", "report_count=false")
+        .replace("report_text=\"handled\"", "report_text=8");
+    f.change(&broken, 2);
+    let errors = f.diagnostics();
+    assert_eq!(errors.as_array().unwrap().len(), 2, "{errors}");
+    for (error, needle) in errors
+        .as_array()
+        .unwrap()
+        .iter()
+        .zip(["work_count=true", "work_text=7"])
+    {
+        assert_eq!(error["code"], "E_TYPE");
+        let line = broken[..broken.find(needle).unwrap()]
+            .bytes()
+            .filter(|b| *b == b'\n')
+            .count();
+        assert_eq!(error["range"]["start"]["line"], line);
+    }
+    assert!(hover_at(&f, &broken, "auto view").is_null());
+    let handler_broken = broken
+        .replace("work_count=true", "work_count=1")
+        .replace("work_text=7", "work_text=\"ready\"");
+    f.change(&handler_broken, 3);
+    assert_eq!(f.diagnostics().as_array().unwrap().len(), 1);
+    assert!(hover_at(&f, &handler_broken, "auto view").is_null());
+    let partial = handler_broken.replace("report_count=false", "report_count=1");
+    f.change(&partial, 4);
+    assert_eq!(f.diagnostics().as_array().unwrap().len(), 1);
+    f.change(&source, 5);
+    assert_eq!(f.diagnostics(), json!([]));
+    assert!(
+        hover_at(&f, &source, "auto view")
+            .to_string()
+            .contains("ref string")
+    );
+}
+
+#[test]
+fn lexical_work_diagnostics_keep_imported_locations_and_fresh_call_contracts() {
+    let mut f = Fixture::new();
+    let library = f.root.join("jobs.tellur");
+    let uri = url::Url::from_file_path(&library).unwrap().to_string();
+    let source = "pub control process() exits done faults {\nfault boundary {\nu32 first=1;\nstring second=\"ready\";\nexit done;\n} contingency [] {escalate;}\n}";
+    fs::write(&library, source).unwrap();
+    let caller =
+        "import \"jobs.tellur\" as jobs;control main() exits done {forward jobs.process();}";
+    f.open(caller);
+    assert_eq!(f.diagnostics(), json!([]));
+    let broken = source
+        .replace("first=1", "first=true")
+        .replace("second=\"ready\"", "second=7");
+    f.server.notification(
+        "textDocument/didOpen",
+        &json!({"textDocument":{"uri":uri,"version":1,"text":broken}}),
+    );
+    let errors = f.diagnostics();
+    assert_eq!(errors.as_array().unwrap().len(), 2, "{errors}");
+    for (error, line) in errors.as_array().unwrap().iter().zip([2, 3]) {
+        assert_eq!(error["code"], "E_TYPE");
+        let location = &error["relatedInformation"][0]["location"];
+        assert_eq!(location["uri"], uri);
+        assert_eq!(location["range"]["start"]["line"], line);
+    }
+    assert!(hover_at(&f, caller, "jobs.process()").is_null());
+    f.server.notification(
+        "textDocument/didClose",
+        &json!({"textDocument":{"uri":uri}}),
+    );
+    assert_eq!(f.diagnostics(), json!([]));
+    assert!(
+        hover_at(&f, caller, "jobs.process()")
+            .to_string()
+            .contains("exits done faults")
+    );
+}
+
+#[test]
 fn named_boundary_diagnostics_repair_handler_then_work_before_hover_returns() {
     let mut f = Fixture::new();
     let source = "boundary request(string context) retains context {\nu32 work_count=1;\nstring work_text=\"ready\";\nterminate;\n} contingency(string reason) {\nu32 report_count=1;\nstring report_text=\"handled\";\nterminate;\n}\ncontrol main() exits done {supervise request(\"test\");exit done;}";

@@ -503,9 +503,8 @@ fn loop_body_errors_do_not_create_backedge_or_coverage_cascades() {
 }
 
 #[test]
-fn fault_contexts_and_inline_outcome_adapters_remain_recovery_barriers() {
+fn lexical_handlers_and_inline_outcome_adapters_remain_recovery_barriers() {
     for body in [
-        "fault boundary {u32 first=true;string second=7;exit done;} contingency [] {terminate process 1;}",
         "fault boundary {exit done;} contingency [] {u32 first=true;string second=7;terminate process 1;}",
         "exit delta true {true=>done {7},false=>done {true}};",
     ] {
@@ -515,6 +514,134 @@ fn fault_contexts_and_inline_outcome_adapters_remain_recovery_barriers() {
         let batch = errors(&source);
         assert_eq!(batch.errors.len(), 3, "{batch}");
     }
+}
+
+#[test]
+fn lexical_work_recovers_leaf_errors_but_stalls_handler_and_outer_continuation() {
+    codes(
+        r#"control main() exits done {
+            fault boundary {u32 first=true;string second=7;}
+            contingency [] {bool hidden=8;terminate process 1;}
+            bool also_hidden=9;exit done;
+        }
+        control other() exits done {u32 third=false;string fourth=8;exit done;}"#,
+        &["E_TYPE", "E_TYPE", "E_TYPE", "E_TYPE"],
+    );
+}
+
+#[test]
+fn lexical_work_restores_outer_selectors_and_checks_disjoint_histories() {
+    codes(
+        r#"control main(bool flag) exits done {
+            delta flag {true=>yes,false=>no}
+            [yes]: fault boundary {
+                delta flag {true=>available,false=>missing}
+                [available] over &: {u32 first=true;string second=7;}
+                [missing]: bool third=8;
+            } contingency [] {terminate process 1;}
+            [no]: string fourth=9;exit done;
+            [yes | no]: bool hidden=7;
+        }"#,
+        &["E_TYPE", "E_TYPE", "E_TYPE", "E_TYPE"],
+    );
+    // Restoring the parent's entry selector matters: it joins the uncertain yes
+    // history with no, so subsequent no statements must also stall.
+    codes(
+        r#"control main(bool flag) exits done {
+            delta flag {true=>yes,false=>no}
+            [yes]: fault boundary {u32 first=true;string second=7;}
+                contingency [] {terminate process 1;}
+            [entry]: bool hidden=8;
+            [no]: string also_hidden=9;exit done;
+        }"#,
+        &["E_TYPE", "E_TYPE"],
+    );
+}
+
+#[test]
+fn lexical_work_nested_boundaries_retire_uncertain_inner_and_outer_domains() {
+    codes(
+        r#"control main(bool flag) exits done {
+            fault boundary {
+                delta flag {true=>yes,false=>no}
+                [yes]: fault boundary {u32 first=true;string second=7;}
+                    contingency [] {escalate;}
+                [yes]: bool hidden=9;
+                [no]: bool third=8;
+            } contingency [] {terminate process 1;}
+            string also_hidden=9;exit done;
+        }"#,
+        &["E_TYPE", "E_TYPE", "E_TYPE"],
+    );
+}
+
+#[test]
+fn lexical_work_keeps_retained_owner_checks_and_skips_uncertain_handover() {
+    codes(
+        r#"control danger() exits done faults {exit done;}
+        control main(bool flag) exits done {
+            string context="request";
+            fault boundary {
+                delta flag {true=>yes,false=>no}
+                [yes] over &: {drop(context);u32 first=true;danger();bool hidden=8;}
+                [no]: string second=7;
+            } contingency [context] {bool hidden=8;terminate process 1;}
+            exit done;
+        }"#,
+        &["E_TYPE", "E_TYPE"],
+    );
+    codes(
+        r#"control danger() exits done faults {exit done;}
+        control main(bool flag) exits done {
+            string context="request";
+            fault boundary {
+                delta flag {true=>yes,false=>no}
+                [yes]: u32 first=true;
+                [no]: drop(context);danger();
+            } contingency [context] {terminate process 1;}
+            exit done;
+        }"#,
+        &["E_TYPE", "E_BOUNDARY_RETAIN"],
+    );
+}
+
+#[test]
+fn lexical_work_headers_handlers_and_supervisor_state_keep_their_barriers() {
+    codes(
+        "control main() exits done {fault boundary {u32 hidden=true;string also_hidden=7;} contingency [missing] {terminate process 1;}exit done;}",
+        &["E_BOUNDARY_CAPTURE"],
+    );
+    codes(
+        "control main() exits done {fault boundary {} contingency [] {u32 first=true;string hidden=7;terminate process 1;}exit done;}",
+        &["E_TYPE"],
+    );
+    codes(
+        r#"control main() exits done {
+            supervised loop requestor(u32 counter=1) {
+                fault boundary {u32 first=counter;string second=7;}
+                contingency [] {recover again requestor;}
+                exit done;
+            }
+        }"#,
+        &["E_SUPERVISOR_STATE", "E_TYPE"],
+    );
+}
+
+#[test]
+fn lexical_work_uses_one_budget_and_recovers_inside_ordinary_loops() {
+    let body = (0..40)
+        .map(|i| format!("u32 bad_{i}=true;\n"))
+        .collect::<String>();
+    let batch = errors(&format!(
+        "control main() exits done {{fault boundary {{{body}}} contingency [] {{terminate process 1;}}exit done;}}"
+    ));
+    assert!(batch.limit_reached);
+    assert_eq!(batch.errors.len(), tellur::diagnostics::MAX_DIAGNOSTICS);
+    assert!(batch.errors.iter().all(|e| e.code == "E_TYPE"));
+    codes(
+        "control main() exits done {fault boundary {loop work {u32 first=true;string second=7;exit done;}} contingency [] {terminate process 1;}exit done;}",
+        &["E_TYPE", "E_TYPE"],
+    );
 }
 
 #[test]
