@@ -4,8 +4,8 @@
 [Fault boundaries](faults-and-activations.md) ·
 [Current feature status](reference/support-status.md)
 
-1 November 2026. This is an E1 design and implementation plan. Compilers 0.98–0.99 add
-shared activation identity allocation and persistent reference continuations,
+1 November 2026. This is an E1 design and implementation plan. Compilers 0.98–0.103 add
+shared activation identities, persistent continuations and atomic invocation admission,
 prerequisites for overlapping execution contexts. They do **not** implement source
 tasks, source suspension, scheduling or async I/O. Proposed execution rules below
 are not new executable syntax.
@@ -49,6 +49,19 @@ A zero quota does nothing; terminal results are delivered once and cannot resume
 Quota is independent of fixed fuel, whose exhaustion remains terminal. Ordinary
 `run` APIs drive the same engine to completion. This is a scripted reference
 simulation mechanism, not source `await`, cancellation or an I/O readiness scheduler.
+
+In 0.103, invocation admission has two internal steps. Preparation validates every
+argument, including nested values, and owns that validated argument vector without
+installing frame storage, consuming an activation ID or running the body. Starting
+consumes that handoff, checks address capacity and activation admission, then installs
+the whole frame. A malformed later argument, exhausted address space or already
+failed diagnostic context cannot leave a partially installed invocation.
+
+Ordinary synchronous calls use both steps immediately. This provides a concrete
+handoff point for later deferred execution; it is not yet a source task. The handoff
+has no scheduler, public task type, captured-loan checker or cancellation contract.
+Host simulation disposal must not be treated as permission to drop a Tellur task.
+The source entry-syntax question remains independent and unanswered.
 
 Reference values already use invocation-specific logical slot ranges. A reference
 identifies storage and projections rather than a Rust vector element pointer.
@@ -190,6 +203,16 @@ or `capture` a cold task. The next implementation needs these distinct pieces:
 - Add a separate await-delivery continuation. Existing `ExecutionSession` pause and
   fuel behavior remains the reference observation mechanism, not source suspension.
 
+The current checker paths are synchronous too. `Checker::arguments` retires new
+anonymous stored-loan holders after argument evaluation, while decision lowering
+computes return origins from the actual arguments and checks the callee's fault
+permission at invocation. `stage_values` expires nonescaping initializer loans while
+preserving pending values. A deferred-call implementation cannot simply reuse these
+paths and save the emitted call: captured loans need a task-owned holder until actual
+settlement, and a callee's future body fault must stay distinct from an immediate
+argument-construction fault. The runtime handoff in E1b.1 does not establish any of
+those static permissions or extend temporary lifetimes.
+
 Acceptance must cover argument effects before body effects, no execution merely from
 creating/moving a task, duplicate consumption and dropped-task rejection, a borrowed
 capture protecting its owner until settlement, a fault during argument construction,
@@ -202,6 +225,7 @@ spelling remains pending; implementation must not choose it by timeout.
 | --- | --- | --- |
 | E1a | Runtime audit and shared activation identity allocator; interleaved children, independent failure state, no reuse after return, overflow, and sequential reference/native report parity | Delivered in 0.98; shared identity is independent of scheduling policy |
 | E1b | Persistent reference continuations and explicit step/resume protocol; current synchronous outcomes, fuel, effects, faults, loans and expansion observations preserved under different step partitions | Delivered in 0.99; no source async claim |
+| E1b.1 | Separate argument preparation from frame installation; reject malformed later values, address exhaustion and frozen activation state without partial storage; preserve all synchronous observations | Delivered in 0.103; internal handoff only, no source task admission |
 | E1c | Bounded cold tasks and consuming await; eager argument transfer, no body effects before drive, fixed result contracts, task ownership and retained borrows | Await/transfer obligation accepted; settle source runtime entry/suspension effect contracts before enabling syntax |
 | E1d | Scoped spawn and deterministic readiness; two overlapping children, duplicate/stale wake handling and owner settlement | Prompt owner-boundary fault propagation accepted; specify ownership transfers, sibling dispositions and deterministic multiple-fault selection |
 | E1e | Explicit cooperative cancellation and suspending cleanup; normal completion races, cleanup failures and no abandoned losers | Define cancellation observation and cleanup admission; no implicit cancellation exception |

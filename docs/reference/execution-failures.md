@@ -132,6 +132,13 @@ Clear those arguments when returning to a different program. Failure reports do 
 create static editor diagnostics: they describe one observed execution, whereas
 hover/explanation reports describe structural possibilities from checking.
 
+Since 0.103, reference invocation admission validates all argument values before
+installing any parameter storage. A malformed later argument cannot leave earlier
+parameters installed. Address-capacity and activation-admission failures also leave
+frame storage unchanged. Successful synchronous calls retain their effect order,
+activation identities and fault reports. This internal preparation/start split does
+not expose a task API, alter source completion obligations or create a scheduler.
+
 ## Stepping a reference execution
 
 Since 0.99, the Rust host API can drive a checked scripted simulation incrementally:

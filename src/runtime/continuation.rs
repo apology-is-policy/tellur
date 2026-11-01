@@ -87,6 +87,15 @@ struct Frame {
     facts: BTreeSet<Id>,
 }
 
+/// Validated invocation arguments, without an activation or body execution.
+/// This internal handoff is consumed when installed. It is not a source task:
+/// task ownership, captured loans and fault settlement still require checking.
+struct PreparedInvocation<'a> {
+    region: &'a Region,
+    arguments: Vec<Value>,
+    diagnostic_name: String,
+}
+
 // Every continuation represents existing synchronous control flow, not a task.
 // Blocks borrow immutable checked code; only active invocation/loop state is kept.
 enum Continuation<'a> {
@@ -163,6 +172,10 @@ impl<'a> Machine<'a> {
         self.call(&scenario.entry, scenario.arguments.clone())
     }
     fn call(&mut self, name: &str, args: Vec<Value>) -> Result<()> {
+        let invocation = self.prepare_call(name, args)?;
+        self.start_call(invocation)
+    }
+    fn prepare_call(&self, name: &str, args: Vec<Value>) -> Result<PreparedInvocation<'a>> {
         let region = self
             .program
             .region(name)
@@ -170,18 +183,34 @@ impl<'a> Machine<'a> {
         if args.len() != region.parameters.len() {
             return Err(error("wrong entry argument count"));
         }
+        // Validate the entire captured value graph before mutating frame storage.
+        // A later malformed argument must not leave an earlier one installed.
+        for (param, value) in region.parameters.iter().zip(&args) {
+            validate(value, &param.ty, self.program.manifest())?;
+        }
+        Ok(PreparedInvocation {
+            region,
+            arguments: args,
+            diagnostic_name: self.program.runtime_name(name),
+        })
+    }
+    fn start_call(&mut self, invocation: PreparedInvocation<'a>) -> Result<()> {
+        let PreparedInvocation {
+            region,
+            arguments,
+            diagnostic_name,
+        } = invocation;
         let base = self.next_base;
-        self.next_base = self
-            .next_base
+        let next_base = base
             .checked_add(self.program.next_id.max(1))
             .ok_or_else(|| error("activation storage address space exhausted"))?;
-        for (param, value) in region.parameters.iter().zip(args) {
-            validate(&value, &param.ty, self.program.manifest())?;
+        // Both fallible admission checks precede frame installation. Preparing
+        // an invocation neither reserves addresses nor consumes an activation ID.
+        self.activations.enter(&diagnostic_name).map_err(error)?;
+        self.next_base = next_base;
+        for (param, value) in region.parameters.iter().zip(arguments) {
             self.values.insert(base + param.id, value);
         }
-        self.activations
-            .enter(&self.program.runtime_name(name))
-            .map_err(error)?;
         self.phase = crate::fault::Phase::Execution;
         let caller = std::mem::replace(
             &mut self.frame,
@@ -833,6 +862,147 @@ impl<'a> Machine<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn admission_program() -> CheckedProgram {
+        crate::compile(
+            "struct box {u32 n;} control leaf(string text, box item) exits done {emit(text);drop(item);exit done;}",
+            Manifest::from_json(include_str!("../../playground/manifest.json")).unwrap(),
+        ).unwrap()
+    }
+    fn admission_arguments(text: &str) -> Vec<Value> {
+        vec![
+            Value::String(text.into()),
+            Value::Construct {
+                ty: "box".into(),
+                name: "box".into(),
+                fields: vec![Value::U32(1)],
+            },
+        ]
+    }
+    fn admission_scenario() -> Scenario {
+        Scenario {
+            entry: "leaf".into(),
+            arguments: vec![],
+            calls: vec![],
+        }
+    }
+    fn assert_uninstalled(machine: &Machine<'_>, next_base: Id) {
+        assert_eq!(machine.next_base, next_base);
+        assert!(machine.values.is_empty());
+        assert!(machine.stack.is_empty());
+        assert!(machine.events.is_empty());
+        assert_eq!(machine.frame.base, 0);
+        assert!(machine.frame.facts.is_empty());
+        assert_eq!(machine.cursor, 0);
+        assert_eq!(machine.steps_left, 100);
+        assert!(matches!(
+            machine.phase,
+            crate::fault::Phase::EntryValidation
+        ));
+    }
+
+    #[test]
+    fn preparing_invocations_retains_arguments_without_running_or_allocating_frames() {
+        let p = admission_program();
+        let s = admission_scenario();
+        let mut session = p.start_execution(&s, 100);
+        let machine = session.machine.as_mut().unwrap();
+        let first = machine
+            .prepare_call("leaf", admission_arguments("first"))
+            .unwrap();
+        let second = machine
+            .prepare_call("leaf", admission_arguments("second"))
+            .unwrap();
+        assert_uninstalled(machine, 0);
+        // Prepared values are independent; only consuming the handoff installs
+        // a frame. Selecting their execution order is internal test setup, not
+        // source scheduling or permission to leave a task unsettled.
+        machine.start_call(second).unwrap();
+        assert!(machine.events.is_empty());
+        assert_eq!(machine.values.len(), 2);
+        assert!(machine.drive(100));
+        assert!(machine.values.is_empty());
+        assert!(machine.stack.is_empty());
+        machine.start_call(first).unwrap();
+        assert!(machine.drive(100));
+        assert_eq!(
+            machine.events,
+            vec![
+                Event::Emit {
+                    message: "second".into()
+                },
+                Event::Emit {
+                    message: "first".into()
+                }
+            ]
+        );
+        assert!(machine.values.is_empty());
+        assert!(machine.stack.is_empty());
+    }
+
+    #[test]
+    fn malformed_later_arguments_leave_no_partial_invocation_state() {
+        let p = admission_program();
+        let s = admission_scenario();
+        let mut session = p.start_execution(&s, 100);
+        let machine = session.machine.as_mut().unwrap();
+        assert!(
+            machine
+                .prepare_call("missing", admission_arguments("unused"))
+                .is_err()
+        );
+        assert!(
+            machine
+                .prepare_call("leaf", vec![Value::String("unused".into())])
+                .is_err()
+        );
+        let mut malformed = admission_arguments("must not be installed");
+        let Value::Construct { fields, .. } = &mut malformed[1] else {
+            panic!()
+        };
+        fields[0] = Value::Bool(true);
+        let error = machine.prepare_call("leaf", malformed).err().unwrap();
+        assert!(error.message.contains("expected U32"));
+        assert_uninstalled(machine, 0);
+        // Preparation and rejection have not consumed any activation identity.
+        let mut probe = machine.activations.child();
+        probe.enter("probe").unwrap();
+        let report = probe.failure("probe", crate::fault::Phase::Execution, "test");
+        assert_eq!(report.activations[0].id, 1);
+    }
+
+    #[test]
+    fn invocation_admission_failure_never_installs_or_advances_storage() {
+        let p = admission_program();
+        let s = admission_scenario();
+        for storage_exhausted in [true, false] {
+            let mut session = p.start_execution(&s, 100);
+            let machine = session.machine.as_mut().unwrap();
+            if storage_exhausted {
+                machine.next_base = usize::MAX;
+            } else {
+                machine.activations.failure(
+                    "host",
+                    crate::fault::Phase::EntryValidation,
+                    "already failed",
+                );
+            }
+            let next = machine.next_base;
+            let prepared = machine
+                .prepare_call("leaf", admission_arguments("unused"))
+                .unwrap();
+            let error = machine.start_call(prepared).unwrap_err();
+            assert!(
+                error.message.contains(if storage_exhausted {
+                    "storage address space exhausted"
+                } else {
+                    "already failed"
+                }),
+                "{error}"
+            );
+            assert_uninstalled(machine, next);
+        }
+    }
 
     #[test]
     fn repeated_calls_and_loop_restarts_keep_only_live_continuations_and_slots() {

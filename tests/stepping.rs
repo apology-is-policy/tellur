@@ -444,3 +444,36 @@ fn nested_boundaries_and_secondary_faults_keep_separate_emergency_histories() {
         }
     }
 }
+
+#[test]
+fn malformed_later_entry_payload_never_enters_or_emits_under_any_partition() {
+    let p = checked(
+        "struct box {u32 n;} control main(string text, box item) exits done {emit(text);drop(item);exit done;}",
+    );
+    let s = Scenario {
+        arguments: vec![
+            Value::String("must not emit".into()),
+            Value::Construct {
+                ty: "box".into(),
+                name: "box".into(),
+                fields: vec![Value::Bool(true)],
+            },
+        ],
+        ..scenario()
+    };
+    partitions(&p, &s, 100);
+    let mut session = p.start_execution(&s, 100);
+    assert!(matches!(session.advance(0), ExecutionProgress::Paused));
+    let ExecutionProgress::Complete(Err(failure)) = session.advance(1) else {
+        panic!()
+    };
+    assert_eq!(failure.diagnostic.code, "E_DRIVER");
+    assert!(failure.diagnostic.message.contains("expected U32"));
+    assert!(failure.events.is_empty());
+    assert!(failure.report.activations.is_empty());
+    assert!(matches!(
+        failure.report.phase,
+        tellur::fault::Phase::EntryValidation
+    ));
+    assert!(matches!(session.advance(100), ExecutionProgress::Finished));
+}

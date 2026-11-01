@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.102.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.103.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -3525,3 +3525,39 @@ protected unrelated C# file.
 The existing async entry-syntax question remains unchanged. Both previously accepted
 task fault/settlement policies remain recorded; this independent diagnostics slice
 does not select a source async spelling or add task execution.
+
+## 0.103 — Atomic reference invocation admission
+
+E1b.1 separates validated invocation arguments from installed execution state.
+Preparation validates the whole argument vector, including nested values, and retains
+it in an internal owned handoff. It does not reserve frame addresses, consume an
+activation ID or run the body. Starting consumes that handoff and checks address
+capacity and activation admission before installing parameter slots. A malformed
+later argument or failed admission cannot leave earlier arguments or a partial frame
+installed. Successful synchronous calls perform both steps immediately.
+
+Three runtime unit regressions cover independently prepared values, selected start
+order and normal retirement; malformed later nested arguments without any storage,
+fuel, events or identity changes; and exhausted address space or an already failed
+activation context with no partial installation. A new host stepping regression
+checks malformed later entry payloads under several quota partitions, preserving
+`E_DRIVER`, the entry-validation phase, no events/active invocation, and exactly one
+terminal delivery. The existing bounded-frame/slot test remains passing.
+
+Validation: **111 Rust tests across nine selected targets** and **42 Node tests**
+passed. The selection includes stepping, conformance, algebra, named/lexical
+boundaries, source faults, fault reports and the language manual, including existing
+native/expanded comparisons. The initial frozen-context test expected different
+wording; it was corrected to the existing already-failed error. No full-suite claim
+is made. Editor implementation, parser, core checker and native-generator sources
+are unchanged and hash verified; the 0.102 isolated editor/native evidence is reused,
+not claimed as a new UI run. Fresh compiler/LSP handshake and all six binary copies
+and nine packaged/installed payloads match 0.103.0. Existing windows were not reloaded;
+the source backup excludes the protected unrelated C# file.
+
+This is an internal execution foundation, not a source task API or permission to
+abandon deferred work. Captured-loan checking, task-owned temporary storage, public
+capture contracts, cancellation and scheduling remain ahead. The async audit now
+identifies synchronous checker loan retirement and immediate fault-permission checks
+that must be separated for source deferral. The existing `run` versus `runtime`
+entry-syntax question remains unchanged; neither form is implemented or selected.
