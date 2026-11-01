@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.94.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.95.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -3205,3 +3205,34 @@ returning 42. Six binaries and nine packaged/installed payloads match release 0.
 Existing windows were not reloaded. Formatting and whitespace checks passed. Earlier
 unrelated trait, preparation and library evidence remains valid; this checkpoint does
 not change executable formats or the accepted ownership, origin and fault semantics.
+
+## 0.95 — Trait-declaration diagnostics
+
+P2n separates shared trait identity checking from pure local declaration validation.
+After shared origin schemas and identities validate, declarations collect one error
+per trait with the existing 32-error budget. Any failure stops before implementation
+lookup/coherence, normalization, lowered methods, generics and body checking. Unused
+traits retain the same validation as used ones. No trait semantics or executable
+lowering are changed.
+
+Five diagnostic tests cover mixed method/member/type errors, public visibility,
+borrowed origins, named shapes, transitive imports with Unicode/CRLF, first-error
+compatibility, independent repairs, phase barriers and the budget. Two LSP tests cover
+unsaved local and imported repairs with fresh inferred/call contracts. An initial
+fixture used bare `exits string`, which denotes an exit label; it was corrected to
+name a declared record when testing a non-outcome contract. The implementation
+required no correction. The isolated editor fixture reuses `playground/traits.tellur`;
+its initial ordinary-call heading assertion was corrected to the existing
+`Trait control contract` heading before rerunning the editor test.
+
+Final validation passed **388 Rust tests across 13 affected targets**, including all
+178 LSP tests, 51 diagnostic tests and three manual checks, plus **42 Node tests**.
+Trait, generic, origin, module, public contract, snapshot and certificate suites retain
+valid-program/native and expansion evidence. The broader run passed without further
+corrections; earlier unaffected statement recovery and runtime/library evidence is reused.
+
+Isolated VS Code verified two invalid declarations, independent repairs, current
+trait-call contracts and native execution emitting `Hello through a trait`. Six
+binary copies and nine packaged/installed payloads match release 0.95.0. Existing
+windows were not reloaded. Formatting and whitespace checks passed. Executable
+formats and the accepted trait, ownership, origin and fault semantics are unchanged.

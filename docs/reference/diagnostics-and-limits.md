@@ -185,10 +185,11 @@ unavailable until the current program checks successfully; declared syntax can
 still appear in outline or hover.
 
 Recovery is deliberately bounded. Parsing, import/name resolution, shared type
-validation, trait lowering/conformance, generic expansion
+validation, implementation normalization/conformance, generic expansion
 and graph-cycle failures still stop at their first error. Independent control
 declarations use the three batches described below; constructor-call access has
-its own preparation batch since 0.91, and generic-bound declarations since 0.92. Generic definition bodies may
+its own preparation batch since 0.91, generic-bound declarations since 0.92, and
+trait declarations since 0.95. Generic definition bodies may
 report several errors during universal checking; a failed phase prevents later
 concrete checking. Broader recovery across shared preparation remains future work.
 
@@ -293,8 +294,48 @@ source-only API, while file-based resolution may reject them earlier.
 CLI/LSP retain each declaration's original source point and imported-file location.
 Single-error compatibility APIs return the first error. Unsaved edits update the
 whole batch; checked call and inferred-type hover remain unavailable until a full
-successful check. Associated-type normalization, shared origin schemas, trait
-coherence and concrete witness conformance retain their existing barriers.
+successful check. Trait declarations have the separate batch below. Associated-type
+normalization, shared origin schemas, trait coherence and concrete witness conformance
+retain their existing barriers.
+
+## Trait-declaration preparation batches
+
+Since 0.95, independent trait declarations report errors together after public
+control shapes, generic requirements, shared origin schemas and trait identities
+validate. Each trait supplies at most one diagnostic under the shared **32-error
+budget**, whether or not a concrete implementation uses it. This phase checks
+duplicate members, reserved associated names, explicit method profiles, payload type
+names/arity, public visibility and declared result origins.
+
+<!-- tellur:reject E_TRAIT_SIGNATURE -->
+```tellur
+trait reader {
+    control read() exits auto;
+}
+
+trait writer {
+    control write(string value) exits auto;
+}
+```
+
+Both declarations need explicit exit contracts. An error in one trait does not
+prevent the other declaration from being checked, but a second error inside the
+same trait may appear only after repairing its first. Unknown types rejected by
+file/module resolution still stop earlier; source-only checking can diagnose them
+in this declaration phase.
+
+Duplicate or reserved trait identities and shared origin-schema failures remain
+barriers before this batch. A failed declaration batch blocks implementation lookup,
+coherence, associated-type substitution, method conformance, generic expansion and
+body checking. It publishes no witness or partially lowered method. The accepted
+trait, ownership and origin rules are unchanged.
+
+Imported diagnostics retain their original source points; the editor includes their
+file locations and refreshes them from unsaved text. The single-error APIs return
+the first diagnostic in the failed phase. Checked call contracts and inferred hover
+return only when the entire source checks successfully. Try temporarily changing
+the `reader` declaration in [traits.tellur](../../playground/traits.tellur) to
+`exits auto`, alongside a second invalid trait declaration.
 
 ## Constructor-call preparation batches
 

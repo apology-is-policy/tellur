@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-0.94.0-darwin-arm64.vsix` using **Extensions:
+1. Install the supplied `tellur-language-0.95.0-darwin-arm64.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -884,3 +884,13 @@ contracts and repeated exit labels. Payload expressions infer independently; no
 partial exit contract or inferred hover is published while errors remain. Imported
 and generic source locations, nested paths, ownership checks and the 32-error budget
 are preserved. Headers, captures and fault-context terminals remain conservative.
+
+## Trait-declaration diagnostics in 0.95
+
+Independent trait declarations now report invalid contracts together, including unused
+traits. Method profiles, public type visibility, payload shapes and borrowed-result
+origins are checked one error per trait, under the shared 32-error budget. Shared
+identity/schema failures still stop earlier; implementations and all later checks
+wait until declarations are valid. Unsaved repairs update imported locations and
+restore call/inferred hover only after a complete successful check. The editor
+regression uses `playground/traits.tellur` with a second independent interface.

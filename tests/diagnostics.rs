@@ -1235,3 +1235,132 @@ fn inferred_exit_adapter_batches_keep_original_ranges_and_first_error_compatibil
     );
     f.report(&["check", "main.tellur", "--json"], true);
 }
+
+#[test]
+fn trait_declaration_batches_report_one_error_per_unused_trait() {
+    let source = "trait first {control one(unknown value) exits done;control two() exits auto;}\ntrait second {control read() exits auto;}\ntrait third {control peek(ref string input) exits ready {ref string value};}\ntrait fourth {type item;control item() exits done;}\ncontrol caller() exits done {u32 bad=true;exit done;}";
+    let manifest = Manifest::from_json(include_str!("../playground/manifest.json")).unwrap();
+    let batch = tellur::check_source(source, manifest.clone()).unwrap_err();
+    assert_eq!(
+        batch.errors.iter().map(|e| e.code).collect::<Vec<_>>(),
+        ["E_TRAIT", "E_TRAIT_SIGNATURE", "E_LIFETIME", "E_TRAIT"],
+        "{batch}"
+    );
+    assert_eq!(
+        batch.errors.iter().map(|e| e.span.line).collect::<Vec<_>>(),
+        [1, 2, 3, 4]
+    );
+    assert!(!batch.limit_reached);
+    assert_eq!(
+        tellur::compile(source, manifest).unwrap_err(),
+        batch.errors[0]
+    );
+}
+
+#[test]
+fn trait_declaration_batches_preserve_transitive_imports_and_visibility() {
+    let f = Fixture::new();
+    for (file, name) in [("first.tellur", "one"), ("second.tellur", "two")] {
+        f.write(file,&format!("// 🙂 original\r\nstruct hidden {{string text;}}\r\npub trait {name} {{\r\ncontrol read(hidden input) exits done;\r\n}}\r\n"));
+    }
+    f.write("middle.tellur","import \"first.tellur\" as first;import \"second.tellur\" as second;pub control run() exits done {exit done;}");
+    f.write(
+        "main.tellur",
+        "import \"middle.tellur\" as middle;control main() exits done {forward middle.run();}",
+    );
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    let errors = report["diagnostics"].as_array().unwrap();
+    assert_eq!(errors.len(), 2, "{report}");
+    for (error, file) in errors.iter().zip(["first.tellur", "second.tellur"]) {
+        assert_eq!(error["code"], "E_VISIBILITY");
+        assert_eq!(error["path"], f.root.join(file).to_str().unwrap());
+        assert_eq!(error["position"]["line"], 4);
+    }
+    assert!(report["summary"].is_null());
+    let manifest = Manifest::from_json(include_str!("../playground/manifest.json")).unwrap();
+    let first = tellur::compile_file(f.root.join("main.tellur"), manifest).unwrap_err();
+    assert_eq!(first.diagnostic.code, "E_VISIBILITY");
+    for file in ["first.tellur", "second.tellur"] {
+        let path = f.root.join(file);
+        fs::write(
+            &path,
+            fs::read_to_string(&path)
+                .unwrap()
+                .replace("struct hidden", "pub struct hidden"),
+        )
+        .unwrap();
+    }
+    f.report(&["check", "main.tellur", "--json"], true);
+}
+
+#[test]
+fn trait_declaration_batches_check_named_shapes_and_origin_contracts() {
+    let f = Fixture::new();
+    let source = "outcome reply<t> {ready {t value}}struct record {u32 value;}\ntrait one {control read() exits reply<string,u32>;}\ntrait two {control read() exits record;}\ntrait three {control peek(ref string input) exits ready {ref string value};}\ncontrol main() exits done {exit done;}";
+    f.write("main.tellur", source);
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    let errors = report["diagnostics"].as_array().unwrap();
+    assert_eq!(
+        errors
+            .iter()
+            .map(|e| e["code"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        ["E_TRAIT", "E_TRAIT_SIGNATURE", "E_LIFETIME"],
+        "{report}"
+    );
+    f.write(
+        "main.tellur",
+        &source
+            .replace("reply<string,u32>", "reply<string>")
+            .replace("exits record;", "exits done;")
+            .replace("ref string value}", "ref string value from input}"),
+    );
+    f.report(&["check", "main.tellur", "--json"], true);
+}
+
+#[test]
+fn trait_declaration_batches_preserve_shared_identity_schema_and_later_phase_barriers() {
+    let invalid = "trait one {control read() exits auto;}trait two {control read() exits auto;}";
+    for (extra, code) in [
+        (
+            "pub control bad() exits auto {exit done;}",
+            "E_PUBLIC_CONTRACT",
+        ),
+        ("trait one {}", "E_TRAIT"),
+        ("struct bad['a] {ref string value <- 'missing;}", "E_ORIGIN"),
+    ] {
+        let source = format!("{invalid}{extra}");
+        let manifest = Manifest::from_json(include_str!("../playground/manifest.json")).unwrap();
+        let batch = tellur::check_source(&source, manifest).unwrap_err();
+        assert_eq!(batch.errors.len(), 1, "{batch}");
+        assert_eq!(batch.errors[0].code, code, "{batch}");
+    }
+    let source = format!(
+        "{invalid}implement one for string {{}}control broken() exits done {{u32 bad=true;exit done;}}"
+    );
+    let manifest = Manifest::from_json(include_str!("../playground/manifest.json")).unwrap();
+    let batch = tellur::check_source(&source, manifest).unwrap_err();
+    assert_eq!(batch.errors.len(), 2, "{batch}");
+    assert!(
+        batch.errors.iter().all(|e| e.code == "E_TRAIT_SIGNATURE"),
+        "{batch}"
+    );
+}
+
+#[test]
+fn trait_declaration_batches_share_the_diagnostic_budget() {
+    let f = Fixture::new();
+    let source = (0..40)
+        .map(|n| format!("trait broken_{n} {{control read() exits auto;}}\n"))
+        .collect::<String>()
+        + "control main() exits done {exit done;}";
+    f.write("main.tellur", &source);
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    let errors = report["diagnostics"].as_array().unwrap();
+    assert_eq!(errors.len(), 32, "{report}");
+    assert_eq!(report["diagnostics_limited"], true);
+    for (n, error) in errors.iter().enumerate() {
+        assert_eq!(error["code"], "E_TRAIT_SIGNATURE");
+        assert_eq!(error["position"]["line"], n + 1);
+    }
+}

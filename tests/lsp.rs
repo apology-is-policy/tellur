@@ -5341,3 +5341,79 @@ fn inferred_exit_adapter_diagnostics_preserve_imported_generic_ranges() {
     assert_eq!(f.diagnostics(), json!([]));
     assert_eq!(hover_at(&f, source, "jobs.start()"), initial);
 }
+
+#[test]
+fn trait_declaration_batches_refresh_after_independent_unsaved_repairs() {
+    let mut f = Fixture::new();
+    let source = "trait one {control first() exits done;}\ntrait two {control second() exits done;}\ncontrol helper() exits done {exit done;}\ncontrol main() exits done {auto text=\"current\";emit(text);forward helper();}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let initial = hover_at(&f, source, "auto text");
+    assert!(initial.to_string().contains("string"));
+    let broken = source
+        .replace("first() exits done", "first() exits auto")
+        .replace("second() exits done", "second() exits auto");
+    f.change(&broken, 2);
+    let errors = f.diagnostics();
+    assert_eq!(errors.as_array().unwrap().len(), 2, "{errors}");
+    for (error, line) in errors.as_array().unwrap().iter().zip([0, 1]) {
+        assert_eq!(error["code"], "E_TRAIT_SIGNATURE");
+        assert_eq!(error["range"]["start"]["line"], line);
+    }
+    assert!(hover_at(&f, &broken, "auto text").is_null());
+    assert!(hover_at(&f, &broken, "helper();").is_null());
+    let partial = broken.replace("first() exits auto", "first() exits done");
+    f.change(&partial, 3);
+    assert_eq!(f.diagnostics().as_array().unwrap().len(), 1);
+    assert!(hover_at(&f, &partial, "auto text").is_null());
+    f.change(source, 4);
+    assert_eq!(f.diagnostics(), json!([]));
+    assert_eq!(hover_at(&f, source, "auto text"), initial);
+    assert!(
+        hover_at(&f, source, "helper();")
+            .to_string()
+            .contains("Control contract")
+    );
+}
+
+#[test]
+fn trait_declaration_batches_preserve_imported_locations_and_visibility_repairs() {
+    let mut f = Fixture::new();
+    let dependency = f.root.join("interfaces.tellur");
+    let uri = url::Url::from_file_path(&dependency).unwrap().to_string();
+    let valid = "pub struct one {string text;}\npub struct two {string text;}\npub trait first {control read(one input) exits done;}\npub trait second {control read(two input) exits done;}\npub control helper() exits done {exit done;}";
+    fs::write(&dependency, valid).unwrap();
+    let source =
+        "import \"interfaces.tellur\" as api;control main() exits done {forward api.helper();}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let initial = hover_at(&f, source, "api.helper()");
+    assert!(initial.to_string().contains("Control contract"));
+    let broken = valid.replace("pub struct", "struct");
+    f.server.notification(
+        "textDocument/didOpen",
+        &json!({"textDocument":{"uri":uri,"version":1,"text":broken}}),
+    );
+    let errors = f.diagnostics();
+    assert_eq!(errors.as_array().unwrap().len(), 2, "{errors}");
+    for (error, line) in errors.as_array().unwrap().iter().zip([2, 3]) {
+        assert_eq!(error["code"], "E_VISIBILITY");
+        let location = &error["relatedInformation"][0]["location"];
+        assert_eq!(location["uri"], uri);
+        assert_eq!(location["range"]["start"]["line"], line);
+    }
+    assert!(hover_at(&f, source, "api.helper()").is_null());
+    let partial = broken.replace("struct one", "pub struct one");
+    f.server.notification(
+        "textDocument/didChange",
+        &json!({"textDocument":{"uri":uri,"version":2},"contentChanges":[{"text":partial}]}),
+    );
+    assert_eq!(f.diagnostics().as_array().unwrap().len(), 1);
+    assert!(hover_at(&f, source, "api.helper()").is_null());
+    f.server.notification(
+        "textDocument/didClose",
+        &json!({"textDocument":{"uri":uri}}),
+    );
+    assert_eq!(f.diagnostics(), json!([]));
+    assert_eq!(hover_at(&f, source, "api.helper()"), initial);
+}

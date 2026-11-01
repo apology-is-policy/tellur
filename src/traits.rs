@@ -323,7 +323,7 @@ pub(crate) fn lower(
     mut unit: Unit,
     manifest: &Manifest,
     visibility: &mut Visibility,
-) -> Result<Unit> {
+) -> crate::CheckResult<Unit> {
     if unit.traits.is_empty() && unit.implementations.is_empty() {
         return Ok(unit);
     }
@@ -373,8 +373,13 @@ pub(crate) fn lower(
             return Err(error(
                 d.span,
                 format!("duplicate or reserved trait name `{}`", d.name),
-            ));
+            )
+            .into());
         }
+    }
+    // Shared identities and schemas must be valid before checking independent
+    // declarations. No witness, substitution or lowered method is published here.
+    crate::diagnostics::collect_checks(unit.traits.iter().map(|d| -> Result<()> {
         unique(
             d.associated
                 .iter()
@@ -453,12 +458,14 @@ pub(crate) fn lower(
                 }
             }
         }
-    }
+        Ok(())
+    }))?;
     if unit.implementations.len() > 1024 {
         return Err(error(
             unit.implementations[1024].span,
             "trait implementations exceed the 1024-implementation budget",
-        ));
+        )
+        .into());
     }
     let mut implementations = BTreeMap::new();
     for i in &unit.implementations {
@@ -469,7 +476,8 @@ pub(crate) fn lower(
             return Err(error(
                 i.span,
                 "implementation targets must be explicit concrete owned types",
-            ));
+            )
+            .into());
         }
         check_decl_type(&i.target, &BTreeSet::new(), &arities, i.span)?;
         if d.module != i.module && !visibility.owns(i.module, &i.target) {
@@ -477,7 +485,8 @@ pub(crate) fn lower(
                 "E_COHERENCE",
                 i.span,
                 "implementation module must own the trait or the outer nominal target type",
-            ));
+            )
+            .into());
         }
         unique(
             i.associated
@@ -500,7 +509,8 @@ pub(crate) fn lower(
             return Err(error(
                 i.span,
                 "implementation must supply exactly the trait's associated types and controls",
-            ));
+            )
+            .into());
         }
         for m in &i.methods {
             method_profile(m)?;
@@ -511,7 +521,8 @@ pub(crate) fn lower(
                 "E_COHERENCE",
                 i.span,
                 "duplicate implementation for the same trait and type",
-            ));
+            )
+            .into());
         }
     }
     let mut normalizer = Normalizer {
@@ -584,7 +595,8 @@ pub(crate) fn lower(
                     "E_FAULT_CONTRACT",
                     method.span,
                     "implementation cannot add faults to a trait control that does not permit them",
-                ));
+                )
+                .into());
             }
             method.fault_contract = Some(permission);
             let contingent = d
@@ -599,7 +611,8 @@ pub(crate) fn lower(
                     "E_CONTINGENT",
                     method.span,
                     "implementation cannot enlarge the trait contingency subset",
-                ));
+                )
+                .into());
             }
             method.contingent_contract = Some(contingent);
             method.name = format!("{trait_name}<{target}>.{}", method.name);
