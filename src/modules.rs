@@ -719,7 +719,7 @@ impl Resolver<'_> {
                 }
                 Item::Loop(at, _, ps, body, _) => {
                     for p in ps.iter_mut() {
-                        p.field.ty = self.ty(&p.field.ty, *at)?;
+                        self.fields(std::slice::from_mut(&mut p.field), *at)?;
                         self.expr(&mut p.initial, *at)?;
                     }
                     let outer = self.locals.clone();

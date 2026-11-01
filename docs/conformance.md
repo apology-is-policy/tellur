@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.99.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.100.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -3404,3 +3404,43 @@ frontend/editor code reuses the earlier Node and isolated VS Code evidence; exis
 windows were not reloaded. Formatting and whitespace checks passed. Source async
 contracts and scoped scheduling remain separate work, with the existing child-fault
 question still pending.
+
+## 0.100 — Loop type-annotation locations and cold-task audit
+
+P2q extends authored field type ranges to ordinary/supervised loop parameters. Module
+resolution now shifts both endpoints and attaches lookup/visibility failures; generic
+data/control preparation and body type validation use the same field-range helper.
+Type spellings are never reconstructed from lowered names. The 0.99 CLI probe for an
+invalid `vector<string,u32>` loop parameter had null position/range; it now selects
+the annotation. Initializer children, `again` arguments and structural-loop errors
+keep their existing locations. Checking order, codes, batching and accepted programs
+are unchanged.
+
+Four diagnostic tests cover multiline/CRLF/Unicode, legacy and mutable parameters,
+lookup/visibility, generic arity and substitution, imported offsets, first-error APIs,
+independent-body batches and non-type locations. One LSP test checks imported unsaved
+ranges, unavailable stale hover and repair. Initial fixtures were corrected for the
+existing `>=` token, E_MANIFEST/E_VISIBILITY codes and borrowing boxed Span metadata;
+a later producer-argument probe exposed that the generic-control field visitor did
+not attach ranges. Its loop branch now attaches the original field range explicitly.
+
+In parallel, the E1c audit distinguishes argument effects from deferred body effects,
+captured owners/loans from eventual result contracts, and cold-task backing storage
+from ordinary call temporaries. The author was asked whether cold tasks must be
+awaited/transferred or may be explicitly discarded when all captures are droppable.
+That choice and the earlier spawned-child fault question remain open. No source
+async/task/disposal behavior is implemented by this checkpoint.
+
+Validation: 434 Rust tests passed across ten targets, with the latest affected
+four-target run replacing their earlier results and six unchanged targets reusing
+valid broad-run evidence. This includes 65 diagnostic and 183 LSP tests, plus
+recovery, loop, module, generic data/control, trait-bound, constructor and manual
+coverage. All 42 Node tests passed. The unchanged 0.99 execution engine retains
+its prior partition and native/fault validation; no full-suite rerun is claimed.
+
+An isolated VS Code profile verified exact multiline and compact imported loop type
+ranges, unsaved dependency repair, unavailable stale hover, restored contract hover,
+and native execution of the existing counter producing 1 through 5. Six binary copies
+and nine packaged/installed payloads match release 0.100.0; compiler/LSP version and
+capability checks passed. Existing windows were not reloaded. Formatting and
+whitespace checks passed.

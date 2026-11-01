@@ -1688,3 +1688,152 @@ fn type_annotation_ranges_keep_batches_first_error_apis_and_non_type_points() {
         "unrelated contract-shape diagnostics remain points"
     );
 }
+
+#[test]
+fn loop_type_annotations_select_written_types_without_retargeting_initializers() {
+    let f = Fixture::new();
+    for (source, selected, code) in [
+        (
+            "control main() exits done {loop work(vector<string, u32> entries=[]) {exit done;}}",
+            "vector<string, u32>",
+            "E_MANIFEST",
+        ),
+        (
+            "control main() exits done {supervised loop work(ref absent_type value=true) {exit done;}}",
+            "ref absent_type",
+            "E_MANIFEST",
+        ),
+        (
+            "region main() exits Done {loop work(value: vector<String,U32> =[]) {exit Done;}}",
+            "vector<String,U32>",
+            "E_MANIFEST",
+        ),
+        (
+            "control main() exits done {loop work(u32 number=true) {exit done;}}",
+            "true",
+            "E_TYPE",
+        ),
+        (
+            "control main() exits done {loop work(vector<u32> values=[1,true]) {exit done;}}",
+            "true",
+            "E_TYPE",
+        ),
+        (
+            "control main() exits done {\r\n loop work(\r\n mutable vector<\r\n // 😀\r\n string, u32\r\n > entries=[]) {exit done;}\r\n}",
+            "vector<\r\n // 😀\r\n string, u32\r\n >",
+            "E_MANIFEST",
+        ),
+    ] {
+        f.write("main.tellur", source);
+        let report = f.report(&["check", "main.tellur", "--json"], false);
+        let e = &report["diagnostics"][0];
+        assert_eq!(e["code"], code, "{report}");
+        assert_eq!(e["range"], selected_range(source, selected), "{report}");
+        assert_eq!(e["position"], e["range"]["start"]);
+    }
+}
+
+#[test]
+fn loop_type_annotation_ranges_survive_import_offsets_lookup_and_generic_preparation() {
+    let f = Fixture::new();
+    f.write(
+        "types.tellur",
+        "struct hidden {u32 value;} pub struct visible {u32 value;}",
+    );
+    f.write("main.tellur","import \"library.tellur\" as library; control main() exits done {library.probe();exit done;}");
+    for (header, annotation, code) in [
+        ("", "vector<string,u32>", "E_MANIFEST"),
+        (
+            "import \"types.tellur\" as types;\r\n",
+            "types.hidden",
+            "E_VISIBILITY",
+        ),
+        (
+            "struct box<t> {t value;}\r\n",
+            "box<u32,string>",
+            "E_GENERIC",
+        ),
+        ("", "outcome<missing>", "E_MANIFEST"),
+    ] {
+        let source = format!(
+            "{header}// 😀\r\npub control probe() exits done {{\r\n loop work(\r\n {annotation} value=true\r\n ) {{exit done;}}\r\n}}"
+        );
+        f.write("library.tellur", &source);
+        let report = f.report(&["check", "main.tellur", "--json"], false);
+        let e = &report["diagnostics"][0];
+        assert_eq!(e["code"], code, "{source}: {report}");
+        assert!(
+            e["path"].as_str().unwrap().ends_with("library.tellur"),
+            "{report}"
+        );
+        assert_eq!(e["range"], selected_range(&source, annotation), "{report}");
+    }
+    let generic = "control probe<t>(t input) exits done {loop work(vector<t,u32> value=[]) {drop(input);exit done;}} control main() exits done {probe<string>(\"x\");exit done;}";
+    f.write("main.tellur", generic);
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    assert_eq!(
+        report["diagnostics"][0]["range"],
+        selected_range(generic, "vector<t,u32>"),
+        "{report}"
+    );
+}
+
+#[test]
+fn loop_type_ranges_keep_body_batches_and_structural_error_locations() {
+    let source = "control first() exits done {loop work(vector<string,u32> items=[]) {exit done;}}\ncontrol second() exits done {loop work(ref absent value=true) {exit done;}}";
+    let errors = check_errors(source);
+    assert_eq!(errors.errors.len(), 2, "{errors}");
+    for (e, annotation) in errors
+        .errors
+        .iter()
+        .zip(["vector<string,u32>", "ref absent"])
+    {
+        let range = selected_range(source, annotation);
+        assert_eq!(serde_json::to_value(e.span).unwrap(), range["start"]);
+        assert_eq!(
+            serde_json::to_value(e.end.as_ref().unwrap()).unwrap(),
+            range["end"]
+        );
+    }
+    let first = compile(
+        source,
+        Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+    )
+    .unwrap_err();
+    assert_eq!(first, errors.errors[0]);
+    let invalid = "control main() exits done {loop work(u32 n=1, u32 n=2) {exit done;}}";
+    let e = compile(
+        invalid,
+        Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+    )
+    .unwrap_err();
+    assert_eq!(e.code, "E_NAME");
+    assert_eq!(e.span.column, invalid.find("loop").unwrap() + 1);
+    assert!(e.end.is_none());
+}
+
+#[test]
+fn loop_type_ranges_cover_generic_producer_arguments_and_preserve_again_expressions() {
+    let f = Fixture::new();
+    for (source, selected, code) in [
+        (
+            "control maker<t>() exits done {exit done;} control main() exits done {loop work(outcome<maker<u32,string>> value=true) {exit done;}}",
+            "outcome<maker<u32,string>>",
+            "E_GENERIC",
+        ),
+        (
+            "control main() exits done {loop work(u32 number=1) {again work(true);}}",
+            "true",
+            "E_TYPE",
+        ),
+    ] {
+        f.write("main.tellur", source);
+        let report = f.report(&["check", "main.tellur", "--json"], false);
+        assert_eq!(report["diagnostics"][0]["code"], code, "{report}");
+        assert_eq!(
+            report["diagnostics"][0]["range"],
+            selected_range(source, selected),
+            "{report}"
+        );
+    }
+}

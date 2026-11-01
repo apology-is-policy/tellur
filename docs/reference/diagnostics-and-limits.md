@@ -184,6 +184,26 @@ retain whitespace and line comments inside the annotation, but exclude trailing
 comments, origin brackets/arrows, `from` clauses and binding names. Legacy
 `name: type` fields select the type, without the name or colon.
 
+Since 0.100, type validation for ordinary and supervised **loop parameters** uses
+these ranges too. This includes module lookup/visibility and generic type preparation.
+For `loop count(vector<string, u32> entries = [])`, the invalid type selects
+`vector<string, u32>`; it excludes `loop`, the binding modifier `mutable`, the name and initializer.
+Previously some loop type errors had no source position at all.
+
+<!-- tellur:reject E_MANIFEST -->
+```tellur
+control main() exits done {
+    loop pending(vector<string, u32> entries = []) {
+        exit done;
+    }
+}
+```
+
+An initializer mismatch still selects its expression or the more precise invalid
+child expression, as does an `again` argument error. Duplicate parameter names,
+loop placement and other structural errors retain their existing locations.
+This changes coordinates, not which types, loops or histories are accepted.
+
 Imports preserve both endpoints in the original file; unsaved dependencies supply
 the text used for editor UTF-16 conversion. Generic substitution preserves the
 authored spelling, including a type parameter, rather than estimating a range from

@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-0.99.0-darwin-arm64.vsix` using **Extensions:
+1. Install the supplied `tellur-language-0.100.0-darwin-arm64.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -937,3 +937,12 @@ The bundled compiler uses persistent reference continuations. Its host Rust API 
 pause and resume a scripted simulation without changing instruction fuel or fault
 handling. Native Build and Run, source syntax, highlighting and diagnostics are
 unchanged. There is no source task or readiness scheduler yet.
+
+## Loop type diagnostics in 0.100
+
+Invalid loop parameter types now select their full written annotation instead of
+an absent or loop-wide location. Multiline types, imported unsaved files, generic
+substitution and legacy fields retain their original endpoints. Initializer errors
+stay on their expressions. The isolated editor test derives an imported counter from
+`playground/count.tellur`, checks exact multiline/compact ranges and fresh hover after
+repair, then builds and runs it to emit 1 through 5. No source async syntax is enabled.

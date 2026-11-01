@@ -4251,8 +4251,10 @@ impl Checker<'_> {
                         })
                         .collect();
                     let mut names = BTreeSet::new();
-                    for p in &params {
-                        self.manifest.check_type(&p.ty)?;
+                    for (p, source) in params.iter().zip(parameters) {
+                        self.manifest
+                            .check_type(&p.ty)
+                            .map_err(|e| source.field.type_error(e, *span))?;
                         if !names.insert(&p.name) {
                             return Err(self.error("E_NAME", *span, "duplicate loop parameter"));
                         }

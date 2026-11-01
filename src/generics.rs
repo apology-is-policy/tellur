@@ -396,7 +396,7 @@ impl Specializer<'_> {
                 Item::Group(_, _, body) | Item::Over(_, _, body) => self.items(body)?,
                 Item::Loop(at, _, ps, body, _) => {
                     for p in ps {
-                        self.require(&p.field.ty, *at, 0)?;
+                        self.fields(std::slice::from_ref(&p.field), *at)?;
                         self.expr(&p.initial, *at)?;
                     }
                     self.items(body)?;

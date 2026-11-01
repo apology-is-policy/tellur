@@ -119,6 +119,41 @@ The owner-scope relationship, moving handles across fault boundaries, determinis
 selection of multiple escaping faults, and secondary settlement failures must be
 specified before general `spawn`. An atomic ID allocator makes no choice here.
 
+## Cold-task contract audit
+
+The next E1c slice must distinguish creating a computation from invoking it. This
+is an implementation audit, not newly accepted syntax or executable behavior.
+
+| Operation | Existing direction and required checking |
+| --- | --- |
+| `defer operation(arguments)` | Evaluate arguments in written order and transfer ownership now. Retain captured loans now. Callee body effects, decisions and faults have not happened; argument construction can still fault immediately. |
+| Store or move a cold handle | Preserve the pending computation and all captured owners/loans. A handle is not Copy or a completed outcome. Its eventual result contract alone does not describe everything it owns. |
+| `await pending` | Consume the handle once; drive cold work and retain caller/child frames until actual completion. Transfer declared normal payloads and their origins; keep faults outside that result. |
+| Fault before the task starts | Check the live captured owners' fault dispositions and retire their borrowers before boundary handover. Discarding a computation cannot claim its external resource protocols completed. |
+| Public or generic task types | Describe captured state as well as possible result payloads; `task<result>` alone must not erase loan, completion or fault-disposition requirements. Bound the first source profile if those contracts are unavailable. |
+| Entry and suspension | Keep the planned `async control` permission and explicit runtime boundary for a synchronous entry. Host instruction quotas are not source suspension points. |
+
+Ordinary borrowed rvalue calls currently allocate anonymous storage for one
+invocation. Deferred arguments would need that storage to travel with the task
+instead; extending temporary lifetime incidentally through an implementation pointer
+is unsound. A named owner or an explicit checked task-owned backing allocation is
+required before enabling that case. Existing grouped/contained origin contracts must
+survive capture and delivery, not collapse to the return contract's outer type.
+
+### Pending decision: discarding never-started tasks
+
+A separate question is open with the author: must even a never-started task be
+awaited or transferred, or may explicit `drop(pending)` discard it when every captured
+value is droppable? The initial recommendation is an await/transfer obligation, in
+line with mandatory handling of completed outcomes. **Neither choice is implemented
+or accepted here.** This question does not permit cancellation by dropping running
+work, and does not change the existing prohibition on hidden detach.
+
+Do not infer the answer from `ExecutionSession` being droppable in the host API:
+that object is a scripted simulation, with an explicitly different contract.
+While the question is pending, source task disposal and task capability derivation
+must remain unimplemented. Independent diagnostic work can continue alongside E1.
+
 ## Implementation sequence
 
 | Checkpoint | Deliverable and evidence | Dependencies |

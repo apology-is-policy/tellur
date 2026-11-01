@@ -295,7 +295,7 @@ fn item_calls(items: &[Item], v: &mut Visit<'_>) -> Result<()> {
             Item::Group(_, _, body) | Item::Over(_, _, body) => item_calls(body, v)?,
             Item::Loop(at, _, ps, body, _) => {
                 for p in ps {
-                    type_calls(&p.field.ty, *at, v)?;
+                    type_calls(&p.field.ty, *at, v).map_err(|e| p.field.type_error(e, *at))?;
                     expr_calls(&p.initial, *at, v)?;
                 }
                 item_calls(body, v)?;
