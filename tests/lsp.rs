@@ -69,6 +69,94 @@ fn hover_at(f: &Fixture, source: &str, needle: &str) -> Value {
 }
 
 #[test]
+fn named_completion_bindings_repair_independently_without_stale_hover() {
+    let mut f = Fixture::new();
+    let source = "outcome view['a] {found {ref string value <- 'a}}\ncontrol first(ref string input) exits view[input] {exit found {input};}\ncontrol second(ref string input) exits view[input] {exit found {input};}\ncontrol main() exits done {string owner=\"hello\";delta first(borrow owner) {found {auto text}=>shown} [shown]: emit(text);exit done;}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    assert!(
+        hover_at(&f, source, "first(borrow")
+            .to_string()
+            .contains("Control contract")
+    );
+    assert!(
+        hover_at(&f, source, "auto text")
+            .to_string()
+            .contains("ref string")
+    );
+    let broken = source.replace("view[input]", "view[input,input]");
+    f.change(&broken, 2);
+    let errors = f.diagnostics();
+    assert_eq!(errors.as_array().unwrap().len(), 2, "{errors}");
+    for (index, error) in errors.as_array().unwrap().iter().enumerate() {
+        assert_eq!(error["code"], "E_ORIGIN");
+        assert_eq!(error["range"]["start"]["line"], index + 1);
+    }
+    assert!(hover_at(&f, &broken, "first(borrow").is_null());
+    assert!(hover_at(&f, &broken, "auto text").is_null());
+    let partial = broken.replacen("view[input,input]", "view[input]", 1);
+    f.change(&partial, 3);
+    assert_eq!(f.diagnostics().as_array().unwrap().len(), 1);
+    assert!(hover_at(&f, &partial, "first(borrow").is_null());
+    f.change(source, 4);
+    assert_eq!(f.diagnostics(), json!([]));
+    assert!(
+        hover_at(&f, source, "first(borrow")
+            .to_string()
+            .contains("Control contract")
+    );
+    assert!(
+        hover_at(&f, source, "auto text")
+            .to_string()
+            .contains("ref string")
+    );
+}
+
+#[test]
+fn unsaved_named_schema_edits_recheck_every_imported_completion_binding() {
+    let mut f = Fixture::new();
+    let dependency = f.root.join("views.tellur");
+    let uri = url::Url::from_file_path(&dependency).unwrap().to_string();
+    let valid = "pub outcome view['a] {found {ref string value <- 'a}}\npub control first(ref string input) exits view[input] {exit found {input};}\npub control second(ref string input) exits view[input] {exit found {input};}";
+    fs::write(&dependency, valid).unwrap();
+    let source = "import \"views.tellur\" as lib;control main() exits done {string owner=\"hi\";delta lib.first(borrow owner) {found {auto text}=>shown} [shown]: emit(text);exit done;}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let broken = valid
+        .replace("view['a]", "view['a,'b]")
+        .replace("value <- 'a", "value <- 'a,ref string other <- 'b")
+        .replace("found {input}", "found {input,input}");
+    f.server.notification(
+        "textDocument/didOpen",
+        &json!({"textDocument":{"uri":uri,"version":1,"text":broken}}),
+    );
+    let errors = f.diagnostics();
+    assert_eq!(errors.as_array().unwrap().len(), 2, "{errors}");
+    for (index, error) in errors.as_array().unwrap().iter().enumerate() {
+        assert_eq!(error["code"], "E_ORIGIN");
+        let location = &error["relatedInformation"][0]["location"];
+        assert_eq!(location["uri"], uri);
+        assert_eq!(location["range"]["start"]["line"], index + 1);
+        assert!(!error["message"].as_str().unwrap().contains("_path_m_"));
+    }
+    assert!(hover_at(&f, source, "lib.first(borrow").is_null());
+    let partial = broken.replacen("view[input]", "view[input,input]", 1);
+    f.server.notification(
+        "textDocument/didChange",
+        &json!({"textDocument":{"uri":uri,"version":2},"contentChanges":[{"text":partial}]}),
+    );
+    assert_eq!(f.diagnostics().as_array().unwrap().len(), 1);
+    f.server.notification(
+        "textDocument/didClose",
+        &json!({"textDocument":{"uri":uri}}),
+    );
+    assert_eq!(f.diagnostics(), json!([]));
+    let hover = hover_at(&f, source, "lib.first(borrow").to_string();
+    assert!(hover.contains("exits lib.view[input]"), "{hover}");
+    assert!(!hover.contains("_path_m_"));
+}
+
+#[test]
 fn declaration_errors_repair_independently_before_call_hover_returns() {
     let mut f = Fixture::new();
     let source = "control one(u32 input,u32 other) exits done {exit done;}\ncontrol two(u32 value,u32 other) exits done {exit done;}\ncontrol main() exits done {one(1,2);two(3,4);exit done;}";

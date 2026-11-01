@@ -5,8 +5,8 @@
 The compiler reports diagnostic codes, source locations and explanations. Since
 0.52, checking collects errors from independent control bodies; 0.73 also recovers
 across independent straight-line statements within a body. Release 0.74 extends
-recovery across disjoint paths and nested scopes; 0.77 also collects independent
-control-declaration errors in two preparation phases. Fixing an error
+recovery across disjoint paths and nested scopes; 0.77 collects independent
+public-shape and signature errors, and 0.78 adds named completion bindings. Fixing an error
 may expose another within that body or a dependent control. The precise
 message wording may improve between releases. The negative examples here are checked
 for their stated code, so they also serve as small regression cases.
@@ -180,9 +180,9 @@ unavailable until the current program checks successfully; declared syntax can
 still appear in outline or hover.
 
 Recovery is deliberately bounded. Parsing, import/name resolution, shared type
-validation, named-contract binding, trait lowering/conformance, generic expansion
+validation, trait lowering/conformance, generic expansion
 and graph-cycle failures still stop at their first error. Independent control
-declarations use the two batches described below. Generic definition bodies may
+declarations use the three batches described below. Generic definition bodies may
 report several errors during universal checking; a failed phase prevents later
 concrete checking. Broader recovery across shared preparation remains future work.
 
@@ -193,12 +193,19 @@ single-error return types and select the first diagnostic from that batch.
 
 ## Control-declaration batches
 
-Compiler 0.77 checks independent declarations within two preparation phases:
+Compiler 0.78 checks independent declarations within three preparation phases
+(public shape and concrete signatures were added in 0.77):
 
 1. Public contract shape: each public control must declare its exit labels and
    payload types, or name a declared outcome contract. Several public `exits auto`
    or `ready...` declarations can be diagnosed together, including generic controls.
-2. Concrete signature preparation: after shared types and named contracts resolve,
+2. Named completion binding: after shared outcome schemas, layouts and trait checks
+   succeed, each control binds its named contract's origin arguments. Wrong origin
+   counts in separate controls can be reported together, as can origin arguments
+   supplied to a bare exit or manifest-only contract. Invalid shared schemas still
+   stop before this batch; unknown origin sources and deeper lifetime errors are
+   checked in later phases.
+3. Concrete signature preparation: after shared types and named contracts resolve,
    each control checks boundary input ownership, explicit public return origins,
    operation/parameter/exit names, supported input/result types and declared borrow
    summaries. Errors in separate controls can appear together.
@@ -217,6 +224,28 @@ remain present where supported. Imports keep their defining-file locations, and 
 single-error compiler APIs still return the first diagnostic in the failed phase.
 Try [declaration_diagnostics.tellur](../../playground/declaration_diagnostics.tellur):
 rename both secondary parameters to `value`, then repair them independently.
+For borrowed contracts, try
+[contract_binding_diagnostics.tellur](../../playground/contract_binding_diagnostics.tellur):
+change both `exits view[input]` bindings to `exits view[input, input]`. The schema
+declares one origin group, so both controls report `E_ORIGIN`. Repairing one leaves
+the other diagnostic; repairing both restores checked call and inferred-type hover.
+
+<!-- tellur:reject E_ORIGIN -->
+```tellur
+outcome view['source] {
+    found { ref string value <- 'source }
+}
+control first(ref string input) exits view[input, input] {
+    exit found { input };
+}
+control second(ref string input) exits view[input, input] {
+    exit found { input };
+}
+```
+
+This produces two diagnostics through the batch APIs and CLI; the compatibility
+single-error APIs return the first. A declaration with no origin arguments keeps
+the existing inference/public-contract rules: an empty list is not a new arity error.
 
 ## Statement recovery
 

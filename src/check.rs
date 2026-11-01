@@ -4525,22 +4525,22 @@ pub(crate) fn compile_concrete_unit(
             }
         }
     }
-    for region in &mut parsed {
+    // Each binding mutates only its own region, using validated shared schemas.
+    // A failed batch returns before any bound declaration becomes a signature.
+    crate::diagnostics::collect_checks(parsed.iter_mut().map(|region| -> Result<()> {
         if let Some(c) = region
             .exit_contract
             .as_ref()
             .and_then(|name| unit.contracts.iter().find(|c| c.name == *name))
         {
-            crate::origins::bind_contract(region, c)?;
-            continue;
+            return crate::origins::bind_contract(region, c);
         }
         if !region.exit_origins.is_empty() {
-            return Err((Diagnostic::new(
+            return Err(Diagnostic::new(
                 "E_ORIGIN",
                 region.span,
                 "origin arguments require a source-declared named outcome contract",
-            ))
-            .into());
+            ));
         }
         if let Some(name) = &region.exit_contract
             && let Some(manifest::TypeDef::Outcome { constructors, .. }) = manifest.type_def(name)
@@ -4565,7 +4565,8 @@ pub(crate) fn compile_concrete_unit(
         } else {
             region.exit_contract = None;
         }
-    }
+        Ok(())
+    }))?;
     // These private schemas cannot be declared by a foreign manifest (its names
     // must be identifiers). Keep them out of ordinary constructor lookup.
     for p in manifest.primitives.clone() {

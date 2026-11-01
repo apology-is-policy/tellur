@@ -1,0 +1,35 @@
+// Each view maps its public origin group to the input owner.
+// Try changing both view[input] bindings to view[input, input].
+// Both origin-arity errors appear together. Repair them independently;
+// checked call contracts and auto hover return after both are valid.
+pub outcome view['source] {
+    found { ref string value <- 'source }
+}
+
+pub control first(ref string input) exits view[input] {
+    exit found { input };
+}
+
+pub control second(ref string input) exits view[input] {
+    exit found { input };
+}
+
+outcome program_result {
+    @exit 0 done
+}
+
+control main() exits program_result {
+    string left = "First borrowed view";
+    string right = "Second borrowed view";
+    delta first(borrow left) {
+        found { auto text } => first_shown
+    }
+    [first_shown]: emit(text);
+
+    [entry]: delta second(borrow right) {
+        found { auto second_text } => second_shown
+    }
+    [second_shown]: emit(second_text);
+
+    [entry]: exit done;
+}

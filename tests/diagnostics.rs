@@ -190,6 +190,150 @@ fn check_errors(source: &str) -> tellur::Diagnostics {
 }
 
 #[test]
+fn named_completion_binding_errors_batch_before_signatures_and_bodies() {
+    let source = "outcome one['a] {ready {ref string value <- 'a}}\noutcome pair['a,'b] {ready {ref string first <- 'a,ref string second <- 'b}}\ncontrol first(ref string input) exits one[input,input] {exit ready {input};}\ncontrol second(ref string left,ref string right) exits pair[left] {exit ready {left,right};}\ncontrol signature(u32 x,u32 x) exits done {exit done;}\ncontrol body() exits done {u32 bad=true;exit done;}";
+    let errors = check_errors(source);
+    assert_eq!(
+        errors
+            .errors
+            .iter()
+            .map(|e| (e.code, e.span.line))
+            .collect::<Vec<_>>(),
+        vec![("E_ORIGIN", 3), ("E_ORIGIN", 4)],
+        "{errors}"
+    );
+    assert!(
+        errors.errors[0]
+            .message
+            .contains("requires 1 origin arguments")
+    );
+    assert!(
+        errors.errors[1]
+            .message
+            .contains("requires 2 origin arguments")
+    );
+    let first = compile(
+        source,
+        Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+    )
+    .unwrap_err();
+    assert_eq!(first, errors.errors[0]);
+    let partial = source.replace("one[input,input]", "one[input]");
+    let errors = check_errors(&partial);
+    assert_eq!(errors.errors.len(), 1, "{errors}");
+    assert_eq!(errors.errors[0].span.line, 4);
+    let repaired = partial.replace("pair[left]", "pair[left,right]");
+    let errors = check_errors(&repaired);
+    assert_eq!(errors.errors.len(), 1, "{errors}");
+    assert_eq!(
+        (errors.errors[0].code, errors.errors[0].span.line),
+        ("E_NAME", 5)
+    );
+    let errors = check_errors(&repaired.replace("u32 x,u32 x", "u32 x,u32 other"));
+    assert_eq!(errors.errors.len(), 1, "{errors}");
+    assert_eq!(
+        (errors.errors[0].code, errors.errors[0].span.line),
+        ("E_TYPE", 6)
+    );
+}
+
+#[test]
+fn binding_batches_reject_origins_on_nullary_contracts_and_bare_exits() {
+    let source = "outcome completion {done}\ncontrol named(ref string input) exits completion[input] {exit done;}\ncontrol bare(ref string input) exits done[input] {exit done;}";
+    let errors = check_errors(source);
+    assert_eq!(errors.errors.len(), 2, "{errors}");
+    assert!(errors.errors.iter().all(|e| e.code == "E_ORIGIN"));
+    assert!(
+        errors.errors[0]
+            .message
+            .contains("requires 0 origin arguments")
+    );
+    assert!(
+        errors.errors[1]
+            .message
+            .contains("source-declared named outcome")
+    );
+    compile(
+        &source.replace("[input]", ""),
+        Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+    )
+    .unwrap();
+}
+
+#[test]
+fn invalid_shared_origin_schema_still_stops_before_independent_bindings() {
+    let source = "outcome bad['a] {found {ref string value <- 'missing}}\ncontrol first(ref string input) exits bad[input,input] {exit found {input};}\ncontrol second(ref string input) exits bad[input,input] {exit found {input};}";
+    let errors = check_errors(source);
+    assert_eq!(errors.errors.len(), 1, "{errors}");
+    assert_eq!(errors.errors[0].code, "E_ORIGIN");
+    assert_eq!(errors.errors[0].span.line, 1);
+    assert!(!errors.limit_reached);
+}
+
+#[test]
+fn named_completion_binding_budget_is_shared_by_cli_and_library() {
+    let source="outcome view['a] {found {ref string value <- 'a}}\n".to_owned()+&(0..40).map(|i| format!("control bad_{i}(ref string input) exits view[input,input] {{exit found {{input}};}}\n")).collect::<String>();
+    let errors = check_errors(&source);
+    assert_eq!(errors.errors.len(), 32);
+    assert!(errors.limit_reached);
+    assert_eq!(
+        errors
+            .errors
+            .iter()
+            .map(|e| e.span.line)
+            .collect::<Vec<_>>(),
+        (2..=33).collect::<Vec<_>>()
+    );
+    let f = Fixture::new();
+    f.write("main.tellur", &source);
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    assert_eq!(report["diagnostics"].as_array().unwrap().len(), 32);
+    assert_eq!(report["diagnostics_limited"], true);
+    assert!(report["summary"].is_null());
+}
+
+#[test]
+fn imported_completion_binding_errors_keep_original_names_and_file_points() {
+    let f = Fixture::new();
+    f.write(
+        "main.tellur",
+        "import \"views🙂.tellur\" as views;control main() exits done {exit done;}",
+    );
+    f.write("views🙂.tellur","pub outcome view['a] {found {ref string value <- 'a}}\npub control first(ref string input) exits view[input,input] {exit found {input};}\npub control second(ref string input) exits view[input,input] {exit found {input};}");
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    let errors = report["diagnostics"].as_array().unwrap();
+    assert_eq!(errors.len(), 2, "{report}");
+    for (i, error) in errors.iter().enumerate() {
+        assert_eq!(error["code"], "E_ORIGIN");
+        assert_eq!(error["position"]["line"], i + 2);
+        assert!(error["path"].as_str().unwrap().ends_with("views🙂.tellur"));
+        assert!(error["message"].as_str().unwrap().contains("view"));
+    }
+    assert!(!report.to_string().contains("_path_m_"));
+    let first = tellur::compile_file(
+        f.root.join("main.tellur"),
+        Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+    )
+    .unwrap_err();
+    assert_eq!(first.diagnostic.code, "E_ORIGIN");
+    assert_eq!(first.diagnostic.span.line, 2);
+}
+
+#[test]
+fn unused_generic_completion_bindings_batch_without_specialization_leaks() {
+    let source = "outcome view<t>['a] {found {ref t value <- 'a}}\ncontrol first<t>(ref t input) exits view<t>[input,input] {exit found {input};}\ncontrol second<t>(ref t input) exits view<t>[input,input] {exit found {input};}";
+    let errors = check_errors(source);
+    assert_eq!(errors.errors.len(), 2, "{errors}");
+    assert!(errors.errors.iter().all(|e| e.code == "E_ORIGIN"));
+    assert!(!errors.to_string().contains("_path_poly_"), "{errors}");
+    compile(
+        &source.replace("[input,input]", "[input]"),
+        Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+    )
+    .unwrap();
+}
+
+#[test]
 fn public_shape_errors_batch_before_dependent_preparation_and_bodies() {
     let source = "pub control first() exits auto {exit done;}\npub control second() exits ready... {exit ready {1};}\ncontrol body() exits done {u32 bad=true;exit done;}";
     let errors = check_errors(source);

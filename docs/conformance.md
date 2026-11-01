@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.77.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.78.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -2696,3 +2696,34 @@ compiler/server copies and all nine packaged/installed extension payloads were
 verified at 0.77.0. Existing windows were not reloaded. Formatting and whitespace
 checks passed; unchanged execution/library evidence remains valid outside this
 affected-suite run.
+
+## 0.78 — Named completion binding diagnostics
+
+P2d collects independent errors while binding named completion contracts to their
+controls. Wrong origin-argument counts, including arguments on zero-group schemas,
+and arguments on bare or manifest-only completions share the existing 32-error
+budget. Each binding reads validated shared schemas and mutates only its own control.
+A failed batch returns before any bound declaration reaches signature preparation
+or body checking. Shared schemas, layouts and trait checks keep their earlier
+barriers; later source/lifetime validation keeps its existing phase. Valid-source
+ownership, origin inference, path selection and fault behavior are unchanged.
+
+Six diagnostic regressions cover independent bindings, partial repair into later
+signature/body errors, nullary schemas and bare exits, invalid shared schemas,
+CLI/library budgets, imported source points and unused generic definitions. Two LSP
+regressions cover unsaved root bindings and dependency schema edits, independent
+repair, original defining-file locations and fresh call/auto hover. The runnable
+`playground/contract_binding_diagnostics.tellur` demonstrates two borrowed views;
+its explicit `@exit 0 done` contract also makes it an executable entry.
+
+Final validation passed **375 Rust tests across 17 affected targets**, including
+all 34 diagnostic tests, 22 statement/path recovery tests, 117 LSP tests and three
+manual checks, plus **42 Node tests**. Named outcomes, nested/public origins,
+generic data/controls, traits and modules retain their native expansion/parity
+scenarios; the public nested-reference cases also compare optimization levels.
+The first isolated editor run caught the example's missing executable status;
+after adding the named status contract, the final run passed both diagnostics,
+partial/full repair, fresh call and `auto` hover, and both native borrowed-view
+outputs. Six binary copies and nine packaged/installed payloads were verified at
+0.78.0. Existing windows were not reloaded. Formatting and whitespace checks passed;
+unchanged runtime/library evidence is reused outside this affected-suite run.

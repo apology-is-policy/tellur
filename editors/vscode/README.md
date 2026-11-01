@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-0.77.0-darwin-arm64.vsix` using **Extensions:
+1. Install the supplied `tellur-language-0.78.0-darwin-arm64.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -717,3 +717,13 @@ the failed declarations are repaired; inferred and call-site hover remain unavai
 while the program is invalid. Shared type/trait preparation retains conservative
 stopping points. Try `playground/declaration_diagnostics.tellur`, or see the
 [phase rules](https://github.com/apology-is-policy/tellur/blob/main/docs/reference/diagnostics-and-limits.md#control-declaration-batches).
+
+## Named completion bindings in 0.78
+
+Wrong origin-argument counts in separate control declarations now appear together,
+after their shared outcome schemas validate. Try changing both `exits view[input]`
+bindings in `playground/contract_binding_diagnostics.tellur` to `exits view[input, input]`.
+Repairing one removes its diagnostic; repairing both restores checked call contracts
+and `auto` hover. The existing 32-error budget and dependent-phase barriers apply.
+Shared schema failures remain conservative, and valid programs keep their existing
+borrowing and execution semantics.
