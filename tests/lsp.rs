@@ -69,6 +69,148 @@ fn hover_at(f: &Fixture, source: &str, needle: &str) -> Value {
 }
 
 #[test]
+fn boundary_call_hover_distinguishes_handled_faults_and_outcome_free_completion() {
+    let mut f = Fixture::new();
+    let source = include_str!("../playground/contingency.tellur");
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let h = hover_at(&f, source, "request(true");
+    let text = h["contents"]["value"].as_str().unwrap();
+    assert!(text.contains("**Boundary contract**"), "{text}");
+    assert!(
+        text.contains("boundary request(bool broken, string context) retains context\n"),
+        "{text}"
+    );
+    assert!(
+        text.contains("no outcome, payload or fault value")
+            && text.contains("cannot escape through the source-fault channel"),
+        "{text}"
+    );
+    assert!(
+        !text.contains(" exits ") && !text.contains("$contingency"),
+        "{text}"
+    );
+    assert_eq!(
+        h["range"]["end"]["character"].as_u64().unwrap()
+            - h["range"]["start"]["character"].as_u64().unwrap(),
+        "request".len() as u64
+    );
+}
+
+#[test]
+fn boundary_call_hover_respects_declared_and_inferred_contingency_escape() {
+    let mut f = Fixture::new();
+    f.uri = "untitled:boundary-call-hover".into();
+    let source = "pub boundary allowed() faults {terminate;} contingency(string reason) {terminate;} boundary inferred() {fault \"broken\";} contingency(string reason) {escalate;} control main() exits done {supervise allowed();supervise inferred();exit done;}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    for (callee, signature) in [
+        ("allowed();", "pub boundary allowed() faults"),
+        ("inferred();", "boundary inferred() faults"),
+    ] {
+        let text = hover_at(&f, source, callee).to_string();
+        assert!(
+            text.contains(signature) && text.contains("escape abandons the supervisor"),
+            "{text}"
+        );
+    }
+    let repaired = source.replace("{escalate;}", "{terminate;}");
+    f.change(&repaired, 2);
+    assert_eq!(f.diagnostics(), json!([]));
+    let text = hover_at(&f, &repaired, "inferred();").to_string();
+    assert!(
+        text.contains("boundary inferred()\\n") && !text.contains("boundary inferred() faults"),
+        "{text}"
+    );
+    assert!(
+        hover_at(&f, &repaired, "allowed();")
+            .to_string()
+            .contains("pub boundary allowed() faults")
+    );
+}
+
+#[test]
+fn boundary_call_hover_refreshes_imported_retention_without_private_layouts() {
+    let mut f = Fixture::new();
+    let library = f.root.join("jobs.tellur");
+    let uri = url::Url::from_file_path(&library).unwrap().to_string();
+    let valid = "pub struct ticket {string secret;} pub boundary request(ticket input, string context) retains context, input {fault \"broken\";} contingency(string reason) {drop(input);emit(context);terminate;}";
+    fs::write(&library, valid).unwrap();
+    let source = "import \"jobs.tellur\" as first;import \"jobs.tellur\" as jobs;control main(first.ticket value) exits done {supervise jobs.request(move value, \"context\");exit done;}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let text = hover_at(&f, source, "jobs.request(move").to_string();
+    assert!(
+        text.contains(
+            "pub boundary jobs.request(jobs.ticket input, string context) retains context, input"
+        ),
+        "{text}"
+    );
+    assert!(
+        !text.contains("secret") && !text.contains("_path_") && !text.contains("$contingency"),
+        "{text}"
+    );
+    let changed = valid
+        .replace("input", "fresh")
+        .replace("retains context, fresh", "retains fresh, context");
+    f.server.notification(
+        "textDocument/didOpen",
+        &json!({"textDocument":{"uri":uri,"version":1,"text":changed}}),
+    );
+    assert_eq!(f.diagnostics(), json!([]));
+    assert!(
+        hover_at(&f, source, "jobs.request(move")
+            .to_string()
+            .contains("retains fresh, context")
+    );
+    let broken = changed.replace("string context", "ref string context");
+    f.server.notification(
+        "textDocument/didChange",
+        &json!({"textDocument":{"uri":uri,"version":2},"contentChanges":[{"text":broken}]}),
+    );
+    assert!(!f.diagnostics().as_array().unwrap().is_empty());
+    assert!(hover_at(&f, source, "jobs.request(move").is_null());
+    f.server.notification(
+        "textDocument/didClose",
+        &json!({"textDocument":{"uri":uri}}),
+    );
+    assert_eq!(f.diagnostics(), json!([]));
+    assert!(
+        hover_at(&f, source, "jobs.request(move")
+            .to_string()
+            .contains("retains context, input")
+    );
+}
+
+#[test]
+fn boundary_call_hover_selects_nested_calls_and_rejects_ordinary_invocation() {
+    let mut f = Fixture::new();
+    let source = "struct message {string text;constructor(string input) {self.text=move input;}} boundary request(message input) retains input {terminate;} contingency(string reason) {terminate;}control main() exits done {supervise request(message(\"hello\"));exit done;}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    assert!(
+        hover_at(&f, source, "request(message(\"hello\"))")
+            .to_string()
+            .contains("**Boundary contract**")
+    );
+    assert!(
+        hover_at(&f, source, "message(\"hello\")")
+            .to_string()
+            .contains("**Constructor contract**")
+    );
+    let broken = source.replace("supervise ", "");
+    f.change(&broken, 2);
+    assert!(f.diagnostics().to_string().contains("E_DISPOSITION"));
+    assert!(hover_at(&f, &broken, "request(message(\"hello\"))").is_null());
+    f.change(source, 3);
+    assert!(
+        hover_at(&f, source, "request(message(\"hello\"))")
+            .to_string()
+            .contains("**Boundary contract**")
+    );
+}
+
+#[test]
 fn lexical_call_hover_resolves_self_and_associated_aliases_before_nominal_names() {
     let mut f = Fixture::new();
     let source = "struct item {u32 shadow;}\n".to_owned()

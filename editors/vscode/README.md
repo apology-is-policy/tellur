@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-0.81.0-darwin-arm64.vsix` using **Extensions:
+1. Install the supplied `tellur-language-0.82.0-darwin-arm64.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -704,8 +704,9 @@ visible; public controls do not expose private field paths.
 
 Unsaved dependency edits refresh signatures. Invalid arguments or dependencies
 suppress stale hover. The callee range excludes value arguments; other positions
-retain their existing feedback. Constructor calls gain contracts in 0.79 below. Concrete trait calls gain contracts in 0.80 below. Named boundaries and
-abstract generic-body calls retain selected-history feedback for now. See the
+retain their existing feedback. Constructor calls gain contracts in 0.79 below,
+concrete trait calls in 0.80, and named boundaries in 0.82. Abstract generic-body
+calls retain selected-history feedback for now. See the
 [call-site reference](https://github.com/apology-is-policy/tellur/blob/main/docs/language-reference.md#call-site-contract-hover).
 
 ## Declaration diagnostics in 0.77
@@ -736,8 +737,8 @@ fault/contingency permission. It uses current unsaved definitions and the import
 alias at the call, and does not list private fields. Invalid source suppresses stale
 contracts. Try `text_pair(...)` and `editable_text(...)` in
 `playground/borrowed_construction.tellur`; selected histories remain underneath.
-Concrete trait calls gain contracts in 0.80 below. Named boundaries and abstract
-generic-body calls retain their existing selected-history feedback.
+Concrete trait calls gain contracts in 0.80 below, and named boundaries in 0.82.
+Abstract generic-body calls retain their existing selected-history feedback.
 
 ## Trait call hover in 0.80
 
@@ -748,8 +749,8 @@ chosen binding names stay out of the hover. Unsaved edits refresh the contract, 
 invalid source suppresses stale results. Concrete associated-type selections also
 resolve in call targets and explicit type arguments. Generic-body calls remain
 abstract even if a real type has the same name as a type parameter. Try
-`playground/traits.tellur`; named boundaries and abstract calls retain selected-history
-feedback.
+`playground/traits.tellur`; named boundaries gain contracts in 0.82 below. Abstract
+calls retain selected-history feedback.
 
 ## Lexical call types and named results in 0.81
 
@@ -759,5 +760,15 @@ do not override that lexical meaning. Generic helper calls also retain named res
 contracts after associated-type substitution, including explicit origin mappings on
 their alternatives. Unsaved edits refresh both views; invalid source suppresses stale
 contracts. Try `playground/trait_aliases.tellur` and `prepare<text_editor>(...)` in
-`playground/aggregate_traits.tellur`. Abstract generic calls and named boundaries
-retain their existing selected-history feedback.
+`playground/aggregate_traits.tellur`. Named boundaries gain contracts in 0.82 below;
+abstract generic calls retain their existing selected-history feedback.
+
+## Named supervision contracts in 0.82
+
+Hover at the boundary name in `supervise request(...)` to see its checked owned
+inputs, ordered retained parameters and contingency escape permission. Internally
+handled faults do not add `faults` to this interface. The hover explains that
+supervision produces no outcome or fault value, and that escaping contingency
+abandons the supervisor continuation. Imported aliases and unsaved declarations
+refresh normally; invalid source suppresses stale contracts. Try both supervision
+sites in `playground/contingency.tellur`.

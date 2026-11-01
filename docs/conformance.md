@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.81.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.82.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -2819,3 +2819,30 @@ precedence, invalid-source suppression, fresh repair, named nested origins and n
 example output. Six compiler/server copies and nine packaged/installed payloads were
 verified at 0.81.0. Existing windows were not reloaded. Formatting and whitespace
 checks passed; earlier unaffected runtime/library/diagnostic evidence is reused.
+
+## 0.82 — Named boundary contracts at supervision sites
+
+P4d.4 presents the checked boundary contract at the callee in `supervise` statements:
+owned inputs, authored retention order, and permission for faults to escape the
+contingency. The escape marker comes from the checked handler, not the ordinary
+work body's internal faults. Hover explains outcome-free completion and abandoned
+continuations. Imported aliases, private layout protection and unsaved snapshot
+freshness use the existing checked-call machinery. No syntax, compiler metadata,
+ownership, fault handling or executable semantics change.
+
+Four LSP regressions cover handled versus escaping faults, explicit public and
+inferred private permissions, empty retention, exact callee ranges, imported owned
+types, changed retention order, invalidation/repair and nested constructor calls.
+The existing `playground/contingency.tellur` remains the runnable example.
+
+Final validation passed **213 unique Rust tests across five affected targets**,
+including all 139 LSP cases, named/lexical boundary and module suites, and three
+manual checks; **42 Node tests** passed. The initial nested-call fixture first
+selected a declaration, then expected `E_BOUNDARY` where ordinary call disposition
+checking reports `E_DISPOSITION`. The corrected case passed; successful cases were
+reused and counted once. Isolated VS Code passed retained-name and escape-permission
+edits, invalid-source suppression, repair, and native execution with one handled
+fault followed by the next request. Six binaries and nine packaged/installed
+payloads were verified at 0.82.0. Existing windows were not reloaded. Formatting
+and whitespace checks passed; unaffected 0.81 trait/origin and earlier runtime,
+diagnostic and library evidence remains valid.

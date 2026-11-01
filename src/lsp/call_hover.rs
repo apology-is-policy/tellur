@@ -439,7 +439,7 @@ pub(super) fn hover(
             }
         )
     } else if let Some(checked) = program.region(&resolved) {
-        if checked.boundary.is_some() || checked.contingency || checked.is_constructor() {
+        if checked.contingency || checked.is_constructor() {
             return None;
         }
         let base = generic(&resolved).map_or(resolved.as_str(), |(base, _)| base);
@@ -481,64 +481,87 @@ pub(super) fn hover(
             })
             .collect::<Vec<_>>()
             .join(", ");
-        let contract = source
-            .exit_contract
-            .as_ref()
-            .map(|n| normalized(n, &defining_names, &program))
-            .filter(|name| {
-                matches!(
-                    program.manifest().type_def(name),
-                    Some(crate::manifest::TypeDef::Outcome { .. })
-                )
-            });
-        if let Some(contract) = contract
-            .as_ref()
-            .and_then(|name| program.outcome_contracts.get(name))
-        {
-            // Reuse the validated source schema so named results keep each public
-            // origin mapping after concrete associated-type substitution.
-            crate::origins::bind_contract(&mut source, contract).ok()?;
-        }
-        let alternatives = checked_exit_description(&checked.exits, &source);
-        let exits = match &contract {
-            Some(name) if source.exit_origins.is_empty() => display_type(name),
-            Some(name) => format!(
-                "{}[{}]",
-                display_type(name),
-                source
-                    .exit_origins
-                    .iter()
-                    .map(OriginArgument::display)
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            ),
-            None => alternatives.clone(),
-        };
-        let annotation = if checked.contingent {
-            "@contingent\n"
-        } else {
-            ""
-        };
-        let inferred = if source.infer_exits || !source.infer_payloads.is_empty() {
-            "\n\nPayloads/outcomes inferred from the checked body."
-        } else {
-            ""
-        };
-        let details = if contract.is_some() {
-            format!("\n\nContract alternatives: `{alternatives}`.")
-        } else {
-            String::new()
-        };
-        format!(
-            "**Control contract**\n\n```tellur\n{annotation}control {}({params}){}\n```{inferred}{details}{}",
-            display_type(written),
-            completion_description(&exits, checked.faults),
-            if source.public {
+        if let Some(boundary) = &checked.boundary {
+            let retained = &source.boundary.as_ref()?.retained;
+            // The work may fault internally. Only its handler's checked permission
+            // describes faults that can escape this supervision operation.
+            let escape = program.region(&boundary.handler)?.faults;
+            let disposition = if retained.is_empty() {
                 String::new()
             } else {
-                return_lifetimes(&program, checked)
+                format!(" retains {}", retained.join(", "))
+            };
+            format!(
+                "**Boundary contract**\n\n```tellur\n{}boundary {}({params}){disposition}{}\n```\n\nInvoke with `supervise`; inputs transfer into the isolated boundary. Normal work or contingency must finish before the supervisor continues. Completion carries no outcome, payload or fault value. A handled fault abandons the failed work and hands retained parameters to contingency after failed activations retire.{}",
+                if source.public { "pub " } else { "" },
+                display_type(written),
+                if escape { " faults" } else { "" },
+                if escape {
+                    "\n\n`faults` permits contingency escape to the supervisor's execution boundary; escape abandons the supervisor's continuation."
+                } else {
+                    "\n\nThis boundary's contingency cannot escape through the source-fault channel."
+                }
+            )
+        } else {
+            let contract = source
+                .exit_contract
+                .as_ref()
+                .map(|n| normalized(n, &defining_names, &program))
+                .filter(|name| {
+                    matches!(
+                        program.manifest().type_def(name),
+                        Some(crate::manifest::TypeDef::Outcome { .. })
+                    )
+                });
+            if let Some(contract) = contract
+                .as_ref()
+                .and_then(|name| program.outcome_contracts.get(name))
+            {
+                // Reuse the validated source schema so named results keep each public
+                // origin mapping after concrete associated-type substitution.
+                crate::origins::bind_contract(&mut source, contract).ok()?;
             }
-        )
+            let alternatives = checked_exit_description(&checked.exits, &source);
+            let exits = match &contract {
+                Some(name) if source.exit_origins.is_empty() => display_type(name),
+                Some(name) => format!(
+                    "{}[{}]",
+                    display_type(name),
+                    source
+                        .exit_origins
+                        .iter()
+                        .map(OriginArgument::display)
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+                None => alternatives.clone(),
+            };
+            let annotation = if checked.contingent {
+                "@contingent\n"
+            } else {
+                ""
+            };
+            let inferred = if source.infer_exits || !source.infer_payloads.is_empty() {
+                "\n\nPayloads/outcomes inferred from the checked body."
+            } else {
+                ""
+            };
+            let details = if contract.is_some() {
+                format!("\n\nContract alternatives: `{alternatives}`.")
+            } else {
+                String::new()
+            };
+            format!(
+                "**Control contract**\n\n```tellur\n{annotation}control {}({params}){}\n```{inferred}{details}{}",
+                display_type(written),
+                completion_description(&exits, checked.faults),
+                if source.public {
+                    String::new()
+                } else {
+                    return_lifetimes(&program, checked)
+                }
+            )
+        }
     } else if let Some(p) = program
         .manifest()
         .primitives

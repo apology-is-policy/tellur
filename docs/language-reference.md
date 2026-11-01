@@ -1,8 +1,8 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.81.0 -->
+<!-- tellur-reference-version: 0.82.0 -->
 
-This manual describes **compiler 0.81.0**, including the current ownership model,
+This manual describes **compiler 0.82.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -987,9 +987,8 @@ behavior.
 
 Contracts come from a successful check of the current document and its unsaved
 dependencies. Editing an imported signature refreshes the hover; a failed check
-suppresses it rather than showing an old signature. Named boundaries and calls
-requiring abstract generic-body lookup
-currently retain the existing selected-history feedback. This is not general
+suppresses it rather than showing an old signature. Calls requiring abstract
+generic-body lookup currently retain the existing selected-history feedback. This is not general
 expression-type hover. Try the calls in
 [the JSON file example](../examples/json_file/main.tellur).
 
@@ -1007,6 +1006,14 @@ declared origin mappings on their alternatives; private inference still appears 
 checked lifetime notes when no mapping was authored. Try `prepare<text_editor>(...)`
 in [aggregate_traits.tellur](../playground/aggregate_traits.tellur). These mappings
 come from the validated source schema, rather than private implementation fields.
+
+Since 0.82, hover at a named `supervise` call shows the boundary's owned input
+contract, retained parameter order and contingency escape permission. Internally
+handled faults do not add `faults` to this interface: that marker describes escape
+from contingency, which abandons the supervisor's continuation. Supervision exposes
+no outcome or fault value. Imported names and unsaved changes follow the same
+checked-snapshot rules. Try both `request(...)` calls in
+[contingency.tellur](../playground/contingency.tellur).
 
 ### Scoped intersections
 
@@ -2767,7 +2774,7 @@ General expression-type hover remains unsupported.
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and async tasks remain planned; they are not executable features of 0.81.0.
+and async tasks remain planned; they are not executable features of 0.82.0.
 ## Contingency and supervised boundaries
 
 The [contingency reference](reference/contingency.md) specifies `@contingent`,

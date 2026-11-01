@@ -191,6 +191,11 @@ fault**. Only then can the supervisor execute its next statement. A boundary
 cannot be called through `delta`, `capture`, `forward`, a call statement, or the
 executable entry interface. Start an ordinary entry control that supervises it.
 
+Hover over the boundary name in `supervise request(...)` to see its checked owned
+inputs, ordered `retains` list and `faults` escape permission. The signature follows
+the current unsaved declaration, including imported aliases. A body that faults and
+settles its contingency does not by itself make that boundary's interface `faults`.
+
 `terminate;` ends the current boundary body or contingency administratively. It
 does not exit the process and does not create a Tellur outcome. It is rejected in
 ordinary controls. Every live history in either body needs an explicit terminal
