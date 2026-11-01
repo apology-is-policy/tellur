@@ -696,7 +696,54 @@ pub(crate) fn compile(
                 }
             }
         }
+        // Retain the abstract interface while its checked schemas still exist.
+        // Source tooling must never substitute a convenient concrete caller's
+        // witness for the universally checked definition.
+        let mut source_contract = template.clone();
+        source_contract.body.clear();
+        let bindings = template
+            .type_parameters
+            .iter()
+            .cloned()
+            .zip(application(seed).unwrap().1.into_iter().map(str::to_owned))
+            .collect();
+        rewrite_region(&mut source_contract, &bindings);
+        rewrite_region(&mut source_contract, &checked.associated_types);
+        if let Some(contract) = source_contract
+            .exit_contract
+            .as_ref()
+            .and_then(|name| checked.outcome_contracts.get(name))
+        {
+            crate::origins::bind_contract(&mut source_contract, contract)?;
+        }
+        for (field, slot) in source_contract
+            .parameters
+            .iter_mut()
+            .zip(&region.parameters)
+        {
+            field.ty = slot.ty.clone();
+        }
+        rewrite_region(&mut source_contract, &parameters);
+        let return_lifetimes = crate::contracts::return_lifetimes(checked.manifest(), region);
+        let mut display_exits = region.exits.clone();
+        for field in display_exits.iter_mut().flat_map(|o| &mut o.fields) {
+            field.ty = checked.manifest().display_inferred_type(&field.ty);
+        }
+        let display_bindings = parameters
+            .iter()
+            .filter(|(internal, _)| {
+                display_exits
+                    .iter()
+                    .flat_map(|o| &o.fields)
+                    .any(|f| f.ty.contains(internal.as_str()))
+            })
+            .map(|(internal, source)| (internal.clone(), source.clone()))
+            .collect();
         result.generic_controls.push(ir::GenericControl {
+            source_contract,
+            return_lifetimes,
+            display_exits,
+            display_bindings,
             contingent: region.contingent,
             faults: region.faults,
             name: template.name.clone(),

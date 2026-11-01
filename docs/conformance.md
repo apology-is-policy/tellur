@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.87.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.88.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -2990,3 +2990,33 @@ exact error tokens, partial/full repair, restored call hover and native executio
 of `playground/stored_adapters.tellur`. Six binary copies and nine packaged/installed
 payloads were verified at 0.87.0. Existing windows were not reloaded. Formatting and
 whitespace checks passed; unaffected trait and application/library evidence is reused.
+
+## 0.88 — Symbolic ordinary generic call contracts
+
+P4d.5 shows ordinary generic helper contracts inside generic bodies using their
+universally checked definitions. Source-only metadata retains the normalized
+interface, named result origins, checked private return lifetimes and bounded
+anonymous payload descriptions before abstract layouts disappear. Lexical type
+parameters stay protected through namespace and associated-type lookup; a concrete
+type with the same name cannot supply an unrelated witness. Authored payload names
+are preserved even when they match type parameter names. The shared lifetime
+renderer retains existing concrete hover behavior.
+
+Eight new LSP regressions cover bounds, exact callee ranges, unused definitions,
+distinct and nested arguments, private borrow evidence and fault permissions,
+imported named origins, associated-type shadowing, anonymous outcomes, namespace
+collisions and fresh unsaved dependencies. Existing untitled-call coverage now
+expects a symbolic contract. Initial focused expectations were corrected for the
+formatter's comma spacing and the inferred `value_0` payload name; the final focused
+run and affected suites passed. Abstract trait, constructor and boundary calls
+remain separate presentation work. Executable IR and certificate formats are unchanged.
+
+Final validation passed **307 Rust tests across 14 affected targets**, including
+all 157 LSP tests and three manual checks, plus **42 Node tests**. Generic controls
+and data, trait bounds and origins, public contracts, constructors, snapshots and
+certificates retain native/expansion coverage. Isolated VS Code verified symbolic
+named contracts, checked borrow origins, failed-check invalidation, repaired/renamed
+parameter display and native execution emitting `Ada`. Six binary copies and nine
+packaged/installed payloads were verified at 0.88.0. Existing windows were not reloaded.
+Formatting and whitespace checks passed; unchanged diagnostic, runtime and library
+evidence is reused.

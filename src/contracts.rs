@@ -1,5 +1,8 @@
 //! Portable descriptions of checked public source contracts, not binary ABI or
 //! behavioral-equivalence certificates. Bodies and diagnostic locations stay out.
+mod return_lifetimes;
+pub(crate) use return_lifetimes::return_lifetimes;
+
 use crate::{
     Diagnostic, Result, Span,
     collection_support::{Collection, generic, qualified_member},

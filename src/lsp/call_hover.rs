@@ -1,7 +1,7 @@
 //! Contracts at authored call names. Never infer callable identity from a word
 //! alone, and never publish a signature from a failed check or a stale dependency.
 use super::*;
-use crate::{CheckedProgram, SourceRange, collection_support::generic, ir, syntax::*};
+use crate::{CheckedProgram, SourceRange, collection_support::generic, syntax::*};
 
 fn expressions<'a>(e: &'a Expr, out: &mut Vec<&'a Expr>) {
     match &e.kind {
@@ -262,6 +262,97 @@ fn checked_sources(
     Some((program, sources))
 }
 
+fn generic_description(written: &str, resolved: &str, program: &CheckedProgram) -> Option<String> {
+    let (base, arguments) = generic(resolved)?;
+    let checked = program.generic_controls().iter().find(|g| g.name == base)?;
+    let mut source = checked.source_contract.clone();
+    if source.boundary.is_some() || source.contingency || crate::constructors::is_control(base) {
+        return None;
+    }
+    if arguments.len() != checked.type_parameters.len() {
+        return None;
+    }
+    let bindings = checked
+        .type_parameters
+        .iter()
+        .cloned()
+        .zip(arguments.iter().map(|a| (*a).to_owned()))
+        .collect();
+    crate::generic_controls::rewrite_region(&mut source, &bindings);
+    let mut outcomes = checked.display_exits.clone();
+    for field in outcomes.iter_mut().flat_map(|o| &mut o.fields) {
+        // Replace only compiler-created type tokens, never an authored payload
+        // name that happens to match a generic parameter inside an anonymous type.
+        for (internal, parameter) in &checked.display_bindings {
+            field.ty = field.ty.replace(
+                internal,
+                &display_type(&crate::generics::substitute(parameter, &bindings)),
+            );
+        }
+    }
+    let alternatives = checked_exit_description(&outcomes, &source);
+    let exits = match &source.exit_contract {
+        Some(name) if source.exit_origins.is_empty() => display_type(name),
+        Some(name) => format!(
+            "{}[{}]",
+            display_type(name),
+            source
+                .exit_origins
+                .iter()
+                .map(OriginArgument::display)
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        None => alternatives.clone(),
+    };
+    let requirements = checked
+        .type_parameters
+        .iter()
+        .zip(&arguments)
+        .filter_map(|(name, argument)| {
+            let bounds = &checked.type_bounds[name];
+            (!bounds.is_empty())
+                .then(|| format!("`{}: {}`", display_type(argument), bounds.join(" + ")))
+        })
+        .collect::<Vec<_>>();
+    Some(format!(
+        "**Control contract**\n\n```tellur\n{}control {}({}){}\n```\n\nSymbolic call contract from the universally checked generic definition; type parameters remain abstract here.{}{}{}{}",
+        if checked.contingent {
+            "@contingent\n"
+        } else {
+            ""
+        },
+        display_type(written),
+        source
+            .parameters
+            .iter()
+            .map(|f| source_field(f, false))
+            .collect::<Vec<_>>()
+            .join(", "),
+        completion_description(&exits, checked.faults),
+        if requirements.is_empty() {
+            String::new()
+        } else {
+            format!("\n\nDeclared requirements: {}.", requirements.join(", "))
+        },
+        if source.infer_exits || !source.infer_payloads.is_empty() {
+            "\n\nPayloads/outcomes inferred from the checked generic body."
+        } else {
+            ""
+        },
+        if source.exit_contract.is_some() {
+            format!("\n\nContract alternatives: `{alternatives}`.")
+        } else {
+            String::new()
+        },
+        if source.public {
+            ""
+        } else {
+            &checked.return_lifetimes
+        }
+    ))
+}
+
 pub(super) fn hover(
     server: &Server,
     uri: &str,
@@ -272,15 +363,15 @@ pub(super) fn hover(
     let text = &server.documents.get(uri)?.text;
     let at = scalar_span(text, line, character)?;
     let (written, range, parameters) = call_at(unit, text, at)?;
-    let abstract_names = parameters
+    let abstract_names: BTreeMap<_, _> = parameters
         .iter()
-        .map(|name| (name.clone(), "$abstract".into()))
+        .enumerate()
+        .map(|(index, name)| (name.clone(), format!("${index}$")))
         .collect();
-    if crate::generics::substitute(written, &abstract_names) != written {
-        // A lexical type parameter may shadow a real type with a concrete witness.
-        // Never select that witness for an abstract call in a generic body.
-        return None;
-    }
+    // Protect lexical parameters through namespace and associated-type lookup.
+    // These non-source markers cannot identify a concrete type or trait witness.
+    let protected = crate::generics::substitute(written, &abstract_names);
+    let abstract_call = protected != written;
     // A call name must not fall back to a stale signature after any source error.
     let Some((program, sources)) = checked_sources(server, uri) else {
         return Some(Value::Null);
@@ -294,7 +385,7 @@ pub(super) fn hover(
     let lexical_types = implementation_types(unit, at, &names, &program)?;
     // Lexical aliases take precedence over same-named module declarations.
     let resolved = normalized(
-        &crate::generics::substitute(written, &lexical_types),
+        &crate::generics::substitute(&protected, &lexical_types),
         &names,
         &program,
     );
@@ -328,7 +419,9 @@ pub(super) fn hover(
             }
         }
     }
-    let mut description = if let Some(source) = program.trait_contracts.get(&resolved) {
+    let mut description = if abstract_call {
+        generic_description(written, &resolved, &program)?
+    } else if let Some(source) = program.trait_contracts.get(&resolved) {
         // This is the conformance-checked trait contract, not the implementing
         // body's narrower evidence or its independently chosen binding names.
         let contract = source
@@ -558,7 +651,7 @@ pub(super) fn hover(
                 if source.public {
                     String::new()
                 } else {
-                    return_lifetimes(&program, checked)
+                    crate::contracts::return_lifetimes(program.manifest(), checked)
                 }
             )
         }
@@ -633,6 +726,9 @@ pub(super) fn hover(
         return None;
     };
     description = renamed(&description, &visible);
+    for (parameter, marker) in &abstract_names {
+        description = description.replace(marker, parameter);
+    }
     if type_sources.keys().any(|label| description.contains(label)) {
         description.push_str("\n\nFile-qualified type names identify defining sources not imported here; they are display identities, not Tellur import syntax.");
     }
@@ -646,117 +742,4 @@ pub(super) fn hover(
     Some(
         json!({"contents":{"kind":"markdown","value":description},"range":{"start":position(text,range.start),"end":position(text,range.end)}}),
     )
-}
-
-pub(super) fn return_lifetimes(program: &CheckedProgram, checked: &ir::Region) -> String {
-    let borrows = checked
-        .borrow_returns
-        .iter()
-        .map(|((outcome, index), sources)| {
-            let owners = sources
-                .iter()
-                .filter(|s| !s.guard)
-                .map(|source| {
-                    let parameter = &checked.parameters[source.parameter];
-                    let mut name = parameter.name.clone();
-                    if let Some(c) = &source.contained {
-                        return format!("`{}['{}]`", name, c.group);
-                    }
-                    let mut ty = crate::manifest::reference_inner(&parameter.ty)
-                        .unwrap()
-                        .1
-                        .to_owned();
-                    for index in &source.fields {
-                        let (suffix, field_ty) =
-                            program.manifest().borrow_field(&ty, *index).unwrap();
-                        name.push_str(&suffix);
-                        ty = field_ty;
-                    }
-                    format!("`{name}`")
-                })
-                .collect::<Vec<_>>()
-                .join(" or ");
-            let guard = if sources.iter().any(|s| s.guard) {
-                " The authorizing carrier borrow also stays live."
-            } else {
-                ""
-            };
-            format!(
-                "\n- `{outcome}` payload {} borrows {owners}.{guard}",
-                index + 1
-            )
-        })
-        .collect::<String>();
-    let mut borrows = borrows;
-    let mut shown_groups = std::collections::BTreeSet::new();
-    for result in &checked.stored_returns {
-        if !shown_groups.insert((&result.outcome, result.payload, &result.group)) {
-            continue;
-        }
-        let path = format!(
-            "{} payload {} ['{}]",
-            result.outcome,
-            result.payload + 1,
-            result.group
-        );
-        let owners = result
-            .sources
-            .iter()
-            .filter(|s| !s.guard)
-            .map(|s| match &s.contained {
-                Some(c) => {
-                    format!("`{}['{}]`", checked.parameters[s.parameter].name, c.group)
-                }
-                None => format!("`{}`", checked.parameters[s.parameter].name),
-            })
-            .collect::<Vec<_>>()
-            .join(" or ");
-        let guard = if result.sources.iter().any(|s| s.guard) {
-            " The authorizing carrier borrow also stays live."
-        } else {
-            ""
-        };
-        borrows.push_str(&format!("\n- `{path}` borrows {owners}.{guard}"));
-    }
-    if checked.stored_returns.iter().any(|r| r.sum_leaf.is_some()) {
-        borrows.push_str("\n\nVariant dependencies are guarded by their alternatives; unpacking retains only the selected payload's dependencies.");
-    }
-    let has_split = checked.exits.iter().any(|outcome| {
-        let mut modes = outcome
-            .fields
-            .iter()
-            .filter_map(|f| crate::manifest::reference_inner(&f.ty).map(|(m, _)| m))
-            .collect::<Vec<_>>();
-        for result in checked
-            .stored_returns
-            .iter()
-            .filter(|r| r.outcome == outcome.name && r.through.is_empty())
-        {
-            let field_type = outcome.fields[result.payload].ty.as_str();
-            // The carrier and its contents are not distinct result
-            // permissions. Count the outer reference once for this note.
-            if crate::manifest::reference_inner(field_type).is_some() {
-                continue;
-            }
-            let mut ty = field_type;
-            for index in &result.fields {
-                ty = &program.manifest().field_at(ty, *index).unwrap().ty;
-            }
-            let tagged = result
-                .sum_leaf
-                .as_ref()
-                .and_then(|leaf| leaf.reference_type(ty, program.manifest()));
-            let ty = tagged.as_deref().unwrap_or(ty);
-            modes.push(crate::manifest::reference_inner(ty).unwrap().0);
-        }
-        modes.len() > 1 && modes.contains(&true)
-    });
-    if has_split {
-        borrows.push_str("\n\nExclusive result references are checked for disjoint access, even when owner lifetimes coincide.");
-    }
-    if borrows.is_empty() {
-        borrows
-    } else {
-        format!("\n\nChecked return lifetimes:{borrows}")
-    }
 }

@@ -368,6 +368,13 @@ pub(crate) fn is_false(value: &bool) -> bool {
 }
 #[derive(Clone, Debug)]
 pub struct GenericControl {
+    /// Source-only abstract contract; no implementation body or witness layout.
+    pub(crate) source_contract: crate::syntax::Region,
+    /// Computed before abstract layouts disappear, using definition evidence.
+    pub(crate) return_lifetimes: String,
+    /// Materialized anonymous payload descriptions and their abstract type names.
+    pub(crate) display_exits: Vec<crate::manifest::Outcome>,
+    pub(crate) display_bindings: BTreeMap<String, String>,
     pub contingent: bool,
     pub faults: bool,
     pub name: String,

@@ -1,8 +1,8 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.87.0 -->
+<!-- tellur-reference-version: 0.88.0 -->
 
-This manual describes **compiler 0.87.0**, including the current ownership model,
+This manual describes **compiler 0.88.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -987,10 +987,19 @@ behavior.
 
 Contracts come from a successful check of the current document and its unsaved
 dependencies. Editing an imported signature refreshes the hover; a failed check
-suppresses it rather than showing an old signature. Calls requiring abstract
-generic-body lookup currently retain the existing selected-history feedback. This is not general
-expression-type hover. Try the calls in
+suppresses it rather than showing an old signature. Abstract constructor, trait and
+boundary calls retain selected-history feedback; ordinary symbolic generic calls
+are described below. This is not general expression-type hover. Try the calls in
 [the JSON file example](../examples/json_file/main.tellur).
+
+Since 0.88, ordinary generic helper calls inside generic bodies show a **symbolic
+call contract** from the universally checked definition. For `identity<item>(value)`
+in [generic_controls.tellur](../playground/generic_controls.tellur), hover keeps
+`item` abstract even when all current callers supply `string`. Nested type arguments,
+associated-type arguments, declared bounds, named result origins, private inferred
+payloads and checked return lifetimes follow the definition. Anonymous result types
+use the same bounded rendering as inferred-type hover; payload names are preserved.
+No concrete implementation or caller is chosen to manufacture the signature.
 
 A lexical type parameter keeps a call abstract even when a real type with the same
 name has a concrete implementation. Hover never borrows that unrelated signature.
@@ -2774,7 +2783,7 @@ General expression-type hover remains unsupported.
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and async tasks remain planned; they are not executable features of 0.87.0.
+and async tasks remain planned; they are not executable features of 0.88.0.
 ## Contingency and supervised boundaries
 
 The [contingency reference](reference/contingency.md) specifies `@contingent`,

@@ -822,7 +822,7 @@ impl Server {
             } else {
                 ""
             };
-            let borrows = call_hover::return_lifetimes(&program, checked);
+            let borrows = crate::contracts::return_lifetimes(program.manifest(), checked);
             let contract = region.exit_contract.as_ref().filter(|name| {
                 matches!(
                     program.manifest().type_def(name),

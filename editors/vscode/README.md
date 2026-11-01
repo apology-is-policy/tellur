@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-0.87.0-darwin-arm64.vsix` using **Extensions:
+1. Install the supplied `tellur-language-0.88.0-darwin-arm64.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -818,3 +818,12 @@ in one batch. Its uncertain result and continuation stay suppressed until repair
 clean arms retain their resource and lifetime checks. Try invalid payloads in both
 arms of the `message_result message` binding in `playground/stored_adapters.tellur`.
 Inferred stored types, headers and fault-context adapters remain conservative.
+
+## Symbolic ordinary generic call contracts in 0.88
+
+Hover `identity<item>(value)` inside `playground/generic_controls.tellur`: the
+contract retains `item`, independently of concrete callers. It includes declared
+bounds, named result origins, inferred payloads and private checked return lifetimes.
+Anonymous payloads use bounded type rendering without internal compiler names.
+Unsaved edits refresh the signature; invalid sources suppress it. Abstract trait,
+constructor and boundary calls retain their existing selected-history feedback.

@@ -69,6 +69,167 @@ fn hover_at(f: &Fixture, source: &str, needle: &str) -> Value {
 }
 
 #[test]
+fn symbolic_call_hover_expands_anonymous_payloads_without_renaming_fields() {
+    let mut f = Fixture::new();
+    let source = "control store<t:drop>(t t) exits auto {auto saved=delta true {true=>ready {t},false=>empty {}};exit carried {saved};}\ncontrol wrap<item:drop>(item value) exits auto {forward store<item>(value);}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let h = hover_at(&f, source, "store<item>(value)").to_string();
+    assert!(h.contains("control store<item>(item t)"), "{h}");
+    assert!(h.contains("ready { item t }") && h.contains("empty"), "{h}");
+    assert!(
+        !h.contains("$adapter") && !h.contains("_path_") && !h.contains("$0$"),
+        "{h}"
+    );
+}
+
+#[test]
+fn symbolic_call_hover_keeps_imported_types_distinct_from_shadowing_parameters() {
+    let mut f = Fixture::new();
+    fs::write(f.root.join("library.tellur"),"pub struct token {pub u32 value;} pub control pair<a>(a input,token concrete) exits ready {a first,token second} {exit ready {input,concrete};}").unwrap();
+    let source = "import \"library.tellur\" as library;control wrap<token>(token value,library.token concrete) exits auto {forward library.pair<token>(value,concrete);}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let h = hover_at(&f, source, "library.pair<token>(value,concrete)").to_string();
+    assert!(h.contains("control library.pair<token>(token input, library.token concrete) exits ready { token first, library.token second }"),"{h}");
+    assert!(!h.contains("_path_") && !h.contains("$0$"), "{h}");
+}
+
+#[test]
+fn symbolic_call_hover_uses_definition_types_bounds_and_exact_range() {
+    let mut f = Fixture::new();
+    let source = "control duplicate<item: clone>(ref item input) exits ready {item value} {exit ready {clone(input)};}\ncontrol wrap<t: clone>(ref t value) exits auto {forward duplicate<t>(value);}\ncontrol main() exits auto {string input=\"a\";forward wrap<string>(borrow input);}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let h = hover_at(&f, source, "duplicate<t>(value)");
+    let text = h["contents"]["value"].as_str().unwrap();
+    assert!(
+        text.contains("control duplicate<t>(ref t input) exits ready { t value }"),
+        "{text}"
+    );
+    assert!(text.contains("Declared requirements: `t: clone`"), "{text}");
+    assert!(
+        text.contains("Selected histories") && text.contains("universally checked"),
+        "{text}"
+    );
+    assert!(!text.contains("_path_") && !text.contains("$0$"), "{text}");
+    assert_eq!(
+        h["range"]["end"]["character"].as_u64().unwrap()
+            - h["range"]["start"]["character"].as_u64().unwrap(),
+        12
+    );
+    let unused = source.split("\ncontrol main").next().unwrap();
+    f.change(unused, 2);
+    assert_eq!(f.diagnostics(), json!([]));
+    assert_eq!(hover_at(&f, unused, "duplicate<t>(value)"), h);
+}
+
+#[test]
+fn symbolic_call_hover_preserves_distinct_parameters_and_nested_arguments() {
+    let mut f = Fixture::new();
+    let source = "control pair<a,b>(a first,b second) exits auto {exit ready {first,second};}\ncontrol wrap<x,y>(x left,y right) exits auto {forward pair<vector<x>,y>([left],right);}\ncontrol main() exits auto {forward wrap<u32,u32>(1,2);}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let h = hover_at(&f, source, "pair<vector<x>,y>(").to_string();
+    assert!(h.contains("control pair<vector<x>, y>(vector<x> first, y second) exits ready { vector<x> first, y second }"),"{h}");
+    assert!(
+        h.contains("inferred from the checked generic body") && !h.contains("U32"),
+        "{h}"
+    );
+}
+
+#[test]
+fn symbolic_call_hover_preserves_private_checked_lifetimes_and_permissions() {
+    let mut f = Fixture::new();
+    let source = "struct holder<t>['a] {ref t value <- 'a;}\ncontrol peek<t>(ref holder<t> input) exits auto {exit found {input.value};}\ncontrol wrap<t>(ref holder<t> value) exits auto {forward peek<t>(value);}\n@contingent control fail<t:drop>(t input) faults {fault \"broken\";}\ncontrol stop<t:drop>(t value) faults {fail<t>(value);}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let h = hover_at(&f, source, "peek<t>(value)").to_string();
+    assert!(
+        h.contains("control peek<t>(ref holder<t> input) exits found { ref t value_0 }"),
+        "{h}"
+    );
+    assert!(
+        h.contains("Checked return lifetimes") && h.contains("input['a]"),
+        "{h}"
+    );
+    let h = hover_at(&f, source, "fail<t>(value)").to_string();
+    assert!(
+        h.contains("@contingent")
+            && h.contains("control fail<t>(t input) faults")
+            && !h.contains(" exits "),
+        "{h}"
+    );
+}
+
+#[test]
+fn symbolic_call_hover_preserves_imported_named_contracts_and_origin_arguments() {
+    let mut f = Fixture::new();
+    fs::write(f.root.join("views.tellur"),"pub outcome reply<t>['a] {found {ref t value <- 'a}} pub control peek<t>(ref t input) exits reply<t>[input] {exit found {input};}").unwrap();
+    let source = "import \"views.tellur\" as view;\ncontrol wrap<t>(ref t owner) exits auto {forward view.peek<t>(owner);}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let h = hover_at(&f, source, "view.peek<t>(owner)").to_string();
+    assert!(
+        h.contains("control view.peek<t>(ref t input) exits view.reply<t>[input]"),
+        "{h}"
+    );
+    assert!(
+        h.contains("Contract alternatives: `found { ref t value from input }`"),
+        "{h}"
+    );
+    assert!(!h.contains("_path_") && !h.contains("$0$"), "{h}");
+}
+
+#[test]
+fn symbolic_call_hover_never_selects_a_shadowed_concrete_trait_witness() {
+    let mut f = Fixture::new();
+    let source = "struct t {}\ntrait reader {type item:drop;control read(self input) exits ready {item value};}\nimplement reader for t {type item=string;control read(self input) exits ready {item value} {exit ready {\"concrete\"};}}\ncontrol echo<u>(u input) exits auto {exit ready {input};}\ncontrol wrap<t:reader>(reader<t>.item value) exits auto {forward echo<reader<t>.item>(value);}\ncontrol main() exits auto {forward wrap<t>(\"hello\");}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let h = hover_at(&f, source, "echo<reader<t>.item>(value)").to_string();
+    assert!(h.contains("control echo<reader<t>.item>(reader<t>.item input) exits ready { reader<t>.item input }"),"{h}");
+    assert!(
+        !h.contains("string") && !h.contains("_path_") && !h.contains("$0$"),
+        "{h}"
+    );
+}
+
+#[test]
+fn symbolic_call_hover_refreshes_unsaved_dependencies_and_never_publishes_failed_checks() {
+    let mut f = Fixture::new();
+    let library = f.root.join("helpers.tellur");
+    let uri = url::Url::from_file_path(&library).unwrap().to_string();
+    let original = "pub control echo<t>(t input) exits ready {t value} {exit ready {input};}";
+    fs::write(&library, original).unwrap();
+    let source = "import \"helpers.tellur\" as helpers;control wrap<t>(t value) exits auto {forward helpers.echo<t>(value);}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let before = hover_at(&f, source, "helpers.echo<t>(value)");
+    assert!(before.to_string().contains("exits ready"));
+    let changed = original.replace("ready", "updated");
+    f.server.notification(
+        "textDocument/didOpen",
+        &json!({"textDocument":{"uri":uri,"version":1,"text":changed}}),
+    );
+    assert_eq!(f.diagnostics(), json!([]));
+    assert!(
+        hover_at(&f, source, "helpers.echo<t>(value)")
+            .to_string()
+            .contains("exits updated")
+    );
+    f.server.notification("textDocument/didChange",&json!({"textDocument":{"uri":uri,"version":2},"contentChanges":[{"text":original.replace("exit ready {input}","exit ready {missing}") }]}));
+    assert!(!f.diagnostics().as_array().unwrap().is_empty());
+    assert!(hover_at(&f, source, "helpers.echo<t>(value)").is_null());
+    f.server.notification(
+        "textDocument/didClose",
+        &json!({"textDocument":{"uri":uri}}),
+    );
+    assert_eq!(f.diagnostics(), json!([]));
+    assert_eq!(hover_at(&f, source, "helpers.echo<t>(value)"), before);
+}
+
+#[test]
 fn explicit_stored_adapter_diagnostics_repair_before_publishing_result_types() {
     let mut f = Fixture::new();
     let source = "outcome result {ready {u32 value}}\ncontrol choose(bool flag) exits result {\nresult saved=delta flag {\ntrue=>ready {1},\nfalse=>ready {2}\n};\nauto next=saved;exit next;}\ncontrol main() exits result {forward choose(true);}";
@@ -1589,7 +1750,7 @@ fn call_hover_uses_distinct_display_identities_for_unimported_transitive_types()
 }
 
 #[test]
-fn call_hover_handles_untitled_sources_and_does_not_guess_abstract_instantiations() {
+fn call_hover_handles_untitled_sources_and_symbolic_generic_contracts() {
     let mut f = Fixture::new();
     f.uri = "untitled:call-hover".into();
     let source =
@@ -1606,7 +1767,8 @@ fn call_hover_handles_untitled_sources_and_does_not_guess_abstract_instantiation
     assert_eq!(f.diagnostics(), json!([]));
     let abstract_call = hover_at(&f, generic, "echo<t>(value)").to_string();
     assert!(
-        !abstract_call.contains("Control contract"),
+        abstract_call.contains("control echo<t>(t value) exits ready { t value }")
+            && abstract_call.contains("universally checked"),
         "{abstract_call}"
     );
     let concrete = hover_at(&f, generic, "wrap<u32>(7)").to_string();
