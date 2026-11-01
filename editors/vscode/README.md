@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-0.95.0-darwin-arm64.vsix` using **Extensions:
+1. Install the supplied `tellur-language-0.96.0-darwin-arm64.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -894,3 +894,18 @@ identity/schema failures still stop earlier; implementations and all later check
 wait until declarations are valid. Unsaved repairs update imported locations and
 restore call/inferred hover only after a complete successful check. The editor
 regression uses `playground/traits.tellur` with a second independent interface.
+
+## Constructor-definition diagnostics in 0.96
+
+Independent invalid constructors within one parsed file now report together, including
+unused generic definitions. Invalid result-origin arity, partial-self accesses,
+explicit exits and constructor-local isolation are checked before generated controls
+are registered. The shared 32-error budget and original imported locations apply;
+loading still stops at the first failing file. Later initialization and ownership
+checks keep their existing phase boundaries.
+
+The isolated editor regression uses `playground/constructor_access`: two unsaved
+invalid field initializations in `messages.tellur` produce separate diagnostics in
+the caller, with related locations in the dependency. Repairing each definition
+updates diagnostics; constructor contracts return only when the checked program is
+valid. The repaired program builds and runs through the normal editor command.

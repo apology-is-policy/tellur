@@ -9,6 +9,11 @@ initialized value. It has no source outcome labels or explicit `exit` statement.
 Expected alternatives such as invalid input still belong to ordinary factory
 controls with explicit outcomes.
 
+Since 0.96, independent constructor-definition errors within one parsed file can
+report together before generated controls are registered. This includes invalid
+`self` accesses and forbidden exits. Loading still stops at the first failing file;
+see [constructor preparation diagnostics](diagnostics-and-limits.md#constructor-definition-preparation-batches).
+
 <!-- tellur:check -->
 ```tellur
 struct greeting {

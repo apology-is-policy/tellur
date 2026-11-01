@@ -5417,3 +5417,92 @@ fn trait_declaration_batches_preserve_imported_locations_and_visibility_repairs(
     assert_eq!(f.diagnostics(), json!([]));
     assert_eq!(hover_at(&f, source, "api.helper()"), initial);
 }
+
+#[test]
+fn constructor_definition_batches_repair_before_publishing_generated_contracts() {
+    let mut f = Fixture::new();
+    let source = "struct one {string text;constructor(string input) {self.text=input;}}\nstruct two {string text;constructor(string input) {self.text=input;}}\ncontrol main() exits done {auto first=one(\"hello\");auto second=two(\"again\");drop(first);drop(second);exit done;}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let initial = hover_at(&f, source, "auto first");
+    assert!(initial.to_string().contains("one"));
+    let broken = source.replace("self.text=input", "self.absent=input");
+    f.change(&broken, 2);
+    let errors = f.diagnostics();
+    assert_eq!(errors.as_array().unwrap().len(), 2, "{errors}");
+    for (error, line) in errors.as_array().unwrap().iter().zip([0, 1]) {
+        assert_eq!(error["code"], "E_CONSTRUCTOR");
+        assert_eq!(error["range"]["start"]["line"], line);
+    }
+    assert!(hover_at(&f, &broken, "auto first").is_null());
+    assert!(hover_at(&f, &broken, "one(\"hello\")").is_null());
+    let partial = broken.replacen("self.absent=input", "self.text=input", 1);
+    f.change(&partial, 3);
+    assert_eq!(f.diagnostics().as_array().unwrap().len(), 1);
+    assert!(hover_at(&f, &partial, "auto first").is_null());
+    f.change(source, 4);
+    assert_eq!(f.diagnostics(), json!([]));
+    assert_eq!(hover_at(&f, source, "auto first"), initial);
+    assert!(
+        hover_at(&f, source, "one(\"hello\")")
+            .to_string()
+            .contains("Constructor contract")
+    );
+}
+
+#[test]
+fn constructor_definition_batches_refresh_unsaved_imported_files_independently() {
+    let mut f = Fixture::new();
+    let dependency = f.root.join("messages.tellur");
+    let uri = url::Url::from_file_path(&dependency).unwrap().to_string();
+    let valid = include_str!("../playground/constructor_access/messages.tellur");
+    fs::write(&dependency, valid).unwrap();
+    let source = include_str!("../playground/constructor_access/main.tellur");
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let initial = hover_at(&f, source, "messages.message(\"First constructor\")");
+    assert!(initial.to_string().contains("Constructor contract"));
+    let broken = valid
+        .replace("self.text =", "self.absent_text =")
+        .replace("self.inner =", "self.absent_inner =");
+    f.server.notification(
+        "textDocument/didOpen",
+        &json!({"textDocument":{"uri":uri,"version":1,"text":broken}}),
+    );
+    let errors = f.diagnostics();
+    assert_eq!(errors.as_array().unwrap().len(), 2, "{errors}");
+    for (error, needle) in errors
+        .as_array()
+        .unwrap()
+        .iter()
+        .zip(["self.absent_text", "self.absent_inner"])
+    {
+        assert_eq!(error["code"], "E_CONSTRUCTOR");
+        let location = &error["relatedInformation"][0]["location"];
+        assert_eq!(location["uri"], uri);
+        assert_eq!(
+            location["range"]["start"]["line"],
+            broken[..broken.find(needle).unwrap()]
+                .bytes()
+                .filter(|b| *b == b'\n')
+                .count()
+        );
+    }
+    assert!(hover_at(&f, source, "messages.message(\"First constructor\")").is_null());
+    let partial = broken.replace("self.absent_text =", "self.text =");
+    f.server.notification(
+        "textDocument/didChange",
+        &json!({"textDocument":{"uri":uri,"version":2},"contentChanges":[{"text":partial}]}),
+    );
+    assert_eq!(f.diagnostics().as_array().unwrap().len(), 1);
+    assert!(hover_at(&f, source, "messages.message(\"First constructor\")").is_null());
+    f.server.notification(
+        "textDocument/didClose",
+        &json!({"textDocument":{"uri":uri}}),
+    );
+    assert_eq!(f.diagnostics(), json!([]));
+    assert_eq!(
+        hover_at(&f, source, "messages.message(\"First constructor\")"),
+        initial
+    );
+}

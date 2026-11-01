@@ -1364,3 +1364,137 @@ fn trait_declaration_batches_share_the_diagnostic_budget() {
         assert_eq!(error["position"]["line"], n + 1);
     }
 }
+
+#[test]
+fn constructor_definition_batches_cover_origins_partial_self_and_unused_generics() {
+    let source = "struct origin['a] {ref string value <- 'a;constructor(ref string input) {self.value=input;}}\nstruct partial {string value;constructor() {emit(self);self.value=\"x\";}}\nstruct generic<t> {t value;constructor(t input) {exit done;self.value=input;}}\nstruct nested {string value;constructor() {self.value.part=\"x\";}}\ncontrol later() exits done {u32 bad=true;exit done;}";
+    let manifest = Manifest::from_json(include_str!("../playground/manifest.json")).unwrap();
+    let batch = tellur::check_source(source, manifest.clone()).unwrap_err();
+    assert_eq!(
+        batch.errors.iter().map(|e| e.code).collect::<Vec<_>>(),
+        [
+            "E_ORIGIN",
+            "E_CONSTRUCTOR",
+            "E_CONSTRUCTOR",
+            "E_CONSTRUCTOR"
+        ],
+        "{batch}"
+    );
+    assert_eq!(
+        batch.errors.iter().map(|e| e.span.line).collect::<Vec<_>>(),
+        [1, 2, 3, 4]
+    );
+    assert_eq!(
+        tellur::compile(source, manifest).unwrap_err(),
+        batch.errors[0]
+    );
+}
+
+#[test]
+fn constructor_definition_batches_keep_one_error_per_constructor_and_stage_later_checks() {
+    let f = Fixture::new();
+    let source = "struct first {string text;constructor() {self.unknown=\"x\";exit done;}}\nstruct second {string text;constructor() {fault boundary {} contingency [] {terminate process 1;}}}\nstruct later {string text;constructor() {}}\ncontrol main() exits done {u32 bad=true;exit done;}";
+    f.write("main.tellur", source);
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    let errors = report["diagnostics"].as_array().unwrap();
+    assert_eq!(errors.len(), 2, "{report}");
+    assert!(errors.iter().all(|e| e["code"] == "E_CONSTRUCTOR"));
+    assert!(report["summary"].is_null());
+    let partial = source.replace("self.unknown=\"x\";", "self.text=\"x\";");
+    f.write("main.tellur", &partial);
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    assert_eq!(
+        report["diagnostics"].as_array().unwrap().len(),
+        2,
+        "{report}"
+    );
+    assert!(
+        report["diagnostics"][0]["message"]
+            .as_str()
+            .unwrap()
+            .contains("implicitly")
+    );
+}
+
+#[test]
+fn constructor_definition_batches_preserve_first_failing_file_and_transitive_locations() {
+    let f = Fixture::new();
+    let broken = "// 🙂 source\r\npub struct one {string value;pub constructor() {self.absent=\"x\";}}\r\npub struct two {string value;pub constructor() {self.absent=\"y\";}}\r\n";
+    f.write("first.tellur", broken);
+    f.write("second.tellur", broken);
+    f.write(
+        "middle.tellur",
+        "import \"first.tellur\" as first;import \"second.tellur\" as second;",
+    );
+    f.write(
+        "main.tellur",
+        "import \"middle.tellur\" as middle;control main() exits done {exit done;}",
+    );
+    for file in ["first.tellur", "second.tellur"] {
+        let report = f.report(&["check", "main.tellur", "--json"], false);
+        let errors = report["diagnostics"].as_array().unwrap();
+        assert_eq!(errors.len(), 2, "{report}");
+        for (error, line) in errors.iter().zip([2, 3]) {
+            assert_eq!(error["code"], "E_CONSTRUCTOR");
+            assert_eq!(error["position"]["line"], line);
+            assert_eq!(error["path"], f.root.join(file).to_str().unwrap());
+        }
+        let manifest = Manifest::from_json(include_str!("../playground/manifest.json")).unwrap();
+        let first = tellur::compile_file(f.root.join("main.tellur"), manifest).unwrap_err();
+        assert_eq!(first.path, f.root.join(file));
+        assert_eq!(first.diagnostic.span.line, 2);
+        f.write(file, &broken.replace("self.absent", "self.value"));
+    }
+    f.report(&["check", "main.tellur", "--json"], true);
+}
+
+#[test]
+fn constructor_definition_batches_keep_parse_import_and_resolution_boundaries() {
+    let f = Fixture::new();
+    let broken = "struct one {string text;constructor() {exit done;}}struct two {string text;constructor() {exit done;}}";
+    f.write("main.tellur", &format!("{broken}control malformed("));
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    assert_eq!(report["diagnostics"].as_array().unwrap().len(), 1);
+    assert_eq!(report["diagnostics"][0]["code"], "E_PARSE");
+    // Preparation precedes symbol registration/import traversal for this file.
+    f.write(
+        "main.tellur",
+        &format!(
+            "import \"absent.tellur\" as absent;{broken}pub control bad() exits auto {{exit done;}}"
+        ),
+    );
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    assert_eq!(
+        report["diagnostics"].as_array().unwrap().len(),
+        2,
+        "{report}"
+    );
+    assert!(
+        report["diagnostics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|e| e["code"] == "E_CONSTRUCTOR")
+    );
+    f.write("main.tellur", "import \"absent.tellur\" as absent;");
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    assert_eq!(report["diagnostics"].as_array().unwrap().len(), 1);
+    assert_eq!(report["diagnostics"][0]["code"], "E_IMPORT");
+}
+
+#[test]
+fn constructor_definition_batches_share_one_file_budget() {
+    let f = Fixture::new();
+    let source = (0..40)
+        .map(|n| format!("struct broken_{n} {{string text;constructor() {{exit done;}}}}\n"))
+        .collect::<String>();
+    f.write("main.tellur", &source);
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    let errors = report["diagnostics"].as_array().unwrap();
+    assert_eq!(errors.len(), 32, "{report}");
+    assert_eq!(report["diagnostics_limited"], true);
+    for (n, error) in errors.iter().enumerate() {
+        assert_eq!(error["code"], "E_CONSTRUCTOR");
+        assert_eq!(error["position"]["line"], n + 1);
+    }
+}

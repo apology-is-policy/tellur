@@ -151,11 +151,11 @@ fn self_field(e: &Expr) -> Option<Vec<String>> {
         _ => None,
     }
 }
-pub(crate) fn prepare(unit: &mut Unit) -> Result<()> {
-    for data in &unit.data {
-        let Some(constructor) = &data.constructor else {
-            continue;
-        };
+pub(crate) fn prepare(unit: &mut Unit) -> crate::CheckResult<()> {
+    // A failed file must never register a partially generated constructor set.
+    let controls = crate::diagnostics::collect_checks(unit.data.iter().filter_map(|data| {
+        data.constructor.as_ref().map(|constructor| (data, constructor))
+    }).map(|(data, constructor)| -> Result<_> {
         if constructor.exit_origins.len() != data.origin_parameters.len() {
             return Err(Diagnostic::new(
                 "E_ORIGIN",
@@ -258,8 +258,9 @@ pub(crate) fn prepare(unit: &mut Unit) -> Result<()> {
             Ok(())
         };
         items(&mut control.body, &mut initialize, &mut access)?;
-        unit.regions.push(control);
-    }
+        Ok(control)
+    }))?;
+    unit.regions.extend(controls);
     Ok(())
 }
 pub(crate) fn rewrite_calls(

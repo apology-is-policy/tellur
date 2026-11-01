@@ -126,7 +126,11 @@ struct Loader<F> {
     bytes: usize,
 }
 impl<F: FnMut(&Path) -> std::io::Result<String>> Loader<F> {
-    fn load(&mut self, path: &Path, importer: Option<(&Path, Span)>) -> Result<usize> {
+    fn load(
+        &mut self,
+        path: &Path,
+        importer: Option<(&Path, Span)>,
+    ) -> crate::CheckResult<usize, ModuleError> {
         let at = importer.map_or(Span { line: 1, column: 1 }, |(_, s)| s);
         let origin = importer.map_or(path, |(p, _)| p);
         let path = if importer.is_none() {
@@ -148,7 +152,8 @@ impl<F: FnMut(&Path) -> std::io::Result<String>> Loader<F> {
                 at,
                 "E_IMPORT_CYCLE",
                 format!("cyclic import of {}", path.display()),
-            ));
+            )
+            .into());
         }
         if let Some(&id) = self.ids.get(&path) {
             return Ok(id);
@@ -159,7 +164,8 @@ impl<F: FnMut(&Path) -> std::io::Result<String>> Loader<F> {
                 at,
                 "E_IMPORT_LIMIT",
                 "module graph exceeds 256 files",
-            ));
+            )
+            .into());
         }
         let (id, imports) = self.register(path.clone(), origin, at)?;
         for import in imports {
@@ -172,7 +178,8 @@ impl<F: FnMut(&Path) -> std::io::Result<String>> Loader<F> {
                     import.span,
                     "E_NAME",
                     format!("reserved or duplicate import namespace `{}`", import.alias),
-                ));
+                )
+                .into());
             }
             if Path::new(&import.path).is_absolute() || import.path.is_empty() {
                 return Err(error(
@@ -180,7 +187,8 @@ impl<F: FnMut(&Path) -> std::io::Result<String>> Loader<F> {
                     import.span,
                     "E_IMPORT",
                     "import paths must be nonempty relative file paths",
-                ));
+                )
+                .into());
             }
             let target = self.load(
                 &path.parent().unwrap().join(&import.path),
@@ -198,7 +206,7 @@ impl<F: FnMut(&Path) -> std::io::Result<String>> Loader<F> {
         path: PathBuf,
         origin: &Path,
         at: Span,
-    ) -> Result<(usize, Vec<syntax::Import>)> {
+    ) -> crate::CheckResult<(usize, Vec<syntax::Import>), ModuleError> {
         let source = (self.read)(&path).map_err(|e| {
             error(
                 origin,
@@ -209,20 +217,17 @@ impl<F: FnMut(&Path) -> std::io::Result<String>> Loader<F> {
         })?;
         self.bytes += source.len();
         if self.bytes > 8 * 1024 * 1024 {
-            return Err(error(
-                origin,
-                at,
-                "E_IMPORT_LIMIT",
-                "module sources exceed 8 MiB",
-            ));
+            return Err(error(origin, at, "E_IMPORT_LIMIT", "module sources exceed 8 MiB").into());
         }
         let mut unit = syntax::parse_unit(&source).map_err(|diagnostic| ModuleError {
             path: path.clone(),
             diagnostic,
         })?;
-        crate::constructors::prepare(&mut unit).map_err(|diagnostic| ModuleError {
-            path: path.clone(),
-            diagnostic,
+        crate::constructors::prepare(&mut unit).map_err(|batch| {
+            batch.map(|diagnostic| ModuleError {
+                path: path.clone(),
+                diagnostic,
+            })
         })?;
         let id = self.files.len();
         let prefix = if id == 0 {
@@ -234,7 +239,7 @@ impl<F: FnMut(&Path) -> std::io::Result<String>> Loader<F> {
             if let Some(previous) = self.prefixes.insert(prefix.clone(), path.clone())
                 && previous != path
             {
-                return Err(error(&path, at, "E_IMPORT", "module identity collision"));
+                return Err(error(&path, at, "E_IMPORT", "module identity collision").into());
             }
             prefix
         };
@@ -261,7 +266,8 @@ impl<F: FnMut(&Path) -> std::io::Result<String>> Loader<F> {
                     span,
                     "E_NAME",
                     format!("reserved or duplicate module declaration `{name}`"),
-                ));
+                )
+                .into());
             }
             symbols.insert(
                 name.clone(),

@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.95.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.96.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -3266,3 +3266,35 @@ last-key removal. Fresh LSP checking exposes both borrowed inputs and the remova
 result contract. Compiler/server/editor release 0.95 remains unchanged and installed;
 no new extension package or window reload was needed. Formatting and whitespace
 checks passed. Existing HTTP policy, host mechanisms and storage limits are preserved.
+
+## 0.96 — Constructor-definition diagnostics
+
+P2o collects independent constructor preparation failures within one parsed file,
+with one error per constructor and the existing 32-error budget. All generated
+constructor controls are staged until the file's entire preparation step succeeds.
+The module loader preserves individual source locations and first-failing-file
+traversal. Parsing still precedes preparation, which still precedes symbol registration
+and import traversal; later initialization/type/ownership checks remain separate.
+No valid-program constructor, origin, ownership or fault rules change.
+
+Five diagnostic tests cover result-origin arity, partial-self access, unused generic
+constructors, forbidden exits/isolation, one error per definition, staged later checks,
+transitive imports with Unicode/CRLF, first-error compatibility, independent repairs,
+parse/import/resolution barriers and the batch limit. Two LSP tests cover unsaved local
+and imported repairs with unavailable partial contracts and restored fresh hover.
+The isolated VS Code harness reuses `playground/constructor_access` for two invalid
+imported constructors, independent repairs and native execution.
+
+Final validation passed **429 Rust tests across 16 affected targets**, including all
+180 LSP tests, 56 diagnostic tests and three manual checks, plus **42 Node tests**.
+Constructor, borrowed composition/projection, initializer, generic, trait, module,
+boundary, snapshot and certificate suites retain valid-program/native and certified
+expansion evidence. Focused, broader and editor checks passed without fixture or
+implementation corrections; earlier unrelated recovery/runtime/library evidence is reused.
+
+Isolated VS Code verified original imported locations, independent unsaved repairs,
+no partial constructor contract and native execution emitting `First constructor`
+and `Second constructor`. Six binary copies and nine packaged/installed payloads
+match release 0.96.0. Existing windows were not reloaded. Formatting and whitespace
+checks passed. Executable formats and the accepted ownership, origin and fault
+semantics are unchanged.

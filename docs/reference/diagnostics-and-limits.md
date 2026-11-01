@@ -189,7 +189,8 @@ validation, implementation normalization/conformance, generic expansion
 and graph-cycle failures still stop at their first error. Independent control
 declarations use the three batches described below; constructor-call access has
 its own preparation batch since 0.91, generic-bound declarations since 0.92, and
-trait declarations since 0.95. Generic definition bodies may
+trait declarations since 0.95. Since 0.96, constructor definitions also have an earlier
+file-local preparation batch. Generic definition bodies may
 report several errors during universal checking; a failed phase prevents later
 concrete checking. Broader recovery across shared preparation remains future work.
 
@@ -356,9 +357,8 @@ Rewriting is staged: if any body fails, no rewritten bodies are committed and al
 later phases stay blocked. Successful siblings cannot supply partial contracts or
 stale hover. Repairing one inaccessible call can expose the next in that same body;
 repairing the phase can expose later signature, ownership or contingency errors.
-The earlier parser, module/name, constructor-definition and trait-lowering barriers
-remain in place. Constructor-definition preparation errors such as invalid partial
-`self` access are not part of this batch.
+The earlier parser, module/name and trait-lowering barriers remain in place.
+Constructor-definition errors have the separate, earlier batch below since 0.96.
 
 CLI JSON retains each caller's source point and defining file, and single-error
 APIs return the first diagnostic. LSP uses the same batch, including related locations
@@ -368,6 +368,47 @@ remove `pub` from both constructors in
 [messages.tellur](../../playground/constructor_access/messages.tellur). Both caller
 errors appear together. Restore one modifier, then the other; checked hover returns
 only after the complete program is valid.
+
+## Constructor-definition preparation batches
+
+Since 0.96, independent constructor definitions in one parsed source file report
+preparation errors together. There is at most one error per constructor under the
+shared **32-error budget**, including unused generic structs. This phase checks
+result-origin argument counts, reserved `self` parameters, forbidden explicit exits
+or local isolation, whole/partial `self` access and unknown initialization fields.
+
+<!-- tellur:reject E_CONSTRUCTOR -->
+```tellur
+struct first {
+    string text;
+    constructor() { self.absent = "first"; }
+}
+
+struct second {
+    string text;
+    constructor() { exit done; }
+}
+```
+
+Both constructors are invalid independently. Generated constructor controls are
+staged and appended only after the complete file's preparation succeeds. A failed
+file supplies no partially registered constructor set. Later type checking, missing
+field initialization, ownership and fault admission still run in their existing
+phases after preparation passes; they are not extra errors from this batch.
+
+The boundary is **one file**, not the complete import graph. Parsing of that file
+must succeed first. Its constructor preparation precedes symbol registration and
+traversal of its imports. Loading stops at the first failing file, so another file's
+errors may appear only after that file is repaired. Import cycles, invalid paths,
+duplicate names and source-size limits retain their existing phase/order barriers.
+Source-only checking uses the same batch for its single parsed unit.
+
+Diagnostics keep the original constructor/body source points, including imported
+files and unsaved dependency edits. Single-error APIs select the first diagnostic;
+failed batches have no checked program, inferred hover or constructor call contract.
+Try invalid `self` fields in both constructors of
+[messages.tellur](../../playground/constructor_access/messages.tellur) while viewing
+its [caller](../../playground/constructor_access/main.tellur).
 
 ## Statement recovery
 
