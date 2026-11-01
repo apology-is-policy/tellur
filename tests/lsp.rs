@@ -2821,3 +2821,43 @@ fn projected_constructor_auto_hovers_and_unsaved_loan_diagnostics() {
         tellur::format::source(&formatted, Default::default()).unwrap()
     );
 }
+
+#[test]
+fn sequential_initializer_hover_and_retained_borrow_diagnostics() {
+    let mut f = Fixture::new();
+    let source = include_str!("../playground/sequential_initializers.tellur");
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let (line, text) = source
+        .lines()
+        .enumerate()
+        .find(|(_, line)| line.contains("auto changes"))
+        .unwrap();
+    assert!(
+        f.server
+            .hover(&f.uri, line as u64, text.find("auto").unwrap() as u64)
+            .to_string()
+            .contains("change_log changes")
+    );
+    f.change(
+        &source.replace(
+            "emit(changes.current);",
+            "owner = \"too early\"; emit(changes.current);",
+        ),
+        2,
+    );
+    assert!(
+        f.diagnostics()
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|d| d["code"] == "E_LOAN")
+    );
+    f.change(source, 3);
+    assert_eq!(f.diagnostics(), json!([]));
+    let formatted = tellur::format::source(source, Default::default()).unwrap();
+    assert_eq!(
+        formatted,
+        tellur::format::source(&formatted, Default::default()).unwrap()
+    );
+}

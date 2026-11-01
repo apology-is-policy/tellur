@@ -967,3 +967,55 @@ control main(string path,bool broken) exits done {
         }
     }
 }
+
+#[test]
+fn sequential_initializer_retirement_preserves_pending_resource_fault_ownership() {
+    let f = Fixture::new();
+    fs::write(f.root.join("host.rs"), RESOURCE_HOST).unwrap();
+    let mut config = resource_config();
+    config["types"][0]["fault"] = json!("release");
+    let source = r#"
+struct mark {bool yes;constructor(ref mutable string input){deref input="changed";self.yes=true;}}
+struct stop {bool yes;constructor(bool broken){delta broken {true=>fault "last initializer",false=>complete}[complete]:self.yes=true;}}
+struct pending['a] {counter owned;mark first;mark second;ref string text <- 'a;stop last;}
+control main(string path,bool broken) exits done {
+    fault boundary {
+        delta make(borrow path) {made {counter owned}=>made}
+        [made]: mutable string text="before";
+        auto value=pending {move owned,mark(borrow mutable text),mark(borrow mutable text),borrow text,stop(broken)};
+        fault "after assembly";
+    } contingency [] {terminate process 23;}
+}
+"#;
+    assert_eq!(
+        compile(source, f.manifest(&resource_config()))
+            .unwrap_err()
+            .code,
+        "E_FAULT_RESOURCE"
+    );
+    let p = compile(source, f.manifest(&config)).unwrap();
+    for (opt, p) in [(0, p.clone()), (2, p.expanded("main").unwrap())] {
+        let binary = f.root.join(format!("sequential-resource-{opt}"));
+        support::scenario_executable(&p)
+            .build_native("main", &binary, opt)
+            .unwrap();
+        for broken in ["true", "false"] {
+            let log = f
+                .root
+                .join(format!("sequential-resource-{opt}-{broken}.log"));
+            let output = Command::new(&binary)
+                .args(["--json", "--"])
+                .arg(&log)
+                .arg(broken)
+                .output()
+                .unwrap();
+            assert_eq!(
+                output.status.code(),
+                Some(23),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert_eq!(fs::read_to_string(log).unwrap(), "drop 7\n");
+        }
+    }
+}

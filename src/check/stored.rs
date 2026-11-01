@@ -500,6 +500,13 @@ impl Checker<'_> {
                     "array literal length does not match its type",
                 )
             })?;
+            let staged = self.stage_values(
+                args,
+                &vec![Some(c.element().into()); args.len()],
+                domain,
+                span,
+            )?;
+            let args = staged.as_deref().unwrap_or(args);
             let mut values = vec![];
             let mut loans = vec![];
             for arg in args {

@@ -285,9 +285,9 @@ impl Checker<'_> {
         if !args.iter().any(has_call) && projections.iter().all(Option::is_none) {
             return Ok(None);
         }
-        // Check the original list before staging erases nested call accesses.
-        // In particular, an earlier returned borrow must conflict with a later
-        // constructor's exclusive borrow of the same owner.
+        // Use the expected or inferred reference mode for pending payloads.
+        // Each completed value replaces its initializer before the next check;
+        // only the result's retained origins survive a completed nested call.
         let mut parameters = vec![];
         for ((arg, annotation), projection) in args.iter().zip(expected).zip(&projections) {
             let reference = annotation
@@ -308,13 +308,14 @@ impl Checker<'_> {
                 },
             });
         }
-        self.argument_aliases(args, &parameters, domain, span)?;
+        let first_initializer_loan = *self.next;
         let mut result = vec![];
         for (index, (arg, annotation)) in args.iter().zip(expected).enumerate() {
+            self.next_argument_aliases(&result, arg, &parameters, domain, span)?;
             let projected = self.materialize_projection(arg, domain, span)?;
             let arg = projected.as_ref().unwrap_or(arg);
-            // Reference arguments retain their addresses. The full-list alias
-            // check protects them through later argument evaluation.
+            // Reference arguments retain their addresses. Prefix checks protect
+            // them throughout evaluation of every subsequent initializer.
             if annotation
                 .as_deref()
                 .and_then(manifest::reference_inner)
@@ -326,6 +327,7 @@ impl Checker<'_> {
                 || self.reference_source(arg, span)?.is_some()
             {
                 result.push(arg.clone());
+                self.expire_initializer_loans(first_initializer_loan, &result);
                 continue;
             }
             let name = format!("$expression_{}", self.fresh());
@@ -338,8 +340,20 @@ impl Checker<'_> {
             let mut staged = syntax::ExprKind::Name(name).at(arg.range);
             staged.payload_name = Some(inferred_payload_name(arg, index));
             result.push(staged);
+            self.expire_initializer_loans(first_initializer_loan, &result);
         }
         Ok(Some(result))
+    }
+    /// Only anonymous loans created while evaluating this list can expire here.
+    /// Existing caller/outer-initializer loans retain their lifetimes. Pending
+    /// values keep their contained references and carrier storage dependencies;
+    /// ownership and fault dispositions are independent of this loan retirement.
+    pub(super) fn expire_initializer_loans(&mut self, first: Id, pending: &[syntax::Expr]) {
+        let mut live = BTreeSet::new();
+        for value in pending {
+            crate::liveness::expression(value, &mut live);
+        }
+        self.expire_loans_since(&live, first);
     }
     pub(super) fn freeze_value(
         &mut self,

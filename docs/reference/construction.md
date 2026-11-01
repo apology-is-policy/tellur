@@ -182,16 +182,104 @@ their ordinary permissions, tagged payloads are accessed only on their selected
 paths, and each field retains its sources until its last use. This does not extend
 a temporary owner's lifetime or allow a reference to escape local storage.
 
-The current list-wide alias check is conservative. A constructor that mutates a
-source can conflict with a later field borrowing that source, even when the
-constructor returns an ordinary owning value and has already finished. Bind that
-constructor's result in a separate declaration first. More precise tracking of
-each initializer's call-duration access is planned; this is a checker limitation,
-not a requirement to keep a completed call's borrow alive.
+Since 0.72, [initializer borrow lifetimes](#initializer-borrow-lifetimes) distinguish
+a completed call's temporary accesses from references carried by its result.
+Mutation-then-borrow no longer requires a separate declaration solely to end the
+completed constructor's nonescaping borrow.
 
 The same composition works inside constructor field initialization, ordinary
 arguments, control results, captures and selected adapter arms. Nested generic
 types and imported constructors retain their existing visibility and origin rules.
+
+## Initializer borrow lifetimes
+
+Initializers run from left to right in written order, including named fields whose
+order differs from the declaration. Since 0.72, a completed nested constructor's
+nonescaping call borrows end before the next initializer. Its resulting value is
+already retained: an owned snapshot keeps its earlier contents, and any returned
+reference continues protecting its external source.
+
+<!-- tellur:check -->
+```tellur
+struct text_change {
+    string previous;
+
+    constructor(ref mutable string text, string next) {
+        self.previous = clone(text);
+        deref text = move next;
+    }
+}
+
+struct change_log['latest] {
+    text_change first;
+    text_change second;
+    ref string current <- 'latest;
+}
+
+control main() exits done {
+    mutable string owner = "before";
+    auto changes = change_log {
+        first: text_change(borrow mutable owner, "first"),
+        second: text_change(borrow mutable owner, "second"),
+        current: borrow owner
+    };
+    emit(move changes.first.previous);
+    emit(move changes.second.previous);
+    emit(changes.current);
+    owner = "released";
+    exit done;
+}
+```
+
+This prints `before`, `first`, then `second`. Both exclusive calls have completed
+before `current` borrows `owner`. The final shared borrow remains live until its
+last use. A constructor that returns a reference to one input while only temporarily
+accessing another keeps only the returned source borrowed.
+
+An earlier reference argument or payload is held while later initializers run.
+Moving its source, mutating through a conflicting alias, or reading through an
+already-exclusive argument is rejected. Calls nested inside one initializer check
+their own argument separation. Existing caller loans and outer pending arguments
+cannot be retired by an inner initializer list.
+
+<!-- tellur:reject E_ALIAS -->
+```tellur
+struct change {
+    bool done;
+
+    constructor(ref mutable string text) {
+        deref text = "changed";
+        self.done = true;
+    }
+}
+
+struct held['a] {
+    ref string text <- 'a;
+    change later;
+}
+
+control main() exits done {
+    mutable string owner = "before";
+    auto value = held { borrow owner, change(borrow mutable owner) };
+    emit(value.text);
+    exit done;
+}
+```
+
+These rules apply to nested constructor/control arguments, raw records, owning
+collection literals, supported local shared-reference arrays/vectors, variant/outcome
+payloads, exits, captures and selected adapter arms.
+Extracting an owned field from an anonymous reference-bearing result also releases
+its unused anonymous loans before the next initializer; selecting a reference keeps
+that reference's dependencies. This does not relax temporary-owner escape checks,
+borrow-mode requirements or completion obligations in unselected fields.
+
+Loan retirement is a static permission change, not a destructor call or resource
+completion. Earlier owned values remain pending until the entire list is delivered.
+If a later initializer faults, their declared fault dispositions still apply.
+Source-level named references retain the existing statement/field last-use rules;
+this checkpoint does not add general reference rebinding or arbitrary expression
+lifetimes.
 
 ## Reference-bearing results
 
@@ -380,9 +468,11 @@ and request recovery behavior are unchanged.
 Try [construction.tellur](../../playground/construction.tellur),
 [borrowed_construction.tellur](../../playground/borrowed_construction.tellur) and
 [composed_construction.tellur](../../playground/composed_construction.tellur), plus
-[projected_construction.tellur](../../playground/projected_construction.tellur).
+[projected_construction.tellur](../../playground/projected_construction.tellur) and
+[sequential_initializers.tellur](../../playground/sequential_initializers.tellur).
 Compiler/runtime checks are in [constructors.rs](../../tests/constructors.rs) and
 [borrowed_constructors.rs](../../tests/borrowed_constructors.rs), with composition in
 [borrowed_composition.rs](../../tests/borrowed_composition.rs) and fresh projections in
-[borrowed_projections.rs](../../tests/borrowed_projections.rs); actual retained-owner
+[borrowed_projections.rs](../../tests/borrowed_projections.rs). Sequential access checks
+are covered by [initializer_accesses.rs](../../tests/initializer_accesses.rs); actual retained-owner
 fault cleanup is checked in [rust_adapters.rs](../../tests/rust_adapters.rs).

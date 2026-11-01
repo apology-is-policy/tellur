@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.71.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.72.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -2392,3 +2392,48 @@ compiler and language server. Manual validation covers 75 accepted examples,
 27 expected diagnostics, 15 context fragments and 256 local links. Live HTTP fault
 recovery still sends 500 and serves the next request. The packaged VSIX and installed
 extension's nine payloads were verified against the 0.71.0 release staging files.
+
+
+## 0.72 sequential initializer access precision
+
+Initializer lists now compare each next expression with the values already
+produced by its predecessors. A completed constructor's nonescaping call borrows
+no longer overlap later initializers. Returned references, including nested and
+projected fields, continue retaining their actual sources. Earlier snapshots stay
+frozen in written order; the checker does not reorder named fields into layout
+order. Nested lists check their own alias separation.
+
+Anonymous loans created during list evaluation retire when no pending result
+retains them. This includes unused reference fields after an owned projection.
+Existing caller loans and outer pending arguments are excluded from that retirement;
+carrier storage dependencies follow the ordinary liveness closure. This is a
+permission change only: pending resource owners and their fault obligations remain
+until delivery or boundary settlement. Temporary-owner escape restrictions and
+unselected completion obligations are unchanged.
+
+Coverage exercises repeated exclusive calls on one owner, mutation followed by
+shared borrowing, independent returned and nonreturned parameter origins, nested
+constructors, pure arguments, owning collections, call-duration temporary borrows,
+raw/optional/named payloads, exits, captures and selected adapters. Negative cases
+retain earlier direct/exclusive/caller loans, reject move-then-use and check aliasing
+inside one nested initializer. Reuse after an earlier staged move reports `E_MOVED`
+at the later access, replacing the previous whole-list `E_ALIAS` in those cases.
+Imported generic constructors preserve privacy and
+borrowed results. Native comparisons cover written order, nested calls, retained
+origins, owned projections, shared-reference collections and adapters before/after
+expansion at O0/O2. A retained
+Rust resource fixture checks exactly-once release on later-initializer and
+post-assembly faults, and rejects missing fault dispositions.
+
+The maintained manual and `playground/sequential_initializers.tellur` accompany this
+checkpoint. The same example is rejected by 0.71's list-wide alias check. The new
+editor checkpoint checks `auto` hover, constructor outline, an unsaved retained-borrow
+error and repair, formatting and native execution. General reference rebinding,
+arbitrary expression-level named-loan lifetimes and async execution remain separate.
+
+Release validation: all 1,034 Rust tests across 74 nonempty targets and all 42 Node
+editor tests passed. The final isolated VS Code checkpoint passed against the
+release binaries. Manual validation covers 76 accepted examples, 28 expected
+diagnostics, 15 context fragments and 260 local links. Live HTTP fault recovery
+still sends 500 and serves the next request. All nine packaged and installed
+extension payloads were verified against the final 0.72.0 staging files.

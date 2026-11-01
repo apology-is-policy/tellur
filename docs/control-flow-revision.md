@@ -29,8 +29,10 @@ syntax. Work is proceeding through the checkpoints below.
    **Raw borrowed aggregate composition in 0.70** permits nested constructor calls
    in record fields and sum payloads while preserving evaluation order and fault
    ownership. **Fresh borrowed result projections in 0.71** retain external origins
-   and reject abandoned sibling completion obligations. Initializer access precision
-   and broader allocation/copy elision remain follow-up work.
+   and reject abandoned sibling completion obligations. **Initializer access precision
+   in 0.72** ends nonescaping call borrows before later initializers while protecting
+   returned references and pending resources. Broader allocation/copy elision remains
+   follow-up work.
 6. **Delivered for checkpoints 3–4 in 0.66:** reference, editor, formatter,
    native/reference parity and settings-server migration. **Constructor parity,
    editor support, reference, runnable example and settings request-context adoption

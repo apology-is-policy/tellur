@@ -1696,7 +1696,6 @@ impl Checker<'_> {
                 ),
             ));
         }
-        self.argument_aliases(args, parameters, domain, span)?;
         let staged = self.stage_values(
             args,
             &parameters
@@ -1707,6 +1706,7 @@ impl Checker<'_> {
             span,
         )?;
         let args = staged.as_deref().unwrap_or(args);
+        self.argument_aliases(args, parameters, domain, span)?;
         let first_argument_loan = *self.next;
         let result = args.iter()
             .zip(parameters)
@@ -1768,7 +1768,36 @@ impl Checker<'_> {
         domain: Formula,
         span: Span,
     ) -> Result<()> {
-        // A loan lasts through the invocation, including construction of other arguments.
+        self.check_argument_aliases(args, parameters, domain, span, None)
+    }
+    /// The prefix already owns its evaluated values. Compare its retained access
+    /// with the next expression's accesses, without making that expression's
+    /// internal sequential calls overlap. Each nested list checks itself as it
+    /// is evaluated. Raw reference arguments remain in the prefix until delivery.
+    fn next_argument_aliases(
+        &mut self,
+        prefix: &[syntax::Expr],
+        next: &syntax::Expr,
+        parameters: &[manifest::Parameter],
+        domain: Formula,
+        span: Span,
+    ) -> Result<()> {
+        if prefix.is_empty() {
+            return Ok(());
+        }
+        let mut args = prefix.to_vec();
+        args.push(next.clone());
+        self.check_argument_aliases(&args, parameters, domain, span, Some(prefix.len()))
+    }
+    fn check_argument_aliases(
+        &mut self,
+        args: &[syntax::Expr],
+        parameters: &[manifest::Parameter],
+        domain: Formula,
+        span: Span,
+        next: Option<usize>,
+    ) -> Result<()> {
+        // A retained loan lasts through delivery, including later initializers.
         let mut uses = vec![];
         for (argument, (arg, param)) in args.iter().zip(parameters).enumerate() {
             let mut accesses = vec![];
@@ -1793,7 +1822,13 @@ impl Checker<'_> {
             );
         }
         for (index, (argument, carrier, access)) in uses.iter().enumerate() {
+            if next.is_some_and(|next| *argument != next) {
+                continue;
+            }
             for (other_argument, _, other) in &uses[..index] {
+                if next.is_some() && argument == other_argument {
+                    continue;
+                }
                 // A whole carrier authorizes its own contained permissions. Its
                 // storage guards still conflict with separate arguments, and
                 // constructor expressions must establish their own separation.
@@ -3147,10 +3182,11 @@ impl Checker<'_> {
         {
             return Ok(None);
         }
-        self.argument_aliases(args, &sig.parameters, domain, span)?;
+        let first_initializer_loan = *self.next;
         let mut staged = Vec::new();
         let mut release = Vec::new();
         for (index, (arg, parameter)) in args.iter().zip(&sig.parameters).enumerate() {
+            self.next_argument_aliases(&staged, arg, &sig.parameters, domain, span)?;
             let projected = self.materialize_projection(arg, domain, span)?;
             let arg = projected.as_ref().unwrap_or(arg);
             let (value, ty, mutable, borrowed) = if temporary.contains(&index) {
@@ -3189,6 +3225,7 @@ impl Checker<'_> {
                 (arg, parameter.ty.as_str(), false, false)
             } else {
                 staged.push(arg.clone());
+                self.expire_initializer_loans(first_initializer_loan, &staged);
                 continue;
             };
             let local = format!("$argument_{}", self.fresh());
@@ -3210,6 +3247,7 @@ impl Checker<'_> {
             } else {
                 named
             });
+            self.expire_initializer_loans(first_initializer_loan, &staged);
         }
         Ok(Some((
             S::Call(name.clone(), staged).at(operand.range),
@@ -4020,6 +4058,9 @@ impl Checker<'_> {
         Ok(())
     }
     fn expire_loans(&mut self, live: &BTreeSet<String>) {
+        self.expire_loans_since(live, 0);
+    }
+    fn expire_loans_since(&mut self, live: &BTreeSet<String>, first: Id) {
         // A live borrow of a carrier keeps its contained loans live as well.
         let mut live = live.clone();
         loop {
@@ -4049,6 +4090,9 @@ impl Checker<'_> {
                 continue;
             }
             for (name, loan) in &mut s.loans {
+                if loan.id < first {
+                    continue;
+                }
                 let live_name = if let Some(h) = &loan.holder {
                     let slot = &self.result.slots[&h.root];
                     let mut name = slot.name.clone();

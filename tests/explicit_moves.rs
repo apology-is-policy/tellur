@@ -189,17 +189,18 @@ control main(handle h) exits done {inspect(borrow resource(move h));exit done;}"
 
 #[test]
 fn staging_temporary_arguments_preserves_left_to_right_ownership() {
+    // The earlier initializer has already consumed s when the next one runs.
     rejects(
         r#"struct boxed {string value;}
 control both(string first,ref boxed second) exits done {exit done;}
 control main() exits done {string s="s";both(move s,borrow boxed(move s));exit done;}"#,
-        "E_ALIAS",
+        "E_MOVED",
     );
     rejects(
         r#"struct boxed {string value;}
 control both(ref boxed first,string second) exits done {exit done;}
 control main() exits done {string s="s";both(borrow boxed(move s),move s);exit done;}"#,
-        "E_ALIAS",
+        "E_MOVED",
     );
     let s = r#"struct boxed {string value;}
 control both(string first,ref boxed second) exits done {exit done;}

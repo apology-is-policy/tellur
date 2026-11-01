@@ -1039,3 +1039,24 @@ fn fresh_imported_constructor_projections_preserve_origins_and_field_privacy() {
     );
     f.reject("E_PRIVATE");
 }
+
+#[test]
+fn imported_generic_constructor_calls_release_only_nonescaping_inputs() {
+    let f = Fixture::new();
+    let library = "pub struct changed<t> {pub t value;pub constructor(ref mutable string input,t value){deref input=\"changed\";self.value=move value;}}pub struct log['a] {pub changed<string> first;pub changed<string> second;pub ref string latest <- 'a;}";
+    f.write("library.tellur", library);
+    let source = "import \"library.tellur\" as lib;control main() exits done {mutable string owner=\"before\";auto value=lib.log {lib.changed<string>(borrow mutable owner,\"first\"),lib.changed<string>(borrow mutable owner,\"second\"),borrow owner};emit(move value.first.value);emit(move value.second.value);emit(value.latest);owner=\"released\";exit done;}";
+    f.write("main.tellur", source);
+    same(&f.check().unwrap());
+    f.write(
+        "main.tellur",
+        &source.replace("emit(value.latest);", "owner=\"early\";emit(value.latest);"),
+    );
+    f.reject("E_LOAN");
+    f.write("main.tellur", source);
+    f.write(
+        "library.tellur",
+        &library.replace("pub constructor", "constructor"),
+    );
+    f.reject("E_PRIVATE");
+}

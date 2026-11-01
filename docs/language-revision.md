@@ -6,12 +6,15 @@ CF5c now adds reference-bearing constructors with explicit result-origin contrac
 checked initialization, caller-loan propagation, module/editor support and native
 parity. CF5d now composes constructor calls inside raw reference-bearing records
 and sum payloads. CF5e now projects fields from fresh reference-bearing results,
-preserving external loans and unselected completion obligations. CF5f is next:
-more precise call-duration access across initializer lists.
+preserving external loans and unselected completion obligations. CF5f now checks
+initializer accesses sequentially, ending nonescaping call borrows while preserving
+returned loans and pending resource obligations. This completes the construction
+follow-up group; the practical queue returns to P2 diagnostic recovery and P5
+application-driven library work.
 Broader physical copy elision and suspended activation frames remain separate work.
 
 1 November 2026. This is the working revision plan, not a claim that all proposed
-features are implemented. Compiler **0.71.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
+features are implemented. Compiler **0.72.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
 lifetime checkpoints of milestone 2, the array/vector/map core of milestone 3,
 and implicit entry, inline/stored adapters, owned capture, named outcome contracts
 and checked forwarding in milestone 4. A first [semantic foundation](semantic-foundation.md)
@@ -177,7 +180,7 @@ unimplemented syntax are promised.
 | CF5c | Reference-bearing constructor contracts | **Delivered in 0.69:** `constructor(...)[input, other['a]]`, shared/exclusive and nested/tagged fields, path-sensitive initialization, generic/module contracts, caller loans, fault cleanup and editor/native parity |
 | CF5d | Raw borrowed aggregate composition | **Delivered in 0.70:** constructor calls inside raw records, options, variants and named outcomes; written order, retained loans, pending-resource fault cleanup, generic/module/editor and native parity |
 | CF5e | Borrowed result projections | **Delivered in 0.71:** direct/chained fields of fresh borrowed constructor and raw record results; external origins, shared/exclusive permissions, selected resource/outcome transfer, unselected-obligation checks, module/editor and native parity |
-| CF5f | Initializer access precision | **Next:** end a nested constructor's nonescaping call borrows before later initializers, while retaining returned borrows and pending owners. The current list-wide alias check may require a separate declaration for safe mutation-then-borrow sequences |
+| CF5f | Initializer access precision | **Delivered in 0.72:** sequential initializer access checks, independent call/result loans, anonymous-loan retirement after projection, retained payload and resource obligations; nested/selected/generic/module/editor and native coverage |
 | C1b.3c.2 | Local exclusive-reference collection elements | Deferred pending application evidence: permission transfer, direct reborrowing, dynamic removal splits and carrier invalidation |
 | C1b.3c.3 | Nested and public borrowed-collection contracts | Deferred pending application evidence: element origin schemas, nested carriers, generic/trait boundaries and stored outcomes |
 | C1c | Generic loan propagation and reference state | Deferred pending application evidence: contained loans across generic calls, assignments and adapters; rebinding/reborrowing |

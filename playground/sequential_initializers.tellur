@@ -1,0 +1,37 @@
+struct text_change {
+    string previous;
+
+    constructor(ref mutable string text, string next) {
+        self.previous = clone(text);
+        deref text = move next;
+    }
+}
+
+struct change_log['latest] {
+    text_change first;
+    text_change second;
+    ref string current <- 'latest;
+}
+
+outcome program_result {
+    @exit 0 done
+}
+
+control main() exits program_result {
+    mutable string owner = "before";
+    auto changes = change_log {
+        first: text_change(borrow mutable owner, "first"),
+        second: text_change(borrow mutable owner, "second"),
+        current: borrow owner
+    };
+
+    // Each completed constructor releases its call borrow before the next field.
+    emit(move changes.first.previous);
+    emit(move changes.second.previous);
+    emit(changes.current);
+
+    // The final field keeps its shared borrow until its last use above.
+    owner = "owner released";
+    emit(borrow owner);
+    exit done;
+}
