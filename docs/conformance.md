@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.91.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.92.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -3112,3 +3112,32 @@ and `Second constructor`. Six binaries and nine packaged/installed payloads matc
 release 0.91.0. Existing windows were not reloaded. Formatting and whitespace checks
 passed; unchanged runtime/library evidence is reused. Executable formats and the
 language's ownership, origin and fault rules are unchanged.
+
+## 0.92 — Generic-bound preparation diagnostics
+
+P2k extracts the existing pure requirement checks into a bounded declaration phase
+between public shape checking and trait lowering. Independent controls report unknown
+capability/trait names, duplicate resolved requirements and private traits in public
+contracts together. Checks retain one error per control, the 32-error budget, unused
+definition checking, original locations and first-error API compatibility. No partial
+witness state is published; shared trait/schema and later checks retain their barriers.
+
+Five CLI/batch tests cover mixed unknown/private bounds, alias duplicates with
+Unicode/CRLF sources, transitive imports, independent repairs, first-error behavior,
+phase isolation, multiple invalid parameters and the budget. Two LSP tests cover
+untitled unknown requirements, imported private traits, related locations and fresh
+inferred/call hover after independent unsaved repairs. The editor/native probe reuses
+`playground/trait_bounds.tellur` with two public generic interfaces in its isolated fixture.
+
+Final validation passed **368 Rust tests across 12 affected targets**, including all
+172 LSP tests, 44 diagnostic tests and three manual checks, plus **42 Node tests**.
+Generic controls/data, trait bounds, aggregate origins, modules, public contracts,
+snapshots and certificates retain native and expansion evidence. All focused and
+broader checks passed without implementation or fixture corrections.
+
+Isolated VS Code verified two private-bound errors, independent repairs, no stale
+hover and native execution emitting `Hello through a generic trait`. Six binaries
+and nine packaged/installed payloads match release 0.92.0. Existing windows were not
+reloaded. Formatting and whitespace checks passed; unchanged constructor, statement
+recovery and runtime/library evidence is reused. The accepted bounds, ownership,
+origin and fault semantics and executable formats are unchanged.

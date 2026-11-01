@@ -4462,6 +4462,7 @@ pub(crate) fn compile_unit(
     visibility: &crate::modules::Visibility,
 ) -> crate::CheckResult<CheckedProgram> {
     crate::diagnostics::collect_checks(unit.regions.iter().map(contracts::public_shape))?;
+    crate::traits::validate_bounds(&unit)?;
     let mut visibility = visibility.clone();
     let mut unit = crate::traits::lower(unit, &manifest, &mut visibility)?;
     crate::constructors::rewrite_calls(&mut unit, &visibility)?;

@@ -5096,3 +5096,86 @@ fn constructor_preparation_diagnostics_keep_imported_related_locations() {
     );
     assert!(!hover_at(&f, source, "auto value").is_null());
 }
+
+#[test]
+fn generic_bound_preparation_rechecks_untitled_requirements_without_stale_hover() {
+    let mut f = Fixture::new();
+    f.uri = "untitled:generic-bound-diagnostics".into();
+    let source = "control first<t:copy>(t input) exits ready {t value} {exit ready {input};}\ncontrol second<t:drop>(t input) exits ready {t value} {exit ready {input};}\ncontrol main() exits done {delta first<u32>(3) {ready {auto value}=>ready} [ready]:drop(value);exit done;}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let h = hover_at(&f, source, "first<u32>(3)");
+    assert!(h.to_string().contains("Control contract"));
+    let invalid = source
+        .replace("t:copy", "t:missing")
+        .replace("t:drop", "t:other");
+    f.change(&invalid, 2);
+    let errors = f.diagnostics();
+    assert_eq!(errors.as_array().unwrap().len(), 2, "{errors}");
+    for (index, e) in errors.as_array().unwrap().iter().enumerate() {
+        assert_eq!(e["code"], "E_BOUND");
+        assert_eq!(e["range"]["start"]["line"], index);
+    }
+    assert!(hover_at(&f, &invalid, "first<u32>(3)").is_null());
+    assert!(hover_at(&f, &invalid, "auto value").is_null());
+    let partial = invalid.replace("t:missing", "t:copy");
+    f.change(&partial, 3);
+    let errors = f.diagnostics();
+    assert_eq!(errors.as_array().unwrap().len(), 1);
+    assert_eq!(errors[0]["range"]["start"]["line"], 1);
+    assert!(hover_at(&f, &partial, "first<u32>(3)").is_null());
+    f.change(source, 4);
+    assert_eq!(f.diagnostics(), json!([]));
+    assert_eq!(hover_at(&f, source, "first<u32>(3)"), h);
+    assert!(
+        hover_at(&f, source, "auto value")
+            .to_string()
+            .contains("u32")
+    );
+}
+
+#[test]
+fn generic_bound_preparation_refreshes_imported_private_traits_independently() {
+    let mut f = Fixture::new();
+    let dependency = f.root.join("requirements.tellur");
+    let uri = url::Url::from_file_path(&dependency).unwrap().to_string();
+    let valid = "pub trait first {}\npub trait second {}\nimplement first for string {}\npub control one<t:first>(t input) exits ready {t value} {exit ready {input};}\npub control two<t:second>(t input) exits ready {t value} {exit ready {input};}";
+    fs::write(&dependency, valid).unwrap();
+    let source = "import \"requirements.tellur\" as req;control main() exits done {delta req.one<string>(\"hello\") {ready {auto value}=>ready} [ready]:emit(value);exit done;}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let h = hover_at(&f, source, "req.one<string>");
+    assert!(h.to_string().contains("Control contract"));
+    let private = valid.replace("pub trait", "trait");
+    f.server.notification(
+        "textDocument/didOpen",
+        &json!({"textDocument":{"uri":uri,"version":1,"text":private}}),
+    );
+    let errors = f.diagnostics();
+    assert_eq!(errors.as_array().unwrap().len(), 2, "{errors}");
+    for (index, e) in errors.as_array().unwrap().iter().enumerate() {
+        assert_eq!(e["code"], "E_VISIBILITY");
+        let related = &e["relatedInformation"][0]["location"];
+        assert_eq!(related["uri"], uri);
+        assert_eq!(related["range"]["start"]["line"], index + 3);
+    }
+    assert!(hover_at(&f, source, "req.one<string>").is_null());
+    let partial = private.replacen("trait first", "pub trait first", 1);
+    f.server.notification(
+        "textDocument/didChange",
+        &json!({"textDocument":{"uri":uri,"version":2},"contentChanges":[{"text":partial}]}),
+    );
+    let errors = f.diagnostics();
+    assert_eq!(errors.as_array().unwrap().len(), 1);
+    assert_eq!(
+        errors[0]["relatedInformation"][0]["location"]["range"]["start"]["line"],
+        4
+    );
+    assert!(hover_at(&f, source, "req.one<string>").is_null());
+    f.server.notification(
+        "textDocument/didClose",
+        &json!({"textDocument":{"uri":uri}}),
+    );
+    assert_eq!(f.diagnostics(), json!([]));
+    assert_eq!(hover_at(&f, source, "req.one<string>"), h);
+}

@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-0.91.0-darwin-arm64.vsix` using **Extensions:
+1. Install the supplied `tellur-language-0.92.0-darwin-arm64.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -855,3 +855,12 @@ one modifier to leave the other diagnostic; restore both to recover checked hove
 Unsaved dependency edits participate immediately. One error is reported per prepared
 body, with the shared 32-error budget and original imported source locations. Later
 phases wait until constructor-call preparation succeeds; no partial contract is shown.
+
+## Generic-bound diagnostics in 0.92
+
+Independent controls can report invalid requirement declarations together: duplicate
+resolved traits, unknown capability/trait names and private traits required by public
+generic interfaces. One error is reported per control under the shared 32-error
+budget, including unused definitions. Imported locations and unsaved repairs stay
+current. Checked hover returns only after the full source checks; trait resolution
+and later type/ownership checks remain blocked while the bound phase is invalid.

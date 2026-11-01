@@ -187,7 +187,7 @@ Recovery is deliberately bounded. Parsing, import/name resolution, shared type
 validation, trait lowering/conformance, generic expansion
 and graph-cycle failures still stop at their first error. Independent control
 declarations use the three batches described below; constructor-call access has
-its own preparation batch since 0.91. Generic definition bodies may
+its own preparation batch since 0.91, and generic-bound declarations since 0.92. Generic definition bodies may
 report several errors during universal checking; a failed phase prevents later
 concrete checking. Broader recovery across shared preparation remains future work.
 
@@ -251,6 +251,49 @@ control second(ref string input) exits view[input, input] {
 This produces two diagnostics through the batch APIs and CLI; the compatibility
 single-error APIs return the first. A declaration with no origin arguments keeps
 the existing inference/public-contract rules: an empty list is not a new arity error.
+
+## Generic-bound preparation batches
+
+Since 0.92, independent generic controls can report invalid requirement declarations
+together. This phase runs after parsing, module/name resolution and public contract
+shape checks, before trait lowering and constructor-call preparation. It checks:
+
+- Duplicate requirements after resolving import aliases to trait identities.
+- A requirement that is neither a sealed capability nor a declared trait.
+- A private trait required by a public generic control.
+
+The rules for `copy`, `clone`, `drop` and user traits are unchanged. The phase reports
+one error per control, including unused generic definitions, under the shared
+**32-error budget**. It does not invent witnesses or continue through trait lowering,
+generic expansion, signatures or bodies after a bound error. Repairing the first
+bad requirement can expose another in the same control; later phases resume only
+when every declaration in this phase is valid.
+
+<!-- tellur:reject E_VISIBILITY -->
+```tellur
+trait internal_tag {}
+
+pub control first<t: internal_tag>(t input) exits ready { t value } {
+    exit ready { input };
+}
+
+pub control second<t: internal_tag>(t input) exits ready { t value } {
+    exit ready { input };
+}
+```
+
+Both public interfaces expose the private trait and report `E_VISIBILITY`. Making
+the trait public, or making both controls private, repairs this phase. Duplicate
+resolved requirements and invalid trait/capability names report `E_BOUND`.
+Names rejected during module lookup still stop earlier; this batch does not recover
+from an unresolved import or namespace. Unknown names can reach this phase in the
+source-only API, while file-based resolution may reject them earlier.
+
+CLI/LSP retain each declaration's original source point and imported-file location.
+Single-error compatibility APIs return the first error. Unsaved edits update the
+whole batch; checked call and inferred-type hover remain unavailable until a full
+successful check. Associated-type normalization, shared origin schemas, trait
+coherence and concrete witness conformance retain their existing barriers.
 
 ## Constructor-call preparation batches
 

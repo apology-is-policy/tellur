@@ -196,3 +196,14 @@ belongs to that checked generic definition; concrete callers cannot specialize t
 hover or grant it extra permissions. Named outcomes include their alternatives and
 nested groups. Unsaved changes refresh the contract, and invalid sources suppress
 it. See [call hover](language-reference.md#call-site-contract-hover).
+
+## Generic-bound declaration diagnostics (0.92)
+
+Independent generic controls report invalid requirement declarations together before
+trait lowering: duplicate resolved traits, unknown capabilities/traits and private
+traits exposed by public generic interfaces. The phase includes unused controls,
+reports one error per control and stops at 32 errors. No witness or partial interface
+is produced on failure. Module lookup, shared schemas, coherence and conformance
+retain their earlier checking rules. See
+[generic-bound batches](reference/diagnostics-and-limits.md#generic-bound-preparation-batches)
+for an example and phase limits.

@@ -1033,3 +1033,146 @@ fn constructor_call_preparation_covers_methods_and_isolation_bodies() {
         );
     }
 }
+
+#[test]
+fn generic_bound_preparation_batches_unknown_and_private_requirements() {
+    let source = "trait hidden {}\ncontrol first<t:missing>(t input) exits ready {t value} {exit ready {input};}\ncontrol second<t:other>(t input) exits ready {t value} {exit ready {input};}\npub control third<t:hidden>(t input) exits ready {t value} {exit ready {input};}\ncontrol later() exits done {u32 bad=true;exit done;}";
+    let batch = check_errors(source);
+    assert_eq!(
+        batch.errors.iter().map(|e| e.code).collect::<Vec<_>>(),
+        ["E_BOUND", "E_BOUND", "E_VISIBILITY"],
+        "{batch}"
+    );
+    assert_eq!(
+        batch.errors.iter().map(|e| e.span.line).collect::<Vec<_>>(),
+        [2, 3, 4]
+    );
+    assert!(!batch.limit_reached);
+    let m = || Manifest::from_json(include_str!("../playground/manifest.json")).unwrap();
+    assert_eq!(tellur::compile(source, m()).unwrap_err(), batch.errors[0]);
+    let repaired = source
+        .replace("t:missing", "t:copy")
+        .replace("t:other", "t:drop");
+    let batch = check_errors(&repaired);
+    assert_eq!(batch.errors.len(), 1);
+    assert_eq!(batch.errors[0].code, "E_VISIBILITY");
+    let repaired = repaired.replace("trait hidden", "pub trait hidden");
+    let batch = check_errors(&repaired);
+    assert_eq!(batch.errors.len(), 1);
+    assert_eq!(batch.errors[0].code, "E_TYPE");
+    assert_eq!(batch.errors[0].span.line, 5);
+}
+
+#[test]
+fn generic_bound_preparation_detects_alias_duplicates_without_partial_witnesses() {
+    let f = Fixture::new();
+    f.write(
+        "traits.tellur",
+        "pub trait marker {}implement marker for string {}",
+    );
+    let source = "// 🙂 aliases resolve to one trait\r\nimport \"traits.tellur\" as first;import \"traits.tellur\" as second;\r\npub control one<t:first.marker+second.marker>(t input) exits ready {t value} {exit ready {input};}\r\npub control two<t:second.marker+first.marker>(t input) exits ready {t value} {exit ready {input};}\r\ncontrol main() exits done {delta one<string>(\"hello\") {ready {auto value}=>ready} [ready]:drop(value);exit done;}";
+    f.write("main.tellur", source);
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    assert_eq!(
+        report["diagnostics"].as_array().unwrap().len(),
+        2,
+        "{report}"
+    );
+    for (index, e) in report["diagnostics"].as_array().unwrap().iter().enumerate() {
+        assert_eq!(e["code"], "E_BOUND");
+        assert_eq!(e["position"]["line"], index + 3);
+        assert_eq!(e["path"], f.root.join("main.tellur").to_str().unwrap());
+        assert!(
+            e["message"]
+                .as_str()
+                .unwrap()
+                .contains("duplicate requirement")
+        );
+    }
+    assert!(report["summary"].is_null());
+    assert!(!report.to_string().contains("_path_"));
+    let partial = source.replace("t:first.marker+second.marker", "t:first.marker");
+    f.write("main.tellur", &partial);
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    assert_eq!(report["diagnostics"].as_array().unwrap().len(), 1);
+    assert_eq!(report["diagnostics"][0]["position"]["line"], 4);
+    f.write(
+        "main.tellur",
+        &partial.replace("t:second.marker+first.marker", "t:second.marker"),
+    );
+    f.report(&["check", "main.tellur", "--json"], true);
+}
+
+#[test]
+fn generic_bound_preparation_preserves_module_locations_and_first_error_api() {
+    let f = Fixture::new();
+    for (name, tag) in [("one.tellur", "private_one"), ("two.tellur", "private_two")] {
+        f.write(name, &format!("trait {tag} {{}}\npub control keep<t:{tag}>(t input) exits ready {{t value}} {{exit ready {{input}};}}"));
+    }
+    f.write("main.tellur", "import \"one.tellur\" as one;import \"two.tellur\" as two;control main() exits done {exit done;}");
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    let errors = report["diagnostics"].as_array().unwrap();
+    assert_eq!(errors.len(), 2, "{report}");
+    for file in ["one.tellur", "two.tellur"] {
+        assert!(
+            errors
+                .iter()
+                .any(|e| e["path"] == f.root.join(file).to_str().unwrap()
+                    && e["code"] == "E_VISIBILITY"
+                    && e["position"]["line"] == 2),
+            "{report}"
+        );
+    }
+    let manifest = Manifest::from_json(include_str!("../playground/manifest.json")).unwrap();
+    let first = tellur::compile_file(f.root.join("main.tellur"), manifest).unwrap_err();
+    assert_eq!(first.diagnostic.code, "E_VISIBILITY");
+    assert_eq!(first.diagnostic.span.line, 2);
+    assert_eq!(first.path, f.root.join("one.tellur"));
+}
+
+#[test]
+fn generic_bound_preparation_has_strict_phase_barriers_and_one_error_per_control() {
+    let base = "control first<a:missing,b:other>(a left,b right) exits ready {a first,b second} {exit ready {left,right};}\ncontrol second<t:absent>(t input) exits ready {t value} {exit ready {input};}";
+    let batch = check_errors(base);
+    assert_eq!(batch.errors.len(), 2, "{batch}");
+    let earlier = format!("{base}\npub control invalid() exits auto {{exit done;}}");
+    let batch = check_errors(&earlier);
+    assert_eq!(batch.errors.len(), 1);
+    assert_eq!(batch.errors[0].code, "E_PUBLIC_CONTRACT");
+    let later = format!(
+        "{base}\ntrait invalid {{control run(self input) exits done;}}implement invalid for string {{}}"
+    );
+    let batch = check_errors(&later);
+    assert_eq!(batch.errors.len(), 2, "{batch}");
+    assert!(batch.errors.iter().all(|e| e.code == "E_BOUND"));
+    let repaired = later
+        .replace("a:missing", "a:drop")
+        .replace("b:other", "b:drop")
+        .replace("t:absent", "t:drop");
+    let batch = check_errors(&repaired);
+    assert_eq!(batch.errors.len(), 1);
+    assert_eq!(batch.errors[0].code, "E_TRAIT");
+    // A module lookup failure is an earlier barrier, not a fabricated trait.
+    let f = Fixture::new();
+    f.write(
+        "main.tellur",
+        &format!("import \"absent.tellur\" as missing;{base}"),
+    );
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    assert_eq!(report["diagnostics"].as_array().unwrap().len(), 1);
+    assert_eq!(report["diagnostics"][0]["code"], "E_IMPORT");
+}
+
+#[test]
+fn generic_bound_preparation_uses_the_shared_budget() {
+    for unknown in [true, false] {
+        let source="trait hidden {}\n".to_owned()+&(0..40).map(|n| format!("pub control bad_{n}<t:{}>(t input) exits ready {{t value}} {{exit ready {{input}};}}\n",if unknown {"missing"} else {"hidden"})).collect::<String>();
+        let batch = check_errors(&source);
+        assert_eq!(batch.errors.len(), 32, "{batch}");
+        assert!(batch.limit_reached);
+        for (n, e) in batch.errors.iter().enumerate() {
+            assert_eq!(e.code, if unknown { "E_BOUND" } else { "E_VISIBILITY" });
+            assert_eq!(e.span.line, n + 2);
+        }
+    }
+}

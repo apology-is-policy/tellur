@@ -277,12 +277,10 @@ fn in_scope(
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect()
 }
-pub(crate) fn lower(
-    mut unit: Unit,
-    manifest: &Manifest,
-    visibility: &mut Visibility,
-) -> Result<Unit> {
-    for r in &unit.regions {
+/// Resolve independent generic requirements before trait lowering can depend on
+/// them. A failed declaration phase never supplies partial witness assumptions.
+pub(crate) fn validate_bounds(unit: &Unit) -> crate::CheckResult<()> {
+    crate::diagnostics::collect_checks(unit.regions.iter().map(|r| {
         for bounds in r.type_bounds.values() {
             let mut seen = BTreeSet::new();
             for bound in bounds {
@@ -316,7 +314,16 @@ pub(crate) fn lower(
                 }
             }
         }
-    }
+        Ok(())
+    }))?;
+    Ok(())
+}
+
+pub(crate) fn lower(
+    mut unit: Unit,
+    manifest: &Manifest,
+    visibility: &mut Visibility,
+) -> Result<Unit> {
     if unit.traits.is_empty() && unit.implementations.is_empty() {
         return Ok(unit);
     }
