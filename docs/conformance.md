@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.68.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.69.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -2269,3 +2269,47 @@ and installed extension payloads were verified at 0.68.0.
 For this release's settings `serve` entry, generated frame capacity falls from
 633 value slots and 633 decision slots to 5 and 4 respectively. This measures that
 control's storage reservation, not total process memory or execution speed.
+
+## 0.69 reference-bearing constructor contracts
+
+Constructors can return structs containing shared or exclusive references, with
+an explicit result-origin mapping after their parameters:
+`constructor(ref string left, ref string right)[left, right]`. Each entry supplies
+one declared struct origin group. Parameter storage and carried references remain
+distinct: `input` selects the parameter's storage, while `input['a]` selects its
+contained public origin group. Private constructors also declare their mappings.
+
+Initialization retains exactly-once, path-sensitive checks. Reference field
+addresses survive local initializer scopes and merge across disjoint paths with
+conservative provenance. Tagged payload addresses are read only after selecting
+their alternative. Returning a local borrow, borrowing a temporary owner for a
+stored result, or escaping partial `self` remains rejected. Constructor results
+retain the existing independent-field last-use rules and exclusive permissions.
+
+Tests cover nested constructors, references to reference-bearing carriers,
+optional reference payloads, generic/imported public construction, private fields,
+projected exclusive inputs, retained copies, capture/adapters, and earlier argument
+borrows protected against later calls. Differential execution compares reference
+and native results before and after expansion at O0/O2. Real Rust retained owners
+are released once both when a borrowed constructor faults before completion and
+when its caller faults after delivery.
+
+Public contract snapshots and constructor hovers include the origin mapping. The
+maintained reference and `playground/borrowed_construction.tellur` demonstrate
+independent field origins and exclusive access. The isolated VS Code checkpoint
+checks constructor outline/origin hover, inferred `auto`, unsaved loan diagnostics
+and repair, formatting and native execution.
+
+Raw reference-bearing aggregate expressions containing nested constructor calls
+still require intermediate bindings; this composition is the next checkpoint.
+Constructor-local isolation, self-referential records and abstract origin-shape
+bounds remain outside this slice. Native activation storage remains synchronous.
+
+Release validation: all 997 Rust tests across 71 nonempty targets passed. A final
+28-test constructor rerun also covers explicit `move` around a borrowed constructor
+call, including native/expanded parity at O0/O2. All 42 Node editor tests and the
+isolated VS Code checkpoint passed. The maintained manual checks 73 accepted
+examples, 26 expected diagnostics, 15 context fragments and 250 local links.
+Live HTTP tests include a source-fault 500 followed by a successful next request.
+Release compiler/LSP binaries, packaged VSIX and installed extension payloads were
+verified at 0.69.0.

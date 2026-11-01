@@ -2,13 +2,14 @@
 
 The accepted [control-flow and ownership revision](control-flow-revision.md) is
 delivered through constructor destination delivery and compact native frames.
-The next design checkpoint is CF5c: explicit result-origin contracts for
-reference-bearing constructors, followed by checked initialization, caller-loan
-propagation, module/editor support and native parity. Broader physical copy elision
-and suspended activation frames remain separate work.
+CF5c now adds reference-bearing constructors with explicit result-origin contracts,
+checked initialization, caller-loan propagation, module/editor support and native
+parity. The next construction follow-up is CF5d: composing constructor calls inside
+raw reference-bearing aggregates. Broader physical copy elision and suspended
+activation frames remain separate work.
 
 1 November 2026. This is the working revision plan, not a claim that all proposed
-features are implemented. Compiler **0.68.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
+features are implemented. Compiler **0.69.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
 lifetime checkpoints of milestone 2, the array/vector/map core of milestone 3,
 and implicit entry, inline/stored adapters, owned capture, named outcome contracts
 and checked forwarding in milestone 4. A first [semantic foundation](semantic-foundation.md)
@@ -171,7 +172,8 @@ unimplemented syntax are promised.
 | CF5a | Constructor declarations | **Delivered in 0.67:** path-sensitive initialization, owning/generic nested calls, partial-fault cleanup, public/raw visibility independence, editor/reference/native parity. Reference-bearing results use ordinary construction controls for now |
 | CF5b.1 | Constructor destination delivery | **Delivered in 0.68:** completed native values enter caller storage without temporary outcome packaging; owned projections transfer fields, and single-value completions avoid a payload vector. Evaluation order and fault ownership are preserved; broader allocation/copy elision remains future work |
 | CF5b.2 | Compact native activation frames | **Delivered in 0.68:** separate dense value/decision storage from global instruction identities; per-call storage depends on local slots, preserving references, fault reports and cleanup |
-| CF5c | Reference-bearing constructor contracts | **Design checkpoint:** explicit result-origin mappings, then checked initialization and caller-loan propagation. Ordinary factory controls and raw construction remain available. See the [accepted revision](control-flow-revision.md) |
+| CF5c | Reference-bearing constructor contracts | **Delivered in 0.69:** `constructor(...)[input, other['a]]`, shared/exclusive and nested/tagged fields, path-sensitive initialization, generic/module contracts, caller loans, fault cleanup and editor/native parity |
+| CF5d | Raw borrowed aggregate composition | **Next:** stage constructor expressions inside raw reference-bearing records and sums, preserving written evaluation order, escaping origins and pending-resource ownership. Binding intermediate values remains available |
 | C1b.3c.2 | Local exclusive-reference collection elements | Deferred pending application evidence: permission transfer, direct reborrowing, dynamic removal splits and carrier invalidation |
 | C1b.3c.3 | Nested and public borrowed-collection contracts | Deferred pending application evidence: element origin schemas, nested carriers, generic/trait boundaries and stored outcomes |
 | C1c | Generic loan propagation and reference state | Deferred pending application evidence: contained loans across generic calls, assignments and adapters; rebinding/reborrowing |

@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.68.0** implements the v0.1 checked core and the current language
+Compiler release **0.69.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -16,6 +16,11 @@ a reference interpreter, graph expansion, native compiler, language server, and
 VS Code build/run commands. The [revision plan](docs/language-revision.md) separates
 delivered features from the remaining reference, slice, outcome-expression and async work. The language is still
 fluid; this is an experimental implementation, not a production compiler.
+
+Release 0.69 adds [reference-bearing constructors](docs/reference/construction.md#reference-bearing-results).
+Write `constructor(ref string input)[input]` to map the result's origin groups.
+Shared and mutable borrows, nested fields and path-sensitive initialization use the
+existing ownership rules. Try [borrowed_construction.tellur](playground/borrowed_construction.tellur).
 
 Release 0.68 improves constructor lowering: completed values enter caller storage
 without an intermediate outcome payload, and owned temporary projections transfer

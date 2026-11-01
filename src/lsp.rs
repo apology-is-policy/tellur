@@ -1120,7 +1120,7 @@ impl Server {
 }
 fn constructor_description(c: &syntax::Region) -> String {
     format!(
-        "{}{}constructor({}){}",
+        "{}{}constructor({}){}{}",
         if c.contingent_contract == Some(true) {
             "@contingent "
         } else {
@@ -1132,6 +1132,18 @@ fn constructor_description(c: &syntax::Region) -> String {
             .map(|f| source_field(f, false))
             .collect::<Vec<_>>()
             .join(", "),
+        if c.exit_origins.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "[{}]",
+                c.exit_origins
+                    .iter()
+                    .map(|o| o.display())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        },
         if c.fault_contract == Some(true) {
             " faults"
         } else {

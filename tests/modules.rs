@@ -959,3 +959,26 @@ fn imported_generic_constructor_forwards_owned_private_representation() {
     f.write("main.tellur","import \"library.tellur\" as lib;control main() exits done {lib.show(lib.box<string>(\"generic\"));exit done;}");
     same(&f.check().unwrap());
 }
+
+#[test]
+fn imported_generic_borrowed_constructors_preserve_public_origins_and_privacy() {
+    let f = Fixture::new();
+    let library = "pub struct view<t>['a] {ref t value <- 'a; pub constructor(ref t input)[input] {self.value=input;}} pub control read(ref view<string> input) exits found {ref string value from input['a]} {exit found {input.value};}";
+    f.write("library.tellur", library);
+    let source = "import \"library.tellur\" as lib; control main() exits done {mutable string owner=\"borrowed\"; auto view=lib.view<string>(borrow owner); delta lib.read(borrow view) {found {auto text}=>found} [found]:emit(text); drop(view); owner=\"released\"; exit done;}";
+    f.write("main.tellur", source);
+    same(&f.check().unwrap());
+    f.write(
+        "main.tellur",
+        &source.replace("emit(text);", "owner=\"bad\";emit(text);"),
+    );
+    f.reject("E_LOAN");
+    f.write("main.tellur", source);
+    f.write(
+        "library.tellur",
+        &library.replace("pub constructor", "constructor"),
+    );
+    f.reject("E_PRIVATE");
+    f.write("library.tellur", &library.replace("[input]", "[missing]"));
+    f.reject("E_ORIGIN");
+}

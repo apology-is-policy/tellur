@@ -244,6 +244,12 @@ impl Checker<'_> {
             if let syntax::ExprKind::Move(value) = &e.kind {
                 return self.stored_type(value, span);
             }
+            if let syntax::ExprKind::Call(name, args) = &e.kind
+                && crate::constructors::is_control(name)
+                && let Some(sig) = self.signature(name, args, span)?
+            {
+                return Ok(Some(sig.outcomes[0].fields[0].ty.clone()));
+            }
             if let Some(p) = self.resolve_place(e, span)? {
                 return Ok(Some(p.ty));
             }
@@ -326,12 +332,11 @@ impl Checker<'_> {
         span: Span,
         moving: bool,
     ) -> Result<StoredValue> {
-        if crate::constructors::has_call(e) && self.manifest.contains_references(expected) {
-            return Err(self.error(
-                "E_CONSTRUCTOR",
-                e.span(span),
-                "bind constructed owning values before assembling reference-bearing storage",
-            ));
+        if let syntax::ExprKind::Call(name, _) = &e.kind
+            && crate::constructors::is_control(name)
+        {
+            let local = self.constructor_local(e, domain, span)?;
+            return self.stored_value(&local, expected, domain, span, moving);
         }
         e.checked(span, |span| {
         if let syntax::ExprKind::Move(value) = &e.kind {
@@ -339,6 +344,13 @@ impl Checker<'_> {
                 return Err(self.error("E_MOVE", span, "move requires an owning value context"));
             }
             return self.stored_value(value, expected, domain, span, true);
+        }
+        if crate::constructors::has_call(e) && self.manifest.contains_references(expected) {
+            return Err(self.error(
+                "E_CONSTRUCTOR",
+                span,
+                "bind constructed owning values before assembling reference-bearing storage",
+            ));
         }
         if let Some((mutable, inner)) = manifest::reference_inner(expected) {
             let source = self.reference_source(e, span)?;

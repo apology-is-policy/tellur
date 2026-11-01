@@ -1892,6 +1892,7 @@ pub(crate) fn parse_with_layout(source: &str) -> Result<(Unit, Vec<Token>, crate
                             return Err(p.error("a struct may declare only one constructor"));
                         }
                         let parameters = p.fields()?;
+                        let exit_origins = p.origin_arguments()?;
                         let faults = if p.eat("faults") {
                             Some(true)
                         } else if visible {
@@ -1929,7 +1930,7 @@ pub(crate) fn parse_with_layout(source: &str) -> Result<(Unit, Vec<Token>, crate
                             infer_exits: false,
                             infer_payloads: Default::default(),
                             exit_contract: None,
-                            exit_origins: vec![],
+                            exit_origins,
                             modern: true,
                             body,
                         });

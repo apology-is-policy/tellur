@@ -2696,3 +2696,44 @@ fn constructor_outline_hover_and_inferred_locals_follow_unsaved_edits() {
         tellur::format::source(&formatted, Default::default()).unwrap()
     );
 }
+
+#[test]
+fn borrowed_constructor_origin_hover_and_unsaved_diagnostics() {
+    let mut f = Fixture::new();
+    let source = "struct view['a] {\n ref string text <- 'a;\n constructor(ref string input)[input] {self.text=input;}\n}\ncontrol main() exits done {\n string owner=\"hello\";\n auto value=view(borrow owner);\n emit(value.text);exit done;\n}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    assert!(
+        f.server
+            .hover(&f.uri, 2, 3)
+            .to_string()
+            .contains("constructor(ref string input)[input]")
+    );
+    assert!(
+        f.server
+            .hover(&f.uri, 6, 2)
+            .to_string()
+            .contains("view value")
+    );
+    let symbols = f.server.symbols(&f.uri).to_string();
+    assert!(symbols.contains("constructor(ref string input)[input]"));
+    f.change(&source.replace("[input]", "[missing]"), 2);
+    assert!(
+        f.diagnostics()
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|d| d["code"] == "E_ORIGIN")
+    );
+    f.change(source, 3);
+    assert_eq!(f.diagnostics(), json!([]));
+    let formatted = tellur::format::source(source, Default::default()).unwrap();
+    assert!(
+        formatted.contains("constructor(ref string input)[input]"),
+        "{formatted}"
+    );
+    assert_eq!(
+        formatted,
+        tellur::format::source(&formatted, Default::default()).unwrap()
+    );
+}

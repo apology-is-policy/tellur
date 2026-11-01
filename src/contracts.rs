@@ -68,6 +68,8 @@ pub struct Control {
 #[serde(deny_unknown_fields)]
 pub struct Constructor {
     pub parameters: Vec<Field>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub origins: Vec<String>,
     pub faults: bool,
     pub contingent: bool,
 }
@@ -596,6 +598,7 @@ pub(crate) fn checked(
                     constructible,
                     constructor: data.constructor.as_ref().filter(|c| c.public).map(|c| {
                         Constructor {
+                            origins: c.exit_origins.iter().map(|o| o.display()).collect(),
                             parameters: c
                                 .parameters
                                 .iter()

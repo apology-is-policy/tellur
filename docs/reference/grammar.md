@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Lexical structure](lexical-structure.md)
 
-This is a reading grammar for the modern compiler 0.68.0 profile, not a replacement
+This is a reading grammar for the modern compiler 0.69.0 profile, not a replacement
 for its type, ownership, origin or coverage rules. It omits legacy spellings and
 parser recovery details. `name`, `integer` and `string_literal` are lexical tokens.
 Quoted text denotes source tokens; `?` means optional, `*` repetition, `+` one or
@@ -27,7 +27,7 @@ bounds           = qualified_name ("+" qualified_name)* ;
 struct           = "struct" name data_parameters? origin_groups?
                    "{" (struct_field | constructor)* "}" ";"? ;
 constructor      = contingent? public? "constructor" "(" trailing_list(field)? ")"
-                   "faults"? body ;
+                   origin_mapping? "faults"? body ;
 origin_groups    = "[" list("'" name) "]" ;
 struct_field     = public? type origin_mapping? name ("<-" "'" name)? ";" ;
 variant          = "variant" name data_parameters? origin_groups?
@@ -57,8 +57,9 @@ A struct field maps a grouped nested type before its name. A reference field use
 bracket mapping and storage arrow are both required. Variant payload fields use
 the same origin mappings, as do named outcome payload fields. All layouts must be finite and
 nonrecursive. Visibility applies to declarations and individual struct fields.
-A struct permits at most one constructor, currently for owning results; its body
-initializes `self.field` and completes implicitly. See [construction](construction.md).
+A struct permits at most one constructor; its body initializes `self.field` and
+completes implicitly. Reference-bearing results require a mapping after the
+parameter list, such as `constructor(ref string input)[input]`. See [construction](construction.md).
 Implementations do not use `pub`; trait/type visibility determines their availability.
 
 Trait associated bounds currently accept sealed `copy`/`clone`/`drop` capabilities;

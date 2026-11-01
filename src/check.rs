@@ -1297,6 +1297,9 @@ impl Checker<'_> {
             return self.expr_expected(value, domain, true, span, expected);
         }
         if let Some(place) = self.resolve_place(expr, span)? {
+            if place.name.starts_with("$field_") {
+                self.use_place(place.clone(), domain, false, span)?;
+            }
             if self.manifest.contains_references(&place.ty) {
                 return Err(self.error("E_UNSUPPORTED", span, "stored references currently support local record construction, binding, field access and drop; this value boundary needs contained-loan propagation"));
             }
@@ -2380,6 +2383,20 @@ impl Checker<'_> {
                 );
             }
             Statement::Bind(name, annotation, expression, mutable) => {
+                if name.starts_with("$field_")
+                    && self
+                        .manifest
+                        .contains_references(annotation.as_deref().unwrap_or(""))
+                {
+                    return self.initialize_reference_field(
+                        name,
+                        annotation.as_deref().unwrap(),
+                        expression,
+                        guard,
+                        domain,
+                        span,
+                    );
+                }
                 if self.bind_stored(
                     name,
                     annotation.as_deref(),

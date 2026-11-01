@@ -1,0 +1,43 @@
+// Result origins follow the struct's group order: 'left, then 'right.
+struct text_pair['left, 'right] {
+    ref string left <- 'left;
+    ref string right <- 'right;
+
+    constructor(ref string left, ref string right)[left, right] {
+        self.left = left;
+        self.right = right;
+    }
+}
+
+struct editable_text['source] {
+    ref mutable string text <- 'source;
+
+    constructor(ref mutable string input)[input] {
+        self.text = input;
+    }
+}
+
+outcome program_result {
+    @exit 0 done
+}
+
+control main() exits program_result {
+    mutable string first = "first";
+    mutable string second = "second";
+    auto pair = text_pair(borrow first, borrow second);
+
+    emit(pair.left);
+    // The first source is free while pair.right still retains the second.
+    first = "first released";
+    emit(pair.right);
+    second = "second released";
+
+    auto edit = editable_text(borrow mutable first);
+    deref edit.text = "edited through a constructed view";
+    emit(edit.text);
+
+    // The exclusive field's last use releases its source too.
+    first = "released again";
+    emit(borrow first);
+    exit done;
+}

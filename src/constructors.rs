@@ -156,10 +156,14 @@ pub(crate) fn prepare(unit: &mut Unit) -> Result<()> {
         let Some(constructor) = &data.constructor else {
             continue;
         };
-        if !data.origin_parameters.is_empty() {
-            return Err(error(
+        if constructor.exit_origins.len() != data.origin_parameters.len() {
+            return Err(Diagnostic::new(
+                "E_ORIGIN",
                 constructor.span,
-                "constructors for reference-bearing records need an origin contract; use an ordinary construction control for now",
+                format!(
+                    "constructor result requires {} origin arguments after its parameters",
+                    data.origin_parameters.len()
+                ),
             ));
         }
         let DataBody::Struct(fields) = &data.body else {
@@ -186,7 +190,7 @@ pub(crate) fn prepare(unit: &mut Unit) -> Result<()> {
             name: COMPLETED.into(),
             fields: vec![Field {
                 type_span: data.name_span,
-                origins: vec![],
+                origins: std::mem::take(&mut control.exit_origins),
                 referent_origins: vec![],
                 name: "value".into(),
                 ty,

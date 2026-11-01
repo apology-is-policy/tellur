@@ -19,6 +19,13 @@ function tokens(text) {
   });
 }
 function has(list, text, scope) { assert.ok(list.some(t => t.text === text && t.scopes.includes(scope)), `${JSON.stringify(text)} should have ${scope}: ${JSON.stringify(list)}`); }
+test('constructor result origins stay schematic beside parameter lists and faults', () => {
+  const ts = tokens("struct borrowed['storage, 'text] {\n ref view['text] value <- 'storage;\n pub constructor(ref view input)[input, input['a]] faults {self.value=input;}\n}");
+  has(ts, 'constructor', 'keyword.declaration.tellur');
+  has(ts, "'a", 'entity.name.type.origin.tellur');
+  has(ts, 'faults', 'keyword.control.tellur');
+  has(ts, '<-', 'keyword.operator.tellur');
+});
 test('identity deltas, named sites and grouped arms keep distinct syntax scopes', () => {
   const ts = tokens('control main() exits done {\n first = delta read();\n second = delta read() {ready {auto text} => {emit(text);}}\n [first.ready & second.ready]: exit done;\n}');
   has(ts, 'first', 'entity.name.label.tellur');

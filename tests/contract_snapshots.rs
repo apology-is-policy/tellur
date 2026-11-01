@@ -587,3 +587,24 @@ fn constructor_contract_is_attached_to_the_struct_and_raw_visibility_is_independ
     assert_eq!(entry(&opaque)["message"]["constructible"], false);
     assert!(entry(&opaque)["message"].get("constructor").is_some());
 }
+
+#[test]
+fn constructor_result_origin_mappings_are_public_contracts() {
+    let f = Fixture::new();
+    let source = "pub struct view['a] {ref string text <- 'a;pub constructor(ref string left,ref string right)[left] {self.text=left;}}";
+    let before = f.snapshot(source);
+    assert_eq!(
+        entry(&before)["view"]["constructor"]["origins"],
+        json!(["left"])
+    );
+    let after = f.snapshot(
+        &source
+            .replace("[left]", "[right]")
+            .replace("self.text=left", "self.text=right"),
+    );
+    assert_ne!(before, after);
+    assert_eq!(
+        entry(&after)["view"]["constructor"]["origins"],
+        json!(["right"])
+    );
+}

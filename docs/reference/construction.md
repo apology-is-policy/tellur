@@ -2,7 +2,8 @@
 
 [Language reference](../language-reference.md) · [Owning expressions](ownership-expressions.md)
 
-Compiler 0.67 adds one declared constructor per owning struct. A constructor is an
+Compiler 0.67 adds declared constructors; 0.69 extends them to reference-bearing
+structs with explicit result-origin mappings. A constructor is an
 initialization procedure: `type(arguments)` evaluates it and produces a fully
 initialized value. It has no source outcome labels or explicit `exit` statement.
 Expected alternatives such as invalid input still belong to ordinary factory
@@ -84,9 +85,9 @@ Constructor visibility is independent of field visibility:
 
 A constructor provides reusable initialization; its existence alone does not
 prevent bypassing that procedure. Private fields establish that restriction.
-Public contract snapshots attach a public constructor's parameters, fault
-permission and contingency permission to its struct, separately from raw
-constructibility. Private constructors are omitted.
+Public contract snapshots attach a public constructor's parameters, result-origin
+mapping, fault permission and contingency permission to its struct, separately from
+raw constructibility. Private constructors are omitted.
 
 ## Calls, order and temporaries
 
@@ -133,11 +134,87 @@ currently have no bounds, so generic bodies must work for unconstrained values:
 borrowing and forwarding are allowed; copying or cloning requires a capability
 that an unconstrained parameter does not provide.
 
+## Reference-bearing results
+
+A constructor that returns stored references declares their origins in brackets
+after its parameter list. The entries correspond, in order, to the struct's origin
+groups. They are a static lifetime contract, not additional runtime arguments.
+Mappings are required for both private and public constructors.
+
+<!-- tellur:check -->
+```tellur
+struct text_pair['a, 'b] {
+    ref string left <- 'a;
+    ref string right <- 'b;
+
+    constructor(ref string left, ref string right)[left, right] {
+        self.left = left;
+        self.right = right;
+    }
+}
+
+control main() exits done {
+    mutable string first = "first";
+    mutable string second = "second";
+    auto pair = text_pair(borrow first, borrow second);
+
+    emit(pair.left);
+    first = "released";
+    emit(pair.right);
+    second = "released";
+    exit done;
+}
+```
+
+Here `'a` maps to the constructor parameter `left`, and `'b` to `right`. At the
+call, those become borrows of `first` and `second`. Each field retains its own
+source until its last use. Moving the result transfers its permissions; copying a
+shared-reference record creates another retainer. An exclusive reference cannot
+be duplicated or obtained from shared input authority.
+
+The same rules work for `ref mutable` fields, nested records, optional/tagged
+payloads and references to reference-bearing records. A mapping such as
+`constructor(ref view input)[input, input['a]]` distinguishes the input record's
+storage from an external origin carried inside it. It follows the existing
+[public nested-reference contracts](../language-reference.md#public-nested-reference-contracts).
+The body must establish every declared mapping; the annotation cannot authorize a
+different source. Public contract snapshots include the constructor's mappings.
+
+Field initialization remains path-sensitive. Disjoint paths may initialize a
+reference field; every normally completing path must initialize it exactly once.
+The runtime address follows the executed initializer, while checking retains the
+possible source dependencies. An initialized mutable reference permits editing its
+pointee. The field binding itself still cannot be reassigned.
+
+References cannot escape constructor-local storage, an owned parameter's storage,
+or another field of partial `self`. Owners passed by temporary borrow cannot
+support a returned reference. A constructor may consume an existing reference
+carrier and return its external origins through `input['a]`; consuming the carrier
+does not extend the lifetime of its own storage.
+
+<!-- tellur:reject E_LIFETIME -->
+```tellur
+struct view['a] {
+    ref string text <- 'a;
+
+    constructor(ref string input)[input] {
+        string local = "cannot escape";
+        self.text = borrow local;
+    }
+}
+```
+
+Declared constructors can initialize nested reference-bearing fields with other
+constructor calls, and their results can pass through ordinary calls, exits,
+captures and adapters. Existing origin-schema and generic restrictions still
+apply; generic parameters do not acquire an unknown nested origin shape.
+
 ## Faults and contingency
 
 A private constructor infers transitive fault permission. A public constructor
-that may fault must declare `faults` after its parameter list. `@contingent` before
-`pub constructor` explicitly admits a public constructor in contingency; its body
+that may fault must declare `faults` after its parameter list and any result-origin
+mapping. `@contingent` before `pub constructor` explicitly admits a public
+constructor in contingency; its body
 is checked against the same call restrictions as a contingent control. Private
 contingency permission is inferred, as for private controls.
 
@@ -155,16 +232,17 @@ existing administrative recovery rules.
 
 ## Current boundaries and editor support
 
-Declared constructors currently produce reference-free owning structs. For records
-that store references, use raw construction or an ordinary control with an explicit
-origin contract. When assembling reference-bearing storage, bind constructed owning
-values separately first. This keeps contained-loan construction on its existing
-checked path. Constructors do not add overloads, default arguments, delegation,
-custom destructors, inheritance or implicit conversions.
+Raw construction and ordinary factory controls remain available. When a raw
+reference-bearing record or sum initializer contains a declared constructor call,
+bind the constructed value separately first. That broader composition is a separate
+staging checkpoint. Also bind a constructed reference-bearing result before
+projecting its fields or borrowing the whole result. Constructors do not add
+overloads, default arguments, delegation, custom destructors, inheritance or
+implicit conversions.
 
 VS Code highlights `constructor`, shows it beneath its struct in the outline, and
-provides its signature and initialization rules on hover. Hovering `auto` reports
-the inferred constructed type or a constructor-local binding's type. Missing-field
+provides its signature, origin mapping and initialization rules on hover. Hovering
+`auto` reports the inferred constructed type or a constructor-local binding's type. Missing-field
 and ownership diagnostics update for unsaved source. Formatting preserves flat
 path labels and wraps constructor argument lists using the normal width settings.
 
@@ -172,6 +250,8 @@ The [settings server](../../applications/settings/server.tellur) uses a construc
 to prepare an owned request context before its fault boundary. Its public interface
 and request recovery behavior are unchanged.
 
-Try [construction.tellur](../../playground/construction.tellur). Compiler/runtime
-checks are in [constructors.rs](../../tests/constructors.rs); actual retained-owner
+Try [construction.tellur](../../playground/construction.tellur) and
+[borrowed_construction.tellur](../../playground/borrowed_construction.tellur).
+Compiler/runtime checks are in [constructors.rs](../../tests/constructors.rs) and
+[borrowed_constructors.rs](../../tests/borrowed_constructors.rs); actual retained-owner
 fault cleanup is checked in [rust_adapters.rs](../../tests/rust_adapters.rs).

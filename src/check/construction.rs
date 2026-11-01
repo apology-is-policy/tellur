@@ -4,6 +4,163 @@
 use super::*;
 use crate::constructors::{COMPLETED, field_name, has_call, is_control};
 impl Checker<'_> {
+    pub(super) fn initialize_reference_field(
+        &mut self,
+        name: &str,
+        ty: &str,
+        value: &syntax::Expr,
+        guard: Guard,
+        domain: Formula,
+        span: Span,
+    ) -> Result<()> {
+        let stored = self.stored_value(value, ty, domain, span, true)?;
+        let root = self.define(name, ty, domain, span)?;
+        self.emit(guard.clone(), Action::Bind(root, stored.expression), span);
+        for (fields, id) in stored.loans {
+            let incoming = self.loan(id).clone();
+            for scope in &mut self.scopes {
+                if let Some(loan) = scope.loans.values_mut().find(|loan| loan.id == id) {
+                    loan.active = FALSE;
+                }
+            }
+            self.initialize_field_loan(
+                name,
+                Place {
+                    root,
+                    fields,
+                    indirect: false,
+                },
+                incoming,
+                true,
+                &guard,
+                domain,
+                span,
+            )?;
+        }
+        Ok(())
+    }
+
+    /// One runtime address per initialized reference leaf, independent of which
+    /// path supplied it. Provenance conservatively joins across disjoint paths.
+    /// Nested referent loans use the same rule; tagged payloads stay abstract
+    /// until their delta establishes the active alternative.
+    #[allow(clippy::too_many_arguments)]
+    fn initialize_field_loan(
+        &mut self,
+        field: &str,
+        holder: Place,
+        incoming: Loan,
+        materialize: bool,
+        guard: &Guard,
+        domain: Formula,
+        span: Span,
+    ) -> Result<Loan> {
+        let previous = self.scopes[0]
+            .loans
+            .values()
+            .find(|loan| {
+                loan.holder.as_ref() == Some(&holder) && loan.sum_leaf == incoming.sum_leaf
+            })
+            .cloned();
+        let key = previous
+            .as_ref()
+            .map(|loan| loan.target.name.clone())
+            .unwrap_or_else(|| format!("{field}$reference_{}", self.fresh()));
+        let ty = format!(
+            "&{}{}",
+            if incoming.mutable { "mutable " } else { "" },
+            incoming.target.ty
+        );
+        let already = self
+            .find_value(&key)
+            .map_or(FALSE, |(_, value)| value.defined);
+        let fresh = self.bdd.minus(domain, already);
+        let address = if fresh != FALSE || self.find_value(&key).is_none() {
+            self.define(&key, &ty, fresh, span)?
+        } else {
+            self.find_value(&key).unwrap().1.slot.id
+        };
+        let materialize = materialize && incoming.sum_leaf.is_none();
+        if materialize && domain != FALSE {
+            self.emit(
+                guard.clone(),
+                Action::Bind(address, Expr::Place(holder.clone())),
+                span,
+            );
+        }
+        let contents = {
+            let mut contents = vec![];
+            for (fields, child) in &incoming.contents {
+                let child_domain = self.bdd.and(domain, child.defined);
+                let child = self.initialize_field_loan(
+                    field,
+                    Place {
+                        root: address,
+                        fields: fields.clone(),
+                        indirect: true,
+                    },
+                    child.clone(),
+                    materialize,
+                    guard,
+                    child_domain,
+                    span,
+                )?;
+                contents.push((fields.clone(), child));
+            }
+            contents
+        };
+        let mut loan = previous.unwrap_or_else(|| {
+            let mut loan = incoming.clone();
+            loan.id = self.fresh();
+            loan.active = FALSE;
+            loan.defined = FALSE;
+            loan.origins.clear();
+            loan.parents.clear();
+            loan.contents.clear();
+            loan
+        });
+        for origin in incoming.origins {
+            if !loan.origins.contains(&origin) {
+                loan.origins.push(origin);
+            }
+        }
+        for parent in incoming.parents {
+            if !loan.parents.contains(&parent) {
+                loan.parents.push(parent);
+            }
+        }
+        for (fields, child) in contents {
+            if let Some((_, previous)) = loan
+                .contents
+                .iter_mut()
+                .find(|(path, previous)| *path == fields && previous.id == child.id)
+            {
+                *previous = child;
+            } else {
+                loan.contents.push((fields, child));
+            }
+        }
+        loan.active = self.bdd.or(loan.active, domain);
+        loan.defined = self.bdd.or(loan.defined, domain);
+        loan.holder = Some(holder);
+        loan.target = ResolvedPlace {
+            scope: 0,
+            name: key,
+            place: Place {
+                root: address,
+                fields: vec![],
+                indirect: true,
+            },
+            ty: incoming.target.ty,
+            via: None,
+            carriers: vec![],
+        };
+        self.scopes[0]
+            .loans
+            .insert(format!("$stored_{}", loan.id), loan.clone());
+        Ok(loan)
+    }
+
     pub(super) fn initialize_constructor(
         &mut self,
         source: &syntax::Region,
@@ -12,9 +169,7 @@ impl Checker<'_> {
             return Ok(None);
         }
         let ty = source.exits[0].fields[0].ty.clone();
-        if self.manifest.contains_references(&ty) {
-            return Err(self.error("E_CONSTRUCTOR", source.span, "constructors currently produce owning records; use an ordinary control with an origin contract for reference-bearing results"));
-        }
+        crate::origins::result_type(&ty, self.origin_schemas, self.manifest, source.span)?;
         let Some(manifest::TypeDef::Record { fields, .. }) = self.manifest.type_def(&ty) else {
             return Err(self.error(
                 "E_CONSTRUCTOR",
@@ -67,6 +222,15 @@ impl Checker<'_> {
         domain: Formula,
         span: Span,
     ) -> Result<(Expr, String)> {
+        let local = self.constructor_local(call, domain, span)?;
+        self.expr(&local, domain, true, span)
+    }
+    pub(super) fn constructor_local(
+        &mut self,
+        call: &syntax::Expr,
+        domain: Formula,
+        span: Span,
+    ) -> Result<syntax::Expr> {
         let syntax::ExprKind::Call(name, args) = &call.kind else {
             unreachable!()
         };
@@ -102,12 +266,7 @@ impl Checker<'_> {
         );
         self.constructing = previous;
         result?;
-        self.expr(
-            &syntax::ExprKind::Name(local).at(call.range),
-            domain,
-            true,
-            span,
-        )
+        Ok(syntax::ExprKind::Name(local).at(call.range))
     }
     /// Own earlier values in slots before evaluating subsequent constructors.
     /// Do not consume these slots until the entire expression list is ready:
