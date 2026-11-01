@@ -219,6 +219,89 @@ capture protecting its owner until settlement, a fault during argument construct
 a fault before the task starts, and normal payload/origin delivery. Source entry
 spelling remains pending; implementation must not choose it by timeout.
 
+## Capture-transfer requirements
+
+This audit derives implementation requirements from the accepted task rules. It does
+not enable source syntax, choose the pending synchronous-entry form, or settle a
+public capture/effect type spelling. E1b.1's runtime argument vector is necessary
+execution state; it is not the static proof that retaining those arguments is legal.
+
+### State that must survive deferral
+
+A checked pending computation needs more than its normal result alternatives:
+
+| State | What must be retained | Why the result contract is insufficient |
+| --- | --- | --- |
+| Owned captures | Captured values and each live completion obligation on its selected histories | A control returning only `done` may still own a connection before it runs. |
+| Direct borrowed captures | The target place, reference mode, origin set, parent permissions and carrier guards | A reference parameter may produce no borrowed result but still excludes conflicting access while pending. |
+| Contained borrowed captures | The existing nested loan tree, active sum alternatives, public origin groups and storage dependencies | Flattening an aggregate to its outer type loses distinctions between a carrier's storage and external referents. |
+| Temporary backing storage | A proven live owner for every retained address | Keeping the argument vector alive does not keep an unrelated caller temporary alive. |
+| Future invocation contract | Target definition, normal outcomes, result-origin mappings and body fault permission | Creating a task does not yet execute the body; a later await must recover its actual contract. |
+
+Moving a task transfers this state and its normal completion obligation together.
+It neither completes the computation nor releases captured loans. The must-settle
+rule applies even when all captured data and eventual payloads are ordinary
+droppable values. Copy/clone/drop checks must not infer task capabilities from those
+values or from a nullary result alone.
+
+### Current checker seams
+
+The existing machinery provides several parts of the proof, with synchronous
+lifetime boundaries that must remain explicit:
+
+- [Initializer staging](../src/check/construction.rs) checks earlier arguments against
+  the next initializer and retains evaluated pending values. Later initializer faults
+  must still see earlier uncompleted owners. Its loan expiry is scoped to anonymous
+  loans created during that initializer list.
+- [Argument checking](../src/check.rs) validates aliases, reference mode, transfers
+  and types. `reference_argument` resolves and checks a direct place; its use at a
+  synchronous call is not itself a persistent task-owned loan holder.
+  `arguments` retires newly stashed stored-loan holders after evaluation.
+- [Stored-reference handling](../src/check/stored.rs) preserves nested loan state and
+  consumes exclusive permissions on transfer. A task capture must adopt the retained
+  state rather than retire it with the synchronous call temporaries.
+- [Call origin mapping](../src/check/public.rs) resolves returned dependencies through
+  concrete arguments, origin groups, carrier storage and nested sum alternatives.
+  Await needs the corresponding captured dependencies, even if the original source
+  argument binding has moved or is no longer a name in scope.
+- [Resource capability checking](../src/manifest.rs) derives existing aggregate fault
+  dispositions from their contents. A future task's disposition must account for its
+  pending captures, not only the callee's eventual output type or body permission.
+
+The existing [initializer resource tests](../tests/constructors.rs),
+[borrowed composition tests](../tests/borrowed_composition.rs) and
+[borrowed constructor tests](../tests/borrowed_constructors.rs) are reusable baseline
+evidence for these synchronous rules. They are not evidence of task support.
+
+### Transfer and settlement cases
+
+The following are acceptance requirements for the future source implementation,
+not runnable tests in the current compiler:
+
+| Situation | Required observation |
+| --- | --- |
+| A later deferred argument faults | Earlier evaluated arguments still have their ownership and fault-disposition requirements; no half-created task is published. |
+| A resource moves into a task whose result is only `done` | The resource remains a pending obligation. An intervening caller fault checks its disposition even if the future body would normally complete it. |
+| A shared borrow is captured, then the caller attempts to mutate or move its owner | The conflicting access remains rejected while the task, its result or any other live holder retains that dependency. |
+| An exclusive reference is moved into a task | The old reference cannot be reused, and its parent permissions remain restricted while the task owns the child permission. |
+| Await returns a borrowed result on one alternative only | The selected result retains the declared dependency; a different alternative without it must not acquire a spurious result loan. |
+| A task is moved between local bindings | Ownership and capture dependencies move together; the old binding is unavailable and the destination still must be awaited or transferred. |
+| Control leaves a scope normally with a pending task | Reject the unfinished task even when its body would have no effects or its result payload is empty. |
+| A cancellation request is issued in the later cancellation profile | No loan ends merely from requesting cancellation; actual checked settlement remains necessary. |
+
+Borrowing a temporary across deferral needs an explicit backing-storage proof. The
+first bounded implementation must reject cases for which it cannot establish that
+proof; it must not silently inherit a synchronous call's temporary lifetime. If an
+awaited result retains a borrow into such storage, retiring the task cannot retire
+that storage while the result is live.
+
+Likewise, returning a task, storing it in an aggregate or passing it through a generic
+interface must preserve its hidden capture requirements. A result-only `task<r>`
+view cannot silently erase them. Keeping concrete capture descriptors for a bounded
+local implementation is a candidate implementation strategy; it does not settle
+public task type syntax, erasure rules or compatibility between different captures.
+Those boundaries need explicit contracts before being accepted by the checker.
+
 ## Implementation sequence
 
 | Checkpoint | Deliverable and evidence | Dependencies |
