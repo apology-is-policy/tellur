@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-0.74.0-darwin-arm64.vsix` using **Extensions:
+1. Install the supplied `tellur-language-0.75.0-darwin-arm64.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -682,3 +682,13 @@ full path selectors: a join touching a stalled history is suppressed, not narrow
 Fault boundaries/contingencies, inline adapters, decision headers and scope/loop
 setup or completion retain conservative limits. See the
 [path recovery reference](https://github.com/apology-is-policy/tellur/blob/main/docs/reference/diagnostics-and-limits.md#path-and-scope-recovery).
+
+
+## Shared source libraries in 0.75
+
+The bundled compiler supports explicit Rust adapter modules and the new JSON file
+source library. The maintained settings service and `examples/json_file/main.tellur`
+share storage code with distinct application policy. Module metadata is checked
+without loading Rust code; Build and Run reads the configured sources and checks
+the generated Rust interface. Paths resolve from the manifest, including when the
+native output is placed elsewhere. See the [library guide](https://github.com/apology-is-policy/tellur/blob/main/library/README.md).

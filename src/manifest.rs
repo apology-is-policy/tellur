@@ -349,6 +349,9 @@ impl Manifest {
                 .to_owned();
             host.source = base.join(&host.source);
             host.lockfile = base.join(&host.lockfile);
+            for path in host.modules.values_mut() {
+                *path = base.join(&*path);
+            }
         }
         Ok(manifest)
     }

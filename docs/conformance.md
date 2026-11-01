@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.74.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.75.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -2531,3 +2531,53 @@ HTTP source-fault 500/next-request test. Formatting and whitespace checks passed
 All six local compiler/server copies match the final 0.74.0 release artifacts;
 all nine packaged and installed extension payloads were verified. The final isolated
 VS Code run used those rebuilt binaries. Existing user windows were not reloaded.
+
+
+## 0.75 reusable JSON file library and explicit Rust modules
+
+P5b.2a extracts `library/json_file.tellur`, `library/host/text_file.rs` and
+`library/host/json_string_map.rs` from the settings application. The source controls
+preserve missing data, invalid JSON, read failure, encoding failure, write preparation
+failure, uncertain replacement and size limits. The settings application's five
+public entry declarations are unchanged; its snapshot now includes the imported
+library and its contributor baseline includes the new internal call layer. Temporary
+file names use the neutral `.tellur-file-` prefix. Defaults, key policy, HTTP decisions
+and process statuses remain in their existing callers.
+
+I1b.2a supplies explicit `rust.modules`: named manifest-relative source files embedded
+as child modules of the root Rust adapter, with generated signature checks and one
+locked dependency graph. Native generation reads every listed source; ordinary
+checking/LSP does not read host code. Duplicate/invalid names, empty paths, lockfile
+paths and unresolved native paths are rejected. Native generation identifies missing
+modules by name/path. Embedded sources may use sibling modules and re-export functions
+or resource types; unlisted file discovery and package resolution are not added.
+
+`examples/json_file` is a second executable using these same files without the settings
+service or HTTP dependency. Library regressions exercise every declared outcome,
+original/expanded parity, exact UTF-8 byte limits, duplicate/non-string/trailing JSON,
+invalid UTF-8, preservation on size failure, real replacement and uncertain commit
+with temporary cleanup. Adapter tests cover manifest-relative Unicode/space paths,
+raw module identifiers, inline documentation/trailing comments, sibling calls,
+source refresh and rejected function-type mismatches. Editor tests retain checked
+source diagnostics without any Rust files present.
+
+The first focused run exposed a test fixture that copied only settings source files;
+it now also copies the newly imported library and adjusts that fixture's import.
+No language rule was changed to accommodate the fixture. Full release evidence is
+recorded after final validation below.
+
+The isolated editor harness initially expected a callee signature at the imported
+call. Existing hover there explains selected histories; the final harness verifies
+that supported behavior, unsaved argument diagnostics/repair and native save/reload.
+Call-site contract hover is now tracked separately as P4d, prompted by this example.
+
+Final validation passed **1,066 Rust tests across 76 nonempty targets**, including
+all three manual checks, and **42 Node editor tests**. The complete CLI/HTTP suite
+passed against the extracted mechanisms, including source-fault 500/next-request
+handling. The independent release executable also verified missing-file status 3,
+Unicode save/reload status 0, invalid-file status 1 and uncertain-replacement status 4.
+Rust/Tellur formatting and whitespace checks passed. All six compiler/server copies
+match the final release artifacts; all nine packaged and installed extension payloads
+were verified. The isolated VS Code run passed selected-history hover, unsaved argument
+error/repair and native Unicode save/reload through the shared modules. Existing user
+windows were not reloaded.

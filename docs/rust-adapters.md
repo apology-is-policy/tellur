@@ -186,10 +186,10 @@ this facility does not settle them or constrain LLVM coroutine lowering.
 working directory. The CLI and LSP use this rule. Embedders use
 `Manifest::from_json_at(text, manifest_path)`; plain `from_json` leaves relative paths
 unresolved and native generation rejects them. Checking Tellur source does not read,
-compile or execute Rust wrappers. Native generation reads and embeds `host.rs` into
-the generated crate; wrapper-local `mod`/`include!` paths therefore refer to that
-crate, not the original source directory. Keep this first profile in one source file
-and put reusable Rust code in dependencies.
+compile or execute Rust wrappers. Native generation reads and embeds the configured
+sources into the generated crate. Use explicit modules below to share local adapter
+code, or registry dependencies for Rust packages. Unlisted wrapper-local
+`mod`/`include!` paths still refer to the generated crate, not the original directory.
 
 After adding or deliberately changing dependencies:
 
@@ -217,11 +217,61 @@ dispatch. Reference execution remains scripted. Native `--scenario` execution us
 the same scripts and does not call Rust adapters, making deterministic failure
 injection possible alongside live host integration tests.
 
+## Explicit source modules
+
+Compiler 0.75 adds optional `rust.modules`: a map from Rust module identifiers to
+source files. For example, a manifest next to an application's `host.rs` can contain:
+
+```json
+"rust": {
+  "source": "host.rs",
+  "lockfile": "Cargo.lock",
+  "modules": {
+    "files": "../../library/host/text_file.rs",
+    "json": "../../library/host/json_string_map.rs"
+  }
+}
+```
+
+The fragment belongs to a complete manifest declaring those modules' primitives.
+The compiler embeds each file as an inline child module inside `rust_host`; do not
+also write `mod files;` in the root. Instead, `host.rs` exposes the selected functions:
+
+```rust
+pub use self::files::{file_read, file_replace};
+pub use self::json::{json_decode, json_encode};
+```
+
+Child modules use `crate::rust_api` for generated outcome types, `super` for their
+parent and sibling modules, and ordinary inline Rust modules for further grouping.
+Public resource types can be re-exported the same way. The compiler retains exact
+wrapper-function checks and the existing retained-resource ownership contract.
+
+Paths resolve against the manifest, independently of the output location or shell
+directory. Module names are single Rust-compatible ASCII identifiers; duplicate
+names, empty paths and lockfile paths are rejected. Rust keywords can be addressed
+with raw identifiers, except `self`, `Self`, `super` and `crate`, which are rejected.
+The root must avoid declaring a colliding item; ordinary Rust compilation diagnoses
+such collisions. Listing the same file under distinct module names creates distinct
+Rust modules, not shared global storage.
+
+Checking and editor diagnostics validate metadata without reading Rust files.
+Native generation reads every listed module on each build, including unused modules,
+and reports missing/unreadable sources with their module name and path. Sources are
+embedded in deterministic name order. This is explicit source composition, not
+recursive filesystem discovery, a package resolver or a new Tellur namespace.
+The manifest still declares a single dependency graph and lockfile, and primitives
+still have project-wide names. All adapter source is trusted Rust with the same
+effect, panic, resource and execution-classification limits described above.
+
 ## Maintained application
 
 The [settings application](../applications/settings/README.md) is the first sustained
 consumer. Tellur handles defaults, key validation, updates and outcome mapping;
 Rust supplies bounded reads, strict JSON decoding, encoding and file replacement.
+Since 0.75, the application and an independent example reuse the
+[JSON file source library](../library/README.md) and explicit Rust modules.
 See [adapter tests](../tests/rust_adapters.rs) and
-[application scenarios](../tests/settings_application.rs). HTTP, retained host handles
-and async operation/cancellation contracts remain later checkpoints.
+[application scenarios](../tests/settings_application.rs). The maintained HTTP service
+uses retained host handles and explicit request contingency; asynchronous operations
+and cancellation contracts remain later checkpoints.

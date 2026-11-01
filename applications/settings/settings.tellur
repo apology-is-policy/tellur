@@ -1,3 +1,5 @@
+import "../../library/json_file.tellur" as json_file;
+
 // Domain policy. The host exposes file/JSON/text mechanisms through the manifest.
 pub outcome loaded_settings {
     loaded { map<string, string> values },
@@ -14,25 +16,29 @@ pub outcome update_result {
     too_large
 }
 pub control load(ref string path) exits loaded_settings {
-    exit delta file_read(path, 1048576) {
-        read { string text } => [received]: delta json_decode(text) {
-            decoded { map<string, string> values } => loaded { values },
-            invalid { string message } => invalid_file { message }
-        },
+    exit delta json_file.load(path, 1048576) {
+        loaded { map<string, string> values } => loaded { values },
         missing => loaded { map {} },
-        too_large => too_large {},
-        read_failed { string message } => storage_failed { message }
+        invalid { string message } => invalid_file { message },
+        read_failed { string message } => storage_failed { message },
+        too_large => too_large {}
     };
 }
+
 control validate_key(ref string key) exits valid, invalid {
-    delta text_trim(key) { trimmed { string normalized } => trimmed }
+    delta text_trim(key) {
+        trimmed { string normalized } => trimmed
+    }
     [trimmed]: exit delta (deref key == normalized && normalized != "") {
         true => valid {},
         false => invalid {}
     };
 }
 pub control set(ref string path, string key, string value) exits update_result {
-    delta validate_key(borrow key) { valid => valid, invalid => exit invalid_key }
+    delta validate_key(borrow key) {
+        valid => valid,
+        invalid => exit invalid_key
+    }
     [valid]:
         delta load(path) {
             loaded { map<string, string> loaded_values } => loaded,
@@ -46,23 +52,27 @@ pub control set(ref string path, string key, string value) exits update_result {
             inserted => changed,
             replaced { string previous } => replaced
         }
-    [changed | replaced]:
-        delta json_encode(borrow values) {
-            encoded { string text } => encoded,
-            encode_failed { string message } => exit storage_failed { message }
-        }
-    [encoded]:
-        exit delta file_replace(path, borrow text, 1048576) {
-            replaced => saved {},
-            write_failed { string write_message } => storage_failed { write_message },
-            commit_uncertain { string uncertain_message } => commit_uncertain { uncertain_message },
-            too_large => too_large {}
-        };
+    [changed | replaced]: exit delta json_file.replace(path, borrow values, 1048576) {
+        saved => saved {},
+        encode_failed { string message } => storage_failed { message },
+        write_failed { string message } => storage_failed { message },
+        commit_uncertain { string message } => commit_uncertain { message },
+        too_large => too_large {}
+    };
 }
+
 pub control get(ref string path, ref string key)
-    exits found { string value }, missing, invalid_key, invalid_file { string message }, storage_failed { string message }, too_large
+    exits found { string value },
+    missing,
+    invalid_key,
+    invalid_file { string message },
+    storage_failed { string message },
+    too_large
 {
-    delta validate_key(key) { valid => valid, invalid => exit invalid_key }
+    delta validate_key(key) {
+        valid => valid,
+        invalid => exit invalid_key
+    }
     [valid]:
         exit delta load(path) {
             loaded { map<string, string> values } => [loaded]: delta map_get(borrow values, key) {

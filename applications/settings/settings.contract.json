@@ -201,6 +201,156 @@
         }
       },
       "implementations": {}
+    },
+    "file:../../library/json_file.tellur": {
+      "declarations": {
+        "load": {
+          "kind": "control",
+          "profile": "control",
+          "type_parameters": [],
+          "requirements": {},
+          "parameters": [
+            {
+              "name": "path",
+              "type": "ref string",
+              "origins": [],
+              "referent_origins": [],
+              "from": null
+            },
+            {
+              "name": "byte_limit",
+              "type": "u32",
+              "origins": [],
+              "referent_origins": [],
+              "from": null
+            }
+          ],
+          "exits": {
+            "kind": "named",
+            "type": "file:../../library/json_file.tellur::load_result",
+            "origins": []
+          }
+        },
+        "load_result": {
+          "kind": "outcome",
+          "type_parameters": [],
+          "origin_parameters": [],
+          "alternatives": {
+            "invalid": [
+              {
+                "name": "message",
+                "type": "string",
+                "origins": [],
+                "referent_origins": [],
+                "from": null
+              }
+            ],
+            "loaded": [
+              {
+                "name": "values",
+                "type": "map<string, string>",
+                "origins": [],
+                "referent_origins": [],
+                "from": null
+              }
+            ],
+            "missing": [],
+            "read_failed": [
+              {
+                "name": "message",
+                "type": "string",
+                "origins": [],
+                "referent_origins": [],
+                "from": null
+              }
+            ],
+            "too_large": []
+          },
+          "exit_codes": {},
+          "capabilities": {
+            "copy": null,
+            "clone": null,
+            "drop": null
+          }
+        },
+        "replace": {
+          "kind": "control",
+          "profile": "control",
+          "type_parameters": [],
+          "requirements": {},
+          "parameters": [
+            {
+              "name": "path",
+              "type": "ref string",
+              "origins": [],
+              "referent_origins": [],
+              "from": null
+            },
+            {
+              "name": "values",
+              "type": "ref map<string, string>",
+              "origins": [],
+              "referent_origins": [],
+              "from": null
+            },
+            {
+              "name": "byte_limit",
+              "type": "u32",
+              "origins": [],
+              "referent_origins": [],
+              "from": null
+            }
+          ],
+          "exits": {
+            "kind": "named",
+            "type": "file:../../library/json_file.tellur::replace_result",
+            "origins": []
+          }
+        },
+        "replace_result": {
+          "kind": "outcome",
+          "type_parameters": [],
+          "origin_parameters": [],
+          "alternatives": {
+            "commit_uncertain": [
+              {
+                "name": "message",
+                "type": "string",
+                "origins": [],
+                "referent_origins": [],
+                "from": null
+              }
+            ],
+            "encode_failed": [
+              {
+                "name": "message",
+                "type": "string",
+                "origins": [],
+                "referent_origins": [],
+                "from": null
+              }
+            ],
+            "saved": [],
+            "too_large": [],
+            "write_failed": [
+              {
+                "name": "message",
+                "type": "string",
+                "origins": [],
+                "referent_origins": [],
+                "from": null
+              }
+            ]
+          },
+          "exit_codes": {},
+          "capabilities": {
+            "copy": null,
+            "clone": null,
+            "drop": null
+          }
+        }
+      },
+      "implementations": {}
     }
   },
   "manifest_types": {}

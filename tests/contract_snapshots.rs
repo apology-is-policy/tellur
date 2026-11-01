@@ -444,8 +444,12 @@ fn settings_application_supplies_a_reviewable_unchanged_baseline() {
     let source = fs::read_to_string(root.join("settings.tellur")).unwrap();
     let changed = source.replace("1048576", "2097152");
     let after =
-        modules::contract_snapshot_with_loader(root.join("settings.tellur"), manifest, |_| {
-            Ok(changed.clone())
+        modules::contract_snapshot_with_loader(root.join("settings.tellur"), manifest, |path| {
+            if path == root.join("settings.tellur") {
+                Ok(changed.clone())
+            } else {
+                fs::read_to_string(path)
+            }
         })
         .unwrap();
     assert!(

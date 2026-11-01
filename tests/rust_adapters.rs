@@ -101,6 +101,120 @@ fn checking_does_not_read_or_execute_rust_and_paths_follow_the_manifest() {
     );
 }
 #[test]
+fn explicit_module_paths_are_validated_without_reading_sources() {
+    let f = Fixture::new();
+    let mut m = config();
+    m["rust"]["modules"] = json!({"helpers":"shared files/é.rs"});
+    let manifest = f.manifest(&m);
+    assert_eq!(
+        manifest.rust.as_ref().unwrap().modules["helpers"],
+        f.root.join("shared files/é.rs")
+    );
+    fs::write(
+        f.root.join("host.rs"),
+        "// the child has not been created yet",
+    )
+    .unwrap();
+    let p = compile("control main() exits done {exit done;}", manifest).unwrap();
+    let error = support::scenario_executable(&p)
+        .native_source("main")
+        .unwrap_err();
+    assert_eq!(error.code, "E_RUST_ADAPTER");
+    assert!(error.message.contains("module `helpers`"));
+    assert!(error.message.contains("shared files/é.rs"));
+    for (name, path) in [
+        ("self", "helper.rs"),
+        ("nested::name", "helper.rs"),
+        ("_", "helper.rs"),
+        ("helper", ""),
+        ("helper", "Cargo.lock"),
+    ] {
+        m["rust"]["modules"] = json!({name:path});
+        assert_eq!(
+            Manifest::from_json(&m.to_string()).unwrap_err().code,
+            "E_RUST_ADAPTER",
+            "{name}: {path}"
+        );
+    }
+    let duplicate = config().to_string().replace(
+        "\"source\":\"host.rs\"",
+        "\"source\":\"host.rs\",\"modules\":{\"helper\":\"a.rs\",\"helper\":\"b.rs\"}",
+    );
+    assert_eq!(
+        Manifest::from_json(&duplicate).unwrap_err().code,
+        "E_MANIFEST"
+    );
+}
+
+#[test]
+fn native_modules_embed_explicit_sources_and_keep_wrapper_checks() {
+    let f = Fixture::new();
+    let mut m = config();
+    // Keyword module names work as raw Rust identifiers; paths are independent
+    // of the generated output directory and the process working directory.
+    m["rust"]["modules"] = json!({"type":"shared files/é.rs", "suffix":"suffix.rs"});
+    fs::create_dir(f.root.join("shared files")).unwrap();
+    fs::write(f.root.join("host.rs"), "pub use self::r#type::inspect;").unwrap();
+    let child = f.root.join("shared files/é.rs");
+    fs::write(&child, "//! Embedded child documentation.\npub fn inspect(value:&str)->crate::rust_api::inspect_outcome {crate::rust_api::inspect_outcome::ready(format!(\"{}{}\",value,super::suffix::text()))}\n// trailing comment").unwrap();
+    fs::write(
+        f.root.join("suffix.rs"),
+        "pub fn text()-> &'static str {\"!\"}",
+    )
+    .unwrap();
+    let p = compile(
+        "control main(string input) exits auto {forward inspect(borrow input);}",
+        f.manifest(&m),
+    )
+    .unwrap();
+    let before = support::scenario_executable(&p)
+        .native_source("main")
+        .unwrap();
+    assert!(before.contains("mod r#type {"));
+    for expanded in [false, true] {
+        let p = if expanded {
+            p.expanded("main").unwrap()
+        } else {
+            p.clone()
+        };
+        let binary = f.root.join(format!("module-{expanded}"));
+        support::scenario_executable(&p)
+            .build_native("main", &binary, 0)
+            .unwrap();
+        let output = Command::new(binary)
+            .args(["--json", "--", "hello"])
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let report: Json = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(
+            report["fields"][0],
+            json!({"kind":"string","value":"hello!"})
+        );
+    }
+    fs::write(
+        f.root.join("suffix.rs"),
+        "pub fn text()-> &'static str {\"?\"}",
+    )
+    .unwrap();
+    assert_ne!(
+        before,
+        support::scenario_executable(&p)
+            .native_source("main")
+            .unwrap()
+    );
+    fs::write(&child, "pub fn inspect(_:u32)->crate::rust_api::inspect_outcome {crate::rust_api::inspect_outcome::ready(String::new())}").unwrap();
+    let error = support::scenario_executable(&p)
+        .build_native("main", &f.root.join("wrong-module"), 0)
+        .unwrap_err();
+    assert_eq!(error.code, "E_BACKEND");
+    assert!(error.message.contains("mismatched types"), "{error}");
+}
+#[test]
 fn native_rust_signature_mismatch_is_a_build_error() {
     let f = Fixture::new();
     fs::write(f.root.join("host.rs"),"pub fn inspect(value:u32)->crate::rust_api::inspect_outcome {crate::rust_api::inspect_outcome::ready(value.to_string())}").unwrap();
@@ -529,6 +643,45 @@ fn retained_file_example_runs_live_and_scripted_failure_paths() {
         assert_eq!(actual["outcome"], expected);
         assert_eq!(actual["events"].as_array().unwrap().len(), 3);
     }
+}
+
+#[test]
+fn resource_types_and_operations_can_be_reexported_from_an_explicit_module() {
+    let f = Fixture::new();
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/retained_file");
+    let mut config: Json =
+        serde_json::from_str(include_str!("../examples/retained_file/manifest.json")).unwrap();
+    config["rust"]["modules"] = json!({"files":root.join("host.rs")});
+    fs::write(
+        f.root.join("host.rs"),
+        "pub use self::files::{InputFile, file_open, file_chunk, file_release};",
+    )
+    .unwrap();
+    let p = compile(
+        include_str!("../examples/retained_file/main.tellur"),
+        f.manifest(&config),
+    )
+    .unwrap();
+    let binary = f.root.join("reexported-resource");
+    p.build_native("main", &binary, 0).unwrap();
+    let input = f.root.join("input.txt");
+    fs::write(&input, b"owned module resource").unwrap();
+    let output = Command::new(&binary)
+        .args(["--json", "--"])
+        .arg(input)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report: Json = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["outcome"], "data");
+    assert_eq!(
+        report["fields"][0],
+        json!({"kind":"bytes","value":b"owned module resource"})
+    );
 }
 
 #[test]

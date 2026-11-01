@@ -1056,10 +1056,15 @@ control main() exits done {
     console.log('TELLUR_IDENTITY_ROUTING_EDITOR_TESTS_PASSED: grouped auto hover, qualified path hover, omitted-arm coverage, repair and native execution');
     await require('./ownership-checkpoint.cjs').run(root);
     await require('./lexical-checkpoint.cjs').run(root);
-    const settingsFolder = path.join(root, 'settings-app');
+    const settingsFolder = path.join(root, 'shared-library', 'applications', 'settings');
     await fs.mkdir(settingsFolder, {recursive:true});
     for (const file of ['main.tellur', 'settings.tellur', 'server.tellur', 'http.tellur', 'manifest.json', 'host.rs', 'Cargo.lock']) {
       await fs.copyFile(path.join(__dirname, '../../../applications/settings', file), path.join(settingsFolder, file));
+    }
+    for (const file of ['json_file.tellur', 'host/text_file.rs', 'host/json_string_map.rs']) {
+      const destination = path.join(root, 'shared-library', 'library', file);
+      await fs.mkdir(path.dirname(destination), {recursive:true});
+      await fs.copyFile(path.join(__dirname, '../../../library', file), destination);
     }
     const settingsUri = vscode.Uri.file(path.join(settingsFolder, 'main.tellur'));
     const settingsDocument = await vscode.workspace.openTextDocument(settingsUri);

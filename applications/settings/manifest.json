@@ -603,6 +603,10 @@
     "resources": {
       "http_listener": "Listener",
       "http_connection": "Connection"
+    },
+    "modules": {
+      "files": "../../library/host/text_file.rs",
+      "json": "../../library/host/json_string_map.rs"
     }
   },
   "launch": {

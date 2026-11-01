@@ -199,7 +199,7 @@ fn native_settings_persists_reloads_and_matches_scripted_failures() {
                 p.unwrap()
                     .file_name()
                     .to_string_lossy()
-                    .starts_with(".tellur-settings-")
+                    .starts_with(".tellur-file-")
             }));
         }
     }
@@ -266,7 +266,7 @@ fn native_file_replacement_reports_size_preparation_and_uncertain_commit_failure
         p.unwrap()
             .file_name()
             .to_string_lossy()
-            .starts_with(".tellur-settings-")
+            .starts_with(".tellur-file-")
     }));
     fs::remove_dir_all(root).unwrap();
 }

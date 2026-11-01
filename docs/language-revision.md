@@ -12,13 +12,17 @@ returned loans and pending resource obligations. This completes the construction
 follow-up group. P2a now adds bounded straight-line statement recovery, with
 dependent-value suppression and clean diagnostic replay. P2b extends this to disjoint
 paths, nested groups/scopes, statement arms and loop bodies, preserving full authored
-selectors and conservative fault/adapter barriers. The next practical group returns
-to P5 application-driven library work; preparation-phase and finer diagnostic recovery
-remain explicit follow-ups.
+selectors and conservative fault/adapter barriers. P5b.2a now extracts the first shared
+JSON file library, backed by I1b.2a's explicit Rust source modules. The settings service
+and an independent executable share its storage mechanisms while choosing their own
+defaults and failure policy. The shared-library example exposed the next small
+editor gap: show imported callee contracts at call sites alongside the existing
+selected-history explanation (P4d). Continue application-driven library work, with
+preparation-phase and finer diagnostic recovery remaining explicit follow-ups.
 Broader physical copy elision and suspended activation frames remain separate work.
 
 1 November 2026. This is the working revision plan, not a claim that all proposed
-features are implemented. Compiler **0.74.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
+features are implemented. Compiler **0.75.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
 lifetime checkpoints of milestone 2, the array/vector/map core of milestone 3,
 and implicit entry, inline/stored adapters, owned capture, named outcome contracts
 and checked forwarding in milestone 4. A first [semantic foundation](semantic-foundation.md)
@@ -169,13 +173,14 @@ unimplemented syntax are promised.
 | P2b | Path and scope diagnostic recovery | **Delivered in 0.74:** uncertainty by selected domain, independent disjoint paths, nested groups/lexical scopes, statement arms, terminal statements and loop bodies; full-selector joins, conservative fault/adapter/header barriers, fresh replay and editor/import coverage |
 | I1a | Owned-data Rust adapters | **Delivered in 0.45**: typed wrapper/result generation, registry dependencies and explicit locking, owned scalar/collection data, shared call borrows, blocking/immediate classification and scripted/live conformance |
 | I1b.1 | Retained host resource foundation | **Delivered in 0.49**: opaque must-complete Rust owners, direct shared/consuming calls, explicit resource return on retry, checked runtime identities, teardown fallback and live/scripted/editor evidence |
-| I1b.2 | Broader Rust reuse | Application-driven follow-up: richer data boundaries, exclusive foreign mutation and dependency/package ergonomics; stable binary ABI and LTO remain later layers |
+| I1b.2 | Broader Rust reuse | **Explicit source modules delivered in 0.75 (I1b.2a):** manifest-relative embedded child modules, exact wrapper checks, shared sources and one locked dependency graph. Richer data boundaries, exclusive foreign mutation and package ergonomics remain application-driven follow-ups; stable binary ABI and LTO remain later layers |
 | P3 | Readable path labels and direct dispositions | **Grouping/layout in 0.53; direct exits in 0.54; selected-history hover in 0.55**: resolved selectors, aliases, local arm facts, one-iteration loop context, bounded origins and fresh unsaved checking. The planned P3 slice is complete; multi-statement arm syntax remains separate |
 | P4 | Explain, format and contract changes | **P4a delivered in 0.56:** whole-document CLI/editor formatting preserving labels, grouping, comments and literals; 0.61 adds configurable wrapping and the author’s inline-label style. **P4b.1 delivered in 0.57:** checked public snapshots/diffs, symbolic permissions, editor export and an application baseline. **P4b.2 delivered in 0.58:** typed bounded contributor evidence, separate public/evidence diffs, source sites, editor export and an application baseline. **P4c delivered in 0.59:** source-position and targeted outcome queries, private roots, readable Markdown/structured JSON and editor actions. This planned tooling slice is complete; loop-carried/indirect/cross-call payload lineage and generic root evidence remain explicit follow-ups. All reports distinguish structural evidence from feasible inputs |
+| P4d | Call-site contract hover | Application-driven follow-up from 0.75: imported library calls currently expose selected histories rather than the callee signature. Show the checked callee contract while preserving the selection explanation and fresh unsaved checking |
 | P5a | Sustained application: persistent CLI | **Delivered in 0.45**: settings load/get/set, validation, strict JSON, bounded input/output, replacement uncertainty and live/scripted failure scenarios |
 | P5a.1 | Executable outcome status contracts | **Delivered in 0.48**: alternative annotations, exhaustive entry mappings, final-contract policy, exact exec status propagation, and settings/editor migration |
 | P5b.1 | Sustained application: blocking HTTP | **Delivered in 0.50**: loopback settings/lookup/update endpoints, Tellur policy, retained listeners/connections, framing/size/deadline limits, budget/idle shutdown and live/scripted cleanup evidence |
-| P5b.2 | Sustained application and library growth | Maintain CLI/server during P2–P4; extract reusable mechanisms when contracts settle. Signal-driven shutdown, richer HTTP and concurrency remain later work |
+| P5b.2 | Sustained application and library growth | **First extraction delivered in 0.75 (P5b.2a):** JSON string-map file library, shared Rust read/replace/JSON modules, independent executable, maintained settings behavior and explicit missing/invalid/preparation/uncertainty contracts. Continue extracting proven mechanisms and improving the application; signal-driven shutdown, richer HTTP and concurrency remain later work |
 | P6a | Boundary policy and execution evidence | **Delivered in 0.60:** agreed boundary termination without local catch/resume; bounded reference/native failure reports, observed activation IDs, source/expansion origins and explicit teardown limits. These IDs do not yet address storage |
 | P6b | Source faults and transitive contracts | **Delivered in 0.62:** source termination, public/trait fault permissions and private inference; live resources require explicit retained-owner release dispositions at faulting paths/calls. Fault-only controls omit `exits`. Faulting operators and no-fault annotations remain separate decisions |
 | P6c | Activation-owned storage | **Sequential slice delivered in 0.63:** invocation-local storage ranges, activation addresses, normal/fault retirement, protected parent storage and retained handover. Suspended frames/child-task retirement remain E1 prerequisites |

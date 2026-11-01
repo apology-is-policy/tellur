@@ -443,6 +443,22 @@ fn retained_resource_diagnostics_do_not_need_the_rust_source() {
     assert!(!f.root.join("host.rs").exists());
 }
 #[test]
+fn explicit_rust_modules_do_not_need_source_files_during_editor_checks() {
+    let mut f = Fixture::new();
+    let mut manifest: serde_json::Value =
+        serde_json::from_str(include_str!("../examples/retained_file/manifest.json")).unwrap();
+    manifest["rust"]["modules"] = json!({"files":"absent/file.rs"});
+    fs::write(f.root.join("manifest.json"), manifest.to_string()).unwrap();
+    let source = include_str!("../examples/retained_file/main.tellur");
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    f.change(&source.replace("file_release(file);", ""), 2);
+    assert_eq!(f.diagnostics()[0]["code"], "E_RESOURCE");
+    f.change(source, 3);
+    assert_eq!(f.diagnostics(), json!([]));
+    assert!(!f.root.join("absent/file.rs").exists());
+}
+#[test]
 fn outcome_status_hover_and_unsaved_annotation_errors() {
     let mut f = Fixture::new();
     let source = "outcome result {\n @exit 0 done,\n @exit 23 missing\n}\ncontrol main() exits result {exit done;}";
@@ -2032,7 +2048,13 @@ fn rust_adapter_project_checks_unsaved_sources_without_loading_host_code() {
     .unwrap();
     fs::write(
         f.root.join("settings.tellur"),
-        include_str!("../applications/settings/settings.tellur"),
+        include_str!("../applications/settings/settings.tellur")
+            .replace("../../library/json_file.tellur", "json_file.tellur"),
+    )
+    .unwrap();
+    fs::write(
+        f.root.join("json_file.tellur"),
+        include_str!("../library/json_file.tellur"),
     )
     .unwrap();
     fs::write(

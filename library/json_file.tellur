@@ -1,0 +1,43 @@
+// Reusable storage mechanisms. Defaults and key policy belong to the caller.
+pub outcome load_result {
+    loaded { map<string, string> values },
+    missing,
+    invalid { string message },
+    read_failed { string message },
+    too_large
+}
+
+pub outcome replace_result {
+    saved,
+    encode_failed { string message },
+    write_failed { string message },
+    commit_uncertain { string message },
+    too_large
+}
+
+pub control load(ref string path, u32 byte_limit) exits load_result {
+    exit delta file_read(path, byte_limit) {
+        read { string text } => delta json_decode(text) {
+            decoded { map<string, string> values } => loaded { values },
+            invalid { string message } => invalid { message }
+        },
+        missing => missing {},
+        read_failed { string message } => read_failed { message },
+        too_large => too_large {}
+    };
+}
+
+pub control replace(ref string path, ref map<string, string> values, u32 byte_limit)
+    exits replace_result
+{
+    delta json_encode(values) {
+        encoded { string text } => encoded,
+        encode_failed { string message } => exit encode_failed { message }
+    }
+    [encoded]: exit delta file_replace(path, borrow text, byte_limit) {
+        replaced => saved {},
+        write_failed { string message } => write_failed { message },
+        commit_uncertain { string message } => commit_uncertain { message },
+        too_large => too_large {}
+    };
+}

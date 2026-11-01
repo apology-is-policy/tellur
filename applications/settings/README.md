@@ -4,9 +4,19 @@ This is Tellur's maintained application: a local JSON settings CLI and, since
 compiler 0.50, a sequential loopback HTTP service using the same domain module.
 
 `settings.tellur` owns defaults, key validation, lookup/update decisions and failure
-mapping. `host.rs` implements file, JSON and text mechanisms through typed Rust
-adapters generated from `manifest.json`. The committed `Cargo.lock` makes native
+mapping. It imports the shared [JSON file library](../../library/README.md); `host.rs`
+re-exports file/JSON mechanisms from explicit Rust modules in `manifest.json` and
+implements text/socket mechanisms through typed adapters. The committed `Cargo.lock` makes native
 builds use the declared dependency graph.
+
+The extraction in 0.75 preserves the application's entry contracts and 1 MiB limits.
+The library separately exposes missing data, invalid JSON, read failure, encoding
+failure, write preparation failure and uncertain replacement; this application still
+chooses an empty map for a missing file and maps failures into its existing outcomes.
+The public snapshot now includes the imported library module, and the contributor
+baseline records that extra call layer. The independent
+[JSON file example](../../examples/json_file/main.tellur) uses the same mechanisms
+without importing the settings service or its HTTP dependency.
 
 Since compiler 0.54, validation and storage failures use direct arm exits such as
 `invalid => exit invalid_key`. The continuing success paths remain labeled; the

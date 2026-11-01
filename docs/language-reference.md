@@ -1,8 +1,8 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.74.0 -->
+<!-- tellur-reference-version: 0.75.0 -->
 
-This manual describes **compiler 0.74.0**, including the current ownership model,
+This manual describes **compiler 0.75.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -36,6 +36,7 @@ The companion chapters provide quick lookup:
 - [Core grammar](reference/grammar.md): schematic syntax for modern source programs.
 - [Diagnostics and limits](reference/diagnostics-and-limits.md): rejected programs, repairs and implementation budgets.
 - [Feature status](reference/support-status.md): implemented boundaries and queued features.
+- [Source library](../library/README.md): shared JSON file contracts, explicit imports and Rust adapter modules.
 - [Formatting](reference/formatting.md): terminal commands, VS Code and layout preservation.
 - [Public contract snapshots](reference/contract-snapshots.md): portable checked interfaces, reviewable diffs and the editor JSON view.
 - [Outcome absorption](reference/outcome-absorption.md): internal contributors and changes hidden by an unchanged public contract.
@@ -2586,6 +2587,16 @@ itself is currently rejected. See [the runnable example](../playground/generic_c
 
 ## Live primitive library
 
+The [source library](../library/README.md) adds reusable controls above manifest
+primitives. Its `json_file.load` preserves missing, invalid, unreadable and oversized
+input as distinct outcomes; `json_file.replace` preserves encoding, preparation and
+uncertain replacement failures. Both use explicit byte limits and borrowed inputs.
+Importing these controls does not choose application defaults, process exit codes
+or a host implementation. The project manifest supplies their four primitive
+signatures and explicitly selected [Rust source modules](rust-adapters.md#explicit-source-modules).
+The [independent example](../examples/json_file/main.tellur) and settings service
+reuse the same files. There is no implicit standard-library import or package resolver.
+
 The playground manifest uses these snake_case contracts. Payload types are shown;
 parameter names are omitted. Other manifest primitives need a live adapter or a script.
 
@@ -2678,7 +2689,7 @@ It does not yet provide general expression or call-site type hover.
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and async tasks remain planned; they are not executable features of 0.74.0.
+and async tasks remain planned; they are not executable features of 0.75.0.
 ## Contingency and supervised boundaries
 
 The [contingency reference](reference/contingency.md) specifies `@contingent`,

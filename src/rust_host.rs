@@ -16,6 +16,13 @@ use std::{
 pub struct Configuration {
     pub source: PathBuf,
     pub lockfile: PathBuf,
+    /// Explicit child modules embedded inside rust_host, alongside source.
+    #[serde(
+        default,
+        skip_serializing_if = "BTreeMap::is_empty",
+        deserialize_with = "crate::launch::unique_map"
+    )]
+    pub modules: BTreeMap<String, PathBuf>,
     #[serde(default)]
     pub dependencies: BTreeMap<String, Dependency>,
     /// Tellur opaque must-complete type -> public type in the adapter module.
@@ -81,6 +88,13 @@ pub(crate) fn validate(manifest: &Manifest) -> Result<()> {
             return Err(error(
                 "Rust source and lockfile must be distinct nonempty paths",
             ));
+        }
+        for (name, path) in &config.modules {
+            if !identifier(name) || path.as_os_str().is_empty() || path == &config.lockfile {
+                return Err(error(format!(
+                    "Rust module `{name}` requires a Rust-compatible identifier and a nonempty source path distinct from the lockfile"
+                )));
+            }
         }
         for (name, d) in &config.dependencies {
             if !name
@@ -186,7 +200,10 @@ pub(crate) fn source(manifest: &Manifest) -> Result<String> {
     let Some(config) = &manifest.rust else {
         return Ok("fn rust_dispatch(_: &mut Resources, _: &str, _: Vec<V>) -> R<Outcome> { Err(\"E_HOST: no Rust adapter\".into()) }\n".into());
     };
-    if !config.source.is_absolute() || !config.lockfile.is_absolute() {
+    if !config.source.is_absolute()
+        || !config.lockfile.is_absolute()
+        || config.modules.values().any(|path| !path.is_absolute())
+    {
         return Err(error(
             "native adapter paths are unresolved; load the manifest with Manifest::from_json_at",
         ));
@@ -229,6 +246,15 @@ pub(crate) fn source(manifest: &Manifest) -> Result<String> {
     }
     code.push_str("}\nmod rust_host {\n");
     code.push_str(&source);
+    for (name, path) in &config.modules {
+        let source = std::fs::read_to_string(path).map_err(|e| {
+            error(format!(
+                "cannot read Rust adapter module `{name}` at {}: {e}",
+                path.display()
+            ))
+        })?;
+        write!(code, "\nmod r#{name} {{\n{source}\n}}\n").unwrap();
+    }
     code.push_str("\n}\n");
     all.retain(|t| !resources.contains_key(t));
     let ids: BTreeMap<_, _> = all

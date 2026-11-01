@@ -1,0 +1,46 @@
+import "../../library/json_file.tellur" as json_file;
+
+// Reuse the storage contract without the settings application's key/default policy.
+control main(string path) exits display_result {
+    delta json_file.load(borrow path, 1048576) {
+        loaded { map<string, string> values } => loaded,
+        missing => exit missing,
+        invalid { string message } => {
+            emit(message);
+            exit failed;
+        },
+        read_failed { string message } => {
+            emit(message);
+            exit failed;
+        },
+        too_large => {
+            emit("File exceeds 1 MiB.");
+            exit failed;
+        }
+    }
+    [loaded]: delta json_encode(borrow values) {
+        encoded { string text } => {
+            emit(text);
+            exit done;
+        },
+        encode_failed { string message } => {
+            emit(message);
+            exit failed;
+        }
+    }
+}
+
+control save(string path, string key, string value) exits json_file.replace_result {
+    mutable map<string, string> values = map {};
+    delta map_insert(borrow mutable values, key, value) {
+        inserted => inserted,
+        replaced { string previous } => replaced
+    }
+    [inserted | replaced]: forward json_file.replace(borrow path, borrow values, 1048576);
+}
+
+outcome display_result {
+    @exit 0 done,
+    @exit 3 missing,
+    @exit 1 failed
+}
