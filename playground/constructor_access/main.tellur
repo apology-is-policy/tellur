@@ -1,0 +1,28 @@
+import "messages.tellur" as messages;
+
+control first() exits ready { messages.message value } {
+    exit ready { messages.message("First constructor") };
+}
+
+control second() exits ready { messages.envelope value } {
+    exit ready { messages.envelope("Second constructor") };
+}
+
+control main() exits process_result {
+    delta first() {
+        ready { auto value } => first_ready
+    }
+    [first_ready]:
+        messages.show_message(borrow value);
+        delta second() {
+            ready { auto nested } => second_ready
+        }
+
+    [second_ready]:
+        messages.show_envelope(borrow nested);
+        exit done;
+}
+
+outcome process_result {
+    @exit 0 done
+}

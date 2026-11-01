@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.90.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.91.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -3083,3 +3083,32 @@ suppression, fresh parameter names, repair and native execution emitting
 payloads were verified at 0.90.0. Existing windows were not reloaded. Formatting and
 whitespace checks passed. Executable IR, certificates, ownership and fault semantics
 are unchanged; earlier diagnostic/runtime/library evidence is reused.
+
+## 0.91 — Constructor-call preparation diagnostics
+
+P2j stages constructor-call rewriting per independent body using the complete
+constructor and visibility tables. Inaccessible calls report one `E_PRIVATE` per
+prepared body under the shared 32-error budget. All staged bodies are committed
+only after the phase succeeds. A failed phase blocks generic expansion, concrete
+signature checks, body diagnostics and checked hover. Earlier module resolution,
+constructor-definition preparation and trait lowering retain their existing barriers.
+
+Five CLI/batch tests cover source points with Unicode/CRLF, same-body successive
+errors, unused generic controls, constructors, methods, named and lexical isolation,
+transitive imported locations, first-error compatibility, budget and phase barriers.
+Two LSP tests cover unsaved constructor visibility changes, independent repairs,
+imported related locations and fresh inferred/call contracts. The runnable
+`playground/constructor_access` example keeps implementation fields private.
+
+Final validation passed **428 Rust tests across 14 affected targets**, including
+all 170 LSP tests, 39 diagnostic tests, 52 statement-recovery tests and three manual
+checks, plus **42 Node tests**. Constructor, module, generic, trait, boundary, public
+contract, snapshot and certificate checks preserve native and expansion behavior.
+Focused checks and the broader run passed without test or implementation corrections.
+
+Isolated VS Code verified two inaccessible constructors, independent unsaved
+visibility repairs, no stale hover and native execution emitting `First constructor`
+and `Second constructor`. Six binaries and nine packaged/installed payloads match
+release 0.91.0. Existing windows were not reloaded. Formatting and whitespace checks
+passed; unchanged runtime/library evidence is reused. Executable formats and the
+language's ownership, origin and fault rules are unchanged.

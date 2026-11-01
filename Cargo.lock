@@ -290,7 +290,7 @@ dependencies = [
 
 [[package]]
 name = "tellur"
-version = "0.90.0"
+version = "0.91.0"
 dependencies = [
  "lsp-server",
  "serde",

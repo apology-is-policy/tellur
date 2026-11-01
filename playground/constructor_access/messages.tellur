@@ -1,0 +1,27 @@
+// Remove both `pub` constructor modifiers to see two independent caller errors.
+// Calls inside this module keep access to its private constructors.
+pub struct message {
+    string text;
+
+    pub constructor(string text) {
+        self.text = move text;
+    }
+}
+
+pub struct envelope {
+    message inner;
+
+    pub constructor(string text) {
+        self.inner = message(move text);
+    }
+}
+
+pub control show_message(ref message value) exits done {
+    emit(borrow value.text);
+    exit done;
+}
+
+pub control show_envelope(ref envelope value) exits done {
+    show_message(borrow value.inner);
+    exit done;
+}

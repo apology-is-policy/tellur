@@ -265,20 +265,22 @@ pub(crate) fn prepare(unit: &mut Unit) -> Result<()> {
 pub(crate) fn rewrite_calls(
     unit: &mut Unit,
     visibility: &crate::modules::Visibility,
-) -> Result<()> {
+) -> crate::CheckResult<()> {
     let constructors: BTreeMap<_, _> = unit
         .data
         .iter()
         .filter_map(|d| d.constructor.as_ref().map(|c| (d.name.clone(), c.public)))
         .collect();
-    for region in &mut unit.regions {
-        let caller = region.name.clone();
-        items(&mut region.body, &mut |_, _| Ok(()), &mut |e, at| {
+    // Each body depends only on the complete constructor/visibility tables.
+    // Stage rewrites so a failed phase never leaves partially lowered bodies.
+    let bodies = crate::diagnostics::collect_checks(unit.regions.iter().map(|region| {
+        let mut body = region.body.clone();
+        items(&mut body, &mut |_, _| Ok(()), &mut |e, at| {
             if let ExprKind::Call(name, _) = &mut e.kind {
                 let base = crate::collection_support::generic(name)
                     .map_or(name.as_str(), |(base, _)| base);
                 if let Some(public) = constructors.get(base) {
-                    if !public && visibility.external(&caller, base) {
+                    if !public && visibility.external(&region.name, base) {
                         return Err(Diagnostic::new(
                             "E_PRIVATE",
                             at,
@@ -290,6 +292,10 @@ pub(crate) fn rewrite_calls(
             }
             Ok(())
         })?;
+        Ok(body)
+    }))?;
+    for (region, body) in unit.regions.iter_mut().zip(bodies) {
+        region.body = body;
     }
     Ok(())
 }

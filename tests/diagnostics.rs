@@ -864,3 +864,172 @@ fn json_and_text_checks_discover_the_same_manifest_through_a_source_symlink() {
         .unwrap();
     assert!(output.status.success(), "{output:?}");
 }
+
+#[test]
+fn constructor_call_preparation_batches_independent_bodies_and_stops_later_phases() {
+    let f = Fixture::new();
+    f.write("types.tellur", "pub struct box<t> {t value;constructor(t input) {self.value=move input;}}pub control create<t>(t input) exits ready {box<t> value} {exit ready {box<t>(move input)};}");
+    let source = "// 🙂 constructor privacy\r\nimport \"types.tellur\" as types;\r\ncontrol first() exits done {auto one=types.box<string>(\"one\");auto two=types.box<string>(\"two\");drop(one);drop(two);exit done;}\r\ncontrol generic<t>(t input) exits ready {types.box<t> value} {exit ready {types.box<t>(move input)};}\r\nstruct wrapper {types.box<string> value;constructor() {self.value=types.box<string>(\"wrapped\");}}\r\ncontrol caller() exits done {first();exit done;}\r\ncontrol signature(u32 same,u32 same) exits done {exit done;}\r\ncontrol body() exits done {u32 invalid=true;exit done;}";
+    f.write("main.tellur", source);
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    let errors = report["diagnostics"].as_array().unwrap();
+    assert_eq!(errors.len(), 3, "{report}");
+    assert_eq!(report["diagnostics_limited"], false);
+    assert!(report["summary"].is_null());
+    for selected in [
+        "types.box<string>(\"one\")",
+        "types.box<t>(move input)",
+        "types.box<string>(\"wrapped\")",
+    ] {
+        let position = scalar_position(source, source.find(selected).unwrap());
+        assert!(
+            errors.iter().any(|e| e["position"] == position),
+            "{selected}: {report}"
+        );
+    }
+    assert!(
+        errors.iter().all(|e| e["code"] == "E_PRIVATE"
+            && e["path"] == f.root.join("main.tellur").to_str().unwrap()),
+        "{report}"
+    );
+    assert!(
+        !report.to_string().contains("_path_") && !report.to_string().contains("$constructor"),
+        "{report}"
+    );
+    let manifest = Manifest::from_json(include_str!("../playground/manifest.json")).unwrap();
+    let first = tellur::compile_file(f.root.join("main.tellur"), manifest).unwrap_err();
+    assert_eq!(first.diagnostic.code, "E_PRIVATE");
+    assert_eq!(first.diagnostic.span.line, 3);
+    // Repairing an earlier private call exposes the next one in that body, not
+    // the unrelated signature/body phase. Unused generic bodies are checked too.
+    let repaired = source.replace(
+        "auto one=types.box<string>(\"one\");",
+        "string one=\"one\";",
+    );
+    f.write("main.tellur", &repaired);
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    assert_eq!(report["diagnostics"].as_array().unwrap().len(), 3);
+    assert_eq!(
+        report["diagnostics"][0]["position"],
+        scalar_position(
+            &repaired,
+            repaired.find("types.box<string>(\"two\")").unwrap()
+        )
+    );
+    // Once the privacy phase is valid, the next declaration phase becomes visible.
+    f.write("types.tellur", "pub struct box<t> {t value;pub constructor(t input) {self.value=move input;}}pub control create<t>(t input) exits ready {box<t> value} {exit ready {box<t>(move input)};}");
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    assert_eq!(
+        report["diagnostics"].as_array().unwrap().len(),
+        1,
+        "{report}"
+    );
+    assert_eq!(report["diagnostics"][0]["code"], "E_NAME");
+    assert_eq!(report["diagnostics"][0]["position"]["line"], 7);
+}
+
+#[test]
+fn constructor_call_preparation_keeps_transitive_module_locations() {
+    let f = Fixture::new();
+    f.write(
+        "types.tellur",
+        "pub struct message {string value;constructor(string input) {self.value=move input;}}",
+    );
+    for (file, alias) in [("one.tellur", "data"), ("two.tellur", "types")] {
+        f.write(file, &format!("// nested 🙂\nimport \"types.tellur\" as {alias};\npub control make() exits ready {{{alias}.message value}} {{exit ready {{{alias}.message(\"hello\")}};}}"));
+    }
+    f.write("main.tellur", "import \"one.tellur\" as one;import \"two.tellur\" as two;control main() exits done {exit done;}");
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    let errors = report["diagnostics"].as_array().unwrap();
+    assert_eq!(errors.len(), 2, "{report}");
+    for file in ["one.tellur", "two.tellur"] {
+        assert!(
+            errors
+                .iter()
+                .any(|e| e["path"] == f.root.join(file).to_str().unwrap()
+                    && e["position"]["line"] == 3
+                    && e["code"] == "E_PRIVATE"),
+            "{report}"
+        );
+    }
+    assert!(!report.to_string().contains("_path_"), "{report}");
+}
+
+#[test]
+fn constructor_call_preparation_preserves_earlier_phase_barriers() {
+    let f = Fixture::new();
+    f.write(
+        "types.tellur",
+        "pub struct message {string value;constructor(string input) {self.value=move input;}}",
+    );
+    let base = "import \"types.tellur\" as types;control first() exits done {auto a=types.message(\"a\");drop(a);exit done;}control second() exits done {auto b=types.message(\"b\");drop(b);exit done;}";
+    for (extra, code) in [
+        (
+            "pub control invalid() exits auto {exit done;}",
+            "E_PUBLIC_CONTRACT",
+        ),
+        (
+            "struct invalid {string value;constructor() {exit done;}}",
+            "E_CONSTRUCTOR",
+        ),
+        (
+            "trait invalid {control run(self input) exits done;}implement invalid for string {}",
+            "E_TRAIT",
+        ),
+    ] {
+        f.write("main.tellur", &format!("{base}{extra}"));
+        let report = f.report(&["check", "main.tellur", "--json"], false);
+        assert_eq!(
+            report["diagnostics"].as_array().unwrap().len(),
+            1,
+            "{report}"
+        );
+        assert_eq!(report["diagnostics"][0]["code"], code, "{report}");
+    }
+}
+
+#[test]
+fn constructor_call_preparation_uses_the_shared_diagnostic_budget() {
+    let f = Fixture::new();
+    f.write(
+        "types.tellur",
+        "pub struct message {string value;constructor(string input) {self.value=move input;}}",
+    );
+    let source = "import \"types.tellur\" as types;\n".to_owned() + &(0..40).map(|n| format!("control bad_{n}() exits done {{auto value=types.message(\"hello\");drop(value);exit done;}}\n")).collect::<String>();
+    f.write("main.tellur", &source);
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    let errors = report["diagnostics"].as_array().unwrap();
+    assert_eq!(errors.len(), 32, "{report}");
+    assert_eq!(report["diagnostics_limited"], true);
+    assert!(report["summary"].is_null());
+    for (n, error) in errors.iter().enumerate() {
+        assert_eq!(error["code"], "E_PRIVATE");
+        assert_eq!(error["position"]["line"], n + 2);
+    }
+}
+
+#[test]
+fn constructor_call_preparation_covers_methods_and_isolation_bodies() {
+    let f = Fixture::new();
+    f.write(
+        "types.tellur",
+        "pub struct message {string value;constructor(string input) {self.value=move input;}}",
+    );
+    let source = "import \"types.tellur\" as types;\ntrait builder {control make(self input) exits ready {types.message value};}\nimplement builder for string {control make(self input) exits ready {types.message value} {exit ready {types.message(move input)};}}\nboundary request() {auto a=types.message(\"work\");drop(a);terminate;} contingency(string reason) {auto b=types.message(reason);drop(b);terminate;}\ncontrol lexical() exits done {fault boundary {auto c=types.message(\"inner\");drop(c);} contingency [] {terminate process 1;}exit done;}";
+    f.write("main.tellur", source);
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    let errors = report["diagnostics"].as_array().unwrap();
+    assert_eq!(errors.len(), 4, "{report}");
+    for selected in [
+        "types.message(move input)",
+        "types.message(\"work\")",
+        "types.message(reason)",
+        "types.message(\"inner\")",
+    ] {
+        assert!(
+            errors.iter().any(|e| e["code"] == "E_PRIVATE"
+                && e["position"] == scalar_position(source, source.find(selected).unwrap())),
+            "{selected}: {report}"
+        );
+    }
+}

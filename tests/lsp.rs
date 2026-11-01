@@ -5013,3 +5013,86 @@ fn symbolic_constructor_hover_inside_constructor_uses_lexical_parameters() {
         "{h}"
     );
 }
+
+#[test]
+fn constructor_preparation_diagnostics_refresh_unsaved_privacy_and_hover() {
+    let mut f = Fixture::new();
+    let dependency = f.root.join("types.tellur");
+    let uri = url::Url::from_file_path(&dependency).unwrap().to_string();
+    let library = "pub struct message {string text;pub constructor(string input) {self.text=move input;}}pub struct box<t> {t value;pub constructor(t input) {self.value=move input;}}";
+    fs::write(&dependency, library).unwrap();
+    let source = "import \"types.tellur\" as types;\ncontrol first() exits ready {types.message value} {exit ready {types.message(\"hello\")};}\ncontrol second<t>(t input) exits ready {types.box<t> value} {exit ready {types.box<t>(move input)};}\ncontrol main() exits done {exit done;}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let h = hover_at(&f, source, "types.box<t>(move");
+    assert!(h.to_string().contains("Symbolic call contract"));
+    let private = library.replace("pub constructor", "constructor");
+    f.server.notification(
+        "textDocument/didOpen",
+        &json!({"textDocument":{"uri":uri,"version":1,"text":private}}),
+    );
+    let errors = f.diagnostics();
+    assert_eq!(errors.as_array().unwrap().len(), 2, "{errors}");
+    for (index, e) in errors.as_array().unwrap().iter().enumerate() {
+        assert_eq!(e["code"], "E_PRIVATE");
+        assert_eq!(e["range"]["start"]["line"], index + 1);
+    }
+    assert!(hover_at(&f, source, "types.message(\"hello").is_null());
+    assert!(hover_at(&f, source, "types.box<t>(move").is_null());
+    let partial = private.replacen("constructor", "pub constructor", 1);
+    f.server.notification(
+        "textDocument/didChange",
+        &json!({"textDocument":{"uri":uri,"version":2},"contentChanges":[{"text":partial}]}),
+    );
+    let errors = f.diagnostics();
+    assert_eq!(errors.as_array().unwrap().len(), 1, "{errors}");
+    assert_eq!(errors[0]["range"]["start"]["line"], 2);
+    assert!(hover_at(&f, source, "types.message(\"hello").is_null());
+    f.server.notification(
+        "textDocument/didClose",
+        &json!({"textDocument":{"uri":uri}}),
+    );
+    assert_eq!(f.diagnostics(), json!([]));
+    assert_eq!(hover_at(&f, source, "types.box<t>(move"), h);
+}
+
+#[test]
+fn constructor_preparation_diagnostics_keep_imported_related_locations() {
+    let mut f = Fixture::new();
+    let dependency = f.root.join("types.tellur");
+    let uri = url::Url::from_file_path(&dependency).unwrap().to_string();
+    let valid =
+        "pub struct message {string text;pub constructor(string input) {self.text=move input;}}";
+    fs::write(&dependency, valid.replace("pub constructor", "constructor")).unwrap();
+    let operations = f.root.join("operations.tellur");
+    fs::write(&operations, "import \"types.tellur\" as types;\npub control first() exits ready {types.message value} {exit ready {types.message(\"a\")};}\npub control second() exits ready {types.message value} {exit ready {types.message(\"b\")};}").unwrap();
+    let source = "import \"operations.tellur\" as ops;control main() exits done {delta ops.first() {ready {auto value}=>ready} [ready]:drop(value);exit done;}";
+    f.open(source);
+    let errors = f.diagnostics();
+    assert_eq!(errors.as_array().unwrap().len(), 2, "{errors}");
+    for (index, e) in errors.as_array().unwrap().iter().enumerate() {
+        assert_eq!(e["code"], "E_PRIVATE");
+        let related = &e["relatedInformation"][0]["location"];
+        assert!(
+            related["uri"]
+                .as_str()
+                .unwrap()
+                .ends_with("operations.tellur"),
+            "{e}"
+        );
+        assert_eq!(related["range"]["start"]["line"], index + 1);
+    }
+    assert!(hover_at(&f, source, "ops.first()").is_null());
+    assert!(hover_at(&f, source, "auto value").is_null());
+    f.server.notification(
+        "textDocument/didOpen",
+        &json!({"textDocument":{"uri":uri,"version":1,"text":valid}}),
+    );
+    assert_eq!(f.diagnostics(), json!([]));
+    assert!(
+        hover_at(&f, source, "ops.first()")
+            .to_string()
+            .contains("Control contract")
+    );
+    assert!(!hover_at(&f, source, "auto value").is_null());
+}

@@ -85,6 +85,9 @@ Constructor visibility is independent of field visibility:
 
 A constructor provides reusable initialization; its existence alone does not
 prevent bypassing that procedure. Private fields establish that restriction.
+Since 0.91, inaccessible calls in separate bodies can report together during
+[constructor-call preparation](diagnostics-and-limits.md#constructor-call-preparation-batches).
+This leaves later signature and ownership checks blocked until access is repaired.
 Public contract snapshots attach a public constructor's parameters, result-origin
 mapping, fault permission and contingency permission to its struct, separately from
 raw constructibility. Private constructors are omitted.

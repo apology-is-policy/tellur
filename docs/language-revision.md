@@ -39,8 +39,10 @@ or continuations. P2g extends this to independent lexical handler errors after c
 work, restoring normal parent state and preserving contingency restrictions. Continue
 application-driven library work. P2h adds independent terminal arms of explicit
 exit adapters. P2i adds explicitly typed stored adapters, retiring uncertain bindings
-without partial results. Shared preparation and inferred adapter results remain
-diagnostic follow-ups. P4d.5 adds ordinary symbolic generic call contracts using
+without partial results. P2j adds constructor-call preparation batches: inaccessible
+calls in independent bodies report together before generic/signature/body checking.
+Rewrites commit only after the whole phase succeeds. Broader shared preparation
+and inferred adapter results remain diagnostic follow-ups. P4d.5 adds ordinary symbolic generic call contracts using
 checked definition metadata, with abstract types, named origins, inferred lifetimes
 and bounded anonymous payload rendering. P4d.6 adds symbolic trait-call contracts
 scoped to each checked generic definition, retaining declared names, associated
@@ -53,7 +55,7 @@ this tooling checkpoint or an accepted syntax extension.
 Broader physical copy elision and suspended activation frames remain separate work.
 
 1 November 2026. This is the working revision plan, not a claim that all proposed
-features are implemented. Compiler **0.90.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
+features are implemented. Compiler **0.91.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
 lifetime checkpoints of milestone 2, the array/vector/map core of milestone 3,
 and implicit entry, inline/stored adapters, owned capture, named outcome contracts
 and checked forwarding in milestone 4. A first [semantic foundation](semantic-foundation.md)
@@ -199,7 +201,7 @@ unimplemented syntax are promised.
 | C1b.3c.1 | Local shared-reference collection elements | **Delivered in 0.43**: arrays/vectors/maps, direct lookup, branch-sensitive insertion, removal/conversion, independent copies, conservative source unions, native/editor coverage |
 | P1a | Stable public contracts | **Delivered in 0.44**: explicit public outcome/payload/origin contracts, private inference, unused generic checks and bounded direct-forwarding contributor notes in CLI/editor |
 | P1b | Outcome contributor coverage | **Bounded slice delivered in 0.46**: captures/moves, local record/sum payloads, stored/nested adapters, delayed exits and label merges; guarded writes exclude overwritten sources. Loop-carried values, indirect aliases, dynamic collections and cross-call payload lineage remain future work |
-| P2 | Structured diagnostics | **Reports in 0.47; ranges in 0.51; independent-body errors in 0.52**: bounded CLI/LSP batches, failed-caller suppression, source ranges, witnesses and fresh hover. Straight-line body recovery delivered in 0.73 (P2a); path/scope recovery delivered in 0.74 (P2b); control declarations in 0.77 (P2c), named completion bindings in 0.78 (P2d), named boundary bodies in 0.83 (P2e), lexical work in 0.84 (P2f), lexical handlers in 0.85 (P2g), explicit exit adapters in 0.86 (P2h), explicit stored adapters in 0.87 (P2i); follow-ups: shared preparation and inferred adapter recovery, broader contract/contributor ranges |
+| P2 | Structured diagnostics | **Reports in 0.47; ranges in 0.51; independent-body errors in 0.52**: bounded CLI/LSP batches, failed-caller suppression, source ranges, witnesses and fresh hover. Straight-line body recovery delivered in 0.73 (P2a); path/scope recovery delivered in 0.74 (P2b); control declarations in 0.77 (P2c), named completion bindings in 0.78 (P2d), named boundary bodies in 0.83 (P2e), lexical work in 0.84 (P2f), lexical handlers in 0.85 (P2g), explicit exit adapters in 0.86 (P2h), explicit stored adapters in 0.87 (P2i), constructor-call preparation in 0.91 (P2j); follow-ups: shared preparation and inferred adapter recovery, broader contract/contributor ranges |
 | P2a | Straight-line statement recovery | **Delivered in 0.73:** independent local errors, transitive value/loan suppression, fresh body replay, one 32-error budget, module/generic/constructor/editor coverage. Decisions, nested bodies and terminal checks remain conservative boundaries |
 | P2b | Path and scope diagnostic recovery | **Delivered in 0.74:** uncertainty by selected domain, independent disjoint paths, nested groups/lexical scopes, statement arms, terminal statements and loop bodies; full-selector joins, conservative fault/adapter/header barriers, fresh replay and editor/import coverage |
 | P2c | Control-declaration diagnostic batches | **Delivered in 0.77:** independent public contract shapes and concrete signature checks, one error per declaration within the failed phase, 32-error budget, imported/generic locations, no partial program or stale hover. Shared types, trait preparation, generic expansion and cycles retain conservative barriers |
@@ -209,6 +211,7 @@ unimplemented syntax are promised.
 | P2g | Lexical contingency diagnostics | **Delivered in 0.85:** independent handler leaf errors after clean work, path/scope/loop recovery, fresh normal-parent restoration and whole-boundary stalling. Fault mode, capture access, immutable reports and clean resource/terminal errors remain checked; shared 32-error budget. Capture/setup, administrative terminals and inline adapters remain conservative barriers |
 | P2h | Explicit exit-adapter diagnostics | **Delivered in 0.86:** independent terminal arms under fully explicit result contracts, including nested/named/generic adapters and resource/borrow payload replay. Original selected domains and the 32-error budget remain intact. Stored/captured/inferred adapters, decision headers/coverage and fault-context terminals retain conservative barriers |
 | P2i | Explicit stored-adapter diagnostics | **Delivered in 0.87:** independent payload errors under a declared target type, nested/generic arms and whole-binding retirement restoring parent scopes/history/code. No partial stored result or dependent continuation is checked. Clean resource/lifetime retirement, inferred sinks, headers and fault contexts retain conservative barriers |
+| P2j | Constructor-call preparation diagnostics | **Delivered in 0.91:** independent inaccessible constructor calls across controls, generics, constructors, methods and boundary bodies; one error per prepared body, 32-error budget, imported source points, fresh unsaved repair and atomic rewrite staging. Failed preparation blocks all later phases; parser/module resolution, constructor-definition preparation, trait lowering and broader shared schemas retain their existing barriers |
 | I1a | Owned-data Rust adapters | **Delivered in 0.45**: typed wrapper/result generation, registry dependencies and explicit locking, owned scalar/collection data, shared call borrows, blocking/immediate classification and scripted/live conformance |
 | I1b.1 | Retained host resource foundation | **Delivered in 0.49**: opaque must-complete Rust owners, direct shared/consuming calls, explicit resource return on retry, checked runtime identities, teardown fallback and live/scripted/editor evidence |
 | I1b.2 | Broader Rust reuse | **Explicit source modules delivered in 0.75 (I1b.2a):** manifest-relative embedded child modules, exact wrapper checks, shared sources and one locked dependency graph. Richer data boundaries, exclusive foreign mutation and package ergonomics remain application-driven follow-ups; stable binary ABI and LTO remain later layers |

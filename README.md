@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.90.0** implements the v0.1 checked core and the current language
+Compiler release **0.91.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -26,6 +26,10 @@ Release 0.80 adds concrete trait-call contracts, preserving the trait's names an
 origins while resolving associated types. Unsaved declarations refresh the contract;
 generic trait calls retain their abstract associated projections. Try `reader<text_source>.read`
 in [traits.tellur](playground/traits.tellur).
+
+Release 0.91 batches inaccessible constructor calls across independent bodies,
+with imported source locations, separate repairs and no partial checked program.
+Try [constructor_access/main.tellur](playground/constructor_access/main.tellur).
 
 Release 0.90 adds symbolic constructor contracts inside generic bodies, preserving
 abstract input types, borrow modes, ordered origins and checked permissions. Try

@@ -186,7 +186,8 @@ still appear in outline or hover.
 Recovery is deliberately bounded. Parsing, import/name resolution, shared type
 validation, trait lowering/conformance, generic expansion
 and graph-cycle failures still stop at their first error. Independent control
-declarations use the three batches described below. Generic definition bodies may
+declarations use the three batches described below; constructor-call access has
+its own preparation batch since 0.91. Generic definition bodies may
 report several errors during universal checking; a failed phase prevents later
 concrete checking. Broader recovery across shared preparation remains future work.
 
@@ -250,6 +251,38 @@ control second(ref string input) exits view[input, input] {
 This produces two diagnostics through the batch APIs and CLI; the compatibility
 single-error APIs return the first. A declaration with no origin arguments keeps
 the existing inference/public-contract rules: an empty list is not a new arity error.
+
+## Constructor-call preparation batches
+
+Since 0.91, inaccessible constructor calls in independent bodies report together.
+A public struct may have a private constructor: external callers can name the type,
+but cannot call `type(...)` unless its constructor is public. Raw construction still
+follows field visibility; a public factory in the defining module can use its private
+constructor. These visibility rules are unchanged.
+
+This phase runs after import/name resolution, public shape checks and trait lowering,
+before generic expansion, concrete signatures and body checking. It reports at most
+one `E_PRIVATE` per prepared body and stops at the shared **32-error budget**. Controls,
+unused generic controls, constructors, lowered trait methods and named boundary work
+and contingency bodies are independent units. A lexical boundary remains inside its
+enclosing body, so its work and handler do not get separate preparation budgets.
+
+Rewriting is staged: if any body fails, no rewritten bodies are committed and all
+later phases stay blocked. Successful siblings cannot supply partial contracts or
+stale hover. Repairing one inaccessible call can expose the next in that same body;
+repairing the phase can expose later signature, ownership or contingency errors.
+The earlier parser, module/name, constructor-definition and trait-lowering barriers
+remain in place. Constructor-definition preparation errors such as invalid partial
+`self` access are not part of this batch.
+
+CLI JSON retains each caller's source point and defining file, and single-error
+APIs return the first diagnostic. LSP uses the same batch, including related locations
+for imported callers and unsaved dependency changes. Try
+[constructor_access/main.tellur](../../playground/constructor_access/main.tellur):
+remove `pub` from both constructors in
+[messages.tellur](../../playground/constructor_access/messages.tellur). Both caller
+errors appear together. Restore one modifier, then the other; checked hover returns
+only after the complete program is valid.
 
 ## Statement recovery
 
