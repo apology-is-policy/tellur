@@ -84,11 +84,12 @@ fn source(program: &CheckedProgram, entry: &str) -> Result<String> {
     source = source.replacen(
         SUPPORT,
         &format!(
-            "{SUPPORT}\nmod compiled_model {{\n{}\nmod domain_model {{\n{}\n}}\nmod context_model {{\n{}\nmod sibling_model {{\n{}\n}}\npub use sibling_model::*;\n}}\npub use context_model::*;\n}}\npub use compiled_model::*;\n",
+            "{SUPPORT}\nmod compiled_model {{\n{}\nmod domain_model {{\n{}\n}}\nmod context_model {{\n{}\nmod sibling_model {{\n{}\n}}\nmod result_model {{\n{}\n}}\npub use result_model::*;\npub use sibling_model::*;\n}}\npub use context_model::*;\n}}\npub use compiled_model::*;\n",
             include_str!("compiled_model.rs"),
             include_str!("domain_model.rs"),
-            include_str!("context_model.rs")
-            ,include_str!("sibling_model.rs")
+            include_str!("context_model.rs"),
+            include_str!("sibling_model.rs"),
+            include_str!("result_model.rs")
         ),
         1,
     );
@@ -361,3 +362,7 @@ mod context_tests;
 #[cfg(test)]
 #[path = "sibling_model_tests.rs"]
 mod sibling_tests;
+
+#[cfg(test)]
+#[path = "result_model_tests.rs"]
+mod result_tests;

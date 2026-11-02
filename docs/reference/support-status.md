@@ -10,7 +10,10 @@ The linked regression suites give more detailed acceptance and rejection evidenc
 The private reference task registry now separates queue admission from completion
 joins and retains completed payloads until delivery or emergency retirement.
 Quiescence and fault settlement include these results and their parked callers.
-Source `spawn` and `yield` remain unimplemented.
+A [test-only compiled model](../async-execution.md#native-retained-completion-model-e1d2d3a)
+also retains native result owners through delayed joins and fault/process cleanup;
+this has not been promoted into a shared native scheduler. Source `spawn` and `yield`
+remain unimplemented.
 
 ## Language and data
 

@@ -222,14 +222,26 @@ impl Domains {
             .values()
             .any(|entry| entry.parent == Some(member.id)))
     }
-    pub fn finish_root(
-        &mut self,
+    pub fn require_finish_root(
+        &self,
         scope: &DomainScope,
         current: &DomainKey,
         member: &Membership,
     ) -> Result<()> {
         self.require_membership(member, &scope.key)?;
         self.require_quiescent_except(scope, current, Some(member))?;
+        if self.has_children(member)? {
+            return Err("E_NATIVE: context still has retained borrower children".into());
+        }
+        Ok(())
+    }
+    pub fn finish_root(
+        &mut self,
+        scope: &DomainScope,
+        current: &DomainKey,
+        member: &Membership,
+    ) -> Result<()> {
+        self.require_finish_root(scope, current, member)?;
         self.detach(member)?;
         self.close(scope, current)
     }

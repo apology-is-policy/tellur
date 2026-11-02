@@ -1207,6 +1207,7 @@ Those boundaries need explicit contracts before being accepted by the checker.
 | E1d.2d.1 | Separate task queue and completion joins | Delivered in 0.126: queue admission without a waiter, one-use joins before/during/after execution, explicit delivery before consumption and atomic cold await. Private registry support only; retained completion payloads and source handoffs follow |
 | E1d.2d.2a | Retained reference completion model | Test-only on 0.126: completed owned/exclusive-borrowed payloads outlive child frames, join before/after completion in either order, atomic rejected delivery and explicit stopped-result retirement with independent-root preservation. Production storage and native completion ownership remain next |
 | E1d.2d.2b | Runtime retained completions | Delivered in 0.127: shared result/context storage, validated one-use delivery, domain quiescence and completed-result retirement before owning contingency, including parked callers. Source execution stays sequential; native completion ownership remains next |
+| E1d.2d.3a | Native retained completion model | Test-only on 0.127: completed compiled results retain their original domain membership, host context and resource scope until consuming join or emergency retirement. Owned Rust results and external borrows survive child frames; fault/process cleanup releases results before suppliers. Shared native scheduling and source handoffs remain ahead |
 | E1e | Explicit cooperative cancellation and suspending cleanup; normal completion races, cleanup failures and no abandoned losers | Define cancellation observation and cleanup admission; no implicit cancellation exception |
 | E2 | Pinned native coroutine experiment, then checked lowering and schedule-based differential validation | Reference semantics and legal frame retirement must precede native destruction |
 
@@ -1285,9 +1286,48 @@ normal caller work is suppressed, original fault evidence and fuel are preserved
 and an independent waiting root survives.
 
 These are internal operations under explicit test scheduling. Source `spawn`/`yield`,
-native task-owned completion resources and broader scheduler integration remain
+shared native task-owned completion storage and broader scheduler integration remain
 separate gates. Reference cleanup here is infallible scripted retirement; this does
 not extend native resource dispositions or add asynchronous cleanup.
+
+## Native retained completion model (E1d.2d.3a)
+
+The compiled context harness now separates finishing a child from consuming its
+normal result. The child retires executable frames but keeps its domain membership,
+original host context, resource root and result payload. Its parent cannot continue
+while that obligation remains. An explicit consuming join transfers registered owned
+result leaves into the original parent's selected resource scope, without following
+returned references or moving their suppliers. An independent root joins into its
+host scope. Each result can be consumed once.
+
+Join validation precedes removal or resource transfer: it checks session, original
+parent, live owning domain, retired child frames, quiescent original resource storage
+and the exact set of owned result leaves. Early joins, duplicate/foreign/wrong-parent
+joins, invalid domains and missing storage leave results, resources, frames, effects,
+fuel and wait registrations unchanged. Early waiter registration remains a separate
+reference-registry protocol; this native harness only consumes finished results.
+
+Owning-domain fault settlement first retires affected completed payloads and releases
+their Rust owners, then unwinds executable borrowers and suppliers before the owning
+contingency. A result already joined belongs to the receiving boundary and follows
+its fault disposition. Independent completed children and roots survive. Process
+termination drains all retained results before remaining executable contexts and
+status delivery, closing late join and selection admission.
+
+The [compiled regression](../src/native/result_model_tests.rs) runs the
+[checked fixture](../tests/fixtures/native_results.tellur) before/after expansion at
+O0/O2 with three quota partitions. Both join orders, an owning fault before/after a
+join, and process termination check exact Rust creation/borrow/close/destruction logs.
+Returned borrows resolve against the still-live supplier after child frames retire.
+The existing related-context, readiness, independent-context and single-chain models
+remain regression coverage for shared test support.
+
+This is a test-only ownership model on compiler 0.127, not a native scheduler or a
+source concurrency release. It uses the existing Rust resource registry and its
+infallible release disposition. The explicit result-adoption operation still needs
+a shared native integration API before promotion. Host instruction quotas remain
+observational cuts; they do not introduce source task handoffs. Source `spawn`,
+`yield`, async adapters, cancellation and LLVM coroutine lowering remain gated.
 
 ## Reference execution invariants
 

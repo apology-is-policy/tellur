@@ -1,0 +1,56 @@
+boundary request(counter owner) retains owner {
+    emit("owner ready");
+    inspect(borrow owner);
+    close(owner);
+    terminate;
+}
+contingency(string reason) {
+    emit("owner handler");
+    emit(reason);
+    close(owner);
+    terminate;
+}
+
+control main(string path, u32 id) exits done {
+    delta make(borrow path, id) {
+        made { counter owner } => made
+    }
+    [made]: supervise request(owner);
+        exit done;
+}
+
+async control produce(string path, ref counter input, u32 id)
+    exits ready { counter owned, ref counter borrowed from input }
+{
+    inspect(input);
+    delta make(borrow path, id) {
+        made { counter value } => made
+    }
+    [made]: exit ready { value, input };
+}
+
+control consume(counter owned, ref counter input) exits done {
+    inspect(input);
+    close(owned);
+    exit done;
+}
+
+control failing(ref counter input) exits done faults {
+    inspect(input);
+    fault "child failed";
+}
+
+control process_entry() exits done {
+    fault boundary {
+        fault "process stop";
+    } contingency [] {
+        terminate process 23;
+    }
+}
+
+control root_result(string path) exits ready { counter owned } {
+    delta make(borrow path, 6) {
+        made { counter value } => made
+    }
+    [made]: exit ready { value };
+}

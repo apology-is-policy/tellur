@@ -397,7 +397,12 @@ Cold await still delivers immediately, without new source scheduling points.
 The [retained-completion tests](../async-execution.md#runtime-retained-completions-e1d2d2b)
 exercise delayed owned/exclusive-borrowed delivery, rejected/crossed joins and automatic
 owning-domain cleanup using the shared runtime. Harness scheduling remains explicit.
-Native completion ownership and source handoffs remain separate steps.
+A [compiled native completion model](../async-execution.md#native-retained-completion-model-e1d2d3a)
+now retains real Rust result owners and external borrows after child frames retire.
+Its consuming joins transfer owners into the original parent scope; faults retire
+completed results before suppliers and the owning contingency, and process stop
+retires every result before delivering status. This is test-only evidence on 0.127.
+Shared native integration and source handoffs remain separate steps.
 
 Path expansion retains `run`, `defer`, direct `await` and task consumption as
 explicit operations. It may inline ordinary

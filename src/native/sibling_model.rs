@@ -1,7 +1,7 @@
 //! Explicit test harness for related compiled contexts; no source scheduling syntax.
 use super::*;
 
-fn until_marker(contexts: &mut Contexts<'_>, key: &ContextKey, marker: &str) -> R<()> {
+pub(super) fn until_marker(contexts: &mut Contexts<'_>, key: &ContextKey, marker: &str) -> R<()> {
     let start = contexts.host.events.len();
     for _ in 0..500 {
         assert!(matches!(contexts.advance(key, 1)?, ContextPoll::Paused));
@@ -14,7 +14,7 @@ fn until_marker(contexts: &mut Contexts<'_>, key: &ContextKey, marker: &str) -> 
     }
     Err("E_NATIVE: sibling harness marker not reached".into())
 }
-fn borrowed_counter(contexts: &Contexts<'_>, key: &ContextKey) -> V {
+pub(super) fn borrowed_counter(contexts: &Contexts<'_>, key: &ContextKey) -> V {
     for frame in contexts.parked[&key.id].machine.stack.iter().rev() {
         for (offset, value) in contexts
             .values
@@ -35,7 +35,7 @@ fn borrowed_counter(contexts: &Contexts<'_>, key: &ContextKey) -> V {
     }
     panic!("expected live counter owner in retained frame")
 }
-fn complete(contexts: &mut Contexts<'_>, key: &ContextKey, quotas: &[usize]) -> R<()> {
+pub(super) fn complete(contexts: &mut Contexts<'_>, key: &ContextKey, quotas: &[usize]) -> R<()> {
     for quota in quotas.iter().copied().cycle().take(1000) {
         match contexts.advance(key, quota)? {
             ContextPoll::Paused => {}
@@ -50,7 +50,7 @@ fn complete(contexts: &mut Contexts<'_>, key: &ContextKey, quotas: &[usize]) -> 
     Err("E_NATIVE: sibling harness failed to complete".into())
 }
 
-fn observed(contexts: &Contexts<'_>) -> serde_json::Value {
+pub(super) fn observed(contexts: &Contexts<'_>) -> serde_json::Value {
     let positions: Vec<_> = contexts
         .parked
         .iter()

@@ -189,6 +189,7 @@ pub struct Machine {
     current: DomainKey,
     member: Membership,
     owns_root: bool,
+    retain_completion: bool,
     fault: Option<String>,
     handover: Vec<V>,
     fault_target: Option<DomainKey>,
@@ -241,6 +242,7 @@ impl Machine {
             root,
             member,
             owns_root: true,
+            retain_completion: false,
             fault: None,
             handover: vec![],
             fault_target: None,
@@ -267,6 +269,7 @@ impl Machine {
             root,
             member,
             owns_root: false,
+            retain_completion: false,
             fault: None,
             handover: vec![],
             fault_target: None,
@@ -293,6 +296,18 @@ impl Machine {
             })
             .unwrap_or(&self.root);
         domains.require_selected(expected, &self.current)
+    }
+    fn require_finish_root(&self, domains: &Domains) -> R<()> {
+        if self.owns_root {
+            domains.require_finish_root(&self.root, &self.current, &self.member)
+        } else {
+            domains.require_selected(&self.root, &self.current)?;
+            domains.require_membership(&self.member, &self.root.key)?;
+            if domains.has_children(&self.member)? {
+                return Err("E_NATIVE: completed context has retained children".into());
+            }
+            Ok(())
+        }
     }
     fn finish_root(&mut self, domains: &mut Domains) -> R<()> {
         if self.owns_root {
@@ -460,7 +475,12 @@ impl Machine {
                         }
                     }
                 } else {
-                    self.finish_root(domains)?;
+                    if self.retain_completion && matches!(result, Completion::Outcome(_)) {
+                        // Frames can retire while result ownership keeps membership live.
+                        self.finished = true;
+                    } else {
+                        self.finish_root(domains)?;
+                    }
                     return Ok((true, Some(result)));
                 }
             }

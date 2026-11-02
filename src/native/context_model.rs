@@ -27,8 +27,13 @@ struct Parked {
     parent: Option<u64>,
     started: bool,
 }
+struct Completed {
+    parked: Parked,
+    outcome: Completion,
+}
 pub enum ContextPoll {
     Paused,
+    Ready,
     Complete(Completion),
     Failed(fault::Report),
 }
@@ -40,6 +45,7 @@ pub struct Contexts<'a> {
     next: u64,
     parked: BTreeMap<u64, Parked>,
     terminal: BTreeMap<u64, ContextPoll>,
+    completed: BTreeMap<u64, Completed>,
     terminated: bool,
     next_readiness: u64,
     waits: BTreeMap<u64, WaitState>,
@@ -54,6 +60,7 @@ impl<'a> Contexts<'a> {
             next: 0,
             parked: BTreeMap::new(),
             terminal: BTreeMap::new(),
+            completed: BTreeMap::new(),
             terminated: false,
             next_readiness: 0,
             waits: BTreeMap::new(),
@@ -84,7 +91,8 @@ impl<'a> Contexts<'a> {
             self.host.finish_context(&mut root, true)?;
         }
         self.host.exchange_context(&mut context)?;
-        let machine = started?;
+        let mut machine = started?;
+        machine.retain_completion = true;
         self.next = id;
         self.parked.insert(
             id,
@@ -160,7 +168,8 @@ impl<'a> Contexts<'a> {
             self.host.finish_context(&mut root, true)?;
         }
         self.host.exchange_context(&mut context)?;
-        let machine = started?;
+        let mut machine = started?;
+        machine.retain_completion = true;
         self.next = id;
         self.parked.insert(
             id,
@@ -228,6 +237,17 @@ impl<'a> Contexts<'a> {
         Ok(())
     }
     pub fn advance(&mut self, key: &ContextKey, quota: usize) -> R<ContextPoll> {
+        let result = self.advance_retained(key, quota)?;
+        if matches!(result, ContextPoll::Ready) {
+            let parent = self.completed[&key.id].parked.parent.map(|id| ContextKey {
+                session: self.identity.clone(),
+                id,
+            });
+            return Ok(ContextPoll::Complete(self.join(parent.as_ref(), key)?));
+        }
+        Ok(result)
+    }
+    pub fn advance_retained(&mut self, key: &ContextKey, quota: usize) -> R<ContextPoll> {
         self.require_live()?;
         if !Arc::ptr_eq(&self.identity, &key.session) {
             return Err("E_NATIVE: context belongs to another session".into());
@@ -266,6 +286,7 @@ impl<'a> Contexts<'a> {
         parked.started = true;
         self.host.exchange_context(&mut parked.host)?;
         let mut settlement = None;
+        let mut completed = None;
         let mut result =
             match parked
                 .machine
@@ -281,6 +302,10 @@ impl<'a> Contexts<'a> {
                     );
                     settlement = Some((domain, message, report, self.host.source_faulted()));
                     ContextPoll::Paused
+                }
+                Ok(Poll::Complete(completion @ Completion::Outcome(_))) => {
+                    completed = Some(completion);
+                    ContextPoll::Ready
                 }
                 Ok(Poll::Complete(completion)) => {
                     // Outgoing owners survive normal completion; failed roots below
@@ -314,7 +339,9 @@ impl<'a> Contexts<'a> {
             self.terminate()?;
             return Ok(result);
         }
-        if matches!(result, ContextPoll::Paused) {
+        if let Some(outcome) = completed {
+            self.completed.insert(key.id, Completed { parked, outcome });
+        } else if matches!(result, ContextPoll::Paused) {
             self.parked.insert(key.id, parked);
         }
         if let Some((domain, message, report, source_fault)) = settlement {
@@ -327,10 +354,108 @@ impl<'a> Contexts<'a> {
         }
         Ok(result)
     }
+    fn require_completed(&self, key: &ContextKey) -> R<&Completed> {
+        self.require_live()?;
+        if !Arc::ptr_eq(&self.identity, &key.session) {
+            return Err("E_NATIVE: completed context belongs to another session".into());
+        }
+        let completed = self
+            .completed
+            .get(&key.id)
+            .ok_or("E_NATIVE: context has no retained completion")?;
+        let parked = &completed.parked;
+        if !parked.machine.finished || !parked.machine.stack.is_empty() {
+            return Err("E_NATIVE: completion still has executable frames".into());
+        }
+        parked.machine.require_finish_root(&self.domains)?;
+        self.host.require_context(&parked.host, &parked.root)?;
+        let root = &parked.root.scope;
+        if parked.host.scope.as_ref().map(|s| s.id) != Some(root.id)
+            || self
+                .host
+                .resources
+                .scopes
+                .values()
+                .any(|p| *p == Some(root.id))
+        {
+            return Err("E_NATIVE: completion has nested resource work".into());
+        }
+        self.host.resources.current_scope()?;
+        Ok(completed)
+    }
+    /// Consuming join in this bounded model; early wait registration is separate.
+    pub fn join(&mut self, parent: Option<&ContextKey>, key: &ContextKey) -> R<Completion> {
+        let completed = self.require_completed(key)?;
+        let parked = &completed.parked;
+        self.domains.require_open(&parked.machine.root.key, &[])?;
+        if parent.map(|p| p.id) != parked.parent {
+            return Err("E_NATIVE: completion belongs to another parent".into());
+        }
+        let receiver = if let Some(parent) = parent {
+            self.require(parent)?;
+            let parent = &self.parked[&parent.id];
+            if !self
+                .domains
+                .same(&parent.machine.current, &parked.machine.root.key)
+            {
+                return Err("E_NATIVE: completion join crosses its owning fault domain".into());
+            }
+            parent.host.scope.as_ref().map(|scope| scope.id)
+        } else {
+            self.host.resources.current
+        };
+        let Completion::Outcome((_, fields)) = &completed.outcome else {
+            return Err("E_NATIVE: retained result is not a normal outcome".into());
+        };
+        let owned = self.host.resources.owned_tokens(fields)?;
+        let root = parked.root.scope.id;
+        let retained: std::collections::BTreeSet<_> = self
+            .host
+            .resources
+            .values
+            .iter()
+            .filter_map(|(token, resource)| (resource.scope == Some(root)).then_some(token.clone()))
+            .collect();
+        if owned != retained {
+            return Err("E_NATIVE: result ownership differs from its retained scope".into());
+        }
+        // All identity/domain/scope checks precede moving any owner. Borrowed
+        // references are not traversed, so their supplier's scope stays intact.
+        let mut completed = self.completed.remove(&key.id).unwrap();
+        for token in owned {
+            self.host.resources.values.get_mut(&token).unwrap().scope = receiver;
+        }
+        self.host.exchange_context(&mut completed.parked.host)?;
+        self.host
+            .finish_context(&mut completed.parked.root, false)?;
+        completed.parked.machine.finish_root(&mut self.domains)?;
+        self.host.exchange_context(&mut completed.parked.host)?;
+        Ok(completed.outcome)
+    }
+    fn retire_completed(&mut self, id: u64) -> R<()> {
+        let mut completed = self
+            .completed
+            .remove(&id)
+            .ok_or("E_NATIVE: missing stopped completion")?;
+        completed
+            .parked
+            .machine
+            .require_finish_root(&self.domains)?;
+        // Retire result references before any supplying executable frame.
+        drop(completed.outcome);
+        self.host.exchange_context(&mut completed.parked.host)?;
+        self.host.finish_context(&mut completed.parked.root, true)?;
+        completed.parked.machine.finish_root(&mut self.domains)?;
+        self.host.exchange_context(&mut completed.parked.host)?;
+        Ok(())
+    }
     fn terminate(&mut self) -> R<()> {
         self.terminated = true;
         self.terminal.clear();
         self.waits.clear();
+        while let Some(id) = self.completed.keys().next_back().copied() {
+            self.retire_completed(id)?;
+        }
         // Administrative process completion retires every context, including
         // independent roots and active handlers, before the status is delivered.
         // Admission order always places children after their supplying parent.
@@ -367,6 +492,20 @@ impl<'a> Contexts<'a> {
             .ok_or("E_NATIVE: stopped domain has no retained owning continuation")?;
         self.domains.stop(domain)?;
         self.waits.remove(&owner);
+        let completed: Vec<_> = self
+            .completed
+            .iter()
+            .rev()
+            .filter_map(|(id, result)| {
+                self.domains
+                    .require_member(domain, &result.parked.machine.root.key)
+                    .is_ok()
+                    .then_some(*id)
+            })
+            .collect();
+        for id in completed {
+            self.retire_completed(id)?;
+        }
         // Child IDs are allocated after their parent. Reverse order retires
         // every borrower descendant before the frame that supplied its storage.
         let stopped: Vec<_> = self
@@ -627,7 +766,7 @@ pub fn drive_contexts(
                 ContextPoll::Failed(report) => {
                     serde_json::json!({"kind":"context_failed","context":index,"report":report})
                 }
-                ContextPoll::Complete(_) => {
+                ContextPoll::Complete(_) | ContextPoll::Ready => {
                     return Err("E_NATIVE: invalid independent root completion".into());
                 }
             };
