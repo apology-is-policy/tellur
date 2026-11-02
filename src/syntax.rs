@@ -262,12 +262,17 @@ pub struct Region {
     /// Authored completion type only; excludes its separate origin arguments.
     pub exit_contract_range: SourceRange,
     pub exit_origins: Vec<OriginArgument>,
+    /// Authored bracket mapping on a named completion, separate from its type.
+    pub exit_origins_range: SourceRange,
     pub modern: bool,
     pub body: Vec<Item>,
 }
 impl Region {
     pub(crate) fn exit_type_error(&self, error: Diagnostic) -> Diagnostic {
         type_error(self.exit_contract_range, error, self.span)
+    }
+    pub(crate) fn exit_origin_error(&self, error: Diagnostic) -> Diagnostic {
+        type_error(self.exit_origins_range, error, self.span)
     }
 }
 #[derive(Clone, Debug)]
@@ -752,6 +757,7 @@ impl Parser {
         let mut exit_contract = None;
         let mut exit_contract_range = SourceRange::default();
         let mut exit_origins = vec![];
+        let mut exit_origins_range = SourceRange::default();
         if !infer_exits && !fault_only {
             let wrapped = self.eat("{");
             let mut bare = true;
@@ -766,6 +772,7 @@ impl Parser {
                 if exits.is_empty() {
                     exit_contract_range = self.range_from(name_start);
                 }
+                let origins_start = self.here();
                 let bindings = self.origin_arguments()?;
                 if !bindings.is_empty() {
                     if wrapped || !exits.is_empty() {
@@ -773,6 +780,7 @@ impl Parser {
                             self.error("origin arguments belong on a single named exit contract")
                         );
                     }
+                    exit_origins_range = self.range_from(origins_start);
                     exit_origins = bindings;
                 }
                 // A body may start with ordinary statements. Recognize a brace
@@ -875,6 +883,7 @@ impl Parser {
             },
             exit_contract,
             exit_origins,
+            exit_origins_range,
             modern,
             body,
         })
@@ -1863,6 +1872,7 @@ pub(crate) fn parse_with_layout(source: &str) -> Result<(Unit, Vec<Token>, crate
                 infer_payloads: Default::default(),
                 exit_contract: None,
                 exit_contract_range: SourceRange::default(),
+                exit_origins_range: SourceRange::default(),
                 exit_origins: vec![],
                 modern: true,
                 body,
@@ -2039,6 +2049,7 @@ pub(crate) fn parse_with_layout(source: &str) -> Result<(Unit, Vec<Token>, crate
                             infer_payloads: Default::default(),
                             exit_contract: None,
                             exit_contract_range: SourceRange::default(),
+                            exit_origins_range: SourceRange::default(),
                             exit_origins,
                             modern: true,
                             body,

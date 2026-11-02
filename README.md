@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.113.0** implements the v0.1 checked core and the current language
+Compiler release **0.114.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -571,3 +571,11 @@ The maintained settings service now exposes its existing removal operation throu
 writing for absent keys, and reports uncertain replacement explicitly. See the
 [HTTP workflow](applications/settings/README.md#run-the-http-service). This application
 update runs on compiler 0.113 without changing compiler or host contracts.
+
+
+## Named completion origin diagnostics in 0.114
+
+Errors in a named result mapping such as `exits reply[input['source]]` now select
+its written brackets. CLI and editor locations survive imports, generic checking
+and unsaved changes; type annotations, body errors and missing mappings keep their
+separate locations. Borrowing rules and diagnostic recovery order are unchanged.

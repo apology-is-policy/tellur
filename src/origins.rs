@@ -382,6 +382,9 @@ pub(crate) fn declared(
     r: &syntax::Region,
     schemas: &Schemas,
 ) -> Result<Vec<crate::ir::StoredReturn>> {
+    declared_inner(r, schemas).map_err(|e| r.exit_origin_error(e))
+}
+fn declared_inner(r: &syntax::Region, schemas: &Schemas) -> Result<Vec<crate::ir::StoredReturn>> {
     let mut returns = vec![];
     for o in &r.exits {
         for (payload, f) in o.fields.iter().enumerate() {
@@ -684,6 +687,9 @@ pub(crate) fn input_type(
 
 /// Instantiate a named completion contract's groups at its control boundary.
 pub(crate) fn bind_contract(r: &mut syntax::Region, c: &syntax::OutcomeContract) -> Result<()> {
+    bind_contract_inner(r, c).map_err(|e| r.exit_origin_error(e))
+}
+fn bind_contract_inner(r: &mut syntax::Region, c: &syntax::OutcomeContract) -> Result<()> {
     if !r.exit_origins.is_empty() && r.exit_origins.len() != c.origin_parameters.len() {
         return Err(error(
             r.span,

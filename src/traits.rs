@@ -122,11 +122,11 @@ fn declared_signature(r: &Region, contracts: &BTreeMap<String, OutcomeContract>)
             }
             crate::origins::bind_contract(&mut signature, &contract)?;
         } else if !r.exit_origins.is_empty() {
-            return Err(Diagnostic::new(
+            return Err(r.exit_origin_error(Diagnostic::new(
                 "E_ORIGIN",
                 r.span,
                 "origin arguments require a source-declared named outcome contract",
-            ));
+            )));
         }
     }
     Ok(signature)

@@ -9,7 +9,8 @@ pub(crate) fn declared_with_schemas(
     required: bool,
     schemas: &crate::origins::Schemas,
 ) -> Result<Returns> {
-    let error = |message| Diagnostic::new("E_LIFETIME", region.span, message);
+    let error =
+        |message| region.exit_origin_error(Diagnostic::new("E_LIFETIME", region.span, message));
     let mut result = Returns::new();
     for outcome in &region.exits {
         for (index, field) in outcome.fields.iter().enumerate() {

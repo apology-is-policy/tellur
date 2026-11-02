@@ -267,6 +267,29 @@ does not name a declared outcome type. Explicit braced contracts and `exits auto
 keep their existing meaning. This location metadata does not change resolution,
 public visibility, origin checking or generic compatibility.
 
+Since 0.114, a separate range covers the complete **named completion origin mapping**.
+For `exits reply[input['source]]`, an invalid input/group or incompatible shared versus
+exclusive origin selects `[input['source]]`, including nested brackets. A wrong
+number of origin arguments selects the same mapping. Multiline whitespace and
+comments inside the brackets are retained; the named type and trailing comments
+are excluded. These ranges also apply to generic controls and trait signatures.
+
+<!-- tellur:reject E_LIFETIME -->
+```tellur
+outcome view['a] {
+    found { ref string value <- 'a }
+}
+control peek(ref string input) exits view[missing] {
+    exit found { input };
+}
+```
+
+Here `missing` does not name a parameter; the diagnostic selects `[missing]`.
+Missing mappings have no invented range. Inline `from` clauses, individual payload
+mappings and invalid shared origin schemas retain their earlier locations. A body
+error still selects its own expression. Error order and the shared recovery budget
+are unchanged; improving a location does not enable checking through an invalid schema.
+
 Imports preserve both endpoints in the original file; unsaved dependencies supply
 the text used for editor UTF-16 conversion. Generic substitution preserves the
 authored spelling, including a type parameter, rather than estimating a range from

@@ -4665,11 +4665,11 @@ pub(crate) fn compile_concrete_unit(
             return crate::origins::bind_contract(region, c);
         }
         if !region.exit_origins.is_empty() {
-            return Err(Diagnostic::new(
+            return Err(region.exit_origin_error(Diagnostic::new(
                 "E_ORIGIN",
                 region.span,
                 "origin arguments require a source-declared named outcome contract",
-            ));
+            )));
         }
         if let Some(name) = &region.exit_contract
             && let Some(manifest::TypeDef::Outcome { constructors, .. }) = manifest.type_def(name)

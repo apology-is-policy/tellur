@@ -2244,12 +2244,19 @@ fn named_completion_type_ranges_preserve_imports_and_exclude_origins() {
 }
 
 #[test]
-fn named_completion_type_ranges_preserve_origin_and_body_error_points() {
+fn named_completion_type_ranges_keep_origin_and_body_errors_separate() {
     let source =
         "outcome reply {done} control probe(ref string input) exits reply[input] {exit done;}";
     let errors = check_errors(source);
     assert_eq!(errors.errors[0].code, "E_ORIGIN");
-    assert!(errors.errors[0].end.is_none());
+    assert_eq!(
+        errors.errors[0].span.column,
+        source.find("[input]").unwrap() + 1
+    );
+    assert_eq!(
+        errors.errors[0].end.as_ref().unwrap().column,
+        source.find("[input]").unwrap() + 8
+    );
     let first = compile(
         source,
         Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
@@ -2274,4 +2281,104 @@ fn named_completion_type_ranges_preserve_origin_and_body_error_points() {
         )
         .unwrap();
     }
+}
+
+#[test]
+fn named_completion_origin_ranges_cover_binding_inputs_and_authority() {
+    let f = Fixture::new();
+    for (source, mapping, code) in [
+        (
+            "outcome reply['a] {ready {ref string value <- 'a}} control probe(ref string input) exits reply[\r\n input, // 😀\r\n input\r\n] {exit ready {input};}",
+            "[\r\n input, // 😀\r\n input\r\n]",
+            "E_ORIGIN",
+        ),
+        (
+            "control probe(ref string input) exits done[input] {exit done;}",
+            "[input]",
+            "E_ORIGIN",
+        ),
+        (
+            "outcome reply['a] {ready {ref string value <- 'a}} control probe(ref string input) exits reply[missing] {exit ready {input};}",
+            "[missing]",
+            "E_LIFETIME",
+        ),
+        (
+            "outcome reply['a] {ready {ref string value <- 'a}} control probe(string input) exits reply[input] {exit ready {borrow input};}",
+            "[input]",
+            "E_LIFETIME",
+        ),
+        (
+            "outcome reply['a] {ready {ref mutable string value <- 'a}} control probe(ref string input) exits reply[input] {exit ready {input};}",
+            "[input]",
+            "E_LIFETIME",
+        ),
+        (
+            "struct view['a] {ref string value <- 'a;} outcome reply['a] {ready {view['a] value}} control probe(ref string input) exits reply[missing] {exit ready {view {value:input}};}",
+            "[missing]",
+            "E_ORIGIN",
+        ),
+        (
+            "struct view['a] {ref string value <- 'a;} outcome reply['a] {ready {ref string value <- 'a}} control probe(view input) exits reply[input['missing]] {exit ready {input.value};}",
+            "[input['missing]]",
+            "E_LIFETIME",
+        ),
+    ] {
+        f.write("main.tellur", source);
+        let report = f.report(&["check", "main.tellur", "--json"], false);
+        let error = &report["diagnostics"][0];
+        assert_eq!(error["code"], code, "{report}");
+        assert_eq!(error["range"], selected_range(source, mapping), "{report}");
+        assert_eq!(error["position"], error["range"]["start"]);
+    }
+}
+
+#[test]
+fn named_completion_origin_ranges_survive_imports_generics_and_traits() {
+    let f = Fixture::new();
+    f.write(
+        "main.tellur",
+        "import \"library.tellur\" as library;control main() exits done {exit done;}",
+    );
+    let schema = "pub outcome reply<t>['a] {ready {ref t value <- 'a}}\r\n";
+    for body in [
+        "pub control probe<t>(ref t input) exits reply<t>[missing] {exit ready {input};}",
+        "pub control probe(ref string input) exits reply<string>[missing] {exit ready {input};}",
+        "pub trait reader {control read(ref self input) exits reply<self>[missing];}",
+    ] {
+        let source = format!("{schema}// 😀\r\n{body}");
+        f.write("library.tellur", &source);
+        let report = f.report(&["check", "main.tellur", "--json"], false);
+        let error = &report["diagnostics"][0];
+        assert_eq!(error["code"], "E_LIFETIME", "{report}");
+        assert!(error["path"].as_str().unwrap().ends_with("library.tellur"));
+        assert_eq!(
+            error["range"],
+            selected_range(&source, "[missing]"),
+            "{report}"
+        );
+    }
+}
+
+#[test]
+fn named_completion_origin_ranges_do_not_relabel_inline_or_schema_errors() {
+    for source in [
+        "control probe(ref string input) exits ready {ref string value from missing} {exit ready {input};}",
+        "outcome reply['a] {ready {ref string value <- 'missing}} control probe(ref string input) exits reply[input] {exit ready {input};}",
+        "outcome reply['a] {ready {ref string value <- 'a}} pub control probe(ref string input) exits reply {exit ready {input};}",
+    ] {
+        let errors = check_errors(source);
+        assert_eq!(errors.errors.len(), 1);
+        assert!(errors.errors[0].end.is_none(), "{errors}");
+    }
+    let source = "outcome reply['a] {ready {ref string value <- 'a}} control probe(ref string input) exits reply[input] {u32 wrong=true;exit ready {input};}";
+    let errors = check_errors(source);
+    assert_eq!(errors.errors[0].code, "E_TYPE");
+    assert_eq!(
+        errors.errors[0].span.column,
+        source.find("true").unwrap() + 1
+    );
+    assert_eq!(
+        errors.errors[0].end.as_ref().unwrap().column,
+        source.find("true").unwrap() + 5
+    );
 }

@@ -5992,3 +5992,49 @@ fn whole_carrier_task_loans_and_auto_types_refresh_after_unsaved_repair() {
     assert_eq!(f.diagnostics(), json!([]));
     assert_eq!(hover_at(&f, source, "auto pending"), pending);
 }
+
+#[test]
+fn named_completion_origin_ranges_follow_unsaved_imports_and_restore_hover() {
+    let mut f = Fixture::new();
+    let path = f.root.join("worker.tellur");
+    let uri = url::Url::from_file_path(&path).unwrap().to_string();
+    let valid = "pub outcome reply<t>['a] {ready {ref t value <- 'a}}pub control helper<t>(ref t input) exits reply<t>[input] {exit ready {input};}pub control work() exits done {exit done;}";
+    fs::write(&path, valid).unwrap();
+    let source = "import \"worker.tellur\" as worker; control main() exits done {auto text=\"x\";drop(text);worker.work();exit done;}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let initial = hover_at(&f, source, "auto text");
+    assert!(initial.to_string().contains("string"));
+    for (version, annotation) in [(1, "[ // 😀\r\n missing\r\n ]"), (2, "[missing]")] {
+        let broken = valid.replace("[input]", annotation);
+        if version == 1 {
+            f.server.notification(
+                "textDocument/didOpen",
+                &json!({"textDocument":{"uri":uri,"version":version,"text":broken}}),
+            );
+        } else {
+            f.server.notification("textDocument/didChange",&json!({"textDocument":{"uri":uri,"version":version},"contentChanges":[{"text":broken}]}));
+        }
+        let errors = f.diagnostics();
+        assert_eq!(errors.as_array().unwrap().len(), 1, "{errors}");
+        assert_eq!(errors[0]["code"], "E_LIFETIME");
+        let location = &errors[0]["relatedInformation"][0]["location"];
+        assert_eq!(location["uri"], uri);
+        let at = broken.rfind(annotation).unwrap();
+        let position = |offset| {
+            let prefix = &broken[..offset];
+            json!({"line":prefix.bytes().filter(|b|*b==b'\n').count(),"character":prefix.rsplit('\n').next().unwrap().encode_utf16().count()})
+        };
+        assert_eq!(
+            location["range"],
+            json!({"start":position(at),"end":position(at+annotation.len())})
+        );
+        assert!(hover_at(&f, source, "auto text").is_null());
+    }
+    f.server.notification(
+        "textDocument/didClose",
+        &json!({"textDocument":{"uri":uri}}),
+    );
+    assert_eq!(f.diagnostics(), json!([]));
+    assert_eq!(hover_at(&f, source, "auto text"), initial);
+}

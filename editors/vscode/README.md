@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-0.113.0-darwin-arm64.vsix` using **Extensions:
+1. Install the supplied `tellur-language-0.114.0-darwin-arm64.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1061,3 +1061,11 @@ Cold-task awaits now use queued dispatch and parked caller state in the referenc
 executor. One-use completion waits reject early or duplicate delivery; borrowed
 storage, fault traces and instruction quotas keep their existing behavior. Source
 execution is still sequential. External readiness and scoped `spawn` remain ahead.
+
+
+## Named completion origin diagnostics in 0.114
+
+Named completion origin errors now underline the complete bracket mapping, including
+multiline and contained selectors. Imported unsaved edits preserve their original
+locations; repair restores checked hover information. Type and body diagnostics keep
+their own ranges. This changes diagnostic presentation without changing lifetime rules.

@@ -13,7 +13,7 @@ exports.run = async function (root) {
   assert.ok(countAt >= 0 && statusAt > countAt);
   const main = 'import "counter.tellur" as counter;\n' +
     program.slice(0, countAt).replace('count(5)', 'counter.count(5)') + program.slice(statusAt);
-  const counter = 'outcome hidden<t> { done }\npub outcome visible<t> { done }\npub control helper<t>() exits visible<t> { exit done; }\n' + program.slice(countAt, statusAt)
+  const counter = "pub outcome view<t>['a] { found { ref t value <- 'a } }\npub control helper<t>(ref t input) exits view<t>[input] { exit found { input }; }\n" + program.slice(countAt, statusAt)
     .replace('control count(', 'pub control count(')
     .replace('exits auto', 'exits done, arithmetic_fault');
   await fs.writeFile(path.join(fixture, 'main.tellur'), main);
@@ -47,14 +47,14 @@ exports.run = async function (root) {
   }
   await waitFor(async () => diagnostics().length === 0 && (await hover()).includes('done'), 'initial count contract');
   const initial = await hover();
-  for (const annotation of ['hidden<\n        // Unicode: 😀\n        t\n    >', 'hidden<t>']) {
-    const broken = original.replace('visible<t> { exit', `${annotation} { exit`);
+  for (const annotation of ['[\n        // Unicode: 😀\n        missing\n    ]', '[missing]']) {
+    const broken = original.replace('[input]', annotation);
     assert.notEqual(broken, original);
     await replace(broken);
-    await waitFor(() => diagnostics().length === 1 && code(diagnostics()[0]) === 'E_VISIBILITY', 'private named completion type');
+    await waitFor(() => diagnostics().length === 1 && code(diagnostics()[0]) === 'E_LIFETIME', 'invalid named completion origin');
     assert.ok(!(await hover()).includes('done'));
     const related = diagnostics()[0].relatedInformation.find(info => info.location.uri.toString() === dependency.uri.toString());
-    assert.ok(related, 'original imported type location');
+    assert.ok(related, 'original imported origin location');
     const at = dependency.getText().lastIndexOf(annotation);
     assert.ok(at >= 0);
     const expected = new vscode.Range(dependency.positionAt(at), dependency.positionAt(at + annotation.length));
@@ -70,6 +70,6 @@ exports.run = async function (root) {
   const report = JSON.parse(result.stdout);
   assert.equal(report.outcome, 'done');
   assert.deepEqual(report.events.filter(e => e.kind === 'emit').map(e => e.message), ['1', '2', '3', '4', '5']);
-  await fs.writeFile(path.join(fixture, 'passed.txt'), 'multiline and compact type ranges, imported unsaved repair, no stale hover and native named completion type passed\n');
-  console.log('TELLUR_NAMED_COMPLETION_RANGES_EDITOR_TESTS_PASSED: exact named completion type ranges, unsaved repair, fresh hover and native execution');
+  await fs.writeFile(path.join(fixture, 'passed.txt'), 'multiline and compact origin mapping ranges, imported unsaved repair, no stale hover and native named completion origins passed\n');
+  console.log('TELLUR_NAMED_COMPLETION_RANGES_EDITOR_TESTS_PASSED: exact named completion origin mapping ranges, unsaved repair, fresh hover and native execution');
 };
