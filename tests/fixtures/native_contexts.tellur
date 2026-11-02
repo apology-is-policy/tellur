@@ -1,0 +1,53 @@
+async control visit(ref string name) exits done faults {
+    delta parse_u32("1") {
+        number { u32 value } => parsed,
+        malformed => fault "malformed",
+        overflow => fault "overflow",
+    }
+    [parsed]:
+        emit(name);
+        fault clone(name);
+}
+
+async control startup(ref string name) exits done faults {
+    auto pending = defer visit(name);
+    await pending;
+    exit done;
+}
+
+boundary request(string name, bool fail_handler) retains name, fail_handler {
+    run startup(borrow name);
+    terminate;
+}
+contingency(string reason) {
+    emit(borrow name);
+    emit(reason);
+    delta fail_handler {
+        true => failed,
+        false => handled
+    }
+    [failed]: fault "left handler failed";
+    [handled]: terminate;
+}
+
+control left() exits done faults {
+    fault boundary {
+        supervise request("left", true);
+    } contingency [] {
+        emit(borrow @fault.message);
+        escalate;
+    }
+    exit done;
+}
+
+control right() exits done {
+    supervise request("right", false);
+    emit("right done");
+    exit done;
+}
+
+control main() exits done {
+    left();
+    right();
+    exit done;
+}

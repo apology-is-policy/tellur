@@ -634,11 +634,51 @@ completion; the other cases use the existing reference comparison, including its
 fuel-message-only normalization. Earlier call, loop and lexical cases exercise the
 shared driver changes.
 
-The model remains test-only on 0.124. It retains one execution chain and does not yet
-select independent native diagnostic/resource contexts. Integrating those contexts,
-settling stopped siblings and broader backend validation must precede public source
-scheduling. There is no new native mode, async adapter contract or compiler/editor
-release in this checkpoint.
+This named-supervision slice retains one execution chain. The following model selects
+independent native contexts; stopped-sibling settlement and broader backend validation
+must still precede public source scheduling. There is no new native mode, async adapter
+contract or compiler/editor release in this checkpoint.
+
+## Independent compiled native contexts (E1d.2c.4b.4d.1)
+
+The test-only context model now alternates independently compiled roots over one real
+native host and value arena. Each parked root retains its compiled machine, original
+diagnostic tracker, contingency messages and selected resource scope. Selection moves
+those host fields together and restores the host's prior context before returning.
+The model exclusively borrows the host, so external operations cannot replace its
+active state during a selection. Effects, script cursor, fuel, resource registry and
+frame storage stay shared; neither values nor active diagnostic chains are cloned.
+
+Dedicated session identities and monotonic context numbers reject foreign and retired
+keys. The selected resource scope must still be live and belong to that root. Admission
+checks identity exhaustion before allocating a frame or changing host observations;
+foreign, retired and wrong-root scope probes also leave parked work unchanged. A zero
+quota does not select or advance a context. Each root has an explicit resource scope:
+failure retires its frames and stranded temporary owners, while another root's owners
+remain live. Normal completion promotes outgoing owners out of the retired root scope.
+
+The [context fixture](../tests/fixtures/native_contexts.tellur) runs separate left/right
+roots with nested named/lexical boundaries, borrowed cold awaits, handler escalation
+and a shared scripted input stream. Original and explicitly expanded control/handler
+bodies run at O0/O2 in both harness orders and three quota partitions, at every shared
+fuel cutoff through settlement. Tests check distinct activation identities, isolated
+fault causes, expected effects, exact input consumption and restoration of a nonempty
+host diagnostic/contingency baseline. They also reject repeated terminal advancement.
+
+A real Rust-resource case alternates one failing root with another root's successful
+borrowed and owned awaits. Every acquired owner is destroyed once at every fuel cut;
+abandoned children settle before their retained parent's contingency, and the other
+root can still borrow and consume its own resources. The final registry, frame arena
+and parked-context table are empty. Existing single-chain call/constructor and resource
+comparisons cover the shared test harness extraction and generated-source embedding.
+
+This is explicit test harness interleaving of independent roots, not Tellur `spawn` or
+quota-based source scheduling. At a fuel cutoff the harness records remaining scripted
+inputs instead of applying the launcher's single-root unused-script check; production
+launch behavior is unchanged. It does not yet stop sibling contexts in one owning fault
+domain, suppress their nested handlers during retirement or expose async host readiness.
+Those settlement paths and broader backend parity remain the next integration gates.
+Compiler/LSP/VSIX 0.124 and the public native backend are unchanged.
 
 ## Separate the identities and continuations
 
@@ -942,6 +982,7 @@ Those boundaries need explicit contracts before being accepted by the checker.
 | E1d.2c.4b.4c.1 | Retained native host boundary lifecycle | Delivered in 0.124: shared boundary admission, source-fault handover, contingency entry and finalization with retained parent tracker/resource scope. Executable boundary resumes and independent context selection remain ahead |
 | E1d.2c.4b.4c.2 | Compiled lexical boundary continuations | Test-only evidence on 0.124: ordered work/handler resumes, loop/recovery/process crossings, nested fault causes and real Rust owner cleanup across quota/fuel cuts. Named supervision and independent context selection remain gated |
 | E1d.2c.4b.4c.3 | Compiled named supervision | Test-only evidence on 0.124: retained caller supervision, failed-work parameter handover before frame retirement, separate handler execution and exact real-owner cleanup. Independent context selection and native sibling settlement remain ahead |
+| E1d.2c.4b.4d.1 | Independent compiled native contexts | Test-only evidence on 0.124: paired tracker/contingency/resource selection, original compiled machines, session-scoped keys and independent root cleanup over shared frames/effects/scripts/fuel. Native sibling settlement within an owning fault domain remains ahead |
 | E1e | Explicit cooperative cancellation and suspending cleanup; normal completion races, cleanup failures and no abandoned losers | Define cancellation observation and cleanup admission; no implicit cancellation exception |
 | E2 | Pinned native coroutine experiment, then checked lowering and schedule-based differential validation | Reference semantics and legal frame retirement must precede native destruction |
 

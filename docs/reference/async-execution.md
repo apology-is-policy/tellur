@@ -455,6 +455,12 @@ check captured owner destruction once before contingency and retained-parent cle
 The [named supervision extension](../async-execution.md#compiled-named-supervision-e1d2c4b4c3)
 also retains its caller while work and contingency run in separate frames. It verifies
 retained parameters leave failed work before frame retirement, and only administrative
-settlement resumes the supervisor. Independent context selection and native sibling
-settlement remain ahead; these tests do not enable source scheduling or change the
-installed compiler's behavior.
+settlement resumes the supervisor.
+
+The test-only [independent context model](../async-execution.md#independent-compiled-native-contexts-e1d2c4b4d1)
+selects compiled roots with their original diagnostic, contingency and resource state,
+sharing one host and frame arena. It checks isolated fault causes, borrowed storage,
+shared fuel/input consumption and real Rust cleanup while another root remains live.
+These are explicit harness selections of independent roots. Stopped-sibling settlement
+within an owning fault domain remains ahead; the tests do not enable source scheduling
+or change the installed compiler's behavior.

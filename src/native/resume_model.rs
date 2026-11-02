@@ -84,8 +84,9 @@ fn source(program: &CheckedProgram, entry: &str) -> Result<String> {
     source = source.replacen(
         SUPPORT,
         &format!(
-            "{SUPPORT}\nmod compiled_model {{\n{}\n}}\npub use compiled_model::*;\n",
-            include_str!("compiled_model.rs")
+            "{SUPPORT}\nmod compiled_model {{\n{}\nmod context_model {{\n{}\n}}\npub use context_model::*;\n}}\npub use compiled_model::*;\n",
+            include_str!("compiled_model.rs"),
+            include_str!("context_model.rs")
         ),
         1,
     );
@@ -350,3 +351,7 @@ mod tests;
 #[cfg(test)]
 #[path = "resume_model_resource_tests.rs"]
 mod resource_tests;
+
+#[cfg(test)]
+#[path = "context_model_tests.rs"]
+mod context_tests;

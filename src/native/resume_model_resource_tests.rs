@@ -1,7 +1,7 @@
 use super::*;
 use serde_json::json;
 
-const HOST: &str = r#"
+pub(super) const HOST: &str = r#"
 use crate::rust_api;
 use std::io::Write;
 pub struct Counter { path: String, id: u32 }
@@ -22,7 +22,7 @@ pub fn close(value: Counter) -> rust_api::close_outcome {
     value.record("close"); drop(value); rust_api::close_outcome::done
 }
 "#;
-const SOURCE: &str = r#"
+pub(super) const SOURCE: &str = r#"
 async control observe(ref counter value) exits done {
     inspect(value);
     exit done;
@@ -88,6 +88,16 @@ fn compare_resources(label: &str, source: &str, statuses: [i32; 2]) {
         std::process::id()
     ));
     fs::create_dir_all(&root).unwrap();
+    let manifest = resource_manifest(&root);
+    let p = crate::compile(source, manifest)
+        .unwrap()
+        .with_entry_exit_codes("main", BTreeMap::from([("done".into(), 0)]))
+        .unwrap();
+    compare_built_resources(&root, p, statuses);
+    fs::remove_dir_all(root).unwrap();
+}
+
+pub(super) fn resource_manifest(root: &Path) -> crate::manifest::Manifest {
     fs::write(root.join("host.rs"), HOST).unwrap();
     fs::write(
         root.join("Cargo.lock"),
@@ -104,13 +114,11 @@ fn compare_resources(label: &str, source: &str, statuses: [i32; 2]) {
             {"name":"close","parameters":[{"name":"value","type":"counter","mode":"consume"}],"outcomes":[{"name":"done","fields":[]}],"effects":["close"],"returns":true,"contingent":true,"rust":{"execution":"immediate"}}
         ]
     });
-    let manifest =
-        crate::manifest::Manifest::from_json_at(&config.to_string(), &root.join("manifest.json"))
-            .unwrap();
-    let p = crate::compile(source, manifest)
+    crate::manifest::Manifest::from_json_at(&config.to_string(), &root.join("manifest.json"))
         .unwrap()
-        .with_entry_exit_codes("main", BTreeMap::from([("done".into(), 0)]))
-        .unwrap();
+}
+
+fn compare_built_resources(root: &Path, p: CheckedProgram, statuses: [i32; 2]) {
     for (expanded, program) in [(false, p.clone()), (true, p.expanded("main").unwrap())] {
         for opt in [0, 2] {
             let normal = root.join(format!("normal-{expanded}-{opt}"));
@@ -173,5 +181,4 @@ fn compare_resources(label: &str, source: &str, statuses: [i32; 2]) {
             }
         }
     }
-    fs::remove_dir_all(root).unwrap();
 }
