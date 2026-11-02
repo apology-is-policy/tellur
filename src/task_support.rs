@@ -298,6 +298,14 @@ impl Registry {
         self.next_owner = u64::MAX;
     }
     #[cfg(test)]
+    pub(crate) fn exhaust_task_space(&mut self) {
+        self.next_task = u64::MAX;
+    }
+    #[cfg(test)]
+    pub(crate) fn exhaust_wait_space(&mut self) {
+        self.next_wait = u64::MAX;
+    }
+    #[cfg(test)]
     pub(crate) fn live_counts(&self) -> (usize, usize) {
         (self.owners.len(), self.tasks.len())
     }
@@ -418,7 +426,7 @@ mod tests {
             let mut r = Registry::default();
             let a = owner(&mut r);
             let task = r.defer(a, "work").unwrap();
-            r.next_wait = u64::MAX;
+            r.exhaust_wait_space();
             // Queue admission allocates no join identity, even at this limit.
             if phase != Phase::Cold {
                 r.enqueue(task, a, "work").unwrap();
@@ -636,7 +644,7 @@ mod tests {
         r.retire_owner(a, true).unwrap();
         let b = owner(&mut r);
         assert!(b.0 > a.0);
-        r.next_task = u64::MAX;
+        r.exhaust_task_space();
         let before = r.clone();
         assert!(r.defer(b, "work").is_err());
         assert_eq!(r, before);
@@ -710,7 +718,7 @@ mod tests {
         r.deliver(second, a, wait).unwrap();
         r.consume(second, a).unwrap();
         let third = r.defer(a, "work").unwrap();
-        r.next_wait = u64::MAX;
+        r.exhaust_wait_space();
         let before = r.clone();
         assert!(r.schedule(third, a, "work").is_err());
         assert_eq!(r, before);

@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.131.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.132.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -128,3 +128,8 @@ Since 0.131, reference/native support uses the same internal queue/join/readines
 protocol. Each retained compiled activation has a distinct invocation owner and
 checked normal/emergency retirement. Native cold task payload/queue binding and
 source handoffs remain ahead; source acceptance and cold lexical moves are unchanged.
+
+Since 0.132, internal bound native payloads retain host/invocation/task/producer
+identity through cold movement and atomic queue/wait admission. FIFO capture dispatch
+is one-use. Emitted retained callbacks and context completion wiring remain ahead;
+default native source execution remains synchronous.

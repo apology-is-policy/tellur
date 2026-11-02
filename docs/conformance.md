@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.131.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.132.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -4003,3 +4003,17 @@ All compiled native model drivers now verify that invocation owners retire fully
 alongside frames/resources/domains under normal, source-fault, host-limit and process
 paths. Selected native/resource adapters, manual, formatting and all-target checks
 cover the integration. This does not claim source scheduling or full-suite coverage.
+
+## Bound native task payload checkpoint (0.132)
+
+E1d.2d.3e adds five direct native payload cases: original host/invocation/producer
+identity, rejected malformed/stale/unbound/duplicate handles, task/wait exhaustion
+atomicity, FIFO capture transfer and one-use dispatch, distinct completion waits,
+real owned-buffer/resource preservation over sixteen rounds, emergency pending-return
+cleanup with borrowed suppliers, and legal cold lexical movement. The ordinary
+synchronous await helper rejects bound payloads instead of bypassing the registry.
+
+Existing compiled model, native/LLVM, resource adapter and manual regressions cover
+integration of the optional payload binding and embedded support. Reference runtime,
+checker, fault tracker and editor implementation retain previous verified evidence.
+These are selected internal-support checks, not a source scheduler or full-suite claim.

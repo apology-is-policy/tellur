@@ -290,11 +290,13 @@ mod frame_retirement {
                 fields: vec![],
             };
             let borrowed_frame = vec![Some(V::Task {
+                binding: None,
                 ty: "pending".into(),
                 operation: "unstarted".into(),
                 arguments: vec![borrower.clone()],
             })];
             let owned_frame = vec![Some(V::Task {
+                binding: None,
                 ty: "pending".into(),
                 operation: "unstarted".into(),
                 arguments: vec![V::Construct {

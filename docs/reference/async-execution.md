@@ -424,6 +424,14 @@ binding and source handoffs remain separate work. These internal identities do n
 change source lifetimes, cold lexical moves or public contracts. See
 [shared task ownership](../async-execution.md#shared-task-protocol-and-native-invocation-owners-e1d2d3d).
 
+Since 0.132, internal native APIs can bind cold captures to their original host,
+invocation, task and compiled producer. Queue/wait admission and FIFO capture dispatch
+preserve values on rejection. Default source generation still uses synchronous
+unbound tasks; retained context dispatch/completion integration remains ahead.
+The synchronous helper cannot consume bound payloads. Cold lexical movement and
+source contracts are unchanged. See
+[bound native payloads](../async-execution.md#bound-native-task-payloads-e1d2d3e).
+
 Since 0.128, entry process termination closes normal task admission and retires all
 registered execution contexts and results before delivering the original status.
 Prepared bodies never start; parked callers unwind without normal instructions or

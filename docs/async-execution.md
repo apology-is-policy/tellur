@@ -1212,6 +1212,7 @@ Those boundaries need explicit contracts before being accepted by the checker.
 | E1d.2d.3b | Shared native result adoption | Delivered in 0.129: host API atomically validates a parked source, receiving scope and complete unique result-owner graph, transfers only owned leaves and retires the source resource root. The compiled completion model uses it; task lifecycle and scheduler integration remain ahead |
 | E1d.2d.3c | Shared native retained execution | Delivered in 0.130: compiled continuations, fault-domain membership and retained contexts/results now live in normal native support. The compiled probes use that exact implementation; explicit selection/readiness, one-use result adoption and fault/process retirement remain separate from source scheduler/lowering integration |
 | E1d.2d.3d | Shared task protocol and native invocation owners | Delivered in 0.131: reference/native adapters share queue/join/readiness transitions. Every retained compiled activation has a distinct invocation owner, capacity preflight and normal/emergency obligation retirement; native task payload/queue binding and source handoffs remain ahead |
+| E1d.2d.3e | Bound native task payloads | Delivered in 0.132: internal cold captures carry opaque host/invocation/task/producer identity; cold creation and consuming queue/wait admission preflight before moving values, with FIFO one-use capture dispatch. Retained source lowering and context completion wiring remain ahead |
 | E1e | Explicit cooperative cancellation and suspending cleanup; normal completion races, cleanup failures and no abandoned losers | Define cancellation observation and cleanup admission; no implicit cancellation exception |
 | E2 | Pinned native coroutine experiment, then checked lowering and schedule-based differential validation | Reference semantics and legal frame retirement must precede native destruction |
 
@@ -1487,6 +1488,42 @@ new owner/task identities, and context queue/completion-wait wiring remains ahea
 Default native entries still use synchronous lowering. Legal cold lexical moves,
 origin/ownership contracts and source fault rules are unchanged. This does not expose
 `spawn`/`yield`, early native source joins, cancellation or asynchronous disposal.
+
+## Bound native task payloads (E1d.2d.3e)
+
+Compiler 0.132 adds [native task-payload support](../src/native/task_payload.rs).
+An internal bound cold value retains opaque host, invocation, task and exact compiled
+producer identities alongside its captures. Equal numeric IDs in another host or
+an unrelated invocation do not authorize it; a same-named different control is not
+the original producer. Moving the value keeps its identity. No lexical-boundary
+identity is captured, preserving legal cold movement within the invocation.
+
+Creation checks the live invocation, producer kind, argument count and task capacity
+before taking the capture vector. Consuming queue admission checks the binding,
+producer and argument shape, then atomically registers ready work and its completion
+wait before removing the handle. Rejected admission preserves the original value
+and registry. Dispatch checks host identity and FIFO position before transferring
+captures once; it selects a producer but does not execute its body. Owned buffers
+move without copying, and resource traversal still follows owned captures rather
+than borrowed references. Dropping a queue object does not discharge its obligation.
+
+The synchronous task representation remains available with no binding. Its existing
+await helper accepts only that representation, so it cannot bypass the protocol for
+a bound payload. The default generator still produces synchronous unbound tasks.
+The new bound APIs are exercised directly; retained fixture callbacks do not yet
+emit them. Pairing queued tasks and completion waits with retained native contexts,
+result delivery, domain admission and fault settlement is the next integration step.
+These APIs do not by themselves authorize cross-boundary started handles or source
+`spawn`/`yield`.
+
+Five [payload regressions](../src/native/task_payload_tests.rs) cover host/invocation/
+producer mismatch, malformed and stale payloads, duplicate and out-of-order dispatch,
+separate completion waits, task/wait exhaustion before capture movement, and sixteen
+rounds of owned-buffer/resource transfer. A pending normal return takes the existing
+emergency path, releases owned leaves once and leaves borrowed suppliers intact.
+Cold lexical movement keeps the same invocation. Shared protocol and source language
+semantics remain unchanged; asynchronous adapters, cancellation and coroutine lowering
+are separate work.
 
 ## Reference execution invariants
 

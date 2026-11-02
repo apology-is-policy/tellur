@@ -68,6 +68,7 @@ fn adoption_into_parked_nested_receiver_moves_owners_without_selecting_or_follow
         fields: vec![
             a.clone(),
             V::Task {
+                binding: None,
                 ty: "task".into(),
                 operation: "later".into(),
                 arguments: vec![b.clone()],

@@ -68,6 +68,7 @@ fn resource_scope_admission_and_stale_foreign_exhausted_selection_are_atomic() {
     let scope = begin(
         &mut r,
         &[V::Task {
+            binding: None,
             ty: "task".into(),
             operation: "cold".into(),
             arguments: vec![
@@ -244,6 +245,7 @@ fn normal_lexical_exit_preserves_owned_task_results_and_retires_only_live_metada
                 Ok(Completion::Outcome((
                     "ready".into(),
                     vec![V::Task {
+                        binding: None,
                         ty: "pending".into(),
                         operation: "later".into(),
                         arguments: vec![v[0].take().unwrap(), new],

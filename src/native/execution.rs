@@ -15,6 +15,7 @@ pub struct Control {
 pub struct Activation {
     frame: Frame,
     owner: super::tasks::OwnerId,
+    registry: std::sync::Arc<()>,
     control: &'static Control,
     pending: Option<Pending>,
     scopes: Vec<Scope>,
@@ -219,6 +220,7 @@ impl Machine {
         Ok(Activation {
             frame,
             owner,
+            registry: host.resources.identity.clone(),
             control,
             pending: None,
             scopes: vec![],
@@ -673,3 +675,8 @@ pub use contexts::{ContextKey, ContextPoll, Contexts, Readiness};
 #[cfg(test)]
 #[path = "invocation_tests.rs"]
 mod invocation_tests;
+
+#[cfg(test)]
+#[path = "task_payload.rs"]
+mod task_payload;
+pub use task_payload::{QueuedTask, TaskBinding};

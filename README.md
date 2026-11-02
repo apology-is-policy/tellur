@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.131.0** implements the v0.1 checked core and the current language
+Compiler release **0.132.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -722,3 +722,10 @@ transitions. Retained native activations have separate invocation owners even wh
 frames are reused; normal return requires settled tasks, and emergency retirement
 invalidates only the affected owner's obligations. Native task payload/queue binding
 and source `spawn`/`yield` remain ahead. Current source behavior is unchanged.
+
+## Bound native task payloads in 0.132
+
+Internal native cold-task APIs now bind captures to the original invocation, host
+and compiled producer. Invalid queue admission preserves the handle and captures;
+FIFO dispatch transfers them once. Source generation remains synchronous while
+retained context dispatch and completion integration continue.

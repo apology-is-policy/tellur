@@ -423,7 +423,7 @@ impl Generator<'_> {
                     }
                     let call = match operation {
                         Operation::Defer(name) => format!(
-                            "(String::from({}), vec![V::Task {{ty: {}.into(), operation: {}.into(), arguments: {}}}])",
+                            "(String::from({}), vec![V::Task {{binding: None, ty: {}.into(), operation: {}.into(), arguments: {}}}])",
                             string("$pending"),
                             string(&crate::manifest::task_type(name)),
                             string(name),
@@ -557,7 +557,9 @@ impl CheckedProgram {
         g.code.push_str("\n}\n}\n");
         g.code.push_str("pub mod execution {\n");
         g.code.push_str(EXECUTION);
-        g.code.push_str("\nmod domains {\n");
+        g.code.push_str("\nmod task_payload {\n");
+        g.code.push_str(include_str!("native/task_payload.rs"));
+        g.code.push_str("\n}\nmod domains {\n");
         g.code.push_str(include_str!("native/domains.rs"));
         g.code.push_str("\n}\nmod contexts {\n");
         g.code.push_str(CONTEXTS);

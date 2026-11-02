@@ -109,6 +109,7 @@ pub enum V {
     },
     #[serde(skip)]
     Task {
+        binding: Option<execution::TaskBinding>,
         ty: String,
         operation: String,
         arguments: Vec<V>,
@@ -141,6 +142,7 @@ impl V {
 pub fn await_arguments(mut values: Vec<V>, expected: &str) -> R<Vec<V>> {
     match values.pop() {
         Some(V::Task {
+            binding: None,
             operation,
             arguments,
             ..
