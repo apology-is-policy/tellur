@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.106.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.107.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -3641,3 +3641,44 @@ protected unrelated C# file. Existing editor windows are not reloaded.
 Source and native execution remain sequential. Borrowed task captures need persistent
 loan holders and result-origin transfer in E1c.3; public task contracts, scheduling,
 spawn, readiness, cancellation and direct LLVM coroutine lowering remain ahead.
+
+## 0.107 — direct borrowed cold captures (E1c.3a)
+
+A local cold task can capture a direct shared or exclusive reference to existing
+reference-free storage. Captured loans remain attached to the task through local
+moves and end when consuming await delivers its reference-free completion. A
+reference argument reborrows under ordinary call rules; `move alias` explicitly
+transfers the exclusive reference. The old alias remains consumed after that form.
+Pending-task holders do not expire merely because source liveness finds no later
+handle use, including on a path ending in a fault. Task ownership and capture-owner
+fault dispositions remain independent obligations.
+
+Ten `tests/borrowed_tasks.rs` tests cover overlapping and disjoint captures, shared
+coexistence, exclusive conflicts, local moves, branch-sensitive consumption, explicit
+reference transfer versus reborrow, references loaded from stored fields, generic
+and trait dispatch, initializer alias conflicts, one-instruction stepping and
+reference/native parity before and after expansion. Boundary checks reject an outer
+borrowed task entering isolated work; locally created captures settle before recovery.
+The added retained-Rust-resource regression checks both normal completion and a fault
+before await, with exactly one owner release, no early body execution and rejection
+when the owner lacks a required fault disposition.
+
+Selected verification passes **441 Rust tests across 16 targets**, **44 editor
+tests**, offline all-target checking and formatting/whitespace checks. The borrowed
+task target combines nine focused tests with one separately validated boundary test;
+completed tests were reused when only that fixture needed correction. Existing
+owned tasks, direct async calls, references, stored records, borrowed sums, lexical
+boundaries, initializers, generics, certificates and diagnostic recovery remain
+covered. This is selected regression evidence, not a full-suite claim.
+
+The reference includes executable borrowed-task examples and rejection cases. The
+isolated VS Code test checks `auto` hover, unsaved `E_LOAN` diagnostics, repair and
+live native execution of `playground/borrowed_tasks.tellur`. Six binaries and nine
+packaged/installed payloads are verified for 0.107.0; the source backup excludes the
+protected unrelated C# file. Existing editor windows are not reloaded.
+
+Contained captures, references to reference-bearing storage, borrowed completion
+payloads, nesting borrowed tasks in aggregates and public/escaping task contracts
+remain rejected. E1c.3b must preserve per-capture dependency identities and transfer
+only the selected completion's origins. Scheduling, cancellation and coroutine
+lowering remain later work.

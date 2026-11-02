@@ -517,11 +517,17 @@ impl Verifier<'_> {
                                 )?;
                             }
                             if matches!(operation, Operation::Defer(_)) {
+                                if !r.borrow_returns.is_empty() || !r.stored_returns.is_empty() {
+                                    return Err(error("deferred borrowed result is unsupported"));
+                                }
                                 if r.parameters.iter().any(|p| {
-                                    crate::manifest::reference_inner(&p.ty).is_some()
-                                        || self.program.manifest().contains_references(&p.ty)
+                                    let inner = crate::manifest::reference_inner(&p.ty)
+                                        .map_or(p.ty.as_str(), |(_, inner)| inner);
+                                    self.program.manifest().contains_references(inner)
                                 }) {
-                                    return Err(error("deferred borrowed capture is unsupported"));
+                                    return Err(error(
+                                        "deferred contained-reference capture is unsupported",
+                                    ));
                                 }
                                 let ty = crate::manifest::task_type(name);
                                 let m = self.program.manifest();

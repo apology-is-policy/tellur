@@ -5867,3 +5867,30 @@ fn cold_task_auto_hover_and_unsaved_ownership_repair() {
     assert_eq!(f.diagnostics(), json!([]));
     assert_eq!(hover_at(&f, source, "auto pending"), h);
 }
+
+#[test]
+fn borrowed_task_loan_diagnostics_and_unsaved_repair_refresh_auto_hover() {
+    let mut f = Fixture::new();
+    let source = include_str!("../playground/borrowed_tasks.tellur");
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let h = hover_at(&f, source, "auto pending");
+    assert!(
+        h["contents"]["value"]
+            .as_str()
+            .unwrap()
+            .contains("task<display>"),
+        "{h}"
+    );
+    let broken = source.replace("emit(\"before await\");", "text=\"too soon\";");
+    f.change(&broken, 2);
+    assert_eq!(f.diagnostics()[0]["code"], "E_LOAN");
+    assert!(
+        !hover_at(&f, &broken, "auto pending")
+            .to_string()
+            .contains("task<display>")
+    );
+    f.change(source, 3);
+    assert_eq!(f.diagnostics(), json!([]));
+    assert_eq!(hover_at(&f, source, "auto pending"), h);
+}

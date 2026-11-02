@@ -115,7 +115,7 @@ pub struct Manifest {
     pub rust: Option<crate::rust_host::Configuration>,
     #[serde(skip)]
     pub(crate) abstract_types: BTreeMap<String, Capabilities>,
-    /// Compiler-only owned capture types; never accepted as host manifest input.
+    /// Compiler-only capture types; never accepted as host manifest input.
     #[serde(skip)]
     pub(crate) task_captures: BTreeMap<String, Vec<String>>,
     pub version: String,
@@ -921,6 +921,9 @@ impl Manifest {
             if !seen.insert(t.into()) {
                 return false;
             }
+            if let Some(captures) = m.task_captures.get(t) {
+                return captures.iter().any(|ty| visit(m, ty, seen));
+            }
             if let Some(inner) = option_inner(t) {
                 return visit(m, inner, seen);
             }
@@ -1016,6 +1019,17 @@ impl Manifest {
             seen: &mut BTreeSet<String>,
             nested: bool,
         ) -> Result<()> {
+            if let Some(captures) = m.task_captures.get(name) {
+                if nested && m.contains_references(name) {
+                    return Err(error(
+                        "borrowed tasks cannot yet be nested in other storage; move and await them as local bindings",
+                    ));
+                }
+                for capture in captures {
+                    visit(m, capture, seen, false)?;
+                }
+                return Ok(());
+            }
             if let Some((_, inner)) = reference_inner(name) {
                 if reference_inner(inner).is_some() {
                     return m.check_type(inner);
@@ -1064,6 +1078,9 @@ impl Manifest {
             }
             if !seen.insert(ty.into()) {
                 return false;
+            }
+            if let Some(captures) = m.task_captures.get(ty) {
+                return captures.iter().any(|ty| visit(m, ty, seen));
             }
             if let Some(TypeDef::Record { fields, .. }) = m.type_def(ty) {
                 fields.iter().any(|f| visit(m, &f.ty, seen))

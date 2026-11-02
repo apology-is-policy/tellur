@@ -3,8 +3,8 @@
 [Language reference](../language-reference.md) · [Design and next steps](../async-execution.md) ·
 [Execution failures](execution-failures.md)
 
-Compiler 0.106 supports `async control`, synchronous entry with `run`, direct
-`await operation(arguments)` and local cold tasks with owned captures. Execution
+Compiler 0.107 supports `async control`, synchronous entry with `run`, direct
+`await operation(arguments)` and local cold tasks with owned and direct borrowed captures. Execution
 remains sequential. There is no concurrent scheduler, I/O readiness or LLVM coroutine
 lowering yet.
 
@@ -66,10 +66,11 @@ Repair the call above to `forward run work();`. Inside an async control, use
 
 `auto pending = defer operation(arguments);` evaluates and transfers arguments now,
 then stores an owned task without entering the async body. The declaration must be
-an immutable local `auto` binding inside an async control. Arguments may contain
-owned strings, collections, records, sums and resources, but no direct or contained
-references in this profile. A constructor can use transient borrows while producing
-an owned argument with no references.
+an immutable local `auto` binding inside an async control. Owned arguments may contain
+strings, collections, records, sums and resources without contained references.
+Direct shared and exclusive references to existing reference-free storage are also
+supported; see the borrowing rules below. A constructor can use transient borrows
+while producing an owned argument with no references.
 
 <!-- tellur:check -->
 ```tellur
@@ -111,20 +112,78 @@ an editor description of a compiler-internal type, not a public type spelling.
 Tasks cannot escape through a control result, including inside a wrapper. Public
 task parameters/results and result-contract erasure have not been designed yet.
 
-<!-- tellur:reject E_ASYNC -->
+## Borrowed captures
+
+A direct `ref t` or `ref mutable t` capture borrows existing storage until the task
+is consumed by await or its execution boundary faults. `t` must not itself contain
+references in this profile. Multiple shared captures may coexist. Exclusive
+captures exclude overlapping reads, writes and other borrows. Disjoint record fields
+can be captured independently. Moving the task keeps its loans and original backing
+storage; it does not copy the referent or make the owner available early.
+
+<!-- tellur:check -->
+```tellur
+async control update(ref mutable string text) exits done {
+    deref text = "updated";
+    exit done;
+}
+
+async control startup() exits done {
+    mutable string text = "initial";
+    auto pending = defer update(borrow mutable text);
+    auto moved = move pending;
+    await moved;
+    emit(borrow text);
+    exit done;
+}
+
+control main() exits done { forward run startup(); }
+```
+
+A reference argument follows ordinary call rules: `defer update(alias)` reborrows
+`alias`, excluding its conflicting use until await, after which it is usable again.
+`defer update(move alias)` transfers the exclusive reference instead; the old alias
+stays consumed after await. A shared reference remains copyable. Neither spelling
+moves the referenced owner's storage into the task.
+
+Captured loans do not expire merely because the source has no later use of the
+handle. The task must still be awaited on normal paths. On a faulting path its loans
+last until boundary settlement. A borrowed resource's owner still needs its own
+fault disposition when a possible fault can retire that owner.
+
+<!-- tellur:reject E_LOAN -->
 ```tellur
 async control display(ref string text) exits done { emit(text); exit done; }
 async control startup() exits done {
-    string text = "not an owned capture";
+    mutable string text = "original";
     auto pending = defer display(borrow text);
+    text = "too soon";
     await pending;
     exit done;
 }
 ```
 
-Use a direct `await display(borrow text);` for this borrowed call, or transfer an
-owned string to a producer that accepts it by value. Stored loans need persistent
-capture holders and origin propagation; rejecting them prevents premature release.
+Move the assignment after `await pending;`. Await currently admits only owned,
+reference-free completion payloads, so all capture loans end on delivery. Returning
+a borrow requires the next result-origin transfer checkpoint.
+
+Bind a temporary owner or reference before deferring work; deferred borrowing does
+not adopt a synchronous temporary's lifetime. Tasks with borrowed captures require
+unique local binding names and cannot yet be nested inside sums, records or
+collections, passed through a control boundary, or returned. Direct reference
+values extracted from existing record fields can be captured when their referent
+is reference-free; the task retains their established external dependencies.
+
+<!-- tellur:reject E_ASYNC -->
+```tellur
+async control lend(ref string text) exits ready { ref string value from text } {
+    exit ready { text };
+}
+async control startup(ref string text) exits done {
+    auto pending = defer lend(text);
+    exit done;
+}
+```
 
 ## Contracts and resources
 
@@ -139,12 +198,15 @@ origin and fault-disposition checks still apply. Caller storage remains live unt
 the child completes. Returned borrows keep their declared dependencies after await;
 await does not make the source available for mutation while such a borrow is live.
 Direct call-duration temporary borrows retain their existing restrictions. This is
-not permission to store a borrowed capture in a cold task.
+not permission to extend a temporary borrow into a cold task.
 
 Faults propagate through the existing emergency channel and nearest enclosing
 boundary. They never become a normal `failed` or `cancelled` outcome. Public and
 trait controls still declare `faults` when necessary. Async invocation is unavailable
 in contingency code in this bounded profile; async controls cannot be `@contingent`.
+Existing fault isolation also applies to tasks: an outer borrowed task cannot enter
+an isolated work block. Create the borrowed task and its owned request storage
+inside that block. Its pending captures settle before contingency/recovery.
 
 A deferred body may fault, but its fault permission is needed when awaiting it.
 Argument constructors run immediately and require permission at creation if they
@@ -168,6 +230,6 @@ synchronous calls around them, but cannot erase the async boundary. Expansion
 certificates check this distinction. Protocol analysis currently rejects these
 boundaries rather than treating them as ordinary unobservable decisions.
 
-Borrowed captures/results, escaping tasks, a public `task<...>` spelling, `spawn`,
+Contained reference captures, borrowed results, escaping tasks, a public `task<...>` spelling, `spawn`,
 scheduling, cancellation and async host adapters remain unimplemented. No implicit
 detach or cancellation by destruction is permitted. See the [design plan](../async-execution.md).

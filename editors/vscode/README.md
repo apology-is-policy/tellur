@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-0.106.0-darwin-arm64.vsix` using **Extensions:
+1. Install the supplied `tellur-language-0.107.0-darwin-arm64.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1000,3 +1000,12 @@ public writable type. Diagnostics reject forgotten or reused tasks, borrowed
 captures and escaping task results. Unsaved repair refreshes checked hover.
 Try [cold_tasks.tellur](https://github.com/apology-is-policy/tellur/blob/main/playground/cold_tasks.tellur)
 and the [reference](https://github.com/apology-is-policy/tellur/blob/main/docs/reference/async-execution.md).
+
+
+## Direct borrowed cold captures in 0.107
+
+Task hover and diagnostics now cover retained shared/exclusive borrows. Conflicting
+access before await is rejected, including after a task move; unsaved repair restores
+checked type hover. The isolated editor fixture builds and runs
+[borrowed_tasks.tellur](https://github.com/apology-is-policy/tellur/blob/main/playground/borrowed_tasks.tellur).
+Contained captures and borrowed result delivery remain separate follow-ups.

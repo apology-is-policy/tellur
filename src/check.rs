@@ -4191,6 +4191,11 @@ impl Checker<'_> {
                 }
                 let live_name = if let Some(h) = &loan.holder {
                     let slot = &self.result.slots[&h.root];
+                    // A pending computation retains captures until it is consumed
+                    // or its boundary faults, even if no later source use exists.
+                    if manifest::task_inner(&slot.ty).is_some() {
+                        continue;
+                    }
                     let mut name = slot.name.clone();
                     let mut ty = if h.indirect {
                         manifest::reference_inner(&slot.ty).unwrap().1.to_owned()

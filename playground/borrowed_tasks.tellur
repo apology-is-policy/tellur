@@ -1,0 +1,31 @@
+// Deferred work keeps existing storage borrowed until the task is awaited.
+async control display(ref string text) exits done {
+    emit(text);
+    exit done;
+}
+
+async control update(ref mutable string text) exits done {
+    deref text = "updated";
+    exit done;
+}
+
+async control startup() exits done {
+    mutable string text = "initial";
+    auto pending = defer display(borrow text);
+    emit("before await");
+    await pending;
+
+    auto writer = defer update(borrow mutable text);
+    auto moved = move writer;
+    await moved;
+    emit(borrow text);
+    exit done;
+}
+
+control main() exits program_result {
+    forward run startup();
+}
+
+outcome program_result {
+    @exit 0 done,
+}

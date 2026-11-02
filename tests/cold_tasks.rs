@@ -52,8 +52,8 @@ fn pending_task_cannot_be_discarded_cloned_or_reused() {
     }
 }
 #[test]
-fn cold_handles_stay_local_and_reject_borrowed_captures() {
-    let borrowed = "async control work(ref string text) exits done {emit(text);exit done;} async control main() exits done {string text=\"a\";auto pending=defer work(borrow text);await pending;exit done;}";
+fn cold_handles_stay_local_and_reject_borrowed_results() {
+    let borrowed = "async control work(ref string text) exits ready {ref string value from text} {exit ready {text};} async control main() exits done {string text=\"a\";auto pending=defer work(borrow text);await pending;exit done;}";
     assert_eq!(compile(borrowed, manifest()).unwrap_err().code, "E_ASYNC");
     let escape = "async control work() exits done {exit done;} async control factory() exits auto {auto pending=defer work();exit ready {pending};}";
     assert_eq!(compile(escape, manifest()).unwrap_err().code, "E_ASYNC");

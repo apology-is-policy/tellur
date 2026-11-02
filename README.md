@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.106.0** implements the v0.1 checked core and the current language
+Compiler release **0.107.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -502,3 +502,12 @@ transfers the obligation to await. Pending captures retain their fault dispositi
 Try `./bin/tellurc exec playground/cold_tasks.tellur` and hover its `auto` bindings.
 Borrowed captures, public task types and concurrent scheduling remain ahead. The
 [reference](docs/reference/async-execution.md) gives the exact current rules.
+
+
+### Direct borrowed cold captures in 0.107
+
+Deferred tasks can retain shared or exclusive borrows of existing reference-free
+storage. Moving a task preserves the loans; consuming await releases them. Ordinary
+reference arguments reborrow, while `move alias` transfers an exclusive reference.
+Try `./bin/tellurc exec playground/borrowed_tasks.tellur`. Contained captures,
+borrowed completion payloads and nested storage of borrowed tasks remain ahead.
