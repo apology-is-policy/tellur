@@ -102,6 +102,9 @@ impl Registry {
         self.ready.push_back(id);
         Ok(wait)
     }
+    pub(super) fn next_ready(&self) -> Option<TaskId> {
+        self.ready.front().copied()
+    }
     pub(super) fn dispatch(&mut self, id: TaskId) -> Result<()> {
         if self.ready.front() != Some(&id)
             || !self.tasks.get(&id).is_some_and(|t| t.phase == Phase::Ready)

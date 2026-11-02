@@ -17,6 +17,7 @@ fn scenario() -> Scenario {
 }
 fn assert_retired(m: &Machine<'_>) {
     assert!(m.shared.tasks.is_empty());
+    assert!(m.shared.ready.is_empty());
     assert!(m.shared.suspended.calls.is_empty());
     assert!(m.shared.values.is_empty());
     assert!(m.context.stack.is_empty());
@@ -417,5 +418,109 @@ control main() exits done {forward run start();}
         matches!(m.context.flow, Some(Err(ref d)) if d.message.contains("suspension identity space exhausted"))
     );
     assert_eq!(messages(m), ["captured"]);
+    assert_retired(m);
+}
+
+#[test]
+fn queued_contexts_dispatch_independently_without_preempting_or_replaying_storage() {
+    // This white-box harness separates admission from its administrative dispatch.
+    // Public host quota pauses still drain Dispatch; they cannot make this split.
+    fn queue_next_await(m: &mut Machine<'_>) {
+        let Continuation::Block { code, next } = m.context.stack.pop().unwrap() else {
+            panic!("expected the checked await instruction");
+        };
+        let instruction = &code[next];
+        assert!(matches!(
+            instruction.action,
+            Action::Decide {
+                operation: Operation::AwaitTask(_),
+                ..
+            }
+        ));
+        assert!(instruction.guard.evaluate(&m.context.frame.facts));
+        m.context.activations.at(instruction.id);
+        m.shared.steps_left -= 1;
+        m.context.stack.push(Continuation::Block {
+            code,
+            next: next + 1,
+        });
+        assert!(matches!(
+            m.instruction(instruction).unwrap(),
+            Flow::Fallthrough
+        ));
+        assert!(matches!(
+            m.context.stack.pop(),
+            Some(Continuation::Dispatch)
+        ));
+    }
+    let p = checked(
+        r#"
+async control leaf(ref mutable string text)
+    exits ready { ref mutable string value from text }
+{
+    emit(text); deref text = "edited"; exit ready {text};
+}
+async control start(string initial) exits done {
+    mutable string text = move initial;
+    auto pending = defer leaf(borrow mutable text);
+    emit("captured");
+    delta await pending {ready {auto value} => received}
+    [received]: emit(value); exit done;
+}
+control main() exits done {forward run start("unused");}
+"#,
+    );
+    let s = scenario();
+    let mut session = p.start_execution(&s, 200);
+    let m = session.machine.as_mut().unwrap();
+    m.call("start", vec![Value::String("left".into())]).unwrap();
+    while m.shared.events.is_empty() {
+        assert!(!m.drive(1));
+    }
+    let independent = Context::new(m.context.activations.child());
+    queue_next_await(m);
+    m.context = independent;
+    m.call("start", vec![Value::String("right".into())])
+        .unwrap();
+    while m.shared.events.len() < 2 {
+        assert!(!m.drive(1));
+    }
+    queue_next_await(m);
+    assert_eq!(m.shared.ready.len(), 2);
+    assert_eq!(m.shared.suspended.calls.len(), 2);
+    let first = m.shared.tasks.next_ready().unwrap();
+    let held = m.shared.ready.remove(&first).unwrap();
+    let registry = m.shared.tasks.clone();
+    let values = m.shared.values.clone();
+    let fuel = m.shared.steps_left;
+    let events = m.shared.events.clone();
+    assert!(m.dispatch_ready().is_err());
+    assert_eq!(m.shared.tasks, registry);
+    assert_eq!(m.shared.values, values);
+    assert_eq!(m.shared.steps_left, fuel);
+    assert_eq!(m.shared.events, events);
+    m.shared.ready.insert(first, held);
+    m.dispatch_ready().unwrap();
+    assert_eq!(m.shared.ready.len(), 1);
+    assert!(
+        m.dispatch_ready()
+            .unwrap_err()
+            .message
+            .contains("active control chain")
+    );
+    assert_eq!(m.shared.ready.len(), 1);
+    assert!(!m.drive(0));
+    assert_eq!(m.shared.events, events);
+    assert!(m.drive(100));
+    assert_eq!(messages(m), ["captured", "captured", "left", "edited"]);
+    assert_eq!(m.shared.ready.len(), 1);
+    assert_eq!(m.shared.suspended.calls.len(), 1);
+    m.dispatch_ready().unwrap();
+    assert!(m.drive(100));
+    assert_eq!(
+        messages(m),
+        ["captured", "captured", "left", "edited", "right", "edited"]
+    );
+    assert!(m.dispatch_ready().is_err());
     assert_retired(m);
 }

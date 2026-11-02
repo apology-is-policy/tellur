@@ -50,6 +50,7 @@ impl CheckedProgram {
                     values: BTreeMap::new(),
                     tasks: Registry::default(),
                     suspended: SuspendedCalls::default(),
+                    ready: BTreeMap::new(),
                 },
                 context: Context::new(crate::fault::Tracker::new(self.runtime_sites())),
             }),
@@ -120,10 +121,7 @@ enum Continuation<'a> {
         task: TaskId,
         arms: &'a [Arm],
     },
-    StartTask {
-        task: TaskId,
-        invocation: PreparedInvocation<'a>,
-    },
+    Dispatch,
     ResumeAwait {
         task: TaskId,
         wait: WaitId,
@@ -163,6 +161,7 @@ struct SharedExecution<'a> {
     values: BTreeMap<Id, Value>,
     tasks: Registry,
     suspended: SuspendedCalls<'a>,
+    ready: BTreeMap<TaskId, ReadyCall<'a>>,
 }
 
 /// A resumable control chain. Storage and effect history belong to the execution;
@@ -247,6 +246,10 @@ impl<'a> SuspendedCalls<'a> {
         self.get(id, task, wait)?;
         Ok(self.calls.remove(&id).unwrap().context)
     }
+}
+struct ReadyCall<'a> {
+    invocation: PreparedInvocation<'a>,
+    context: Context<'a>,
 }
 struct Machine<'a> {
     shared: SharedExecution<'a>,
@@ -393,15 +396,10 @@ impl<'a> Machine<'a> {
                     Ok(Flow::Fallthrough) => {}
                     result => self.context.flow = Some(result),
                 }
-            } else if let Continuation::StartTask { task, invocation } = continuation {
-                // Dispatch is administrative: it does not consume instruction fuel
-                // or permit the parked caller to run before its child completes.
-                if let Err(diagnostic) = self
-                    .shared
-                    .tasks
-                    .dispatch(task)
-                    .and_then(|()| self.start_call(invocation))
-                {
+            } else if let Continuation::Dispatch = continuation {
+                // A source await requests dispatch. Host quota exhaustion alone
+                // never selects another ready context.
+                if let Err(diagnostic) = self.dispatch_ready() {
                     self.context.flow = Some(Err(diagnostic));
                 }
             } else if let Err(diagnostic) = self.resume(continuation) {
@@ -410,6 +408,28 @@ impl<'a> Machine<'a> {
         }
         true
     }
+    fn dispatch_ready(&mut self) -> Result<()> {
+        if !self.context.stack.is_empty() || self.context.frame.owner.is_some() {
+            return Err(error("dispatch cannot replace an active control chain"));
+        }
+        let task = self
+            .shared
+            .tasks
+            .next_ready()
+            .ok_or_else(|| error("dispatch has no ready task"))?;
+        if !self.shared.ready.contains_key(&task) {
+            return Err(error("ready task has no retained execution context"));
+        }
+        // Validate queue state before taking the prepared context. Installation
+        // failure unwinds its already-retained caller through ResumeAwait.
+        self.shared.tasks.dispatch(task)?;
+        let ReadyCall {
+            invocation,
+            context,
+        } = self.shared.ready.remove(&task).unwrap();
+        self.context = context;
+        self.start_call(invocation)
+    }
     fn resume(&mut self, continuation: Continuation<'a>) -> Result<()> {
         let flow = self
             .context
@@ -417,7 +437,7 @@ impl<'a> Machine<'a> {
             .take()
             .expect("a continuation receives completed nested work");
         match continuation {
-            Continuation::Block { .. } | Continuation::StartTask { .. } => unreachable!(),
+            Continuation::Block { .. } | Continuation::Dispatch => unreachable!(),
             Continuation::Call { region, caller } => {
                 self.context.handover.clear();
                 let result = (|| {
@@ -829,16 +849,26 @@ impl<'a> Machine<'a> {
                 let activations = std::mem::take(&mut self.context.activations);
                 let mut child = Context::new(activations);
                 child.phase = self.context.phase.clone();
-                let caller = std::mem::replace(&mut self.context, child);
+                let caller = std::mem::replace(&mut self.context, Context::new(Default::default()));
                 self.shared.suspended.commit(suspension, task, wait, caller);
-                self.context.stack.push(Continuation::ResumeAwait {
+                child.stack.push(Continuation::ResumeAwait {
                     task,
                     wait,
                     caller: suspension,
                 });
-                self.context
-                    .stack
-                    .push(Continuation::StartTask { task, invocation });
+                assert!(
+                    self.shared
+                        .ready
+                        .insert(
+                            task,
+                            ReadyCall {
+                                invocation,
+                                context: child
+                            }
+                        )
+                        .is_none()
+                );
+                self.context.stack.push(Continuation::Dispatch);
             }
             Action::Decide {
                 operation: Operation::Region(name) | Operation::Run(name) | Operation::Await(name),

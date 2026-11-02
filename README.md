@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.117.0** implements the v0.1 checked core and the current language
+Compiler release **0.118.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -605,3 +605,11 @@ validate the matching task and completion wait before restoring the original cal
 fault unwind retires the registration without producing a normal result. Borrowed
 storage, diagnostic traces and host instruction quotas retain their existing behavior.
 Source execution remains sequential; scoped concurrency is the next feature group.
+
+
+## Ready context storage in 0.118
+
+Prepared cold-task children now remain in separate ready storage until dispatch.
+Selection validates the retained context and cannot replace an active control chain.
+Borrowed storage, host instruction quotas and source effect order are unchanged.
+This prepares the runtime for independent readiness; source execution remains sequential.

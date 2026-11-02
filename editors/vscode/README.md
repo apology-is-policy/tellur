@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-0.117.0-darwin-arm64.vsix` using **Extensions:
+1. Install the supplied `tellur-language-0.118.0-darwin-arm64.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1095,3 +1095,11 @@ validate the matching task and completion wait before restoring the original cal
 fault unwind retires the registration without producing a normal result. Borrowed
 storage, diagnostic traces and host instruction quotas retain their existing behavior.
 Source execution remains sequential; scoped concurrency is the next feature group.
+
+
+## Ready context storage in 0.118
+
+Prepared cold-task children now remain in separate ready storage until dispatch.
+Selection validates the retained context and cannot replace an active control chain.
+Borrowed storage, host instruction quotas and source effect order are unchanged.
+This prepares the runtime for independent readiness; source execution remains sequential.

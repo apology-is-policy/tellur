@@ -374,7 +374,10 @@ or external I/O readiness.
 Since 0.117, parked callers occupy a separate suspension table. Each registration
 is paired with its task and completion wait, validated and removed exactly once
 on completion or emergency unwind. Stale or crossed registrations cannot resume
-a different caller. This changes internal storage, not source handoff semantics.
+a different caller. Since 0.118, prepared children likewise occupy separate ready
+storage; dispatch validates the matching context and cannot replace an active chain.
+Host quota exhaustion never selects another ready task. These changes affect internal
+storage, not source handoff semantics.
 
 Path expansion retains `run`, `defer`, direct `await` and task consumption as
 explicit operations. It may inline ordinary
