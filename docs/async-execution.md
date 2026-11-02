@@ -311,6 +311,44 @@ retire every affected waiting/ready borrower and settle resources before conting
 before these mechanics can support source concurrency or async adapters. Cancellation
 and LLVM coroutine lowering remain later work.
 
+## Fault domain identity and admission (E1d.2c.4a)
+
+Compiler 0.120 gives each executing root, named supervised boundary and lexical
+fault boundary a fresh runtime domain. Domain identities are execution-local,
+monotonic and separate from invocation owners, task handles, readiness generations
+and diagnostic activations. Only live domains are retained. Admission preflights
+identity capacity before installing a root or replacing a lexical boundary's tracker.
+A handled child closes without poisoning its parent; escalation stops each enclosing
+domain as emergency unwinding reaches it.
+
+A context carries its current executing domain through calls, cold awaits, waiting
+and ready storage. Cold-task creation does not freeze the later executing boundary:
+an existing handle may still move across normal lexical boundaries and inherit the
+boundary where it is awaited. Future spawned-task ownership must separately retain
+its accepted owning boundary; the current domain is not a substitute for that rule.
+
+Normal task creation/await admission, readiness registration/signalling and ready
+dispatch require an open domain and open ancestors. Emergency unwinding marks its
+domain stopped before further continuations run. Contingent calls remain permitted
+inside the failed domain through the existing checked contingency mode. Boundary
+finalization and contingency admission require no nested live domains or retained
+ready, waiting or suspended caller contexts in that domain. These checks cannot
+release a loan or count metadata removal as resource settlement.
+
+Two registry tests cover parent/child independence, stopped ancestors, stale scopes,
+non-reused identities and exhaustion. Checked execution tests cover nested named and
+lexical handling, root/nested admission exhaustion, and blocked wake/dispatch with
+unchanged borrowed storage. The latter explicitly selects the stopped chain for
+emergency unwind in the harness; it is not automatic sibling draining. Repeated
+supervised recovery also checks bounded live-domain storage.
+
+E1d.2c.4b must retain the original boundary continuation while draining all affected
+children, invalidate their registrations and settle borrowers before owner storage
+or contingency is released. It must also propagate an escaping child's fault to its
+owning boundary at the accepted safe point and retain causal diagnostics. This
+checkpoint supplies identities and admission guards, not that settlement driver.
+Source `spawn`/`yield`, async adapters, cancellation and LLVM lowering remain gated.
+
 ## Separate the identities and continuations
 
 | Entity | Purpose | Must not be confused with |
@@ -591,11 +629,12 @@ Those boundaries need explicit contracts before being accepted by the checker.
 | E1d.1 | Separate execution-wide state from resumable control chains | Delivered in 0.111: one storage arena/address allocator, script cursor, effect history and fuel budget; independent frames, continuations and emergency state; internal interleaving evidence, no source spawn |
 | E1d.2a | Invocation and cold-task identities | Delivered in 0.112: owner/producer admission, one-shot completion, normal obligation checks and emergency retirement in sequential execution |
 | E1d.2b | Queued cold dispatch and completion waits | Delivered in 0.113: ready admission, parked callers, one-use completion wait IDs, stale/duplicate rejection and unchanged sequential observations |
-| E1d.2c | External readiness and fault-domain admission | In progress: suspended/ready storage delivered in 0.117–0.118 and runtime readiness in 0.119; owning fault-domain admission and settlement remain before source spawn |
+| E1d.2c | External readiness and fault-domain admission | In progress: suspended/ready storage delivered in 0.117–0.118 and runtime readiness in 0.119; domain identities/admission are delivered in 0.120; automatic sibling settlement remains before source spawn |
 | E1d.2c.1 | Addressable suspended callers | Delivered in 0.117: one-use suspension registrations paired with task/wait identities, atomic admission, original context restoration and emergency retirement |
 | E1d.2c.2 | Independent ready-context admission | Delivered in 0.118: prepared child contexts retained outside the active stack, checked dispatch selection and active-chain protection; source execution remains sequential |
 | E1d.2c.3a | Executable readiness protocol model | Delivered as test-only evidence on 0.118: repeated execution-scoped, generation-safe waits over checked borrowed execution, separate signalling/selection/completion and fixed shared history. These scenarios now target runtime integration in E1d.2c.3b; fault-domain settlement remains next |
 | E1d.2c.3b | Runtime waiting and resumption | Delivered in 0.119: execution-scoped readiness tokens, explicit Waiting state, original contexts in wait storage, distinct start/resume dispatch and atomic signal admission. No source or adapter handoffs yet; owning fault-domain settlement is next |
+| E1d.2c.4a | Fault domain identity and admission | Delivered in 0.120: distinct live root/named/lexical domains, stopped-ancestor gates, context membership and quiescence checks. Automatic sibling draining and retained-resource settlement remain E1d.2c.4b |
 | E1e | Explicit cooperative cancellation and suspending cleanup; normal completion races, cleanup failures and no abandoned losers | Define cancellation observation and cleanup admission; no implicit cancellation exception |
 | E2 | Pinned native coroutine experiment, then checked lowering and schedule-based differential validation | Reference semantics and legal frame retirement must precede native destruction |
 

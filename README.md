@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.119.0** implements the v0.1 checked core and the current language
+Compiler release **0.120.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -625,3 +625,16 @@ operation. Host instruction quotas never select a sibling.
 This is internal groundwork validated with checked borrowed execution. Source
 `spawn`/`yield`, async host I/O and fault-domain settlement remain ahead; current
 source execution and editor behavior stay sequential.
+
+## Fault domain admission in 0.120
+
+Reference execution now tracks live fault domains separately from invocation and
+trace identities. Entry, named supervision and lexical boundaries receive distinct
+domains; handling closes only the affected domain and restores its parent. Deferred
+tasks acquire their executing domain when awaited, preserving existing cold-task
+movement across lexical boundaries.
+
+Stopped domains reject normal task admission, readiness and ready dispatch. Boundary
+finalization and contingency admission check for retained execution contexts first.
+These gates prepare for automatic sibling settlement; they do not enable source
+concurrency, async host adapters or cancellation.

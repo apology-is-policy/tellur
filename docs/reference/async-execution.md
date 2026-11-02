@@ -399,3 +399,9 @@ normal completion delivers an outcome or borrowed result. Resumption preserves t
 original frames and fixed execution history. No source construct, host quota pause
 or async adapter enters these waiting states yet. Owning fault-domain settlement
 remains required before source concurrency is enabled.
+
+Compiler 0.120 additionally records distinct domains for entry and named/lexical
+boundaries. Deferred handles inherit the executing domain when awaited; their
+existing movement across normal boundaries is unchanged. Stopped domains gate
+normal task admission and wake/dispatch. Domain tracking and checks for retained
+contexts do not yet provide automatic sibling settlement or enable source concurrency.

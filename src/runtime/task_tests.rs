@@ -17,6 +17,8 @@ fn scenario() -> Scenario {
 }
 fn assert_retired(m: &Machine<'_>) {
     assert!(m.shared.tasks.is_empty());
+    assert_eq!(m.shared.domains.count(), 0);
+    assert!(m.context.domain.is_none());
     assert!(m.shared.ready.is_empty());
     assert!(m.shared.waiting.is_empty());
     assert!(m.shared.suspended.calls.is_empty());
@@ -133,6 +135,10 @@ control main() faults {{ run start(); }}
         let mut recoveries = 0;
         while !m.drive(1) {
             let (owners, tasks) = m.shared.tasks.live_counts();
+            assert!(
+                m.shared.domains.count() <= 2,
+                "retired fault domains accumulated"
+            );
             assert!(owners <= 3, "retired invocation identities accumulated");
             assert!(tasks <= 1, "retired task identities accumulated");
             if !m.context.contingencies.is_empty() {

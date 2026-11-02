@@ -7,6 +7,7 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
+mod domains;
 mod tasks;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

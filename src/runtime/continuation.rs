@@ -1,11 +1,15 @@
 //! Host stepping of sequential checked execution, including local cold tasks.
 //! No source scheduler or independently progressing work.
+use super::domains::{DomainId, Domains, Scope as DomainScope};
 use super::tasks::{OwnerId, Readiness, Registry, TaskId, WaitId, retire_value};
 use super::*;
 
 #[cfg(test)]
 #[path = "context_tests.rs"]
 mod context_tests;
+#[cfg(test)]
+#[path = "domain_tests.rs"]
+mod domain_tests;
 #[cfg(test)]
 #[path = "readiness_model.rs"]
 mod readiness_model;
@@ -52,6 +56,7 @@ impl CheckedProgram {
                     steps_left: steps,
                     values: BTreeMap::new(),
                     tasks: Registry::default(),
+                    domains: Domains::default(),
                     suspended: SuspendedCalls::default(),
                     ready: BTreeMap::new(),
                     waiting: BTreeMap::new(),
@@ -119,6 +124,7 @@ enum Continuation<'a> {
     Call {
         region: &'a Region,
         caller: Frame,
+        root_domain: Option<DomainScope>,
     },
     Decision(&'a [Arm]),
     TaskDecision {
@@ -136,20 +142,24 @@ enum Continuation<'a> {
         name: &'a str,
         handler: &'a str,
         parent: crate::fault::Tracker,
+        domain: DomainScope,
     },
     SupervisedHandler {
         name: &'a str,
         parent: crate::fault::Tracker,
+        domain: DomainScope,
     },
     BoundaryWork {
         action: &'a Action,
         name: String,
         parent: crate::fault::Tracker,
+        domain: DomainScope,
     },
     BoundaryHandler {
         action: &'a Action,
         name: String,
         parent: crate::fault::Tracker,
+        domain: DomainScope,
     },
 }
 /// One execution-wide arena and observation history. Selecting another context
@@ -164,6 +174,7 @@ struct SharedExecution<'a> {
     steps_left: usize,
     values: BTreeMap<Id, Value>,
     tasks: Registry,
+    domains: Domains,
     suspended: SuspendedCalls<'a>,
     ready: BTreeMap<TaskId, ReadyCall<'a>>,
     waiting: BTreeMap<TaskId, Context<'a>>,
@@ -173,6 +184,7 @@ struct SharedExecution<'a> {
 /// facts, return/unwind continuations and fault context belong to this chain.
 /// Moving a context preserves it without moving any referenced frame storage.
 struct Context<'a> {
+    domain: Option<DomainId>,
     task: Option<(TaskId, OwnerId)>,
     contingencies: Vec<Diagnostic>,
     activations: crate::fault::Tracker,
@@ -185,6 +197,7 @@ struct Context<'a> {
 impl Context<'_> {
     fn new(activations: crate::fault::Tracker) -> Self {
         Self {
+            domain: None,
             task: None,
             contingencies: vec![],
             activations,
@@ -331,12 +344,25 @@ impl<'a> Machine<'a> {
             .checked_add(self.shared.program.next_id.max(1))
             .ok_or_else(|| error("activation storage address space exhausted"))?;
         let owner = self.shared.tasks.prepare_owner()?;
+        let root_domain = match self.context.domain {
+            None => Some(self.shared.domains.prepare(None)?),
+            Some(domain) => {
+                if self.context.contingencies.is_empty() {
+                    self.shared.domains.require_open(domain)?;
+                }
+                None
+            }
+        };
         // All fallible admission checks precede frame installation. Preparing
         // an invocation neither reserves addresses nor consumes an activation ID.
         self.context
             .activations
             .enter(&diagnostic_name)
             .map_err(error)?;
+        if let Some(scope) = root_domain {
+            self.shared.domains.commit(scope);
+            self.context.domain = Some(scope.id);
+        }
         self.shared.tasks.commit_owner(owner);
         self.shared.next_base = next_base;
         for (param, value) in region.parameters.iter().zip(arguments) {
@@ -351,9 +377,11 @@ impl<'a> Machine<'a> {
                 facts: BTreeSet::new(),
             },
         );
-        self.context
-            .stack
-            .push(Continuation::Call { region, caller });
+        self.context.stack.push(Continuation::Call {
+            region,
+            caller,
+            root_domain,
+        });
         self.block(&region.code);
         Ok(())
     }
@@ -372,6 +400,13 @@ impl<'a> Machine<'a> {
     /// that next instruction. No recursive source calls/loops/unwinding occur here.
     fn drive(&mut self, mut quota: usize) -> bool {
         while let Some(continuation) = self.context.stack.pop() {
+            if matches!(self.context.flow, Some(Err(_))) {
+                if let Some(domain) = self.context.domain {
+                    if let Err(diagnostic) = self.shared.domains.stop(domain) {
+                        self.context.flow = Some(Err(diagnostic));
+                    }
+                }
+            }
             if let Continuation::Block { code, next } = continuation {
                 if self.context.flow.is_some() {
                     continue;
@@ -427,9 +462,15 @@ impl<'a> Machine<'a> {
             .tasks
             .next_ready()
             .ok_or_else(|| error("dispatch has no ready task"))?;
-        if !self.shared.ready.contains_key(&task) {
-            return Err(error("ready task has no retained execution context"));
-        }
+        let context = match self.shared.ready.get(&task) {
+            Some(ReadyCall::Start { context, .. } | ReadyCall::Resume(context)) => context,
+            None => return Err(error("ready task has no retained execution context")),
+        };
+        self.shared.domains.require_open(
+            context
+                .domain
+                .ok_or_else(|| error("ready context has no fault domain"))?,
+        )?;
         // Validate queue state before taking the prepared context. Installation
         // failure unwinds its already-retained caller through ResumeAwait.
         self.shared.tasks.dispatch(task)?;
@@ -457,6 +498,11 @@ impl<'a> Machine<'a> {
         {
             return Err(error("readiness requires a live normal continuation"));
         }
+        self.shared.domains.require_open(
+            self.context
+                .domain
+                .ok_or_else(|| error("running context has no fault domain"))?,
+        )?;
         let (task, owner) = self
             .context
             .task
@@ -480,6 +526,11 @@ impl<'a> Machine<'a> {
                 "waiting task has no unique retained execution context",
             ));
         }
+        self.shared.domains.require_open(
+            self.shared.waiting[&task]
+                .domain
+                .ok_or_else(|| error("waiting context has no fault domain"))?,
+        )?;
         self.shared.tasks.wake(token)?;
         let context = self.shared.waiting.remove(&task).unwrap();
         assert!(
@@ -498,9 +549,16 @@ impl<'a> Machine<'a> {
             .expect("a continuation receives completed nested work");
         match continuation {
             Continuation::Block { .. } | Continuation::Dispatch => unreachable!(),
-            Continuation::Call { region, caller } => {
+            Continuation::Call {
+                region,
+                caller,
+                root_domain,
+            } => {
                 self.context.handover.clear();
                 let result = (|| {
+                    if root_domain.is_some() || region.boundary.is_some() {
+                        self.require_domain_quiescent(self.context.domain.unwrap())?;
+                    }
                     if flow.is_err() && self.context.activations.is_source_fault() {
                         if let Some(boundary) = &region.boundary {
                             for id in &boundary.retained {
@@ -542,6 +600,9 @@ impl<'a> Machine<'a> {
                 })();
                 self.context.frame = caller;
                 self.context.flow = Some(result);
+                if let Some(scope) = root_domain {
+                    self.close_domain(scope)?;
+                }
             }
             Continuation::Decision(arms) => {
                 let (outcome, fields) = completion(flow?)?.outcome()?;
@@ -613,8 +674,10 @@ impl<'a> Machine<'a> {
                 name,
                 handler,
                 parent,
+                domain,
             } => match flow {
                 Err(diagnostic) if self.context.activations.is_source_fault() => {
+                    self.require_domain_quiescent(domain.id)?;
                     let report = self.report(&self.shared.program.runtime_name(name), &diagnostic);
                     self.shared.events.push(Event::Fault {
                         report: Box::new(report.clone()),
@@ -625,24 +688,32 @@ impl<'a> Machine<'a> {
                     let mut retained = std::mem::take(&mut self.context.handover);
                     retained.push(Value::String(diagnostic.message.clone()));
                     self.context.contingencies.push(diagnostic);
-                    self.context
-                        .stack
-                        .push(Continuation::SupervisedHandler { name, parent });
+                    self.context.stack.push(Continuation::SupervisedHandler {
+                        name,
+                        parent,
+                        domain,
+                    });
                     self.call(handler, retained)?;
                 }
-                other => self.finish_supervision(name, parent, other),
+                other => self.finish_supervision(name, parent, domain, other)?,
             },
-            Continuation::SupervisedHandler { name, parent } => {
+            Continuation::SupervisedHandler {
+                name,
+                parent,
+                domain,
+            } => {
                 self.context.contingencies.pop();
-                self.finish_supervision(name, parent, flow);
+                self.finish_supervision(name, parent, domain, flow)?;
             }
             Continuation::BoundaryWork {
                 action,
                 name,
                 parent,
+                domain,
             } => {
                 match flow {
                     Err(diagnostic) if self.context.activations.is_source_fault() => {
+                        self.require_domain_quiescent(domain.id)?;
                         let Action::Boundary {
                             handler,
                             retire,
@@ -689,6 +760,7 @@ impl<'a> Machine<'a> {
                             action,
                             name: name.clone(),
                             parent,
+                            domain,
                         });
                         self.context.contingencies.push(diagnostic);
                         self.context
@@ -697,18 +769,52 @@ impl<'a> Machine<'a> {
                             .map_err(error)?;
                         self.block(handler);
                     }
-                    other => self.finish_boundary(action, &name, parent, other)?,
+                    other => self.finish_boundary(action, &name, parent, domain, other)?,
                 }
             }
             Continuation::BoundaryHandler {
                 action,
                 name,
                 parent,
+                domain,
             } => {
                 self.context.contingencies.pop();
-                self.finish_boundary(action, &name, parent, flow)?;
+                self.finish_boundary(action, &name, parent, domain, flow)?;
             }
         }
+        Ok(())
+    }
+    fn require_domain_quiescent(&self, domain: DomainId) -> Result<()> {
+        self.shared.domains.require_no_children(domain)?;
+        let ready = self.shared.ready.values().any(|call| {
+            let context = match call {
+                ReadyCall::Start { context, .. } | ReadyCall::Resume(context) => context,
+            };
+            context.domain == Some(domain)
+        });
+        if ready
+            || self
+                .shared
+                .waiting
+                .values()
+                .any(|c| c.domain == Some(domain))
+            || self
+                .shared
+                .suspended
+                .calls
+                .values()
+                .any(|call| call.context.domain == Some(domain))
+        {
+            return Err(error(
+                "fault domain still has retained execution contexts requiring settlement",
+            ));
+        }
+        Ok(())
+    }
+    fn close_domain(&mut self, scope: DomainScope) -> Result<()> {
+        self.require_domain_quiescent(scope.id)?;
+        self.shared.domains.close(scope)?;
+        self.context.domain = scope.parent;
         Ok(())
     }
     fn report(&mut self, name: &str, diagnostic: &Diagnostic) -> crate::fault::Report {
@@ -732,8 +838,11 @@ impl<'a> Machine<'a> {
         &mut self,
         name: &str,
         parent: crate::fault::Tracker,
+        domain: DomainScope,
         flow: Result<Flow>,
-    ) {
+    ) -> Result<()> {
+        self.require_domain_quiescent(domain.id)?;
+        self.close_domain(domain)?;
         let result = flow
             .and_then(completion)
             .and_then(Completion::settled)
@@ -743,12 +852,14 @@ impl<'a> Machine<'a> {
             Ok(Flow::Fallthrough) => None,
             other => Some(other),
         };
+        Ok(())
     }
     fn finish_boundary(
         &mut self,
         action: &Action,
         name: &str,
         parent: crate::fault::Tracker,
+        domain: DomainScope,
         flow: Result<Flow>,
     ) -> Result<()> {
         let Action::Boundary {
@@ -759,6 +870,7 @@ impl<'a> Machine<'a> {
         else {
             unreachable!()
         };
+        self.require_domain_quiescent(domain.id)?;
         let abrupt = matches!(
             &flow,
             Err(_) | Ok(Flow::Recover(..) | Flow::Process(_) | Flow::Terminate)
@@ -771,6 +883,7 @@ impl<'a> Machine<'a> {
                 .collect(),
             abrupt,
         )?;
+        self.close_domain(domain)?;
         self.restore(name, parent, &flow);
         self.context.flow = match flow {
             Ok(Flow::Fallthrough) => None,
@@ -835,17 +948,21 @@ impl<'a> Machine<'a> {
     fn instruction(&mut self, instruction: &'a Instruction) -> Result<Flow> {
         match &instruction.action {
             Action::Boundary { body, .. } => {
-                let child = self.context.activations.child();
-                let parent = std::mem::replace(&mut self.context.activations, child);
+                let domain = self.shared.domains.prepare(self.context.domain)?;
+                let mut child = self.context.activations.child();
                 let name = format!(
                     "{}$boundary@{}",
                     instruction.provenance.region, instruction.provenance.span.line
                 );
-                self.context.activations.enter(&name).map_err(error)?;
+                child.enter(&name).map_err(error)?;
+                let parent = std::mem::replace(&mut self.context.activations, child);
+                self.shared.domains.commit(domain);
+                self.context.domain = Some(domain.id);
                 self.context.stack.push(Continuation::BoundaryWork {
                     action: &instruction.action,
                     name,
                     parent,
+                    domain,
                 });
                 self.block(body);
             }
@@ -865,12 +982,16 @@ impl<'a> Machine<'a> {
                     .and_then(|r| r.boundary.as_ref())
                     .ok_or_else(|| error("invalid boundary"))?
                     .handler;
+                let domain = self.shared.domains.prepare(self.context.domain)?;
                 let child = self.context.activations.child();
                 let parent = std::mem::replace(&mut self.context.activations, child);
+                self.shared.domains.commit(domain);
+                self.context.domain = Some(domain.id);
                 self.context.stack.push(Continuation::SupervisedWork {
                     name: boundary,
                     handler,
                     parent,
+                    domain,
                 });
                 self.call(boundary, args)?;
             }
@@ -879,6 +1000,9 @@ impl<'a> Machine<'a> {
                 args,
                 arms,
             } => {
+                self.shared
+                    .domains
+                    .require_open(self.context.domain.unwrap())?;
                 let mut values = self.arguments(args)?;
                 let Some(Value::Task {
                     id,
@@ -909,6 +1033,7 @@ impl<'a> Machine<'a> {
                 let activations = std::mem::take(&mut self.context.activations);
                 let mut child = Context::new(activations);
                 child.task = Some((task, self.context.frame.owner.unwrap()));
+                child.domain = self.context.domain;
                 child.phase = self.context.phase.clone();
                 let caller = std::mem::replace(&mut self.context, Context::new(Default::default()));
                 self.shared.suspended.commit(suspension, task, wait, caller);
@@ -1053,6 +1178,11 @@ impl<'a> Machine<'a> {
                 args,
                 arms,
             } => {
+                if matches!(operation, Operation::Defer(_)) {
+                    self.shared
+                        .domains
+                        .require_open(self.context.domain.unwrap())?;
+                }
                 let args = args
                     .iter()
                     .map(|a| evaluate(a, values, base))

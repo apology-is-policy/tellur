@@ -274,3 +274,13 @@ storage, independently of unrelated declarations and global instruction IDs.
 Execution remains sequential. Diagnostic activation IDs do
 not enable recursion, simultaneous invocations, async execution or borrowed values
 across suspension. Those require the [activation storage and isolation checkpoints](../faults-and-activations.md#checkpoints-and-decision-points).
+
+## Runtime domain tracking
+
+Compiler 0.120 tracks live entry, named-supervision and lexical-boundary domains
+separately from the activation IDs in a fault report. Handling a nested fault closes
+that domain; its parent resumes only through the existing permitted supervision or
+recovery mechanism. Stopped domains cannot admit ordinary task work or dispatch
+ready contexts. Checks before contingency reject retained execution contexts; they
+do not replace the future scheduler's obligation to settle every affected child.
+Current source behavior remains sequential; see the [async design](../async-execution.md).

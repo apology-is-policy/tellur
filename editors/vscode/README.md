@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-0.119.0-darwin-arm64.vsix` using **Extensions:
+1. Install the supplied `tellur-language-0.120.0-darwin-arm64.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1115,3 +1115,16 @@ operation. Host instruction quotas never select a sibling.
 This is internal groundwork validated with checked borrowed execution. Source
 `spawn`/`yield`, async host I/O and fault-domain settlement remain ahead; current
 source execution and editor behavior stay sequential.
+
+## Fault domain admission in 0.120
+
+Reference execution now tracks live fault domains separately from invocation and
+trace identities. Entry, named supervision and lexical boundaries receive distinct
+domains; handling closes only the affected domain and restores its parent. Deferred
+tasks acquire their executing domain when awaited, preserving existing cold-task
+movement across lexical boundaries.
+
+Stopped domains reject normal task admission, readiness and ready dispatch. Boundary
+finalization and contingency admission check for retained execution contexts first.
+These gates prepare for automatic sibling settlement; they do not enable source
+concurrency, async host adapters or cancellation.
