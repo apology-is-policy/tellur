@@ -488,6 +488,7 @@ pub fn drive_siblings(
         assert_eq!(messages.contains(&"independent complete"), !fuel);
         assert_eq!(messages.contains(&"owner complete"), !escaping && !fuel);
         assert!(contexts.parked.is_empty() && contexts.values.is_empty());
+        assert!(contexts.host.tasks.is_empty());
         assert!(contexts.terminal.is_empty());
         assert!(contexts.waits.is_empty());
         assert_eq!(
@@ -644,6 +645,7 @@ pub fn drive_process(
         assert!(contexts.parked.is_empty() && contexts.terminal.is_empty());
         assert!(contexts.waits.is_empty());
         assert!(contexts.values.is_empty());
+        assert!(contexts.host.tasks.is_empty());
         assert_eq!(
             (contexts.domains.len(), contexts.domains.member_count()),
             (0, 0)

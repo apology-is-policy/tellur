@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-darwin-arm64-0.130.0.vsix` using **Extensions:
+1. Install the supplied `tellur-language-darwin-arm64-0.131.0.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1203,3 +1203,11 @@ in normal generated support. Compiled regression probes use that same code for
 retained results, readiness and fault/process cleanup; their scheduling drivers remain
 test-only. Default native entries still use synchronous control flow. Source task
 queue/wait wiring, resumable lowering and `spawn`/`yield` remain ahead.
+
+## Shared task protocol and native invocation owners in 0.131
+
+Reference and native support now share task queue, completion-join and readiness
+transitions. Retained native activations have separate invocation owners even when
+frames are reused; normal return requires settled tasks, and emergency retirement
+invalidates only the affected owner's obligations. Native task payload/queue binding
+and source `spawn`/`yield` remain ahead. Current source behavior is unchanged.

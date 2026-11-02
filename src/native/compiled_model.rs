@@ -22,6 +22,7 @@ pub fn drive(host: &mut Host, args: Vec<V>, control: &'static Control) -> R<Comp
             }
             Ok(Poll::Complete(result)) => {
                 assert!(values.is_empty() && machine.stack.is_empty());
+                assert!(host.tasks.is_empty());
                 assert_eq!(domains.len(), 0);
                 assert_eq!(domains.member_count(), 0);
                 assert!(machine.advance(host, &mut values, &mut domains, 1).is_err());
@@ -29,6 +30,7 @@ pub fn drive(host: &mut Host, args: Vec<V>, control: &'static Control) -> R<Comp
             }
             Err(error) => {
                 assert!(values.is_empty() && machine.stack.is_empty());
+                assert!(host.tasks.is_empty());
                 assert_eq!(domains.len(), 0);
                 assert_eq!(domains.member_count(), 0);
                 assert!(machine.advance(host, &mut values, &mut domains, 1).is_err());

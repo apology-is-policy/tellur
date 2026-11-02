@@ -178,6 +178,7 @@ pub fn drive_results(
             assert!(contexts.completed.is_empty());
             assert!(contexts.parked.is_empty());
             assert!(contexts.values.is_empty());
+            assert!(contexts.host.tasks.is_empty());
             assert_eq!(contexts.domains.member_count(), 0);
             assert_eq!(contexts.domains.len(), 0);
             assert!(contexts.host.resources.values.is_empty());
@@ -233,6 +234,7 @@ pub fn drive_results(
         assert!(contexts.completed.is_empty());
         assert!(contexts.parked.is_empty());
         assert!(contexts.values.is_empty());
+        assert!(contexts.host.tasks.is_empty());
         assert_eq!(contexts.domains.member_count(), 0);
         assert_eq!(contexts.domains.len(), 0);
         assert!(contexts.host.resources.values.is_empty());

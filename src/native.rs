@@ -550,6 +550,11 @@ impl CheckedProgram {
         g.code.push_str("mod frames {\n");
         g.code.push_str(include_str!("native/frames.rs"));
         g.code.push_str("\n}\n");
+        g.code.push_str("mod tasks {\n");
+        g.code.push_str(include_str!("native/tasks.rs"));
+        g.code.push_str("\nmod protocol {\n");
+        g.code.push_str(include_str!("task_support.rs"));
+        g.code.push_str("\n}\n}\n");
         g.code.push_str("pub mod execution {\n");
         g.code.push_str(EXECUTION);
         g.code.push_str("\nmod domains {\n");

@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.130.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.131.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -3987,3 +3987,19 @@ cases now exercise this same shared implementation across their existing expansi
 optimization, quota and fuel matrices. Native-host, selected direct native/resource
 adapter and reference-manual checks cover integration. Source behavior is unchanged;
 this is selected coverage, not a full-suite or source-concurrency claim.
+
+## Shared task protocol and native invocation owners checkpoint (0.131)
+
+E1d.2d.3d compiles one task protocol under the reference diagnostic adapter and the
+native error adapter. Its thirteen existing queue/join/readiness/retirement cases
+run in both targets. Four native activation cases prove fresh owners across nested
+calls and frame reuse, pending normal-return rejection in five task phases, atomic
+owner-capacity failure before capture transfer, and administrative retirement with
+no fabricated completion or effect on independent owners.
+
+Reference-runtime and cold-task/result/process/stepping regressions preserve actual
+source behavior, including original/expanded and native checks where applicable.
+All compiled native model drivers now verify that invocation owners retire fully
+alongside frames/resources/domains under normal, source-fault, host-limit and process
+paths. Selected native/resource adapters, manual, formatting and all-target checks
+cover the integration. This does not claim source scheduling or full-suite coverage.

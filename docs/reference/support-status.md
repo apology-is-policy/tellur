@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.130.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.131.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -123,3 +123,8 @@ embedded in ordinary native output. The default entry lowering stays synchronous
 test schedule drivers and compiled fixture callbacks are excluded. Source task
 queue/wait wiring and resumable lowering remain ahead; see the
 [shared execution checkpoint](../async-execution.md#shared-native-retained-execution-e1d2d3c).
+
+Since 0.131, reference/native support uses the same internal queue/join/readiness
+protocol. Each retained compiled activation has a distinct invocation owner and
+checked normal/emergency retirement. Native cold task payload/queue binding and
+source handoffs remain ahead; source acceptance and cold lexical moves are unchanged.

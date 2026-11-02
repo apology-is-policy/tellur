@@ -416,6 +416,14 @@ entries still run synchronous generated control flow; invocation queue/wait wiri
 resumable source lowering and source task handoffs remain unimplemented. See
 [shared native retained execution](../async-execution.md#shared-native-retained-execution-e1d2d3c).
 
+Since 0.131, the reference and native support share one internal task registry
+protocol. Retained compiled activations have separate invocation owners, including
+nested calls; normal completion requires their task obligations to be settled and
+emergency retirement invalidates only their obligations. Native task-payload/queue
+binding and source handoffs remain separate work. These internal identities do not
+change source lifetimes, cold lexical moves or public contracts. See
+[shared task ownership](../async-execution.md#shared-task-protocol-and-native-invocation-owners-e1d2d3d).
+
 Since 0.128, entry process termination closes normal task admission and retires all
 registered execution contexts and results before delivering the original status.
 Prepared bodies never start; parked callers unwind without normal instructions or

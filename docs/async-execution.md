@@ -1211,6 +1211,7 @@ Those boundaries need explicit contracts before being accepted by the checker.
 | E1d.2d.3a | Native retained completion model | Test-only on 0.127: completed compiled results retain their original domain membership, host context and resource scope until consuming join or emergency retirement. Owned Rust results and external borrows survive child frames; fault/process cleanup releases results before suppliers. Shared native scheduling and source handoffs remain ahead |
 | E1d.2d.3b | Shared native result adoption | Delivered in 0.129: host API atomically validates a parked source, receiving scope and complete unique result-owner graph, transfers only owned leaves and retires the source resource root. The compiled completion model uses it; task lifecycle and scheduler integration remain ahead |
 | E1d.2d.3c | Shared native retained execution | Delivered in 0.130: compiled continuations, fault-domain membership and retained contexts/results now live in normal native support. The compiled probes use that exact implementation; explicit selection/readiness, one-use result adoption and fault/process retirement remain separate from source scheduler/lowering integration |
+| E1d.2d.3d | Shared task protocol and native invocation owners | Delivered in 0.131: reference/native adapters share queue/join/readiness transitions. Every retained compiled activation has a distinct invocation owner, capacity preflight and normal/emergency obligation retirement; native task payload/queue binding and source handoffs remain ahead |
 | E1e | Explicit cooperative cancellation and suspending cleanup; normal completion races, cleanup failures and no abandoned losers | Define cancellation observation and cleanup admission; no implicit cancellation exception |
 | E2 | Pinned native coroutine experiment, then checked lowering and schedule-based differential validation | Reference semantics and legal frame retirement must precede native destruction |
 
@@ -1446,6 +1447,46 @@ This checkpoint changes the location and availability of native execution machin
 not source semantics. Invocation-level task queue/completion-wait integration and
 production resumable lowering still precede `spawn`/`yield`. Cancellation, async host
 adapters/disposal and the direct LLVM coroutine target remain separate work.
+
+## Shared task protocol and native invocation owners (E1d.2d.3d)
+
+Compiler 0.131 extracts the existing reference task registry into
+[shared protocol support](../src/task_support.rs). Reference and native wrappers
+supply their existing error representations; both compile the same owner, task,
+ready-queue, one-use completion-wait and generation-safe readiness transitions.
+Reference value retirement remains in its adapter and uses the same pending-task
+check. No reference transition, outcome, fault classification or source acceptance
+rule changes.
+
+Every retained compiled activation now admits its own invocation owner, distinct
+from a context key, diagnostic activation or reusable frame address. A shared native
+host registry keeps those owners across selection of independent contexts. Capacity
+is checked before allocating the frame or transferring context captures; commitment
+follows successful frame/diagnostic admission. Nested calls and named work/handler
+activations get separate owners, while lexical scopes retain their invocation.
+
+Before normal outcome or constructor completion, the runtime checks that this
+invocation has no outstanding tasks while its original frame and boundaries still
+exist. An invalid normal return takes the existing host-error unwind path. Emergency
+frame retirement, administrative process completion and boundary termination retire
+that invocation's obligations without fabricating task completion, invalidating its
+ready/waiting registrations while preserving independent owners. Retained result
+storage still owns its payload and fault-domain membership after the child invocation
+itself has finished.
+
+Four [native invocation probes](../src/native/invocation_tests.rs) cover nested calls
+and 32 reused-frame rounds with fresh owners, normal-return rejection across cold,
+ready, running, waiting and completed phases, owner exhaustion before frame/capture
+admission, and administrative retirement without result delivery. The thirteen
+protocol cases run under both error adapters. Compiled call/loop/boundary/context/
+sibling/result drivers additionally require the shared owner registry to be empty
+at full settlement, including source faults, host limits and process status.
+
+These are internal foundations. Native cold-task payloads are not yet bound to the
+new owner/task identities, and context queue/completion-wait wiring remains ahead.
+Default native entries still use synchronous lowering. Legal cold lexical moves,
+origin/ownership contracts and source fault rules are unchanged. This does not expose
+`spawn`/`yield`, early native source joins, cancellation or asynchronous disposal.
 
 ## Reference execution invariants
 

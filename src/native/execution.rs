@@ -14,6 +14,7 @@ pub struct Control {
 }
 pub struct Activation {
     frame: Frame,
+    owner: super::tasks::OwnerId,
     control: &'static Control,
     pending: Option<Pending>,
     scopes: Vec<Scope>,
@@ -205,16 +206,19 @@ impl Machine {
         if args.len() != control.parameters.len() || control.constructor != destination.is_some() {
             return Err("E_NATIVE: invalid compiled activation admission".into());
         }
+        let owner = host.tasks.prepare_owner()?;
         let frame = values.enter(control.slots)?;
         if let Err(error) = host.enter(control.name) {
             values.retire(&frame)?;
             return Err(error);
         }
+        host.tasks.commit_owner(owner);
         for (slot, value) in control.parameters.iter().zip(args) {
             values[frame.base() + slot] = Some(value);
         }
         Ok(Activation {
             frame,
+            owner,
             control,
             pending: None,
             scopes: vec![],
@@ -457,7 +461,12 @@ impl Machine {
                     .push(Self::admit(host, values, control, arguments, destination)?);
             }
             Step::Complete(result) => {
+                let abrupt = !matches!(&result, Completion::Outcome(_) | Completion::Constructed);
+                // Reject outstanding obligations while the original frame and
+                // boundary state remain available for emergency retirement.
+                host.tasks.require_retire_owner(frame.owner, abrupt)?;
                 frame.close_scopes(host, values, domains, &mut self.current, 0)?;
+                host.tasks.retire_owner(frame.owner, abrupt)?;
                 let completed = self.stack.pop().unwrap();
                 values.retire(&completed.frame)?;
                 host.leave();
@@ -604,6 +613,7 @@ impl Machine {
                 }
             }
             host.release_frame(values.frame_values(&frame.frame)?);
+            host.tasks.retire_owner(frame.owner, true)?;
             values.retire(&frame.frame)?;
             // Failed activation diagnostics remain available until handover/reporting.
         }
@@ -659,3 +669,7 @@ mod contexts;
 #[path = "domains.rs"]
 mod domains;
 pub use contexts::{ContextKey, ContextPoll, Contexts, Readiness};
+
+#[cfg(test)]
+#[path = "invocation_tests.rs"]
+mod invocation_tests;

@@ -182,6 +182,7 @@ pub fn drive_contexts(
     assert!(contexts.terminal.is_empty());
     assert_eq!(contexts.domains.len(), 0);
     assert_eq!(contexts.domains.member_count(), 0);
+    assert!(contexts.host.tasks.is_empty());
     assert_eq!(contexts.host.resources.scopes.len(), baseline.3);
     assert_eq!(contexts.host.contingencies, ["host contingency marker"]);
     let baseline_report = contexts.host.activations.failure(

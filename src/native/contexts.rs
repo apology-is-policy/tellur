@@ -78,6 +78,7 @@ impl<'a> Contexts<'a> {
         // Validate identity capacity before transferring any input owners.
         self.domains.prepare(None)?;
         self.domains.require_member_capacity()?;
+        self.host.tasks.prepare_owner()?;
         let (mut root, mut context) = self.host.prepare_context(&arguments)?;
         self.host.exchange_context(&mut context)?;
         let started = Machine::start(
@@ -141,6 +142,7 @@ impl<'a> Contexts<'a> {
         let membership = self.parked[&parent.id].machine.member.clone();
         self.domains.require_open(&owner, &[])?;
         self.domains.require_member_capacity()?;
+        self.host.tasks.prepare_owner()?;
         let id = self
             .next
             .checked_add(1)

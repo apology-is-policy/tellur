@@ -4,6 +4,9 @@ pub mod execution;
 #[cfg(test)]
 #[path = "frames.rs"]
 mod frames;
+#[cfg(test)]
+#[path = "tasks.rs"]
+mod tasks;
 pub use frames::Frames;
 #[cfg(test)]
 #[path = "boundary_state_tests.rs"]
@@ -746,6 +749,7 @@ pub struct Host {
     files: BTreeMap<String, *mut c_void>,
     next_file: usize,
     resources: Resources,
+    tasks: tasks::Registry,
     activations: fault::Tracker,
 }
 impl Drop for Host {
@@ -775,6 +779,7 @@ impl Host {
             files: BTreeMap::new(),
             next_file: 0,
             resources: Resources::default(),
+            tasks: tasks::Registry::default(),
             contingencies: vec![],
             activations: fault::Tracker::default(),
         }
