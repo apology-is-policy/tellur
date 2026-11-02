@@ -243,6 +243,7 @@ impl Checker<'_> {
             span,
             outcome: COMPLETED.into(),
             bindings: vec![syntax::Field {
+                origins_range: crate::SourceRange::default(),
                 type_range: crate::SourceRange {
                     start: span,
                     end: span,

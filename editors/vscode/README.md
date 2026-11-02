@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-0.115.0-darwin-arm64.vsix` using **Extensions:
+1. Install the supplied `tellur-language-0.116.0-darwin-arm64.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1077,3 +1077,12 @@ Borrowed-result `from` errors now underline the written clause, including nested
 selectors and multiline comments. Imported generic and trait signatures keep their
 original locations. Missing clauses and body errors retain their existing locations;
 unsaved repairs restore checked hover information.
+
+
+## Payload origin diagnostics in 0.116
+
+Result payload mappings such as `view[input] value` now underline their written
+brackets when an input, group count or borrowing permission is invalid. Imported,
+generic and trait signatures retain exact locations through unsaved edits. Named
+completion mappings, `from` clauses and type/body errors keep separate ranges;
+repair restores checked hover information. Borrowing rules are unchanged.

@@ -13,7 +13,7 @@ exports.run = async function (root) {
   assert.ok(countAt >= 0 && statusAt > countAt);
   const main = 'import "counter.tellur" as counter;\n' +
     program.slice(0, countAt).replace('count(5)', 'counter.count(5)') + program.slice(statusAt);
-  const counter = "pub outcome view<t>['a] { found { ref t value <- 'a } }\npub control helper<t>(ref t input) exits view<t>[input] { exit found { input }; }\npub control direct<t>(ref t input) exits found { ref t value from input } { exit found { input }; }\n" + program.slice(countAt, statusAt)
+  const counter = "pub outcome view<t>['a] { found { ref t value <- 'a } }\npub control helper<t>(ref t input) exits view<t>[input] { exit found { input }; }\npub control direct<t>(ref t input) exits found { ref t value from input } { exit found { input }; }\npub struct borrowed<t>['a] {pub ref t value <- 'a;}\npub control aggregate<t>(ref t input) exits found {borrowed<t>[input] value} {exit found {borrowed<t> {value:input}};}\n" + program.slice(countAt, statusAt)
     .replace('control count(', 'pub control count(')
     .replace('exits auto', 'exits done, arithmetic_fault');
   await fs.writeFile(path.join(fixture, 'main.tellur'), main);
@@ -47,22 +47,24 @@ exports.run = async function (root) {
   }
   await waitFor(async () => diagnostics().length === 0 && (await hover()).includes('done'), 'initial count contract');
   const initial = await hover();
-  for (const [needle, annotation] of [
+  for (const [needle, annotation, selected = annotation, expectedCode = 'E_LIFETIME'] of [
     ['[input]', '[\n        // Unicode: 😀\n        missing\n    ]'],
     ['[input]', '[missing]'],
     ['from input', 'from // Unicode: 😀\n        missing'],
-    ['from input', 'from missing']
+    ['from input', 'from missing'],
+    ['borrowed<t>[input]', 'borrowed<t>[ // 😀\n missing\n ]', '[ // 😀\n missing\n ]', 'E_ORIGIN'],
+    ['borrowed<t>[input]', 'borrowed<t>[missing]', '[missing]', 'E_ORIGIN']
   ]) {
     const broken = original.replace(needle, annotation);
     assert.notEqual(broken, original);
     await replace(broken);
-    await waitFor(() => diagnostics().length === 1 && code(diagnostics()[0]) === 'E_LIFETIME', 'invalid named completion origin');
+    await waitFor(() => diagnostics().length === 1 && code(diagnostics()[0]) === expectedCode, 'invalid result origin');
     assert.ok(!(await hover()).includes('done'));
     const related = diagnostics()[0].relatedInformation.find(info => info.location.uri.toString() === dependency.uri.toString());
     assert.ok(related, 'original imported origin location');
-    const at = dependency.getText().lastIndexOf(annotation);
+    const at = dependency.getText().lastIndexOf(selected);
     assert.ok(at >= 0);
-    const expected = new vscode.Range(dependency.positionAt(at), dependency.positionAt(at + annotation.length));
+    const expected = new vscode.Range(dependency.positionAt(at), dependency.positionAt(at + selected.length));
     await waitFor(() => diagnostics()[0]?.relatedInformation.some(info => info.location.uri.toString() === dependency.uri.toString() && info.location.range.isEqual(expected)), 'fresh exact annotation range');
   }
   await replace(original);
@@ -75,6 +77,6 @@ exports.run = async function (root) {
   const report = JSON.parse(result.stdout);
   assert.equal(report.outcome, 'done');
   assert.deepEqual(report.events.filter(e => e.kind === 'emit').map(e => e.message), ['1', '2', '3', '4', '5']);
-  await fs.writeFile(path.join(fixture, 'passed.txt'), 'multiline and compact bracket/from ranges, imported unsaved repair, no stale hover and native completion origins passed\n');
-  console.log('TELLUR_NAMED_COMPLETION_RANGES_EDITOR_TESTS_PASSED: exact named completion and from-clause origin ranges, unsaved repair, fresh hover and native execution');
+  await fs.writeFile(path.join(fixture, 'passed.txt'), 'multiline and compact named/payload bracket/from ranges, imported unsaved repair, no stale hover and native completion origins passed\n');
+  console.log('TELLUR_NAMED_COMPLETION_RANGES_EDITOR_TESTS_PASSED: exact named/payload completion and from-clause origin ranges, unsaved repair, fresh hover and native execution');
 };

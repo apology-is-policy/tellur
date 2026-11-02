@@ -238,15 +238,18 @@ handle does not move its owner or redirect emergency propagation. This is the
 accepted direction for E1d; compiler 0.113 still executes cold tasks sequentially
 and does not yet accept `spawn`.
 
-## Pending decision: source scheduling handoffs
+## Accepted decision: source scheduling handoffs
 
-The author has been asked whether the first source scheduler should switch tasks
-only at `await` and an explicit `yield` (recommended), with `spawn` merely queuing
-work, or also use automatic periodic switches. The former keeps synchronous stretches
-uninterrupted; the latter prevents long loops from starving siblings but makes
-interleaving implicit. No answer has been recorded yet. Current host instruction
-quotas and internal queue ordering do not choose this source policy. Independent
-application work can continue while the choice is open.
+Accepted by the language author on 2 November 2026: tasks switch at `await` and
+an explicit `yield`; `spawn` only queues work. Synchronous stretches run without
+interleaving sibling tasks. Long synchronous loops can therefore delay siblings;
+programmers place a handoff where cooperative progress is required.
+
+Host instruction quotas can pause the whole execution session, but do not authorize
+a source task switch. An escaping child fault is observed at a scheduler safe point
+and settles the owning boundary before contingency, as specified above. The next
+E1d slice must implement this protocol before enabling general source `spawn`.
+The current sequential cold-task executor has no source `yield` or sibling scheduler.
 
 ## Cold-task contract audit
 

@@ -391,25 +391,32 @@ fn declared_inner(r: &syntax::Region, schemas: &Schemas) -> Result<Vec<crate::ir
             if f.origins.is_empty() {
                 continue;
             }
+            let locate = |e| {
+                if r.exit_origins_range.start.line != 0 {
+                    r.exit_origin_error(e)
+                } else {
+                    f.origin_error(e, r.span)
+                }
+            };
             let Some(schema) = schemas
                 .get(manifest::reference_inner(&f.ty).map_or(f.ty.as_str(), |(_, t)| t))
                 .filter(|s| !s.groups.is_empty())
             else {
-                return Err(error(
+                return Err(locate(error(
                     r.span,
                     "bracket origins require a type with declared origin groups; direct references use `from input`",
-                ));
+                )));
             };
             if f.origins.len() != schema.groups.len() {
-                return Err(error(
+                return Err(locate(error(
                     r.span,
                     format!("{} requires {} origin arguments", f.ty, schema.groups.len()),
-                ));
+                )));
             }
             let inputs = f
                 .origins
                 .iter()
-                .map(|a| input_sources(&a.display(), r, schemas))
+                .map(|a| input_sources(&a.display(), r, schemas).map_err(locate))
                 .collect::<Result<Vec<_>>>()?;
             for leaf in &schema.leaves {
                 let sources = inputs[leaf.group.expect("complete grouped schema")].clone();
@@ -419,10 +426,10 @@ fn declared_inner(r: &syntax::Region, schemas: &Schemas) -> Result<Vec<crate::ir
                         && !manifest::reference_inner(&f.ty).is_some_and(|(m, _)| !m)
                         && !source_mutable(source, r, schemas)
                     {
-                        return Err(error(
+                        return Err(locate(error(
                             r.span,
                             "exclusive field cannot borrow a shared input origin",
-                        ));
+                        )));
                     }
                 }
                 returns.push(crate::ir::StoredReturn {

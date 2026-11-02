@@ -94,6 +94,8 @@ pub struct Field {
     /// Written type only, excluding the binding name and origin mappings.
     pub type_range: SourceRange,
     pub origins: Vec<OriginArgument>,
+    /// Written bracket mapping, separate from the type and any storage arrow.
+    pub origins_range: SourceRange,
     /// Bracket mappings on a schema reference field with a separate storage arrow.
     pub referent_origins: Vec<OriginArgument>,
     pub name: String,
@@ -103,6 +105,9 @@ impl Field {
     /// Attach authored type coordinates without overwriting a more specific child error.
     pub(crate) fn type_error(&self, error: Diagnostic, fallback: Span) -> Diagnostic {
         type_error(self.type_range, error, fallback)
+    }
+    pub(crate) fn origin_error(&self, error: Diagnostic, fallback: Span) -> Diagnostic {
+        type_error(self.origins_range, error, fallback)
     }
 }
 /// A local type and its authored spelling location. Rewrites change only `ty`.
@@ -708,12 +713,19 @@ impl Parser {
         let type_span = self.here();
         let ty = self.ty()?;
         let type_range = self.range_from(type_span);
+        let origins_start = self.here();
         let origins = self.origin_arguments()?;
+        let origins_range = if origins.is_empty() {
+            SourceRange::default()
+        } else {
+            self.range_from(origins_start)
+        };
         let name = if let Some(n) = name { n } else { self.id()? };
         Ok(Field {
             name,
             ty,
             origins,
+            origins_range,
             referent_origins: vec![],
             type_range,
         })
@@ -1609,6 +1621,7 @@ impl Parser {
                             {
                                 bindings.push(Field {
                                     type_range: crate::SourceRange::default(),
+                                    origins_range: crate::SourceRange::default(),
                                     origins: vec![],
                                     referent_origins: vec![],
                                     name: self.id()?,

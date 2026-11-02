@@ -285,8 +285,8 @@ control peek(ref string input) exits view[missing] {
 ```
 
 Here `missing` does not name a parameter; the diagnostic selects `[missing]`.
-Missing mappings have no invented range. Individual payload bracket mappings
-and invalid shared origin schemas retain their earlier locations. A body
+Missing mappings have no invented range. Invalid shared origin schemas retain
+their earlier locations. A body
 error still selects its own expression. Error order and the shared recovery budget
 are unchanged; improving a location does not enable checking through an invalid schema.
 
@@ -313,6 +313,32 @@ The declaration batch still reports its first error per control before checking 
 Named completion mappings keep their bracket ranges from 0.114; body and type errors
 keep their more specific locations. Lifetime acceptance and public contract rules are
 unchanged.
+
+Since 0.116, **individual payload origin brackets** also have separate ranges.
+For `exits ready { view[input] value }`, invalid input/group names, wrong group
+counts, missing grouped types and incompatible borrow authority select `[input]`.
+The payload type, binding name, trailing comments and any storage `from` clause are
+excluded. Multiline comments, nested selectors, modern/legacy spelling, generic
+controls and trait declarations/implementations preserve the written bracket range.
+
+<!-- tellur:reject E_ORIGIN -->
+```tellur
+struct view['a] {
+    ref string value <- 'a;
+}
+control peek(ref string input)
+    exits found { view[missing] value }
+{
+    exit found { view { value: input } };
+}
+```
+
+Here the diagnostic selects `[missing]`, even if another payload has valid brackets.
+For named completions such as `exits reply[missing]`, that invocation mapping takes
+precedence over the payload's group names in the reused outcome definition. A separate
+invalid `from` clause keeps its own range. Missing mappings and invalid origin schemas
+retain their existing source points; body and type errors keep their own ranges.
+Origin acceptance, declaration ordering and the 32-error budget are unchanged.
 
 Imports preserve both endpoints in the original file; unsaved dependencies supply
 the text used for editor UTF-16 conversion. Generic substitution preserves the

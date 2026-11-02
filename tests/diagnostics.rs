@@ -2489,3 +2489,139 @@ fn return_origin_range_batches_keep_first_error_order_and_absent_contract_points
         assert!(errors.errors[0].end.is_none(), "{errors}");
     }
 }
+
+#[test]
+fn payload_origin_ranges_select_brackets_separately_from_types_and_bindings() {
+    let f = Fixture::new();
+    for (source, selected) in [
+        (
+            "struct view['a] {ref string value <- 'a;} control probe(ref string input) exits ready {view[missing] value} {exit ready {view {value:input}};}",
+            "[missing]",
+        ),
+        (
+            "struct view['a] {ref string value <- 'a;} control probe(ref string input) exits ready {view[input,input] value} {exit ready {view {value:input}};}",
+            "[input,input]",
+        ),
+        (
+            "control probe(ref string input) exits ready {u32[input] value} {exit ready {0};}",
+            "[input]",
+        ),
+        (
+            "struct view['a] {ref string value <- 'a;} control probe(string input) exits ready {view[input] value} {exit ready {view {value:borrow input}};}",
+            "[input]",
+        ),
+        (
+            "struct view['a] {ref mutable string value <- 'a;} control probe(ref string input) exits ready {view[input] value} {exit ready {view {value:input}};}",
+            "[input]",
+        ),
+        (
+            "struct view['a] {ref string value <- 'a;} control probe(view input) exits ready {view[input['missing]] value} {exit ready {input};}",
+            "[input['missing]]",
+        ),
+        (
+            "struct view['a] {ref string value <- 'a;} control probe(ref string input) exits ready {view[input] first,view[ // 😀\r\n missing\r\n] second // outside\r\n} {exit ready {view {value:input},view {value:input}};}",
+            "[ // 😀\r\n missing\r\n]",
+        ),
+        (
+            "struct view['a] {ref string value <- 'a;} region probe(input: &String) exits Ready(value: view[missing]) {[Entry]:exit Ready(view {value:input});}",
+            "[missing]",
+        ),
+    ] {
+        f.write("main.tellur", source);
+        let report = f.report(&["check", "main.tellur", "--json"], false);
+        let error = &report["diagnostics"][0];
+        assert_eq!(error["code"], "E_ORIGIN", "{report}");
+        assert_eq!(error["range"], selected_range(source, selected), "{report}");
+    }
+}
+
+#[test]
+fn payload_origin_ranges_survive_imports_generics_and_trait_signatures() {
+    let f = Fixture::new();
+    f.write(
+        "main.tellur",
+        "import \"library.tellur\" as library;control main() exits done {exit done;}",
+    );
+    let schema = "pub struct view<t>['a] {pub ref t value <- 'a;}\r\n";
+    for body in [
+        "pub control probe<t>(ref t input) exits ready {view<t>[missing] value} {exit ready {view<t> {value:input}};}",
+        "pub control probe(ref string input) exits ready {view<string>[missing] value} {exit ready {view<string> {value:input}};}",
+        "pub trait reader {control read(ref self input) exits ready {view<self>[missing] value};}",
+        "trait reader {control read(ref self input) exits ready {view<self>[input] value};} struct value {u32 n;} implement reader for value {control read(ref self input) exits ready {view<self>[missing] value} {exit ready {view<self> {value:input}};}}",
+    ] {
+        let source = format!("{schema}// 😀\r\n{body}");
+        f.write("library.tellur", &source);
+        let report = f.report(&["check", "main.tellur", "--json"], false);
+        let error = &report["diagnostics"][0];
+        assert_eq!(error["code"], "E_ORIGIN", "{report}");
+        assert!(error["path"].as_str().unwrap().ends_with("library.tellur"));
+        assert_eq!(
+            error["range"],
+            selected_range(&source, "[missing]"),
+            "{report}"
+        );
+    }
+}
+
+#[test]
+fn payload_origin_ranges_preserve_storage_clauses_named_contracts_and_error_order() {
+    let f = Fixture::new();
+    for (source, selected, code) in [
+        (
+            "struct view['a] {ref string value <- 'a;} control probe(ref view input) exits ready {ref view[input['a]] value from missing} {exit ready {input};}",
+            "from missing",
+            "E_LIFETIME",
+        ),
+        (
+            "struct view['a] {ref string value <- 'a;} control probe(ref view input) exits ready {ref view[missing] value from input} {exit ready {input};}",
+            "[missing]",
+            "E_ORIGIN",
+        ),
+        (
+            "struct view['a] {ref string value <- 'a;} outcome reply['a] {ready {view['a] value}} control probe(ref string input) exits reply[missing] {exit ready {view {value:input}};}",
+            "[missing]",
+            "E_ORIGIN",
+        ),
+        (
+            "struct view['a] {ref string value <- 'a;} control probe(ref string input) exits ready {view[input] value} {u32 wrong=true;exit ready {view {value:input}};}",
+            "true",
+            "E_TYPE",
+        ),
+        (
+            "control probe(ref string input) exits ready {unknown[input] value} {exit ready {input};}",
+            "unknown",
+            "E_MANIFEST",
+        ),
+    ] {
+        f.write("main.tellur", source);
+        let report = f.report(&["check", "main.tellur", "--json"], false);
+        let error = &report["diagnostics"][0];
+        assert_eq!(error["code"], code, "{report}");
+        assert_eq!(error["range"], selected_range(source, selected), "{report}");
+    }
+    let source = "struct view['a] {ref string value <- 'a;}\ncontrol first(ref string input) exits ready {view[missing] value} {exit ready {view {value:input}};}\ncontrol second(ref string input) exits ready {view[missing] value} {exit ready {view {value:input}};}\ncontrol body() exits done {u32 wrong=true;exit done;}";
+    let errors = check_errors(source);
+    assert_eq!(errors.errors.len(), 2, "{errors}");
+    assert_eq!(
+        errors
+            .errors
+            .iter()
+            .map(|e| e.span.line)
+            .collect::<Vec<_>>(),
+        vec![2, 3]
+    );
+    let first = compile(
+        source,
+        Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+    )
+    .unwrap_err();
+    assert_eq!(first, errors.errors[0]);
+    for source in [
+        "struct view['a] {ref string value <- 'a;} pub control probe(ref string input) exits ready {view value} {exit ready {view {value:input}};}",
+        "struct view['a] {ref string value <- 'missing;} control probe(ref string input) exits ready {view[input] value} {exit ready {view {value:input}};}",
+    ] {
+        let errors = check_errors(source);
+        assert_eq!(errors.errors.len(), 1, "{errors}");
+        assert!(errors.errors[0].end.is_none(), "{errors}");
+    }
+}

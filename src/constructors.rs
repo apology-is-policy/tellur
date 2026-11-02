@@ -190,6 +190,7 @@ pub(crate) fn prepare(unit: &mut Unit) -> crate::CheckResult<()> {
             name: COMPLETED.into(),
             fields: vec![Field {
                 type_range: crate::SourceRange::default(),
+                origins_range: crate::SourceRange::default(),
                 origins: std::mem::take(&mut control.exit_origins),
                 referent_origins: vec![],
                 name: "value".into(),
