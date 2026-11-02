@@ -182,6 +182,35 @@ ordering tests exercise the internal registry; they do not establish a source FI
 fairness guarantee. E1d.2c covers external readiness and fault-domain admission before
 source `spawn`. Cancellation and native coroutine lowering remain separate work.
 
+## Addressable suspended callers (E1d.2c.1)
+
+Compiler 0.117 stores parked callers in a separate suspension table, rather than
+nesting a boxed caller inside the active child's continuation. Each parking
+registration gets a fresh identity, paired with the exact child task and completion
+wait. A context that parks again receives a new registration; these are not public
+task identities, diagnostic activation IDs or external readiness subscriptions.
+
+Admission checks suspension identity capacity before changing the ready queue or
+moving the active context. Completion validates all three identities before taking
+the original caller exactly once. A crossed task/wait pair, stale registration or
+exhausted identity space cannot remove another parked caller. Normal delivery and
+emergency unwind both remove their registration; a fault still travels exclusively
+through the emergency channel. Suspended frames and their borrowers remain in the
+same shared value arena, and the diagnostic tracker still moves with the sequential
+chain. No state is cloned, no script input is replayed and no fuel is added.
+
+Checked execution tests retain two independent borrowed caller chains simultaneously,
+reject crossed and stale registrations, and retire each without touching the other.
+Nested awaits and repeated fault recovery verify bounded live suspension storage
+and removal before contingency. Host quota/fuel partitions, returned borrows and
+native/reference observations keep their existing meaning. These independent chains
+are an internal test harness, not source `spawn` or a public scheduling API.
+
+The next E1d.2c slice connects independent ready/wait contexts to modeled external
+readiness and distinct fault domains. It must follow the accepted `await`/`yield`
+handoff policy; quota pauses alone cannot select another source task. This table is
+preparation for that work, not completion of the concurrent executor.
+
 ## Separate the identities and continuations
 
 | Entity | Purpose | Must not be confused with |
@@ -462,7 +491,8 @@ Those boundaries need explicit contracts before being accepted by the checker.
 | E1d.1 | Separate execution-wide state from resumable control chains | Delivered in 0.111: one storage arena/address allocator, script cursor, effect history and fuel budget; independent frames, continuations and emergency state; internal interleaving evidence, no source spawn |
 | E1d.2a | Invocation and cold-task identities | Delivered in 0.112: owner/producer admission, one-shot completion, normal obligation checks and emergency retirement in sequential execution |
 | E1d.2b | Queued cold dispatch and completion waits | Delivered in 0.113: ready admission, parked callers, one-use completion wait IDs, stale/duplicate rejection and unchanged sequential observations |
-| E1d.2c | External readiness and fault-domain admission | Next: independent ready/wait contexts, modeled I/O readiness and owner-boundary settlement before source spawn |
+| E1d.2c | External readiness and fault-domain admission | In progress: addressable suspended callers delivered in 0.117; independent ready/wait contexts, modeled I/O readiness and owner-boundary settlement remain before source spawn |
+| E1d.2c.1 | Addressable suspended callers | Delivered in 0.117: one-use suspension registrations paired with task/wait identities, atomic admission, original context restoration and emergency retirement |
 | E1e | Explicit cooperative cancellation and suspending cleanup; normal completion races, cleanup failures and no abandoned losers | Define cancellation observation and cleanup admission; no implicit cancellation exception |
 | E2 | Pinned native coroutine experiment, then checked lowering and schedule-based differential validation | Reference semantics and legal frame retirement must precede native destruction |
 

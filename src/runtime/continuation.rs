@@ -49,6 +49,7 @@ impl CheckedProgram {
                     steps_left: steps,
                     values: BTreeMap::new(),
                     tasks: Registry::default(),
+                    suspended: SuspendedCalls::default(),
                 },
                 context: Context::new(crate::fault::Tracker::new(self.runtime_sites())),
             }),
@@ -126,7 +127,7 @@ enum Continuation<'a> {
     ResumeAwait {
         task: TaskId,
         wait: WaitId,
-        caller: Box<Context<'a>>,
+        caller: SuspensionId,
     },
     Loop(&'a Action),
     SupervisedWork {
@@ -161,6 +162,7 @@ struct SharedExecution<'a> {
     steps_left: usize,
     values: BTreeMap<Id, Value>,
     tasks: Registry,
+    suspended: SuspendedCalls<'a>,
 }
 
 /// A resumable control chain. Storage and effect history belong to the execution;
@@ -186,6 +188,64 @@ impl Context<'_> {
             flow: None,
             handover: vec![],
         }
+    }
+}
+/// One parking registration, distinct from a task and its completion wait. A
+/// context may park repeatedly; every registration has a fresh, non-reused ID.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct SuspensionId(u64);
+struct SuspendedCall<'a> {
+    task: TaskId,
+    wait: WaitId,
+    context: Context<'a>,
+}
+#[derive(Default)]
+struct SuspendedCalls<'a> {
+    next: u64,
+    calls: BTreeMap<SuspensionId, SuspendedCall<'a>>,
+}
+impl<'a> SuspendedCalls<'a> {
+    /// Preflight before task admission or moving the active context. No ID is
+    /// reserved until commit, while the executor remains exclusively borrowed.
+    fn prepare(&self) -> Result<SuspensionId> {
+        self.next
+            .checked_add(1)
+            .map(SuspensionId)
+            .ok_or_else(|| error("suspension identity space exhausted"))
+    }
+    fn commit(&mut self, id: SuspensionId, task: TaskId, wait: WaitId, context: Context<'a>) {
+        assert_eq!(self.next.checked_add(1), Some(id.0));
+        self.next = id.0;
+        assert!(
+            self.calls
+                .insert(
+                    id,
+                    SuspendedCall {
+                        task,
+                        wait,
+                        context
+                    }
+                )
+                .is_none()
+        );
+    }
+    fn get(&self, id: SuspensionId, task: TaskId, wait: WaitId) -> Result<&Context<'a>> {
+        let call = self
+            .calls
+            .get(&id)
+            .ok_or_else(|| error("suspended caller is unknown or already resumed"))?;
+        if call.task != task || call.wait != wait {
+            return Err(error(
+                "suspended caller does not match task completion wait",
+            ));
+        }
+        Ok(&call.context)
+    }
+    /// Validate before removing anything. Normal completion and emergency unwind
+    /// both transfer the original context once; neither clones its retained state.
+    fn take(&mut self, id: SuspensionId, task: TaskId, wait: WaitId) -> Result<Context<'a>> {
+        self.get(id, task, wait)?;
+        Ok(self.calls.remove(&id).unwrap().context)
     }
 }
 struct Machine<'a> {
@@ -420,12 +480,14 @@ impl<'a> Machine<'a> {
                     }
                 }
             }
-            Continuation::ResumeAwait {
-                task,
-                wait,
-                mut caller,
-            } => {
-                let owner = caller.frame.owner.unwrap();
+            Continuation::ResumeAwait { task, wait, caller } => {
+                let owner = self
+                    .shared
+                    .suspended
+                    .get(caller, task, wait)?
+                    .frame
+                    .owner
+                    .unwrap();
                 let result = match flow {
                     Ok(flow @ Flow::Exit(..)) => self
                         .shared
@@ -440,13 +502,14 @@ impl<'a> Machine<'a> {
                         other
                     }
                 };
+                let mut caller = self.shared.suspended.take(caller, task, wait)?;
                 // The sequential diagnostic chain travels with the selected
                 // child, preserving activation IDs, fault causes and call sites.
                 caller.activations = std::mem::take(&mut self.context.activations);
                 caller.phase = self.context.phase.clone();
                 caller.handover = std::mem::take(&mut self.context.handover);
                 caller.flow = Some(result);
-                self.context = *caller;
+                self.context = caller;
             }
             Continuation::Loop(action) => {
                 let Action::Loop { id, .. } = action else {
@@ -755,6 +818,7 @@ impl<'a> Machine<'a> {
                 }
                 let task = TaskId(id);
                 let invocation = self.prepare_call(name, arguments)?;
+                let suspension = self.shared.suspended.prepare()?;
                 let wait =
                     self.shared
                         .tasks
@@ -766,10 +830,11 @@ impl<'a> Machine<'a> {
                 let mut child = Context::new(activations);
                 child.phase = self.context.phase.clone();
                 let caller = std::mem::replace(&mut self.context, child);
+                self.shared.suspended.commit(suspension, task, wait, caller);
                 self.context.stack.push(Continuation::ResumeAwait {
                     task,
                     wait,
-                    caller: Box::new(caller),
+                    caller: suspension,
                 });
                 self.context
                     .stack

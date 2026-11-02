@@ -371,6 +371,10 @@ travels with the child and back to its caller. Dispatch is administrative: it do
 not consume extra instruction fuel or change host quota behavior. These internal
 waits cover child completion only; source execution still has no overlapping work
 or external I/O readiness.
+Since 0.117, parked callers occupy a separate suspension table. Each registration
+is paired with its task and completion wait, validated and removed exactly once
+on completion or emergency unwind. Stale or crossed registrations cannot resume
+a different caller. This changes internal storage, not source handoff semantics.
 
 Path expansion retains `run`, `defer`, direct `await` and task consumption as
 explicit operations. It may inline ordinary

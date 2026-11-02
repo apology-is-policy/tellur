@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-0.116.0-darwin-arm64.vsix` using **Extensions:
+1. Install the supplied `tellur-language-0.117.0-darwin-arm64.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1086,3 +1086,12 @@ brackets when an input, group count or borrowing permission is invalid. Imported
 generic and trait signatures retain exact locations through unsaved edits. Named
 completion mappings, `from` clauses and type/body errors keep separate ranges;
 repair restores checked hover information. Borrowing rules are unchanged.
+
+
+## Suspended caller storage in 0.117
+
+Cold awaits now retain callers in a separate suspension table. One-use registrations
+validate the matching task and completion wait before restoring the original caller;
+fault unwind retires the registration without producing a normal result. Borrowed
+storage, diagnostic traces and host instruction quotas retain their existing behavior.
+Source execution remains sequential; scoped concurrency is the next feature group.

@@ -17,6 +17,7 @@ fn scenario() -> Scenario {
 }
 fn assert_retired(m: &Machine<'_>) {
     assert!(m.shared.tasks.is_empty());
+    assert!(m.shared.suspended.calls.is_empty());
     assert!(m.shared.values.is_empty());
     assert!(m.context.stack.is_empty());
     assert!(m.context.frame.owner.is_none());
@@ -94,10 +95,13 @@ control main() exits done { forward run start(); }
     let m = session.machine.as_mut().unwrap();
     m.enter(&s).unwrap();
     let mut peak = 0;
+    let mut parked_peak = 0;
     while !m.drive(1) {
+        parked_peak = parked_peak.max(m.shared.suspended.calls.len());
         peak = peak.max(m.shared.tasks.live_counts().1);
     }
     assert_eq!(peak, 3);
+    assert_eq!(parked_peak, 2);
     assert_eq!(messages(m), ["borrowed", "borrowed", "borrowed"]);
     assert!(matches!(m.context.flow, Some(Ok(Flow::Exit(ref n, _))) if n == "done"));
     assert_retired(m);
@@ -131,6 +135,10 @@ control main() faults {{ run start(); }}
             assert!(tasks <= 1, "retired task identities accumulated");
             if !m.context.contingencies.is_empty() {
                 assert_eq!(tasks, 0, "tasks must retire before contingency");
+                assert!(
+                    m.shared.suspended.calls.is_empty(),
+                    "callers must unwind before contingency"
+                );
                 recoveries += 1;
             }
         }
@@ -253,10 +261,12 @@ control main() exits done {forward run start();}
         .stack
         .iter()
         .find_map(|c| match c {
-            Continuation::ResumeAwait { task, wait, caller } => Some((*task, *wait, caller)),
+            Continuation::ResumeAwait { task, wait, caller } => Some((*task, *wait, *caller)),
             _ => None,
         })
         .expect("await must retain a separate parked caller");
+    let suspension = caller;
+    let caller = m.shared.suspended.get(suspension, task, wait).unwrap();
     assert_ne!(caller.frame.owner, m.context.frame.owner);
     assert!(matches!(
         caller.stack.last(),
@@ -284,5 +294,128 @@ control main() exits done {forward run start();}
         ["created", "child entered", "after", "released"]
     );
     assert!(m.shared.tasks.deliver(task, owner, wait).is_err());
+    assert!(m.shared.suspended.take(suspension, task, wait).is_err());
+    assert_retired(m);
+}
+
+#[test]
+fn independent_parked_callers_reject_crossed_stale_and_exhausted_registrations() {
+    // Independent harness contexts, not source siblings. Each executes checked
+    // borrowed awaits; selecting one must not consume the other's parked state.
+    let p = checked(
+        r#"
+async control leaf(ref string value) exits found { ref string value from value } {
+    emit(value); exit found {value};
+}
+async control start(string text) exits done {
+    auto pending = defer leaf(borrow text);
+    delta await pending {found {auto result} => ready}
+    [ready]: emit(result); exit done;
+}
+control main() exits done {forward run start("unused");}
+"#,
+    );
+    let s = scenario();
+    let mut session = p.start_execution(&s, 200);
+    let m = session.machine.as_mut().unwrap();
+    m.call("start", vec![Value::String("left".into())]).unwrap();
+    while m.shared.suspended.calls.is_empty() {
+        assert!(!m.drive(1));
+    }
+    let independent = Context::new(m.context.activations.child());
+    let left = std::mem::replace(&mut m.context, independent);
+    m.call("start", vec![Value::String("right".into())])
+        .unwrap();
+    while m.shared.suspended.calls.len() < 2 {
+        assert!(!m.drive(1));
+    }
+    let parked: Vec<_> = m
+        .shared
+        .suspended
+        .calls
+        .iter()
+        .map(|(id, call)| (*id, call.task, call.wait))
+        .collect();
+    let [
+        (left_id, left_task, left_wait),
+        (right_id, right_task, right_wait),
+    ] = parked[..]
+    else {
+        panic!("both checked callers must be parked");
+    };
+    let values = m.shared.values.clone();
+    let events = m.shared.events.clone();
+    let tasks = m.shared.tasks.clone();
+    let fuel = m.shared.steps_left;
+    assert!(
+        m.shared
+            .suspended
+            .take(left_id, right_task, left_wait)
+            .is_err()
+    );
+    assert!(
+        m.shared
+            .suspended
+            .take(left_id, left_task, right_wait)
+            .is_err()
+    );
+    assert!(
+        m.shared
+            .suspended
+            .take(right_id, left_task, left_wait)
+            .is_err()
+    );
+    m.shared.suspended.next = u64::MAX;
+    assert!(m.shared.suspended.prepare().is_err());
+    assert_eq!(m.shared.suspended.calls.len(), 2);
+    assert_eq!(m.shared.values, values);
+    assert_eq!(m.shared.events, events);
+    assert_eq!(m.shared.tasks, tasks);
+    assert_eq!(m.shared.steps_left, fuel);
+    assert!(m.drive(100));
+    assert!(
+        m.shared
+            .suspended
+            .take(right_id, right_task, right_wait)
+            .is_err()
+    );
+    assert!(
+        m.shared
+            .suspended
+            .get(left_id, left_task, left_wait)
+            .is_ok()
+    );
+    assert_eq!(m.shared.suspended.calls.len(), 1);
+    m.context = left;
+    assert!(m.drive(100));
+    assert_eq!(messages(m), ["right", "right", "left", "left"]);
+    assert_retired(m);
+}
+
+#[test]
+fn suspension_exhaustion_unwinds_before_queueing_or_running_the_child() {
+    let p = checked(
+        r#"
+async control work(string text) exits done {emit(borrow text); exit done;}
+async control start() exits done {
+    auto pending = defer work("must not run");
+    emit("captured"); await pending; exit done;
+}
+control main() exits done {forward run start();}
+"#,
+    );
+    let s = scenario();
+    let mut session = p.start_execution(&s, 200);
+    let m = session.machine.as_mut().unwrap();
+    m.enter(&s).unwrap();
+    while m.shared.events.is_empty() {
+        assert!(!m.drive(1));
+    }
+    m.shared.suspended.next = u64::MAX;
+    assert!(m.drive(200));
+    assert!(
+        matches!(m.context.flow, Some(Err(ref d)) if d.message.contains("suspension identity space exhausted"))
+    );
+    assert_eq!(messages(m), ["captured"]);
     assert_retired(m);
 }
