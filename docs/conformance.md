@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.134.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.135.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -4045,3 +4045,17 @@ All 15 retained compiled-model cases and four retained resource-adapter cases pr
 regression evidence. Reference execution, shared task protocol, checker, LSP and
 extension implementation retain their earlier evidence. This selected coverage does
 not enable source scheduling or claim full-suite conformance.
+
+## Sequential native await context checkpoint (0.135)
+
+E1d.2d.3h adds seven host cases. Four compare nested call-chain diagnostics, readiness,
+resource adoption and rejected admission; a fifth covers administrative completion and
+whole-session process retirement. A sixth checks a fresh await after recovery, preserving
+the original caller and allocating a fresh child identity. A seventh checks fuel
+exhaustion at child/caller return points without changing failure kind. Full reports,
+source sites, activation IDs, fuel and
+events match the existing synchronous retained machine, including handler failure.
+The 73 existing host cases run separately from these focused cases. All 15 compiled
+models and four retained resource-adapter cases cover integration. Reference execution,
+checker, shared task protocol, fault tracker and editor implementation retain prior
+evidence. This selected coverage does not claim source scheduling or full conformance.

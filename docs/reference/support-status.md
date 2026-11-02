@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.134.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.135.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -142,3 +142,7 @@ retained source callbacks and production source scheduling remain separate work.
 Since 0.134, retained lexical/loop cleanup retires discarded bound cold obligations
 on fault/recovery and rejects normal pending discard. Moved handles remain awaitable;
 resource dispositions and borrowed suppliers are unchanged. Source handoffs remain ahead.
+
+Since 0.135, internal sequential await contexts preserve the caller's diagnostic chain
+through nested readiness, result adoption and fault settlement. Mixed child trees and
+source callback handoffs remain ahead; this does not enable source concurrency.

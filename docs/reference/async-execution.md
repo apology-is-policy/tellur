@@ -446,6 +446,13 @@ Resource dispositions remain responsible for captured resources. This is prepara
 for source callback integration, not a new discard or scheduling feature. See
 [scoped native task retirement](../async-execution.md#scoped-native-task-retirement-e1d2d3g).
 
+Since 0.135, internal sequential cold-await contexts carry the original diagnostic
+chain through nested waits, normal join and owning-boundary fault settlement. They
+preserve synchronous fault reports and result ownership. Mixed independent-child trees
+and emitted callback handoffs remain outside this internal slice; source execution
+and the accepted ownership/fault rules are unchanged. See
+[sequential native await contexts](../async-execution.md#sequential-native-await-contexts-e1d2d3h).
+
 Since 0.128, entry process termination closes normal task admission and retires all
 registered execution contexts and results before delivering the original status.
 Prepared bodies never start; parked callers unwind without normal instructions or

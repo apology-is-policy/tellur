@@ -1215,6 +1215,7 @@ Those boundaries need explicit contracts before being accepted by the checker.
 | E1d.2d.3e | Bound native task payloads | Delivered in 0.132: internal cold captures carry opaque host/invocation/task/producer identity; cold creation and consuming queue/wait admission preflight before moving values, with FIFO one-use capture dispatch. Retained source lowering and context completion wiring remain ahead |
 | E1d.2d.3f | Task-bound native contexts | Delivered in 0.133: queued captures enter retained contexts only after frame/resource/domain/owner preflight; original parent invocation and completion wait stay paired through readiness, result adoption and fault/process retirement. Retained source callback integration remains ahead |
 | E1d.2d.3g | Scoped native task retirement | Delivered in 0.134: discarded bound cold handles retire before lexical contingency and recovery reset; normal scope/restart checks reject pending discard, while moved handles and borrowed suppliers survive. Retained callback handoffs remain ahead |
+| E1d.2d.3h | Sequential native await contexts | Delivered in 0.135: exclusive cold-await context chains carry original diagnostic activations through nested readiness, join and fault settlement, preserving synchronous reports and resource adoption. Mixed child trees and emitted callback handoffs remain ahead |
 | E1e | Explicit cooperative cancellation and suspending cleanup; normal completion races, cleanup failures and no abandoned losers | Define cancellation observation and cleanup admission; no implicit cancellation exception |
 | E2 | Pinned native coroutine experiment, then checked lowering and schedule-based differential validation | Reference semantics and legal frame retirement must precede native destruction |
 
@@ -1604,6 +1605,47 @@ resource dispositions and failure inside an already active contingency. Existing
 retained-control and resource-adapter scenarios cover unchanged generated callbacks.
 Source callbacks still produce synchronous unbound tasks; binding their defer/await
 handoffs and preserving cold-await diagnostic chains remain the next integration step.
+
+## Sequential native await contexts (E1d.2d.3h)
+
+Compiler 0.135 adds internal `Contexts::start_await` for an exclusive sequential
+cold-await chain. It shares queued-task admission preflight with `start_task`, then
+enters the producer on the original caller tracker and moves that tracker into the
+child. Failed admission retains the caller chain and queued captures. The parked
+caller records its awaited child and cannot admit other children or readiness while
+its chain is away. Nested sequential awaits use the same rule.
+
+Normal completion retains the tracker with the result until consuming join. Join
+validates the original caller and wait, adopts owned results, consumes the obligation
+and returns the tracker before caller execution resumes. Borrowed result locations
+remain in the original retained frames. A child readiness signal queues execution;
+it does not return diagnostics or deliver completion, and zero quota does not switch
+source execution.
+
+For an escaping fault, settlement first returns the entire sequential chain to its
+owning continuation, then retires stopped borrowers and applies existing resource
+dispositions. It does not add the separate-child causal wrapper used by `start_task`.
+The owning contingency sees the same activation identities, call/current sites and
+causes as synchronous cold await. Failure inside that contingency preserves the same
+causal report. Non-outcome administrative completion restores the caller chain without
+creating a normal result; process termination drains the entire session.
+
+This API currently accepts roots and nested sequential children without other retained
+children. Combining independent child trees with sequential awaits is rejected before
+transfer. This is an internal integration boundary, not a new language restriction:
+source concurrency is still gated, and existing independent-child APIs keep their
+separate diagnostic chains. Source callback emission and automatic handoff/Deliver
+wiring remain ahead.
+
+Seven [host cases](../src/native/sequential_await_tests.rs) compare exact reports,
+source sites, activation identities, fuel and events against the synchronous retained
+machine. They cover nested success/fault, readiness, owning-handler failure, real owned
+and borrowed result adoption, failed/mixed admission, non-outcome completion and
+process retirement of waiting/completed children, a fresh await after recovery and
+host fuel exhaustion at child/caller return points.
+Existing compiled-control cases
+continue to compare original/expanded programs at O0/O2 across fuel cuts and quota
+partitions.
 
 ## Reference execution invariants
 

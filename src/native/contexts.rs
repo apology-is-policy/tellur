@@ -28,6 +28,8 @@ struct Parked {
     parent: Option<u64>,
     started: bool,
     task: Option<QueuedTask>,
+    sequential: bool,
+    awaiting: Option<u64>,
 }
 struct Completed {
     parked: Parked,
@@ -107,6 +109,8 @@ impl<'a> Contexts<'a> {
                 parent: None,
                 started: false,
                 task: None,
+                sequential: false,
+                awaiting: None,
             },
         );
         Ok(ContextKey {
@@ -136,6 +140,7 @@ impl<'a> Contexts<'a> {
         arguments: Vec<V>,
     ) -> R<ContextKey> {
         self.require(parent)?;
+        self.require_independent_children(parent)?;
         if self.waits.contains_key(&parent.id) {
             return Err(
                 "E_NATIVE: waiting or unselected ready parent cannot admit children".into(),
@@ -186,6 +191,8 @@ impl<'a> Contexts<'a> {
                 parent: Some(parent.id),
                 started: false,
                 task: None,
+                sequential: false,
+                awaiting: None,
             },
         );
         Ok(ContextKey {
@@ -199,6 +206,40 @@ impl<'a> Contexts<'a> {
         &mut self,
         parent: &ContextKey,
         queued: &mut Option<QueuedTask>,
+    ) -> R<ContextKey> {
+        self.require(parent)?;
+        self.require_independent_children(parent)?;
+        self.start_queued(parent, queued, false)
+    }
+    fn require_independent_children(&self, parent: &ContextKey) -> R<()> {
+        let parked = &self.parked[&parent.id];
+        if parked.sequential || parked.awaiting.is_some() {
+            return Err("E_NATIVE: sequential await cannot mix independent child contexts".into());
+        }
+        Ok(())
+    }
+    /// Sequential cold await carries the caller's diagnostic chain, rather than
+    /// creating a distinct child fault cause. Source callbacks are wired separately.
+    pub fn start_await(
+        &mut self,
+        parent: &ContextKey,
+        queued: &mut Option<QueuedTask>,
+    ) -> R<ContextKey> {
+        self.require(parent)?;
+        let parked = &self.parked[&parent.id];
+        if (parked.parent.is_some() && !parked.sequential)
+            || parked.awaiting.is_some()
+            || self.domains.has_children(&parked.machine.member)?
+        {
+            return Err("E_NATIVE: sequential await requires an exclusive caller chain".into());
+        }
+        self.start_queued(parent, queued, true)
+    }
+    fn start_queued(
+        &mut self,
+        parent: &ContextKey,
+        queued: &mut Option<QueuedTask>,
+        sequential: bool,
     ) -> R<ContextKey> {
         self.require(parent)?;
         if self.waits.contains_key(&parent.id) {
@@ -241,8 +282,17 @@ impl<'a> Contexts<'a> {
         self.host.resources.result_tokens(arguments)?;
         let scope = self.host.resources.prepare_scope_at(arguments, None)?;
         let frame = self.values.prepare(control.slots)?;
-        let mut tracker = parked.host.tracker.child();
-        tracker.enter(control.name)?;
+        let tracker = if sequential {
+            let tracker = &mut self.parked.get_mut(&parent.id).unwrap().host.tracker;
+            // enter fails before altering the active chain. All other admission
+            // checks have passed before the original tracker leaves the caller.
+            tracker.enter(control.name)?;
+            std::mem::take(tracker)
+        } else {
+            let mut tracker = parked.host.tracker.child();
+            tracker.enter(control.name)?;
+            tracker
+        };
         // All recoverable checks precede dispatch and capture/resource transfer.
         // Exclusive context access prevents an intervening admission.
         let mut task = queued.take().unwrap();
@@ -298,9 +348,14 @@ impl<'a> Contexts<'a> {
                 parent: Some(parent.id),
                 started: false,
                 task: Some(task),
+                sequential,
+                awaiting: None,
             },
         );
         self.next = id;
+        if sequential {
+            self.parked.get_mut(&parent.id).unwrap().awaiting = Some(id);
+        }
         Ok(ContextKey {
             session: self.identity.clone(),
             id,
@@ -310,6 +365,7 @@ impl<'a> Contexts<'a> {
         self.require(key)?;
         let parked = &self.parked[&key.id];
         if !parked.started
+            || parked.awaiting.is_some()
             || parked.machine.fault.is_some()
             || !parked.host.contingencies.is_empty()
             || self.waits.contains_key(&key.id)
@@ -490,13 +546,21 @@ impl<'a> Contexts<'a> {
             self.terminate()?;
             return Ok(result);
         }
+        // Administrative/non-outcome completion and a terminal child failure do
+        // not pass through join. Return their chain without delivering an outcome.
+        let mut origin = key.id;
+        if parked.sequential && matches!(result, ContextPoll::Complete(_) | ContextPoll::Failed(_))
+        {
+            origin = parked.parent.unwrap();
+            self.restore_await(origin, key.id, &mut parked.host.tracker);
+        }
         if let Some(outcome) = completed {
             self.completed.insert(key.id, Completed { parked, outcome });
         } else if matches!(result, ContextPoll::Paused) {
             self.parked.insert(key.id, parked);
         }
         if let Some((domain, message, report, source_fault)) = settlement {
-            self.settle(&domain, key.id, &message, report.clone(), source_fault)?;
+            self.settle(&domain, origin, &message, report.clone(), source_fault)?;
             if let Some(terminal) = self.terminal.remove(&key.id) {
                 result = terminal;
             } else if !self.parked.contains_key(&key.id) {
@@ -549,6 +613,9 @@ impl<'a> Contexts<'a> {
                 .ok_or("E_NATIVE: task parent has retired")?;
             task.require_delivery(self.host, activation)?;
         }
+        if parked.sequential && self.parked[&parked.parent.unwrap()].awaiting != Some(key.id) {
+            return Err("E_NATIVE: sequential completion has lost its original caller".into());
+        }
         let receiver = parent.map(|parent| {
             let parked = &self.parked[&parent.id];
             (&parked.host, &parked.root)
@@ -565,11 +632,56 @@ impl<'a> Contexts<'a> {
         )?;
         // Domain retirement was prevalidated before host ownership changed.
         completed.parked.machine.finish_root(&mut self.domains)?;
-        let completed = self.completed.remove(&key.id).unwrap();
+        let mut completed = self.completed.remove(&key.id).unwrap();
         if let Some(task) = &completed.parked.task {
             task.deliver(self.host);
         }
+        if completed.parked.sequential {
+            self.restore_await(
+                completed.parked.parent.unwrap(),
+                key.id,
+                &mut completed.parked.host.tracker,
+            );
+        }
         Ok(completed.outcome)
+    }
+    fn restore_await(&mut self, parent: u64, child: u64, tracker: &mut fault::Tracker) {
+        let caller = self
+            .parked
+            .get_mut(&parent)
+            .expect("retained sequential caller");
+        assert_eq!(caller.awaiting, Some(child));
+        caller.host.tracker = std::mem::take(tracker);
+        caller.awaiting = None;
+    }
+    /// Move a failing sequential chain back through its parked callers before
+    /// retiring their frames. A distinct child keeps the existing causal report.
+    fn restore_fault_chain(&mut self, origin: u64, owner: u64) -> bool {
+        let mut cursor = origin;
+        while cursor != owner {
+            let Some(child) = self.parked.get(&cursor) else {
+                return false;
+            };
+            if !child.sequential {
+                return false;
+            }
+            let parent = child.parent.unwrap();
+            if self
+                .parked
+                .get(&parent)
+                .is_none_or(|p| p.awaiting != Some(cursor))
+            {
+                return false;
+            }
+            cursor = parent;
+        }
+        if origin != owner {
+            let tracker = std::mem::take(&mut self.parked.get_mut(&origin).unwrap().host.tracker);
+            let caller = self.parked.get_mut(&owner).unwrap();
+            caller.host.tracker = tracker;
+            caller.awaiting = None;
+        }
+        true
     }
     fn retire_completed(&mut self, id: u64) -> R<()> {
         let mut completed = self
@@ -635,6 +747,7 @@ impl<'a> Contexts<'a> {
                     .then_some(*id)
             })
             .ok_or("E_NATIVE: stopped domain has no retained owning continuation")?;
+        let sequential = self.restore_fault_chain(origin, owner);
         self.domains.stop(domain)?;
         self.waits.remove(&owner);
         let completed: Vec<_> = self
@@ -684,7 +797,7 @@ impl<'a> Contexts<'a> {
         if source_fault {
             self.host.activations.source_fault();
         }
-        if origin != owner {
+        if origin != owner && !sequential {
             self.host.activations.with_cause(report);
         }
         parked.machine.fault = None;
@@ -755,3 +868,7 @@ mod tests;
 #[cfg(test)]
 #[path = "task_context_tests.rs"]
 mod task_tests;
+
+#[cfg(test)]
+#[path = "sequential_await_tests.rs"]
+mod sequential_await_tests;
