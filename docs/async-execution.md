@@ -1205,6 +1205,7 @@ Those boundaries need explicit contracts before being accepted by the checker.
 | E1d.2c.4b.4d.7 | Whole-session native process settlement | Test-only on 0.125: administrative process stop closes admission/selection, retires all roots and child trees, clears pending reports and applies resource dispositions before status delivery. Readiness follows in 4d.8 |
 | E1d.2c.4b.4d.8 | Compiled context readiness protocol | Test-only on 0.125: session/context/generation tokens, separate wait/signal/selection, atomic rejection and fault/process invalidation over retained real-owner contexts. Readiness does not deliver completion; shared native integration and source handoffs remain ahead |
 | E1d.2d.1 | Separate task queue and completion joins | Delivered in 0.126: queue admission without a waiter, one-use joins before/during/after execution, explicit delivery before consumption and atomic cold await. Private registry support only; retained completion payloads and source handoffs follow |
+| E1d.2d.2a | Retained reference completion model | Test-only on 0.126: completed owned/exclusive-borrowed payloads outlive child frames, join before/after completion in either order, atomic rejected delivery and explicit stopped-result retirement with independent-root preservation. Production storage and native completion ownership remain next |
 | E1e | Explicit cooperative cancellation and suspending cleanup; normal completion races, cleanup failures and no abandoned losers | Define cancellation observation and cleanup admission; no implicit cancellation exception |
 | E2 | Pinned native coroutine experiment, then checked lowering and schedule-based differential validation | Reference semantics and legal frame retirement must precede native destruction |
 
@@ -1234,6 +1235,29 @@ This checkpoint does not yet store completed payloads independently of the calle
 That storage must retain owned results and external borrow dependencies through
 later joins and fault settlement before source handoffs can be enabled. No source
 `spawn`/`yield`, public task contract or native scheduler is claimed here.
+
+## Retained reference completion model (E1d.2d.2a)
+
+A test-only ledger now holds completed outcomes and their diagnostic context after
+checked child frames retire. The original caller and external borrowed storage stay
+live. Queue admission uses the private registry without a completion wait; the
+harness attaches joins either before execution or after both children finish.
+Delivery validates the owner, open domain and one-use wait before taking the payload.
+Missing storage, foreign owners, crossed waits and repeated delivery cannot consume
+another retained result. Completed work still prevents normal owner retirement.
+
+Two tests use [a checked fixture](../tests/fixtures/task_completion_model.tellur)
+before and after expansion. Twenty-four normal combinations vary join timing, join
+order and host quota, retaining moved strings and exclusive borrowed results after
+both child frames disappear. Owning-stop cases reject normal delivery, retire the
+completed payload before its caller and leave another root's result available.
+Exact effects and empty final task/storage/domain tables are checked.
+
+This is explicit harness scheduling and scripted reference retirement. The ledger
+is not connected to production domain draining or source handoffs, and it does not
+claim native retained-resource cleanup. Integrate completion storage into the runtime
+and native result ownership before source `spawn`/`yield` admission. Installed 0.126
+behavior remains unchanged; host quotas remain observation boundaries only.
 
 ## Reference execution invariants
 

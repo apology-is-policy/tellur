@@ -1,0 +1,28 @@
+async control leaf(string owned, ref mutable string text)
+    exits ready { string owned, ref mutable string value from text }
+{
+    emit("child");
+    deref text = "edited";
+    exit ready { move owned, text };
+}
+
+async control start(string initial) exits done {
+    mutable string text = move initial;
+    auto pending = defer leaf("payload", borrow mutable text);
+    emit("queued");
+    delta await pending {
+        ready { auto owned, auto value } => received
+    }
+
+    [received]:
+        emit(borrow owned);
+        emit(value);
+        drop(value);
+        text = "released";
+        emit(borrow text);
+        exit done;
+}
+
+control main() exits done {
+    forward run start("initial");
+}

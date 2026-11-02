@@ -5,6 +5,9 @@ use super::tasks::{OwnerId, Readiness, Registry, TaskId, WaitId, retire_value};
 use super::*;
 
 #[cfg(test)]
+#[path = "completion_model.rs"]
+mod completion_model;
+#[cfg(test)]
 #[path = "context_tests.rs"]
 mod context_tests;
 #[cfg(test)]

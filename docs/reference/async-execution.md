@@ -388,6 +388,12 @@ Cold await still performs queue admission and join registration atomically, incl
 identity-exhaustion failure. This is internal support: delayed task-owned result
 storage and source `spawn`/`yield` are still unimplemented.
 
+A test-only [retained-completion model](../async-execution.md#retained-reference-completion-model-e1d2d2a)
+checks delayed owned and exclusive-borrowed result delivery after child frames retire,
+including rejected/crossed joins and an owning stop that preserves independent work.
+It uses explicit harness scheduling. Production result storage and native ownership
+integration remain separate steps; installed source behavior is unchanged.
+
 Path expansion retains `run`, `defer`, direct `await` and task consumption as
 explicit operations. It may inline ordinary
 synchronous calls around them, but cannot erase the async boundary. Expansion

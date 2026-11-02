@@ -3870,3 +3870,26 @@ payloads, including executable permissions. Existing windows were not reloaded.
 The source backup excludes the protected unrelated C# file before enumeration is
 used to read or archive sources. Next is retained completion payload storage,
 including ownership and borrow preservation through delayed joins and settlement.
+
+## Retained completion model on 0.126 (E1d.2d.2a)
+
+Two test-only reference cases retain normal payloads after checked child frames
+retire. Twenty-four original/expanded combinations vary early versus delayed joins,
+join order and host quota. Owned strings and exclusive references survive until
+one-use delivery; original caller storage remains live. Missing storage, crossed
+waits, foreign owners and repeated delivery preserve the retained obligations.
+Separate original/expanded owning-stop cases reject normal delivery, settle the
+completed payload before its caller and preserve an independent root's completion.
+Exact effect order and empty final task/storage/domain tables are asserted.
+
+The fixture is formatted with the installed 0.126 compiler. Production runtime
+changes are limited to a test-module declaration; current compiler/LSP/VSIX and
+selected runtime/editor evidence remain applicable. The model does not yet connect
+the ledger to automatic domain draining or validate real native resource release.
+Runtime completion storage and native ownership integration remain the next gates.
+
+Five selected cases pass: the two final model cases and three current manual
+checks. All-target compilation, Rust formatting and whitespace checks also pass.
+The earlier model pass predates added early-join, missing-storage and crossed-wait
+assertions; only the final cases are counted. No rebuild, install or editor reload
+is needed for this test-only checkpoint.
