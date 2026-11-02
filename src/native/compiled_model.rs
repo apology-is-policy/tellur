@@ -1,5 +1,5 @@
 //! Test-only compiled continuation driver; no checked graph is interpreted here.
-use super::{Completion, Frames, Host, R, V, frames::Frame};
+use super::{BoundaryState, Completion, Frames, Host, R, V, frames::Frame};
 
 pub type Deliver = fn(&mut Activation, &mut Frames, Completion) -> R<()>;
 pub struct Control {
@@ -14,7 +14,7 @@ pub struct Activation {
     frame: Frame,
     control: &'static Control,
     pending: Option<Deliver>,
-    loops: Vec<&'static LoopControl>,
+    scopes: Vec<Scope>,
     pub facts: Vec<bool>,
     pub pc: usize,
     pub destination: Option<usize>,
@@ -23,16 +23,101 @@ pub struct LoopControl {
     pub target: usize,
     pub body: usize,
     pub after: usize,
+    pub locals: &'static [usize],
     pub reset: fn(&mut Activation, &mut Frames, Vec<V>) -> R<()>,
+}
+pub struct BoundaryControl {
+    pub name: &'static str,
+    pub body: usize,
+    pub handler: usize,
+    pub after: usize,
+    pub retained: &'static [usize],
+    pub retire: &'static [usize],
+    pub work: &'static [usize],
+    pub handling: &'static [usize],
+    pub fault_slot: usize,
+}
+struct BoundaryScope {
+    control: &'static BoundaryControl,
+    state: BoundaryState,
+}
+enum Scope {
+    Loop(&'static LoopControl),
+    Boundary(BoundaryScope),
+}
+impl BoundaryScope {
+    fn finish(
+        &mut self,
+        host: &mut Host,
+        values: &mut Frames,
+        base: usize,
+        result: &R<()>,
+    ) -> R<()> {
+        for slot in self.control.work.iter().chain(self.control.handling) {
+            values[base + slot] = None;
+        }
+        host.finish_boundary(&mut self.state, result)
+    }
+    fn handle(
+        &mut self,
+        host: &mut Host,
+        values: &mut Frames,
+        base: usize,
+        message: &str,
+    ) -> R<()> {
+        let keep = host.resources.owned_tokens(
+            self.control
+                .retained
+                .iter()
+                .filter_map(|id| values[base + id].as_ref()),
+        )?;
+        for slot in self.control.retire {
+            values[base + slot] = None;
+        }
+        let report = host.boundary_fault(&mut self.state, message, &keep)?;
+        let (message, stack, paths) = report.source_fields();
+        let strings = |xs: Vec<String>| V::Construct {
+            ty: "vector<String>".into(),
+            name: "vector".into(),
+            fields: xs.into_iter().map(V::String).collect(),
+        };
+        values[base + self.control.fault_slot] = Some(V::Construct {
+            ty: "fault_report".into(),
+            name: "fault_report".into(),
+            fields: vec![V::String(message), strings(stack), strings(paths)],
+        });
+        host.enter_contingency(&mut self.state)
+    }
 }
 impl Activation {
     pub fn base(&self) -> usize {
         self.frame.base()
     }
+    fn close_scopes(&mut self, host: &mut Host, values: &mut Frames, remaining: usize) -> R<()> {
+        while self.scopes.len() > remaining {
+            if let Some(Scope::Boundary(mut boundary)) = self.scopes.pop() {
+                boundary.finish(host, values, self.base(), &Ok(()))?;
+            }
+        }
+        Ok(())
+    }
+    fn loop_target(&self, target: usize) -> R<(usize, &'static LoopControl)> {
+        self.scopes
+            .iter()
+            .enumerate()
+            .rev()
+            .find_map(|(index, scope)| match scope {
+                Scope::Loop(control) if control.target == target => Some((index, *control)),
+                _ => None,
+            })
+            .ok_or("E_NATIVE: compiled transfer has no active loop".into())
+    }
 }
 pub enum Step {
     Continue,
     Complete(Completion),
+    Boundary(&'static BoundaryControl),
+    BoundaryEnd(&'static BoundaryControl),
     Loop {
         control: &'static LoopControl,
         arguments: Vec<V>,
@@ -75,7 +160,7 @@ impl Machine {
             frame,
             control,
             pending: None,
-            loops: vec![],
+            scopes: vec![],
             facts: vec![false; control.atoms],
             pc: 0,
             destination,
@@ -92,90 +177,143 @@ impl Machine {
             finished: false,
         })
     }
-    fn advance_inner(&mut self, host: &mut Host, values: &mut Frames, quota: usize) -> R<Poll> {
-        for _ in 0..quota {
-            let frame = self
-                .stack
-                .last_mut()
-                .ok_or("E_NATIVE: missing compiled activation")?;
-            match (frame.control.resume)(host, values, frame)? {
-                Step::Continue => {}
-                Step::Loop { control, arguments } => {
-                    if frame
-                        .loops
+    fn step(&mut self, host: &mut Host, values: &mut Frames) -> R<(bool, Option<Completion>)> {
+        let frame = self
+            .stack
+            .last_mut()
+            .ok_or("E_NATIVE: missing compiled activation")?;
+        match (frame.control.resume)(host, values, frame)? {
+            Step::Continue => {}
+            Step::Boundary(control) => {
+                let base = frame.base();
+                let state = host.begin_boundary(
+                    control.name,
+                    control
+                        .retained
                         .iter()
-                        .any(|active| active.target == control.target)
-                    {
-                        return Err("E_NATIVE: compiled loop already active".into());
-                    }
-                    (control.reset)(frame, values, arguments)?;
-                    frame.loops.push(control);
-                    frame.pc = control.body;
+                        .chain(control.retire)
+                        .filter_map(|id| values[base + id].as_ref()),
+                    true,
+                )?;
+                frame
+                    .scopes
+                    .push(Scope::Boundary(BoundaryScope { control, state }));
+                frame.pc = control.body;
+            }
+            Step::BoundaryEnd(control) => {
+                let Some(Scope::Boundary(mut boundary)) = frame.scopes.pop() else {
+                    return Err("E_NATIVE: missing compiled boundary continuation".into());
+                };
+                if !std::ptr::eq(boundary.control, control) {
+                    return Err("E_NATIVE: mismatched compiled boundary continuation".into());
                 }
-                Step::Complete(Completion::Again(target, arguments)) => {
-                    let index = frame
-                        .loops
-                        .iter()
-                        .rposition(|l| l.target == target)
-                        .ok_or("E_NATIVE: compiled restart has no active loop")?;
-                    let control = frame.loops[index];
-                    (control.reset)(frame, values, arguments)?;
-                    frame.loops.truncate(index + 1);
-                    frame.pc = control.body;
+                boundary.finish(host, values, frame.base(), &Ok(()))?;
+                frame.pc = control.after;
+                // This sentinel is administrative and consumes no instruction quota.
+                return Ok((false, None));
+            }
+            Step::Loop { control, arguments } => {
+                if frame.loop_target(control.target).is_ok() {
+                    return Err("E_NATIVE: compiled loop already active".into());
                 }
-                Step::Complete(Completion::Complete(target)) => {
-                    let index = frame
-                        .loops
-                        .iter()
-                        .rposition(|l| l.target == target)
-                        .ok_or("E_NATIVE: compiled completion has no active loop")?;
-                    frame.pc = frame.loops[index].after;
-                    frame.loops.truncate(index);
+                (control.reset)(frame, values, arguments)?;
+                frame.scopes.push(Scope::Loop(control));
+                frame.pc = control.body;
+            }
+            Step::Complete(Completion::Again(target, arguments)) => {
+                let (index, control) = frame.loop_target(target)?;
+                frame.close_scopes(host, values, index + 1)?;
+                (control.reset)(frame, values, arguments)?;
+                frame.pc = control.body;
+            }
+            Step::Complete(Completion::Recover(target, arguments)) => {
+                let (index, control) = frame.loop_target(target)?;
+                frame.close_scopes(host, values, index + 1)?;
+                for slot in control.locals {
+                    host.release_frame(std::slice::from_ref(&values[frame.base() + slot]));
                 }
-                Step::Call {
-                    control,
-                    arguments,
-                    destination,
-                    deliver,
-                } => {
-                    if frame.pending.replace(deliver).is_some() {
-                        return Err("E_NATIVE: duplicate compiled return continuation".into());
-                    }
-                    self.stack
-                        .push(Self::admit(host, values, control, arguments, destination)?);
+                (control.reset)(frame, values, arguments)?;
+                frame.pc = control.body;
+            }
+            Step::Complete(Completion::Complete(target)) => {
+                let (index, control) = frame.loop_target(target)?;
+                frame.close_scopes(host, values, index)?;
+                frame.pc = control.after;
+            }
+            Step::Call {
+                control,
+                arguments,
+                destination,
+                deliver,
+            } => {
+                if frame.pending.replace(deliver).is_some() {
+                    return Err("E_NATIVE: duplicate compiled return continuation".into());
                 }
-                Step::Complete(result) => {
-                    let completed = self.stack.pop().unwrap();
-                    values.retire(&completed.frame)?;
-                    host.leave();
-                    if let Some(parent) = self.stack.last_mut() {
-                        let deliver = parent
-                            .pending
-                            .take()
-                            .ok_or("E_NATIVE: missing compiled return continuation")?;
-                        deliver(parent, values, result)?;
-                    } else {
-                        self.finished = true;
-                        return Ok(Poll::Complete(result));
-                    }
+                self.stack
+                    .push(Self::admit(host, values, control, arguments, destination)?);
+            }
+            Step::Complete(result) => {
+                frame.close_scopes(host, values, 0)?;
+                let completed = self.stack.pop().unwrap();
+                values.retire(&completed.frame)?;
+                host.leave();
+                if let Some(parent) = self.stack.last_mut() {
+                    let deliver = parent
+                        .pending
+                        .take()
+                        .ok_or("E_NATIVE: missing compiled return continuation")?;
+                    deliver(parent, values, result)?;
+                } else {
+                    self.finished = true;
+                    return Ok((true, Some(result)));
                 }
             }
         }
-        Ok(Poll::Paused)
+        Ok((true, None))
+    }
+    fn unwind_error(&mut self, host: &mut Host, values: &mut Frames, mut message: String) -> R<()> {
+        while let Some(frame) = self.stack.last_mut() {
+            // A child fault retires its original frame before handover in its caller.
+            while let Some(scope) = frame.scopes.pop() {
+                if let Scope::Boundary(mut boundary) = scope {
+                    if host.source_faulted() && boundary.state.fault_message.is_none() {
+                        match boundary.handle(host, values, frame.base(), &message) {
+                            Ok(()) => {
+                                frame.pending = None;
+                                frame.pc = boundary.control.handler;
+                                frame.scopes.push(Scope::Boundary(boundary));
+                                return Ok(());
+                            }
+                            Err(error) => message = error,
+                        }
+                    }
+                    boundary.finish(host, values, frame.base(), &Err(message.clone()))?;
+                }
+            }
+            let frame = self.stack.pop().unwrap();
+            host.release_frame(values.frame_values(&frame.frame)?);
+            values.retire(&frame.frame)?;
+            // Failed activation diagnostics remain available until handover/reporting.
+        }
+        self.finished = true;
+        Err(message)
     }
     pub fn advance(&mut self, host: &mut Host, values: &mut Frames, quota: usize) -> R<Poll> {
         if self.finished {
             return Err("E_NATIVE: compiled execution already retired".into());
         }
-        let result = self.advance_inner(host, values, quota);
-        if result.is_err() {
-            self.finished = true;
-            while let Some(frame) = self.stack.pop() {
-                host.release_frame(values.frame_values(&frame.frame)?);
-                values.retire(&frame.frame)?;
+        let mut remaining = quota;
+        while remaining > 0 {
+            match self.step(host, values) {
+                Ok((_, Some(result))) => return Ok(Poll::Complete(result)),
+                Ok((instruction, None)) => remaining -= usize::from(instruction),
+                Err(error) => {
+                    self.unwind_error(host, values, error)?;
+                    remaining -= 1;
+                }
             }
         }
-        result
+        Ok(Poll::Paused)
     }
 }
 pub fn drive(host: &mut Host, args: Vec<V>, control: &'static Control) -> R<Completion> {

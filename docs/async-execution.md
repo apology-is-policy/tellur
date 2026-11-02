@@ -546,10 +546,9 @@ and the test requires nested loop IR and an administrative completion. Source-le
 lexically nested loops remain unsupported. The original call/constructor fixture also
 continues to pass with the shared resume machinery.
 
-Lexical/named boundary continuations and administrative recovery remain gated. The
-public native backend, compiler/editor release and source handoff rules are unchanged.
-Next, retain boundary work/handler continuations and select diagnostic/resource context
-alongside them before admitting suspended-boundary settlement or source concurrency.
+This loop slice left lexical/named boundary continuations and administrative recovery
+gated. The following checkpoints retain boundary work/handler continuations before
+independent diagnostic/resource context selection and source concurrency.
 
 ## Retained native boundary lifecycle (E1d.2c.4b.4c.1)
 
@@ -567,12 +566,48 @@ nested-active or duplicate phase transitions cannot finalize another live bounda
 Tests retain records between host calls and exercise resource destruction, nested
 handler faults/escalation, recovery and normal survivor promotion.
 
-This is shared host lifecycle support, not executable boundary suspension. Generated
-work and handlers still use synchronous closures. Their instruction positions, lexical
-slot layouts and work/handler dispatch must next join this record in the compiled
-model. The active tracker remains in the host; selecting independent suspended native
-contexts and settling all borrowers before owners are still integration gates. Source
-`spawn`/`yield`, async adapters and suspending cleanup remain unimplemented.
+Public native work and handlers still use synchronous closures. The test-only extension
+below joins this record to executable lexical continuations. The active tracker remains
+in the host; selecting independent suspended native contexts and settling all sibling
+borrowers before owners are still integration gates. Source `spawn`/`yield`, async
+adapters and suspending cleanup remain unimplemented.
+
+## Compiled lexical boundary continuations (E1d.2c.4b.4c.2)
+
+The test-only compiled model now retains lexical work and handler positions, their slot
+layouts and the original shared host boundary record. Ordered loop/boundary entries
+preserve the actual nesting. Normal fallthrough, `again`, expanded helper completion,
+`recover again` and process termination finalize only the boundaries they cross. A
+boundary-end sentinel consumes neither source fuel nor instruction quota. Recovery
+releases remaining iteration resources before resetting the same loop frame and facts.
+
+An escaping child fault retires its original frame before handing over to the enclosing
+lexical boundary. The retained diagnostic chain supplies the original report and cause;
+unretained resources settle before the compiled handler starts. The aborted call has
+no normal delivery. A handler fault or escalation leaves its boundary and can enter an
+outer contingency, without reentering the same handler. Host failures bypass handlers.
+
+The [boundary fixture](../tests/fixtures/native_resume_boundaries.tellur) combines guarded
+boundary admission, normal fallthrough, loop transfers across boundaries, expanded
+nested completion, borrowed cold awaits and repeated recovery. Separate cases compare
+nested handler faults/escalation and process status. Original/expanded O0/O2 builds
+match reference results, effects and fault reports at every fuel cut under three host
+quota partitions, including zero quotas. Only the existing native/reference fuel-error
+wording is normalized, including a fuel error's nested cause; report structure, sites,
+identities and phases remain exact.
+
+A real Rust-resource fixture separately compares the compiled model against the public
+native backend at every fuel cut. It retains a borrowed parent and an owned child in
+cold tasks, then either awaits them or faults before they start. Exact resource logs
+verify child destruction once before the retained parent's contingency consumption;
+process status, JSON and diagnostics also match without normalization. The existing
+call/constructor and loop models pass the shared continuation changes.
+
+This is evidence on compiler 0.124, with no public backend, compiler/LSP/VSIX or source
+semantics change. Named supervision and retained-parameter delivery remain explicitly
+gated. Those continuations and independent diagnostic/resource context selection must
+precede native sibling settlement and source scheduling. Host quotas still observe a
+single execution chain; they never select source siblings.
 
 ## Separate the identities and continuations
 
@@ -874,6 +909,7 @@ Those boundaries need explicit contracts before being accepted by the checker.
 | E1d.2c.4b.4a | Compiled native continuation model | Test-only evidence on 0.123: retained call/await/constructor activations, decision facts, one-use return delivery and quota/fuel/fault parity; public native execution is unchanged |
 | E1d.2c.4b.4b | Compiled native loop continuations | Test-only evidence on 0.123: iteration reset, staged owned arguments, nested expanded completion and repeated cold awaits under quota/fuel/fault comparisons. Boundary continuations and context selection remain gated |
 | E1d.2c.4b.4c.1 | Retained native host boundary lifecycle | Delivered in 0.124: shared boundary admission, source-fault handover, contingency entry and finalization with retained parent tracker/resource scope. Executable boundary resumes and independent context selection remain ahead |
+| E1d.2c.4b.4c.2 | Compiled lexical boundary continuations | Test-only evidence on 0.124: ordered work/handler resumes, loop/recovery/process crossings, nested fault causes and real Rust owner cleanup across quota/fuel cuts. Named supervision and independent context selection remain gated |
 | E1e | Explicit cooperative cancellation and suspending cleanup; normal completion races, cleanup failures and no abandoned losers | Define cancellation observation and cleanup admission; no implicit cancellation exception |
 | E2 | Pinned native coroutine experiment, then checked lowering and schedule-based differential validation | Reference semantics and legal frame retirement must precede native destruction |
 

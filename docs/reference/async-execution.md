@@ -437,12 +437,20 @@ provides test-only call/await/constructor resume evidence on 0.123. It retains o
 frames, decision facts and result delivery across host observation cuts. Its
 [loop continuation extension](../async-execution.md#compiled-native-loop-continuations-e1d2c4b4b)
 also checks iteration reset, moved loop parameters and nested expanded helper returns
-across repeated cold awaits. Lexically nested source loops remain unsupported.
-Boundary continuations are still gated; the model is not a public native mode, source
-scheduler or new async permission. Existing compiler and editor behavior is unchanged.
+across repeated cold awaits. Lexically nested source loops remain unsupported. The
+model is not a public native mode, source scheduler or new async permission. Existing
+compiler and editor behavior is unchanged.
 
 Compiler 0.124 retains native host boundary lifecycle state: parent diagnostic context,
 resource scope and contingency phase. Both synchronous boundary forms use this shared
 handover/finalization machinery, preserving original causes and cleanup order. This
-prepares compiled boundary continuations; work and handlers still execute synchronously.
-It adds no source task handoff or async resource permission.
+prepares compiled boundary continuations; public work and handlers still execute
+synchronously. It adds no source task handoff or async resource permission.
+
+The test-only [lexical boundary model](../async-execution.md#compiled-lexical-boundary-continuations-e1d2c4b4c2)
+retains work/handler positions and ordered boundary/loop state across host pauses. It
+checks borrowed cold awaits, recovery, expanded completion, process termination and
+nested handler faults against reference execution. Real Rust-resource comparisons also
+check captured owner destruction once before contingency and retained-parent cleanup.
+Named supervision and independent context selection remain gated; these tests do not
+enable source scheduling or change the installed compiler's behavior.

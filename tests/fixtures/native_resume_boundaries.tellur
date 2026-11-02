@@ -1,0 +1,84 @@
+control prepared(bool broken) exits ready { bool value } faults {
+    fault boundary {
+        loop prepare(bool first = true) {
+            fault boundary {
+                delta first {
+                    true => retry,
+                    false => ready
+                }
+
+                [retry]: again prepare(false);
+                [ready]: exit ready { broken };
+            } contingency [] {
+                escalate;
+            }
+        }
+    } contingency [] {
+        escalate;
+    }
+}
+
+async control visit(ref mutable string context, bool broken) exits done faults {
+    delta parse_u32("1") {
+        number { u32 value } => parsed,
+        malformed => fault "malformed",
+        overflow => fault "overflow",
+    }
+
+    [parsed]:
+        deref context = u32_text(value);
+        delta broken {
+            true => failed,
+            false => ready
+        }
+
+    [failed]: fault "request failed";
+    [ready]: exit done;
+}
+
+@contingent
+control report(ref fault_report info) exits done {
+    emit(borrow info.message);
+    exit done;
+}
+
+async control startup(bool stop) exits done {
+    supervised loop requestor(mutable bool first = true) {
+        bool broken = first && stop;
+        first = false;
+        mutable string context = "request";
+        fault boundary {
+            delta prepared(broken) {
+                ready { bool selected } => prepared
+            }
+
+            [prepared]:
+                auto pending = defer visit(borrow mutable context, selected);
+                await pending;
+                emit(borrow context);
+                exit done;
+        } contingency [context] {
+            auto edit = borrow mutable context;
+            deref edit = "recovered";
+            emit(edit);
+            report(@fault);
+            recover again requestor;
+        }
+    }
+}
+
+control main(bool stop) exits done {
+    delta stop {
+        true => observed,
+        false => quiet
+    }
+
+    [observed]:
+        fault boundary {
+            emit("entry");
+        } contingency [] {
+            terminate process 23;
+        }
+
+    [entry]: forward run startup(stop);
+}

@@ -120,10 +120,13 @@ E1d.2c.4b.4a now provides a bounded compiled call/await continuation model with
 retained frames/facts and native/reference quota, fuel and source-fault comparisons.
 E1d.2c.4b.4b extends that model to loop iteration reset, staged owned arguments and
 nested expanded completion, including repeated borrowed cold awaits and faults after
-restart. The model is test-only; boundary resumes and context selection remain next.
+restart. The model is test-only; subsequent slices add boundary resumes before context selection.
 E1d.2c.4b.4c.1 now retains the shared native host boundary lifecycle, with one-use
 source-fault handover and finalization preserving resource scopes and diagnostic
-causes. Existing synchronous execution uses it; compiled boundary dispatch remains ahead.
+causes. Existing synchronous execution uses it. E1d.2c.4b.4c.2 extends the compiled
+model with ordered lexical work/handler continuations, loop/recovery/process crossings,
+nested fault causes and live Rust owner cleanup under host pauses. Named supervision
+and independent context selection remain gated; public native execution is unchanged.
 
 2 November 2026. This is the working revision plan, not a claim that all proposed
 features are implemented. Compiler **0.124.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
@@ -356,6 +359,7 @@ do not block this design work. E2 remains the native coroutine target.
 | E1d.2c.4b.4a | Compiled native continuation model | Test-only evidence on 0.123: retained call/await/constructor activations, decision facts, one-use return delivery and quota/fuel/fault parity; public native execution is unchanged |
 | E1d.2c.4b.4b | Compiled native loop continuations | Test-only evidence on 0.123: iteration reset, staged owned arguments, nested expanded completion and repeated cold awaits under quota/fuel/fault comparisons. Boundary continuations and context selection remain gated |
 | E1d.2c.4b.4c.1 | Retained native host boundary lifecycle | Delivered in 0.124: shared boundary admission, source-fault handover, contingency entry and finalization with retained parent tracker/resource scope. Executable boundary resumes and independent context selection remain ahead |
+| E1d.2c.4b.4c.2 | Compiled lexical boundary continuations | Test-only evidence on 0.124: ordered work/handler resumes, loop/recovery/process crossings, nested fault causes and real Rust owner cleanup across quota/fuel cuts. Named supervision and independent context selection remain gated |
 | E2 | Native coroutine lowering | Preserved architectural target: direct LLVM coroutine primitives, pinned-toolchain experiment, frame lifetime rules and schedule-based differential tests; I1 must keep this route open |
 | T1 | Stronger source transformations | Hold current scope during P1–P5: extraction correspondence, continuation cuts, source-level lift and editor actions |
 | R1 | Mathematical foundations | Maintain existing evidence; defer extensions during P1–P5: preservation judgments, richer protocol abstractions, infinite/causal behavior, mechanization |

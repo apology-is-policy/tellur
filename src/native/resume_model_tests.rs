@@ -16,8 +16,8 @@ fn checked(text: &str) -> CheckedProgram {
 #[test]
 fn model_gates_unimplemented_continuations_without_changing_standard_emission() {
     for text in [
-        "control main() exits done {loop work {fault boundary {emit(\"work\");} contingency [] {terminate process 1;}exit done;}}",
-        "control main() exits done {fault boundary {emit(\"work\");} contingency [] {terminate process 1;}exit done;}",
+        "boundary work() {terminate;} contingency(string reason) {terminate;} control main() exits done {supervise work();exit done;}",
+        "boundary work() {terminate;} contingency(string reason) {terminate;} control main() exits done {fault boundary {supervise work();} contingency [] {terminate process 1;}exit done;}",
     ] {
         let p = checked(text)
             .with_entry_exit_codes("main", BTreeMap::from([("done".into(), 0)]))
@@ -37,7 +37,7 @@ fn compiled_calls_awaits_and_constructors_preserve_every_fuel_cut_and_fault() {
     compare_fixture(
         "calls",
         include_str!("../../tests/fixtures/native_resume.tellur"),
-        vec![7],
+        [&[7], &[7]],
         150,
         false,
     );
@@ -48,13 +48,71 @@ fn compiled_nested_loops_preserve_restarts_expanded_completion_and_faults() {
     compare_fixture(
         "loops",
         include_str!("../../tests/fixtures/native_resume_loops.tellur"),
-        vec![7, 9],
+        [&[7, 9], &[7, 9]],
         350,
         true,
     );
 }
 
-fn compare_fixture(label: &str, text: &str, replies: Vec<u32>, limit: usize, require_unwind: bool) {
+#[test]
+fn compiled_lexical_recovery_preserves_nested_completion_borrows_and_fault_reports() {
+    compare_fixture(
+        "boundaries",
+        include_str!("../../tests/fixtures/native_resume_boundaries.tellur"),
+        [&[7], &[7, 9]],
+        400,
+        false,
+    );
+}
+
+#[test]
+fn compiled_handler_faults_and_escalation_retain_nested_causes() {
+    compare_fixture(
+        "causes",
+        r#"
+control main(bool stop) exits done faults {
+    fault boundary {
+        fault boundary {fault "original";} contingency [stop] {
+            emit(borrow @fault.message);
+            delta stop {true => failed, false => propagated}
+            [failed]: fault "handler failed";
+            [propagated]: escalate;
+        }
+    } contingency [] {emit(borrow @fault.message);escalate;}
+}
+"#,
+        [&[], &[]],
+        150,
+        false,
+    );
+}
+
+#[test]
+fn compiled_process_termination_stays_administrative() {
+    compare_fixture(
+        "process",
+        r#"
+control main(bool stop) exits done {
+    fault boundary {
+        delta stop {true => failed, false => ready}
+        [failed]: fault "startup failed";
+        [ready]: emit("ready");exit done;
+    } contingency [] {emit(borrow @fault.message);terminate process 23;}
+}
+"#,
+        [&[], &[]],
+        100,
+        false,
+    );
+}
+
+fn compare_fixture(
+    label: &str,
+    text: &str,
+    replies: [&[u32]; 2],
+    limit: usize,
+    require_unwind: bool,
+) {
     let root = std::env::temp_dir().join(format!(
         "tellur-native-resume-{label}-{}",
         std::process::id()
@@ -65,7 +123,7 @@ fn compare_fixture(label: &str, text: &str, replies: Vec<u32>, limit: usize, req
         .unwrap();
     // Expansion is control-local and preserves async calls. Expand startup too
     // when testing the loop nested by its synchronous helper's expansion.
-    let expanded = if require_unwind {
+    let expanded = if original.region("startup").is_some() {
         original.expanded("startup").unwrap()
     } else {
         original.clone()
@@ -109,7 +167,7 @@ fn compare_fixture(label: &str, text: &str, replies: Vec<u32>, limit: usize, req
                 let scenario = Scenario {
                     entry: "main".into(),
                     arguments: vec![Value::Bool(stop)],
-                    calls: replies
+                    calls: replies[usize::from(stop)]
                         .iter()
                         .map(|n| ScriptCall {
                             operation: "parse_u32".into(),
@@ -122,8 +180,10 @@ fn compare_fixture(label: &str, text: &str, replies: Vec<u32>, limit: usize, req
                 fs::write(&input, serde_json::to_vec(&scenario).unwrap()).unwrap();
                 let mut reached_end = false;
                 for fuel in 0..limit {
-                    let expected = p.run_detailed(&scenario, fuel);
-                    if require_unwind && let Ok(result) = &expected {
+                    let expected = p.run_completion(&scenario, fuel);
+                    if require_unwind
+                        && let Ok(crate::runtime::RunCompletion::Outcome(result)) = &expected
+                    {
                         let messages: Vec<_> = result
                             .events
                             .iter()
@@ -147,8 +207,15 @@ fn compare_fixture(label: &str, text: &str, replies: Vec<u32>, limit: usize, req
                             .unwrap();
                         match &expected {
                             Ok(result) => {
-                                assert!(
-                                    output.status.success(),
+                                let status = match result {
+                                    crate::runtime::RunCompletion::Outcome(_) => 0,
+                                    crate::runtime::RunCompletion::Process(result) => {
+                                        i32::from(result.status)
+                                    }
+                                };
+                                assert_eq!(
+                                    output.status.code(),
+                                    Some(status),
                                     "{}",
                                     String::from_utf8_lossy(&output.stderr)
                                 );
@@ -168,12 +235,23 @@ fn compare_fixture(label: &str, text: &str, replies: Vec<u32>, limit: usize, req
                                 assert!(output.stdout.is_empty());
                                 let mut actual: crate::fault::Report =
                                     serde_json::from_slice(&output.stderr).unwrap();
-                                if failure.report.message.starts_with("E_FUEL") {
-                                    assert!(actual.message.starts_with("E_FUEL"));
-                                    // Existing native/reference host-limit text differs;
-                                    // retain exact identities, sites, phases and causes.
-                                    actual.message = failure.report.message.clone();
+                                fn normalize_fuel(
+                                    actual: &mut crate::fault::Report,
+                                    expected: &crate::fault::Report,
+                                ) {
+                                    // Native/reference host-limit wording differs; keep
+                                    // every identity, site, phase and non-fuel cause exact.
+                                    if expected.message.starts_with("E_FUEL") {
+                                        assert!(actual.message.starts_with("E_FUEL"));
+                                        actual.message = expected.message.clone();
+                                    }
+                                    if let (Some(actual), Some(expected)) =
+                                        (&mut actual.cause, &expected.cause)
+                                    {
+                                        normalize_fuel(actual, expected);
+                                    }
                                 }
+                                normalize_fuel(&mut actual, &failure.report);
                                 assert_eq!(
                                     actual, failure.report,
                                     "expanded={expanded},opt={opt},fuel={fuel},quotas={quotas}"

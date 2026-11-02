@@ -1,29 +1,58 @@
 //! Bounded compiled-continuation experiment. Public native emission is unchanged.
 use super::*;
 
+enum PointKind<'a> {
+    Instruction(&'a Instruction),
+    InvalidEnd(&'static str),
+    BoundaryEnd(usize),
+}
 struct Point<'a> {
-    instruction: Option<&'a Instruction>,
+    kind: PointKind<'a>,
     next: usize,
     body: Option<usize>,
+    handler: Option<usize>,
 }
 fn points<'a>(code: &'a [Instruction], result: &mut Vec<Point<'a>>) {
     for instruction in code {
         let pc = result.len();
         result.push(Point {
-            instruction: Some(instruction),
+            kind: PointKind::Instruction(instruction),
             next: pc + 1,
             body: None,
+            handler: None,
         });
-        if let Action::Loop { body, .. } = &instruction.action {
-            result[pc].body = Some(result.len());
-            points(body, result);
-            let end = result.len();
-            result.push(Point {
-                instruction: None,
-                next: end,
-                body: None,
-            });
-            result[pc].next = result.len();
+        match &instruction.action {
+            Action::Loop { body, .. } => {
+                result[pc].body = Some(result.len());
+                points(body, result);
+                result.push(Point {
+                    kind: PointKind::InvalidEnd("checked loop fell through"),
+                    next: 0,
+                    body: None,
+                    handler: None,
+                });
+                result[pc].next = result.len();
+            }
+            Action::Boundary { body, handler, .. } => {
+                result[pc].body = Some(result.len());
+                points(body, result);
+                result.push(Point {
+                    kind: PointKind::BoundaryEnd(pc),
+                    next: 0,
+                    body: None,
+                    handler: None,
+                });
+                result[pc].handler = Some(result.len());
+                points(handler, result);
+                result.push(Point {
+                    kind: PointKind::InvalidEnd("contingency fell through"),
+                    next: 0,
+                    body: None,
+                    handler: None,
+                });
+                result[pc].next = result.len();
+            }
+            _ => {}
         }
     }
 }
@@ -32,19 +61,15 @@ fn source(program: &CheckedProgram, entry: &str) -> Result<String> {
     fn unsupported(code: &[Instruction]) -> bool {
         code.iter().any(|i| match &i.action {
             Action::Loop { body, .. } => unsupported(body),
-            Action::Boundary { .. }
-            | Action::Supervise { .. }
-            | Action::Recover { .. }
-            | Action::Terminate
-            | Action::TerminateProcess(_)
-            | Action::Escalate => true,
+            Action::Boundary { body, handler, .. } => unsupported(body) || unsupported(handler),
+            Action::Supervise { .. } | Action::Terminate => true,
             _ => false,
         })
     }
     for region in program.regions() {
         if region.boundary.is_some() || region.contingency || unsupported(&region.code) {
             return Err(error(
-                "compiled continuation model does not yet support boundaries",
+                "compiled continuation model does not yet support named supervision",
             ));
         }
     }
@@ -101,14 +126,59 @@ fn source(program: &CheckedProgram, entry: &str) -> Result<String> {
         let mut plan = vec![];
         points(&region.code, &mut plan);
         for (pc, point) in plan.iter().enumerate() {
-            let Some(instruction) = point.instruction else {
-                let _ = writeln!(
-                    g.code,
-                    "{pc}=>Err(\"E_NATIVE: checked loop fell through\".into()),"
-                );
-                continue;
+            let instruction = match &point.kind {
+                PointKind::Instruction(instruction) => *instruction,
+                PointKind::InvalidEnd(message) => {
+                    let _ = writeln!(
+                        g.code,
+                        "{pc}=>Err({}.into()),",
+                        string(&format!("E_NATIVE: {message}"))
+                    );
+                    continue;
+                }
+                PointKind::BoundaryEnd(owner) => {
+                    let _ = writeln!(
+                        g.code,
+                        "{pc}=>Ok(Step::BoundaryEnd(&BOUNDARY_{id}_{owner})),"
+                    );
+                    continue;
+                }
             };
             let _ = writeln!(g.code, "{pc}=>{{state.pc={};", point.next);
+            if let Action::Boundary {
+                retained,
+                retire,
+                work_slots,
+                handler_slots,
+                fault_slot,
+                ..
+            } = &instruction.action
+            {
+                let p = &instruction.provenance;
+                let _ = writeln!(
+                    g.code,
+                    "host.at({});host.tick({}, {})?;if {} {{return Ok(Step::Boundary(&BOUNDARY_{id}_{pc}));}}Ok(Step::Continue)}},",
+                    instruction.id,
+                    p.span.line,
+                    p.span.column,
+                    guard(&instruction.guard, &g.layout)
+                );
+                let name = format!("{}$boundary@{}", p.region, p.span.line);
+                let _ = writeln!(
+                    deliveries,
+                    "static BOUNDARY_{id}_{pc}:BoundaryControl=BoundaryControl{{name:{},body:{},handler:{},after:{},retained:&{:?},retire:&{:?},work:&{:?},handling:&{:?},fault_slot:{}}};",
+                    string(&name),
+                    point.body.unwrap(),
+                    point.handler.unwrap(),
+                    point.next,
+                    g.layout.slots(retained),
+                    g.layout.slots(retire),
+                    g.layout.slots(work_slots),
+                    g.layout.slots(handler_slots),
+                    g.layout.slots[fault_slot]
+                );
+                continue;
+            }
             if let Action::Loop {
                 id: target,
                 parameters,
@@ -139,9 +209,10 @@ fn source(program: &CheckedProgram, entry: &str) -> Result<String> {
                 );
                 let _ = writeln!(
                     deliveries,
-                    "static LOOP_{id}_{pc}:LoopControl=LoopControl{{target:{target},body:{},after:{},reset:reset_{id}_{pc}}};",
+                    "static LOOP_{id}_{pc}:LoopControl=LoopControl{{target:{target},body:{},after:{},locals:&{:?},reset:reset_{id}_{pc}}};",
                     point.body.unwrap(),
-                    point.next
+                    point.next,
+                    g.layout.slots(local_slots)
                 );
                 let _ = writeln!(
                     deliveries,
@@ -262,3 +333,7 @@ fn source(program: &CheckedProgram, entry: &str) -> Result<String> {
 #[cfg(test)]
 #[path = "resume_model_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "resume_model_resource_tests.rs"]
+mod resource_tests;
