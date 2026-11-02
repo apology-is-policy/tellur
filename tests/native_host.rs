@@ -214,3 +214,138 @@ fn retained_resources_check_identity_aliases_and_release_exactly_once() {
     drop(other);
     assert_eq!(drops.get(), 3);
 }
+
+mod frame_retirement {
+    use super::*;
+    use std::cell::RefCell;
+    thread_local! { static DROPS: RefCell<Vec<u32>> = const { RefCell::new(Vec::new()) }; }
+    struct Probe(u32);
+    impl Drop for Probe {
+        fn drop(&mut self) {
+            DROPS.with(|drops| drops.borrow_mut().push(self.0));
+        }
+    }
+    fn adapter(resources: &mut host::Resources, op: &str, args: Vec<V>) -> host::R<host::Outcome> {
+        match (op, args.as_slice()) {
+            ("make_probe", [V::U32(id)]) => {
+                Ok(("made".into(), vec![resources.insert("probe", Probe(*id))?]))
+            }
+            ("inspect_probe", [value]) => Ok((
+                "number".into(),
+                vec![V::U32(resources.get::<Probe>(value, "probe")?.0)],
+            )),
+            ("close_probe", [value]) => {
+                drop(resources.take::<Probe>(value, "probe")?);
+                Ok(("closed".into(), vec![]))
+            }
+            _ => Err("unexpected test adapter call".into()),
+        }
+    }
+    fn new_host() -> Host {
+        let m = tellur::manifest::Manifest::from_json(&json!({
+            "version":"0.1", "types":[{"name":"probe","kind":"opaque","linear":true,"fault":"release"}],
+            "rust":{"source":"test-only.rs","lockfile":"test-only.lock","resources":{"probe":"Probe"}},
+            "primitives":[
+                {"name":"make_probe","parameters":[{"name":"id","type":"u32","mode":"value"}],"outcomes":[{"name":"made","fields":[{"name":"value","type":"probe"}]}],"effects":[],"returns":true,"rust":{"execution":"immediate"}},
+                {"name":"inspect_probe","parameters":[{"name":"value","type":"probe","mode":"borrow"}],"outcomes":[{"name":"number","fields":[{"name":"id","type":"u32"}]}],"effects":[],"returns":true,"rust":{"execution":"immediate"}},
+                {"name":"close_probe","parameters":[{"name":"value","type":"probe","mode":"consume"}],"outcomes":[{"name":"closed","fields":[]}],"effects":[],"returns":true,"rust":{"execution":"immediate"}}
+            ]
+        }).to_string()).unwrap();
+        let mut h = Host::new(serde_json::to_value(m).unwrap(), None, true, None);
+        h.rust_adapter = Some(adapter);
+        h
+    }
+    fn make(h: &mut Host, id: u32) -> V {
+        h.primitive("make_probe", vec![V::U32(id)])
+            .unwrap()
+            .1
+            .pop()
+            .unwrap()
+    }
+    fn inspect(h: &mut Host, value: &V, id: u32) {
+        assert_eq!(
+            h.primitive("inspect_probe", vec![value.clone()]).unwrap().1,
+            vec![V::U32(id)]
+        );
+    }
+    fn drops() -> Vec<u32> {
+        DROPS.with(|drops| drops.borrow().clone())
+    }
+    #[test]
+    fn retained_frame_release_does_not_follow_borrows_or_release_other_owners() {
+        DROPS.with(|drops| drops.borrow_mut().clear());
+        let mut h = new_host();
+        let independent = make(&mut h, 0);
+        let mut expected = vec![];
+        for request in 0..24 {
+            let id = 1 + request * 3;
+            let retained = make(&mut h, id);
+            let first = make(&mut h, id + 1);
+            let second = make(&mut h, id + 2);
+            // Tokens copied below are observation handles, never extra owners.
+            let retired_tokens = [first.clone(), second.clone()];
+            let borrower = V::Reference {
+                ty: "&probe".into(),
+                root: 0,
+                fields: vec![],
+            };
+            let borrowed_frame = vec![Some(V::Task {
+                ty: "pending".into(),
+                operation: "unstarted".into(),
+                arguments: vec![borrower.clone()],
+            })];
+            let owned_frame = vec![Some(V::Task {
+                ty: "pending".into(),
+                operation: "unstarted".into(),
+                arguments: vec![V::Construct {
+                    ty: "pair".into(),
+                    name: "pair".into(),
+                    fields: vec![first, second, borrower],
+                }],
+            })];
+            h.release_frame(&borrowed_frame);
+            assert_eq!(drops(), expected, "releasing a borrower released its owner");
+            for (offset, token) in retired_tokens.iter().enumerate() {
+                inspect(&mut h, token, id + 1 + offset as u32);
+            }
+            inspect(&mut h, &retained, id);
+            inspect(&mut h, &independent, 0);
+            h.release_frame(&owned_frame);
+            let after = drops();
+            assert_eq!(&after[..expected.len()], expected);
+            let mut released = after[expected.len()..].to_vec();
+            released.sort();
+            assert_eq!(
+                released,
+                [id + 1, id + 2],
+                "owned captures were not released exactly once"
+            );
+            expected = after;
+            for token in retired_tokens {
+                assert!(h.primitive("inspect_probe", vec![token]).is_err());
+            }
+            h.release_frame(&owned_frame);
+            assert_eq!(
+                drops(),
+                expected,
+                "a stale frame caused duplicate destruction"
+            );
+            // Contingency may now use/consume its retained owner. The unrelated
+            // host object remains usable across every request's explicit release.
+            inspect(&mut h, &retained, id);
+            inspect(&mut h, &independent, 0);
+            h.primitive("close_probe", vec![retained]).unwrap();
+            expected.push(id);
+            assert_eq!(drops(), expected);
+        }
+        inspect(&mut h, &independent, 0);
+        h.primitive("close_probe", vec![independent]).unwrap();
+        expected.push(0);
+        drop(h);
+        assert_eq!(
+            drops(),
+            expected,
+            "host teardown repeated an explicit release"
+        );
+    }
+}

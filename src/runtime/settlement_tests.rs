@@ -1,9 +1,7 @@
 //! Emergency settlement through checked continuations; source spawn is still gated.
 use super::*;
 
-fn program() -> CheckedProgram {
-    crate::compile(
-        r#"
+const SOURCE: &str = r#"
 async control leaf(ref mutable string text) exits ready { ref mutable string value from text } {
     emit(text);
     deref text = "finished";
@@ -67,7 +65,11 @@ control main() exits done {
         terminate process 0;
     }
 }
-"#,
+"#;
+
+fn program() -> CheckedProgram {
+    crate::compile(
+        SOURCE,
         Manifest::from_json(include_str!("../../playground/manifest.json")).unwrap(),
     )
     .unwrap()
@@ -304,6 +306,157 @@ fn nested_sibling_dispositions_run_without_entering_its_contingency() {
             1
         );
         assert!(m.signal_readiness(&token).is_err());
+        retired(m);
+    }
+}
+
+#[test]
+fn repeated_sibling_settlement_recovers_without_reusing_waits_or_retaining_old_frames() {
+    const REQUESTS: usize = 24;
+    let source = format!(
+        "{}{}",
+        SOURCE.split("control main()").next().unwrap(),
+        r#"
+control main() exits done {
+    supervised loop requests {
+        delta next_request() {
+            more => serve,
+            finished => exit done
+        }
+        [serve]:
+            mutable string left = "left";
+            mutable string right = "right";
+            fault boundary {
+                emit("owner ready");
+                fault "request failure";
+            } contingency [left, right] {
+                left = "retired";
+                emit(borrow left);
+                emit(borrow right);
+                emit("settled");
+                recover again requests;
+            }
+    }
+}
+"#
+    );
+    let mut manifest: serde_json::Value =
+        serde_json::from_str(include_str!("../../playground/manifest.json")).unwrap();
+    manifest["primitives"]
+        .as_array_mut()
+        .unwrap()
+        .push(serde_json::json!({
+            "name":"next_request", "parameters":[], "outcomes":[
+                {"name":"more","fields":[]}, {"name":"finished","fields":[]}
+            ], "effects":[], "returns":true
+        }));
+    let p = crate::compile(&source, Manifest::from_json(&manifest.to_string()).unwrap()).unwrap();
+    for p in [p.clone(), p.expanded("main").unwrap()] {
+        let mut s = scenario();
+        s.calls = (0..=REQUESTS)
+            .map(|i| ScriptCall {
+                operation: "next_request".into(),
+                outcome: if i == REQUESTS { "finished" } else { "more" }.into(),
+                fields: vec![],
+            })
+            .collect();
+        let mut session = p.start_execution(&s, 10_000);
+        let m = session.machine.as_mut().unwrap();
+        m.enter(&s).unwrap();
+        until_message(m, "owner ready");
+        let independent_context = Context::new(m.context.activations.child());
+        let owner = std::mem::replace(&mut m.context, independent_context);
+        m.call("independent", vec![]).unwrap();
+        until_message(m, "isolated");
+        let independent = m.park_for_readiness().unwrap();
+        let independent_counts = m.shared.tasks.live_counts();
+        m.context = owner;
+        let mut stale = vec![];
+        let mut settled_counts = None;
+        for request in 0..REQUESTS {
+            assert_eq!(m.shared.cursor, request + 1);
+            let domain = m.context.domain.unwrap();
+            let args = [argument(m, "left"), argument(m, "right")];
+            let empty = Context::new(m.context.activations.child());
+            let owner = std::mem::replace(&mut m.context, empty);
+            for arg in args {
+                let mut child = Context::new(owner.activations.child());
+                child.domain = Some(domain);
+                m.context = child;
+                m.call("worker", vec![arg]).unwrap();
+                until_message(m, "captured");
+                queue_await(m);
+            }
+            let mut tokens = vec![];
+            if request % 3 != 0 {
+                for value in ["left", "right"] {
+                    m.dispatch_ready().unwrap();
+                    until_message(m, value);
+                    tokens.push(m.park_for_readiness().unwrap());
+                }
+                if request % 3 == 2 {
+                    for token in &tokens {
+                        m.signal_readiness(token).unwrap();
+                    }
+                }
+            }
+            let registry = m.shared.tasks.clone();
+            for token in &stale {
+                assert!(m.signal_readiness(token).is_err());
+            }
+            assert_eq!(
+                m.shared.tasks, registry,
+                "old wakes changed a later request"
+            );
+            let before = messages(m);
+            let fuel = m.shared.steps_left;
+            m.context = owner;
+            until_message(m, "settled");
+            assert_eq!(
+                &messages(m)[before.len()..],
+                ["retired", "right", "settled"]
+            );
+            assert!(m.shared.steps_left < fuel);
+            assert_eq!(m.shared.tasks.live_counts(), independent_counts);
+            assert_eq!(m.shared.waiting.len(), 1);
+            assert!(m.shared.ready.is_empty());
+            assert!(m.settlements.is_empty());
+            assert_eq!(m.shared.domains.count(), 3); // request, supervisor, unrelated root
+            let counts = (
+                m.shared.values.len(),
+                m.shared.suspended.calls.len(),
+                m.context.stack.len(),
+            );
+            assert_eq!(
+                *settled_counts.get_or_insert(counts),
+                counts,
+                "completed requests retained storage"
+            );
+            stale.extend(tokens);
+            for token in &stale {
+                assert!(m.signal_readiness(token).is_err());
+            }
+            if request + 1 < REQUESTS {
+                until_message(m, "owner ready");
+            }
+        }
+        assert!(m.drive(400));
+        assert!(matches!(&m.context.flow, Some(Ok(Flow::Exit(name,_))) if name=="done"));
+        assert_eq!(m.shared.cursor, REQUESTS + 1);
+        assert_eq!(
+            m.shared
+                .events
+                .iter()
+                .filter(|e| matches!(e, Event::Fault { .. }))
+                .count(),
+            REQUESTS
+        );
+        assert_eq!(m.shared.domains.count(), 1);
+        assert_eq!(m.shared.tasks.live_counts().0 + 1, independent_counts.0);
+        m.signal_readiness(&independent).unwrap();
+        m.dispatch_ready().unwrap();
+        assert!(m.drive(400));
+        assert_eq!(messages(m).last().unwrap(), "finished");
         retired(m);
     }
 }

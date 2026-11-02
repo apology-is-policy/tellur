@@ -382,6 +382,52 @@ preserved the original failure; this is not a policy for fallible or suspending 
 cleanup. Actual retained host-resource settlement evidence and owning-boundary
 fault delivery at source safe points remain the next integration gates.
 
+## Recovery and host-resource audit (E1d.2c.4b.2a)
+
+The test-only follow-up on compiler 0.121 runs 24 successive supervised recoveries
+in both ordinary and expanded checked execution. Each request admits two borrowed
+children, alternating prepared, waiting and resumed-ready states. A separate waiting
+root survives the whole run. Every contingency observes retired children, bounded
+live frame/domain/task storage and an unchanged unrelated wait. Old readiness tokens
+are rejected again during later requests; the one script cursor advances once per
+request and the supervisor eventually returns normally. These are harness admissions,
+not source `spawn` or host-quota scheduling.
+
+A separate native-host regression exercises the real `Host::release_frame` and
+`Resources` registry with Rust destructor counters across 24 requests. Releasing
+borrowed task captures preserves their owners. Releasing owned task/record captures
+invalidates only those resource tokens, once, before consuming the retained response
+owner. An unrelated Rust object survives all requests, and final host teardown cannot
+destroy an already-released object twice. The assertion requires child cleanup before
+retained-owner use; it does not impose an order between unrelated child destructors.
+
+The mechanisms and remaining integration requirements are distinct:
+
+| Mechanism | Evidence now | Gate before concurrent native scopes |
+| --- | --- | --- |
+| Reference sibling unwind | Original boundary/fault retention, repeated recovery, stale waits, bounded live storage | Wire accepted source safe points and spawned owning-boundary identity without changing cold-task movement |
+| Native explicit frame release | Real Rust owners, borrowed versus owned captures, stale handles and exact-once destruction | Connect release to actual scheduler borrower retirement; the explicit-release harness is not that scheduler |
+| Native boundary cleanup | Existing generated sequential boundary/resource tests | Replace temporal resource snapshots with explicit boundary membership before unrelated scopes can interleave |
+
+The last gate follows from the current native implementation: `Host::lexical` and
+`Host::supervise` snapshot resource tokens at entry, then use that before-set plus
+owned/retained tokens during cleanup. Under synchronous nesting, allocations made
+while the boundary runs belong to that work. Interleaved independent work would break
+that assumption: a later allocation can belong to another live boundary. Passing the
+frame-release test does not make this temporal cleanup safe for concurrent scopes.
+
+The next production slice should give resource registrations explicit live scope
+membership, distinct from allocation order, diagnostic activations and invocation
+frames. It must adopt owned inputs (including task/record captures) without adopting
+borrowed inputs; retain emergency response owners until their handler; preserve normal
+outgoing owners and cold handles; and release only the failed subtree after borrowers
+settle. Boundary entry/exit, temporary adapter arguments, stale identities and normal
+ownership transfer need regression coverage. Keep synchronous adapters and explicit
+`fault: release` permissions; do not infer a fallible or suspending cleanup protocol.
+
+No compiler/LSP/VSIX release is needed for this test-and-documentation checkpoint.
+The 0.121 release evidence remains applicable; native source concurrency stays gated.
+
 ## Separate the identities and continuations
 
 | Entity | Purpose | Must not be confused with |
@@ -676,6 +722,8 @@ Those boundaries need explicit contracts before being accepted by the checker.
 | E1d.2c.3b | Runtime waiting and resumption | Delivered in 0.119: execution-scoped readiness tokens, explicit Waiting state, original contexts in wait storage, distinct start/resume dispatch and atomic signal admission. No source or adapter handoffs yet; owning fault-domain settlement is next |
 | E1d.2c.4a | Fault domain identity and admission | Delivered in 0.120: distinct live root/named/lexical domains, stopped-ancestor gates, context membership and quiescence checks. Automatic sibling draining and retained-resource settlement remain E1d.2c.4b |
 | E1d.2c.4b.1 | Reference sibling retirement | Delivered in 0.121: original emergency/boundary retention, borrower-before-owner retirement, queued-body suppression, descendant handler suppression, late-signal rejection and independent-domain preservation. Infallible scripted cleanup only; host resources and source concurrency remain follow-ups |
+| E1d.2c.4b.2a | Repeated recovery and host-resource audit | Delivered as tests/documentation on 0.121: repeated borrowed sibling recovery in reference/expanded execution and real Rust frame-release probes; explicit native boundary resource membership remains the next gate |
+| E1d.2c.4b.2b | Native resource scope membership | Next: replace allocation-time boundary cleanup snapshots with explicit live resource membership, owned-input adoption, retained handover and normal outgoing-owner preservation; keep borrowed inputs and independent scopes untouched |
 | E1e | Explicit cooperative cancellation and suspending cleanup; normal completion races, cleanup failures and no abandoned losers | Define cancellation observation and cleanup admission; no implicit cancellation exception |
 | E2 | Pinned native coroutine experiment, then checked lowering and schedule-based differential validation | Reference semantics and legal frame retirement must precede native destruction |
 

@@ -107,7 +107,10 @@ them with retained contexts, and gates normal admission and contingency entry.
 E1d.2c.4b.1 now retains the original failed boundary while retiring queued, waiting
 and resumed children in its subtree. Nested sibling contingencies are suppressed
 under the accepted disposition-only policy; source scheduling and host resource
-settlement evidence remain ahead.
+settlement evidence remain ahead. E1d.2c.4b.2a now verifies repeated sibling recovery
+and explicit native frame-resource release on 0.121. The resource audit identifies
+native boundary snapshots as a remaining concurrency gate: explicit resource scope
+membership must replace allocation-time inference before native scopes interleave.
 
 2 November 2026. This is the working revision plan, not a claim that all proposed
 features are implemented. Compiler **0.121.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
@@ -334,6 +337,8 @@ do not block this design work. E2 remains the native coroutine target.
 | E1d.2c.3b | Runtime waiting and resumption | **Delivered in 0.119:** generation-safe execution-scoped readiness, Waiting state and retained original contexts, separate start/resume dispatch and failure-atomic admission. Internal safe points only; fault-domain settlement precedes source concurrency |
 | E1d.2c.4a | Fault domain identity and admission | **Delivered in 0.120:** live root/named/lexical domains, stopped-ancestor gates, current-context membership and quiescence checks; cold-task boundary movement preserved. Automatic sibling draining and borrower settlement remain E1d.2c.4b |
 | E1d.2c.4b.1 | Reference sibling retirement | Delivered in 0.121: original emergency/boundary retention, borrower-before-owner retirement, queued-body suppression, descendant handler suppression, late-signal rejection and independent-domain preservation. Infallible scripted cleanup only; host resources and source concurrency remain follow-ups |
+| E1d.2c.4b.2a | Repeated recovery and host-resource audit | Delivered as tests/documentation on 0.121: repeated borrowed sibling recovery in reference/expanded execution and real Rust frame-release probes; explicit native boundary resource membership remains the next gate |
+| E1d.2c.4b.2b | Native resource scope membership | Next: replace allocation-time boundary cleanup snapshots with explicit live resource membership, owned-input adoption, retained handover and normal outgoing-owner preservation; keep borrowed inputs and independent scopes untouched |
 | E2 | Native coroutine lowering | Preserved architectural target: direct LLVM coroutine primitives, pinned-toolchain experiment, frame lifetime rules and schedule-based differential tests; I1 must keep this route open |
 | T1 | Stronger source transformations | Hold current scope during P1–P5: extraction correspondence, continuation cuts, source-level lift and editor actions |
 | R1 | Mathematical foundations | Maintain existing evidence; defer extensions during P1–P5: preservation judgments, richer protocol abstractions, infinite/causal behavior, mechanization |

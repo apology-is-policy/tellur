@@ -415,3 +415,8 @@ This nested-handler policy is accepted for future source concurrency. Unrelated
 fault domains remain live, and settled readiness registrations cannot resume work.
 The current implementation covers infallible scripted retirement, with explicit
 harness admissions; it adds no source scheduling or fallible/suspending host cleanup.
+
+The [recovery and host-resource audit](../async-execution.md#recovery-and-host-resource-audit-e1d2c4b2a)
+adds repeated-recovery and native destructor evidence on the same 0.121 release.
+These tests do not enable native concurrent scopes: boundary resource cleanup still
+assumes synchronous nesting until explicit resource scope membership is implemented.
