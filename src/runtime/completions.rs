@@ -4,6 +4,7 @@ use super::*;
 
 impl<'a> Machine<'a> {
     pub(super) fn retain_task_completion(&mut self, task: TaskId, owner: OwnerId) -> Result<()> {
+        self.require_live_process()?;
         if self.shared.completed.contains_key(&task)
             || self.context.task != Some((task, owner))
             || !self.context.stack.is_empty()
@@ -28,6 +29,7 @@ impl<'a> Machine<'a> {
         owner: OwnerId,
         wait: WaitId,
     ) -> Result<Context<'a>> {
+        self.require_live_process()?;
         let context = self
             .shared
             .completed
@@ -54,12 +56,15 @@ impl<'a> Machine<'a> {
     /// already-parked caller for emergency unwind. Neither runs normal caller code.
     pub(super) fn settle_completed_task(
         &mut self,
-        domain: DomainId,
+        domain: Option<DomainId>,
     ) -> Option<Option<Context<'a>>> {
         let task = self.shared.completed.iter().find_map(|(task, context)| {
-            self.shared
-                .domains
-                .contains(domain, context.domain.unwrap())
+            domain
+                .is_none_or(|domain| {
+                    self.shared
+                        .domains
+                        .contains(domain, context.domain.unwrap())
+                })
                 .then_some(*task)
         })?;
         let mut completed = self.shared.completed.remove(&task).unwrap();

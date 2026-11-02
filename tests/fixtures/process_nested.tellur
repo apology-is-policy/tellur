@@ -1,0 +1,37 @@
+control fail() exits done faults {
+    fault "stop";
+}
+
+async control deferred() exits done faults {
+    fail();
+    emit("forbidden deferred continuation");
+    exit done;
+}
+
+async control awaiter() exits done faults {
+    auto pending = defer deferred();
+    await pending;
+    emit("forbidden awaiting continuation");
+    exit done;
+}
+
+boundary request() {
+    run awaiter();
+    emit("forbidden boundary continuation");
+    terminate;
+}
+contingency(string reason) {
+    emit("escalating");
+    escalate;
+}
+
+control main() exits done {
+    fault boundary {
+        supervise request();
+        emit("forbidden entry continuation");
+        exit done;
+    } contingency [] {
+        emit("stopping");
+        terminate process 23;
+    }
+}

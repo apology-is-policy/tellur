@@ -23,6 +23,10 @@ mod settlement_tests;
 #[path = "task_tests.rs"]
 mod task_tests;
 
+#[cfg(test)]
+#[path = "process_tests.rs"]
+mod process_tests;
+
 #[path = "completions.rs"]
 mod completions;
 
@@ -73,6 +77,7 @@ impl CheckedProgram {
                 },
                 context: Context::new(crate::fault::Tracker::new(self.runtime_sites())),
                 settlements: vec![],
+                process_status: None,
             }),
             scenario,
             initialized: false,
@@ -291,6 +296,7 @@ struct Machine<'a> {
     context: Context<'a>,
     // Original emergency contexts, including the unconsumed boundary continuation.
     settlements: Vec<Context<'a>>,
+    process_status: Option<u8>,
 }
 fn completion(flow: Flow) -> Result<Completion> {
     match flow {
@@ -327,7 +333,14 @@ impl<'a> Machine<'a> {
         let invocation = self.prepare_call(name, args)?;
         self.start_call(invocation)
     }
+    fn require_live_process(&self) -> Result<()> {
+        if self.process_status.is_some() {
+            return Err(error("process execution has terminated"));
+        }
+        Ok(())
+    }
     fn prepare_call(&self, name: &str, args: Vec<Value>) -> Result<PreparedInvocation<'a>> {
+        self.require_live_process()?;
         let region = self
             .shared
             .program
@@ -348,6 +361,7 @@ impl<'a> Machine<'a> {
         })
     }
     fn start_call(&mut self, invocation: PreparedInvocation<'a>) -> Result<()> {
+        self.require_live_process()?;
         let PreparedInvocation {
             region,
             arguments,
@@ -415,22 +429,32 @@ impl<'a> Machine<'a> {
     /// No recursive source calls/loops/unwinding occur here.
     fn drive(&mut self, mut quota: usize) -> bool {
         loop {
+            if let Some(Ok(Flow::Process(status))) = &self.context.flow {
+                if let Some(original) = self.process_status {
+                    assert_eq!(*status, original, "process retirement changed status");
+                } else {
+                    self.process_status = Some(*status);
+                    self.shared.domains.stop_all();
+                }
+            }
             let Some(continuation) = self.context.stack.pop() else {
                 if let Some(owner) = self.settlements.last() {
                     // This slice supports infallible reference retirement only.
                     // Never silently replace an unexpected cleanup failure with
                     // the original emergency or restore an incompletely unwound chain.
                     assert!(self.context.frame.owner.is_none());
-                    assert_eq!(
-                        self.context
-                            .flow
-                            .as_ref()
-                            .and_then(|flow| flow.as_ref().err()),
-                        owner.flow.as_ref().and_then(|flow| flow.as_ref().err()),
-                        "emergency retirement changed the retained failure"
-                    );
+                    match (self.context.flow.as_ref(), owner.flow.as_ref()) {
+                        (Some(Err(actual)), Some(Err(expected))) => assert_eq!(actual, expected),
+                        (Some(Ok(Flow::Process(actual))), Some(Ok(Flow::Process(expected)))) => {
+                            assert_eq!(actual, expected)
+                        }
+                        _ => panic!("emergency retirement changed the retained disposition"),
+                    }
                     let owner = self.settlements.pop().unwrap();
                     self.context = owner;
+                    continue;
+                }
+                if self.process_status.is_some() && self.begin_retained_settlement(None) {
                     continue;
                 }
                 return true;
@@ -445,7 +469,9 @@ impl<'a> Machine<'a> {
             // Keep both the original emergency and the exact continuation before
             // inspecting children. A quota pause or unavailable child context must
             // never consume the boundary or release its owners prematurely.
-            if matches!(self.context.flow, Some(Err(_))) && self.needs_settlement(&continuation) {
+            if matches!(self.context.flow, Some(Err(_) | Ok(Flow::Process(_))))
+                && self.needs_settlement(&continuation)
+            {
                 self.context.stack.push(continuation);
                 if self.begin_settlement() {
                     continue;
@@ -537,6 +563,11 @@ impl<'a> Machine<'a> {
         let Some(domain) = self.context.domain else {
             return false;
         };
+        self.begin_retained_settlement(Some(domain))
+    }
+    /// None selects all registered domains only after the terminating chain has
+    /// retired. Nested selections still drain their own borrowers before owners.
+    fn begin_retained_settlement(&mut self, domain: Option<DomainId>) -> bool {
         if let Some(caller) = self.settle_completed_task(domain) {
             if let Some(context) = caller {
                 self.select_settlement(context);
@@ -549,13 +580,13 @@ impl<'a> Machine<'a> {
             };
             context
                 .domain
-                .filter(|id| self.shared.domains.contains(domain, *id))
+                .filter(|id| domain.is_none_or(|domain| self.shared.domains.contains(domain, *id)))
                 .map(|_| *task)
         });
         let waiting = self.shared.waiting.iter().filter_map(|(task, context)| {
             context
                 .domain
-                .filter(|id| self.shared.domains.contains(domain, *id))
+                .filter(|id| domain.is_none_or(|domain| self.shared.domains.contains(domain, *id)))
                 .map(|_| *task)
         });
         let Some(task) = ready.chain(waiting).min() else {
@@ -585,20 +616,17 @@ impl<'a> Machine<'a> {
         true
     }
     fn select_settlement(&mut self, context: Context<'a>) {
-        let diagnostic = self
-            .context
-            .flow
-            .as_ref()
-            .unwrap()
-            .as_ref()
-            .err()
-            .unwrap()
-            .clone();
+        let disposition = match self.context.flow.as_ref().unwrap() {
+            Err(diagnostic) => Err(diagnostic.clone()),
+            Ok(Flow::Process(status)) => Ok(Flow::Process(*status)),
+            _ => unreachable!("settlement requires an emergency disposition"),
+        };
         let original = std::mem::replace(&mut self.context, context);
         self.settlements.push(original);
-        self.context.flow = Some(Err(diagnostic));
+        self.context.flow = Some(disposition);
     }
     fn dispatch_ready(&mut self) -> Result<()> {
+        self.require_live_process()?;
         if !self.context.stack.is_empty() || self.context.frame.owner.is_some() {
             return Err(error("dispatch cannot replace an active control chain"));
         }
@@ -637,6 +665,7 @@ impl<'a> Machine<'a> {
     /// fault-domain settlement; host quota exhaustion must never call this method.
     #[allow(dead_code)]
     fn park_for_readiness(&mut self) -> Result<Readiness> {
+        self.require_live_process()?;
         if self.context.frame.owner.is_none()
             || self.context.flow.is_some()
             || !self.context.contingencies.is_empty()
@@ -665,6 +694,7 @@ impl<'a> Machine<'a> {
     /// before consuming the one-use registration; dispatch remains explicit.
     #[allow(dead_code)]
     fn signal_readiness(&mut self, token: &Readiness) -> Result<()> {
+        self.require_live_process()?;
         let task = self.shared.tasks.waiting_task(token)?;
         if !self.shared.waiting.contains_key(&task) || self.shared.ready.contains_key(&task) {
             return Err(error(
@@ -752,11 +782,19 @@ impl<'a> Machine<'a> {
                     self.close_domain(scope)?;
                 }
             }
-            Continuation::Decision(arms) => {
-                let (outcome, fields) = completion(flow?)?.outcome()?;
-                self.bind(arms, outcome, fields)?;
-            }
+            Continuation::Decision(arms) => match flow {
+                Ok(flow @ Flow::Process(_)) => self.context.flow = Some(Ok(flow)),
+                other => {
+                    let (outcome, fields) = completion(other?)?.outcome()?;
+                    self.bind(arms, outcome, fields)?;
+                }
+            },
             Continuation::TaskDecision { task, arms } => {
+                if let Ok(flow @ Flow::Process(_)) = flow {
+                    self.shared.tasks.abandon(task);
+                    self.context.flow = Some(Ok(flow));
+                    return Ok(());
+                }
                 match flow.and_then(completion).and_then(Completion::outcome) {
                     Ok((outcome, fields)) => {
                         let owner = self.context.frame.owner.unwrap();
@@ -1001,10 +1039,13 @@ impl<'a> Machine<'a> {
     ) -> Result<()> {
         self.require_domain_quiescent(domain.id)?;
         self.close_domain(domain)?;
-        let result = flow
-            .and_then(completion)
-            .and_then(Completion::settled)
-            .map(|()| Flow::Fallthrough);
+        let result = match flow {
+            Ok(flow @ Flow::Process(_)) => Ok(flow),
+            other => other
+                .and_then(completion)
+                .and_then(Completion::settled)
+                .map(|()| Flow::Fallthrough),
+        };
         self.restore(&self.shared.program.runtime_name(name), parent, &result);
         self.context.flow = match result {
             Ok(Flow::Fallthrough) => None,

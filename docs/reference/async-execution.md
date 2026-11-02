@@ -404,6 +404,13 @@ completed results before suppliers and the owning contingency, and process stop
 retires every result before delivering status. This is test-only evidence on 0.127.
 Shared native integration and source handoffs remain separate steps.
 
+Since 0.128, entry process termination closes normal task admission and retires all
+registered execution contexts and results before delivering the original status.
+Prepared bodies never start; parked callers unwind without normal instructions or
+nested contingencies. This administrative work consumes no source fuel. Late joins,
+wakes and dispatches reject without changing state. Written termination remains
+entry-only; see [process retirement](../async-execution.md#reference-process-wide-retirement-e1d2d2c).
+
 Path expansion retains `run`, `defer`, direct `await` and task consumption as
 explicit operations. It may inline ordinary
 synchronous calls around them, but cannot erase the async boundary. Expansion

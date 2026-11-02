@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-darwin-arm64-0.127.0.vsix` using **Extensions:
+1. Install the supplied `tellur-language-darwin-arm64-0.128.0.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1178,3 +1178,12 @@ Completed task results now live in shared reference-runtime storage until delive
 or emergency retirement. Fault settlement releases their borrows and unwinds parked
 callers before the owning contingency. Cold await still delivers immediately;
 source scheduling and native completion ownership remain ahead.
+
+## Administrative process settlement in 0.128
+
+Reference process termination now closes task admission and retires all registered
+ready/waiting chains, completed results and parked callers before delivering its
+original status. Cleanup does not resume ordinary code or nested contingencies,
+consume source fuel, or turn termination into an outcome/fault. Written termination
+remains restricted to the executable entry's outermost lexical contingency.
+Source `spawn`/`yield` and shared native scheduling remain unimplemented.

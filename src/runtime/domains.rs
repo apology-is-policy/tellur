@@ -69,6 +69,11 @@ impl Domains {
             .stopped = true;
         Ok(())
     }
+    pub(super) fn stop_all(&mut self) {
+        for domain in self.live.values_mut() {
+            domain.stopped = true;
+        }
+    }
     pub(super) fn has_children(&self, id: DomainId) -> Result<bool> {
         if !self.live.contains_key(&id) {
             return Err(error("fault domain has retired"));

@@ -81,7 +81,7 @@ fn scenario() -> Scenario {
         calls: vec![],
     }
 }
-fn messages(m: &Machine<'_>) -> Vec<String> {
+pub(super) fn messages(m: &Machine<'_>) -> Vec<String> {
     m.shared
         .events
         .iter()
@@ -91,7 +91,7 @@ fn messages(m: &Machine<'_>) -> Vec<String> {
         })
         .collect()
 }
-fn until_message(m: &mut Machine<'_>, text: &str) {
+pub(super) fn until_message(m: &mut Machine<'_>, text: &str) {
     let previous = messages(m).len();
     for _ in 0..400 {
         assert!(!m.drive(1));
@@ -120,7 +120,7 @@ fn argument(m: &Machine<'_>, name: &str) -> Value {
         },
     }
 }
-fn queue_await(m: &mut Machine<'_>) {
+pub(super) fn queue_await(m: &mut Machine<'_>) {
     let Continuation::Block { code, next } = m.context.stack.pop().unwrap() else {
         panic!("await instruction expected")
     };
@@ -148,7 +148,7 @@ fn queue_await(m: &mut Machine<'_>) {
         Some(Continuation::Dispatch)
     ));
 }
-fn retired(m: &Machine<'_>) {
+pub(super) fn retired(m: &Machine<'_>) {
     assert!(m.settlements.is_empty());
     assert!(m.shared.values.is_empty());
     assert!(m.shared.tasks.is_empty());
@@ -264,19 +264,15 @@ fn boundary_waits_for_prepared_waiting_and_ready_borrowers_without_running_norma
         );
         assert!(m.settlements.is_empty());
         assert!(m.shared.completed.is_empty());
-        assert_eq!(m.shared.domains.count(), 1);
+        assert_eq!(m.shared.domains.count(), 0);
         for token in tokens {
             assert!(m.signal_readiness(&token).is_err());
         }
-        assert_eq!(
-            m.shared.waiting.len(),
-            1,
-            "independent execution was drained"
-        );
-        m.signal_readiness(&independent).unwrap();
-        m.dispatch_ready().unwrap();
-        assert!(m.drive(400));
-        assert_eq!(messages(m).last().unwrap(), "finished");
+        // The owning fault isolates its domain; the handler's subsequent
+        // process termination then also retires the independent waiting root.
+        assert!(m.shared.waiting.is_empty());
+        assert!(m.signal_readiness(&independent).is_err());
+        assert!(m.dispatch_ready().is_err());
         retired(m);
     }
 }

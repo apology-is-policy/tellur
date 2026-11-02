@@ -107,6 +107,16 @@ with JSON on stderr under native `--json`/`--scenario`. Pre-execution launcher
 errors remain ordinary diagnostics. Foreign panics retain their existing fatal behavior. `--help` returns 0. Returning a mapped status
 occurs after execution and result reporting, allowing normal runtime cleanup.
 
+## Administrative termination
+
+`terminate process N` remains restricted to the executable entry's outermost lexical
+contingency. A control containing it cannot be called as a nested operation. Since
+0.128, the reference executor also retires all registered task contexts and completed
+results across the session before delivering that status. This retirement suppresses
+normal continuations and nested contingencies, preserves the status and consumes no
+source instruction fuel. It does not add source concurrency or change outcome-status
+mappings. See [async execution](async-execution.md).
+
 ## Migration and future execution
 
 Before 0.48, all normal completion outcomes returned process status 0. Existing

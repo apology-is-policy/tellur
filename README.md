@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.127.0** implements the v0.1 checked core and the current language
+Compiler release **0.128.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -689,3 +689,12 @@ Completed task results now live in shared reference-runtime storage until delive
 or emergency retirement. Fault settlement releases their borrows and unwinds parked
 callers before the owning contingency. Cold await still delivers immediately;
 source scheduling and native completion ownership remain ahead.
+
+## Administrative process settlement in 0.128
+
+Reference process termination now closes task admission and retires all registered
+ready/waiting chains, completed results and parked callers before delivering its
+original status. Cleanup does not resume ordinary code or nested contingencies,
+consume source fuel, or turn termination into an outcome/fault. Written termination
+remains restricted to the executable entry's outermost lexical contingency.
+Source `spawn`/`yield` and shared native scheduling remain unimplemented.

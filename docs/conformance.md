@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.127.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.128.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -3931,3 +3931,25 @@ Existing VS Code windows were not reloaded. The verified source backup excludes 
 protected unrelated C# file before reading or archiving. Next is native retained
 completion ownership; process-wide delayed-reference-result cleanup also remains
 a gate before source scheduling.
+
+## Administrative process retirement checkpoint (0.128)
+
+E1d.2d.2c closes reference task admission on entry process termination and retires
+registered results, ready/waiting chains and parked callers before status delivery.
+The status stays administrative while nested continuations retire; no source handler
+or ordinary continuation runs during cleanup, and no source fuel is consumed.
+Written termination remains restricted to the entry's outermost lexical contingency.
+
+Selected validation comprises 47 runtime cases and 121 source/manual cases (168
+cases over 14 targets). The focused shared-runtime case covers completed owned and
+exclusive-borrowed payloads inside nested domains, waiting/signalled/prepared
+independent roots, exact original fault/fuel preservation, full retirement and
+atomic late-operation rejection across original/expanded execution and three quota
+partitions. The public regression verifies entry-only rejection, one-use status
+delivery after nested fault unwinding, and four O0/O2 native comparisons.
+
+Native model/host/generator, checker, fault tracker and LSP/editor implementation
+are unchanged. Their prior native, 195 LSP and 44 Node checks remain valid; the final
+release uses a fresh isolated editor smoke test with new binaries. Verification and
+release records distinguish reused evidence from new checks. This is selected
+coverage, not a full-suite claim or source concurrency support.

@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.127.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.128.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -10,6 +10,8 @@ The linked regression suites give more detailed acceptance and rejection evidenc
 The private reference task registry now separates queue admission from completion
 joins and retains completed payloads until delivery or emergency retirement.
 Quiescence and fault settlement include these results and their parked callers.
+Entry process termination retires all registered chains/results before status delivery
+and closes late admission, completion and readiness operations.
 A [test-only compiled model](../async-execution.md#native-retained-completion-model-e1d2d3a)
 also retains native result owners through delayed joins and fault/process cleanup;
 this has not been promoted into a shared native scheduler. Source `spawn` and `yield`

@@ -1207,6 +1207,7 @@ Those boundaries need explicit contracts before being accepted by the checker.
 | E1d.2d.1 | Separate task queue and completion joins | Delivered in 0.126: queue admission without a waiter, one-use joins before/during/after execution, explicit delivery before consumption and atomic cold await. Private registry support only; retained completion payloads and source handoffs follow |
 | E1d.2d.2a | Retained reference completion model | Test-only on 0.126: completed owned/exclusive-borrowed payloads outlive child frames, join before/after completion in either order, atomic rejected delivery and explicit stopped-result retirement with independent-root preservation. Production storage and native completion ownership remain next |
 | E1d.2d.2b | Runtime retained completions | Delivered in 0.127: shared result/context storage, validated one-use delivery, domain quiescence and completed-result retirement before owning contingency, including parked callers. Source execution stays sequential; native completion ownership remains next |
+| E1d.2d.2c | Reference process-wide retirement | Delivered in 0.128: entry process termination closes normal admission and retires registered completed results, ready/waiting work and parked callers across all domains before status delivery. Original status, fuel and entry-only source rules are preserved; source scheduling remains gated |
 | E1d.2d.3a | Native retained completion model | Test-only on 0.127: completed compiled results retain their original domain membership, host context and resource scope until consuming join or emergency retirement. Owned Rust results and external borrows survive child frames; fault/process cleanup releases results before suppliers. Shared native scheduling and source handoffs remain ahead |
 | E1e | Explicit cooperative cancellation and suspending cleanup; normal completion races, cleanup failures and no abandoned losers | Define cancellation observation and cleanup admission; no implicit cancellation exception |
 | E2 | Pinned native coroutine experiment, then checked lowering and schedule-based differential validation | Reference semantics and legal frame retirement must precede native destruction |
@@ -1289,6 +1290,42 @@ These are internal operations under explicit test scheduling. Source `spawn`/`yi
 shared native task-owned completion storage and broader scheduler integration remain
 separate gates. Reference cleanup here is infallible scripted retirement; this does
 not extend native resource dispositions or add asynchronous cleanup.
+
+## Reference process-wide retirement (E1d.2d.2c)
+
+Compiler 0.128 gives administrative process termination a session-wide retirement
+path. On the entry's `terminate process N`, all live domains stop admitting normal
+work. The original status travels through emergency continuations as a process
+disposition, never as a fabricated fault or normal outcome. The selected chain first
+retires its affected borrowers; the executor then drains registered independent
+chains and results before delivering the status once.
+
+Completed payloads retire before their parked callers; queued, readiness-waiting and
+signalled work unwind without executing remaining ordinary instructions or nested
+contingencies. Unstarted invocation arguments retire without installing the body.
+Nested call/await/supervision continuations propagate the administrative disposition
+during this cleanup. No cleanup selection consumes source fuel, replays effects or
+uses the ready queue as a source scheduling point. Late invocation admission,
+completion publication/delivery, readiness registration/signalling and normal dispatch
+reject before changing state.
+
+The [reference regression](../src/runtime/process_tests.rs) retains owned and
+exclusive-borrowed completions inside nested lexical domains, alongside waiting,
+signalled and prepared independent roots with their parked callers. Original/expanded
+runs across three quota partitions prove complete storage/domain/task retirement,
+unchanged shutdown fuel and original fault evidence, no normal or nested-handler
+output, and atomic rejection of late operations. Existing repeated fault recovery
+still proves that domain-local faults preserve unrelated execution until an explicit
+process stop. The [public regression](../tests/process_termination.rs) checks entry
+termination after nested source-fault unwinding, one-use session delivery and native
+O0/O2 parity before/after expansion; calling a terminating entry remains rejected.
+
+This does not relax written termination: it still belongs only to an executable
+entry's outermost lexical contingency. Independently progressing source tasks and
+shared native scheduling remain unimplemented. The global path covers execution
+contexts registered with the shared runtime; arbitrary contexts held outside an
+executor by a test harness are not implicitly enrolled. Reference cleanup remains
+infallible scripted retirement, without cancellation or asynchronous disposers.
 
 ## Native retained completion model (E1d.2d.3a)
 
