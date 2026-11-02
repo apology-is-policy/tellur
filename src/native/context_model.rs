@@ -28,6 +28,7 @@ pub struct Contexts<'a> {
     next: u64,
     parked: BTreeMap<u64, Parked>,
     terminal: BTreeMap<u64, ContextPoll>,
+    terminated: bool,
 }
 impl<'a> Contexts<'a> {
     pub fn new(host: &'a mut Host) -> Self {
@@ -39,9 +40,11 @@ impl<'a> Contexts<'a> {
             next: 0,
             parked: BTreeMap::new(),
             terminal: BTreeMap::new(),
+            terminated: false,
         }
     }
     pub fn start(&mut self, control: &'static Control, arguments: Vec<V>) -> R<ContextKey> {
+        self.require_live()?;
         let id = self
             .next
             .checked_add(1)
@@ -82,7 +85,14 @@ impl<'a> Contexts<'a> {
             id,
         })
     }
+    fn require_live(&self) -> R<()> {
+        if self.terminated {
+            return Err("E_NATIVE: process session has terminated".into());
+        }
+        Ok(())
+    }
     fn require(&self, key: &ContextKey) -> R<()> {
+        self.require_live()?;
         if !Arc::ptr_eq(&self.identity, &key.session) || !self.parked.contains_key(&key.id) {
             return Err("E_NATIVE: context is foreign or retired".into());
         }
@@ -146,6 +156,7 @@ impl<'a> Contexts<'a> {
         })
     }
     pub fn advance(&mut self, key: &ContextKey, quota: usize) -> R<ContextPoll> {
+        self.require_live()?;
         if !Arc::ptr_eq(&self.identity, &key.session) {
             return Err("E_NATIVE: context belongs to another session".into());
         }
@@ -193,7 +204,10 @@ impl<'a> Contexts<'a> {
                 Ok(Poll::Complete(completion)) => {
                     // Outgoing owners survive normal completion; failed roots below
                     // release stranded temporary owners as well as retired frames.
-                    self.host.finish_context(&mut parked.root, false)?;
+                    self.host.finish_context(
+                        &mut parked.root,
+                        matches!(completion, Completion::Process(_)),
+                    )?;
                     ContextPoll::Complete(completion)
                 }
                 Err(message) => {
@@ -215,6 +229,10 @@ impl<'a> Contexts<'a> {
                 }
             };
         self.host.exchange_context(&mut parked.host)?;
+        if matches!(result, ContextPoll::Complete(Completion::Process(_))) {
+            self.terminate()?;
+            return Ok(result);
+        }
         if matches!(result, ContextPoll::Paused) {
             self.parked.insert(key.id, parked);
         }
@@ -227,6 +245,25 @@ impl<'a> Contexts<'a> {
             }
         }
         Ok(result)
+    }
+    fn terminate(&mut self) -> R<()> {
+        self.terminated = true;
+        self.terminal.clear();
+        // Administrative process completion retires every context, including
+        // independent roots and active handlers, before the status is delivered.
+        // Admission order always places children after their supplying parent.
+        while let Some((_, mut parked)) = self.parked.pop_last() {
+            self.host.exchange_context(&mut parked.host)?;
+            parked.machine.abort(
+                self.host,
+                &mut self.values,
+                &mut self.domains,
+                "E_PROCESS: process terminated",
+            )?;
+            self.host.finish_context(&mut parked.root, true)?;
+            self.host.exchange_context(&mut parked.host)?;
+        }
+        Ok(())
     }
     fn settle(
         &mut self,

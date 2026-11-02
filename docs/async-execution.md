@@ -824,8 +824,37 @@ contingency baseline is restored after every round, with no leaked cause or faul
 The earlier six sibling scenarios run through the same baseline assertions.
 
 This adds test-only coverage of the accepted stopped-sibling policy on 0.125. It
-changes no runtime or compiler behavior. Whole-session process termination, readiness
-integration and explicit source handoffs remain the next gates.
+changes no runtime or compiler behavior. Whole-session process termination follows
+below; readiness integration and explicit source handoffs remain later gates.
+
+## Whole-session native process settlement (E1d.2c.4b.4d.7)
+
+The compiled context model now treats accepted process termination as an administrative
+stop of its entire session. It closes admission and selection, clears undelivered terminal
+reports, then retires every remaining context in reverse admission order. Descendant
+borrowers retire before their supplying frames. Nested work and already-active sibling
+handlers apply resource fault dispositions without executing further source statements.
+The process status is delivered only after this settlement; it is not a normal outcome.
+
+The process entry's own resource root also uses emergency retirement. Checked owners
+outside its outermost lexical contingency can require fault disposition even after the
+handler has completed all of its retained obligations. Normal context completion still
+preserves outgoing owned payloads. These tests retain the existing entry-only process
+permission and resource checks; they introduce no new source escape.
+
+The real-owner fixture covers nested named/lexical work, a descendant borrower, an
+unrun owned capture, an independent root, a pending owning fault report and a process
+entry owner outside its contingency. Additional cases stop siblings already paused in
+named or lexical handlers. Original/expanded O0/O2 runs use three host-quota partitions
+and three fresh sessions per process. Exact destructor logs check settlement order and
+absence of ordinary closes. The session ends with empty frames, domains, memberships,
+resources and report storage. Late root/child admission and both zero- and positive-quota
+selection fail without changing effects, fuel, script position or identities. The host's
+nonempty diagnostic and contingency baseline is restored.
+
+This remains test-only context execution on 0.125. It does not make host quotas source
+handoffs or implement source `spawn`, `yield`, external readiness or a production
+scheduler. Readiness identities and broader backend integration are the next gates.
 
 ## Separate the identities and continuations
 
@@ -1134,7 +1163,8 @@ Those boundaries need explicit contracts before being accepted by the checker.
 | E1d.2c.4b.4d.3 | Compiled fault-domain lifetimes | Test-only on 0.125: distinct owning/current domains retained through named and lexical boundaries, exact parked-boundary validation and quiescent retirement across normal/error crossings. Related sibling admission and stopped-domain settlement remain ahead |
 | E1d.2c.4b.4d.4 | Related compiled sibling settlement | Test-only on 0.125: child membership, stopped admission, retained owning handover, borrower-first resource cleanup and suppressed nested sibling handlers. Explicit parent-join harness; terminal/fuel coverage follows in 4d.5 |
 | E1d.2c.4b.4d.5 | Owning terminal reports and host limits | Test-only on 0.125: one-use owning terminal reports preserve child causes; related fuel failures bypass contingencies and propagate through ancestors with retained children. Exact owner release and shared-fuel isolation; active handler coverage follows in 4d.6 |
-| E1d.2c.4b.4d.6 | Stopping active sibling contingencies | Test-only on 0.125: named and lexical handlers paused with retained owners are retired without running remaining handler work. Exact release, isolated causes and host baseline restoration; process-wide stop, readiness and source scheduling remain ahead |
+| E1d.2c.4b.4d.6 | Stopping active sibling contingencies | Test-only on 0.125: named and lexical handlers paused with retained owners are retired without running remaining handler work. Exact release, isolated causes and host baseline restoration; process settlement follows in 4d.7 |
+| E1d.2c.4b.4d.7 | Whole-session native process settlement | Test-only on 0.125: administrative process stop closes admission/selection, retires all roots and child trees, clears pending reports and applies resource dispositions before status delivery. Readiness and source scheduling remain ahead |
 | E1e | Explicit cooperative cancellation and suspending cleanup; normal completion races, cleanup failures and no abandoned losers | Define cancellation observation and cleanup admission; no implicit cancellation exception |
 | E2 | Pinned native coroutine experiment, then checked lowering and schedule-based differential validation | Reference semantics and legal frame retirement must precede native destruction |
 

@@ -500,6 +500,13 @@ Further [active-handler coverage](../async-execution.md#stopping-active-sibling-
 pauses a sibling in its own named or lexical contingency before another child faults.
 Its retained owner is released without resuming that handler; the original owning
 contingency still receives the triggering child's cause. Nonempty host diagnostic and
-contingency state is restored after settlement. These are test-only native scenarios;
-process-wide stop, readiness and source handoffs remain gates before production
-integration. Installed source behavior is unchanged.
+contingency state is restored after settlement.
+
+The test-only [process-settlement extension](../async-execution.md#whole-session-native-process-settlement-e1d2c4b4d7)
+stops the entire compiled context session after accepted process termination. It retires
+all parked roots and child trees, applies resource fault dispositions, suppresses remaining
+handler work and clears pending reports before delivering the process status. Further
+admission and selection are rejected. This includes entry-owned resources outside the
+outermost contingency; its retained obligations must still satisfy the existing checker.
+Readiness and source handoffs remain gates before production integration. Installed
+source behavior is unchanged.

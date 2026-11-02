@@ -360,3 +360,179 @@ pub fn drive_siblings(
     );
     Ok(Completion::Outcome(("done".into(), vec![])))
 }
+
+pub fn drive_process(
+    host: &mut Host,
+    controls: [&'static Control; 10],
+    path: String,
+    mode: &str,
+    quotas: &[usize],
+) -> R<Completion> {
+    let [
+        parent_control,
+        work_control,
+        descendant_control,
+        unstarted_control,
+        independent_control,
+        named_control,
+        lexical_control,
+        entry_control,
+        pending_control,
+        failing_control,
+    ] = controls;
+    let handling = mode != "work";
+    let sibling_control = match mode {
+        "named" => named_control,
+        "lexical" => lexical_control,
+        _ => work_control,
+    };
+    host.enter("process harness")?;
+    host.contingencies.push("host contingency marker".into());
+    for round in 0..3 {
+        let mut contexts = Contexts::new(host);
+        let begin = contexts.host.events.len();
+        let parent = contexts.start(parent_control, vec![V::String(path.clone())])?;
+        until_marker(&mut contexts, &parent, "owner ready")?;
+        let other = contexts.start(independent_control, vec![V::String(path.clone())])?;
+        until_marker(&mut contexts, &other, "independent ready")?;
+        let loan = borrowed_counter(&contexts, &parent);
+        let sibling = contexts.start_child(
+            &parent,
+            sibling_control,
+            vec![loan, V::String(path.clone())],
+        )?;
+        until_marker(
+            &mut contexts,
+            &sibling,
+            if handling {
+                "sibling handler ready"
+            } else {
+                "sibling ready"
+            },
+        )?;
+        let borrower_parent = if handling { &parent } else { &sibling };
+        let loan = borrowed_counter(&contexts, borrower_parent);
+        let descendant = contexts.start_child(borrower_parent, descendant_control, vec![loan])?;
+        until_marker(&mut contexts, &descendant, "descendant ready")?;
+        let (made, mut fields) = contexts
+            .host
+            .primitive("make", vec![V::String(path.clone()), V::U32(5)])?;
+        assert_eq!(made, "made");
+        let unstarted = contexts.start_child(&parent, unstarted_control, vec![fields.remove(0)])?;
+        // Preserve an undelivered owning report until process completion.
+        let pending = contexts.start(pending_control, vec![V::String(path.clone())])?;
+        until_marker(&mut contexts, &pending, "pending ready")?;
+        let loan = borrowed_counter(&contexts, &pending);
+        let failure = contexts.start_child(&pending, failing_control, vec![loan])?;
+        let mut failed = false;
+        for quota in quotas.iter().copied().cycle().take(1000) {
+            match contexts.advance(&failure, quota)? {
+                ContextPoll::Paused => {}
+                ContextPoll::Failed(report) => {
+                    assert_eq!(report.message, "E_FAULT: child failed");
+                    failed = true;
+                    break;
+                }
+                _ => panic!("expected pending root failure"),
+            }
+        }
+        assert!(failed && contexts.terminal.len() == 1);
+        assert!(matches!(
+            contexts.advance(&pending, 0)?,
+            ContextPoll::Paused
+        ));
+        let entry = contexts.start(entry_control, vec![V::String(path.clone())])?;
+        let mut terminated = false;
+        for quota in quotas.iter().copied().cycle().take(1000) {
+            match contexts.advance(&entry, quota)? {
+                ContextPoll::Paused => {}
+                ContextPoll::Complete(Completion::Process(23)) => {
+                    terminated = true;
+                    break;
+                }
+                _ => panic!("expected process termination"),
+            }
+        }
+        assert!(terminated && contexts.terminated);
+        assert!(contexts.parked.is_empty() && contexts.terminal.is_empty());
+        assert!(contexts.values.is_empty());
+        assert_eq!(
+            (contexts.domains.len(), contexts.domains.member_count()),
+            (0, 0)
+        );
+        assert!(
+            contexts.host.resources.values.is_empty() && contexts.host.resources.scopes.is_empty()
+        );
+        let before = (
+            contexts.next,
+            contexts.host.fuel,
+            contexts.host.cursor,
+            contexts.host.events.len(),
+        );
+        for key in [
+            &entry,
+            &parent,
+            &other,
+            &sibling,
+            &descendant,
+            &unstarted,
+            &pending,
+            &failure,
+        ] {
+            assert!(contexts.advance(key, 0).is_err());
+            assert!(contexts.advance(key, 1).is_err());
+            assert!(
+                contexts
+                    .start_child(key, descendant_control, vec![])
+                    .is_err()
+            );
+        }
+        assert!(
+            contexts
+                .start(independent_control, vec![V::String(path.clone())])
+                .is_err()
+        );
+        assert_eq!(
+            before,
+            (
+                contexts.next,
+                contexts.host.fuel,
+                contexts.host.cursor,
+                contexts.host.events.len()
+            )
+        );
+        let messages: Vec<_> = contexts.host.events[begin..]
+            .iter()
+            .filter(|e| e["kind"] == "emit")
+            .map(|e| e["message"].as_str().unwrap())
+            .collect();
+        assert!(messages.contains(&"process selected"));
+        assert!(!messages.iter().any(|m| m.starts_with("forbidden")));
+        for skipped in [
+            "owner handler",
+            "owner continued",
+            "owner complete",
+            "sibling continued",
+            "descendant continued",
+            "unstarted body",
+            "independent complete",
+        ] {
+            assert!(!messages.contains(&skipped));
+        }
+        assert_eq!(contexts.host.contingencies, ["host contingency marker"]);
+        let baseline = contexts.host.activations.failure(
+            "process harness",
+            fault::Phase::Execution,
+            "host observation",
+        );
+        assert_eq!(baseline.activations.len(), 1);
+        assert_eq!(baseline.activations[0].control, "process harness");
+        assert!(baseline.cause.is_none() && !contexts.host.source_faulted());
+        contexts.host.events.push(
+            serde_json::json!({"kind":"process_settled","round":round,"mode":mode,"status":23}),
+        );
+    }
+    host.contingencies.pop();
+    host.leave();
+    Ok(Completion::Process(23))
+}

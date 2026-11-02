@@ -162,3 +162,26 @@ control main(string path) exits done faults {
         emit("owner complete");
         exit done;
 }
+
+control process_entry(string path) exits done {
+    delta make(borrow path, 8) {
+        made { counter outside } => made
+    }
+    [made]:
+        fault boundary {
+            fault "process stop";
+        } contingency [] {
+            emit("process selected");
+            terminate process 23;
+        }
+}
+
+control pending_owner(string path) exits done faults {
+    delta make(borrow path, 9) {
+        made { counter value } => made
+    }
+    [made]:
+        emit("pending ready");
+        close(value);
+        exit done;
+}
