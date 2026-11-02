@@ -174,12 +174,16 @@ impl Registry {
     pub(crate) fn next_ready(&self) -> Option<TaskId> {
         self.ready.front().copied()
     }
-    pub(crate) fn dispatch(&mut self, id: TaskId) -> Result<()> {
+    pub(crate) fn require_dispatch(&self, id: TaskId) -> Result<()> {
         if self.ready.front() != Some(&id)
             || !self.tasks.get(&id).is_some_and(|t| t.phase == Phase::Ready)
         {
             return Err(error("task is not next in the ready queue"));
         }
+        Ok(())
+    }
+    pub(crate) fn dispatch(&mut self, id: TaskId) -> Result<()> {
+        self.require_dispatch(id)?;
         self.ready.pop_front();
         self.tasks.get_mut(&id).unwrap().phase = Phase::Running;
         Ok(())
@@ -239,10 +243,14 @@ impl Registry {
     }
     /// Completion delivery is administrative, not a new source outcome. A late
     /// or repeated signal cannot resume another task or deliver the payload twice.
-    pub(crate) fn deliver(&mut self, id: TaskId, owner: OwnerId, wait: WaitId) -> Result<()> {
+    pub(crate) fn require_delivery(&self, id: TaskId, owner: OwnerId, wait: WaitId) -> Result<()> {
         if self.require(id, owner, Phase::Completed)?.join != Join::Waiting(wait) {
             return Err(error("completion wait is stale or already delivered"));
         }
+        Ok(())
+    }
+    pub(crate) fn deliver(&mut self, id: TaskId, owner: OwnerId, wait: WaitId) -> Result<()> {
+        self.require_delivery(id, owner, wait)?;
         self.tasks.get_mut(&id).unwrap().join = Join::Delivered;
         Ok(())
     }

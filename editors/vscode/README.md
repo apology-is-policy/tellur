@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-darwin-arm64-0.132.0.vsix` using **Extensions:
+1. Install the supplied `tellur-language-darwin-arm64-0.133.0.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1218,3 +1218,10 @@ Internal native cold-task APIs now bind captures to the original invocation, hos
 and compiled producer. Invalid queue admission preserves the handle and captures;
 FIFO dispatch transfers them once. Source generation remains synchronous while
 retained context dispatch and completion integration continue.
+
+## Task-bound native contexts in 0.133
+
+Internal queued tasks now retain their original parent and completion wait through
+native context admission, readiness, result delivery and fault/process cleanup.
+Failed admission preserves captures. Source callback and scheduler integration remain
+ahead; current source execution stays synchronous.

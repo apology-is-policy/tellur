@@ -33,12 +33,69 @@ impl Eq for TaskBinding {}
 
 /// Captures queued by a consuming await. Dropping this does not settle the task:
 /// the owner's outstanding obligation remains until completion or emergency unwind.
+#[derive(Debug)]
 pub struct QueuedTask {
     binding: TaskBinding,
     wait: WaitId,
     arguments: Option<Vec<V>>,
 }
 impl QueuedTask {
+    pub(super) fn prepare_context<'a>(
+        &'a self,
+        host: &Host,
+        parent: &Activation,
+    ) -> R<(&'static Control, &'a [V])> {
+        parent.require_task_host(host)?;
+        if !Arc::ptr_eq(&self.binding.registry, &parent.registry)
+            || self.binding.owner != parent.owner
+        {
+            return Err("E_NATIVE: queued task belongs to another invocation".into());
+        }
+        let args = self
+            .arguments
+            .as_deref()
+            .ok_or("E_NATIVE: queued captures already dispatched")?;
+        host.tasks.require_dispatch(self.binding.task)?;
+        Ok((self.binding.producer, args))
+    }
+    pub(super) fn complete(&self, host: &mut Host) -> R<()> {
+        host.tasks.complete(self.binding.task, self.binding.owner)
+    }
+    pub(super) fn require_delivery(&self, host: &Host, parent: &Activation) -> R<()> {
+        parent.require_task_host(host)?;
+        if self.binding.owner != parent.owner
+            || !Arc::ptr_eq(&self.binding.registry, &parent.registry)
+        {
+            return Err("E_NATIVE: task completion belongs to another invocation".into());
+        }
+        host.tasks
+            .require_delivery(self.binding.task, self.binding.owner, self.wait)
+    }
+    pub(super) fn deliver(&self, host: &mut Host) {
+        host.tasks
+            .deliver(self.binding.task, self.binding.owner, self.wait)
+            .expect("prevalidated completion wait");
+        host.tasks
+            .consume(self.binding.task, self.binding.owner)
+            .expect("delivered task consumption");
+    }
+    pub(super) fn abandon(&self, host: &mut Host) {
+        host.tasks.abandon(self.binding.task);
+    }
+    pub(super) fn prepare_readiness(&self, host: &Host) -> R<super::super::tasks::Readiness> {
+        host.tasks
+            .prepare_readiness(self.binding.task, self.binding.owner)
+    }
+    pub(super) fn park(
+        &self,
+        host: &mut Host,
+        readiness: &super::super::tasks::Readiness,
+    ) -> R<()> {
+        host.tasks.park(self.binding.owner, readiness)
+    }
+    pub(super) fn resume(&self, host: &mut Host) -> R<()> {
+        host.tasks.dispatch(self.binding.task)
+    }
     /// Select only the head of the shared ready queue; no producer body is run.
     /// A failed/duplicate selection leaves both captures and protocol unchanged.
     pub fn dispatch(&mut self, host: &mut Host) -> R<(&'static Control, Vec<V>)> {

@@ -432,6 +432,13 @@ The synchronous helper cannot consume bound payloads. Cold lexical movement and
 source contracts are unchanged. See
 [bound native payloads](../async-execution.md#bound-native-task-payloads-e1d2d3e).
 
+Since 0.133, internal queued native tasks can enter retained child contexts after
+admission preflight. Their original parent invocation and completion wait stay paired
+through readiness and one-use result adoption; fault/process cleanup retires the
+obligations before suppliers and contingency. Source callbacks still use synchronous
+lowering, so this does not enable source scheduling. See
+[task-bound native contexts](../async-execution.md#task-bound-native-contexts-e1d2d3f).
+
 Since 0.128, entry process termination closes normal task admission and retires all
 registered execution contexts and results before delivering the original status.
 Prepared bodies never start; parked callers unwind without normal instructions or

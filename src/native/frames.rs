@@ -21,6 +21,15 @@ impl Frame {
     }
 }
 
+/// Reserved capacity and a checked layout; no slot or identity is installed yet.
+pub(super) struct PreparedFrame {
+    arena: Arc<()>,
+    id: u64,
+    base: usize,
+    len: usize,
+    hole: Option<usize>,
+}
+
 /// Values never move between slot offsets while their activation is live.
 /// Loan legality and borrower-before-owner retirement belong to checked execution,
 /// not this allocator. A frame identity is not a source reference or task handle.
@@ -44,7 +53,7 @@ impl DerefMut for Frames {
     }
 }
 impl Frames {
-    pub fn enter(&mut self, len: usize) -> R<Frame> {
+    pub(super) fn prepare(&mut self, len: usize) -> R<PreparedFrame> {
         let id = self
             .next
             .checked_add(1)
@@ -57,31 +66,66 @@ impl Frames {
                     .map(|(&b, &n)| (b, n))
             })
             .flatten();
-        let base = if let Some((base, size)) = hole {
-            self.free.remove(&base);
-            if size > len {
-                self.free.insert(base + len, size - len);
-            }
-            base
+        let (base, hole) = if let Some((base, size)) = hole {
+            (base, Some(size))
         } else {
             let base = self.values.len();
-            let end = base
-                .checked_add(len)
+            base.checked_add(len)
                 .ok_or("E_NATIVE: frame storage exhausted")?;
             self.values
                 .try_reserve(len)
                 .map_err(|_| "E_NATIVE: frame storage exhausted")?;
-            self.values.resize_with(end, || None);
-            base
+            (base, None)
         };
-        self.next = id;
-        assert!(self.live.insert(id, (base, len)).is_none());
-        Ok(Frame {
+        Ok(PreparedFrame {
             arena: self.identity.clone(),
             id,
             base,
             len,
+            hole,
         })
+    }
+    pub(super) fn commit(&mut self, prepared: PreparedFrame) -> R<Frame> {
+        let PreparedFrame {
+            arena,
+            id,
+            base,
+            len,
+            hole,
+        } = prepared;
+        if !Arc::ptr_eq(&arena, &self.identity)
+            || self.next.checked_add(1) != Some(id)
+            || match hole {
+                Some(size) => self.free.get(&base) != Some(&size),
+                None => self.values.len() != base || self.values.capacity() - base < len,
+            }
+        {
+            return Err("E_NATIVE: stale or foreign frame admission".into());
+        }
+        if let Some(size) = hole {
+            self.free.remove(&base);
+            if size > len {
+                self.free.insert(base + len, size - len);
+            }
+        } else {
+            self.values.resize_with(base + len, || None);
+        }
+        self.next = id;
+        assert!(self.live.insert(id, (base, len)).is_none());
+        Ok(Frame {
+            arena,
+            id,
+            base,
+            len,
+        })
+    }
+    pub fn enter(&mut self, len: usize) -> R<Frame> {
+        let prepared = self.prepare(len)?;
+        self.commit(prepared)
+    }
+    #[cfg(test)]
+    pub(super) fn exhaust_identity_space(&mut self) {
+        self.next = u64::MAX;
     }
     fn require(&self, frame: &Frame) -> R<()> {
         if !Arc::ptr_eq(&self.identity, &frame.arena)

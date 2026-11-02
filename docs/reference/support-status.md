@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.132.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.133.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -133,3 +133,8 @@ Since 0.132, internal bound native payloads retain host/invocation/task/producer
 identity through cold movement and atomic queue/wait admission. FIFO capture dispatch
 is one-use. Emitted retained callbacks and context completion wiring remain ahead;
 default native source execution remains synchronous.
+
+Since 0.133, queued native tasks integrate with retained contexts, readiness and
+one-use result adoption after frame/resource/domain/owner admission preflight.
+Fault/process settlement retires their obligations. These are internal host APIs;
+retained source callbacks and production source scheduling remain separate work.

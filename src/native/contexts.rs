@@ -14,10 +14,11 @@ pub struct Readiness {
     context: u64,
     generation: u64,
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 struct WaitState {
     generation: u64,
     signalled: bool,
+    task: Option<super::super::tasks::Readiness>,
 }
 struct Parked {
     machine: Machine,
@@ -26,6 +27,7 @@ struct Parked {
     name: &'static str,
     parent: Option<u64>,
     started: bool,
+    task: Option<QueuedTask>,
 }
 struct Completed {
     parked: Parked,
@@ -104,6 +106,7 @@ impl<'a> Contexts<'a> {
                 name: control.name,
                 parent: None,
                 started: false,
+                task: None,
             },
         );
         Ok(ContextKey {
@@ -182,8 +185,122 @@ impl<'a> Contexts<'a> {
                 name: control.name,
                 parent: Some(parent.id),
                 started: false,
+                task: None,
             },
         );
+        Ok(ContextKey {
+            session: self.identity.clone(),
+            id,
+        })
+    }
+    /// Admit the next queued child without moving captures on any failed check.
+    /// This is explicit host selection, not a source scheduler handoff.
+    pub fn start_task(
+        &mut self,
+        parent: &ContextKey,
+        queued: &mut Option<QueuedTask>,
+    ) -> R<ContextKey> {
+        self.require(parent)?;
+        if self.waits.contains_key(&parent.id) {
+            return Err("E_NATIVE: waiting parent cannot admit a task".into());
+        }
+        let parked = &self.parked[&parent.id];
+        parked.machine.require_runnable(&self.domains)?;
+        let activation = parked
+            .machine
+            .stack
+            .last()
+            .ok_or("E_NATIVE: task parent has no invocation")?;
+        let task = queued
+            .as_ref()
+            .ok_or("E_NATIVE: queued task already admitted")?;
+        let (control, arguments) = task.prepare_context(self.host, activation)?;
+        if control.constructor
+            || arguments.len() != control.parameters.len()
+            || control.parameters.iter().any(|slot| *slot >= control.slots)
+            || control
+                .parameters
+                .iter()
+                .enumerate()
+                .any(|(i, slot)| control.parameters[..i].contains(slot))
+        {
+            return Err("E_NATIVE: invalid queued producer layout".into());
+        }
+        let id = self
+            .next
+            .checked_add(1)
+            .ok_or("E_NATIVE: context identity exhausted")?;
+        let domain = parked.machine.current.clone();
+        self.domains.require_open(&domain, &[])?;
+        self.domains.require_member_capacity()?;
+        let root_domain = self.domains.scope(&domain)?;
+        let parent_member = parked.machine.member.clone();
+        let owner = self.host.tasks.prepare_owner()?;
+        self.host.resources.current_scope()?;
+        // Validate the whole capture owner graph, including foreign and duplicate handles.
+        self.host.resources.result_tokens(arguments)?;
+        let scope = self.host.resources.prepare_scope_at(arguments, None)?;
+        let frame = self.values.prepare(control.slots)?;
+        let mut tracker = parked.host.tracker.child();
+        tracker.enter(control.name)?;
+        // All recoverable checks precede dispatch and capture/resource transfer.
+        // Exclusive context access prevents an intervening admission.
+        let mut task = queued.take().unwrap();
+        let (_, arguments) = task.dispatch(self.host).expect("prevalidated ready task");
+        let frame = self.values.commit(frame).expect("prevalidated child frame");
+        self.host.tasks.commit_owner(owner);
+        let resource_scope = self.host.resources.register_scope(scope);
+        let member = self
+            .domains
+            .attach(&domain, Some(&parent_member))
+            .expect("prevalidated domain membership");
+        for (slot, value) in control.parameters.iter().zip(arguments) {
+            self.values[frame.base() + slot] = Some(value);
+        }
+        let activation = Activation {
+            frame,
+            owner,
+            registry: self.host.resources.identity.clone(),
+            control,
+            pending: None,
+            scopes: vec![],
+            facts: vec![false; control.atoms],
+            pc: 0,
+            destination: None,
+        };
+        let machine = Machine {
+            stack: vec![activation],
+            finished: false,
+            root: root_domain,
+            current: domain,
+            member,
+            owns_root: false,
+            retain_completion: true,
+            fault: None,
+            handover: vec![],
+            fault_target: None,
+        };
+        self.parked.insert(
+            id,
+            Parked {
+                machine,
+                host: HostContext {
+                    registry: self.host.resources.identity.clone(),
+                    tracker,
+                    contingencies: vec![],
+                    scope: Some(resource_scope.clone()),
+                },
+                root: ContextRoot {
+                    scope: resource_scope,
+                    retired: false,
+                },
+                name: control.name,
+                parent: Some(parent.id),
+                started: false,
+                task: Some(task),
+            },
+        );
+        self.next = id;
         Ok(ContextKey {
             session: self.identity.clone(),
             id,
@@ -204,11 +321,20 @@ impl<'a> Contexts<'a> {
             .next_readiness
             .checked_add(1)
             .ok_or("E_NATIVE: readiness generation exhausted")?;
+        let task = parked
+            .task
+            .as_ref()
+            .map(|task| task.prepare_readiness(self.host))
+            .transpose()?;
+        if let Some(readiness) = &task {
+            parked.task.as_ref().unwrap().park(self.host, readiness)?;
+        }
         self.waits.insert(
             key.id,
             WaitState {
                 generation,
                 signalled: false,
+                task,
             },
         );
         self.next_readiness = generation;
@@ -235,6 +361,9 @@ impl<'a> Contexts<'a> {
         }
         // Signalling only changes eligibility. The original machine and host
         // context stay parked until an explicit positive-quota selection.
+        if let Some(readiness) = &state.task {
+            self.host.tasks.wake(readiness)?;
+        }
         state.signalled = true;
         Ok(())
     }
@@ -283,6 +412,17 @@ impl<'a> Contexts<'a> {
         if quota == 0 {
             return Ok(ContextPoll::Paused);
         }
+        if self
+            .waits
+            .get(&key.id)
+            .is_some_and(|wait| wait.task.is_some())
+        {
+            self.parked[&key.id]
+                .task
+                .as_ref()
+                .unwrap()
+                .resume(self.host)?;
+        }
         self.waits.remove(&key.id);
         let mut parked = self.parked.remove(&key.id).unwrap();
         parked.started = true;
@@ -306,12 +446,18 @@ impl<'a> Contexts<'a> {
                     ContextPoll::Paused
                 }
                 Ok(Poll::Complete(completion @ Completion::Outcome(_))) => {
+                    if let Some(task) = &parked.task {
+                        task.complete(self.host)?;
+                    }
                     completed = Some(completion);
                     ContextPoll::Ready
                 }
                 Ok(Poll::Complete(completion)) => {
                     // Outgoing owners survive normal completion; failed roots below
                     // release stranded temporary owners as well as retired frames.
+                    if let Some(task) = &parked.task {
+                        task.abandon(self.host);
+                    }
                     self.host.finish_context(
                         &mut parked.root,
                         matches!(completion, Completion::Process(_)),
@@ -324,6 +470,9 @@ impl<'a> Contexts<'a> {
                         fault::Phase::Execution,
                         &message,
                     );
+                    if let Some(task) = &parked.task {
+                        task.abandon(self.host);
+                    }
                     self.host.finish_context(&mut parked.root, true)?;
                     if parked.parent.is_some() {
                         settlement = Some((
@@ -391,6 +540,15 @@ impl<'a> Contexts<'a> {
                 return Err("E_NATIVE: completion join crosses its owning fault domain".into());
             }
         }
+        if let Some(task) = &parked.task {
+            let parent = parent.ok_or("E_NATIVE: task completion requires its parent")?;
+            let activation = self.parked[&parent.id]
+                .machine
+                .stack
+                .last()
+                .ok_or("E_NATIVE: task parent has retired")?;
+            task.require_delivery(self.host, activation)?;
+        }
         let receiver = parent.map(|parent| {
             let parked = &self.parked[&parent.id];
             (&parked.host, &parked.root)
@@ -408,6 +566,9 @@ impl<'a> Contexts<'a> {
         // Domain retirement was prevalidated before host ownership changed.
         completed.parked.machine.finish_root(&mut self.domains)?;
         let completed = self.completed.remove(&key.id).unwrap();
+        if let Some(task) = &completed.parked.task {
+            task.deliver(self.host);
+        }
         Ok(completed.outcome)
     }
     fn retire_completed(&mut self, id: u64) -> R<()> {
@@ -420,6 +581,9 @@ impl<'a> Contexts<'a> {
             .machine
             .require_finish_root(&self.domains)?;
         // Retire result references before any supplying executable frame.
+        if let Some(task) = &completed.parked.task {
+            task.abandon(self.host);
+        }
         drop(completed.outcome);
         self.host.exchange_context(&mut completed.parked.host)?;
         self.host.finish_context(&mut completed.parked.root, true)?;
@@ -438,6 +602,9 @@ impl<'a> Contexts<'a> {
         // independent roots and active handlers, before the status is delivered.
         // Admission order always places children after their supplying parent.
         while let Some((_, mut parked)) = self.parked.pop_last() {
+            if let Some(task) = &parked.task {
+                task.abandon(self.host);
+            }
             self.host.exchange_context(&mut parked.host)?;
             parked.machine.abort(
                 self.host,
@@ -502,6 +669,9 @@ impl<'a> Contexts<'a> {
         for id in stopped {
             self.waits.remove(&id);
             let mut parked = self.parked.remove(&id).unwrap();
+            if let Some(task) = &parked.task {
+                task.abandon(self.host);
+            }
             self.host.exchange_context(&mut parked.host)?;
             parked
                 .machine
@@ -528,6 +698,9 @@ impl<'a> Contexts<'a> {
         );
         let mut next = None;
         if parked.machine.finished {
+            if let Some(task) = &parked.task {
+                task.abandon(self.host);
+            }
             let error = result
                 .as_ref()
                 .err()
@@ -578,3 +751,7 @@ impl<'a> Contexts<'a> {
 #[cfg(test)]
 #[path = "execution_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "task_context_tests.rs"]
+mod task_tests;

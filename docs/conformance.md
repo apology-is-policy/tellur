@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.132.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.133.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -4017,3 +4017,19 @@ Existing compiled model, native/LLVM, resource adapter and manual regressions co
 integration of the optional payload binding and embedded support. Reference runtime,
 checker, fault tracker and editor implementation retain previous verified evidence.
 These are selected internal-support checks, not a source scheduler or full-suite claim.
+
+## Task-bound native context checkpoint (0.133)
+
+E1d.2d.3f adds five native context integration cases and one frame preparation case.
+They cover capture preservation on nine admission failures, original parent/invocation
+identity, distinct readiness/completion, two-waiter FIFO selection and atomic rejection,
+real owned and borrowed result adoption, duplicate/early joins, result/waiter cleanup
+before suppliers, independent roots and owning contingency after all affected task
+obligations retire. Frame preparation reserves without installing storage; cancelled,
+stale and foreign plans preserve live slots. Existing host cases and both adapters'
+shared protocol cases remain valid.
+
+Compiled model, native/LLVM, resource adapter and manual regression matrices cover
+integration. Reference continuation/checker/editor implementations are unchanged and
+retain their earlier evidence. This is selected internal-runtime coverage; source
+handoffs, resumable production lowering and full-suite conformance are not claimed.

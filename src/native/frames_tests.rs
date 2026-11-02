@@ -195,3 +195,40 @@ fn exact_frame_cleanup_preserves_later_resources_and_borrowed_owners() {
     assert_eq!(*drops.borrow(), [2, 3, 1]);
     assert!(arena.is_empty());
 }
+
+#[test]
+fn prepared_frames_preserve_slots_until_commit_and_reject_stale_or_foreign_plans() {
+    let mut a = Frames::default();
+    let first = a.enter(3).unwrap();
+    let last = a.enter(1).unwrap();
+    a[last.base] = Some(V::U32(91));
+    a.retire(&first).unwrap();
+    let before = (a.values.clone(), a.live.clone(), a.free.clone(), a.next);
+    let cancelled = a.prepare(2).unwrap();
+    drop(cancelled);
+    assert_eq!(
+        (a.values.clone(), a.live.clone(), a.free.clone(), a.next),
+        before
+    );
+    let old = a.prepare(2).unwrap();
+    let fresh = a.prepare(2).unwrap();
+    let frame = a.commit(fresh).unwrap();
+    assert_eq!(frame.base, first.base);
+    assert_eq!(a[last.base], Some(V::U32(91)));
+    let before = (a.values.clone(), a.live.clone(), a.free.clone(), a.next);
+    assert!(a.commit(old).is_err());
+    assert_eq!(
+        (a.values.clone(), a.live.clone(), a.free.clone(), a.next),
+        before
+    );
+    let mut b = Frames::default();
+    let foreign = b.prepare(2).unwrap();
+    assert!(a.commit(foreign).is_err());
+    assert_eq!(
+        (a.values.clone(), a.live.clone(), a.free.clone(), a.next),
+        before
+    );
+    a.retire(&frame).unwrap();
+    a.retire(&last).unwrap();
+    assert!(a.is_empty());
+}

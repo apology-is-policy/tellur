@@ -1213,6 +1213,7 @@ Those boundaries need explicit contracts before being accepted by the checker.
 | E1d.2d.3c | Shared native retained execution | Delivered in 0.130: compiled continuations, fault-domain membership and retained contexts/results now live in normal native support. The compiled probes use that exact implementation; explicit selection/readiness, one-use result adoption and fault/process retirement remain separate from source scheduler/lowering integration |
 | E1d.2d.3d | Shared task protocol and native invocation owners | Delivered in 0.131: reference/native adapters share queue/join/readiness transitions. Every retained compiled activation has a distinct invocation owner, capacity preflight and normal/emergency obligation retirement; native task payload/queue binding and source handoffs remain ahead |
 | E1d.2d.3e | Bound native task payloads | Delivered in 0.132: internal cold captures carry opaque host/invocation/task/producer identity; cold creation and consuming queue/wait admission preflight before moving values, with FIFO one-use capture dispatch. Retained source lowering and context completion wiring remain ahead |
+| E1d.2d.3f | Task-bound native contexts | Delivered in 0.133: queued captures enter retained contexts only after frame/resource/domain/owner preflight; original parent invocation and completion wait stay paired through readiness, result adoption and fault/process retirement. Retained source callback integration remains ahead |
 | E1e | Explicit cooperative cancellation and suspending cleanup; normal completion races, cleanup failures and no abandoned losers | Define cancellation observation and cleanup admission; no implicit cancellation exception |
 | E2 | Pinned native coroutine experiment, then checked lowering and schedule-based differential validation | Reference semantics and legal frame retirement must precede native destruction |
 
@@ -1524,6 +1525,53 @@ emergency path, releases owned leaves once and leaves borrowed suppliers intact.
 Cold lexical movement keeps the same invocation. Shared protocol and source language
 semantics remain unchanged; asynchronous adapters, cancellation and coroutine lowering
 are separate work.
+
+## Task-bound native contexts (E1d.2d.3f)
+
+Compiler 0.133 connects bound queued payloads to retained native contexts through
+`Contexts::start_task`. It validates the original parent invocation, ready-queue
+position, compiled parameter layout, open fault domain, membership and owner capacity,
+resource capture identities and scope capacity, frame storage and diagnostic admission
+before taking the queued captures. Duplicate or foreign resource owners reject as
+well. A prepared frame reserves capacity without installing slots or consuming an
+identity; stale or foreign plans reject before mutation. Preparation may reserve
+host memory but changes no source storage, ownership, fuel or effects.
+
+The admitted child keeps its queued task and completion-wait authority alongside its
+original parent context and fault domain. Its own activation owner is separate from
+the parent's task obligation. Normal child completion marks that task completed while
+retaining the result scope; consuming join checks both parent invocation and wait
+before resource adoption, then delivers and consumes the obligation once. Parent
+normal progression stays blocked until its retained child contexts settle.
+
+Context readiness now parks the associated task too. A signal makes the original
+context eligible and queues its task; it neither runs the body nor delivers a result.
+Positive-quota selection must follow the shared FIFO order. Zero quota, duplicate
+signals and an out-of-order selection leave the registration and captures intact.
+Unbound contexts retain their existing explicit host-selection behavior.
+
+Stopped completed results and live task contexts abandon their task obligations
+before supplier frames and the owning contingency proceed. Readiness registrations
+become invalid, and administrative process termination drains task-bound contexts
+across independent roots. Cleanup does not manufacture an outcome or execute a
+stopped sibling handler. Queues still held outside `Contexts` remain the caller's
+responsibility: failed admission returns their captures unchanged, and the invocation
+cannot normally finish with those outstanding obligations.
+
+Five [context integration cases](../src/native/task_context_tests.rs) exercise real
+owned resources and returned borrows, two-waiter FIFO selection, early/duplicate/wrong
+parent joins, nested invocation rejection, context/frame/owner/resource capacity,
+malformed layouts, duplicate/foreign resource captures and stopped domains. They also
+check result-before-borrower-before-supplier fault/process retirement, independent
+roots and successful owning contingency only after task obligations disappear.
+The [frame tests](../src/native/frames_tests.rs) cover cancelled, stale and foreign
+preparations while preserving existing live slots.
+
+These remain explicit internal host operations. Retained fixture callbacks still
+emit synchronous unbound defer/await operations; production resumable lowering and
+source `spawn`/`yield` remain ahead. Source ownership, origins, outcomes, fault policy
+and legal cold lexical movement do not change. The next step is to connect retained
+callback handoffs and continuation delivery to this task/context machinery.
 
 ## Reference execution invariants
 

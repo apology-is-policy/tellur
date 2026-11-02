@@ -6,4 +6,4 @@ fn error(message: impl Into<String>) -> String {
 #[cfg(test)]
 #[path = "../task_support.rs"]
 mod protocol;
-pub(super) use protocol::{OwnerId, Registry, TaskId, WaitId};
+pub(super) use protocol::{OwnerId, Readiness, Registry, TaskId, WaitId};
