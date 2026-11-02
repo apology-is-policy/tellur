@@ -48,6 +48,7 @@ pub enum Value {
     },
     #[serde(skip)]
     Task {
+        id: u64,
         ty: String,
         operation: String,
         arguments: Vec<Value>,

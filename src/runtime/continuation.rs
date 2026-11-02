@@ -1,9 +1,14 @@
-//! Host stepping of synchronous checked execution. No source scheduler or task policy.
+//! Host stepping of sequential checked execution, including local cold tasks.
+//! No source scheduler or independently progressing work.
+use super::tasks::{OwnerId, Registry, TaskId, retire_value};
 use super::*;
 
 #[cfg(test)]
 #[path = "context_tests.rs"]
 mod context_tests;
+#[cfg(test)]
+#[path = "task_tests.rs"]
+mod task_tests;
 
 type RunResult = std::result::Result<RunCompletion, Box<Failure>>;
 
@@ -43,6 +48,7 @@ impl CheckedProgram {
                     events: vec![],
                     steps_left: steps,
                     values: BTreeMap::new(),
+                    tasks: Registry::default(),
                 },
                 context: Context::new(crate::fault::Tracker::new(self.runtime_sites())),
             }),
@@ -83,6 +89,7 @@ impl ExecutionSession<'_> {
 
 #[derive(Default)]
 struct Frame {
+    owner: Option<OwnerId>,
     base: Id,
     facts: BTreeSet<Id>,
 }
@@ -96,7 +103,7 @@ struct PreparedInvocation<'a> {
     diagnostic_name: String,
 }
 
-// Every continuation represents existing synchronous control flow, not a task.
+// Continuations represent sequential control flow, including consuming task awaits.
 // Blocks borrow immutable checked code; only active invocation/loop state is kept.
 enum Continuation<'a> {
     Block {
@@ -108,6 +115,10 @@ enum Continuation<'a> {
         caller: Frame,
     },
     Decision(&'a [Arm]),
+    TaskDecision {
+        task: TaskId,
+        arms: &'a [Arm],
+    },
     Loop(&'a Action),
     SupervisedWork {
         name: &'a str,
@@ -140,6 +151,7 @@ struct SharedExecution<'a> {
     events: Vec<Event>,
     steps_left: usize,
     values: BTreeMap<Id, Value>,
+    tasks: Registry,
 }
 
 /// A resumable control chain. Storage and effect history belong to the execution;
@@ -236,12 +248,14 @@ impl<'a> Machine<'a> {
         let next_base = base
             .checked_add(self.shared.program.next_id.max(1))
             .ok_or_else(|| error("activation storage address space exhausted"))?;
-        // Both fallible admission checks precede frame installation. Preparing
+        let owner = self.shared.tasks.prepare_owner()?;
+        // All fallible admission checks precede frame installation. Preparing
         // an invocation neither reserves addresses nor consumes an activation ID.
         self.context
             .activations
             .enter(&diagnostic_name)
             .map_err(error)?;
+        self.shared.tasks.commit_owner(owner);
         self.shared.next_base = next_base;
         for (param, value) in region.parameters.iter().zip(arguments) {
             self.shared.values.insert(base + param.id, value);
@@ -250,6 +264,7 @@ impl<'a> Machine<'a> {
         let caller = std::mem::replace(
             &mut self.context.frame,
             Frame {
+                owner: Some(owner),
                 base,
                 facts: BTreeSet::new(),
             },
@@ -340,9 +355,18 @@ impl<'a> Machine<'a> {
                             }
                         }
                     }
-                    for id in region.slots.keys() {
-                        self.shared.values.remove(&(self.context.frame.base + id));
-                    }
+                    let abrupt = !matches!(&flow, Ok(Flow::Exit(..)));
+                    self.retire_slots(
+                        region
+                            .slots
+                            .keys()
+                            .map(|id| self.context.frame.base + id)
+                            .collect(),
+                        abrupt,
+                    )?;
+                    self.shared
+                        .tasks
+                        .retire_owner(self.context.frame.owner.unwrap(), abrupt)?;
                     let flow = flow?;
                     match &flow {
                         Flow::Process(_) | Flow::Terminate | Flow::Exit(..) => {
@@ -363,13 +387,30 @@ impl<'a> Machine<'a> {
                 let (outcome, fields) = completion(flow?)?.outcome()?;
                 self.bind(arms, outcome, fields)?;
             }
+            Continuation::TaskDecision { task, arms } => {
+                match flow.and_then(completion).and_then(Completion::outcome) {
+                    Ok((outcome, fields)) => {
+                        let owner = self.context.frame.owner.unwrap();
+                        self.shared.tasks.complete(task, owner)?;
+                        self.shared.tasks.consume(task, owner)?;
+                        self.bind(arms, outcome, fields)?;
+                    }
+                    Err(diagnostic) => {
+                        self.shared.tasks.abandon(task);
+                        return Err(diagnostic);
+                    }
+                }
+            }
             Continuation::Loop(action) => {
                 let Action::Loop { id, .. } = action else {
                     unreachable!()
                 };
                 match flow? {
-                    Flow::Again(target, args) | Flow::Recover(target, args) if target == *id => {
-                        self.iteration(action, args)
+                    Flow::Again(target, args) if target == *id => {
+                        self.iteration(action, args, false)?
+                    }
+                    Flow::Recover(target, args) if target == *id => {
+                        self.iteration(action, args, true)?
                     }
                     Flow::Complete(target) if target == *id => {}
                     Flow::Fallthrough => {
@@ -425,9 +466,13 @@ impl<'a> Machine<'a> {
                         self.shared.events.push(Event::Fault {
                             report: Box::new(report.clone()),
                         });
-                        for id in retire {
-                            self.shared.values.remove(&(self.context.frame.base + id));
-                        }
+                        self.retire_slots(
+                            retire
+                                .iter()
+                                .map(|id| self.context.frame.base + id)
+                                .collect(),
+                            true,
+                        )?;
                         let (message, stack, paths) = report.source_fields();
                         let strings = |xs: Vec<String>| Value::Construct {
                             ty: "vector<String>".into(),
@@ -462,7 +507,7 @@ impl<'a> Machine<'a> {
                             .map_err(error)?;
                         self.block(handler);
                     }
-                    other => self.finish_boundary(action, &name, parent, other),
+                    other => self.finish_boundary(action, &name, parent, other)?,
                 }
             }
             Continuation::BoundaryHandler {
@@ -471,7 +516,7 @@ impl<'a> Machine<'a> {
                 parent,
             } => {
                 self.context.contingencies.pop();
-                self.finish_boundary(action, &name, parent, flow);
+                self.finish_boundary(action, &name, parent, flow)?;
             }
         }
         Ok(())
@@ -515,7 +560,7 @@ impl<'a> Machine<'a> {
         name: &str,
         parent: crate::fault::Tracker,
         flow: Result<Flow>,
-    ) {
+    ) -> Result<()> {
         let Action::Boundary {
             work_slots,
             handler_slots,
@@ -524,16 +569,34 @@ impl<'a> Machine<'a> {
         else {
             unreachable!()
         };
-        for id in work_slots.iter().chain(handler_slots) {
-            self.shared.values.remove(&(self.context.frame.base + id));
-        }
+        let abrupt = matches!(
+            &flow,
+            Err(_) | Ok(Flow::Recover(..) | Flow::Process(_) | Flow::Terminate)
+        );
+        self.retire_slots(
+            work_slots
+                .iter()
+                .chain(handler_slots)
+                .map(|id| self.context.frame.base + id)
+                .collect(),
+            abrupt,
+        )?;
         self.restore(name, parent, &flow);
         self.context.flow = match flow {
             Ok(Flow::Fallthrough) => None,
             other => Some(other),
         };
+        Ok(())
     }
-    fn iteration(&mut self, action: &'a Action, arguments: Vec<Value>) {
+    fn retire_slots(&mut self, slots: Vec<Id>, abrupt: bool) -> Result<()> {
+        for slot in slots {
+            if let Some(value) = self.shared.values.remove(&slot) {
+                retire_value(&mut self.shared.tasks, value, abrupt)?;
+            }
+        }
+        Ok(())
+    }
+    fn iteration(&mut self, action: &'a Action, arguments: Vec<Value>, abrupt: bool) -> Result<()> {
         let Action::Loop {
             parameters,
             local_slots,
@@ -544,9 +607,13 @@ impl<'a> Machine<'a> {
         else {
             unreachable!()
         };
-        for slot in local_slots {
-            self.shared.values.remove(&(self.context.frame.base + slot));
-        }
+        self.retire_slots(
+            local_slots
+                .iter()
+                .map(|id| self.context.frame.base + id)
+                .collect(),
+            abrupt,
+        )?;
         for atom in local_atoms {
             self.context.frame.facts.remove(atom);
         }
@@ -557,6 +624,7 @@ impl<'a> Machine<'a> {
         }
         self.context.stack.push(Continuation::Loop(action));
         self.block(body);
+        Ok(())
     }
     fn bind(&mut self, arms: &[Arm], outcome: String, fields: Vec<Value>) -> Result<()> {
         let arm = arms
@@ -596,7 +664,7 @@ impl<'a> Machine<'a> {
                     .iter()
                     .map(|(_, e)| evaluate(e, &mut self.shared.values, self.context.frame.base))
                     .collect::<Result<_>>()?;
-                self.iteration(&instruction.action, args);
+                self.iteration(&instruction.action, args, false)?;
             }
             Action::Supervise { boundary, args } => {
                 let args = self.arguments(args)?;
@@ -623,6 +691,7 @@ impl<'a> Machine<'a> {
             } => {
                 let mut values = self.arguments(args)?;
                 let Some(Value::Task {
+                    id,
                     operation,
                     arguments,
                     ..
@@ -637,7 +706,13 @@ impl<'a> Machine<'a> {
                         "interpreter invariant: pending task producer differs",
                     ));
                 }
-                self.context.stack.push(Continuation::Decision(arms));
+                let task = TaskId(id);
+                self.shared
+                    .tasks
+                    .begin(task, self.context.frame.owner.unwrap(), name)?;
+                self.context
+                    .stack
+                    .push(Continuation::TaskDecision { task, arms });
                 self.call(name, arguments)?;
             }
             Action::Decide {
@@ -699,11 +774,14 @@ impl<'a> Machine<'a> {
                 }
             }
             Action::Drop(expr) => {
-                drop(evaluate(expr, values, base)?);
+                let value = evaluate(expr, values, base)?;
+                retire_value(&mut self.shared.tasks, value, false)?;
             }
             Action::Release(ids) => {
                 for id in ids {
-                    values.remove(&(base + id));
+                    if let Some(value) = values.remove(&(base + id)) {
+                        retire_value(&mut self.shared.tasks, value, false)?;
+                    }
                 }
             }
             Action::Emit(expr) => {
@@ -745,7 +823,9 @@ impl<'a> Machine<'a> {
                     values.insert(base + id, value);
                 }
                 for id in release {
-                    values.remove(&(base + id));
+                    if let Some(value) = values.remove(&(base + id)) {
+                        retire_value(&mut self.shared.tasks, value, false)?;
+                    }
                 }
                 facts.insert(*atom);
                 if let Some(target) = unwind {
@@ -765,6 +845,11 @@ impl<'a> Machine<'a> {
                     Operation::Defer(name) => (
                         "$pending".into(),
                         vec![Value::Task {
+                            id: self
+                                .shared
+                                .tasks
+                                .defer(self.context.frame.owner.unwrap(), name)?
+                                .0,
                             ty: crate::manifest::task_type(name),
                             operation: name.clone(),
                             arguments: args,
@@ -978,6 +1063,7 @@ mod tests {
     fn assert_uninstalled(machine: &Machine<'_>, next_base: Id) {
         assert_eq!(machine.shared.next_base, next_base);
         assert!(machine.shared.values.is_empty());
+        assert!(machine.shared.tasks.is_empty());
         assert!(machine.context.stack.is_empty());
         assert!(machine.shared.events.is_empty());
         assert_eq!(machine.context.frame.base, 0);
@@ -1011,6 +1097,7 @@ mod tests {
         assert_eq!(machine.shared.values.len(), 2);
         assert!(machine.drive(100));
         assert!(machine.shared.values.is_empty());
+        assert!(machine.shared.tasks.is_empty());
         assert!(machine.context.stack.is_empty());
         machine.start_call(first).unwrap();
         assert!(machine.drive(100));
@@ -1026,6 +1113,7 @@ mod tests {
             ]
         );
         assert!(machine.shared.values.is_empty());
+        assert!(machine.shared.tasks.is_empty());
         assert!(machine.context.stack.is_empty());
     }
 

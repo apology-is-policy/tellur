@@ -117,8 +117,39 @@ This is a structural foundation, not source scheduling. The public execution
 session still runs one sequential chain; its stepping quotas remain a host test
 facility. Context selection in these tests is explicit harness work, not a new
 source safe point or permission to resume siblings after an escaping fault. Task
-identities, owner links, ready/wait transitions and settlement admission come next.
+identities and invocation obligations are integrated in E1d.2a below; ready/wait
+transitions and scheduler settlement admission remain next.
 The native backend and LLVM coroutine route are unchanged.
+
+## Invocation and cold-task identities (E1d.2a)
+
+Compiler 0.112 adds a private registry to shared reference execution. Each admitted
+call frame has an invocation owner ID; each deferred value has a distinct task ID.
+Neither is a slot address or diagnostic activation ID. Captured values remain in
+the handle, preserving existing reference storage and resource representation.
+Admission checks owner-ID capacity before entering the diagnostic activation and
+installing frame storage. IDs never wrap or reuse retired identities.
+
+The registry checks cold → running → completed → consumed transitions. Await
+validates the original owner and producer before entering the body. A normal
+completion remains an obligation until delivered to the caller's decision; it
+cannot be consumed twice. Normal invocation retirement rejects unfinished task
+obligations. Emergency retirement removes obligations without running cold bodies
+or constructing normal fault outcomes. Work/handler retirement and supervised loop
+recovery retire task records along with their discarded values, before contingency.
+
+Private tests exercise moves across existing normal lexical boundaries, nested
+borrowed awaits, cold and running tasks through repeated fault recovery, and failed
+await admission. Independent harness contexts also preserve one owner’s cold task
+while another faults. All finish with no retained task records or frame slots. Registry
+tests also cover one-shot completion, wrong-owner/producer rejection and identity
+exhaustion. These checks supplement the existing static ownership checks.
+
+This is integrated bookkeeping for the sequential interpreter, not independent
+progress or source `spawn`. The native executor keeps its current checked inline
+captures. No public task-type syntax or change to cold-task boundary permission is
+introduced. E1d.2b adds readiness identities and scheduling transitions; fault-domain
+settlement and source concurrency still require their own integrated checkpoints.
 
 ## Separate the identities and continuations
 
@@ -173,7 +204,7 @@ fault boundary. No explicit `task scope { ... }` ownership block is required.
 An escaping child fault still stops ordinary work in the owning fault boundary
 and settles affected children and retained resources before contingency. Moving a
 handle does not move its owner or redirect emergency propagation. This is the
-accepted direction for E1d; compiler 0.110 still executes cold tasks sequentially
+accepted direction for E1d; compiler 0.112 still executes cold tasks sequentially
 and does not yet accept `spawn`.
 
 ## Cold-task contract audit
@@ -385,7 +416,8 @@ Those boundaries need explicit contracts before being accepted by the checker.
 | E1c.3c.2 | Whole borrowed carrier parameters | Delivered in 0.110: retained storage authority, nested contents, reborrows, moves and selected result origins |
 | E1d | Scoped spawn and deterministic readiness; two overlapping children, duplicate/stale wake handling and owner settlement | Invocation ownership and no cross-invocation/boundary handle transfer accepted; implement scoped scheduling, sibling settlement and deterministic fault observation |
 | E1d.1 | Separate execution-wide state from resumable control chains | Delivered in 0.111: one storage arena/address allocator, script cursor, effect history and fuel budget; independent frames, continuations and emergency state; internal interleaving evidence, no source spawn |
-| E1d.2 | Task ownership and readiness lifecycle | Next: owner/task identities, ready/wait/complete transitions, duplicate/stale wake rejection and settlement admission before source scheduling |
+| E1d.2a | Invocation and cold-task identities | Delivered in 0.112: owner/producer admission, one-shot completion, normal obligation checks and emergency retirement in sequential execution |
+| E1d.2b | Readiness and scheduling lifecycle | Next: ready/wait identities and transitions, duplicate/stale wake rejection and fault-domain settlement admission before source scheduling |
 | E1e | Explicit cooperative cancellation and suspending cleanup; normal completion races, cleanup failures and no abandoned losers | Define cancellation observation and cleanup admission; no implicit cancellation exception |
 | E2 | Pinned native coroutine experiment, then checked lowering and schedule-based differential validation | Reference semantics and legal frame retirement must precede native destruction |
 

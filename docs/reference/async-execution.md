@@ -3,7 +3,7 @@
 [Language reference](../language-reference.md) · [Design and next steps](../async-execution.md) ·
 [Execution failures](execution-failures.md)
 
-Compiler 0.111 supports `async control`, synchronous entry with `run`, direct
+Compiler 0.112 supports `async control`, synchronous entry with `run`, direct
 `await operation(arguments)` and local cold tasks with owned and borrowed captures, including reference-bearing carriers, and borrowed completions. Execution
 remains sequential. There is no concurrent scheduler, I/O readiness or LLVM coroutine
 lowering yet.
@@ -63,6 +63,13 @@ Repair the call above to `forward run work();`. Inside an async control, use
 `forward await work();` instead.
 
 ## Local cold tasks
+
+A local task belongs to its creating invocation. Moving its handle does not create
+another computation or change that owner. Await consumes it once; a completed
+outcome captured from await is a separate value with its own handling obligation.
+The reference executor now checks these identities explicitly, including retirement
+before contingency after a fault. This adds runtime invariant checking without
+changing the current sequential execution model.
 
 `auto pending = defer operation(arguments);` evaluates and transfers arguments now,
 then stores an owned task without entering the async body. The declaration must be

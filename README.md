@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.111.0** implements the v0.1 checked core and the current language
+Compiler release **0.112.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -546,3 +546,12 @@ The reference interpreter now separates execution-wide storage, fuel and history
 from resumable control state. Internal interleaving checks preserve borrowed storage,
 frame retirement and isolated contingency state. Source execution remains sequential;
 there is no new syntax or `spawn` support in this release.
+
+
+## Task identity checks in 0.112
+
+The reference executor now tracks each local cold task's original invocation and
+one-shot await lifecycle. Normal completion cannot forget pending work; faults and
+supervised recovery retire abandoned task records before contingency. Existing
+source syntax, borrowing and sequential native behavior are unchanged. Readiness
+and source `spawn` remain the next async implementation steps.

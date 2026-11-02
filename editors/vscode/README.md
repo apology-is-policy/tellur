@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-0.111.0-darwin-arm64.vsix` using **Extensions:
+1. Install the supplied `tellur-language-0.112.0-darwin-arm64.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1044,3 +1044,12 @@ The reference interpreter now separates execution-wide storage, fuel and history
 from resumable control state. Internal interleaving checks preserve borrowed storage,
 frame retirement and isolated contingency state. Source execution remains sequential;
 there is no new syntax or `spawn` support in this release.
+
+
+## Task identity checks in 0.112
+
+The reference executor now tracks each local cold task's original invocation and
+one-shot await lifecycle. Normal completion cannot forget pending work; faults and
+supervised recovery retire abandoned task records before contingency. Existing
+source syntax, borrowing and sequential native behavior are unchanged. Readiness
+and source `spawn` remain the next async implementation steps.
