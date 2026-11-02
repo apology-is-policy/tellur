@@ -245,7 +245,10 @@ This permission does **not** relax normal completion obligations: returning norm
 with an uncompleted resource remains an error. Destruction does not invoke a Tellur
 completion control, report successful fallible cleanup, reverse effects, or promise
 a particular cross-resource cleanup order. Custom fault protocols and fallible cleanup
-are not implemented. The reference interpreter validates the same contracts but uses
+are not implemented. Native boundaries use explicit resource scope membership as of
+0.122: allocation time alone does not determine which Rust owners are released.
+Unretained owners stranded in temporary arguments settle before contingency; retained
+response owners remain available to its checked handler. The reference interpreter validates the same contracts but uses
 scripted resource tokens; it does not execute Rust destructors.
 
 Existing returned executor errors retain their previous host teardown behavior;

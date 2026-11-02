@@ -428,6 +428,43 @@ ownership transfer need regression coverage. Keep synchronous adapters and expli
 No compiler/LSP/VSIX release is needed for this test-and-documentation checkpoint.
 The 0.121 release evidence remains applicable; native source concurrency stays gated.
 
+## Native resource scope membership (E1d.2c.4b.2b)
+
+Compiler 0.122 replaces native boundary allocation snapshots with explicit live
+membership in the Rust resource registry. A fresh scope records its parent and a
+registry-specific identity. Admission validates the owned value graph and identity
+capacity before committing any ownership change. Existing owned inputs, including
+nested record and cold-task captures, move into the boundary's resource scope;
+references never transfer the owners they point to. New Rust objects register in
+the currently executing scope. Opaque scripted and builtin values without a retained
+Rust registration do not acquire one through this mechanism.
+
+Fault cleanup releases only the selected scope after its nested scopes have closed,
+keeping the declared response resources for contingency. Named supervision now also
+retires owners stranded in temporary adapter arguments before its handler starts.
+Normal lexical completion promotes surviving owners to the parent so returned owned
+results and cold handles remain live; handling and named termination retire their
+remaining scope-owned resources. Closed scope metadata is removed. Resource scope
+identities cannot be reused, selected after retirement or used in another registry.
+An incomplete nested scope blocks parent retirement rather than silently destroying
+its owners. These are backend identities, not task handles or diagnostic activations.
+
+Native-host tests explicitly select an independent scope and allocate its Rust owner
+*after* another boundary entered. Both lexical and named fault cleanup preserve that
+owner, settle transferred and stranded inputs before contingency, and preserve retained
+and borrowed parents. Further cases check normal owned-task delivery into a later
+faulting boundary, exactly-once destructors, failure-atomic adoption, nested-scope
+guards, foreign/stale scope selection and exhaustion. Generated native resource,
+boundary, frame and reference-parity tests maintain the existing sequential behavior.
+
+Internal scope selection does not add a scheduler, async adapters or a public host
+handoff API. The next integration must bind these resource scopes to suspended native
+execution contexts and settle all borrowers before selecting a scope for cleanup.
+It must preserve the distinction between a task's current execution domain and its
+spawned owning boundary. Source `spawn`/`yield`, fallible/suspending cleanup and LLVM
+coroutine lowering remain ahead. Existing explicit resource fault permissions and
+normal completion obligations are unchanged.
+
 ## Separate the identities and continuations
 
 | Entity | Purpose | Must not be confused with |
@@ -723,7 +760,7 @@ Those boundaries need explicit contracts before being accepted by the checker.
 | E1d.2c.4a | Fault domain identity and admission | Delivered in 0.120: distinct live root/named/lexical domains, stopped-ancestor gates, context membership and quiescence checks. Automatic sibling draining and retained-resource settlement remain E1d.2c.4b |
 | E1d.2c.4b.1 | Reference sibling retirement | Delivered in 0.121: original emergency/boundary retention, borrower-before-owner retirement, queued-body suppression, descendant handler suppression, late-signal rejection and independent-domain preservation. Infallible scripted cleanup only; host resources and source concurrency remain follow-ups |
 | E1d.2c.4b.2a | Repeated recovery and host-resource audit | Delivered as tests/documentation on 0.121: repeated borrowed sibling recovery in reference/expanded execution and real Rust frame-release probes; explicit native boundary resource membership remains the next gate |
-| E1d.2c.4b.2b | Native resource scope membership | Next: replace allocation-time boundary cleanup snapshots with explicit live resource membership, owned-input adoption, retained handover and normal outgoing-owner preservation; keep borrowed inputs and independent scopes untouched |
+| E1d.2c.4b.2b | Native resource scope membership | Delivered in 0.122: registry-scoped live identities, owned-input/capture adoption, borrowed-input exclusion, before-handler temporary cleanup and normal outgoing-owner promotion. Independent later allocations survive; native source scheduling remains ahead |
 | E1e | Explicit cooperative cancellation and suspending cleanup; normal completion races, cleanup failures and no abandoned losers | Define cancellation observation and cleanup admission; no implicit cancellation exception |
 | E2 | Pinned native coroutine experiment, then checked lowering and schedule-based differential validation | Reference semantics and legal frame retirement must precede native destruction |
 

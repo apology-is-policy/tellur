@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.121.0** implements the v0.1 checked core and the current language
+Compiler release **0.122.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -651,3 +651,11 @@ retirement without entering that sibling's contingency. Only the owning boundary
 handles the original fault after settlement. This implements the accepted policy
 in the private reference machinery; source `spawn`/`yield`, async host adapters and
 fallible or suspending cleanup remain ahead.
+
+## Native resource scopes in 0.122
+
+Native fault cleanup now follows explicit resource ownership instead of allocation
+snapshots. It preserves unrelated resource scopes, retires temporary owned inputs
+before contingency, and keeps normal outgoing results and cold-task captures alive.
+Retained response resources remain available to their handler. This backend groundwork
+does not yet enable source concurrency or asynchronous host adapters.

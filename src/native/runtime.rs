@@ -4,13 +4,17 @@ mod collection_support;
 #[cfg(test)]
 #[path = "../fault.rs"]
 mod fault;
+#[cfg(test)]
+#[path = "resource_scope_tests.rs"]
+mod resource_scope_tests;
 // Embedded in generated programs. This runtime contains values and primitive
 // adapters only; region execution is generated as native Rust control flow.
 use serde::{Deserialize, Serialize};
 use serde_json::{Value as Json, json};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     ffi::{CString, c_char, c_int, c_void},
+    sync::Arc,
 };
 pub type R<T> = Result<T, String>;
 pub type Outcome = (String, Vec<V>);
@@ -410,12 +414,32 @@ unsafe extern "C" {
     fn ferror(file: *mut c_void) -> c_int;
     fn fclose(file: *mut c_void) -> c_int;
 }
+/// A live resource scope, unrelated to invocation or diagnostic identities.
+#[derive(Clone, Debug)]
+struct ResourceScope {
+    registry: Arc<()>,
+    id: u64,
+    parent: Option<u64>,
+}
+struct PreparedResourceScope {
+    scope: ResourceScope,
+    owned: BTreeSet<String>,
+}
+struct Resource {
+    ty: &'static str,
+    value: Box<dyn std::any::Any>,
+    scope: Option<u64>,
+}
 /// Host registry for activation-owned objects. Tokens never clone a Rust owner.
 /// Dropping the host releases remaining objects; fallible protocol completion
 /// still belongs to explicit consuming adapter operations.
 #[derive(Default)]
 pub struct Resources {
-    values: BTreeMap<String, (&'static str, Box<dyn std::any::Any>)>,
+    values: BTreeMap<String, Resource>,
+    identity: Arc<()>,
+    next_scope: u64,
+    current: Option<u64>,
+    scopes: BTreeMap<u64, Option<u64>>,
 }
 impl Resources {
     pub fn insert<T: 'static>(&mut self, ty: &'static str, value: T) -> R<V> {
@@ -426,7 +450,14 @@ impl Resources {
             .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
             .map_err(|_| "E_HOST: resource identity exhausted")?;
         let token = format!("rust:{id}");
-        self.values.insert(token.clone(), (ty, Box::new(value)));
+        self.values.insert(
+            token.clone(),
+            Resource {
+                ty,
+                value: Box::new(value),
+                scope: self.current,
+            },
+        );
         Ok(V::Opaque {
             ty: ty.into(),
             token,
@@ -439,11 +470,11 @@ impl Resources {
         if ty != expected {
             return Err("E_HOST: resource type mismatch".into());
         }
-        let (actual, _) = self
+        let actual = self
             .values
             .get(token)
             .ok_or("E_HOST: unknown or consumed resource handle")?;
-        if *actual != expected {
+        if actual.ty != expected {
             return Err("E_HOST: resource identity/type mismatch".into());
         }
         Ok(token)
@@ -451,7 +482,7 @@ impl Resources {
     pub fn get<T: 'static>(&self, value: &V, ty: &str) -> R<&T> {
         let token = self.token(value, ty)?;
         self.values[token]
-            .1
+            .value
             .downcast_ref()
             .ok_or_else(|| "E_HOST: Rust resource type mismatch".into())
     }
@@ -460,8 +491,9 @@ impl Resources {
         let V::Opaque { token, .. } = value else {
             unreachable!()
         };
-        let (_, value) = self.values.remove(token).unwrap();
-        Ok(*value
+        let resource = self.values.remove(token).unwrap();
+        Ok(*resource
+            .value
             .downcast::<T>()
             .map_err(|_| "E_HOST: Rust resource type mismatch")?)
     }
@@ -476,6 +508,125 @@ impl Resources {
                 return Err("E_HOST: aliased consuming resource arguments".into());
             }
         }
+        Ok(())
+    }
+    /// Collect registered owned leaves, never following borrowed references.
+    /// Nonregistered opaque script/builtin values have no Rust owner to adopt.
+    fn owned_tokens<'a>(&self, values: impl IntoIterator<Item = &'a V>) -> R<BTreeSet<String>> {
+        fn collect(r: &Resources, v: &V, into: &mut BTreeSet<String>) -> R<()> {
+            match v {
+                V::Opaque { ty, token } => {
+                    if let Some(resource) = r.values.get(token) {
+                        if resource.ty != ty {
+                            return Err("E_HOST: resource identity/type mismatch".into());
+                        }
+                        into.insert(token.clone());
+                    }
+                }
+                V::Construct { fields, .. }
+                | V::Task {
+                    arguments: fields, ..
+                } => {
+                    for value in fields {
+                        collect(r, value, into)?;
+                    }
+                }
+                _ => {}
+            }
+            Ok(())
+        }
+        let mut owned = BTreeSet::new();
+        for value in values {
+            collect(self, value, &mut owned)?;
+        }
+        Ok(owned)
+    }
+    fn prepare_scope<'a>(
+        &self,
+        values: impl IntoIterator<Item = &'a V>,
+    ) -> R<PreparedResourceScope> {
+        if self
+            .current
+            .is_some_and(|id| !self.scopes.contains_key(&id))
+        {
+            return Err("E_HOST: active resource scope has retired".into());
+        }
+        let owned = self.owned_tokens(values)?;
+        let id = self
+            .next_scope
+            .checked_add(1)
+            .ok_or("E_HOST: resource scope identity exhausted")?;
+        Ok(PreparedResourceScope {
+            scope: ResourceScope {
+                registry: self.identity.clone(),
+                id,
+                parent: self.current,
+            },
+            owned,
+        })
+    }
+    fn commit_scope(&mut self, prepared: PreparedResourceScope) -> ResourceScope {
+        let PreparedResourceScope { scope, owned } = prepared;
+        assert!(Arc::ptr_eq(&self.identity, &scope.registry));
+        assert_eq!(self.current, scope.parent);
+        assert_eq!(self.next_scope.checked_add(1), Some(scope.id));
+        self.next_scope = scope.id;
+        assert!(self.scopes.insert(scope.id, scope.parent).is_none());
+        for token in owned {
+            self.values.get_mut(&token).unwrap().scope = Some(scope.id);
+        }
+        self.current = Some(scope.id);
+        scope
+    }
+    fn require_scope(&self, scope: &ResourceScope) -> R<()> {
+        if !Arc::ptr_eq(&self.identity, &scope.registry)
+            || self.scopes.get(&scope.id) != Some(&scope.parent)
+        {
+            return Err("E_HOST: resource scope is foreign or retired".into());
+        }
+        Ok(())
+    }
+    fn require_quiescent_scope(&self, scope: &ResourceScope) -> R<()> {
+        self.require_scope(scope)?;
+        if self.current != Some(scope.id)
+            || self.scopes.values().any(|parent| *parent == Some(scope.id))
+        {
+            return Err("E_HOST: resource scope still has active nested work".into());
+        }
+        Ok(())
+    }
+    /// Internal context selection, not a source handoff or a cleanup operation.
+    #[allow(dead_code)]
+    fn select_scope(&mut self, scope: Option<&ResourceScope>) -> R<()> {
+        if let Some(scope) = scope {
+            self.require_scope(scope)?;
+        }
+        self.current = scope.map(|scope| scope.id);
+        Ok(())
+    }
+    fn release_scope_except(&mut self, scope: &ResourceScope, keep: &BTreeSet<String>) -> R<()> {
+        self.require_quiescent_scope(scope)?;
+        self.values
+            .retain(|token, resource| resource.scope != Some(scope.id) || keep.contains(token));
+        Ok(())
+    }
+    fn finish_scope(&mut self, scope: &ResourceScope, release: bool) -> R<()> {
+        self.require_quiescent_scope(scope)?;
+        if release {
+            self.values
+                .retain(|_, resource| resource.scope != Some(scope.id));
+        } else {
+            // Normal lexical exits can deliver owned outcomes and cold tasks.
+            for resource in self
+                .values
+                .values_mut()
+                .filter(|r| r.scope == Some(scope.id))
+            {
+                resource.scope = scope.parent;
+            }
+        }
+        self.scopes.remove(&scope.id);
+        self.current = scope.parent;
         Ok(())
     }
 }
@@ -587,32 +738,16 @@ impl Host {
         work: impl FnOnce(&mut Host, &mut Vec<Option<V>>, &mut Vec<bool>) -> R<Completion>,
         handler: impl FnOnce(&mut Host, &mut Vec<Option<V>>, &mut Vec<bool>) -> R<Completion>,
     ) -> R<Completion> {
-        fn tokens(v: &V, into: &mut std::collections::BTreeSet<String>) {
-            match v {
-                V::Opaque { token, .. } => {
-                    into.insert(token.clone());
-                }
-                V::Construct { fields, .. }
-                | V::Task {
-                    arguments: fields, ..
-                } => {
-                    for v in fields {
-                        tokens(v, into);
-                    }
-                }
-                _ => {}
-            }
-        }
-        let before: std::collections::BTreeSet<_> = self.resources.values.keys().cloned().collect();
-        let mut owned = std::collections::BTreeSet::new();
-        for id in retained.iter().chain(retire) {
-            if let Some(v) = &values[base + id] {
-                tokens(v, &mut owned);
-            }
-        }
-        let child = self.activations.child();
+        let prepared = self.resources.prepare_scope(
+            retained
+                .iter()
+                .chain(retire)
+                .filter_map(|id| values[base + id].as_ref()),
+        )?;
+        let mut child = self.activations.child();
+        child.enter(name)?;
         let mut parent = std::mem::replace(&mut self.activations, child);
-        self.enter(name)?;
+        let scope = self.resources.commit_scope(prepared);
         let attempted = work(self, values, atoms);
         let mut handled = false;
         let result = match attempted {
@@ -626,18 +761,13 @@ impl Host {
                 } else {
                     eprintln!("{report}");
                 }
-                let mut keep = std::collections::BTreeSet::new();
-                for id in retained {
-                    if let Some(v) = &values[base + id] {
-                        tokens(v, &mut keep);
-                    }
-                }
+                let keep = self
+                    .resources
+                    .owned_tokens(retained.iter().filter_map(|id| values[base + id].as_ref()))?;
                 for id in retire {
                     values[base + id] = None;
                 }
-                self.resources.values.retain(|token, _| {
-                    (before.contains(token) && !owned.contains(token)) || keep.contains(token)
-                });
+                self.resources.release_scope_except(&scope, &keep)?;
                 let (message_text, stack, paths) = report.source_fields();
                 let strings = |xs: Vec<String>| V::Construct {
                     ty: "vector<String>".into(),
@@ -652,24 +782,23 @@ impl Host {
                 let mut tracker = self.activations.child();
                 tracker.with_cause(report);
                 self.activations = tracker;
-                self.enter(&format!("{name}$contingency"))?;
-                self.contingencies.push(message);
-                let answer = handler(self, values, atoms);
-                self.contingencies.pop();
-                answer
+                match self.enter(&format!("{name}$contingency")) {
+                    Ok(()) => {
+                        self.contingencies.push(message);
+                        let answer = handler(self, values, atoms);
+                        self.contingencies.pop();
+                        answer
+                    }
+                    Err(error) => Err(error),
+                }
             }
             other => other,
         };
         for id in work_slots.iter().chain(handler_slots) {
             values[base + id] = None;
         }
-        if handled {
-            // Retained owners must be completed by the handler; all remaining
-            // child objects obey their explicit fault-release disposition.
-            self.resources
-                .values
-                .retain(|token, _| before.contains(token) && !owned.contains(token));
-        }
+        // Normal exits promote survivors; handled boundaries retire their owners.
+        self.resources.finish_scope(&scope, handled)?;
         parent.absorb(&self.activations);
         if let Err(message) = &result {
             if self.source_faulted() {
@@ -691,27 +820,8 @@ impl Host {
         handler: fn(&mut Host, &mut Vec<Option<V>>, Vec<V>, &mut Vec<V>) -> R<Completion>,
         name: &str,
     ) -> R<()> {
-        fn tokens(v: &V, into: &mut std::collections::BTreeSet<String>) {
-            match v {
-                V::Opaque { token, .. } => {
-                    into.insert(token.clone());
-                }
-                V::Construct { fields, .. }
-                | V::Task {
-                    arguments: fields, ..
-                } => {
-                    for v in fields {
-                        tokens(v, into);
-                    }
-                }
-                _ => {}
-            }
-        }
-        let before: std::collections::BTreeSet<_> = self.resources.values.keys().cloned().collect();
-        let mut owned = std::collections::BTreeSet::new();
-        for v in &args {
-            tokens(v, &mut owned);
-        }
+        let prepared = self.resources.prepare_scope(&args)?;
+        let scope = self.resources.commit_scope(prepared);
         let child = self.activations.child();
         let mut parent = std::mem::replace(&mut self.activations, child);
         let mut retained = vec![];
@@ -726,6 +836,8 @@ impl Host {
                 } else {
                     eprintln!("{report}");
                 }
+                let keep = self.resources.owned_tokens(&retained)?;
+                self.resources.release_scope_except(&scope, &keep)?;
                 let mut handler_tracker = self.activations.child();
                 handler_tracker.with_cause(report);
                 self.activations = handler_tracker;
@@ -740,11 +852,8 @@ impl Host {
             }
             other => other.and_then(Completion::settled),
         };
-        // Retire this boundary's objects, including owners moved into temporary
-        // arguments at a failing host call. Parent resources remain untouched.
-        self.resources
-            .values
-            .retain(|token, _| before.contains(token) && !owned.contains(token));
+        // Includes owners stranded in temporary arguments at a failing adapter.
+        self.resources.finish_scope(&scope, true)?;
         parent.absorb(&self.activations);
         if let Err(message) = &result {
             if self.source_faulted() {

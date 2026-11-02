@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-0.121.0-darwin-arm64.vsix` using **Extensions:
+1. Install the supplied `tellur-language-0.122.0-darwin-arm64.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1141,3 +1141,11 @@ retirement without entering that sibling's contingency. Only the owning boundary
 handles the original fault after settlement. This implements the accepted policy
 in the private reference machinery; source `spawn`/`yield`, async host adapters and
 fallible or suspending cleanup remain ahead.
+
+## Native resource scopes in 0.122
+
+Native fault cleanup now follows explicit resource ownership instead of allocation
+snapshots. It preserves unrelated resource scopes, retires temporary owned inputs
+before contingency, and keeps normal outgoing results and cold-task captures alive.
+Retained response resources remain available to their handler. This backend groundwork
+does not yet enable source concurrency or asynchronous host adapters.

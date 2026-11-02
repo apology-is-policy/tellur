@@ -418,5 +418,10 @@ harness admissions; it adds no source scheduling or fallible/suspending host cle
 
 The [recovery and host-resource audit](../async-execution.md#recovery-and-host-resource-audit-e1d2c4b2a)
 adds repeated-recovery and native destructor evidence on the same 0.121 release.
-These tests do not enable native concurrent scopes: boundary resource cleanup still
-assumes synchronous nesting until explicit resource scope membership is implemented.
+Those tests did not enable native concurrency. Compiler 0.122 now replaces native
+boundary allocation snapshots with explicit resource scope membership. Owned inputs
+and nested cold captures transfer membership; borrowed owners stay where they are.
+Normal lexical exits preserve outgoing owners, while fault cleanup preserves unrelated
+scopes and settles unretained resources before contingency. Internal scope-selection
+tests exercise independent allocations; source scheduling and suspended native
+context/resource integration remain unimplemented.
