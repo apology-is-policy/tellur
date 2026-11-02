@@ -440,3 +440,9 @@ also checks iteration reset, moved loop parameters and nested expanded helper re
 across repeated cold awaits. Lexically nested source loops remain unsupported.
 Boundary continuations are still gated; the model is not a public native mode, source
 scheduler or new async permission. Existing compiler and editor behavior is unchanged.
+
+Compiler 0.124 retains native host boundary lifecycle state: parent diagnostic context,
+resource scope and contingency phase. Both synchronous boundary forms use this shared
+handover/finalization machinery, preserving original causes and cleanup order. This
+prepares compiled boundary continuations; work and handlers still execute synchronously.
+It adds no source task handoff or async resource permission.

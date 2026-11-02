@@ -3,6 +3,9 @@
 mod frames;
 pub use frames::Frames;
 #[cfg(test)]
+#[path = "boundary_state_tests.rs"]
+mod boundary_state_tests;
+#[cfg(test)]
 #[path = "../collection_support.rs"]
 mod collection_support;
 #[cfg(test)]
@@ -635,6 +638,17 @@ impl Resources {
     }
 }
 pub type RustAdapter = fn(&mut Resources, &str, Vec<V>) -> R<Outcome>;
+/// Retained boundary lifecycle; no value arena or executable continuation is cloned.
+/// The currently executing tracker remains in Host until a context handoff exists.
+pub struct BoundaryState {
+    name: String,
+    parent: Option<fault::Tracker>,
+    scope: ResourceScope,
+    fault_message: Option<String>,
+    lexical: bool,
+    contingency_active: bool,
+    contingency_depth: usize,
+}
 pub struct Host {
     contingencies: Vec<String>,
     pub rust_adapter: Option<RustAdapter>,
@@ -728,6 +742,111 @@ impl Host {
             release(&mut self.resources, v);
         }
     }
+    /// Start a boundary before invoking work. Lexical boundaries introduce their
+    /// own diagnostic activation; named work enters its generated control instead.
+    pub fn begin_boundary<'a>(
+        &mut self,
+        name: &str,
+        inputs: impl IntoIterator<Item = &'a V>,
+        lexical: bool,
+    ) -> R<BoundaryState> {
+        let prepared = self.resources.prepare_scope(inputs)?;
+        let mut child = self.activations.child();
+        if lexical {
+            child.enter(name)?;
+        }
+        let parent = std::mem::replace(&mut self.activations, child);
+        let scope = self.resources.commit_scope(prepared);
+        Ok(BoundaryState {
+            name: name.into(),
+            parent: Some(parent),
+            scope,
+            fault_message: None,
+            lexical,
+            contingency_active: false,
+            contingency_depth: self.contingencies.len(),
+        })
+    }
+    fn require_boundary(&self, state: &BoundaryState) -> R<()> {
+        if state.parent.is_none() {
+            return Err("E_NATIVE: boundary already retired".into());
+        }
+        self.resources.require_quiescent_scope(&state.scope)?;
+        let expected = state.contingency_depth + usize::from(state.contingency_active);
+        if self.contingencies.len() != expected {
+            return Err("E_NATIVE: boundary contingency context is not selected".into());
+        }
+        Ok(())
+    }
+    /// Settle unretained owners and establish the original cause before handler
+    /// entry. The caller must already have retired nested borrower activations.
+    pub fn boundary_fault(
+        &mut self,
+        state: &mut BoundaryState,
+        message: &str,
+        keep: &BTreeSet<String>,
+    ) -> R<fault::Report> {
+        self.require_boundary(state)?;
+        if state.fault_message.is_some() || !self.source_faulted() {
+            return Err(
+                "E_NATIVE: boundary cannot enter contingency again or without a fault".into(),
+            );
+        }
+        state.fault_message = Some(message.into());
+        let report = self
+            .activations
+            .failure(&state.name, fault::Phase::Execution, message);
+        if self.trace {
+            self.events.push(json!({"kind":"fault","report":report}));
+        } else {
+            eprintln!("{report}");
+        }
+        self.resources.release_scope_except(&state.scope, keep)?;
+        let mut tracker = self.activations.child();
+        tracker.with_cause(report.clone());
+        self.activations = tracker;
+        Ok(report)
+    }
+    pub fn enter_contingency(&mut self, state: &mut BoundaryState) -> R<()> {
+        self.require_boundary(state)?;
+        if state.fault_message.is_none() || state.contingency_active {
+            return Err("E_NATIVE: invalid boundary contingency entry".into());
+        }
+        if state.lexical {
+            self.enter(&format!("{}$contingency", state.name))?;
+        }
+        self.contingencies
+            .push(state.fault_message.as_ref().unwrap().clone());
+        state.contingency_active = true;
+        Ok(())
+    }
+    /// Finalize exactly once, retaining the original error channel and cause.
+    /// Normal lexical completion promotes survivors; named work always settles.
+    pub fn finish_boundary<T>(&mut self, state: &mut BoundaryState, result: &R<T>) -> R<()> {
+        self.require_boundary(state)?;
+        self.resources.finish_scope(
+            &state.scope,
+            !state.lexical || state.fault_message.is_some(),
+        )?;
+        if state.contingency_active {
+            self.contingencies.pop();
+            state.contingency_active = false;
+        }
+        let mut parent = state.parent.take().unwrap();
+        parent.absorb(&self.activations);
+        if let Err(message) = result {
+            if self.source_faulted() {
+                parent.source_fault();
+            }
+            parent.with_cause(self.activations.failure(
+                &state.name,
+                fault::Phase::Execution,
+                message,
+            ));
+        }
+        self.activations = parent;
+        Ok(())
+    }
     pub fn lexical(
         &mut self,
         values: &mut Frames,
@@ -742,36 +861,24 @@ impl Host {
         work: impl FnOnce(&mut Host, &mut Frames, &mut Vec<bool>) -> R<Completion>,
         handler: impl FnOnce(&mut Host, &mut Frames, &mut Vec<bool>) -> R<Completion>,
     ) -> R<Completion> {
-        let prepared = self.resources.prepare_scope(
+        let mut state = self.begin_boundary(
+            name,
             retained
                 .iter()
                 .chain(retire)
                 .filter_map(|id| values[base + id].as_ref()),
+            true,
         )?;
-        let mut child = self.activations.child();
-        child.enter(name)?;
-        let mut parent = std::mem::replace(&mut self.activations, child);
-        let scope = self.resources.commit_scope(prepared);
         let attempted = work(self, values, atoms);
-        let mut handled = false;
-        let result = match attempted {
+        let result = (|| match attempted {
             Err(message) if self.source_faulted() => {
-                handled = true;
-                let report = self
-                    .activations
-                    .failure(name, fault::Phase::Execution, &message);
-                if self.trace {
-                    self.events.push(json!({"kind":"fault","report":report}));
-                } else {
-                    eprintln!("{report}");
-                }
                 let keep = self
                     .resources
                     .owned_tokens(retained.iter().filter_map(|id| values[base + id].as_ref()))?;
                 for id in retire {
                     values[base + id] = None;
                 }
-                self.resources.release_scope_except(&scope, &keep)?;
+                let report = self.boundary_fault(&mut state, &message, &keep)?;
                 let (message_text, stack, paths) = report.source_fields();
                 let strings = |xs: Vec<String>| V::Construct {
                     ty: "vector<String>".into(),
@@ -783,37 +890,15 @@ impl Host {
                     name: "fault_report".into(),
                     fields: vec![V::String(message_text), strings(stack), strings(paths)],
                 });
-                let mut tracker = self.activations.child();
-                tracker.with_cause(report);
-                self.activations = tracker;
-                match self.enter(&format!("{name}$contingency")) {
-                    Ok(()) => {
-                        self.contingencies.push(message);
-                        let answer = handler(self, values, atoms);
-                        self.contingencies.pop();
-                        answer
-                    }
-                    Err(error) => Err(error),
-                }
+                self.enter_contingency(&mut state)?;
+                handler(self, values, atoms)
             }
             other => other,
-        };
+        })();
         for id in work_slots.iter().chain(handler_slots) {
             values[base + id] = None;
         }
-        // Normal exits promote survivors; handled boundaries retire their owners.
-        self.resources.finish_scope(&scope, handled)?;
-        parent.absorb(&self.activations);
-        if let Err(message) = &result {
-            if self.source_faulted() {
-                parent.source_fault();
-            }
-            parent.with_cause(
-                self.activations
-                    .failure(name, fault::Phase::Execution, message),
-            );
-        }
-        self.activations = parent;
+        self.finish_boundary(&mut state, &result)?;
         result
     }
     pub fn supervise(
@@ -824,51 +909,23 @@ impl Host {
         handler: fn(&mut Host, &mut Frames, Vec<V>, &mut Vec<V>) -> R<Completion>,
         name: &str,
     ) -> R<()> {
-        let prepared = self.resources.prepare_scope(&args)?;
-        let scope = self.resources.commit_scope(prepared);
-        let child = self.activations.child();
-        let mut parent = std::mem::replace(&mut self.activations, child);
+        let mut state = self.begin_boundary(name, &args, false)?;
         let mut retained = vec![];
-        let result = work(self, values, args, &mut retained);
-        let result = match result {
+        let attempted = work(self, values, args, &mut retained);
+        let result = (|| match attempted {
             Err(message) if self.source_faulted() => {
-                let report = self
-                    .activations
-                    .failure(name, fault::Phase::Execution, &message);
-                if self.trace {
-                    self.events.push(json!({"kind":"fault", "report": report}));
-                } else {
-                    eprintln!("{report}");
-                }
                 let keep = self.resources.owned_tokens(&retained)?;
-                self.resources.release_scope_except(&scope, &keep)?;
-                let mut handler_tracker = self.activations.child();
-                handler_tracker.with_cause(report);
-                self.activations = handler_tracker;
+                self.boundary_fault(&mut state, &message, &keep)?;
                 retained.push(V::String(
                     message.strip_prefix("E_FAULT: ").unwrap_or(&message).into(),
                 ));
-                self.contingencies.push(message);
-                let answer =
-                    handler(self, values, retained, &mut vec![]).and_then(Completion::settled);
-                self.contingencies.pop();
-                answer
+                self.enter_contingency(&mut state)?;
+                handler(self, values, retained, &mut vec![]).and_then(Completion::settled)
             }
             other => other.and_then(Completion::settled),
-        };
+        })();
         // Includes owners stranded in temporary arguments at a failing adapter.
-        self.resources.finish_scope(&scope, true)?;
-        parent.absorb(&self.activations);
-        if let Err(message) = &result {
-            if self.source_faulted() {
-                parent.source_fault();
-            }
-            let report = self
-                .activations
-                .failure(name, fault::Phase::Execution, message);
-            parent.with_cause(report);
-        }
-        self.activations = parent;
+        self.finish_boundary(&mut state, &result)?;
         result
     }
     fn failure(

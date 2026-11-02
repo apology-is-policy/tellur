@@ -100,6 +100,14 @@ of a shared stack. Freed ranges are cleared, coalesced and reused; other live fr
 offsets remain stable. The current generated executor still uses synchronous Rust
 calls, and checking remains responsible for loan lifetime and retirement order.
 
+Since 0.124, named and lexical native boundaries share a retained host lifecycle
+record. It keeps the original parent tracker, resource scope and contingency phase
+through admission, source-fault handover and one-use finalization. Handler faults and
+escalation retain their original causal reports; normal lexical survivors move to the
+parent resource scope. This record can outlive its admission call, but generated
+boundary work/handlers still execute synchronously. Independent context selection and
+executable boundary continuations remain separate work.
+
 Since 0.98, child trackers share an execution-local identity allocator instead of
 copying a counter and merging it only at return. Overlapping diagnostic contexts
 cannot reuse an invocation ID; their active chains and fault state remain separate.

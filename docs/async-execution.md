@@ -551,6 +551,29 @@ public native backend, compiler/editor release and source handoff rules are unch
 Next, retain boundary work/handler continuations and select diagnostic/resource context
 alongside them before admitting suspended-boundary settlement or source concurrency.
 
+## Retained native boundary lifecycle (E1d.2c.4b.4c.1)
+
+Compiler 0.124 moves the shared host boundary lifecycle into a retained record. It
+owns the original parent diagnostic tracker, resource scope, lexical/named policy,
+fault message and contingency phase. Existing synchronous named and lexical execution use the same
+admission, fault handover, handler entry and finalization operations that a compiled
+continuation can later call. Moving the record does not copy resources or replay work.
+
+Source-fault handover releases unretained owners before handler entry and retains the
+original cause. Finalization restores the parent tracker and contingency context once;
+normal lexical survivors move to the parent resource scope, while named or handled
+boundaries settle their owners. Ordinary host errors remain errors. Foreign, retired,
+nested-active or duplicate phase transitions cannot finalize another live boundary.
+Tests retain records between host calls and exercise resource destruction, nested
+handler faults/escalation, recovery and normal survivor promotion.
+
+This is shared host lifecycle support, not executable boundary suspension. Generated
+work and handlers still use synchronous closures. Their instruction positions, lexical
+slot layouts and work/handler dispatch must next join this record in the compiled
+model. The active tracker remains in the host; selecting independent suspended native
+contexts and settling all borrowers before owners are still integration gates. Source
+`spawn`/`yield`, async adapters and suspending cleanup remain unimplemented.
+
 ## Separate the identities and continuations
 
 | Entity | Purpose | Must not be confused with |
@@ -850,6 +873,7 @@ Those boundaries need explicit contracts before being accepted by the checker.
 | E1d.2c.4b.3 | Native activation frame ranges | Delivered in 0.123: independently retired dense ranges, arena-scoped identities, hole reuse/coalescing and exact fault-resource release. Existing borrowed offsets and constructor destinations remain stable; executable native continuations are next |
 | E1d.2c.4b.4a | Compiled native continuation model | Test-only evidence on 0.123: retained call/await/constructor activations, decision facts, one-use return delivery and quota/fuel/fault parity; public native execution is unchanged |
 | E1d.2c.4b.4b | Compiled native loop continuations | Test-only evidence on 0.123: iteration reset, staged owned arguments, nested expanded completion and repeated cold awaits under quota/fuel/fault comparisons. Boundary continuations and context selection remain gated |
+| E1d.2c.4b.4c.1 | Retained native host boundary lifecycle | Delivered in 0.124: shared boundary admission, source-fault handover, contingency entry and finalization with retained parent tracker/resource scope. Executable boundary resumes and independent context selection remain ahead |
 | E1e | Explicit cooperative cancellation and suspending cleanup; normal completion races, cleanup failures and no abandoned losers | Define cancellation observation and cleanup admission; no implicit cancellation exception |
 | E2 | Pinned native coroutine experiment, then checked lowering and schedule-based differential validation | Reference semantics and legal frame retirement must precede native destruction |
 
