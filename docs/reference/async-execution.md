@@ -425,3 +425,9 @@ Normal lexical exits preserve outgoing owners, while fault cleanup preserves unr
 scopes and settles unretained resources before contingency. Internal scope-selection
 tests exercise independent allocations; source scheduling and suspended native
 context/resource integration remain unimplemented.
+
+Compiler 0.123 also uses separately identified native activation ranges. Retiring one
+frame clears only its slots and resources, preserving other live ranges and borrowed
+addresses. Freed ranges can be reused after retirement. Native calls still run
+synchronously: independently retireable storage does not implement suspended
+continuations or enable source scheduling.

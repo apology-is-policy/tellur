@@ -84,9 +84,8 @@ and loop iterations do not accumulate an unbounded history.
 Both executors now allocate invocation-local storage ranges. References identify
 an actual activation's storage plus a projection, rather than just a definition's
 slot number. Every normal/error return retires that invocation's remaining storage;
-a boundary extracts its retained owners before retirement. Native storage uses a
-sequential arena with frame offsets; the reference executor allocates distinct
-logical ranges. These are implementation addresses, not source-visible lifetimes.
+a boundary extracts its retained owners before retirement. Native storage uses an
+arena with frame offsets; the reference executor allocates distinct logical ranges. These are implementation addresses, not source-visible lifetimes.
 Since 0.68, native value slots and decision atoms use separate dense layouts within
 each activation. Global checked instruction IDs still identify source evidence;
 they no longer determine frame capacity. References address arena slots, not Rust
@@ -94,6 +93,12 @@ vector element pointers, so growing the arena preserves existing references. Loo
 reset, retained handover, contingency retirement and completed constructor delivery
 all use the same local layout. The reference executor keeps its independent logical
 addressing as a semantic comparison target.
+
+Since 0.123, native frames have arena-scoped live identities and independently
+retireable dense ranges. Cleanup visits the exact frame instead of the remainder
+of a shared stack. Freed ranges are cleared, coalesced and reused; other live frame
+offsets remain stable. The current generated executor still uses synchronous Rust
+calls, and checking remains responsible for loan lifetime and retirement order.
 
 Since 0.98, child trackers share an execution-local identity allocator instead of
 copying a counter and merging it only at return. Overlapping diagnostic contexts

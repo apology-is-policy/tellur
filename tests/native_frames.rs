@@ -62,7 +62,7 @@ fn frame_capacity_depends_on_local_storage_not_global_id_ranges() {
             let slots = region.slots.len();
             let atoms = region.atoms.len();
             assert!(
-                function.contains(&format!("v.resize(base + {slots}, None)")),
+                function.contains(&format!("v.enter({slots})?")),
                 "{}",
                 region.name
             );

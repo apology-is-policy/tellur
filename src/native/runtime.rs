@@ -1,4 +1,8 @@
 #[cfg(test)]
+#[path = "frames.rs"]
+mod frames;
+pub use frames::Frames;
+#[cfg(test)]
 #[path = "../collection_support.rs"]
 mod collection_support;
 #[cfg(test)]
@@ -726,7 +730,7 @@ impl Host {
     }
     pub fn lexical(
         &mut self,
-        values: &mut Vec<Option<V>>,
+        values: &mut Frames,
         atoms: &mut Vec<bool>,
         base: usize,
         name: &str,
@@ -735,8 +739,8 @@ impl Host {
         work_slots: &[usize],
         handler_slots: &[usize],
         fault_slot: usize,
-        work: impl FnOnce(&mut Host, &mut Vec<Option<V>>, &mut Vec<bool>) -> R<Completion>,
-        handler: impl FnOnce(&mut Host, &mut Vec<Option<V>>, &mut Vec<bool>) -> R<Completion>,
+        work: impl FnOnce(&mut Host, &mut Frames, &mut Vec<bool>) -> R<Completion>,
+        handler: impl FnOnce(&mut Host, &mut Frames, &mut Vec<bool>) -> R<Completion>,
     ) -> R<Completion> {
         let prepared = self.resources.prepare_scope(
             retained
@@ -814,10 +818,10 @@ impl Host {
     }
     pub fn supervise(
         &mut self,
-        values: &mut Vec<Option<V>>,
+        values: &mut Frames,
         args: Vec<V>,
-        work: fn(&mut Host, &mut Vec<Option<V>>, Vec<V>, &mut Vec<V>) -> R<Completion>,
-        handler: fn(&mut Host, &mut Vec<Option<V>>, Vec<V>, &mut Vec<V>) -> R<Completion>,
+        work: fn(&mut Host, &mut Frames, Vec<V>, &mut Vec<V>) -> R<Completion>,
+        handler: fn(&mut Host, &mut Frames, Vec<V>, &mut Vec<V>) -> R<Completion>,
         name: &str,
     ) -> R<()> {
         let prepared = self.resources.prepare_scope(&args)?;

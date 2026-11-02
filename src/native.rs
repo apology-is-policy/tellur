@@ -542,6 +542,9 @@ impl CheckedProgram {
         g.code.push_str("mod fault {\n");
         g.code.push_str(include_str!("fault.rs"));
         g.code.push_str("\n}\n");
+        g.code.push_str("mod frames {\n");
+        g.code.push_str(include_str!("native/frames.rs"));
+        g.code.push_str("\n}\n");
         g.code.push_str(SUPPORT);
         g.code.push_str("\n}\nuse support::*;\n");
         g.code.push_str(&crate::rust_host::source(self.manifest())?);
@@ -557,7 +560,7 @@ impl CheckedProgram {
             let atoms = g.layout.atoms.len();
             let _ = writeln!(
                 g.code,
-                "fn region_{}(host:&mut Host, mut v:&mut Vec<Option<V>>, args:Vec<V>, handover:&mut Vec<V>{destination_parameter})->R<Completion> {{\nhost.enter({})?;\nlet base=v.len(); v.resize(base + {slots}, None);\nlet result=(|| {{\nlet mut a = vec![false; {atoms}];\nlet mut args = args.into_iter();",
+                "fn region_{}(host:&mut Host, mut v:&mut Frames, args:Vec<V>, handover:&mut Vec<V>{destination_parameter})->R<Completion> {{\nhost.enter({})?;\nlet frame=v.enter({slots})?; let base=frame.base();\nlet result=(|| {{\nlet mut a = vec![false; {atoms}];\nlet mut args = args.into_iter();",
                 g.names[r.name.as_str()],
                 string(&self.runtime_name(&r.name))
             );
@@ -579,7 +582,7 @@ impl CheckedProgram {
                 }
                 g.code.push_str("}\n");
             }
-            g.code.push_str("if result.is_err() { host.release_frame(&v[base..]); } v.truncate(base); if result.is_ok() { host.leave(); } result\n}\n");
+            g.code.push_str("if result.is_err() { host.release_frame(v.frame_values(&frame)?); } v.retire(&frame)?; if result.is_ok() { host.leave(); } result\n}\n");
         }
         for r in self.regions() {
             let id = g.names[r.name.as_str()];
@@ -595,7 +598,7 @@ impl CheckedProgram {
             } else {
                 let _ = writeln!(
                     g.code,
-                    "fn entry_{id}(host: &mut Host, args: Vec<V>)->R<Completion> {{ let mut v=Vec::new(); region_{id}(host, &mut v, args, &mut vec![]) }}",
+                    "fn entry_{id}(host: &mut Host, args: Vec<V>)->R<Completion> {{ let mut v=Frames::default(); region_{id}(host, &mut v, args, &mut vec![]) }}",
                 );
             }
         }

@@ -465,6 +465,37 @@ spawned owning boundary. Source `spawn`/`yield`, fallible/suspending cleanup and
 coroutine lowering remain ahead. Existing explicit resource fault permissions and
 normal completion obligations are unchanged.
 
+## Native activation frame ranges (E1d.2c.4b.3)
+
+Compiler 0.123 gives native activation storage explicit arena-scoped identities and
+live slot ranges. Generated calls allocate their own dense range and retire that
+exact range on normal or error return. Fault resource release visits only that
+frame's values, so retiring an earlier activation cannot release or truncate later
+independent storage. Existing references and constructor destinations retain their
+absolute slot offsets. Growing the backing vector never changes those offsets.
+
+Retired ranges are cleared, reused and coalesced; a free suffix is removed. Empty
+frames keep distinct identities even after their original offset is beyond the
+remaining storage. Foreign, stale and exhausted frame admissions fail without
+changing live values. A retired identity cannot act on a replacement at the same
+offset. These internal frame handles are distinct from source references, task
+handles, resource scopes and diagnostic activation identities.
+
+Host regressions cover every retirement order of four differently sized frames,
+repeated hole reuse, mutable projected borrows through backing-store growth, stable
+owned buffers, zero-slot frames, failure-atomic admission and exact Rust resource
+release in the presence of later frames and borrowed owners. Generated native tests
+continue to check dense capacity, constructor destinations, borrowed outcomes,
+boundary recovery and reference/expanded parity at each instruction-fuel boundary.
+
+This removes the storage stack-order assumption; generated calls still execute
+synchronously on the Rust call stack. Decision facts and resume continuations are
+not yet heap-retained. The allocator does not decide when a loan ends: checked
+execution must retire borrowers before owners and never resume stale references.
+The next stage must retain executable continuations and select their diagnostic and
+resource contexts together before source scheduling can be admitted. No source
+`spawn`/`yield`, async adapters, cancellation or LLVM coroutine ABI is added here.
+
 ## Separate the identities and continuations
 
 | Entity | Purpose | Must not be confused with |
@@ -761,6 +792,7 @@ Those boundaries need explicit contracts before being accepted by the checker.
 | E1d.2c.4b.1 | Reference sibling retirement | Delivered in 0.121: original emergency/boundary retention, borrower-before-owner retirement, queued-body suppression, descendant handler suppression, late-signal rejection and independent-domain preservation. Infallible scripted cleanup only; host resources and source concurrency remain follow-ups |
 | E1d.2c.4b.2a | Repeated recovery and host-resource audit | Delivered as tests/documentation on 0.121: repeated borrowed sibling recovery in reference/expanded execution and real Rust frame-release probes; explicit native boundary resource membership remains the next gate |
 | E1d.2c.4b.2b | Native resource scope membership | Delivered in 0.122: registry-scoped live identities, owned-input/capture adoption, borrowed-input exclusion, before-handler temporary cleanup and normal outgoing-owner promotion. Independent later allocations survive; native source scheduling remains ahead |
+| E1d.2c.4b.3 | Native activation frame ranges | Delivered in 0.123: independently retired dense ranges, arena-scoped identities, hole reuse/coalescing and exact fault-resource release. Existing borrowed offsets and constructor destinations remain stable; executable native continuations are next |
 | E1e | Explicit cooperative cancellation and suspending cleanup; normal completion races, cleanup failures and no abandoned losers | Define cancellation observation and cleanup admission; no implicit cancellation exception |
 | E2 | Pinned native coroutine experiment, then checked lowering and schedule-based differential validation | Reference semantics and legal frame retirement must precede native destruction |
 

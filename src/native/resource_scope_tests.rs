@@ -115,7 +115,7 @@ fn lexical_cleanup_preserves_later_independent_allocations_and_retained_owners()
     let retained = make(&mut h.resources, 1, &s);
     let input = make(&mut h.resources, 2, &s);
     let borrowed = make(&mut h.resources, 6, &s);
-    let mut values = vec![
+    let initial = vec![
         Some(retained),
         Some(input),
         Some(V::Reference {
@@ -125,6 +125,11 @@ fn lexical_cleanup_preserves_later_independent_allocations_and_retained_owners()
         }),
         None,
     ];
+    let mut values = Frames::default();
+    let _frame = values.enter(initial.len()).unwrap();
+    for (slot, value) in values.iter_mut().zip(initial) {
+        *slot = value;
+    }
     let mut atoms = vec![];
     h.enter("main").unwrap();
     let result = h
@@ -168,7 +173,7 @@ fn lexical_cleanup_preserves_later_independent_allocations_and_retained_owners()
 }
 fn named_work(
     h: &mut Host,
-    _: &mut Vec<Option<V>>,
+    _: &mut Frames,
     mut args: Vec<V>,
     retained: &mut Vec<V>,
 ) -> R<Completion> {
@@ -181,12 +186,7 @@ fn named_work(
     interleave(h, &s);
     h.fault(V::String("named failure".into()))
 }
-fn named_handler(
-    h: &mut Host,
-    _: &mut Vec<Option<V>>,
-    mut args: Vec<V>,
-    _: &mut Vec<V>,
-) -> R<Completion> {
+fn named_handler(h: &mut Host, _: &mut Frames, mut args: Vec<V>, _: &mut Vec<V>) -> R<Completion> {
     let keep = args.remove(0);
     let s = h.resources.get::<Probe>(&keep, "probe")?.1.clone();
     assert_eq!(dropped(&s), [2, 3]);
@@ -202,7 +202,7 @@ fn named_cleanup_settles_transferred_and_stranded_inputs_before_contingency() {
     let input = make(&mut h.resources, 2, &s);
     h.enter("main").unwrap();
     h.supervise(
-        &mut vec![],
+        &mut Frames::default(),
         vec![kept, input],
         named_work,
         named_handler,
@@ -220,7 +220,12 @@ fn normal_lexical_exit_preserves_owned_task_results_and_retires_only_live_metada
     let s = Rc::new(State::default());
     let mut h = Host::new(json!({}), None, true, None);
     let input = make(&mut h.resources, 1, &s);
-    let mut values = vec![Some(input), None];
+    let initial = vec![Some(input), None];
+    let mut values = Frames::default();
+    let _frame = values.enter(initial.len()).unwrap();
+    for (slot, value) in values.iter_mut().zip(initial) {
+        *slot = value;
+    }
     let mut atoms = vec![];
     h.enter("main").unwrap();
     let result = h
