@@ -285,10 +285,34 @@ control peek(ref string input) exits view[missing] {
 ```
 
 Here `missing` does not name a parameter; the diagnostic selects `[missing]`.
-Missing mappings have no invented range. Inline `from` clauses, individual payload
-mappings and invalid shared origin schemas retain their earlier locations. A body
+Missing mappings have no invented range. Individual payload bracket mappings
+and invalid shared origin schemas retain their earlier locations. A body
 error still selects its own expression. Error order and the shared recovery budget
 are unchanged; improving a location does not enable checking through an invalid schema.
+
+Since 0.115, explicit borrowed-result **`from` clauses** have their own ranges.
+Unknown input names, invalid contained selectors, incompatible borrow authority and
+`from` on a non-reference payload select the complete clause, from `from` through
+the final input name or `]`. The payload type/name and trailing comments are excluded;
+internal whitespace and line comments are preserved. This applies to modern and
+legacy control signatures, generic controls, and trait declarations/implementations.
+
+<!-- tellur:reject E_LIFETIME -->
+```tellur
+control peek(ref string input)
+    exits found { ref string value from missing }
+{
+    exit found { input };
+}
+```
+
+The diagnostic selects `from missing`; `from input['missing]` would select the whole
+contained-selector clause. Each result field retains its own source range, even when
+a preceding field has a valid clause. An absent clause still has no invented range.
+The declaration batch still reports its first error per control before checking bodies.
+Named completion mappings keep their bracket ranges from 0.114; body and type errors
+keep their more specific locations. Lifetime acceptance and public contract rules are
+unchanged.
 
 Imports preserve both endpoints in the original file; unsaved dependencies supply
 the text used for editor UTF-16 conversion. Generic substitution preserves the
@@ -297,7 +321,7 @@ a longer lowered type name. Reused named-outcome payload annotations keep their
 original declaration locations. CLI JSON continues to use one-based Unicode scalar
 coordinates; LSP uses zero-based UTF-16 coordinates.
 
-This is not a range for every declaration error. Whole-contract shape/origin errors,
+This is not a range for every declaration error. Other whole-contract shape/origin errors,
 associated normalization, contributor notes and checks without authored type metadata retain
 their existing locations. Synthetic fields have no invented annotation range.
 More precise child errors keep their own coordinates. Diagnostic codes, phase order,

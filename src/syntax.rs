@@ -240,6 +240,8 @@ pub struct Region {
     pub contingency: bool,
     /// Explicit owner anchors, keyed by outcome and payload position.
     pub return_origins: std::collections::BTreeMap<(String, usize), String>,
+    /// Written `from` clauses, keyed independently of normalized origin names.
+    pub return_origin_ranges: std::collections::BTreeMap<(String, usize), SourceRange>,
     /// Compiler-only abstract witness signature; never emitted in an executable program.
     pub abstract_signature: bool,
     pub type_parameters: Vec<String>,
@@ -273,6 +275,18 @@ impl Region {
     }
     pub(crate) fn exit_origin_error(&self, error: Diagnostic) -> Diagnostic {
         type_error(self.exit_origins_range, error, self.span)
+    }
+    pub(crate) fn return_origin_error(
+        &self,
+        key: &(String, usize),
+        error: Diagnostic,
+    ) -> Diagnostic {
+        let range = self
+            .return_origin_ranges
+            .get(key)
+            .copied()
+            .unwrap_or(self.exit_origins_range);
+        type_error(range, error, self.span)
     }
 }
 #[derive(Clone, Debug)]
@@ -754,6 +768,7 @@ impl Parser {
         let mut exits = vec![];
         let mut infer_payloads = std::collections::BTreeSet::new();
         let mut return_origins = std::collections::BTreeMap::new();
+        let mut return_origin_ranges = std::collections::BTreeMap::new();
         let mut exit_contract = None;
         let mut exit_contract_range = SourceRange::default();
         let mut exit_origins = vec![];
@@ -820,7 +835,8 @@ impl Parser {
                     (vec![], vec![])
                 };
                 for (index, origin) in origins.into_iter().enumerate() {
-                    if let Some(origin) = origin {
+                    if let Some((origin, range)) = origin {
+                        return_origin_ranges.insert((name.clone(), index), range);
                         return_origins.insert((name.clone(), index), origin);
                     }
                 }
@@ -862,6 +878,7 @@ impl Parser {
             boundary: None,
             contingency: false,
             return_origins,
+            return_origin_ranges,
             abstract_signature: false,
             type_parameters,
             type_bounds,
@@ -1010,10 +1027,13 @@ impl Parser {
     fn fields(&mut self) -> Result<Vec<Field>> {
         Ok(self.field_list(false)?.0)
     }
-    fn exit_fields(&mut self) -> Result<(Vec<Field>, Vec<Option<String>>)> {
+    fn exit_fields(&mut self) -> Result<(Vec<Field>, Vec<Option<(String, SourceRange)>>)> {
         self.field_list(true)
     }
-    fn field_list(&mut self, origins_allowed: bool) -> Result<(Vec<Field>, Vec<Option<String>>)> {
+    fn field_list(
+        &mut self,
+        origins_allowed: bool,
+    ) -> Result<(Vec<Field>, Vec<Option<(String, SourceRange)>>)> {
         let end = if self.eat("{") {
             "}"
         } else {
@@ -1029,8 +1049,10 @@ impl Parser {
                     return Err(self.error("origin bindings currently belong on struct fields or control result payloads"));
                 }
                 fields.push(field);
+                let origin_start = self.here();
                 origins.push(if origins_allowed && self.eat("from") {
-                    Some(self.input_origin()?.display())
+                    let origin = self.input_origin()?.display();
+                    Some((origin, self.range_from(origin_start)))
                 } else {
                     None
                 });
@@ -1856,6 +1878,7 @@ pub(crate) fn parse_with_layout(source: &str) -> Result<(Unit, Vec<Token>, crate
                 boundary: None,
                 contingency: false,
                 return_origins: Default::default(),
+                return_origin_ranges: Default::default(),
                 abstract_signature: false,
                 type_parameters: vec![],
                 type_bounds: Default::default(),
@@ -2030,6 +2053,7 @@ pub(crate) fn parse_with_layout(source: &str) -> Result<(Unit, Vec<Token>, crate
                             boundary: None,
                             contingency: false,
                             return_origins: Default::default(),
+                            return_origin_ranges: Default::default(),
                             abstract_signature: false,
                             type_parameters: type_parameters.clone(),
                             type_bounds: type_parameters

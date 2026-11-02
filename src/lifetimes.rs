@@ -9,12 +9,14 @@ pub(crate) fn declared_with_schemas(
     required: bool,
     schemas: &crate::origins::Schemas,
 ) -> Result<Returns> {
-    let error =
-        |message| region.exit_origin_error(Diagnostic::new("E_LIFETIME", region.span, message));
     let mut result = Returns::new();
     for outcome in &region.exits {
         for (index, field) in outcome.fields.iter().enumerate() {
             let key = (outcome.name.clone(), index);
+            let error = |message| {
+                region
+                    .return_origin_error(&key, Diagnostic::new("E_LIFETIME", region.span, message))
+            };
             let origin = region.return_origins.get(&key);
             let reference = manifest::reference_inner(&field.ty);
             let Some(origin) = origin else {

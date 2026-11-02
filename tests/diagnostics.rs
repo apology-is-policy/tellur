@@ -2360,9 +2360,9 @@ fn named_completion_origin_ranges_survive_imports_generics_and_traits() {
 }
 
 #[test]
-fn named_completion_origin_ranges_do_not_relabel_inline_or_schema_errors() {
+fn named_completion_origin_ranges_do_not_relabel_missing_or_schema_errors() {
     for source in [
-        "control probe(ref string input) exits ready {ref string value from missing} {exit ready {input};}",
+        "pub control probe(ref string input) exits ready {ref string value} {exit ready {input};}",
         "outcome reply['a] {ready {ref string value <- 'missing}} control probe(ref string input) exits reply[input] {exit ready {input};}",
         "outcome reply['a] {ready {ref string value <- 'a}} pub control probe(ref string input) exits reply {exit ready {input};}",
     ] {
@@ -2381,4 +2381,111 @@ fn named_completion_origin_ranges_do_not_relabel_inline_or_schema_errors() {
         errors.errors[0].end.as_ref().unwrap().column,
         source.find("true").unwrap() + 5
     );
+}
+
+#[test]
+fn return_origin_ranges_select_from_clauses_and_contained_selectors() {
+    let f = Fixture::new();
+    for (source, selected) in [
+        (
+            "control probe(ref string input) exits ready {ref string value from missing} {exit ready {input};}",
+            "from missing",
+        ),
+        (
+            "control probe(ref string input) exits ready {ref string first from input,ref string second from // 😀\r\n missing // outside\r\n} {exit ready {input,input};}",
+            "from // 😀\r\n missing",
+        ),
+        (
+            "control probe(ref string input) exits first {ref string value from input},second {ref string value from missing} {exit first {input};}",
+            "from missing",
+        ),
+        (
+            "control probe(string input) exits ready {ref string value from input} {exit ready {borrow input};}",
+            "from input",
+        ),
+        (
+            "control probe(ref string input) exits ready {u32 value from input} {exit ready {0};}",
+            "from input",
+        ),
+        (
+            "control probe(ref string input) exits ready {ref mutable string value from input} {exit ready {input};}",
+            "from input",
+        ),
+        (
+            "struct view['a] {ref string value <- 'a;} control probe(view input) exits ready {ref string value from input['missing]} {exit ready {input.value};}",
+            "from input['missing]",
+        ),
+        (
+            "region probe(input: &String) exits Ready(value: &String from missing) {[Entry]:exit Ready(input);}",
+            "from missing",
+        ),
+    ] {
+        f.write("main.tellur", source);
+        let report = f.report(&["check", "main.tellur", "--json"], false);
+        let error = &report["diagnostics"][0];
+        assert_eq!(error["code"], "E_LIFETIME", "{report}");
+        assert_eq!(error["range"], selected_range(source, selected), "{report}");
+    }
+}
+
+#[test]
+fn return_origin_ranges_preserve_imported_generic_and_trait_signatures() {
+    let f = Fixture::new();
+    f.write(
+        "main.tellur",
+        "import \"library.tellur\" as library;control main() exits done {exit done;}",
+    );
+    for body in [
+        "pub control probe<t>(ref t input) exits ready {ref t value from missing} {exit ready {input};}",
+        "pub control probe(ref string input) exits ready {ref string value from missing} {exit ready {input};}",
+        "pub trait reader {control read(ref self input) exits ready {ref self value from missing};}",
+        "trait reader {control read(ref self input) exits ready {ref self value from input};} struct value {u32 n;} implement reader for value {control read(ref self input) exits ready {ref self value from missing} {exit ready {input};}}",
+    ] {
+        let source = format!("// 😀\r\n{body}");
+        f.write("library.tellur", &source);
+        let report = f.report(&["check", "main.tellur", "--json"], false);
+        let error = &report["diagnostics"][0];
+        assert_eq!(error["code"], "E_LIFETIME", "{report}");
+        assert!(error["path"].as_str().unwrap().ends_with("library.tellur"));
+        assert_eq!(
+            error["range"],
+            selected_range(&source, "from missing"),
+            "{report}"
+        );
+    }
+}
+
+#[test]
+fn return_origin_range_batches_keep_first_error_order_and_absent_contract_points() {
+    let source = "control first(ref string input) exits ready {ref string value from missing} {exit ready {input};}\ncontrol second(ref string input) exits ready {ref mutable string value from input} {exit ready {input};}\ncontrol body() exits done {u32 value=true;exit done;}";
+    let errors = check_errors(source);
+    assert_eq!(errors.errors.len(), 2, "{errors}");
+    assert_eq!(
+        errors
+            .errors
+            .iter()
+            .map(|e| e.span.line)
+            .collect::<Vec<_>>(),
+        vec![1, 2]
+    );
+    let first = compile(
+        source,
+        Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+    )
+    .unwrap_err();
+    assert_eq!(first, errors.errors[0]);
+    let repaired = source
+        .replace("from missing", "from input")
+        .replace("ref mutable string value", "ref string value");
+    let errors = check_errors(&repaired);
+    assert_eq!(errors.errors.len(), 1);
+    assert_eq!(errors.errors[0].code, "E_TYPE");
+    for source in [
+        "pub control probe(ref string input) exits ready {ref string value} {exit ready {input};}",
+        "trait reader {control read(ref self input) exits ready {ref self value};}",
+    ] {
+        let errors = check_errors(source);
+        assert_eq!(errors.errors.len(), 1);
+        assert!(errors.errors[0].end.is_none(), "{errors}");
+    }
 }

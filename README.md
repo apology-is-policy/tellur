@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.114.0** implements the v0.1 checked core and the current language
+Compiler release **0.115.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -579,3 +579,11 @@ Errors in a named result mapping such as `exits reply[input['source]]` now selec
 its written brackets. CLI and editor locations survive imports, generic checking
 and unsaved changes; type annotations, body errors and missing mappings keep their
 separate locations. Borrowing rules and diagnostic recovery order are unchanged.
+
+
+## Borrowed-result origin diagnostics in 0.115
+
+Invalid explicit borrowed-result origins now select their complete `from input`
+clause, including contained selectors and multiline spelling. Imported generic and
+trait signatures retain the original location. Missing clauses, unrelated body
+errors and lifetime checking rules keep their existing behavior.

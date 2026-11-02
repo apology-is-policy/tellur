@@ -630,6 +630,12 @@ impl Resolver<'_> {
             region.exit_origins_range.start.line += self.offset;
             region.exit_origins_range.end.line += self.offset;
         }
+        for range in region.return_origin_ranges.values_mut() {
+            if range.start.line != 0 {
+                range.start.line += self.offset;
+                range.end.line += self.offset;
+            }
+        }
         region.span.line += self.offset;
         region.name_span.line += self.offset;
         region.end.line += self.offset;
@@ -1029,6 +1035,12 @@ fn resolve(
             if region.exit_origins_range.start.line != 0 {
                 region.exit_origins_range.start.line += offset;
                 region.exit_origins_range.end.line += offset;
+            }
+            for range in region.return_origin_ranges.values_mut() {
+                if range.start.line != 0 {
+                    range.start.line += offset;
+                    range.end.line += offset;
+                }
             }
             region.span.line += offset;
             region.name_span.line += offset;
