@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.128.0** implements the v0.1 checked core and the current language
+Compiler release **0.129.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -698,3 +698,11 @@ original status. Cleanup does not resume ordinary code or nested contingencies,
 consume source fuel, or turn termination into an outcome/fault. Written termination
 remains restricted to the executable entry's outermost lexical contingency.
 Source `spawn`/`yield` and shared native scheduling remain unimplemented.
+
+## Native result resource adoption in 0.129
+
+The shared native host now validates and transfers a completed context's owned
+result resources into a receiving scope without selecting either context or following
+borrowed references. Foreign/stale/duplicate owners and incomplete result graphs
+reject before mutation. The compiled completion model uses this API; source execution
+remains synchronous and scheduler integration is still ahead.

@@ -1209,6 +1209,7 @@ Those boundaries need explicit contracts before being accepted by the checker.
 | E1d.2d.2b | Runtime retained completions | Delivered in 0.127: shared result/context storage, validated one-use delivery, domain quiescence and completed-result retirement before owning contingency, including parked callers. Source execution stays sequential; native completion ownership remains next |
 | E1d.2d.2c | Reference process-wide retirement | Delivered in 0.128: entry process termination closes normal admission and retires registered completed results, ready/waiting work and parked callers across all domains before status delivery. Original status, fuel and entry-only source rules are preserved; source scheduling remains gated |
 | E1d.2d.3a | Native retained completion model | Test-only on 0.127: completed compiled results retain their original domain membership, host context and resource scope until consuming join or emergency retirement. Owned Rust results and external borrows survive child frames; fault/process cleanup releases results before suppliers. Shared native scheduling and source handoffs remain ahead |
+| E1d.2d.3b | Shared native result adoption | Delivered in 0.129: host API atomically validates a parked source, receiving scope and complete unique result-owner graph, transfers only owned leaves and retires the source resource root. The compiled completion model uses it; task lifecycle and scheduler integration remain ahead |
 | E1e | Explicit cooperative cancellation and suspending cleanup; normal completion races, cleanup failures and no abandoned losers | Define cancellation observation and cleanup admission; no implicit cancellation exception |
 | E2 | Pinned native coroutine experiment, then checked lowering and schedule-based differential validation | Reference semantics and legal frame retirement must precede native destruction |
 
@@ -1361,10 +1362,46 @@ remain regression coverage for shared test support.
 
 This is a test-only ownership model on compiler 0.127, not a native scheduler or a
 source concurrency release. It uses the existing Rust resource registry and its
-infallible release disposition. The explicit result-adoption operation still needs
-a shared native integration API before promotion. Host instruction quotas remain
+infallible release disposition. Its result-adoption operation is now provided by the
+shared host API in E1d.2d.3b; retained task/domain lifecycle still needs promotion. Host instruction quotas remain
 observational cuts; they do not introduce source task handoffs. Source `spawn`,
 `yield`, async adapters, cancellation and LLVM coroutine lowering remain gated.
+
+## Shared native result adoption (E1d.2d.3b)
+
+Compiler 0.129 moves result resource adoption into `Host::adopt_context_result`.
+The caller supplies a completed parked source context/root, the result fields and
+an optional parked receiving context/root. Without a parked receiver, the current
+host scope receives the owners. Invocation ownership, finished frames, one-use join
+and fault-domain permission remain caller obligations; this host API only manages
+resource ownership. The compiled completion harness still validates those higher
+level obligations before invoking it.
+
+Preflight validates both contexts against the same host, a live unselected source
+root with no nested resource work, and a distinct valid receiving scope. The result
+must name every registered source owner exactly once, including nested aggregate or
+cold-task captures. Duplicate, mistyped, foreign or retired Rust identities and
+omitted/extra owners reject before any scope changes. Ordinary opaque script/builtin
+values are not native owners; references are never followed or adopted.
+
+Success changes only the owned resources' scope memberships, removes the completed
+source scope and marks its root retired. No context selection, source execution,
+resource destruction, new scope identity, diagnostic change or fuel consumption
+occurs. The receiving scope subsequently applies the existing explicit completion
+or fault-release rules. The original result values remain with the caller until its
+join consumes them; the retired source context cannot be selected again.
+
+Four [shared-host regressions](../src/native/result_adoption_tests.rs) use real Rust
+owners to cover nested aggregates/captures, borrowed-reference isolation, malformed
+owner graphs and crossed/stale scopes, receiving-boundary cleanup, independent roots
+and repeated adoption with no new scope capacity. The existing compiled retained
+result/context/sibling suites now use this API, proving returned live frame borrows,
+both join orders and fault/process cleanup before/after source expansion at O0/O2.
+
+The operation is an internal native foundation. Default source execution remains
+synchronous, and native task/completion storage plus scheduler integration remain
+separate checkpoints. No source `spawn`/`yield`, cancellation, asynchronous disposal
+or change to source raw-construction/ownership permissions is introduced.
 
 ## Reference execution invariants
 

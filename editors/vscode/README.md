@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-darwin-arm64-0.128.0.vsix` using **Extensions:
+1. Install the supplied `tellur-language-darwin-arm64-0.129.0.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1187,3 +1187,11 @@ original status. Cleanup does not resume ordinary code or nested contingencies,
 consume source fuel, or turn termination into an outcome/fault. Written termination
 remains restricted to the executable entry's outermost lexical contingency.
 Source `spawn`/`yield` and shared native scheduling remain unimplemented.
+
+## Native result resource adoption in 0.129
+
+The shared native host now validates and transfers a completed context's owned
+result resources into a receiving scope without selecting either context or following
+borrowed references. Foreign/stale/duplicate owners and incomplete result graphs
+reject before mutation. The compiled completion model uses this API; source execution
+remains synchronous and scheduler integration is still ahead.

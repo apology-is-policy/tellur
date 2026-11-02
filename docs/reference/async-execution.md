@@ -402,7 +402,11 @@ now retains real Rust result owners and external borrows after child frames reti
 Its consuming joins transfer owners into the original parent scope; faults retire
 completed results before suppliers and the owning contingency, and process stop
 retires every result before delivering status. This is test-only evidence on 0.127.
-Shared native integration and source handoffs remain separate steps.
+Since 0.129, that model uses a shared host operation for result resource adoption.
+It validates complete unique owned resources and their source/receiving scopes before
+moving ownership, never follows borrowed references, and preserves host selection,
+diagnostics and fuel. Task/domain authorization and completion storage remain
+separate integration work; see [native result adoption](../async-execution.md#shared-native-result-adoption-e1d2d3b).
 
 Since 0.128, entry process termination closes normal task admission and retires all
 registered execution contexts and results before delivering the original status.

@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.128.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.129.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -3953,3 +3953,20 @@ are unchanged. Their prior native, 195 LSP and 44 Node checks remain valid; the 
 release uses a fresh isolated editor smoke test with new binaries. Verification and
 release records distinguish reused evidence from new checks. This is selected
 coverage, not a full-suite claim or source concurrency support.
+
+## Shared native result adoption checkpoint (0.129)
+
+E1d.2d.3b promotes the compiled completion model's resource-transfer step into the
+shared host. Preflight checks source/receiver scopes and the complete unique result
+owner graph. Successful adoption changes resource membership and retires only the
+source root, preserving selection, diagnostics, borrowed suppliers and source fuel.
+Task completion and fault-domain authority remain caller responsibilities.
+
+Four direct cases use real Rust owners and cover nested aggregate/task captures,
+non-followed references, foreign/retired/duplicate/mistyped identities, incomplete
+graphs, crossed/stale scopes, receiving-boundary cleanup and 32 repeated adoptions,
+including exhausted scope-allocation capacity. The full native-host target and the
+compiled result, independent-context and sibling/process suites check the shared API.
+Selected direct native/LLVM and Rust resource-adapter regressions cover default
+emission and existing ownership/fault behavior. No source concurrency or ownership
+permission changes are introduced.

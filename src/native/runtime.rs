@@ -17,6 +17,9 @@ mod fault;
 #[cfg(test)]
 #[path = "resource_scope_tests.rs"]
 mod resource_scope_tests;
+#[cfg(test)]
+#[path = "result_adoption_tests.rs"]
+mod result_adoption_tests;
 // Embedded in generated programs. This runtime contains values and primitive
 // adapters only; region execution is generated as native Rust control flow.
 use serde::{Deserialize, Serialize};
@@ -551,6 +554,44 @@ impl Resources {
         }
         Ok(owned)
     }
+    /// A completed result must name each registered owner exactly once. Rust
+    /// resource identities from another host or a retired object are never raw
+    /// opaque script values; borrowed references are intentionally not followed.
+    fn result_tokens(&self, values: &[V]) -> R<BTreeSet<String>> {
+        fn collect(r: &Resources, value: &V, owned: &mut BTreeSet<String>) -> R<()> {
+            match value {
+                V::Opaque { ty, token } => match r.values.get(token) {
+                    Some(resource) => {
+                        if resource.ty != ty {
+                            return Err("E_HOST: result resource identity/type mismatch".into());
+                        }
+                        if !owned.insert(token.clone()) {
+                            return Err("E_HOST: duplicate owner in completed result".into());
+                        }
+                    }
+                    None if token.starts_with("rust:") => {
+                        return Err("E_HOST: result resource is foreign or retired".into());
+                    }
+                    None => {}
+                },
+                V::Construct { fields, .. }
+                | V::Task {
+                    arguments: fields, ..
+                } => {
+                    for field in fields {
+                        collect(r, field, owned)?;
+                    }
+                }
+                _ => {}
+            }
+            Ok(())
+        }
+        let mut owned = BTreeSet::new();
+        for value in values {
+            collect(self, value, &mut owned)?;
+        }
+        Ok(owned)
+    }
     fn prepare_scope<'a>(
         &self,
         values: impl IntoIterator<Item = &'a V>,
@@ -811,6 +852,63 @@ impl Host {
             return Err("E_NATIVE: context root already retired".into());
         }
         self.resources.finish_scope(&root.scope, failed)?;
+        root.retired = true;
+        Ok(())
+    }
+    /// Adopt a completed parked context's result owners and retire its resource
+    /// root once. None receives into the currently selected host scope; Some
+    /// receives into another parked context's selected scope. Neither context is
+    /// selected or executed. The caller proves completion, invocation and fault
+    /// domain authority before this host-level resource operation.
+    pub fn adopt_context_result(
+        &mut self,
+        source: &HostContext,
+        root: &mut ContextRoot,
+        receiver: Option<(&HostContext, &ContextRoot)>,
+        fields: &[V],
+    ) -> R<()> {
+        self.require_context(source, root)?;
+        let selected = self.resources.current_scope()?;
+        let source_id = root.scope.id;
+        if source.scope.as_ref().map(|scope| scope.id) != Some(source_id)
+            || selected.as_ref().is_some_and(|scope| scope.id == source_id)
+            || self
+                .resources
+                .scopes
+                .values()
+                .any(|parent| *parent == Some(source_id))
+        {
+            return Err(
+                "E_NATIVE: result source must be parked without nested resource work".into(),
+            );
+        }
+        let target = if let Some((context, root)) = receiver {
+            self.require_context(context, root)?;
+            context.scope.as_ref().map(|scope| scope.id)
+        } else {
+            selected.as_ref().map(|scope| scope.id)
+        };
+        if target == Some(source_id) {
+            return Err("E_NATIVE: result source cannot receive its own owners".into());
+        }
+        let owned = self.resources.result_tokens(fields)?;
+        let retained: BTreeSet<_> = self
+            .resources
+            .values
+            .iter()
+            .filter_map(|(token, resource)| {
+                (resource.scope == Some(source_id)).then_some(token.clone())
+            })
+            .collect();
+        if owned != retained {
+            return Err("E_NATIVE: result ownership differs from its retained scope".into());
+        }
+        // Exclusive access to Host keeps preflight and transfer atomic. There are
+        // no fallible operations, callbacks or resource destructors below.
+        for token in owned {
+            self.resources.values.get_mut(&token).unwrap().scope = target;
+        }
+        self.resources.scopes.remove(&source_id);
         root.retired = true;
         Ok(())
     }

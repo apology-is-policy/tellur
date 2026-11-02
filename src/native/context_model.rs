@@ -369,18 +369,6 @@ impl<'a> Contexts<'a> {
         }
         parked.machine.require_finish_root(&self.domains)?;
         self.host.require_context(&parked.host, &parked.root)?;
-        let root = &parked.root.scope;
-        if parked.host.scope.as_ref().map(|s| s.id) != Some(root.id)
-            || self
-                .host
-                .resources
-                .scopes
-                .values()
-                .any(|p| *p == Some(root.id))
-        {
-            return Err("E_NATIVE: completion has nested resource work".into());
-        }
-        self.host.resources.current_scope()?;
         Ok(completed)
     }
     /// Consuming join in this bounded model; early wait registration is separate.
@@ -391,7 +379,7 @@ impl<'a> Contexts<'a> {
         if parent.map(|p| p.id) != parked.parent {
             return Err("E_NATIVE: completion belongs to another parent".into());
         }
-        let receiver = if let Some(parent) = parent {
+        if let Some(parent) = parent {
             self.require(parent)?;
             let parent = &self.parked[&parent.id];
             if !self
@@ -400,36 +388,24 @@ impl<'a> Contexts<'a> {
             {
                 return Err("E_NATIVE: completion join crosses its owning fault domain".into());
             }
-            parent.host.scope.as_ref().map(|scope| scope.id)
-        } else {
-            self.host.resources.current
-        };
+        }
+        let receiver = parent.map(|parent| {
+            let parked = &self.parked[&parent.id];
+            (&parked.host, &parked.root)
+        });
+        let completed = self.completed.get_mut(&key.id).unwrap();
         let Completion::Outcome((_, fields)) = &completed.outcome else {
             return Err("E_NATIVE: retained result is not a normal outcome".into());
         };
-        let owned = self.host.resources.owned_tokens(fields)?;
-        let root = parked.root.scope.id;
-        let retained: std::collections::BTreeSet<_> = self
-            .host
-            .resources
-            .values
-            .iter()
-            .filter_map(|(token, resource)| (resource.scope == Some(root)).then_some(token.clone()))
-            .collect();
-        if owned != retained {
-            return Err("E_NATIVE: result ownership differs from its retained scope".into());
-        }
-        // All identity/domain/scope checks precede moving any owner. Borrowed
-        // references are not traversed, so their supplier's scope stays intact.
-        let mut completed = self.completed.remove(&key.id).unwrap();
-        for token in owned {
-            self.host.resources.values.get_mut(&token).unwrap().scope = receiver;
-        }
-        self.host.exchange_context(&mut completed.parked.host)?;
-        self.host
-            .finish_context(&mut completed.parked.root, false)?;
+        self.host.adopt_context_result(
+            &completed.parked.host,
+            &mut completed.parked.root,
+            receiver,
+            fields,
+        )?;
+        // Domain retirement was prevalidated before host ownership changed.
         completed.parked.machine.finish_root(&mut self.domains)?;
-        self.host.exchange_context(&mut completed.parked.host)?;
+        let completed = self.completed.remove(&key.id).unwrap();
         Ok(completed.outcome)
     }
     fn retire_completed(&mut self, id: u64) -> R<()> {
