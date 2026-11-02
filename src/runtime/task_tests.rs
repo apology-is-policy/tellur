@@ -18,6 +18,7 @@ fn scenario() -> Scenario {
 fn assert_retired(m: &Machine<'_>) {
     assert!(m.shared.tasks.is_empty());
     assert!(m.shared.ready.is_empty());
+    assert!(m.shared.waiting.is_empty());
     assert!(m.shared.suspended.calls.is_empty());
     assert!(m.shared.values.is_empty());
     assert!(m.context.stack.is_empty());

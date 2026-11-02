@@ -1,6 +1,6 @@
 //! Host stepping of sequential checked execution, including local cold tasks.
 //! No source scheduler or independently progressing work.
-use super::tasks::{OwnerId, Registry, TaskId, WaitId, retire_value};
+use super::tasks::{OwnerId, Readiness, Registry, TaskId, WaitId, retire_value};
 use super::*;
 
 #[cfg(test)]
@@ -54,6 +54,7 @@ impl CheckedProgram {
                     tasks: Registry::default(),
                     suspended: SuspendedCalls::default(),
                     ready: BTreeMap::new(),
+                    waiting: BTreeMap::new(),
                 },
                 context: Context::new(crate::fault::Tracker::new(self.runtime_sites())),
             }),
@@ -165,12 +166,14 @@ struct SharedExecution<'a> {
     tasks: Registry,
     suspended: SuspendedCalls<'a>,
     ready: BTreeMap<TaskId, ReadyCall<'a>>,
+    waiting: BTreeMap<TaskId, Context<'a>>,
 }
 
 /// A resumable control chain. Storage and effect history belong to the execution;
 /// facts, return/unwind continuations and fault context belong to this chain.
 /// Moving a context preserves it without moving any referenced frame storage.
 struct Context<'a> {
+    task: Option<(TaskId, OwnerId)>,
     contingencies: Vec<Diagnostic>,
     activations: crate::fault::Tracker,
     phase: crate::fault::Phase,
@@ -182,6 +185,7 @@ struct Context<'a> {
 impl Context<'_> {
     fn new(activations: crate::fault::Tracker) -> Self {
         Self {
+            task: None,
             contingencies: vec![],
             activations,
             phase: crate::fault::Phase::EntryValidation,
@@ -250,9 +254,12 @@ impl<'a> SuspendedCalls<'a> {
         Ok(self.calls.remove(&id).unwrap().context)
     }
 }
-struct ReadyCall<'a> {
-    invocation: PreparedInvocation<'a>,
-    context: Context<'a>,
+enum ReadyCall<'a> {
+    Start {
+        invocation: PreparedInvocation<'a>,
+        context: Context<'a>,
+    },
+    Resume(Context<'a>),
 }
 struct Machine<'a> {
     shared: SharedExecution<'a>,
@@ -426,12 +433,62 @@ impl<'a> Machine<'a> {
         // Validate queue state before taking the prepared context. Installation
         // failure unwinds its already-retained caller through ResumeAwait.
         self.shared.tasks.dispatch(task)?;
-        let ReadyCall {
-            invocation,
-            context,
-        } = self.shared.ready.remove(&task).unwrap();
-        self.context = context;
-        self.start_call(invocation)
+        match self.shared.ready.remove(&task).unwrap() {
+            ReadyCall::Start {
+                invocation,
+                context,
+            } => {
+                self.context = context;
+                self.start_call(invocation)
+            }
+            ReadyCall::Resume(context) => {
+                self.context = context;
+                Ok(())
+            }
+        }
+    }
+    /// Internal safe-point admission only. Source/adapter wiring waits for owning
+    /// fault-domain settlement; host quota exhaustion must never call this method.
+    #[allow(dead_code)]
+    fn park_for_readiness(&mut self) -> Result<Readiness> {
+        if self.context.frame.owner.is_none()
+            || self.context.flow.is_some()
+            || !self.context.contingencies.is_empty()
+        {
+            return Err(error("readiness requires a live normal continuation"));
+        }
+        let (task, owner) = self
+            .context
+            .task
+            .ok_or_else(|| error("readiness requires an admitted running task"))?;
+        if self.shared.waiting.contains_key(&task) || self.shared.ready.contains_key(&task) {
+            return Err(error("running task already has a retained context"));
+        }
+        let token = self.shared.tasks.prepare_readiness(task, owner)?;
+        self.shared.tasks.park(owner, &token)?;
+        let context = std::mem::replace(&mut self.context, Context::new(Default::default()));
+        assert!(self.shared.waiting.insert(task, context).is_none());
+        Ok(token)
+    }
+    /// Readiness changes eligibility only. Validate registry and context storage
+    /// before consuming the one-use registration; dispatch remains explicit.
+    #[allow(dead_code)]
+    fn signal_readiness(&mut self, token: &Readiness) -> Result<()> {
+        let task = self.shared.tasks.waiting_task(token)?;
+        if !self.shared.waiting.contains_key(&task) || self.shared.ready.contains_key(&task) {
+            return Err(error(
+                "waiting task has no unique retained execution context",
+            ));
+        }
+        self.shared.tasks.wake(token)?;
+        let context = self.shared.waiting.remove(&task).unwrap();
+        assert!(
+            self.shared
+                .ready
+                .insert(task, ReadyCall::Resume(context))
+                .is_none()
+        );
+        Ok(())
     }
     fn resume(&mut self, continuation: Continuation<'a>) -> Result<()> {
         let flow = self
@@ -851,6 +908,7 @@ impl<'a> Machine<'a> {
                     .push(Continuation::TaskDecision { task, arms });
                 let activations = std::mem::take(&mut self.context.activations);
                 let mut child = Context::new(activations);
+                child.task = Some((task, self.context.frame.owner.unwrap()));
                 child.phase = self.context.phase.clone();
                 let caller = std::mem::replace(&mut self.context, Context::new(Default::default()));
                 self.shared.suspended.commit(suspension, task, wait, caller);
@@ -864,7 +922,7 @@ impl<'a> Machine<'a> {
                         .ready
                         .insert(
                             task,
-                            ReadyCall {
+                            ReadyCall::Start {
                                 invocation,
                                 context: child
                             }

@@ -392,3 +392,10 @@ detach or cancellation by destruction is permitted. See the [design plan](../asy
 The [executable readiness model](../async-execution.md#executable-readiness-protocol-model-e1d2c3a)
 checks future wait/wake obligations against retained checked frames. It is test-only;
 it does not add an I/O API, source suspension points or scheduling to this profile.
+
+Compiler 0.119 integrates the model's readiness transitions into private runtime
+waiting and resume storage. A readiness signal makes a task eligible; only its actual
+normal completion delivers an outcome or borrowed result. Resumption preserves the
+original frames and fixed execution history. No source construct, host quota pause
+or async adapter enters these waiting states yet. Owning fault-domain settlement
+remains required before source concurrency is enabled.

@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.118.0** implements the v0.1 checked core and the current language
+Compiler release **0.119.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -613,3 +613,15 @@ Prepared cold-task children now remain in separate ready storage until dispatch.
 Selection validates the retained context and cannot replace an active control chain.
 Borrowed storage, host instruction quotas and source effect order are unchanged.
 This prepares the runtime for independent readiness; source execution remains sequential.
+
+## Waiting contexts and readiness in 0.119
+
+The reference runtime now has separate waiting storage and ready entries for either
+starting or resuming a task. Readiness tokens carry an execution identity and a fresh
+generation; signals only make the retained context eligible, and dispatch restores
+that same context without replaying a call. Completion remains a separate one-use
+operation. Host instruction quotas never select a sibling.
+
+This is internal groundwork validated with checked borrowed execution. Source
+`spawn`/`yield`, async host I/O and fault-domain settlement remain ahead; current
+source execution and editor behavior stay sequential.

@@ -1,66 +1,7 @@
-//! Executable external-readiness protocol model. These are explicit harness cuts,
-//! not source suspension points, an I/O adapter or an enabled sibling scheduler.
-//! Every retained context executes real checked code against one shared arena.
+//! Runtime readiness regressions promoted from the executable protocol model.
+//! Harness cuts invoke internal safe points; public source execution stays sequential.
 use super::*;
-use std::collections::VecDeque;
-use std::sync::Arc;
 
-#[derive(Clone, Debug)]
-struct Readiness {
-    driver: Arc<()>,
-    generation: u64,
-}
-#[derive(Default)]
-struct Driver<'a> {
-    next: u64,
-    identity: Arc<()>,
-    waiting: BTreeMap<u64, Context<'a>>,
-    ready: VecDeque<Context<'a>>,
-}
-impl<'a> Driver<'a> {
-    fn park(&mut self, machine: &mut Machine<'a>) -> Result<Readiness> {
-        if machine.context.frame.owner.is_none() || machine.context.flow.is_some() {
-            return Err(error("readiness model requires a live normal continuation"));
-        }
-        let token = Readiness {
-            driver: self.identity.clone(),
-            generation: self
-                .next
-                .checked_add(1)
-                .ok_or_else(|| error("readiness generation space exhausted"))?,
-        };
-        // Check before moving the original continuation or changing any identity.
-        self.next = token.generation;
-        let context = std::mem::replace(&mut machine.context, Context::new(Default::default()));
-        assert!(self.waiting.insert(token.generation, context).is_none());
-        Ok(token)
-    }
-    fn wake(&mut self, token: &Readiness) -> Result<()> {
-        if !Arc::ptr_eq(&self.identity, &token.driver) {
-            return Err(error("readiness belongs to another execution driver"));
-        }
-        let context = self
-            .waiting
-            .remove(&token.generation)
-            .ok_or_else(|| error("stale or duplicate readiness signal"))?;
-        self.ready.push_back(context);
-        Ok(())
-    }
-    fn select(&mut self, machine: &mut Machine<'a>) -> Result<()> {
-        if machine.context.frame.owner.is_some() || !machine.context.stack.is_empty() {
-            return Err(error("readiness cannot preempt an active chain"));
-        }
-        let context = self
-            .ready
-            .pop_front()
-            .ok_or_else(|| error("no ready continuation"))?;
-        machine.context = context;
-        Ok(())
-    }
-    fn empty(&self) -> bool {
-        self.waiting.is_empty() && self.ready.is_empty()
-    }
-}
 fn program() -> CheckedProgram {
     let mut config: serde_json::Value =
         serde_json::from_str(include_str!("../../playground/manifest.json")).unwrap();
@@ -130,8 +71,9 @@ fn cut_after_messages(m: &mut Machine<'_>, count: usize) {
         );
     }
 }
-fn retired(m: &Machine<'_>, d: &Driver<'_>) {
-    assert!(d.empty());
+fn retired(m: &Machine<'_>) {
+    assert!(m.shared.waiting.is_empty());
+    assert!(m.context.task.is_none());
     assert!(m.shared.values.is_empty());
     assert!(m.shared.tasks.is_empty());
     assert!(m.shared.ready.is_empty());
@@ -147,18 +89,16 @@ fn repeated_readiness_preserves_borrowers_and_never_delivers_task_completion() {
         let s = scenario();
         let mut session = p.start_execution(&s, 200);
         let m = session.machine.as_mut().unwrap();
-        let mut d = Driver::default();
         m.call("start", vec![Value::String("left".into())]).unwrap();
         cut_after_messages(m, 1);
         let independent = Context::new(m.context.activations.child());
-        let left = d.park(m).unwrap();
+        let left = m.park_for_readiness().unwrap();
         m.context = independent;
         m.call("start", vec![Value::String("right".into())])
             .unwrap();
         cut_after_messages(m, 2);
-        let right = d.park(m).unwrap();
-        assert_ne!(left.generation, right.generation);
-        let initial_generation = right.generation;
+        let right = m.park_for_readiness().unwrap();
+        assert_ne!(left, right);
         assert_eq!(m.shared.suspended.calls.len(), 2);
         assert_eq!(m.shared.cursor, 0);
         let (first, second) = if reverse {
@@ -171,33 +111,29 @@ fn repeated_readiness_preserves_borrowers_and_never_delivers_task_completion() {
         } else {
             ("left", "right")
         };
-        let registry = m.shared.tasks.clone();
+        let counts = m.shared.tasks.live_counts();
         let values = m.shared.values.clone();
         let events = m.shared.events.clone();
         let fuel = m.shared.steps_left;
-        d.wake(&first).unwrap();
-        assert!(d.wake(&first).is_err());
-        assert!(
-            d.wake(&Readiness {
-                driver: d.identity.clone(),
-                generation: u64::MAX
-            })
-            .is_err()
-        );
-        // Readiness changes only eligibility, never the task completion or arena.
+        m.signal_readiness(&first).unwrap();
+        let registry = m.shared.tasks.clone();
+        assert!(m.signal_readiness(&first).is_err());
         assert_eq!(m.shared.tasks, registry);
+        // Readiness changes only eligibility, never completion, storage or fuel.
+        assert_eq!(m.shared.tasks.live_counts(), counts);
         assert_eq!(m.shared.values, values);
         assert_eq!(m.shared.events, events);
         assert_eq!(m.shared.steps_left, fuel);
-        d.select(m).unwrap();
+        m.dispatch_ready().unwrap();
         assert!(!m.drive(0));
         assert_eq!(m.shared.events, events);
         cut_after_messages(m, 4);
         assert_eq!(m.shared.cursor, 1);
-        let again = d.park(m).unwrap();
-        assert!(again.generation > initial_generation);
+        let again = m.park_for_readiness().unwrap();
+        assert_ne!(again, first);
+        assert_ne!(again, second);
         assert!(
-            d.wake(&first).is_err(),
+            m.signal_readiness(&first).is_err(),
             "old registration cannot wake a later wait"
         );
         assert_eq!(
@@ -205,11 +141,11 @@ fn repeated_readiness_preserves_borrowers_and_never_delivers_task_completion() {
             2,
             "readiness is not completion"
         );
-        d.wake(&second).unwrap();
-        d.select(m).unwrap();
+        m.signal_readiness(&second).unwrap();
+        m.dispatch_ready().unwrap();
         // Wakes may queue another context; they cannot run it inside this stretch.
-        d.wake(&again).unwrap();
-        assert!(d.select(m).is_err());
+        m.signal_readiness(&again).unwrap();
+        assert!(m.dispatch_ready().is_err());
         assert!(m.drive(100));
         assert_eq!(m.shared.cursor, 2);
         assert_eq!(m.shared.suspended.calls.len(), 1);
@@ -225,7 +161,7 @@ fn repeated_readiness_preserves_borrowers_and_never_delivers_task_completion() {
                 "second"
             ]
         );
-        d.select(m).unwrap();
+        m.dispatch_ready().unwrap();
         assert!(m.drive(100));
         assert_eq!(
             messages(m),
@@ -244,10 +180,10 @@ fn repeated_readiness_preserves_borrowers_and_never_delivers_task_completion() {
             m.shared.cursor, 2,
             "script input cannot replay on resumption"
         );
-        assert!(d.wake(&again).is_err());
-        assert!(d.wake(&second).is_err());
-        assert!(d.select(m).is_err());
-        retired(m, &d);
+        assert!(m.signal_readiness(&again).is_err());
+        assert!(m.signal_readiness(&second).is_err());
+        assert!(m.dispatch_ready().is_err());
+        retired(m);
     }
 }
 
@@ -260,17 +196,14 @@ fn readiness_exhaustion_keeps_the_active_checked_chain_and_loans_intact() {
     let m = session.machine.as_mut().unwrap();
     m.enter(&s).unwrap();
     cut_after_messages(m, 1);
-    let mut d = Driver {
-        next: u64::MAX,
-        ..Default::default()
-    };
+    m.shared.tasks.exhaust_readiness_space();
     let registry = m.shared.tasks.clone();
     let values = m.shared.values.clone();
     let owner = m.context.frame.owner;
     let depth = m.context.stack.len();
     let fuel = m.shared.steps_left;
-    assert!(d.park(m).is_err());
-    assert!(d.empty());
+    assert!(m.park_for_readiness().is_err());
+    assert!(m.shared.waiting.is_empty());
     assert_eq!(m.shared.tasks, registry);
     assert_eq!(m.shared.values, values);
     assert_eq!(m.context.frame.owner, owner);
@@ -280,10 +213,10 @@ fn readiness_exhaustion_keeps_the_active_checked_chain_and_loans_intact() {
     assert!(m.drive(100));
     assert_eq!(messages(m), ["waiting", "unused", "first", "first"]);
     assert!(
-        d.park(m).is_err(),
+        m.park_for_readiness().is_err(),
         "completed chains cannot register readiness"
     );
-    retired(m, &d);
+    retired(m);
 }
 
 #[test]
@@ -299,27 +232,114 @@ fn readiness_from_another_execution_cannot_wake_a_matching_local_generation() {
     second.enter(&s).unwrap();
     cut_after_messages(first, 1);
     cut_after_messages(second, 1);
-    let mut a = Driver::default();
-    let mut b = Driver::default();
-    let stale = a.park(first).unwrap();
-    let current = b.park(second).unwrap();
-    assert_eq!(stale.generation, current.generation);
-    assert!(!Arc::ptr_eq(&stale.driver, &current.driver));
+    let stale = first.park_for_readiness().unwrap();
+    let current = second.park_for_readiness().unwrap();
+    // These are the first registrations in otherwise identical executions.
+    assert_ne!(stale, current);
     let values = second.shared.values.clone();
     let fuel = second.shared.steps_left;
-    assert!(b.wake(&stale).is_err());
-    assert_eq!(b.waiting.len(), 1);
-    assert!(b.ready.is_empty());
+    assert!(second.signal_readiness(&stale).is_err());
+    assert_eq!(second.shared.waiting.len(), 1);
+    assert!(second.shared.ready.is_empty());
     assert_eq!(second.shared.values, values);
     assert_eq!(second.shared.steps_left, fuel);
-    a.wake(&stale).unwrap();
-    a.select(first).unwrap();
+    first.signal_readiness(&stale).unwrap();
+    first.dispatch_ready().unwrap();
     assert!(first.drive(100));
-    retired(first, &a);
-    drop(a); // The late token retains its identity, preventing identity reuse.
-    assert!(b.wake(&stale).is_err());
-    b.wake(&current).unwrap();
-    b.select(second).unwrap();
+    retired(first);
+    drop(first_session); // The token retains its identity after the execution retires.
+    assert!(second.signal_readiness(&stale).is_err());
+    second.signal_readiness(&current).unwrap();
+    second.dispatch_ready().unwrap();
     assert!(second.drive(100));
-    retired(second, &b);
+    retired(second);
+}
+
+#[test]
+fn missing_wait_storage_does_not_consume_readiness_or_queue_a_context() {
+    let p = program();
+    let mut s = scenario();
+    s.calls.truncate(1);
+    let mut session = p.start_execution(&s, 200);
+    let m = session.machine.as_mut().unwrap();
+    m.enter(&s).unwrap();
+    assert!(
+        m.park_for_readiness().is_err(),
+        "entry is not an admitted child task"
+    );
+    cut_after_messages(m, 1);
+    let (task, _) = m.context.task.unwrap();
+    let token = m.park_for_readiness().unwrap();
+    let held = m.shared.waiting.remove(&task).unwrap();
+    let before = m.shared.tasks.clone();
+    assert!(m.signal_readiness(&token).is_err());
+    assert_eq!(m.shared.tasks, before);
+    assert!(m.shared.ready.is_empty());
+    m.shared.waiting.insert(task, held);
+    m.signal_readiness(&token).unwrap();
+    m.dispatch_ready().unwrap();
+    assert!(m.drive(100));
+    assert_eq!(messages(m), ["waiting", "unused", "first", "first"]);
+    retired(m);
+}
+
+#[test]
+fn fault_after_resumption_retires_its_chain_and_preserves_an_independent_waiter() {
+    let p = crate::compile(
+        r#"
+control fail(ref mutable string text) faults {
+    emit(text);
+    fault "after readiness";
+}
+async control leaf(ref mutable string text) faults {
+    fail(text);
+}
+async control start(string initial) faults {
+    mutable string text = move initial;
+    auto pending = defer leaf(borrow mutable text);
+    await pending;
+}
+control main() faults {
+    run start("unused");
+}
+"#,
+        Manifest::from_json(include_str!("../../playground/manifest.json")).unwrap(),
+    )
+    .unwrap();
+    let mut s = scenario();
+    s.calls.clear();
+    let mut session = p.start_execution(&s, 200);
+    let m = session.machine.as_mut().unwrap();
+    m.call("start", vec![Value::String("first".into())])
+        .unwrap();
+    cut_after_messages(m, 1);
+    let independent = Context::new(m.context.activations.child());
+    let first_slots: BTreeSet<_> = m.shared.values.keys().copied().collect();
+    let first = m.park_for_readiness().unwrap();
+    m.context = independent;
+    m.call("start", vec![Value::String("second".into())])
+        .unwrap();
+    cut_after_messages(m, 2);
+    let second = m.park_for_readiness().unwrap();
+    let second_values: BTreeMap<_, _> = m
+        .shared
+        .values
+        .iter()
+        .filter(|(id, _)| !first_slots.contains(id))
+        .map(|(id, v)| (*id, v.clone()))
+        .collect();
+    m.signal_readiness(&first).unwrap();
+    m.dispatch_ready().unwrap();
+    assert!(m.drive(100));
+    assert!(matches!(&m.context.flow, Some(Err(d)) if d.message.contains("after readiness")));
+    assert_eq!(m.shared.values, second_values);
+    assert_eq!(m.shared.suspended.calls.len(), 1);
+    assert_eq!(m.shared.waiting.len(), 1);
+    assert!(m.signal_readiness(&first).is_err());
+    m.signal_readiness(&second).unwrap();
+    m.dispatch_ready().unwrap();
+    assert!(m.drive(100));
+    assert!(matches!(&m.context.flow, Some(Err(d)) if d.message.contains("after readiness")));
+    assert_eq!(messages(m), ["first", "second"]);
+    retired(m);
 }

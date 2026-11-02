@@ -1,7 +1,8 @@
 //! Invocation-owned tasks, ready admission and one-use completion waits.
-//! Captures and continuations stay in the executor; no external I/O readiness yet.
+//! Captures and continuations stay in the executor; readiness never completes a task.
 use super::*;
 use std::collections::VecDeque;
+use std::sync::Arc;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(super) struct OwnerId(u64);
@@ -14,7 +15,24 @@ enum Phase {
     Cold,
     Ready,
     Running,
+    Waiting(u64),
     Completed,
+}
+/// Dedicated execution identity. Late tokens retain it, preventing allocator reuse.
+/// This is neither a frame address nor an observed diagnostic activation identity.
+#[derive(Default, Clone, Debug)]
+struct ExecutionIdentity(Arc<()>);
+impl PartialEq for ExecutionIdentity {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+impl Eq for ExecutionIdentity {}
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct Readiness {
+    execution: ExecutionIdentity,
+    generation: u64,
+    task: TaskId,
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct Task {
@@ -28,6 +46,8 @@ pub(super) struct Registry {
     next_owner: u64,
     next_task: u64,
     next_wait: u64,
+    next_readiness: u64,
+    identity: ExecutionIdentity,
     owners: BTreeMap<OwnerId, BTreeSet<TaskId>>,
     tasks: BTreeMap<TaskId, Task>,
     ready: VecDeque<TaskId>,
@@ -115,6 +135,54 @@ impl Registry {
         self.tasks.get_mut(&id).unwrap().phase = Phase::Running;
         Ok(())
     }
+    /// Preflight before transferring the original running context into wait storage.
+    pub(super) fn prepare_readiness(&self, id: TaskId, owner: OwnerId) -> Result<Readiness> {
+        self.require(id, owner, Phase::Running)?;
+        Ok(Readiness {
+            execution: self.identity.clone(),
+            generation: self
+                .next_readiness
+                .checked_add(1)
+                .ok_or_else(|| error("readiness generation space exhausted"))?,
+            task: id,
+        })
+    }
+    pub(super) fn park(&mut self, owner: OwnerId, token: &Readiness) -> Result<()> {
+        self.require(token.task, owner, Phase::Running)?;
+        if token.execution != self.identity
+            || self.next_readiness.checked_add(1) != Some(token.generation)
+        {
+            return Err(error(
+                "readiness admission is stale or belongs to another execution",
+            ));
+        }
+        self.next_readiness = token.generation;
+        self.tasks.get_mut(&token.task).unwrap().phase = Phase::Waiting(token.generation);
+        Ok(())
+    }
+    pub(super) fn waiting_task(&self, token: &Readiness) -> Result<TaskId> {
+        if token.execution != self.identity {
+            return Err(error("readiness belongs to another execution"));
+        }
+        if !self
+            .tasks
+            .get(&token.task)
+            .is_some_and(|task| task.phase == Phase::Waiting(token.generation))
+        {
+            return Err(error("readiness is unknown, stale or already signalled"));
+        }
+        Ok(token.task)
+    }
+    pub(super) fn wake(&mut self, token: &Readiness) -> Result<()> {
+        let id = self.waiting_task(token)?;
+        self.tasks.get_mut(&id).unwrap().phase = Phase::Ready;
+        self.ready.push_back(id);
+        Ok(())
+    }
+    #[cfg(test)]
+    pub(super) fn exhaust_readiness_space(&mut self) {
+        self.next_readiness = u64::MAX;
+    }
     pub(super) fn complete(&mut self, id: TaskId, owner: OwnerId) -> Result<()> {
         self.require(id, owner, Phase::Running)?;
         self.tasks.get_mut(&id).unwrap().phase = Phase::Completed;
@@ -197,6 +265,103 @@ mod tests {
         let id = r.prepare_owner().unwrap();
         r.commit_owner(id);
         id
+    }
+    #[test]
+    fn readiness_cycles_do_not_complete_or_discharge_task_obligations() {
+        let mut r = Registry::default();
+        let a = owner(&mut r);
+        let task = r.defer(a, "work").unwrap();
+        assert!(r.prepare_readiness(task, a).is_err());
+        let completion = r.schedule(task, a, "work").unwrap();
+        r.dispatch(task).unwrap();
+        let first = r.prepare_readiness(task, a).unwrap();
+        r.park(a, &first).unwrap();
+        let before = r.clone();
+        assert!(r.complete(task, a).is_err());
+        assert!(r.deliver(task, a, completion).is_err());
+        assert!(r.retire_owner(a, false).is_err());
+        assert!(r.prepare_readiness(task, a).is_err());
+        assert_eq!(r, before);
+        r.wake(&first).unwrap();
+        assert!(r.complete(task, a).is_err());
+        r.dispatch(task).unwrap();
+        let second = r.prepare_readiness(task, a).unwrap();
+        assert!(second.generation > first.generation);
+        r.park(a, &second).unwrap();
+        let before = r.clone();
+        assert!(r.wake(&first).is_err());
+        assert_eq!(r, before);
+        r.wake(&second).unwrap();
+        let before = r.clone();
+        assert!(r.wake(&second).is_err());
+        assert_eq!(r, before);
+        r.dispatch(task).unwrap();
+        r.complete(task, a).unwrap();
+        r.deliver(task, a, completion).unwrap();
+        r.consume(task, a).unwrap();
+        assert!(r.wake(&second).is_err());
+        r.retire_owner(a, false).unwrap();
+        assert!(r.is_empty());
+    }
+    #[test]
+    fn readiness_admission_rejects_foreign_stale_and_exhausted_tokens_atomically() {
+        let mut r = Registry::default();
+        let a = owner(&mut r);
+        let b = owner(&mut r);
+        let task = r.defer(a, "work").unwrap();
+        r.schedule(task, a, "work").unwrap();
+        r.dispatch(task).unwrap();
+        let token = r.prepare_readiness(task, a).unwrap();
+        let before = r.clone();
+        assert!(r.park(b, &token).is_err());
+        assert_eq!(r, before);
+        let mut foreign = Registry::default();
+        let fa = owner(&mut foreign);
+        let ft = foreign.defer(fa, "work").unwrap();
+        foreign.schedule(ft, fa, "work").unwrap();
+        foreign.dispatch(ft).unwrap();
+        let wrong = foreign.prepare_readiness(ft, fa).unwrap();
+        assert_eq!(wrong.generation, token.generation);
+        assert_eq!(wrong.task, token.task);
+        assert!(r.park(a, &wrong).is_err());
+        assert_eq!(r, before);
+        r.park(a, &token).unwrap();
+        let before = r.clone();
+        assert!(r.wake(&wrong).is_err());
+        assert_eq!(r, before);
+        r.wake(&token).unwrap();
+        r.dispatch(task).unwrap();
+        let before = r.clone();
+        assert!(r.park(a, &token).is_err());
+        assert_eq!(r, before);
+        r.exhaust_readiness_space();
+        let before = r.clone();
+        assert!(r.prepare_readiness(task, a).is_err());
+        assert_eq!(r, before);
+    }
+    #[test]
+    fn emergency_retirement_invalidates_waiting_and_ready_registrations() {
+        let mut r = Registry::default();
+        let a = owner(&mut r);
+        let b = owner(&mut r);
+        let mut tokens = vec![];
+        for owner in [a, b] {
+            let task = r.defer(owner, "work").unwrap();
+            r.schedule(task, owner, "work").unwrap();
+            r.dispatch(task).unwrap();
+            let token = r.prepare_readiness(task, owner).unwrap();
+            r.park(owner, &token).unwrap();
+            tokens.push(token);
+        }
+        r.retire_owner(a, true).unwrap();
+        assert!(r.wake(&tokens[0]).is_err());
+        assert_eq!(r.waiting_task(&tokens[1]).unwrap(), tokens[1].task);
+        r.wake(&tokens[1]).unwrap();
+        r.abandon(tokens[1].task);
+        assert!(r.next_ready().is_none());
+        assert!(r.wake(&tokens[1]).is_err());
+        r.retire_owner(b, false).unwrap();
+        assert!(r.is_empty());
     }
     #[test]
     fn completion_is_one_shot_and_remains_an_obligation_until_consumed() {

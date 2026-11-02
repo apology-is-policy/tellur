@@ -239,6 +239,10 @@ host adapters or independently progressing siblings.
 
 ## Executable readiness protocol model (E1d.2c.3a)
 
+This initial test-only checkpoint was delivered on 0.118. The same scenarios now
+exercise [runtime waiting and resumption](#runtime-waiting-and-resumption-e1d2c3b)
+in 0.119; the description below records the original model and its bounds.
+
 The [readiness model](../src/runtime/readiness_model.rs) runs real checked borrowed
 calls through explicit test-harness suspension cuts. It is compiled only for tests;
 compiler 0.118 and its installed tools still expose no external readiness API or
@@ -276,6 +280,36 @@ must add an explicit waiting phase, resumed-ready entries and execution-scoped t
 then stop normal dispatch and settle every affected borrower before contingency.
 No source `spawn` or async host adapter is enabled by this model, and unchanged
 production binaries do not require a new release.
+
+## Runtime waiting and resumption (E1d.2c.3b)
+
+Compiler 0.119 integrates the readiness protocol into the reference task registry
+and context storage. Tasks can now transition from running to waiting, from waiting
+to ready on one valid signal, then back to running on explicit dispatch. Prepared
+starts and resumed contexts use distinct ready-entry forms. Resumption moves the
+original frame, continuation, facts and diagnostic state back into execution; it
+never installs another invocation or replays captured arguments.
+
+Each active child chain records its task and invocation owner separately from its
+current call frame. This association survives nested synchronous calls and nested
+awaits. Waiting preflights the task state and generation capacity before moving the
+context or changing storage. Signals validate the execution identity, generation,
+task state and retained context before making anything ready. Readiness cannot
+complete a waiting task, discharge its owner's obligation or deliver a borrowed
+result. Late tokens retain the dedicated execution identity after its runtime retires.
+
+The original model regressions now exercise these runtime transitions. Added cases
+check missing context storage, stale admission, wrong owners, identity exhaustion,
+metadata retirement, and a fault after resumption through a nested synchronous call.
+Independent test chains retain their own storage when another chain completes or
+faults. This is not permission for siblings in a failed owning domain to continue.
+
+The safe-point and signal methods remain private and have no source or adapter
+callers. Harness cuts invoke them explicitly; public host quota pauses still only
+pause the current sequential chain. Fault domains must stop admission and dispatch,
+retire every affected waiting/ready borrower and settle resources before contingency
+before these mechanics can support source concurrency or async adapters. Cancellation
+and LLVM coroutine lowering remain later work.
 
 ## Separate the identities and continuations
 
@@ -557,10 +591,11 @@ Those boundaries need explicit contracts before being accepted by the checker.
 | E1d.1 | Separate execution-wide state from resumable control chains | Delivered in 0.111: one storage arena/address allocator, script cursor, effect history and fuel budget; independent frames, continuations and emergency state; internal interleaving evidence, no source spawn |
 | E1d.2a | Invocation and cold-task identities | Delivered in 0.112: owner/producer admission, one-shot completion, normal obligation checks and emergency retirement in sequential execution |
 | E1d.2b | Queued cold dispatch and completion waits | Delivered in 0.113: ready admission, parked callers, one-use completion wait IDs, stale/duplicate rejection and unchanged sequential observations |
-| E1d.2c | External readiness and fault-domain admission | In progress: suspended/ready context storage delivered in 0.117–0.118; modeled I/O readiness and owner-boundary settlement remain before source spawn |
+| E1d.2c | External readiness and fault-domain admission | In progress: suspended/ready storage delivered in 0.117–0.118 and runtime readiness in 0.119; owning fault-domain admission and settlement remain before source spawn |
 | E1d.2c.1 | Addressable suspended callers | Delivered in 0.117: one-use suspension registrations paired with task/wait identities, atomic admission, original context restoration and emergency retirement |
 | E1d.2c.2 | Independent ready-context admission | Delivered in 0.118: prepared child contexts retained outside the active stack, checked dispatch selection and active-chain protection; source execution remains sequential |
-| E1d.2c.3a | Executable readiness protocol model | Delivered as test-only evidence on 0.118: repeated execution-scoped, generation-safe waits over checked borrowed execution, separate signalling/selection/completion and fixed shared history. Runtime waiting and fault-domain settlement remain next |
+| E1d.2c.3a | Executable readiness protocol model | Delivered as test-only evidence on 0.118: repeated execution-scoped, generation-safe waits over checked borrowed execution, separate signalling/selection/completion and fixed shared history. These scenarios now target runtime integration in E1d.2c.3b; fault-domain settlement remains next |
+| E1d.2c.3b | Runtime waiting and resumption | Delivered in 0.119: execution-scoped readiness tokens, explicit Waiting state, original contexts in wait storage, distinct start/resume dispatch and atomic signal admission. No source or adapter handoffs yet; owning fault-domain settlement is next |
 | E1e | Explicit cooperative cancellation and suspending cleanup; normal completion races, cleanup failures and no abandoned losers | Define cancellation observation and cleanup admission; no implicit cancellation exception |
 | E2 | Pinned native coroutine experiment, then checked lowering and schedule-based differential validation | Reference semantics and legal frame retirement must precede native destruction |
 

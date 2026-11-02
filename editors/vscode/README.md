@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-0.118.0-darwin-arm64.vsix` using **Extensions:
+1. Install the supplied `tellur-language-0.119.0-darwin-arm64.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1103,3 +1103,15 @@ Prepared cold-task children now remain in separate ready storage until dispatch.
 Selection validates the retained context and cannot replace an active control chain.
 Borrowed storage, host instruction quotas and source effect order are unchanged.
 This prepares the runtime for independent readiness; source execution remains sequential.
+
+## Waiting contexts and readiness in 0.119
+
+The reference runtime now has separate waiting storage and ready entries for either
+starting or resuming a task. Readiness tokens carry an execution identity and a fresh
+generation; signals only make the retained context eligible, and dispatch restores
+that same context without replaying a call. Completion remains a separate one-use
+operation. Host instruction quotas never select a sibling.
+
+This is internal groundwork validated with checked borrowed execution. Source
+`spawn`/`yield`, async host I/O and fault-domain settlement remain ahead; current
+source execution and editor behavior stay sequential.
