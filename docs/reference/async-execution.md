@@ -3,7 +3,7 @@
 [Language reference](../language-reference.md) · [Design and next steps](../async-execution.md) ·
 [Execution failures](execution-failures.md)
 
-Compiler 0.108 supports `async control`, synchronous entry with `run`, direct
+Compiler 0.109 supports `async control`, synchronous entry with `run`, direct
 `await operation(arguments)` and local cold tasks with owned and direct borrowed captures and borrowed completions. Execution
 remains sequential. There is no concurrent scheduler, I/O readiness or LLVM coroutine
 lowering yet.
@@ -66,8 +66,8 @@ Repair the call above to `forward run work();`. Inside an async control, use
 
 `auto pending = defer operation(arguments);` evaluates and transfers arguments now,
 then stores an owned task without entering the async body. The declaration must be
-an immutable local `auto` binding inside an async control. Owned arguments may contain
-strings, collections, records, sums and resources without contained references.
+an immutable local `auto` binding inside an async control. Owned arguments may contain strings, records, sums, resources and their checked
+contained references. Existing collection-origin boundary restrictions still apply.
 Direct shared and exclusive references to existing reference-free storage are also
 supported; see the borrowing rules below. A constructor can use transient borrows
 while producing an owned argument with no references.
@@ -218,21 +218,66 @@ result. Explicitly moving that parent into the task still consumes the old alias
 No result may borrow a task-owned local that is destroyed at completion, or escape
 the lifetime of the caller's local storage.
 
+## Owned values containing references
+
+An owned record, variant or option can be captured with its contained references.
+Normal value rules still decide whether passing the value copies shared references
+or transfers exclusive references and owned fields. Moving the task preserves each
+field's origin and each sum's tagged payload. Captures remain retained even on a
+faulting path that never awaits the task.
+
+<!-- tellur:check -->
+```tellur
+struct view['a] { ref string text <- 'a; }
+
+async control first(view input)
+    exits ready { ref string value from input['a] }
+{
+    exit ready { input.text };
+}
+
+async control startup() exits done {
+    mutable string owner = "hello";
+    view saved = view { borrow owner };
+    auto pending = defer first(saved);
+    drop(saved);
+    delta await pending { ready { auto text } => ready }
+
+    [ready]:
+        emit(text);
+        owner = "released";
+        exit done;
+}
+
+control main() exits done { forward run startup(); }
+```
+
+Dropping `saved` releases its copy of the shared reference; the task still protects
+`owner`. After await, `text` retains the same external origin. If the captured value
+contains exclusive references, passing it consumes those permissions instead.
+It cannot be read again through the old binding. A surviving shared copy continues
+to protect its own origins even after the task and its result have finished.
+
+Contained references may themselves refer to records or sums containing references.
+Such a capture retains both its referent's storage and the external origins carried
+inside it. A returned contained reference preserves its declared storage guards and
+origin groups. Selected tags and groups are not merged into one lifetime.
+
+Borrowing a whole reference-bearing carrier as the task parameter is a separate,
+currently unsupported case. Capture an already checked owning view value instead:
+
 <!-- tellur:reject E_ASYNC -->
 ```tellur
 struct view['a] { ref string text <- 'a; }
-async control show(view input) exits done { emit(input.text); exit done; }
+async control show(ref view input) exits done { emit(input.text); exit done; }
 async control startup() exits done {
     string text = "hello";
     view input = view { borrow text };
-    auto pending = defer show(input);
+    auto pending = defer show(borrow input);
     await pending;
     exit done;
 }
 ```
-
-The remaining restriction above concerns a reference **inside a captured value**.
-It is separate from references inside a completed result, which are supported.
 
 ## Contracts and resources
 
@@ -279,6 +324,6 @@ synchronous calls around them, but cannot erase the async boundary. Expansion
 certificates check this distinction. Protocol analysis currently rejects these
 boundaries rather than treating them as ordinary unobservable decisions.
 
-Contained reference captures, escaping tasks, a public `task<...>` spelling, `spawn`,
+Direct borrows of reference-bearing carrier storage, escaping tasks, a public `task<...>` spelling, `spawn`,
 scheduling, cancellation and async host adapters remain unimplemented. No implicit
 detach or cancellation by destruction is permitted. See the [design plan](../async-execution.md).

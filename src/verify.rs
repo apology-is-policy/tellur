@@ -518,12 +518,14 @@ impl Verifier<'_> {
                             }
                             if matches!(operation, Operation::Defer(_)) {
                                 if r.parameters.iter().any(|p| {
-                                    let inner = crate::manifest::reference_inner(&p.ty)
-                                        .map_or(p.ty.as_str(), |(_, inner)| inner);
-                                    self.program.manifest().contains_references(inner)
+                                    crate::manifest::reference_inner(&p.ty).is_some_and(
+                                        |(_, inner)| {
+                                            self.program.manifest().contains_references(inner)
+                                        },
+                                    )
                                 }) {
                                     return Err(error(
-                                        "deferred contained-reference capture is unsupported",
+                                        "deferred reference-bearing carrier borrow is unsupported",
                                     ));
                                 }
                                 let ty = crate::manifest::task_type(name);

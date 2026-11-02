@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-0.108.0-darwin-arm64.vsix` using **Extensions:
+1. Install the supplied `tellur-language-0.109.0-darwin-arm64.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1018,3 +1018,10 @@ hover. The isolated editor fixture builds and runs
 [task_results.tellur](https://github.com/apology-is-policy/tellur/blob/main/playground/task_results.tellur),
 showing one capture released at await and the returned borrow released after its
 last use. Existing windows are not reloaded during release installation.
+
+## Owned reference-bearing captures in 0.109
+
+The checker and inferred-type hover support task captures containing shared or
+exclusive references. Dropping another shared copy does not release the task's
+borrow; diagnostics and repair track this in unsaved buffers. The isolated fixture
+builds and runs [contained_tasks.tellur](https://github.com/apology-is-policy/tellur/blob/main/playground/contained_tasks.tellur).

@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.108.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.109.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -3716,3 +3716,45 @@ and native execution of `playground/task_results.tellur`. Release 0.108.0 verifi
 six binary copies and nine packaged/installed payloads. Existing windows are not
 reloaded. The verified source backup excludes the protected unrelated C# file.
 Next E1c.3c extends captured reference-bearing values and carrier dependencies.
+
+## 0.109 — owned captures containing references (E1c.3c.1)
+
+A cold task can own a record, variant or option containing references. Capture
+holders preserve parameter indices, record fields, active tags and nested carrier
+contents through task moves. Shared copies remain independent retainers; exclusive
+references and resource-bearing values transfer normally. Await maps contained
+result origins onto these saved dependencies and releases unrelated captures.
+
+Carrier references inside an owned capture retain both their backing storage and
+external referents. Task holder paths are hidden metadata, not source projections;
+liveness names their task and retains active carrier dependencies even if the path
+faults without another task use. This prevents a captured carrier from releasing
+its dependent loans before settlement.
+
+Ten `tests/contained_tasks.rs` cases cover independent groups, shared copies,
+exclusive transfer, options and nested tags, generic calls, nested carrier guards,
+constructor evaluation/aliasing, fault retention, path-sensitive settlement, existing
+isolation barriers and original/expanded native parity. Two additional retained-Rust
+resource tests cover reference-only records and records containing both an owner
+and a reference: missing fault dispositions are rejected, bodies remain cold, and
+normal/fault paths release the host owner exactly once.
+
+The reference documents the distinction between an owned reference-bearing value
+and borrowing a whole reference-bearing carrier as a parameter. The latter remains
+gated, along with nested borrowed tasks, escaping/public task types and unsupported
+temporary backing storage. Existing collection-origin limits still apply. This is
+sequential task execution, without scheduling or coroutine lowering.
+
+The isolated VS Code fixture checks pending/result `auto` hover, an unsaved conflict
+after dropping a separate shared copy, repair and native execution of
+`playground/contained_tasks.tellur`. Six binaries and nine packaged/installed payloads
+are verified for 0.109.0. Existing windows are not reloaded; the source backup excludes
+the protected unrelated C# file. Next is E1c.3c.2, whole borrowed carrier parameters.
+
+Validation passes **357 Rust tests in 14 targets**, **44 Node editor tests**,
+all-target compilation, formatting and whitespace checks. This is selected regression
+evidence, not a full-suite claim. The focus log supplies nine contained-task cases;
+a separate filtered invocation supplies the tenth and contributes no LSP/manual
+results. The full baseline supplies 191 LSP tests, three reference checks and 28
+Rust-adapter cases; the separately repeated resource case is counted only once.
+Previously completed tests are reused after version/help-only and test/doc edits.

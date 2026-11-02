@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.108.0** implements the v0.1 checked core and the current language
+Compiler release **0.109.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -519,3 +519,11 @@ origins through task moves, selected outcomes, records, sums and outcome adapter
 Unrelated captures become available at await; returned references protect their
 sources until their last use. Try `./bin/tellurc exec playground/task_results.tellur`.
 Contained captures and public task contracts remain ahead; execution is sequential.
+
+### Owned reference-bearing captures in 0.109
+
+Cold tasks can now capture records, variants and options containing references,
+retaining each field's origins and nested carrier dependencies. Passing shared
+reference records preserves ordinary copying; exclusive references transfer with
+the owning value. Try `./bin/tellurc exec playground/contained_tasks.tellur`.
+Borrowing a whole reference-bearing carrier remains the next bounded step.

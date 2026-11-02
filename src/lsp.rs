@@ -532,7 +532,7 @@ impl Server {
                         "`await operation(arguments)` invokes an async control; `await pending` consumes a local cold task exactly once. Direct-call arguments transfer in written order; caller storage and loans remain valid through completion. Await exposes normal outcomes and propagates faults separately.",
                     ),
                     "defer" => Some(
-                        "`auto pending = defer operation(arguments);` transfers owned arguments and retains direct shared/exclusive borrows without starting the async body. Captured storage stays borrowed until await; returned references keep their selected origins after delivery. Await or move the handle; it cannot be copied, cloned or dropped. Contained captures and escaping tasks remain unsupported.",
+                        "`auto pending = defer operation(arguments);` transfers owned arguments, retaining their contained references and direct shared/exclusive borrows without starting the async body. Captured storage stays borrowed until await; returned references keep their selected origins after delivery. Await or move the handle; it cannot be copied, cloned or dropped. Borrowing whole reference-bearing carriers and escaping tasks remain unsupported.",
                     ),
                     "fault" if index > 0 && tokens[index - 1].is("@") => Some(
                         "`@fault: ref fault_report`\n\nImmutable contingency-local diagnostic. Fields: `string message`, `vector<string> stack`, `vector<string> sites`. Stack and current sites are bounded observations, not a complete execution history. It cannot cross a recovery edge.",

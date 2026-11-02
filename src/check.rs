@@ -1010,6 +1010,10 @@ impl Checker<'_> {
     fn place_name(&self, place: &Place) -> String {
         let slot = &self.result.slots[&place.root];
         let mut name = slot.name.clone();
+        // Capture holder paths describe compiler metadata, not source fields.
+        if manifest::task_inner(&slot.ty).is_some() {
+            return name;
+        }
         let mut ty = slot.ty.clone();
         if place.indirect {
             ty = manifest::reference_inner(&ty)
@@ -4168,17 +4172,22 @@ impl Checker<'_> {
         loop {
             let previous = live.len();
             for (name, loan) in self.scopes.iter().flat_map(|s| &s.loans) {
+                let pending = loan.active != FALSE
+                    && loan.holder.as_ref().is_some_and(|h| {
+                        manifest::task_inner(&self.result.slots[&h.root].ty).is_some()
+                    });
                 if self.manifest.contains_references(&loan.target.ty)
-                    && live.iter().any(|n| {
-                        crate::liveness::overlaps(
-                            n,
-                            &loan
-                                .holder
-                                .as_ref()
-                                .map(|h| self.place_name(h))
-                                .unwrap_or_else(|| name.clone()),
-                        )
-                    })
+                    && (pending
+                        || live.iter().any(|n| {
+                            crate::liveness::overlaps(
+                                n,
+                                &loan
+                                    .holder
+                                    .as_ref()
+                                    .map(|h| self.place_name(h))
+                                    .unwrap_or_else(|| name.clone()),
+                            )
+                        }))
                 {
                     live.insert(self.place_name(&loan.target.place));
                 }

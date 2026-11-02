@@ -1,4 +1,4 @@
-//! Local cold tasks retain owned captures and direct borrowed leaf captures.
+//! Local cold tasks retain owned captures, including their contained references.
 //! Captures retain parameter identity so completion loans can select their origins.
 use super::*;
 impl Checker<'_> {
@@ -27,11 +27,11 @@ impl Checker<'_> {
             .signature(operation, args, span)?
             .ok_or_else(|| self.error("E_ASYNC", span, "unknown deferred control"))?;
         if sig.parameters.iter().any(|p| {
-            let inner = manifest::reference_inner(&p.ty).map_or(p.ty.as_str(), |(_, t)| t);
-            self.manifest.contains_references(inner)
+            manifest::reference_inner(&p.ty)
+                .is_some_and(|(_, inner)| self.manifest.contains_references(inner))
         }) {
             return Err(operand.locate(self.error("E_ASYNC", span,
-                "deferred captures support owned values and direct references to reference-free storage; contained reference captures are not implemented"), span));
+                "deferred borrows of reference-bearing storage require carrier retention; capture the reference-bearing value by ownership instead"), span));
         }
         self.contingent_call(false, span)?;
         // Arguments are evaluated/transferred now. Only initializer faults apply;
@@ -57,7 +57,7 @@ impl Checker<'_> {
             ));
         }
         let id = self.define(name, &ty, domain, span)?;
-        for (parameter, loan_id) in loans {
+        for (fields, loan_id) in loans {
             let loan = self
                 .scopes
                 .last_mut()
@@ -70,7 +70,7 @@ impl Checker<'_> {
             // source-projectable fields or interpreted as runtime task layout.
             loan.holder = Some(Place {
                 root: id,
-                fields: vec![parameter],
+                fields,
                 indirect: false,
             });
         }
@@ -97,7 +97,7 @@ impl Checker<'_> {
         parameters: &[manifest::Parameter],
         domain: Formula,
         span: Span,
-    ) -> Result<(Vec<Expr>, Vec<(usize, Id)>)> {
+    ) -> Result<(Vec<Expr>, Vec<(Vec<usize>, Id)>)> {
         if args.len() != parameters.len() {
             return Err(self.error("E_ARITY", span, "wrong deferred argument count"));
         }
@@ -169,7 +169,14 @@ impl Checker<'_> {
                     },
                     domain,
                 );
-                loans.push((parameter, id));
+                loans.push((vec![parameter], id));
+            } else if self.manifest.contains_references(&p.ty) {
+                let stored = self.stored_value(arg, &p.ty, domain, span, true)?;
+                values.push(stored.expression);
+                loans.extend(stored.loans.into_iter().map(|(mut fields, id)| {
+                    fields.insert(0, parameter);
+                    (fields, id)
+                }));
             } else {
                 // No contained references reach this branch. Existing argument
                 // checking preserves owning transfer, constructor order and faults.
@@ -193,19 +200,56 @@ impl Checker<'_> {
         domain: Formula,
         span: Span,
     ) -> Result<Vec<(Vec<LoanOrigin>, Vec<Id>)>> {
-        if source.contained.is_some() {
-            return Err(self.error(
-                "E_ASYNC",
-                span,
-                "contained task captures are not implemented",
-            ));
-        }
         let mut value = operand.clone();
         value.call_mode = syntax::CallMode::Direct;
         let holder = self
             .resolve_place(&value, span)?
             .ok_or_else(|| self.error("E_ASYNC", span, "await requires an owned pending task"))?;
         let captures = self.snapshot_carrier_contents(&holder, domain);
+        if let Some(contained) = &source.contained {
+            // The owned argument's storage was transferred into the task; its
+            // contained references still point to the original external owners.
+            // Tagged leaves are selected abstractly, never read at runtime here.
+            let mut contents = captures
+                .into_iter()
+                .filter_map(|(path, loan)| {
+                    path.strip_prefix(&[source.parameter])
+                        .map(|fields| (fields.to_vec(), loan, Vec::new()))
+                })
+                .collect::<Vec<_>>();
+            for step in &contained.through {
+                contents = contents
+                    .into_iter()
+                    .filter(|(fields, loan, _)| {
+                        *fields == step.fields && loan.sum_leaf == step.sum_leaf
+                    })
+                    .flat_map(|(_, loan, mut parents)| {
+                        parents.extend(loan.parents.iter().copied());
+                        if loan.mutable {
+                            parents.push(loan.id);
+                        }
+                        loan.contents
+                            .into_iter()
+                            .map(move |(fields, child)| (fields, child, parents.clone()))
+                    })
+                    .collect();
+            }
+            return Ok(contents
+                .into_iter()
+                .filter(|(fields, loan, _)| {
+                    *fields == contained.fields && loan.sum_leaf == contained.sum_leaf
+                })
+                .map(|(_, loan, mut parents)| {
+                    parents.extend(loan.parents);
+                    if loan.mutable {
+                        parents.push(loan.id);
+                    }
+                    parents.sort_unstable();
+                    parents.dedup();
+                    (loan.origins, parents)
+                })
+                .collect());
+        }
         let dependencies = captures
             .into_iter()
             .filter(|(path, _)| *path == [source.parameter])

@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Lexical structure](lexical-structure.md)
 
-This is a reading grammar for the modern compiler 0.108.0 profile, not a replacement
+This is a reading grammar for the modern compiler 0.109.0 profile, not a replacement
 for its type, ownership, origin or coverage rules. It omits legacy spellings and
 parser recovery details. `name`, `integer` and `string_literal` are lexical tokens.
 Quoted text denotes source tokens; `?` means optional, `*` repetition, `+` one or
@@ -234,7 +234,7 @@ be prefixed with `run` or `await`. `run` requires a synchronous caller and an as
 callee; `await` requires both to be async. Trait signatures and implementations
 match the `async` permission. These prefixes do not make calls value expressions.
 An immutable local `auto name = defer call;` binding creates a cold task inside an
-async control. `await name` consumes that task in an operation position. Owned captures without contained references and direct borrowed captures of
+async control. `await name` consumes that task in an operation position. Owned captures including contained references and direct borrowed captures of
 existing reference-free storage are admitted; the internal inferred task type has no
 source spelling and cannot occur in a control result. Awaited completions retain their
 checked direct and contained result origins. Async operations are unavailable

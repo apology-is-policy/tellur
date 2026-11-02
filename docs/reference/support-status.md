@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.108.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.109.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -76,7 +76,7 @@ with complete schemas for every nested reference layer.
 | Protocol analysis | Finite graph/residual queries, completed finite trace-language comparison | Forgets data and concrete feasibility; supervision graphs are rejected; budgets can make results inconclusive |
 | [Execution failures](execution-failures.md) | Source faults, transitive private inference, explicit public/trait permissions, retained-owner release dispositions; reference/native reports with invocation IDs and source/expansion sites | No fault-valued inline leaves, general deep-local fault registration, panic recovery or asynchronous fault settlement |
 | [Contingency](contingency.md) | Named owned-input boundaries, retained handover, checked contingent calls/traits, outcome-free supervision, terminal escalation and activation-local storage | Sequential source-fault isolation only; no outer borrows, recursive calls or general execution-mode flags |
-| [Async execution](async-execution.md) | `async control`, synchronous `run`, direct `await`, local `defer` with owned/direct borrowed captures and consuming `await pending`, retained fault obligations, borrowed result-origin delivery and reference/native sequential execution | No contained captures, nested borrowed tasks or escaping/public task types, spawn, readiness scheduling, cancellation or LLVM coroutine lowering yet |
+| [Async execution](async-execution.md) | `async control`, synchronous `run`, direct `await`, local `defer` with owned captures with contained references/direct borrowed captures and consuming `await pending`, retained fault obligations, borrowed result-origin delivery and reference/native sequential execution | No whole reference-bearing carrier borrows, nested borrowed tasks or escaping/public task types, spawn, readiness scheduling, cancellation or LLVM coroutine lowering yet |
 | Runtime polymorphism | Roadmap only | Traits currently dispatch statically |
 
 The [conformance inventory](../conformance.md) records release validation. The
