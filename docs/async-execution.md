@@ -1204,6 +1204,7 @@ Those boundaries need explicit contracts before being accepted by the checker.
 | E1d.2c.4b.4d.6 | Stopping active sibling contingencies | Test-only on 0.125: named and lexical handlers paused with retained owners are retired without running remaining handler work. Exact release, isolated causes and host baseline restoration; process settlement follows in 4d.7 |
 | E1d.2c.4b.4d.7 | Whole-session native process settlement | Test-only on 0.125: administrative process stop closes admission/selection, retires all roots and child trees, clears pending reports and applies resource dispositions before status delivery. Readiness follows in 4d.8 |
 | E1d.2c.4b.4d.8 | Compiled context readiness protocol | Test-only on 0.125: session/context/generation tokens, separate wait/signal/selection, atomic rejection and fault/process invalidation over retained real-owner contexts. Readiness does not deliver completion; shared native integration and source handoffs remain ahead |
+| E1d.2d.1 | Separate task queue and completion joins | Delivered in 0.126: queue admission without a waiter, one-use joins before/during/after execution, explicit delivery before consumption and atomic cold await. Private registry support only; retained completion payloads and source handoffs follow |
 | E1e | Explicit cooperative cancellation and suspending cleanup; normal completion races, cleanup failures and no abandoned losers | Define cancellation observation and cleanup admission; no implicit cancellation exception |
 | E2 | Pinned native coroutine experiment, then checked lowering and schedule-based differential validation | Reference semantics and legal frame retirement must precede native destruction |
 
@@ -1211,6 +1212,28 @@ These are completion boundaries, not a promise that every row can be implemented
 without another design decision. Keep syntax proposals out of the runnable playground
 until they work. When a row changes source behavior, update the grammar, reference,
 editor, executable examples and rejection tests together.
+
+## Independent queue admission and completion joins (E1d.2d.1)
+
+Compiler 0.126 separates task execution phase from completion-join state in the
+private reference registry. Queueing requires the original owner and producer,
+appends ready work once and needs no wait identity. A join may claim any started
+phase, including a completed child, without queueing or executing it. Delivery
+requires the matching one-use wait; ordinary consumption requires that delivery.
+Unjoined completed work therefore still prevents normal owner retirement. Abrupt
+retirement removes its obligation without fabricating a normal result.
+
+Cold await keeps its combined admission operation: it checks wait capacity before
+queue mutation and commits both together. Wrong owners/producers, duplicate joins,
+late delivery and exhausted wait identities leave registry state unchanged. Existing
+readiness generations remain separate from completion waits and do not discharge a
+join. Four registry cases exercise joins across every started phase, completed
+unjoined obligations, exhaustion in every phase and isolated emergency retirement.
+
+This checkpoint does not yet store completed payloads independently of the caller.
+That storage must retain owned results and external borrow dependencies through
+later joins and fault settlement before source handoffs can be enabled. No source
+`spawn`/`yield`, public task contract or native scheduler is claimed here.
 
 ## Reference execution invariants
 

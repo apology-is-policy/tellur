@@ -2,10 +2,14 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.125.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.126.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
+
+The private reference task registry now separates queue admission from completion
+joins, preserving cold-await behavior and pending completion obligations. This is
+preparation for scoped scheduling; source `spawn` and `yield` remain unimplemented.
 
 ## Language and data
 

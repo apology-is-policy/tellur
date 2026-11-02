@@ -379,6 +379,15 @@ storage; dispatch validates the matching context and cannot replace an active ch
 Host quota exhaustion never selects another ready task. These changes affect internal
 storage, not source handoff semantics.
 
+Since 0.126, the private task registry separates queue admission from claiming a
+one-use completion join. Queueing does not run the body or allocate a completion
+wait. A join can attach before dispatch, during execution or a readiness wait, or
+after completion; it does not change queue order. Completion remains an owned
+obligation until its matching join delivers the result and consumption retires it.
+Cold await still performs queue admission and join registration atomically, including
+identity-exhaustion failure. This is internal support: delayed task-owned result
+storage and source `spawn`/`yield` are still unimplemented.
+
 Path expansion retains `run`, `defer`, direct `await` and task consumption as
 explicit operations. It may inline ordinary
 synchronous calls around them, but cannot erase the async boundary. Expansion

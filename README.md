@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.125.0** implements the v0.1 checked core and the current language
+Compiler release **0.126.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -674,3 +674,11 @@ together, with checked admission and retirement of independent ownership roots.
 Compiled context tests share these runtime operations and verify that a failed root
 preserves unrelated owners and the host's original context. Public calls remain
 synchronous; source scheduling and native sibling settlement are still ahead.
+
+## Task queue and completion joins in 0.126
+
+The reference runtime now separates queue admission from one-use completion joins.
+A completed task remains an obligation until its result is delivered and consumed;
+cold await still admits both operations atomically. This internal foundation
+preserves existing source behavior. Independent completion-payload storage and
+source `spawn`/`yield` remain ahead.

@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.109.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.126.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -3838,3 +3838,35 @@ not a full-suite claim.
 
 Next E1d.2 adds internal owner/task identities and a checked readiness lifecycle;
 source spawn and child settlement still require their own implementation evidence.
+
+## 0.126 — separate task queue admission and completion joins (E1d.2d.1)
+
+The private reference registry separates execution phase from completion ownership.
+Queueing allocates no completion wait. A join can attach before dispatch, during
+execution/readiness waiting or after completion without changing queue order.
+Delivery requires the original one-use wait; normal consumption requires delivery.
+Completed unjoined tasks still block normal owner retirement, while emergency
+retirement cleans their obligations without inventing a completion.
+
+Four new registry tests cover all started phases, duplicate/foreign/incorrect
+producer rejection, completed unjoined work, wait identity exhaustion with atomic
+cold-await failure, and cleanup that preserves another owner's live join. Existing
+runtime and source task regressions check captured storage, returned references,
+one-use resumption, readiness and fault settlement. Source `spawn`/`yield` and
+independent retained completion payloads remain unimplemented.
+
+Validation passes **164 distinct selected Rust cases across 13 targets**: 13
+registry cases, 31 other runtime cases and 120 integration cases. The focused
+registry run preceded the version-only bump and covers identical functional source.
+The remaining runtime/source/manual targets ran with version 0.126. All-target
+checking, formatting and whitespace checks pass. This is selected regression
+evidence, not a full-suite claim. Unchanged editor/LSP and compiled native model
+checks retain their recorded evidence.
+
+The fresh isolated VS Code profile passes pending/result hover, unsaved loan
+conflict and repair, and native execution with the final release binaries. Compiler,
+LSP and VSIX 0.126.0 verify six staged binary copies and nine packaged/installed
+payloads, including executable permissions. Existing windows were not reloaded.
+The source backup excludes the protected unrelated C# file before enumeration is
+used to read or archive sources. Next is retained completion payload storage,
+including ownership and borrow preservation through delayed joins and settlement.

@@ -18,6 +18,12 @@ enum Phase {
     Waiting(u64),
     Completed,
 }
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Join {
+    Unclaimed,
+    Waiting(WaitId),
+    Delivered,
+}
 /// Dedicated execution identity. Late tokens retain it, preventing allocator reuse.
 /// This is neither a frame address nor an observed diagnostic activation identity.
 #[derive(Default, Clone, Debug)]
@@ -39,7 +45,7 @@ struct Task {
     owner: OwnerId,
     operation: String,
     phase: Phase,
-    waiter: Option<WaitId>,
+    join: Join,
 }
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
 pub(super) struct Registry {
@@ -82,13 +88,13 @@ impl Registry {
                 owner,
                 operation: operation.into(),
                 phase: Phase::Cold,
-                waiter: None,
+                join: Join::Unclaimed,
             },
         );
         self.owners.get_mut(&owner).unwrap().insert(id);
         Ok(id)
     }
-    fn require(&self, id: TaskId, owner: OwnerId, phase: Phase) -> Result<&Task> {
+    fn require_owner(&self, id: TaskId, owner: OwnerId) -> Result<&Task> {
         let task = self
             .tasks
             .get(&id)
@@ -96,30 +102,72 @@ impl Registry {
         if task.owner != owner {
             return Err(error("task belongs to another invocation"));
         }
+        Ok(task)
+    }
+    fn require(&self, id: TaskId, owner: OwnerId, phase: Phase) -> Result<&Task> {
+        let task = self.require_owner(id, owner)?;
         if task.phase != phase {
             return Err(error("invalid task lifecycle transition"));
         }
         Ok(task)
     }
+    /// Queue work without attaching an awaiting caller or running its body.
+    pub(super) fn enqueue(&mut self, id: TaskId, owner: OwnerId, operation: &str) -> Result<()> {
+        if self.require(id, owner, Phase::Cold)?.operation != operation {
+            return Err(error("pending task producer differs"));
+        }
+        self.tasks.get_mut(&id).unwrap().phase = Phase::Ready;
+        self.ready.push_back(id);
+        Ok(())
+    }
+    fn prepare_wait(&self) -> Result<WaitId> {
+        self.next_wait
+            .checked_add(1)
+            .map(WaitId)
+            .ok_or_else(|| error("completion wait identity space exhausted"))
+    }
+    fn commit_join(&mut self, id: TaskId, wait: WaitId) {
+        assert_eq!(self.next_wait.checked_add(1), Some(wait.0));
+        let task = self.tasks.get_mut(&id).unwrap();
+        assert_eq!(task.join, Join::Unclaimed);
+        task.join = Join::Waiting(wait);
+        self.next_wait = wait.0;
+    }
+    /// Source spawn wiring follows separately. A join may be registered before
+    /// dispatch, during a readiness wait, or after completion; it never queues work.
+    #[allow(dead_code)]
+    pub(super) fn join(&mut self, id: TaskId, owner: OwnerId, operation: &str) -> Result<WaitId> {
+        let task = self.require_owner(id, owner)?;
+        if task.operation != operation {
+            return Err(error("pending task producer differs"));
+        }
+        if task.phase == Phase::Cold || task.join != Join::Unclaimed {
+            return Err(error(
+                "task is cold or its completion has already been claimed",
+            ));
+        }
+        let wait = self.prepare_wait()?;
+        self.commit_join(id, wait);
+        Ok(wait)
+    }
+    /// Existing cold await atomically queues work and attaches its one-use join.
     pub(super) fn schedule(
         &mut self,
         id: TaskId,
         owner: OwnerId,
         operation: &str,
     ) -> Result<WaitId> {
-        if self.require(id, owner, Phase::Cold)?.operation != operation {
+        let task = self.require(id, owner, Phase::Cold)?;
+        if task.operation != operation {
             return Err(error("pending task producer differs"));
         }
-        let wait = WaitId(
-            self.next_wait
-                .checked_add(1)
-                .ok_or_else(|| error("completion wait identity space exhausted"))?,
-        );
-        self.next_wait = wait.0;
-        let task = self.tasks.get_mut(&id).unwrap();
-        task.phase = Phase::Ready;
-        task.waiter = Some(wait);
-        self.ready.push_back(id);
+        if task.join != Join::Unclaimed {
+            return Err(error("task completion has already been claimed"));
+        }
+        // Capacity is checked before enqueue so failure cannot leave ready work.
+        let wait = self.prepare_wait()?;
+        self.enqueue(id, owner, operation)?;
+        self.commit_join(id, wait);
         Ok(wait)
     }
     pub(super) fn next_ready(&self) -> Option<TaskId> {
@@ -191,14 +239,14 @@ impl Registry {
     /// Completion delivery is administrative, not a new source outcome. A late
     /// or repeated signal cannot resume another task or deliver the payload twice.
     pub(super) fn deliver(&mut self, id: TaskId, owner: OwnerId, wait: WaitId) -> Result<()> {
-        if self.require(id, owner, Phase::Completed)?.waiter != Some(wait) {
+        if self.require(id, owner, Phase::Completed)?.join != Join::Waiting(wait) {
             return Err(error("completion wait is stale or already delivered"));
         }
-        self.tasks.get_mut(&id).unwrap().waiter = None;
+        self.tasks.get_mut(&id).unwrap().join = Join::Delivered;
         Ok(())
     }
     pub(super) fn consume(&mut self, id: TaskId, owner: OwnerId) -> Result<()> {
-        if self.require(id, owner, Phase::Completed)?.waiter.is_some() {
+        if self.require(id, owner, Phase::Completed)?.join != Join::Delivered {
             return Err(error("task completion has not been delivered"));
         }
         self.abandon(id);
@@ -275,6 +323,173 @@ mod tests {
         let id = r.prepare_owner().unwrap();
         r.commit_owner(id);
         id
+    }
+    #[test]
+    fn queue_and_join_are_independent_before_during_and_after_execution() {
+        for phase in [
+            Phase::Ready,
+            Phase::Running,
+            Phase::Waiting(1),
+            Phase::Completed,
+        ] {
+            let mut r = Registry::default();
+            let a = owner(&mut r);
+            let task = r.defer(a, "work").unwrap();
+            let cold = r.clone();
+            assert!(r.join(task, a, "work").is_err());
+            assert_eq!(r, cold);
+            r.enqueue(task, a, "work").unwrap();
+            assert_eq!(r.next_wait, 0);
+            assert_eq!(r.tasks[&task].join, Join::Unclaimed);
+            let queued = r.clone();
+            assert!(r.enqueue(task, a, "work").is_err());
+            assert_eq!(r, queued);
+            if phase != Phase::Ready {
+                r.dispatch(task).unwrap();
+            }
+            let readiness = if matches!(phase, Phase::Waiting(_)) {
+                let token = r.prepare_readiness(task, a).unwrap();
+                r.park(a, &token).unwrap();
+                Some(token)
+            } else {
+                None
+            };
+            if phase == Phase::Completed {
+                r.complete(task, a).unwrap();
+            }
+            let queue = r.ready.clone();
+            let before_phase = r.tasks[&task].phase;
+            let wait = r.join(task, a, "work").unwrap();
+            assert_eq!(r.ready, queue);
+            assert_eq!(r.tasks[&task].phase, before_phase);
+            let joined = r.clone();
+            assert!(r.join(task, a, "work").is_err());
+            assert!(r.retire_owner(a, false).is_err());
+            assert!(r.consume(task, a).is_err());
+            assert_eq!(r, joined);
+            if let Some(token) = readiness {
+                r.wake(&token).unwrap();
+                r.dispatch(task).unwrap();
+            } else if phase == Phase::Ready {
+                r.dispatch(task).unwrap();
+            }
+            if phase != Phase::Completed {
+                r.complete(task, a).unwrap();
+            }
+            r.deliver(task, a, wait).unwrap();
+            let delivered = r.clone();
+            assert!(r.join(task, a, "work").is_err());
+            assert!(r.deliver(task, a, wait).is_err());
+            assert_eq!(r, delivered);
+            r.consume(task, a).unwrap();
+            r.retire_owner(a, false).unwrap();
+            assert!(r.is_empty());
+        }
+    }
+    #[test]
+    fn completed_unjoined_tasks_still_require_owned_completion_delivery() {
+        let mut r = Registry::default();
+        let a = owner(&mut r);
+        let b = owner(&mut r);
+        let task = r.defer(a, "work").unwrap();
+        r.enqueue(task, a, "work").unwrap();
+        r.dispatch(task).unwrap();
+        r.complete(task, a).unwrap();
+        let completed = r.clone();
+        assert!(r.consume(task, a).is_err());
+        assert!(r.retire_owner(a, false).is_err());
+        assert!(r.join(task, b, "work").is_err());
+        assert!(r.join(task, a, "other").is_err());
+        assert!(r.schedule(task, a, "work").is_err());
+        assert!(r.deliver(task, a, WaitId(1)).is_err());
+        assert_eq!(r, completed);
+        let wait = r.join(task, a, "work").unwrap();
+        assert!(r.next_ready().is_none());
+        let joined = r.clone();
+        assert!(r.deliver(task, b, wait).is_err());
+        assert!(r.deliver(task, a, WaitId(wait.0 + 1)).is_err());
+        assert_eq!(r, joined);
+        r.deliver(task, a, wait).unwrap();
+        r.consume(task, a).unwrap();
+        r.retire_owner(a, false).unwrap();
+        r.retire_owner(b, false).unwrap();
+        assert!(r.is_empty());
+    }
+    #[test]
+    fn exhausted_join_admission_preserves_queue_wait_and_completed_obligations() {
+        for phase in [
+            Phase::Cold,
+            Phase::Ready,
+            Phase::Running,
+            Phase::Waiting(1),
+            Phase::Completed,
+        ] {
+            let mut r = Registry::default();
+            let a = owner(&mut r);
+            let task = r.defer(a, "work").unwrap();
+            r.next_wait = u64::MAX;
+            // Queue admission allocates no join identity, even at this limit.
+            if phase != Phase::Cold {
+                r.enqueue(task, a, "work").unwrap();
+            }
+            if matches!(phase, Phase::Running | Phase::Waiting(_) | Phase::Completed) {
+                r.dispatch(task).unwrap();
+            }
+            if matches!(phase, Phase::Waiting(_)) {
+                let token = r.prepare_readiness(task, a).unwrap();
+                r.park(a, &token).unwrap();
+            }
+            if phase == Phase::Completed {
+                r.complete(task, a).unwrap();
+            }
+            let before = r.clone();
+            let failure = if phase == Phase::Cold {
+                r.schedule(task, a, "work")
+            } else {
+                r.join(task, a, "work")
+            };
+            assert!(
+                failure
+                    .unwrap_err()
+                    .message
+                    .contains("completion wait identity space exhausted")
+            );
+            assert_eq!(r, before);
+            r.retire_owner(a, true).unwrap();
+            assert!(r.is_empty());
+        }
+    }
+    #[test]
+    fn emergency_retirement_invalidates_unjoined_work_without_touching_other_joins() {
+        let mut r = Registry::default();
+        let a = owner(&mut r);
+        let b = owner(&mut r);
+        let completed = r.defer(a, "completed").unwrap();
+        r.enqueue(completed, a, "completed").unwrap();
+        r.dispatch(completed).unwrap();
+        r.complete(completed, a).unwrap();
+        let waiting = r.defer(a, "waiting").unwrap();
+        r.enqueue(waiting, a, "waiting").unwrap();
+        r.dispatch(waiting).unwrap();
+        let token = r.prepare_readiness(waiting, a).unwrap();
+        r.park(a, &token).unwrap();
+        let queued = r.defer(a, "queued").unwrap();
+        r.enqueue(queued, a, "queued").unwrap();
+        let other = r.defer(b, "other").unwrap();
+        let join = r.schedule(other, b, "other").unwrap();
+        let survivor = r.tasks[&other].clone();
+        r.retire_owner(a, true).unwrap();
+        assert_eq!(r.tasks[&other], survivor);
+        assert_eq!(r.next_ready(), Some(other));
+        assert!(r.wake(&token).is_err());
+        assert!(r.join(completed, a, "completed").is_err());
+        assert!(r.dispatch(queued).is_err());
+        r.dispatch(other).unwrap();
+        r.complete(other, b).unwrap();
+        r.deliver(other, b, join).unwrap();
+        r.consume(other, b).unwrap();
+        r.retire_owner(b, false).unwrap();
+        assert!(r.is_empty());
     }
     #[test]
     fn readiness_cycles_do_not_complete_or_discharge_task_obligations() {

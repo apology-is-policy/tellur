@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-0.125.0-darwin-arm64.vsix` using **Extensions:
+1. Install the supplied `tellur-language-darwin-arm64-0.126.0.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1163,3 +1163,11 @@ The bundled compiler adds shared native host-context admission, selection/restor
 and retirement. Fault causes, contingency messages and resource selection stay paired,
 with checks for foreign, stale and nested-active state. Public calls remain synchronous;
 source scheduling and native sibling settlement are still ahead.
+
+## Task queue and completion joins in 0.126
+
+The reference runtime now separates queue admission from one-use completion joins.
+A completed task remains an obligation until its result is delivered and consumed;
+cold await still admits both operations atomically. This internal foundation
+preserves existing source behavior. Independent completion-payload storage and
+source `spawn`/`yield` remain ahead.
