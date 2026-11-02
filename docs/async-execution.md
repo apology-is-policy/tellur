@@ -13,7 +13,9 @@ adds local cold tasks with owned captures and consuming await. Compiler 0.107
 retains direct shared/exclusive captured loans through await. Compiler 0.108
 transfers selected borrowed completion origins. Compiler 0.109 retains contained
 references in owned captures. Compiler 0.110 retains whole borrowed carrier storage
-and nested dependencies through cold capture and result delivery. Scheduling remains future work.
+and nested dependencies through cold capture and result delivery. Compiler 0.111
+separates execution-wide storage and observations from resumable context state.
+Scheduling remains future work.
 
 ## Existing direction
 
@@ -67,7 +69,8 @@ Ordinary synchronous calls use both steps immediately. This provides a concrete
 handoff point for later deferred execution; it is not yet a source task. The handoff
 has no scheduler, public task type, captured-loan checker or cancellation contract.
 Host simulation disposal must not be treated as permission to drop a Tellur task.
-The source entry form is now accepted as `run`; source admission remains separate.
+The source entry form is `run`; E1c subsequently added checked cold captures and
+consuming await around this internal admission handoff.
 
 Reference values already use invocation-specific logical slot ranges. A reference
 identifies storage and projections rather than a Rust vector element pointer.
@@ -93,6 +96,29 @@ make Tellur programs concurrent, publish their memory effects, prescribe schedul
 introduce a task ID, or define spawn/await ancestry. A frozen failed tracker cannot
 resume, even if another tracker in that identity family can still allocate IDs.
 The executor decides which execution contexts may run.
+
+## Shared execution state and independent contexts (E1d.1)
+
+Compiler 0.111 separates the interpreter into one `SharedExecution` and a selected
+`Context`. The execution owns the value arena, monotonic frame-address allocator,
+fixed fuel, scripted input cursor and event history. A context owns its current
+frame facts, call/loop/boundary continuations, pending control disposition, diagnostic
+tracker, contingency stack and retained-resource handover. Moving or selecting a
+context does not copy storage, reset addresses, replay input or refill fuel.
+
+Internal tests interleave independent control chains against that same execution.
+They keep the caller suspended while child references point into its storage;
+children write the original slots and retire only their own frames. Other tests
+separate decision facts and contingency state while sharing script order, effects
+and fuel. Admission failures preserve a suspended owner's storage and do not
+consume an activation identity.
+
+This is a structural foundation, not source scheduling. The public execution
+session still runs one sequential chain; its stepping quotas remain a host test
+facility. Context selection in these tests is explicit harness work, not a new
+source safe point or permission to resume siblings after an escaping fault. Task
+identities, owner links, ready/wait transitions and settlement admission come next.
+The native backend and LLVM coroutine route are unchanged.
 
 ## Separate the identities and continuations
 
@@ -132,9 +158,10 @@ send its emergency response only after child loans end and retained response
 capabilities are safe to hand over. This is an accepted design rule, not an
 implemented scheduler feature.
 
-The owner-scope relationship, moving handles across fault boundaries, deterministic
-selection of multiple escaping faults, and secondary settlement failures must be
-specified before general `spawn`. An atomic ID allocator makes no choice here.
+Invocation ownership and the initial restriction on handle movement are accepted
+below. Cooperative scheduling points, deterministic observation of escaping faults
+and secondary settlement failures still need an executable protocol before general
+`spawn`. An atomic ID allocator makes no choice here.
 
 ## Accepted decision: invocation-owned spawned children
 
@@ -151,8 +178,9 @@ and does not yet accept `spawn`.
 
 ## Cold-task contract audit
 
-The next E1c slice must distinguish creating a computation from invoking it. This
-is an implementation audit, not newly accepted syntax or executable behavior.
+This audit guided E1c: creating a computation is distinct from invoking it.
+The local cold-task profile now implements capture and consuming await; public
+task contracts and independent scheduling remain bounded as described below.
 
 | Operation | Existing direction and required checking |
 | --- | --- |
@@ -183,7 +211,7 @@ This does not permit cancellation by dropping running work or hidden detach. A f
 still terminates ordinary execution through the owning boundary's checked fault
 dispositions; it does not satisfy normal completion by pretending the task ran.
 The host `ExecutionSession` remains a scripted simulation with a different disposal
-contract. These source task rules are accepted for E1c but not yet executable.
+contract. The local cold-task profile enforces these source task rules.
 
 ### Accepted decision: explicit runtime entry with `run`
 
@@ -356,6 +384,8 @@ Those boundaries need explicit contracts before being accepted by the checker.
 | E1c.3c.1 | Owned record/sum captures containing references | Delivered in 0.109: field/tag identities, carrier contents and origin-group delivery |
 | E1c.3c.2 | Whole borrowed carrier parameters | Delivered in 0.110: retained storage authority, nested contents, reborrows, moves and selected result origins |
 | E1d | Scoped spawn and deterministic readiness; two overlapping children, duplicate/stale wake handling and owner settlement | Invocation ownership and no cross-invocation/boundary handle transfer accepted; implement scoped scheduling, sibling settlement and deterministic fault observation |
+| E1d.1 | Separate execution-wide state from resumable control chains | Delivered in 0.111: one storage arena/address allocator, script cursor, effect history and fuel budget; independent frames, continuations and emergency state; internal interleaving evidence, no source spawn |
+| E1d.2 | Task ownership and readiness lifecycle | Next: owner/task identities, ready/wait/complete transitions, duplicate/stale wake rejection and settlement admission before source scheduling |
 | E1e | Explicit cooperative cancellation and suspending cleanup; normal completion races, cleanup failures and no abandoned losers | Define cancellation observation and cleanup admission; no implicit cancellation exception |
 | E2 | Pinned native coroutine experiment, then checked lowering and schedule-based differential validation | Reference semantics and legal frame retirement must precede native destruction |
 

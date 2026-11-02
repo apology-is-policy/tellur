@@ -3801,3 +3801,40 @@ checks `E_BORROW`, and the final task invocation passes the remaining three task
 targets. A separately added forwarding case brings the new carrier suite to eleven.
 The filtered Rust-adapter run contributes one resource test. Repeated manual checks
 are counted once, using the final log after adding the carrier rejection example.
+
+## 0.111 — shared execution state and independent contexts (E1d.1)
+
+The reference interpreter now keeps its value arena, monotonic frame-address
+allocator, script cursor, events and fixed fuel in one execution-wide structure.
+Current frame facts, continuations, pending control disposition, diagnostic tracker,
+contingencies and resource handover belong to a movable context. The public session
+still executes one sequential chain. This introduces no source scheduling points,
+spawned-task API or change to fault/outcome semantics.
+
+Five internal interleaving cases exercise shared borrowed storage without frame
+collisions, retirement of only the completed child's slots, separate decision
+facts with one scripted input history, a fuel budget that context selection cannot
+refill, failure-atomic admission beside a suspended owner, and contingency/recovery
+state retained in the correct chain. The owner stays suspended until its borrowers
+finish. These are interpreter harness tests, not a claim that unchecked source
+concurrency or sibling recovery after an escaping fault is permitted.
+
+Validation passes **347 Rust tests in 15 targets**, including all stepping, fault,
+boundary, cold-task, borrowed-result, carrier-task, collection and LSP cases selected
+for this refactor. Reference/native comparisons and expansion preserve the existing
+sequential observations. Three manual tests pass. A structural diff audit confirms
+that machine method bodies differ only in field qualification and rustfmt layout;
+the runtime algorithm is unchanged. Initial fixture failures were corrected for
+canonical reference spelling, the manifest's required `returns` boolean and a Rust
+helper's output lifetime.
+
+The **44 Node editor tests from 0.110 are reused** after verifying unchanged editor
+source/tests/configuration and version-only package manifest changes. A fresh
+isolated VS Code run verifies inferred task/result types, unsaved loan diagnostics,
+repair and native execution. Six staged binaries and nine packaged/installed
+payloads are verified for 0.111.0; existing windows are not reloaded. The source
+backup excludes the protected unrelated C# file. These are selected regressions,
+not a full-suite claim.
+
+Next E1d.2 adds internal owner/task identities and a checked readiness lifecycle;
+source spawn and child settlement still require their own implementation evidence.

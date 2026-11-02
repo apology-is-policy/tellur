@@ -3,7 +3,7 @@
 [Language reference](../language-reference.md) · [Design and next steps](../async-execution.md) ·
 [Execution failures](execution-failures.md)
 
-Compiler 0.110 supports `async control`, synchronous entry with `run`, direct
+Compiler 0.111 supports `async control`, synchronous entry with `run`, direct
 `await operation(arguments)` and local cold tasks with owned and borrowed captures, including reference-bearing carriers, and borrowed completions. Execution
 remains sequential. There is no concurrent scheduler, I/O readiness or LLVM coroutine
 lowering yet.
@@ -353,7 +353,10 @@ nearest contingency handler receives control.
 The reference interpreter retains explicit call continuations for direct calls and consuming task awaits.
 Its host instruction quotas can pause execution between instructions; these pauses
 are not source await points or readiness scheduling. The native backend executes the
-same bounded profile with sequential calls and stable caller storage.
+same bounded profile with sequential calls and stable caller storage. Since 0.111,
+the interpreter separates shared storage, fuel and effect history from its
+resumable control chain. This internal preparation does not change source execution
+order or introduce scheduling points.
 
 Path expansion retains `run`, `defer`, direct `await` and task consumption as
 explicit operations. It may inline ordinary

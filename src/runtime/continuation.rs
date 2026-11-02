@@ -1,6 +1,10 @@
 //! Host stepping of synchronous checked execution. No source scheduler or task policy.
 use super::*;
 
+#[cfg(test)]
+#[path = "context_tests.rs"]
+mod context_tests;
+
 type RunResult = std::result::Result<RunCompletion, Box<Failure>>;
 
 /// Host control of execution, separate from Tellur outcomes and fault settlement.
@@ -31,20 +35,16 @@ impl CheckedProgram {
     ) -> ExecutionSession<'a> {
         ExecutionSession {
             machine: Some(Machine {
-                next_base: 0,
-                contingencies: vec![],
-                program: self,
-                calls: &scenario.calls,
-                cursor: 0,
-                events: vec![],
-                steps_left: steps,
-                activations: crate::fault::Tracker::new(self.runtime_sites()),
-                phase: crate::fault::Phase::EntryValidation,
-                values: BTreeMap::new(),
-                frame: Frame::default(),
-                stack: vec![],
-                flow: None,
-                handover: vec![],
+                shared: SharedExecution {
+                    next_base: 0,
+                    program: self,
+                    calls: &scenario.calls,
+                    cursor: 0,
+                    events: vec![],
+                    steps_left: steps,
+                    values: BTreeMap::new(),
+                },
+                context: Context::new(crate::fault::Tracker::new(self.runtime_sites())),
             }),
             scenario,
             initialized: false,
@@ -65,7 +65,7 @@ impl ExecutionSession<'_> {
         if !self.initialized {
             self.initialized = true;
             if let Err(diagnostic) = machine.enter(self.scenario) {
-                machine.flow = Some(Err(diagnostic));
+                machine.context.flow = Some(Err(diagnostic));
             }
         }
         if !machine.drive(instructions) {
@@ -77,7 +77,7 @@ impl ExecutionSession<'_> {
     /// Effects already observed in this simulation. Completion transfers them to
     /// the delivered result or failure, leaving no second copy in the session.
     pub fn events(&self) -> &[Event] {
-        self.machine.as_ref().map_or(&[], |m| &m.events)
+        self.machine.as_ref().map_or(&[], |m| &m.shared.events)
     }
 }
 
@@ -129,21 +129,47 @@ enum Continuation<'a> {
         parent: crate::fault::Tracker,
     },
 }
-struct Machine<'a> {
+/// One execution-wide arena and observation history. Selecting another context
+/// must not clone values, reset address allocation, replay script inputs or refill
+/// fuel. This is single-threaded state, not a source scheduler or shared-memory API.
+struct SharedExecution<'a> {
     next_base: Id,
-    contingencies: Vec<Diagnostic>,
     program: &'a CheckedProgram,
     calls: &'a [ScriptCall],
     cursor: usize,
     events: Vec<Event>,
     steps_left: usize,
+    values: BTreeMap<Id, Value>,
+}
+
+/// A resumable control chain. Storage and effect history belong to the execution;
+/// facts, return/unwind continuations and fault context belong to this chain.
+/// Moving a context preserves it without moving any referenced frame storage.
+struct Context<'a> {
+    contingencies: Vec<Diagnostic>,
     activations: crate::fault::Tracker,
     phase: crate::fault::Phase,
-    values: BTreeMap<Id, Value>,
     frame: Frame,
     stack: Vec<Continuation<'a>>,
     flow: Option<Result<Flow>>,
     handover: Vec<Value>,
+}
+impl Context<'_> {
+    fn new(activations: crate::fault::Tracker) -> Self {
+        Self {
+            contingencies: vec![],
+            activations,
+            phase: crate::fault::Phase::EntryValidation,
+            frame: Frame::default(),
+            stack: vec![],
+            flow: None,
+            handover: vec![],
+        }
+    }
+}
+struct Machine<'a> {
+    shared: SharedExecution<'a>,
+    context: Context<'a>,
 }
 fn completion(flow: Flow) -> Result<Completion> {
     match flow {
@@ -155,7 +181,7 @@ fn completion(flow: Flow) -> Result<Completion> {
 }
 impl<'a> Machine<'a> {
     fn enter(&mut self, scenario: &Scenario) -> Result<()> {
-        let region = self.program.region(&scenario.entry);
+        let region = self.shared.program.region(&scenario.entry);
         if region.is_some_and(|r| r.asynchronous) {
             return Err(error(
                 "async controls require a synchronous entry using run",
@@ -182,6 +208,7 @@ impl<'a> Machine<'a> {
     }
     fn prepare_call(&self, name: &str, args: Vec<Value>) -> Result<PreparedInvocation<'a>> {
         let region = self
+            .shared
             .program
             .region(name)
             .ok_or_else(|| error(format!("unknown entry region `{name}`")))?;
@@ -191,12 +218,12 @@ impl<'a> Machine<'a> {
         // Validate the entire captured value graph before mutating frame storage.
         // A later malformed argument must not leave an earlier one installed.
         for (param, value) in region.parameters.iter().zip(&args) {
-            validate(value, &param.ty, self.program.manifest())?;
+            validate(value, &param.ty, self.shared.program.manifest())?;
         }
         Ok(PreparedInvocation {
             region,
             arguments: args,
-            diagnostic_name: self.program.runtime_name(name),
+            diagnostic_name: self.shared.program.runtime_name(name),
         })
     }
     fn start_call(&mut self, invocation: PreparedInvocation<'a>) -> Result<()> {
@@ -205,57 +232,64 @@ impl<'a> Machine<'a> {
             arguments,
             diagnostic_name,
         } = invocation;
-        let base = self.next_base;
+        let base = self.shared.next_base;
         let next_base = base
-            .checked_add(self.program.next_id.max(1))
+            .checked_add(self.shared.program.next_id.max(1))
             .ok_or_else(|| error("activation storage address space exhausted"))?;
         // Both fallible admission checks precede frame installation. Preparing
         // an invocation neither reserves addresses nor consumes an activation ID.
-        self.activations.enter(&diagnostic_name).map_err(error)?;
-        self.next_base = next_base;
+        self.context
+            .activations
+            .enter(&diagnostic_name)
+            .map_err(error)?;
+        self.shared.next_base = next_base;
         for (param, value) in region.parameters.iter().zip(arguments) {
-            self.values.insert(base + param.id, value);
+            self.shared.values.insert(base + param.id, value);
         }
-        self.phase = crate::fault::Phase::Execution;
+        self.context.phase = crate::fault::Phase::Execution;
         let caller = std::mem::replace(
-            &mut self.frame,
+            &mut self.context.frame,
             Frame {
                 base,
                 facts: BTreeSet::new(),
             },
         );
-        self.stack.push(Continuation::Call { region, caller });
+        self.context
+            .stack
+            .push(Continuation::Call { region, caller });
         self.block(&region.code);
         Ok(())
     }
     fn block(&mut self, code: &'a [Instruction]) {
-        self.flow = None;
-        self.stack.push(Continuation::Block { code, next: 0 });
+        self.context.flow = None;
+        self.context
+            .stack
+            .push(Continuation::Block { code, next: 0 });
     }
     fn arguments(&mut self, args: &[Expr]) -> Result<Vec<Value>> {
         args.iter()
-            .map(|e| evaluate(e, &mut self.values, self.frame.base))
+            .map(|e| evaluate(e, &mut self.shared.values, self.context.frame.base))
             .collect()
     }
     /// Returns false only at an instruction boundary with no effects performed for
     /// that next instruction. No recursive source calls/loops/unwinding occur here.
     fn drive(&mut self, mut quota: usize) -> bool {
-        while let Some(continuation) = self.stack.pop() {
+        while let Some(continuation) = self.context.stack.pop() {
             if let Continuation::Block { code, next } = continuation {
-                if self.flow.is_some() {
+                if self.context.flow.is_some() {
                     continue;
                 }
                 let Some(instruction) = code.get(next) else {
-                    self.flow = Some(Ok(Flow::Fallthrough));
+                    self.context.flow = Some(Ok(Flow::Fallthrough));
                     continue;
                 };
                 if quota == 0 {
-                    self.stack.push(Continuation::Block { code, next });
+                    self.context.stack.push(Continuation::Block { code, next });
                     return false;
                 }
-                self.activations.at(instruction.id);
-                if self.steps_left == 0 {
-                    self.flow = Some(Err(Diagnostic::new(
+                self.context.activations.at(instruction.id);
+                if self.shared.steps_left == 0 {
+                    self.context.flow = Some(Err(Diagnostic::new(
                         "E_FUEL",
                         instruction.provenance.span,
                         "reference interpreter step limit reached; this is a host limit, not a language outcome",
@@ -263,52 +297,56 @@ impl<'a> Machine<'a> {
                     continue;
                 }
                 quota -= 1;
-                self.steps_left -= 1;
-                self.stack.push(Continuation::Block {
+                self.shared.steps_left -= 1;
+                self.context.stack.push(Continuation::Block {
                     code,
                     next: next + 1,
                 });
-                if !instruction.guard.evaluate(&self.frame.facts) {
+                if !instruction.guard.evaluate(&self.context.frame.facts) {
                     continue;
                 }
                 match self.instruction(instruction) {
                     Ok(Flow::Fallthrough) => {}
-                    result => self.flow = Some(result),
+                    result => self.context.flow = Some(result),
                 }
             } else if let Err(diagnostic) = self.resume(continuation) {
-                self.flow = Some(Err(diagnostic));
+                self.context.flow = Some(Err(diagnostic));
             }
         }
         true
     }
     fn resume(&mut self, continuation: Continuation<'a>) -> Result<()> {
         let flow = self
+            .context
             .flow
             .take()
             .expect("a continuation receives completed nested work");
         match continuation {
             Continuation::Block { .. } => unreachable!(),
             Continuation::Call { region, caller } => {
-                self.handover.clear();
+                self.context.handover.clear();
                 let result = (|| {
-                    if flow.is_err() && self.activations.is_source_fault() {
+                    if flow.is_err() && self.context.activations.is_source_fault() {
                         if let Some(boundary) = &region.boundary {
                             for id in &boundary.retained {
-                                self.handover.push(
-                                    self.values.remove(&(self.frame.base + id)).ok_or_else(
-                                        || error("retained boundary resource is unavailable"),
-                                    )?,
+                                self.context.handover.push(
+                                    self.shared
+                                        .values
+                                        .remove(&(self.context.frame.base + id))
+                                        .ok_or_else(|| {
+                                            error("retained boundary resource is unavailable")
+                                        })?,
                                 );
                             }
                         }
                     }
                     for id in region.slots.keys() {
-                        self.values.remove(&(self.frame.base + id));
+                        self.shared.values.remove(&(self.context.frame.base + id));
                     }
                     let flow = flow?;
                     match &flow {
                         Flow::Process(_) | Flow::Terminate | Flow::Exit(..) => {
-                            self.activations.leave()
+                            self.context.activations.leave()
                         }
                         _ => {
                             return Err(error(
@@ -318,8 +356,8 @@ impl<'a> Machine<'a> {
                     }
                     Ok(flow)
                 })();
-                self.frame = caller;
-                self.flow = Some(result);
+                self.context.frame = caller;
+                self.context.flow = Some(result);
             }
             Continuation::Decision(arms) => {
                 let (outcome, fields) = completion(flow?)?.outcome()?;
@@ -337,7 +375,7 @@ impl<'a> Machine<'a> {
                     Flow::Fallthrough => {
                         return Err(error("interpreter invariant: loop fell through"));
                     }
-                    other => self.flow = Some(Ok(other)),
+                    other => self.context.flow = Some(Ok(other)),
                 }
             }
             Continuation::SupervisedWork {
@@ -345,25 +383,26 @@ impl<'a> Machine<'a> {
                 handler,
                 parent,
             } => match flow {
-                Err(diagnostic) if self.activations.is_source_fault() => {
-                    let report = self.report(&self.program.runtime_name(name), &diagnostic);
-                    self.events.push(Event::Fault {
+                Err(diagnostic) if self.context.activations.is_source_fault() => {
+                    let report = self.report(&self.shared.program.runtime_name(name), &diagnostic);
+                    self.shared.events.push(Event::Fault {
                         report: Box::new(report.clone()),
                     });
-                    let mut tracker = self.activations.child();
+                    let mut tracker = self.context.activations.child();
                     tracker.with_cause(report);
-                    self.activations = tracker;
-                    let mut retained = std::mem::take(&mut self.handover);
+                    self.context.activations = tracker;
+                    let mut retained = std::mem::take(&mut self.context.handover);
                     retained.push(Value::String(diagnostic.message.clone()));
-                    self.contingencies.push(diagnostic);
-                    self.stack
+                    self.context.contingencies.push(diagnostic);
+                    self.context
+                        .stack
                         .push(Continuation::SupervisedHandler { name, parent });
                     self.call(handler, retained)?;
                 }
                 other => self.finish_supervision(name, parent, other),
             },
             Continuation::SupervisedHandler { name, parent } => {
-                self.contingencies.pop();
+                self.context.contingencies.pop();
                 self.finish_supervision(name, parent, flow);
             }
             Continuation::BoundaryWork {
@@ -372,7 +411,7 @@ impl<'a> Machine<'a> {
                 parent,
             } => {
                 match flow {
-                    Err(diagnostic) if self.activations.is_source_fault() => {
+                    Err(diagnostic) if self.context.activations.is_source_fault() => {
                         let Action::Boundary {
                             handler,
                             retire,
@@ -383,11 +422,11 @@ impl<'a> Machine<'a> {
                             unreachable!()
                         };
                         let report = self.report(&name, &diagnostic);
-                        self.events.push(Event::Fault {
+                        self.shared.events.push(Event::Fault {
                             report: Box::new(report.clone()),
                         });
                         for id in retire {
-                            self.values.remove(&(self.frame.base + id));
+                            self.shared.values.remove(&(self.context.frame.base + id));
                         }
                         let (message, stack, paths) = report.source_fields();
                         let strings = |xs: Vec<String>| Value::Construct {
@@ -395,8 +434,8 @@ impl<'a> Machine<'a> {
                             name: "vector".into(),
                             fields: xs.into_iter().map(Value::String).collect(),
                         };
-                        self.values.insert(
-                            self.frame.base + fault_slot,
+                        self.shared.values.insert(
+                            self.context.frame.base + fault_slot,
                             Value::Construct {
                                 ty: "fault_report".into(),
                                 name: "fault_report".into(),
@@ -407,17 +446,18 @@ impl<'a> Machine<'a> {
                                 ],
                             },
                         );
-                        let mut tracker = self.activations.child();
+                        let mut tracker = self.context.activations.child();
                         tracker.with_cause(report);
-                        self.activations = tracker;
+                        self.context.activations = tracker;
                         // Preserve restoration even if admission fails before the handler starts.
-                        self.stack.push(Continuation::BoundaryHandler {
+                        self.context.stack.push(Continuation::BoundaryHandler {
                             action,
                             name: name.clone(),
                             parent,
                         });
-                        self.contingencies.push(diagnostic);
-                        self.activations
+                        self.context.contingencies.push(diagnostic);
+                        self.context
+                            .activations
                             .enter(&format!("{name}$contingency"))
                             .map_err(error)?;
                         self.block(handler);
@@ -430,28 +470,28 @@ impl<'a> Machine<'a> {
                 name,
                 parent,
             } => {
-                self.contingencies.pop();
+                self.context.contingencies.pop();
                 self.finish_boundary(action, &name, parent, flow);
             }
         }
         Ok(())
     }
     fn report(&mut self, name: &str, diagnostic: &Diagnostic) -> crate::fault::Report {
-        self.activations.failure(
+        self.context.activations.failure(
             name,
             crate::fault::Phase::Execution,
             &format!("{}: {}", diagnostic.code, diagnostic.message),
         )
     }
     fn restore(&mut self, name: &str, mut parent: crate::fault::Tracker, flow: &Result<Flow>) {
-        parent.absorb(&self.activations);
+        parent.absorb(&self.context.activations);
         if let Err(diagnostic) = flow {
-            if self.activations.is_source_fault() {
+            if self.context.activations.is_source_fault() {
                 parent.source_fault();
             }
             parent.with_cause(self.report(name, diagnostic));
         }
-        self.activations = parent;
+        self.context.activations = parent;
     }
     fn finish_supervision(
         &mut self,
@@ -463,8 +503,8 @@ impl<'a> Machine<'a> {
             .and_then(completion)
             .and_then(Completion::settled)
             .map(|()| Flow::Fallthrough);
-        self.restore(&self.program.runtime_name(name), parent, &result);
-        self.flow = match result {
+        self.restore(&self.shared.program.runtime_name(name), parent, &result);
+        self.context.flow = match result {
             Ok(Flow::Fallthrough) => None,
             other => Some(other),
         };
@@ -485,10 +525,10 @@ impl<'a> Machine<'a> {
             unreachable!()
         };
         for id in work_slots.iter().chain(handler_slots) {
-            self.values.remove(&(self.frame.base + id));
+            self.shared.values.remove(&(self.context.frame.base + id));
         }
         self.restore(name, parent, &flow);
-        self.flow = match flow {
+        self.context.flow = match flow {
             Ok(Flow::Fallthrough) => None,
             other => Some(other),
         };
@@ -505,15 +545,17 @@ impl<'a> Machine<'a> {
             unreachable!()
         };
         for slot in local_slots {
-            self.values.remove(&(self.frame.base + slot));
+            self.shared.values.remove(&(self.context.frame.base + slot));
         }
         for atom in local_atoms {
-            self.frame.facts.remove(atom);
+            self.context.frame.facts.remove(atom);
         }
         for ((slot, _), value) in parameters.iter().zip(arguments) {
-            self.values.insert(self.frame.base + slot, value);
+            self.shared
+                .values
+                .insert(self.context.frame.base + slot, value);
         }
-        self.stack.push(Continuation::Loop(action));
+        self.context.stack.push(Continuation::Loop(action));
         self.block(body);
     }
     fn bind(&mut self, arms: &[Arm], outcome: String, fields: Vec<Value>) -> Result<()> {
@@ -524,23 +566,25 @@ impl<'a> Machine<'a> {
         if fields.len() != arm.slots.len() {
             return Err(error("interpreter invariant: payload arity"));
         }
-        self.frame.facts.insert(arm.atom);
+        self.context.frame.facts.insert(arm.atom);
         for (slot, value) in arm.slots.iter().zip(fields) {
-            self.values.insert(self.frame.base + *slot, value);
+            self.shared
+                .values
+                .insert(self.context.frame.base + *slot, value);
         }
         Ok(())
     }
     fn instruction(&mut self, instruction: &'a Instruction) -> Result<Flow> {
         match &instruction.action {
             Action::Boundary { body, .. } => {
-                let child = self.activations.child();
-                let parent = std::mem::replace(&mut self.activations, child);
+                let child = self.context.activations.child();
+                let parent = std::mem::replace(&mut self.context.activations, child);
                 let name = format!(
                     "{}$boundary@{}",
                     instruction.provenance.region, instruction.provenance.span.line
                 );
-                self.activations.enter(&name).map_err(error)?;
-                self.stack.push(Continuation::BoundaryWork {
+                self.context.activations.enter(&name).map_err(error)?;
+                self.context.stack.push(Continuation::BoundaryWork {
                     action: &instruction.action,
                     name,
                     parent,
@@ -550,21 +594,22 @@ impl<'a> Machine<'a> {
             Action::Loop { parameters, .. } => {
                 let args = parameters
                     .iter()
-                    .map(|(_, e)| evaluate(e, &mut self.values, self.frame.base))
+                    .map(|(_, e)| evaluate(e, &mut self.shared.values, self.context.frame.base))
                     .collect::<Result<_>>()?;
                 self.iteration(&instruction.action, args);
             }
             Action::Supervise { boundary, args } => {
                 let args = self.arguments(args)?;
                 let handler = &self
+                    .shared
                     .program
                     .region(boundary)
                     .and_then(|r| r.boundary.as_ref())
                     .ok_or_else(|| error("invalid boundary"))?
                     .handler;
-                let child = self.activations.child();
-                let parent = std::mem::replace(&mut self.activations, child);
-                self.stack.push(Continuation::SupervisedWork {
+                let child = self.context.activations.child();
+                let parent = std::mem::replace(&mut self.context.activations, child);
+                self.context.stack.push(Continuation::SupervisedWork {
                     name: boundary,
                     handler,
                     parent,
@@ -592,7 +637,7 @@ impl<'a> Machine<'a> {
                         "interpreter invariant: pending task producer differs",
                     ));
                 }
-                self.stack.push(Continuation::Decision(arms));
+                self.context.stack.push(Continuation::Decision(arms));
                 self.call(name, arguments)?;
             }
             Action::Decide {
@@ -601,7 +646,7 @@ impl<'a> Machine<'a> {
                 arms,
             } => {
                 let args = self.arguments(args)?;
-                self.stack.push(Continuation::Decision(arms));
+                self.context.stack.push(Continuation::Decision(arms));
                 self.call(name, args)?;
             }
             _ => return self.leaf(instruction),
@@ -609,9 +654,9 @@ impl<'a> Machine<'a> {
         Ok(Flow::Fallthrough)
     }
     fn leaf(&mut self, instruction: &Instruction) -> Result<Flow> {
-        let values = &mut self.values;
-        let facts = &mut self.frame.facts;
-        let base = self.frame.base;
+        let values = &mut self.shared.values;
+        let facts = &mut self.context.frame.facts;
+        let base = self.context.frame.base;
         match &instruction.action {
             Action::Recover { target, args } => {
                 return Ok(Flow::Recover(
@@ -632,8 +677,9 @@ impl<'a> Machine<'a> {
             Action::Terminate => return Ok(Flow::Terminate),
             Action::TerminateProcess(status) => return Ok(Flow::Process(*status)),
             Action::Escalate => {
-                self.activations.source_fault();
+                self.context.activations.source_fault();
                 return Err(self
+                    .context
                     .contingencies
                     .last()
                     .cloned()
@@ -664,13 +710,13 @@ impl<'a> Machine<'a> {
                 let Value::String(message) = evaluate(expr, values, base)? else {
                     return Err(error("interpreter invariant: emit type"));
                 };
-                self.events.push(Event::Emit { message });
+                self.shared.events.push(Event::Emit { message });
             }
             Action::Fault(expr) => {
                 let Value::String(message) = evaluate(expr, values, base)? else {
                     return Err(error("interpreter invariant: fault type"));
                 };
-                self.activations.source_fault();
+                self.context.activations.source_fault();
                 return Err(Diagnostic::new(
                     "E_FAULT",
                     instruction.provenance.span,
@@ -739,6 +785,7 @@ impl<'a> Machine<'a> {
                             return Err(error("invalid borrowed decision address"));
                         };
                         let outcomes = self
+                            .shared
                             .program
                             .manifest
                             .borrowed_outcomes(&ty)
@@ -780,6 +827,7 @@ impl<'a> Machine<'a> {
                     }
                     Operation::Primitive(name) => {
                         let primitive = self
+                            .shared
                             .program
                             .manifest
                             .primitives
@@ -796,16 +844,17 @@ impl<'a> Machine<'a> {
                                 vec![evaluate(&expression, values, base)?],
                             )
                         } else {
-                            let call = self.calls.get(self.cursor).ok_or_else(|| {
-                                error(format!("script exhausted before `{name}`"))
-                            })?;
+                            let call =
+                                self.shared.calls.get(self.shared.cursor).ok_or_else(|| {
+                                    error(format!("script exhausted before `{name}`"))
+                                })?;
                             if call.operation != *name {
                                 return Err(error(format!(
                                     "expected script operation `{name}`, found `{}`",
                                     call.operation
                                 )));
                             }
-                            self.cursor += 1;
+                            self.shared.cursor += 1;
                             let outcome = primitive
                                 .outcomes
                                 .iter()
@@ -817,9 +866,9 @@ impl<'a> Machine<'a> {
                                 return Err(error("driver outcome payload arity mismatch"));
                             }
                             for (field, value) in outcome.fields.iter().zip(&call.fields) {
-                                validate(value, &field.ty, &self.program.manifest)?;
+                                validate(value, &field.ty, &self.shared.program.manifest)?;
                             }
-                            self.events.push(Event::Primitive {
+                            self.shared.events.push(Event::Primitive {
                                 operation: name.clone(),
                                 arguments: args,
                                 outcome: call.outcome.clone(),
@@ -851,18 +900,19 @@ impl<'a> Machine<'a> {
     fn finish(mut self, entry: &str) -> RunResult {
         let result = (|| {
             let completion = completion(
-                self.flow
+                self.context
+                    .flow
                     .take()
                     .expect("completed entry has a disposition")?,
             )?;
-            self.phase = crate::fault::Phase::ResultValidation;
-            if self.cursor != self.calls.len() {
+            self.context.phase = crate::fault::Phase::ResultValidation;
+            if self.shared.cursor != self.shared.calls.len() {
                 return Err(error(format!(
                     "{} unconsumed script calls",
-                    self.calls.len() - self.cursor
+                    self.shared.calls.len() - self.shared.cursor
                 )));
             }
-            let events = std::mem::take(&mut self.events);
+            let events = std::mem::take(&mut self.shared.events);
             match completion {
                 Completion::Outcome(outcome, fields) => Ok(RunCompletion::Outcome(Execution {
                     outcome,
@@ -881,14 +931,15 @@ impl<'a> Machine<'a> {
         })();
         result.map_err(|diagnostic| {
             Box::new(Failure {
-                events: std::mem::take(&mut self.events),
-                report: self.activations.failure(
+                events: std::mem::take(&mut self.shared.events),
+                report: self.context.activations.failure(
                     &self
+                        .shared
                         .program
                         .region(entry)
-                        .map(|r| self.program.runtime_name(&r.name))
+                        .map(|r| self.shared.program.runtime_name(&r.name))
                         .unwrap_or_else(|| entry.into()),
-                    self.phase,
+                    self.context.phase,
                     &format!("{}: {}", diagnostic.code, diagnostic.message),
                 ),
                 diagnostic,
@@ -925,16 +976,16 @@ mod tests {
         }
     }
     fn assert_uninstalled(machine: &Machine<'_>, next_base: Id) {
-        assert_eq!(machine.next_base, next_base);
-        assert!(machine.values.is_empty());
-        assert!(machine.stack.is_empty());
-        assert!(machine.events.is_empty());
-        assert_eq!(machine.frame.base, 0);
-        assert!(machine.frame.facts.is_empty());
-        assert_eq!(machine.cursor, 0);
-        assert_eq!(machine.steps_left, 100);
+        assert_eq!(machine.shared.next_base, next_base);
+        assert!(machine.shared.values.is_empty());
+        assert!(machine.context.stack.is_empty());
+        assert!(machine.shared.events.is_empty());
+        assert_eq!(machine.context.frame.base, 0);
+        assert!(machine.context.frame.facts.is_empty());
+        assert_eq!(machine.shared.cursor, 0);
+        assert_eq!(machine.shared.steps_left, 100);
         assert!(matches!(
-            machine.phase,
+            machine.context.phase,
             crate::fault::Phase::EntryValidation
         ));
     }
@@ -956,15 +1007,15 @@ mod tests {
         // a frame. Selecting their execution order is internal test setup, not
         // source scheduling or permission to leave a task unsettled.
         machine.start_call(second).unwrap();
-        assert!(machine.events.is_empty());
-        assert_eq!(machine.values.len(), 2);
+        assert!(machine.shared.events.is_empty());
+        assert_eq!(machine.shared.values.len(), 2);
         assert!(machine.drive(100));
-        assert!(machine.values.is_empty());
-        assert!(machine.stack.is_empty());
+        assert!(machine.shared.values.is_empty());
+        assert!(machine.context.stack.is_empty());
         machine.start_call(first).unwrap();
         assert!(machine.drive(100));
         assert_eq!(
-            machine.events,
+            machine.shared.events,
             vec![
                 Event::Emit {
                     message: "second".into()
@@ -974,8 +1025,8 @@ mod tests {
                 }
             ]
         );
-        assert!(machine.values.is_empty());
-        assert!(machine.stack.is_empty());
+        assert!(machine.shared.values.is_empty());
+        assert!(machine.context.stack.is_empty());
     }
 
     #[test]
@@ -1003,7 +1054,7 @@ mod tests {
         assert!(error.message.contains("expected U32"));
         assert_uninstalled(machine, 0);
         // Preparation and rejection have not consumed any activation identity.
-        let mut probe = machine.activations.child();
+        let mut probe = machine.context.activations.child();
         probe.enter("probe").unwrap();
         let report = probe.failure("probe", crate::fault::Phase::Execution, "test");
         assert_eq!(report.activations[0].id, 1);
@@ -1017,15 +1068,15 @@ mod tests {
             let mut session = p.start_execution(&s, 100);
             let machine = session.machine.as_mut().unwrap();
             if storage_exhausted {
-                machine.next_base = usize::MAX;
+                machine.shared.next_base = usize::MAX;
             } else {
-                machine.activations.failure(
+                machine.context.activations.failure(
                     "host",
                     crate::fault::Phase::EntryValidation,
                     "already failed",
                 );
             }
-            let next = machine.next_base;
+            let next = machine.shared.next_base;
             let prepared = machine
                 .prepare_call("leaf", admission_arguments("unused"))
                 .unwrap();
@@ -1060,16 +1111,22 @@ mod tests {
             assert!(matches!(session.advance(1), ExecutionProgress::Paused));
             let machine = session.machine.as_ref().unwrap();
             assert!(
-                machine.stack.len() <= 8,
+                machine.context.stack.len() <= 8,
                 "completed continuations accumulated"
             );
-            assert!(machine.values.len() <= 1, "completed storage accumulated");
-            assert!(machine.frame.facts.len() <= 1, "loop decisions accumulated");
-            assert!(machine.contingencies.is_empty());
+            assert!(
+                machine.shared.values.len() <= 1,
+                "completed storage accumulated"
+            );
+            assert!(
+                machine.context.frame.facts.len() <= 1,
+                "loop decisions accumulated"
+            );
+            assert!(machine.context.contingencies.is_empty());
         }
         let machine = session.machine.as_ref().unwrap();
-        assert_eq!(machine.steps_left, 1000);
-        assert!(machine.next_base > p.next_id * 100);
+        assert_eq!(machine.shared.steps_left, 1000);
+        assert!(machine.shared.next_base > p.next_id * 100);
         let ExecutionProgress::Complete(Err(failure)) = session.advance(2000) else {
             panic!()
         };

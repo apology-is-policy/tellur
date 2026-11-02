@@ -83,10 +83,12 @@ E1c.3c.1 now retains references inside owned record/sum captures, including nest
 carrier dependencies, selected tags and returned origin groups. E1c.3c.2 now retains
 whole borrowed carrier storage and nested contents through reborrows, moves and
 completion delivery. Escaping/public task contracts, scheduling and coroutine
-lowering remain distinct next stages.
+lowering remain distinct next stages. E1d.1 separates shared interpreter storage,
+fuel and observations from independently retained control chains; source execution
+is still sequential.
 
 2 November 2026. This is the working revision plan, not a claim that all proposed
-features are implemented. Compiler **0.110.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
+features are implemented. Compiler **0.111.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
 lifetime checkpoints of milestone 2, the array/vector/map core of milestone 3,
 and implicit entry, inline/stored adapters, owned capture, named outcome contracts
 and checked forwarding in milestone 4. A first [semantic foundation](semantic-foundation.md)
@@ -289,13 +291,15 @@ do not block this design work. E2 remains the native coroutine target.
 | C3 | Remaining adapter ergonomics | Direct arm exits delivered in P3 (0.54), grouped multi-statement arms and qualified sites in 0.64; whole-outcome binding and broader expression adapters remain design work |
 | D1 | Explicit runtime polymorphism | Queued: erasure rules, borrowed/owned storage, opaque graph boundaries |
 | D2 | Stateful protocols and effect contracts | General annotation/execution-mode flags explicitly deferred; current permission is only `@contingent`. Queued: sequence obligations, justified algebraic laws, groundwork for tasks |
-| E1 | Async reference execution | **Foundations in 0.98–0.103 (E1a/E1b/E1b.1):** [runtime audit, shared activation identities and staged plan](async-execution.md). Persistent reference continuations are implemented; source task ownership, suspension, scoped scheduling and cancellation remain ahead; prompt owner-boundary fault propagation is accepted |
+| E1 | Async reference execution | **Foundations in 0.98–0.103 (E1a/E1b/E1b.1):** [runtime audit, shared activation identities and staged plan](async-execution.md). Persistent continuations, local cold-task ownership and borrowed captures/results are implemented; suspension, scoped scheduling and cancellation remain ahead; prompt owner-boundary fault propagation is accepted |
 | E1a | Async activation groundwork | **Delivered in 0.98:** related execution contexts allocate unique monotonic invocation IDs before joining; separate fault state/active chains, no completed history, exhaustion checks and existing sequential reference/native report parity. No scheduler or source async syntax |
 | E1b | Persistent reference continuations | **Delivered in 0.99:** explicit call/loop/boundary frames and host step/resume API; quota pauses preserve synchronous effects, outcomes, fixed fuel, faults, loans and expansion observations. No source task or scheduler syntax |
 | E1b.1 | Atomic invocation admission | **Delivered in 0.103:** internal validated-argument handoff precedes frame installation; malformed later values, address exhaustion and frozen contexts leave no partial storage. Synchronous calls still prepare/start immediately; no source task or entry-syntax choice |
 | E1c | Cold tasks and consuming await | [Contract audit](async-execution.md#cold-task-contract-audit) and [capture-transfer requirements](async-execution.md#capture-transfer-requirements) record concrete checker seams, retained state, temporary backing, result-origin and fault requirements. Await/transfer is required even before a task starts; explicit discard is disallowed. Escaping spawned-child faults reach the owning boundary at the next scheduler safe point, before contingency after resource settlement. Both policies and explicit `run` entry are accepted. Direct invocation is delivered in E1c.1, owned handles in E1c.2, direct borrowed captures in E1c.3a and borrowed completions in E1c.3b; owned contained captures are delivered in E1c.3c.1 and whole borrowed carriers in E1c.3c.2; scoped scheduling is next |
 | E1c.1 | Direct async admission | **Delivered in 0.105:** `async control`, synchronous `run` and direct `await`; checked generic/trait/public permissions, editor hover and diagnostics, sequential reference/native execution, borrow/fault preservation and opaque async expansion boundaries. No stored tasks or scheduler |
-| E1d | Scoped spawn and readiness | Next: invocation-owned children, required await on normal paths and no handle escape across invocations/fault boundaries (accepted 2 November). Shared frame storage, scheduler admission, deterministic readiness and child-fault settlement precede source concurrency |
+| E1d | Scoped spawn and readiness | Shared-state/context separation delivered in E1d.1 (0.111). Next: invocation-owned children, required await on normal paths and no handle escape across invocations/fault boundaries (accepted 2 November). Shared frame storage, scheduler admission, deterministic readiness and child-fault settlement precede source concurrency |
+| E1d.1 | Shared execution and independent continuations | **Delivered in 0.111:** one value arena, address allocator, script cursor, effect history and fuel budget; independent control/fault state; internal interleavings preserve owners, retirement and admission without source concurrency |
+| E1d.2 | Scoped task lifecycle | Next: owner/task identities, ready/wait/complete transitions, duplicate/stale wakes and settlement admission |
 | E2 | Native coroutine lowering | Preserved architectural target: direct LLVM coroutine primitives, pinned-toolchain experiment, frame lifetime rules and schedule-based differential tests; I1 must keep this route open |
 | T1 | Stronger source transformations | Hold current scope during P1–P5: extraction correspondence, continuation cuts, source-level lift and editor actions |
 | R1 | Mathematical foundations | Maintain existing evidence; defer extensions during P1–P5: preservation judgments, richer protocol abstractions, infinite/causal behavior, mechanization |
