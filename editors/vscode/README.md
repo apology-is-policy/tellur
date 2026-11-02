@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-darwin-arm64-0.126.0.vsix` using **Extensions:
+1. Install the supplied `tellur-language-darwin-arm64-0.127.0.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1171,3 +1171,10 @@ A completed task remains an obligation until its result is delivered and consume
 cold await still admits both operations atomically. This internal foundation
 preserves existing source behavior. Independent completion-payload storage and
 source `spawn`/`yield` remain ahead.
+
+## Retained runtime completions in 0.127
+
+Completed task results now live in shared reference-runtime storage until delivery
+or emergency retirement. Fault settlement releases their borrows and unwinds parked
+callers before the owning contingency. Cold await still delivers immediately;
+source scheduling and native completion ownership remain ahead.

@@ -266,7 +266,7 @@ impl Registry {
             tasks.iter().any(|id| {
                 matches!(
                     self.tasks[id].phase,
-                    Phase::Ready | Phase::Running | Phase::Waiting(_)
+                    Phase::Ready | Phase::Running | Phase::Waiting(_) | Phase::Completed
                 )
             })
         })

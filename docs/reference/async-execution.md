@@ -385,14 +385,19 @@ wait. A join can attach before dispatch, during execution or a readiness wait, o
 after completion; it does not change queue order. Completion remains an owned
 obligation until its matching join delivers the result and consumption retires it.
 Cold await still performs queue admission and join registration atomically, including
-identity-exhaustion failure. This is internal support: delayed task-owned result
-storage and source `spawn`/`yield` are still unimplemented.
+identity-exhaustion failure. Source `spawn`/`yield` are still unimplemented.
 
-A test-only [retained-completion model](../async-execution.md#retained-reference-completion-model-e1d2d2a)
-checks delayed owned and exclusive-borrowed result delivery after child frames retire,
-including rejected/crossed joins and an owning stop that preserves independent work.
-It uses explicit harness scheduling. Production result storage and native ownership
-integration remain separate steps; installed source behavior is unchanged.
+Since 0.127, the reference runtime retains completed payloads and diagnostic context
+in shared task storage. Publication and delivery validate before moving any values.
+Completed results keep their original domain live and remain task obligations.
+Fault settlement releases affected result borrows before owner frames or contingency;
+parked awaiting callers resume only for emergency unwind. Independent domains survive.
+Cold await still delivers immediately, without new source scheduling points.
+
+The [retained-completion tests](../async-execution.md#runtime-retained-completions-e1d2d2b)
+exercise delayed owned/exclusive-borrowed delivery, rejected/crossed joins and automatic
+owning-domain cleanup using the shared runtime. Harness scheduling remains explicit.
+Native completion ownership and source handoffs remain separate steps.
 
 Path expansion retains `run`, `defer`, direct `await` and task consumption as
 explicit operations. It may inline ordinary

@@ -73,6 +73,7 @@ fn cut_after_messages(m: &mut Machine<'_>, count: usize) {
 }
 fn retired(m: &Machine<'_>) {
     assert!(m.shared.waiting.is_empty());
+    assert!(m.shared.completed.is_empty());
     assert_eq!(m.shared.domains.count(), 0);
     assert!(m.context.domain.is_none());
     assert!(m.context.task.is_none());

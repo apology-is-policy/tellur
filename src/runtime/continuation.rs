@@ -23,6 +23,9 @@ mod settlement_tests;
 #[path = "task_tests.rs"]
 mod task_tests;
 
+#[path = "completions.rs"]
+mod completions;
+
 type RunResult = std::result::Result<RunCompletion, Box<Failure>>;
 
 /// Host control of execution, separate from Tellur outcomes and fault settlement.
@@ -66,6 +69,7 @@ impl CheckedProgram {
                     suspended: SuspendedCalls::default(),
                     ready: BTreeMap::new(),
                     waiting: BTreeMap::new(),
+                    completed: BTreeMap::new(),
                 },
                 context: Context::new(crate::fault::Tracker::new(self.runtime_sites())),
                 settlements: vec![],
@@ -185,6 +189,7 @@ struct SharedExecution<'a> {
     suspended: SuspendedCalls<'a>,
     ready: BTreeMap<TaskId, ReadyCall<'a>>,
     waiting: BTreeMap<TaskId, Context<'a>>,
+    completed: BTreeMap<TaskId, Context<'a>>,
 }
 
 /// A resumable control chain. Storage and effect history belong to the execution;
@@ -532,6 +537,12 @@ impl<'a> Machine<'a> {
         let Some(domain) = self.context.domain else {
             return false;
         };
+        if let Some(caller) = self.settle_completed_task(domain) {
+            if let Some(context) = caller {
+                self.select_settlement(context);
+            }
+            return true;
+        }
         let ready = self.shared.ready.iter().filter_map(|(task, call)| {
             let context = match call {
                 ReadyCall::Start { context, .. } | ReadyCall::Resume(context) => context,
@@ -570,6 +581,10 @@ impl<'a> Machine<'a> {
         } else {
             self.shared.waiting.remove(&task).unwrap()
         };
+        self.select_settlement(context);
+        true
+    }
+    fn select_settlement(&mut self, context: Context<'a>) {
         let diagnostic = self
             .context
             .flow
@@ -582,7 +597,6 @@ impl<'a> Machine<'a> {
         let original = std::mem::replace(&mut self.context, context);
         self.settlements.push(original);
         self.context.flow = Some(Err(diagnostic));
-        true
     }
     fn dispatch_ready(&mut self) -> Result<()> {
         if !self.context.stack.is_empty() || self.context.frame.owner.is_some() {
@@ -750,7 +764,9 @@ impl<'a> Machine<'a> {
                         self.bind(arms, outcome, fields)?;
                     }
                     Err(diagnostic) => {
-                        self.shared.tasks.abandon(task);
+                        if !self.shared.completed.contains_key(&task) {
+                            self.shared.tasks.abandon(task);
+                        }
                         return Err(diagnostic);
                     }
                 }
@@ -764,12 +780,7 @@ impl<'a> Machine<'a> {
                     .owner
                     .unwrap();
                 let result = match flow {
-                    Ok(flow @ Flow::Exit(..)) => self
-                        .shared
-                        .tasks
-                        .complete(task, owner)
-                        .and_then(|()| self.shared.tasks.deliver(task, owner, wait))
-                        .map(|()| flow),
+                    Ok(flow @ Flow::Exit(..)) => self.complete_await(task, owner, wait, flow),
                     other => {
                         // Fault delivery is an unwind, never a normal completion
                         // signal. Retire the wait before the caller's contingency.
@@ -932,6 +943,11 @@ impl<'a> Machine<'a> {
             context.domain == Some(domain)
         });
         ready
+            || self
+                .shared
+                .completed
+                .values()
+                .any(|c| c.domain == Some(domain))
             || self
                 .shared
                 .waiting

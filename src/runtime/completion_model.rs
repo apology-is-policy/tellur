@@ -1,57 +1,23 @@
-//! Test-only retained-completion model over checked reference frames.
+//! Runtime completion storage exercised through checked reference frames.
 //! Explicit harness cuts separate queueing, completion and joining; host quotas
 //! never perform this scheduling, and production await still resumes immediately.
 use super::*;
 
-#[derive(Default)]
-struct Completed<'a> {
-    entries: BTreeMap<TaskId, Context<'a>>,
-}
-impl<'a> Completed<'a> {
-    fn publish(&mut self, m: &mut Machine<'a>) -> Result<TaskId> {
-        let (task, owner) = m.context.task.ok_or_else(|| error("no task completion"))?;
-        if self.entries.contains_key(&task)
-            || !m.context.stack.is_empty()
-            || m.context.frame.owner.is_some()
-            || !matches!(m.context.flow, Some(Ok(Flow::Exit(..))))
-        {
-            return Err(error("task has no new completed payload"));
-        }
-        m.shared.tasks.complete(task, owner)?;
-        let context = std::mem::replace(&mut m.context, Context::new(Default::default()));
-        assert!(self.entries.insert(task, context).is_none());
+struct Completed;
+impl Completed {
+    fn publish(&mut self, m: &mut Machine<'_>) -> Result<TaskId> {
+        let (task, owner) = m.context.task.unwrap();
+        m.retain_task_completion(task, owner)?;
         Ok(task)
     }
-    fn deliver(
+    fn deliver<'a>(
         &mut self,
         m: &mut Machine<'a>,
         task: TaskId,
         owner: OwnerId,
         wait: WaitId,
     ) -> Result<Context<'a>> {
-        let context = self
-            .entries
-            .get(&task)
-            .ok_or_else(|| error("no retained completion"))?;
-        if context.task != Some((task, owner)) {
-            return Err(error("completion belongs to another invocation"));
-        }
-        m.shared.domains.require_open(context.domain.unwrap())?;
-        m.shared.tasks.deliver(task, owner, wait)?;
-        Ok(self.entries.remove(&task).unwrap())
-    }
-    fn abort(&mut self, m: &mut Machine<'a>, task: TaskId) -> Context<'a> {
-        let mut context = self.entries.remove(&task).unwrap();
-        let Some(Ok(Flow::Exit(_, fields))) = context.flow.take() else {
-            panic!("only normal payloads enter completion storage");
-        };
-        // This reference model has infallible scripted dispositions only. Native
-        // retained owners and automatic domain draining require separate integration.
-        for value in fields {
-            retire_value(&mut m.shared.tasks, value, true).unwrap();
-        }
-        m.shared.tasks.abandon(task);
-        context
+        m.deliver_task_completion(task, owner, wait)
     }
 }
 fn program(expanded: bool) -> CheckedProgram {
@@ -158,8 +124,8 @@ fn restore<'a>(m: &mut Machine<'a>, mut parent: Context<'a>, mut completed: Cont
     parent.flow = completed.flow;
     m.context = parent;
 }
-fn retired(m: &Machine<'_>, completed: &Completed<'_>) {
-    assert!(completed.entries.is_empty());
+fn retired(m: &Machine<'_>, _completed: &Completed) {
+    assert!(m.shared.completed.is_empty());
     assert!(m.shared.tasks.is_empty());
     assert!(m.shared.values.is_empty());
     assert!(m.shared.ready.is_empty());
@@ -192,19 +158,42 @@ fn delayed_joins_retain_owned_and_exclusive_borrowed_payloads_after_child_frames
                         }
                     }
                     let before_keys: Vec<_> = m.shared.values.keys().copied().collect();
-                    let mut completed = Completed::default();
+                    let mut completed = Completed;
                     for expected in [left, right] {
                         m.dispatch_ready().unwrap();
                         while !m.drive(quota) {}
+                        let (task, owner) = m.context.task.unwrap();
+                        let registry = m.shared.tasks.clone();
+                        let values = m.shared.values.clone();
+                        let fuel = m.shared.steps_left;
+                        let other = if owner == owners[0] {
+                            owners[1]
+                        } else {
+                            owners[0]
+                        };
+                        assert!(m.retain_task_completion(task, other).is_err());
+                        let domain = m.context.domain.take();
+                        assert!(m.retain_task_completion(task, owner).is_err());
+                        m.context.domain = domain;
+                        assert!(
+                            matches!(m.context.flow, Some(Ok(Flow::Exit(_, ref fields))) if fields.len() == 2)
+                        );
+                        assert_eq!(m.shared.tasks, registry);
+                        assert_eq!(m.shared.values, values);
+                        assert_eq!(m.shared.steps_left, fuel);
                         assert_eq!(completed.publish(m).unwrap(), expected);
+                        let registry = m.shared.tasks.clone();
+                        assert!(m.retain_task_completion(task, owner).is_err());
+                        assert_eq!(m.shared.tasks, registry);
                     }
                     assert_eq!(messages(m), ["queued", "queued", "child", "child"]);
                     assert_eq!(
                         m.shared.values.keys().copied().collect::<Vec<_>>(),
                         before_keys
                     );
-                    let roots: Vec<_> = completed
-                        .entries
+                    let roots: Vec<_> = m
+                        .shared
+                        .completed
                         .values()
                         .map(|c| {
                             let Some(Ok(Flow::Exit(label, fields))) = &c.flow else {
@@ -249,14 +238,14 @@ fn delayed_joins_retain_owned_and_exclusive_borrowed_payloads_after_child_frames
                         } else {
                             owners[0]
                         };
-                        let held = completed.entries.remove(&task).unwrap();
+                        let held = m.shared.completed.remove(&task).unwrap();
                         assert!(completed.deliver(m, task, owner, wait).is_err());
                         assert_eq!(m.shared.tasks, registry);
-                        completed.entries.insert(task, held);
+                        m.shared.completed.insert(task, held);
                         assert!(completed.deliver(m, task, other, wait).is_err());
                         assert!(completed.deliver(m, task, owner, crossed).is_err());
                         assert!(
-                            matches!(completed.entries[&task].flow, Some(Ok(Flow::Exit(_, ref fields))) if fields.len() == 2 && fields[0] == Value::String("payload".into()))
+                            matches!(m.shared.completed[&task].flow, Some(Ok(Flow::Exit(_, ref fields))) if fields.len() == 2 && fields[0] == Value::String("payload".into()))
                         );
                         assert_eq!(m.shared.tasks, registry);
                         assert_eq!(m.shared.values, values);
@@ -288,7 +277,7 @@ fn stopped_completion_retires_before_its_owner_and_preserves_an_independent_join
         let m = session.machine.as_mut().unwrap();
         let (failed, failed_parent) = queue(m, "failed");
         let (survivor, survivor_parent) = queue(m, "survivor");
-        let mut completed = Completed::default();
+        let mut completed = Completed;
         for task in [failed, survivor] {
             m.dispatch_ready().unwrap();
             while !m.drive(1) {}
@@ -306,13 +295,24 @@ fn stopped_completion_retires_before_its_owner_and_preserves_an_independent_join
         assert!(m.shared.tasks.retire_owner(owner, false).is_err());
         assert_eq!(m.shared.tasks, registry);
         assert_eq!(m.shared.values, values);
-        let mut aborted = completed.abort(m, failed);
-        aborted.flow = Some(Err(error("modeled owning stop")));
-        restore(m, failed_parent, aborted);
+        assert!(
+            m.require_domain_quiescent(failed_parent.domain.unwrap())
+                .is_err()
+        );
+        let mut failed_parent = failed_parent;
+        failed_parent.activations =
+            std::mem::take(&mut m.shared.completed.get_mut(&failed).unwrap().activations);
+        failed_parent.flow = Some(Err(error("modeled owning stop")));
+        m.context = failed_parent;
+        // Production emergency drain must remove the pending payload before the
+        // caller's frame retires; the harness does not perform that cleanup.
+        assert!(m.shared.completed.contains_key(&failed));
         assert!(m.drive(100));
         assert!(m.context.flow.as_ref().unwrap().is_err());
         assert!(!m.shared.values.is_empty());
-        assert_eq!(completed.entries.len(), 1);
+        assert_eq!(m.shared.completed.len(), 1);
+        assert!(!m.shared.completed.contains_key(&failed));
+        assert!(m.shared.completed.contains_key(&survivor));
         let owner = survivor_parent.frame.owner.unwrap();
         let wait = m.shared.tasks.join(survivor, owner, "leaf").unwrap();
         let payload = completed.deliver(m, survivor, owner, wait).unwrap();

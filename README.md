@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.126.0** implements the v0.1 checked core and the current language
+Compiler release **0.127.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -682,3 +682,10 @@ A completed task remains an obligation until its result is delivered and consume
 cold await still admits both operations atomically. This internal foundation
 preserves existing source behavior. Independent completion-payload storage and
 source `spawn`/`yield` remain ahead.
+
+## Retained runtime completions in 0.127
+
+Completed task results now live in shared reference-runtime storage until delivery
+or emergency retirement. Fault settlement releases their borrows and unwinds parked
+callers before the owning contingency. Cold await still delivers immediately;
+source scheduling and native completion ownership remain ahead.

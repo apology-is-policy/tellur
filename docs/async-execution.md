@@ -1206,6 +1206,7 @@ Those boundaries need explicit contracts before being accepted by the checker.
 | E1d.2c.4b.4d.8 | Compiled context readiness protocol | Test-only on 0.125: session/context/generation tokens, separate wait/signal/selection, atomic rejection and fault/process invalidation over retained real-owner contexts. Readiness does not deliver completion; shared native integration and source handoffs remain ahead |
 | E1d.2d.1 | Separate task queue and completion joins | Delivered in 0.126: queue admission without a waiter, one-use joins before/during/after execution, explicit delivery before consumption and atomic cold await. Private registry support only; retained completion payloads and source handoffs follow |
 | E1d.2d.2a | Retained reference completion model | Test-only on 0.126: completed owned/exclusive-borrowed payloads outlive child frames, join before/after completion in either order, atomic rejected delivery and explicit stopped-result retirement with independent-root preservation. Production storage and native completion ownership remain next |
+| E1d.2d.2b | Runtime retained completions | Delivered in 0.127: shared result/context storage, validated one-use delivery, domain quiescence and completed-result retirement before owning contingency, including parked callers. Source execution stays sequential; native completion ownership remains next |
 | E1e | Explicit cooperative cancellation and suspending cleanup; normal completion races, cleanup failures and no abandoned losers | Define cancellation observation and cleanup admission; no implicit cancellation exception |
 | E2 | Pinned native coroutine experiment, then checked lowering and schedule-based differential validation | Reference semantics and legal frame retirement must precede native destruction |
 
@@ -1258,6 +1259,35 @@ is not connected to production domain draining or source handoffs, and it does n
 claim native retained-resource cleanup. Integrate completion storage into the runtime
 and native result ownership before source `spawn`/`yield` admission. Installed 0.126
 behavior remains unchanged; host quotas remain observation boundaries only.
+
+## Runtime retained completions (E1d.2d.2b)
+
+Compiler 0.127 promotes normal result storage into the shared reference runtime.
+Each completed task retains its owned fields, external result references and original
+diagnostic context after its child frame retires. Publication validates task/owner,
+finished control state and live domain before moving anything. Delivery validates
+storage, owner, domain and one-use wait before transferring the original result.
+Cold await uses this path and immediately restores its caller as before.
+
+Domain quiescence includes retained completions, and completed children remain
+started obligations until delivery/consumption or emergency retirement. A stopped
+domain retires affected completed payloads before source frames or contingency.
+When a caller is already parked awaiting that result, settlement restores its
+original diagnostic state and unwinds its retained chain without running normal
+caller code. Unjoined results need no fabricated completion. Independent domains
+and their results remain live.
+
+The earlier checked-frame model now exercises these runtime operations. It covers
+publication/delivery rejection, early and delayed joins, original/expanded owned
+and exclusive-borrowed payloads, and automatic stopped-result retirement. The
+owning-boundary regression also retains two completed results with parked callers:
+normal caller work is suppressed, original fault evidence and fuel are preserved,
+and an independent waiting root survives.
+
+These are internal operations under explicit test scheduling. Source `spawn`/`yield`,
+native task-owned completion resources and broader scheduler integration remain
+separate gates. Reference cleanup here is infallible scripted retirement; this does
+not extend native resource dispositions or add asynchronous cleanup.
 
 ## Reference execution invariants
 

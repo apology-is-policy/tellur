@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.126.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.127.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -3893,3 +3893,41 @@ checks. All-target compilation, Rust formatting and whitespace checks also pass.
 The earlier model pass predates added early-join, missing-storage and crossed-wait
 assertions; only the final cases are counted. No rebuild, install or editor reload
 is needed for this test-only checkpoint.
+
+## 0.127 — retained runtime completions (E1d.2d.2b)
+
+The reference runtime now stores completed task payloads and diagnostic handover
+independently of immediate caller restoration. Publication validates before moving
+values; delivery validates original owner, open domain and one-use join before
+removing storage. Domain quiescence and emergency settlement include completed
+results. Stopped payloads retire before source frames; already-parked callers restore
+their diagnostic context and unwind without executing normal continuations.
+Cold await uses the same storage/delivery path with unchanged sequential behavior.
+
+The completion cases now use runtime storage directly across 24 original/expanded,
+join-order, early/delayed-join and quota combinations. Rejected publication, missing
+storage, foreign owners, crossed waits and repeated delivery leave owned payloads
+and registry state intact. Owning-stop cases use automatic production cleanup.
+An extended boundary case retains two completed borrowers with parked awaiting
+callers; original fault evidence/fuel and independent-root behavior remain intact.
+The initial focused probe still inspected the old test ledger for payloads; its
+assertion was updated to shared runtime storage before the final passes.
+
+Native result ownership, source `spawn`/`yield`, external readiness APIs, cancellation
+and suspending cleanup remain separate work. The native backend stays sequential.
+
+Validation covers **166 distinct selected Rust cases across 13 targets**: 46
+runtime cases and 120 source/manual integration cases. The final publication checks
+rerun the two completion cases; 44 other runtime cases reuse the immediately prior
+successful run on identical functional source. Task/native parity, borrowed result
+storage, fault traces, fuel partitions and current manual checks pass. This is
+selected regression evidence, not a full-suite claim. Unchanged native models,
+checker, LSP and editor unit evidence remain applicable.
+
+The final isolated editor profile passes pending/result hover, an unsaved loan
+error and repair, and native execution. Compiler/LSP/VSIX 0.127.0 verify six staged
+binary copies and nine packaged/installed payloads with executable permissions.
+Existing VS Code windows were not reloaded. The verified source backup excludes the
+protected unrelated C# file before reading or archiving. Next is native retained
+completion ownership; process-wide delayed-reference-result cleanup also remains
+a gate before source scheduling.

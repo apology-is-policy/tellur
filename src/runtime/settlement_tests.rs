@@ -154,6 +154,7 @@ fn retired(m: &Machine<'_>) {
     assert!(m.shared.tasks.is_empty());
     assert!(m.shared.ready.is_empty());
     assert!(m.shared.waiting.is_empty());
+    assert!(m.shared.completed.is_empty());
     assert!(m.shared.suspended.calls.is_empty());
     assert_eq!(m.shared.domains.count(), 0);
     assert!(m.context.domain.is_none());
@@ -161,9 +162,9 @@ fn retired(m: &Machine<'_>) {
 
 #[test]
 fn boundary_waits_for_prepared_waiting_and_ready_borrowers_without_running_normal_code() {
-    // Three different retained states, each with two overlapping borrowed children
+    // Four retained states, including completed results with parked awaiting callers,
     // and an unrelated waiting root. These are explicit harness admissions.
-    for (mode, quota) in ["prepared", "waiting", "ready"]
+    for (mode, quota) in ["prepared", "waiting", "ready", "completed"]
         .into_iter()
         .flat_map(|mode| [1, 400].map(|quota| (mode, quota)))
     {
@@ -203,7 +204,24 @@ fn boundary_waits_for_prepared_waiting_and_ready_borrowers_without_running_norma
             queue_await(m);
         }
         let mut tokens = vec![];
-        if mode != "prepared" {
+        if mode == "completed" {
+            for _ in 0..2 {
+                let task = m.shared.tasks.next_ready().unwrap();
+                let ReadyCall::Start { context, .. } = m.shared.ready.get_mut(&task).unwrap()
+                else {
+                    panic!()
+                };
+                assert!(matches!(
+                    context.stack.pop(),
+                    Some(Continuation::ResumeAwait { .. })
+                ));
+                let owner = context.task.unwrap().1;
+                m.dispatch_ready().unwrap();
+                assert!(m.drive(400));
+                m.retain_task_completion(task, owner).unwrap();
+            }
+            assert_eq!(m.shared.completed.len(), 2);
+        } else if mode != "prepared" {
             m.dispatch_ready().unwrap();
             until_message(m, "left");
             tokens.push(m.park_for_readiness().unwrap());
@@ -222,7 +240,11 @@ fn boundary_waits_for_prepared_waiting_and_ready_borrowers_without_running_norma
         assert!((0..400).any(|_| m.drive(quota)));
         assert!(matches!(m.context.flow, Some(Ok(Flow::Process(0)))));
         let mut expected = before;
-        expected.extend(["left".into(), "right".into(), "recovered".into()]);
+        if mode == "completed" {
+            expected.extend(["finished".into(), "finished".into(), "recovered".into()]);
+        } else {
+            expected.extend(["left".into(), "right".into(), "recovered".into()]);
+        }
         assert_eq!(
             messages(m),
             expected,
@@ -241,6 +263,7 @@ fn boundary_waits_for_prepared_waiting_and_ready_borrowers_without_running_norma
             serde_json::to_value(&expected_fault).unwrap()
         );
         assert!(m.settlements.is_empty());
+        assert!(m.shared.completed.is_empty());
         assert_eq!(m.shared.domains.count(), 1);
         for token in tokens {
             assert!(m.signal_readiness(&token).is_err());
