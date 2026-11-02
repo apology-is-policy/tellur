@@ -563,3 +563,11 @@ Cold-task awaits now use queued dispatch and parked caller state in the referenc
 executor. One-use completion waits reject early or duplicate delivery; borrowed
 storage, fault traces and instruction quotas keep their existing behavior. Source
 execution is still sequential. External readiness and scoped `spawn` remain ahead.
+
+## Settings HTTP removal
+
+The maintained settings service now exposes its existing removal operation through
+`POST /remove` with `{"key":"theme"}`. It preserves other entries, returns 404 without
+writing for absent keys, and reports uncertain replacement explicitly. See the
+[HTTP workflow](applications/settings/README.md#run-the-http-service). This application
+update runs on compiler 0.113 without changing compiler or host contracts.

@@ -2417,6 +2417,9 @@ execution is possible; there is no termination proof.
 
 The [maintained settings application](../applications/settings/README.md) now
 provides both a persistent CLI and a bounded, sequential loopback HTTP service.
+The service exposes key removal through `POST /remove` with a JSON `key` field.
+Missing keys return 404 without writing; replacement uncertainty remains explicit
+in the 500 response. This application operation uses the existing library contracts.
 Its [server](../applications/settings/server.tellur) is a larger example of tail
 loops, captures, independent failures, explicit completion and public entry contracts.
 Its [HTTP policy](../applications/settings/http.tellur) composes the same settings

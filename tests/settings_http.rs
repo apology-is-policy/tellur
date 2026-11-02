@@ -271,7 +271,172 @@ fn failures() -> Vec<(Scenario, &'static str, Option<u32>)> {
             Some(if outcome == "too_large" { 413 } else { 500 }),
         ));
     }
+    cases.extend(
+        removal_cases()
+            .into_iter()
+            .map(|(s, status, _)| (s, "completed", Some(status))),
+    );
     cases
+}
+
+fn removal_cases() -> Vec<(Scenario, u32, &'static str)> {
+    let decoded = call(
+        "json_decode",
+        "decoded",
+        vec![string_map(&[("key", "theme")])],
+    );
+    let trimmed = call("text_trim", "trimmed", vec![text("theme")]);
+    let loaded = vec![
+        decoded.clone(),
+        trimmed.clone(),
+        call("file_read", "read", vec![text("document")]),
+        call(
+            "json_decode",
+            "decoded",
+            vec![string_map(&[("theme", "dark"), ("locale", "čeština")])],
+        ),
+    ];
+    let mut cases = vec![];
+    let mut add = |operations: Vec<ScriptCall>, status, body| {
+        let mut calls = vec![
+            listener(),
+            sub(0),
+            accepted(),
+            call(
+                "http_receive",
+                "request",
+                vec![
+                    text("POST"),
+                    text("/remove"),
+                    string_map(&[
+                        ("host", "127.0.0.1:1234"),
+                        ("content-type", "application/json"),
+                    ]),
+                    text(r#"{"key":"theme"}"#),
+                ],
+            ),
+        ];
+        calls.extend(operations);
+        calls.extend([
+            call("http_send", "sent", vec![]),
+            call("http_connection_close", "closed", vec![]),
+            call("checked_sub", "underflow", vec![]),
+            call("http_listener_release", "released", vec![]),
+        ]);
+        cases.push((scenario(calls), status, body));
+    };
+    for (outcome, status, body, fields) in [
+        ("replaced", 200, r#"{"removed":true}"#, vec![]),
+        ("write_failed", 500, "disk full", vec![text("disk full")]),
+        (
+            "commit_uncertain",
+            500,
+            "commit_uncertain: reload before retrying; rename uncertain",
+            vec![text("rename uncertain")],
+        ),
+        ("too_large", 413, "Settings size limit exceeded", vec![]),
+    ] {
+        let mut calls = loaded.clone();
+        calls.push(call(
+            "json_encode",
+            "encoded",
+            vec![text(r#"{"locale":"čeština"}"#)],
+        ));
+        calls.push(call("file_replace", outcome, fields));
+        add(calls, status, body);
+    }
+    let mut encoding = loaded.clone();
+    encoding.push(call(
+        "json_encode",
+        "encode_failed",
+        vec![text("encoding failed")],
+    ));
+    add(encoding, 500, "encoding failed");
+    for (outcome, status, body, fields) in [
+        ("missing", 404, "Setting not found", vec![]),
+        ("read_failed", 500, "read denied", vec![text("read denied")]),
+        ("too_large", 413, "Settings size limit exceeded", vec![]),
+    ] {
+        add(
+            vec![
+                decoded.clone(),
+                trimmed.clone(),
+                call("file_read", outcome, fields),
+            ],
+            status,
+            body,
+        );
+    }
+    add(
+        vec![
+            decoded.clone(),
+            trimmed.clone(),
+            call("file_read", "read", vec![text("document")]),
+            call(
+                "json_decode",
+                "decoded",
+                vec![string_map(&[("locale", "čeština")])],
+            ),
+        ],
+        404,
+        "Setting not found",
+    );
+    add(
+        vec![
+            decoded,
+            trimmed,
+            call("file_read", "read", vec![text("bad")]),
+            call("json_decode", "invalid", vec![text("corrupt document")]),
+        ],
+        500,
+        "corrupt document",
+    );
+    add(
+        vec![
+            call(
+                "json_decode",
+                "decoded",
+                vec![string_map(&[("key", " bad ")])],
+            ),
+            call("text_trim", "trimmed", vec![text("bad")]),
+        ],
+        400,
+        "Invalid setting key",
+    );
+    cases
+}
+
+#[test]
+fn removal_http_policy_preserves_missing_keys_remaining_values_and_write_uncertainty() {
+    let p = program();
+    let expanded = p.expanded("serve").unwrap();
+    for (scenario, status, body) in removal_cases() {
+        let result = report(&p, &scenario);
+        assert_eq!(result, report(&expanded, &scenario));
+        let events = result["events"].as_array().unwrap();
+        let sent = events
+            .iter()
+            .find(|e| e["operation"] == "http_send")
+            .unwrap();
+        assert_eq!(sent["arguments"][1], json!({"kind":"u32","value":status}));
+        assert_eq!(
+            sent["arguments"][2],
+            serde_json::to_value(text(body)).unwrap()
+        );
+        if status == 404 || status == 400 {
+            assert!(
+                !events
+                    .iter()
+                    .any(|e| e["operation"] == "json_encode" || e["operation"] == "file_replace")
+            );
+        }
+        if let Some(encoded) = events.iter().find(|e| e["operation"] == "json_encode") {
+            assert_eq!(
+                encoded["arguments"][0],
+                serde_json::to_value(string_map(&[("locale", "čeština")])).unwrap()
+            );
+        }
+    }
 }
 fn report(program: &CheckedProgram, scenario: &Scenario) -> Json {
     serde_json::to_value(program.run(scenario).unwrap()).unwrap()
@@ -604,6 +769,106 @@ fn native_http_serves_persistent_settings_and_rejects_invalid_requests() {
     assert_eq!(output.status.code(), Some(1));
     let report: Json = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(report["outcome"], "failed");
+}
+
+#[test]
+fn native_http_removes_keys_without_rewriting_missing_or_rejected_requests() {
+    let p = program();
+    let f = Fixture::new();
+    const MEDIA: &str = "Content-Type: application/json\r\n";
+    let rejected = [
+        ("GET", "/remove", "", "", 405),
+        ("HEAD", "/remove", "", "", 405),
+        ("POST", "/remove", r#"{"key":"téma"}"#, "", 415),
+        ("POST", "/remove", "invalid", MEDIA, 400),
+        (
+            "POST",
+            "/remove",
+            r#"{"key":"téma","key":"locale"}"#,
+            MEDIA,
+            400,
+        ),
+        ("POST", "/remove", r#"{"key":1}"#, MEDIA, 400),
+        (
+            "POST",
+            "/remove",
+            r#"{"key":"téma","extra":"x"}"#,
+            MEDIA,
+            400,
+        ),
+        ("POST", "/remove", r#"{"value":"téma"}"#, MEDIA, 400),
+        ("POST", "/remove", r#"{"key":""}"#, MEDIA, 400),
+        ("POST", "/remove", r#"{"key":" téma "}"#, MEDIA, 400),
+        ("POST", "/remove?key=téma", r#"{"key":"téma"}"#, MEDIA, 404),
+        (
+            "POST",
+            "/remove",
+            r#"{"key":"téma"}"#,
+            "Content-Type: application/json\r\nOrigin: https://example.invalid\r\n",
+            403,
+        ),
+    ];
+    for opt in [0, 2] {
+        let checked = if opt == 2 {
+            p.expanded("serve").unwrap()
+        } else {
+            p.clone()
+        };
+        let binary = f.0.join(format!("remove-{opt}"));
+        checked.build_native("serve", &binary, opt).unwrap();
+        let data = f.0.join(format!("settings-{opt}.json"));
+        let server = Server::start(&binary, &data, rejected.len() + 8, 3000);
+        let send = |method: &str, target: &str, body: &str, media: &str, status| {
+            let bytes = exchange(
+                &server.authority,
+                &request(&server.authority, method, target, body, media),
+            );
+            if status == 405 {
+                assert!(String::from_utf8_lossy(&bytes).contains("Allow: POST\r\n"));
+            }
+            response(&bytes, status, method == "HEAD")
+        };
+        send("POST", "/remove", r#"{"key":"téma"}"#, MEDIA, 404);
+        assert!(!data.exists(), "a missing key must not create a file");
+        let original = "{  \"locale\": \"čeština\", \"téma\": \"dark 🦉\"  }\n";
+        fs::write(&data, original).unwrap();
+        for (method, target, body, media, status) in rejected {
+            send(method, target, body, media, status);
+            assert_eq!(fs::read_to_string(&data).unwrap(), original);
+        }
+        let removed = send(
+            "POST",
+            "/remove",
+            r#"{"key":"téma"}"#,
+            "Content-Type: application/json; charset=utf-8\r\n",
+            200,
+        );
+        assert_eq!(
+            serde_json::from_str::<Json>(&removed).unwrap(),
+            json!({"removed":true})
+        );
+        let remaining = fs::read_to_string(&data).unwrap();
+        assert_eq!(
+            serde_json::from_str::<Json>(&remaining).unwrap(),
+            json!({"locale":"čeština"})
+        );
+        send("POST", "/lookup", r#"{"key":"téma"}"#, MEDIA, 404);
+        send("POST", "/remove", r#"{"key":"téma"}"#, MEDIA, 404);
+        assert_eq!(fs::read_to_string(&data).unwrap(), remaining);
+        send("POST", "/remove", r#"{"key":"locale"}"#, MEDIA, 200);
+        let empty = fs::read_to_string(&data).unwrap();
+        assert_eq!(serde_json::from_str::<Json>(&empty).unwrap(), json!({}));
+        send("POST", "/remove", r#"{"key":"locale"}"#, MEDIA, 404);
+        assert_eq!(fs::read_to_string(&data).unwrap(), empty);
+        fs::write(&data, "corrupt document").unwrap();
+        send("POST", "/remove", r#"{"key":"locale"}"#, MEDIA, 500);
+        assert_eq!(fs::read_to_string(&data).unwrap(), "corrupt document");
+        let oversized = " ".repeat(1024 * 1024 + 1);
+        fs::write(&data, &oversized).unwrap();
+        send("POST", "/remove", r#"{"key":"locale"}"#, MEDIA, 413);
+        assert_eq!(fs::read_to_string(&data).unwrap(), oversized);
+        server.finish(0, "completed");
+    }
 }
 
 #[test]

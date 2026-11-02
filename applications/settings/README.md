@@ -3,7 +3,7 @@
 This is Tellur's maintained application: a local JSON settings CLI and, since
 compiler 0.50, a sequential loopback HTTP service using the same domain module.
 
-`settings.tellur` owns defaults, key validation, lookup/update decisions and failure
+`settings.tellur` owns defaults, key validation, lookup/update/removal decisions and failure
 mapping. It imports the shared [JSON file library](../../library/README.md); `host.rs`
 re-exports file/JSON/HTTP mechanisms from explicit Rust modules in `manifest.json` and
 implements text trimming through a typed adapter. The committed `Cargo.lock` makes native
@@ -102,7 +102,7 @@ assumption and lack of a crash-durability guarantee still apply.
 The reusable `settings.remove(ref string path, ref string key)` control exposes
 `removal_result`, preserving each failure alternative without choosing a process
 status. It uses the existing shared JSON-file library. This addition is available
-through the CLI entry; HTTP endpoints remain those listed below.
+through the CLI entry and `POST /remove`, documented below.
 
 In VS Code, open `main.tellur` and use **Tellur: Build and Run**. Set the entry and
 arguments in workspace settings, for example:
@@ -170,6 +170,10 @@ curl -i -X PUT http://127.0.0.1:8080/settings \
 curl -i -X POST http://127.0.0.1:8080/lookup \
   -H 'Content-Type: application/json' \
   --data '{"key":"theme"}'
+
+curl -i -X POST http://127.0.0.1:8080/remove \
+  -H 'Content-Type: application/json' \
+  --data '{"key":"theme"}'
 ```
 
 | Endpoint | Body | Successful response |
@@ -177,18 +181,31 @@ curl -i -X POST http://127.0.0.1:8080/lookup \
 | `GET /settings` | Empty | 200, the complete JSON object |
 | `PUT /settings` | Exactly `key` and `value`, both strings | 200, `{"saved":true}` |
 | `POST /lookup` | Exactly one string field, `key` | 200, `{"value":"…"}` |
+| `POST /remove` | Exactly one string field, `key` | 200, `{"removed":true}` |
 
 Missing keys and unknown endpoints return 404. Invalid JSON, duplicate object
-keys, wrong fields and invalid setting keys return 400. Writes/lookups require
+keys, wrong fields and invalid setting keys return 400. Updates, lookups and removals require
 `application/json` or `application/json; charset=utf-8`; other media types return
 415. Other methods return 405 with `Allow`. HEAD receives headers without a body,
 including its 405 response. Targets are exact: queries and alternate encoded paths
 do not select an endpoint.
 
+`POST /remove` uses the same key request shape as lookup. It removes only the
+selected key and returns 404 for a missing file or key, without creating or rewriting
+a file. Removing the last key preserves the file as an empty JSON object. Repeating
+a successful removal returns 404. Invalid requests are rejected before storage access;
+invalid keys are rejected before reading. Lookup and removal share a Tellur request
+parser that transfers the owned key rather than cloning its JSON string.
+
+Removal maps oversized storage/output to 413 and corrupt storage or read/encode/write
+failures to 500. An uncertain replacement returns 500 with the explicit
+`commit_uncertain: reload before retrying` detail; it does not assert rollback.
+The endpoint runs on compiler 0.113 with existing library and transport contracts.
+
 Storage failures return 500; `commit_uncertain` is explicitly identified in the
 response, telling the caller to reload before retrying. The existing file-size
 limits and persistence qualifications above still apply. Failed response delivery
-does not roll back a successful update or establish whether the client received it.
+does not roll back a successful update/removal or establish whether the client received it.
 
 This development service has no authentication or TLS and only binds loopback.
 Host must match the literal printed `127.0.0.1:port` authority. Requests carrying
