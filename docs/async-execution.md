@@ -1216,6 +1216,7 @@ Those boundaries need explicit contracts before being accepted by the checker.
 | E1d.2d.3f | Task-bound native contexts | Delivered in 0.133: queued captures enter retained contexts only after frame/resource/domain/owner preflight; original parent invocation and completion wait stay paired through readiness, result adoption and fault/process retirement. Retained source callback integration remains ahead |
 | E1d.2d.3g | Scoped native task retirement | Delivered in 0.134: discarded bound cold handles retire before lexical contingency and recovery reset; normal scope/restart checks reject pending discard, while moved handles and borrowed suppliers survive. Retained callback handoffs remain ahead |
 | E1d.2d.3h | Sequential native await contexts | Delivered in 0.135: exclusive cold-await context chains carry original diagnostic activations through nested readiness, join and fault settlement, preserving synchronous reports and resource adoption. Mixed child trees and emitted callback handoffs remain ahead |
+| E1d.2d.3i | Retained native await handoffs | Delivered in 0.136: compiled callbacks retain queued captures and one-use delivery across explicit await admission, result adoption and fault/process retirement. Failed admission can retry without source reevaluation; delivery is administrative. Generated callback lowering and its driver remain next |
 | E1e | Explicit cooperative cancellation and suspending cleanup; normal completion races, cleanup failures and no abandoned losers | Define cancellation observation and cleanup admission; no implicit cancellation exception |
 | E2 | Pinned native coroutine experiment, then checked lowering and schedule-based differential validation | Reference semantics and legal frame retirement must precede native destruction |
 
@@ -1646,6 +1647,44 @@ host fuel exhaustion at child/caller return points.
 Existing compiled-control cases
 continue to compare original/expanded programs at O0/O2 across fuel cuts and quota
 partitions.
+
+## Retained native await handoffs (E1d.2d.3i)
+
+Compiler 0.136 adds an explicit `Step::Await` and `Poll::Await` to the shared
+retained native machine. A callback hands over a queued cold task and its original
+return callback. The machine retains both in the current activation; exhausting a
+host quota remains `Paused` and never becomes a source handoff. Repeated selection
+of a queued await does not reevaluate the instruction or charge source fuel.
+
+`Contexts::admit_await` transfers the retained queue into `start_await` only after
+its existing admission checks. A rejected admission restores the exact queue to the
+same activation. The host can retry or record a rejection with `reject_await`;
+rejection unwinds the original caller and retires captures before borrowed suppliers.
+It never runs the cold body or a normal outcome callback.
+
+`return_await` checks the original caller and child, adopts the retained result,
+consumes the task wait and restores diagnostics before recording a return. An ordinary
+join cannot bypass a compiled await callback. On the next positive-quota caller
+selection, the saved callback runs once, without another instruction or fuel charge,
+before the next source instruction. Zero quota leaves it pending. Callback failure
+uses normal caller unwind with the original frames and adopted resources still live.
+
+Escaping faults discard pending delivery before the owning contingency. Administrative
+non-outcome completion returns the caller key and propagates the completion through
+its machine without normal outcome delivery. Process retirement releases queued
+captures or returned-but-undelivered fields before their supplying frames; it does
+not resume stopped callers or nested contingencies.
+
+Eight [host cases](../src/native/await_handoff_tests.rs) cover retry, foreign/stale
+returns, readiness, borrowed result storage, rejected admission and delivery, lexical
+fault recovery, administrative completion and process retirement. Nested callback
+awaits compare complete reports, events and fuel with direct compiled calls over
+19 fuel budgets and three quota partitions. Another case checks await delivery inside
+a synchronous callee, then its separate return into the original caller. These use
+explicit compiled test callbacks.
+Generated fixture/source callback lowering and its driver are the next checkpoint;
+source scheduling, mixed child trees, `spawn`/`yield`, cancellation, suspending disposal
+and LLVM coroutine lowering remain gated. Accepted source contracts are unchanged.
 
 ## Reference execution invariants
 

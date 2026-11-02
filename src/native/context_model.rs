@@ -168,7 +168,10 @@ pub fn drive_contexts(
                 ContextPoll::Failed(report) => {
                     serde_json::json!({"kind":"context_failed","context":index,"report":report})
                 }
-                ContextPoll::Complete(_) | ContextPoll::Ready => {
+                ContextPoll::Complete(_)
+                | ContextPoll::Ready
+                | ContextPoll::Await
+                | ContextPoll::Resumed(_) => {
                     return Err("E_NATIVE: invalid independent root completion".into());
                 }
             };

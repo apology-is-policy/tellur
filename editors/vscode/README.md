@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-darwin-arm64-0.135.0.vsix` using **Extensions:
+1. Install the supplied `tellur-language-darwin-arm64-0.136.0.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1239,3 +1239,10 @@ Internal cold-await context chains now preserve the original diagnostic activati
 through readiness, result delivery and faults. Exact report and resource checks cover
 nested awaits and owning contingencies. Source callback integration remains ahead;
 current source execution stays synchronous.
+
+## Retained native await handoffs in 0.136
+
+Internal compiled callbacks now retain cold-await captures and their return callback
+across explicit admission and one-use result delivery. Failure and process cleanup
+retire pending values before suppliers. Generated source callback integration remains
+next; current source execution stays synchronous.

@@ -25,7 +25,26 @@ pub struct Activation {
 }
 enum Pending {
     Call(Deliver),
+    Await(AwaitContinuation),
     Supervise(Supervision),
+}
+struct AwaitContinuation {
+    queued: Option<QueuedTask>,
+    child: Option<ContextKey>,
+    result: Option<R<Completion>>,
+    deliver: Deliver,
+}
+impl AwaitContinuation {
+    fn retire(&mut self, host: &mut Host) -> R<()> {
+        if let Some(task) = self.queued.take() {
+            task.retire(host)?;
+        }
+        if let Some(Ok(Completion::Outcome((_, fields)))) = self.result.take() {
+            task_payload::retire_tasks(host, &fields, true)?;
+            host.release_frame(&fields.into_iter().map(Some).collect::<Vec<_>>());
+        }
+        Ok(())
+    }
 }
 struct Supervision {
     state: BoundaryState,
@@ -181,6 +200,10 @@ impl Activation {
 }
 pub enum Step {
     Continue,
+    Await {
+        task: QueuedTask,
+        deliver: Deliver,
+    },
     Complete(Completion),
     Boundary(&'static BoundaryControl),
     BoundaryEnd(&'static BoundaryControl),
@@ -202,6 +225,7 @@ pub enum Step {
 }
 pub enum Poll {
     Paused,
+    Await,
     Complete(Completion),
     Settling(DomainKey),
 }
@@ -381,8 +405,38 @@ impl Machine {
             .stack
             .last_mut()
             .ok_or("E_NATIVE: missing compiled activation")?;
-        match (frame.control.resume)(host, values, frame)? {
+        // Returning a child is administrative: it neither evaluates the source
+        // await again nor consumes another instruction/fuel allowance.
+        let (instruction, step) = if matches!(&frame.pending, Some(Pending::Await(p)) if p.result.is_some())
+        {
+            let Some(Pending::Await(mut pending)) = frame.pending.take() else {
+                unreachable!()
+            };
+            let result = pending.result.take().unwrap();
+            pending.retire(host)?;
+            match result? {
+                outcome @ Completion::Outcome(_) => {
+                    (pending.deliver)(frame, values, outcome)?;
+                    return Ok((false, None));
+                }
+                completion => (false, Step::Complete(completion)),
+            }
+        } else {
+            (true, (frame.control.resume)(host, values, frame)?)
+        };
+        match step {
             Step::Continue => {}
+            Step::Await { task, deliver } => {
+                if frame.pending.is_some() {
+                    return Err("E_NATIVE: duplicate compiled await continuation".into());
+                }
+                frame.pending = Some(Pending::Await(AwaitContinuation {
+                    queued: Some(task),
+                    child: None,
+                    result: None,
+                    deliver,
+                }));
+            }
             Step::Boundary(control) => {
                 let base = frame.base();
                 let domain = domains.prepare(Some(&self.current))?;
@@ -527,6 +581,9 @@ impl Machine {
                         .ok_or("E_NATIVE: missing compiled return continuation")?;
                     match pending {
                         Pending::Call(deliver) => deliver(parent, values, result)?,
+                        Pending::Await(_) => {
+                            return Err("E_NATIVE: call returned into an await continuation".into());
+                        }
                         Pending::Supervise(mut supervision) => {
                             let result = result.settled();
                             supervision.finish(host, domains, &mut self.current, &result)?;
@@ -540,11 +597,11 @@ impl Machine {
                     } else {
                         self.finish_root(domains)?;
                     }
-                    return Ok((true, Some(result)));
+                    return Ok((instruction, Some(result)));
                 }
             }
         }
-        Ok((true, None))
+        Ok((instruction, None))
     }
     fn unwind_error(
         &mut self,
@@ -562,6 +619,11 @@ impl Machine {
                 return Ok(());
             }
             let frame = self.stack.last_mut().unwrap();
+            if let Some(Pending::Await(pending)) = &mut frame.pending {
+                // Captures may still be queued after failed admission; returned
+                // fields may already be adopted but not yet delivered.
+                pending.retire(host)?;
+            }
             // A named work frame has already handed over retained parameters and
             // retired. Its caller still owns the original supervision record.
             if let Some(Pending::Supervise(mut supervision)) = frame.pending.take() {
@@ -697,6 +759,19 @@ impl Machine {
         }
         let mut remaining = quota;
         while remaining > 0 {
+            let delivery =
+                if let Some(Pending::Await(pending)) = &self.stack.last().unwrap().pending {
+                    if pending.result.is_none() {
+                        return if pending.queued.is_some() {
+                            Ok(Poll::Await)
+                        } else {
+                            Err("E_NATIVE: await completion is not available".into())
+                        };
+                    }
+                    true
+                } else {
+                    false
+                };
             match self.step(host, values, domains) {
                 Ok((_, Some(result))) => return Ok(Poll::Complete(result)),
                 Ok((instruction, None)) => remaining -= usize::from(instruction),
@@ -705,8 +780,12 @@ impl Machine {
                     if self.fault.is_some() {
                         return Ok(Poll::Settling(self.current.clone()));
                     }
-                    remaining -= 1;
+                    remaining -= usize::from(!delivery);
                 }
+            }
+            if matches!(&self.stack.last().unwrap().pending, Some(Pending::Await(p)) if p.queued.is_some() && p.result.is_none())
+            {
+                return Ok(Poll::Await);
             }
         }
         Ok(Poll::Paused)

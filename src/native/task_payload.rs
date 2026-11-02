@@ -89,6 +89,14 @@ pub struct QueuedTask {
     arguments: Option<Vec<V>>,
 }
 impl QueuedTask {
+    pub(super) fn retire(mut self, host: &mut Host) -> R<()> {
+        self.abandon(host);
+        if let Some(arguments) = self.arguments.take() {
+            retire_tasks(host, &arguments, true)?;
+            host.release_frame(&arguments.into_iter().map(Some).collect::<Vec<_>>());
+        }
+        Ok(())
+    }
     pub(super) fn prepare_context<'a>(
         &'a self,
         host: &Host,

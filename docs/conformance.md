@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.135.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.136.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -4059,3 +4059,17 @@ The 73 existing host cases run separately from these focused cases. All 15 compi
 models and four retained resource-adapter cases cover integration. Reference execution,
 checker, shared task protocol, fault tracker and editor implementation retain prior
 evidence. This selected coverage does not claim source scheduling or full conformance.
+
+## Retained native await handoff checkpoint (0.136)
+
+E1d.2d.3i adds eight host cases: queued admission retry and exact one-use delivery,
+rejected admission with captured owners/loans, rejected delivery with adopted owners,
+escaping child fault and owning contingency, administrative completion, process
+retirement of undelivered fields, nested callback parity, and await delivery inside a
+synchronous callee followed by its independent call return. The parity case compares
+complete reports, events and fuel against direct compiled calls across 19 fuel budgets
+and three quota partitions. The 80 previous host cases, all 15 compiled models, four
+retained resource-adapter cases and three manual cases supply integration coverage.
+Reference execution, checker, shared task protocol, fault tracker and editor logic
+retain prior evidence. This selected coverage does not claim generated callback
+handoff lowering, source scheduling or full conformance.

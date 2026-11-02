@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.135.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.136.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -146,3 +146,8 @@ resource dispositions and borrowed suppliers are unchanged. Source handoffs rema
 Since 0.135, internal sequential await contexts preserve the caller's diagnostic chain
 through nested readiness, result adoption and fault settlement. Mixed child trees and
 source callback handoffs remain ahead; this does not enable source concurrency.
+
+Since 0.136, internal compiled await handoffs retain queued captures and one-use
+return callbacks through admission, result adoption and fault/process retirement.
+Generated source callback lowering and its driver remain ahead; source concurrency
+is still gated.

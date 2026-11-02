@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.135.0** implements the v0.1 checked core and the current language
+Compiler release **0.136.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -750,3 +750,10 @@ Internal cold-await context chains now preserve the original diagnostic activati
 through readiness, result delivery and faults. Exact report and resource checks cover
 nested awaits and owning contingencies. Source callback integration remains ahead;
 current source execution stays synchronous.
+
+## Retained native await handoffs in 0.136
+
+Internal compiled callbacks now retain cold-await captures and their return callback
+across explicit admission and one-use result delivery. Failure and process cleanup
+retire pending values before suppliers. Generated source callback integration remains
+next; current source execution stays synchronous.

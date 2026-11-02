@@ -453,6 +453,13 @@ and emitted callback handoffs remain outside this internal slice; source executi
 and the accepted ownership/fault rules are unchanged. See
 [sequential native await contexts](../async-execution.md#sequential-native-await-contexts-e1d2d3h).
 
+Since 0.136, retained native callbacks have an explicit await handoff separate from
+quota pauses. Queued captures survive rejected admission, and the original callback
+receives an adopted result once without additional source fuel. Fault/process cleanup
+retires pending captures and results before suppliers. Generated source callbacks and
+source scheduling remain ahead; see
+[retained native await handoffs](../async-execution.md#retained-native-await-handoffs-e1d2d3i).
+
 Since 0.128, entry process termination closes normal task admission and retires all
 registered execution contexts and results before delivering the original status.
 Prepared bodies never start; parked callers unwind without normal instructions or

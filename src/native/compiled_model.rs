@@ -17,6 +17,7 @@ pub fn drive(host: &mut Host, args: Vec<V>, control: &'static Control) -> R<Comp
     for quota in quotas.into_iter().cycle() {
         match machine.advance(host, &mut values, &mut domains, quota) {
             Ok(Poll::Paused) => {}
+            Ok(Poll::Await) => return Err("E_NATIVE: fixture callback handoff is not wired".into()),
             Ok(Poll::Settling(_)) => {
                 return Err("E_NATIVE: independent driver has retained sibling work".into());
             }

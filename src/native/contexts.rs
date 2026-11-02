@@ -37,6 +37,8 @@ struct Completed {
 }
 pub enum ContextPoll {
     Paused,
+    Await,
+    Resumed(ContextKey),
     Ready,
     Complete(Completion),
     Failed(fault::Report),
@@ -434,6 +436,64 @@ impl<'a> Contexts<'a> {
         }
         Ok(result)
     }
+    fn await_continuation(&mut self, key: &ContextKey) -> R<&mut AwaitContinuation> {
+        self.require(key)?;
+        match self
+            .parked
+            .get_mut(&key.id)
+            .unwrap()
+            .machine
+            .stack
+            .last_mut()
+            .and_then(|a| a.pending.as_mut())
+        {
+            Some(Pending::Await(pending)) => Ok(pending),
+            _ => Err("E_NATIVE: context has no compiled await continuation".into()),
+        }
+    }
+    /// Admit the captured source handoff once. A failed preflight restores the
+    /// exact payload in the original activation, permitting retry or unwind.
+    pub fn admit_await(&mut self, parent: &ContextKey) -> R<ContextKey> {
+        let pending = self.await_continuation(parent)?;
+        if pending.child.is_some() || pending.result.is_some() || pending.queued.is_none() {
+            return Err("E_NATIVE: await handoff is already admitted or resolved".into());
+        }
+        let mut queued = pending.queued.take();
+        let result = self.start_await(parent, &mut queued);
+        let pending = self
+            .await_continuation(parent)
+            .expect("retained await caller");
+        pending.queued = queued;
+        if let Ok(child) = &result {
+            pending.child = Some(child.clone());
+        }
+        result
+    }
+    /// Record an admission failure for normal caller unwind on selection. The
+    /// pending captures remain available until that unwind retires them.
+    pub fn reject_await(&mut self, parent: &ContextKey, message: String) -> R<()> {
+        let pending = self.await_continuation(parent)?;
+        if pending.child.is_some() || pending.result.is_some() || pending.queued.is_none() {
+            return Err("E_NATIVE: await handoff is already admitted or resolved".into());
+        }
+        pending.result = Some(Err(message));
+        Ok(())
+    }
+    fn callback_child(&self, parent: u64, child: &ContextKey) -> bool {
+        matches!(self.parked.get(&parent).and_then(|p| p.machine.stack.last()).and_then(|a| a.pending.as_ref()),
+            Some(Pending::Await(p)) if p.result.is_none() && p.child.as_ref().is_some_and(|key| key.id == child.id && Arc::ptr_eq(&key.session, &child.session)))
+    }
+    /// Adopt a normal result and retire its wait before queuing the original
+    /// one-use delivery. The callback runs administratively on caller selection.
+    pub fn return_await(&mut self, parent: &ContextKey, child: &ContextKey) -> R<()> {
+        self.require(parent)?;
+        if !self.callback_child(parent.id, child) {
+            return Err("E_NATIVE: completion does not match the compiled await".into());
+        }
+        let result = self.join_inner(Some(parent), child, true)?;
+        self.await_continuation(parent)?.result = Some(Ok(result));
+        Ok(())
+    }
     pub fn advance_retained(&mut self, key: &ContextKey, quota: usize) -> R<ContextPoll> {
         self.require_live()?;
         if !Arc::ptr_eq(&self.identity, &key.session) {
@@ -491,6 +551,7 @@ impl<'a> Contexts<'a> {
                 .advance(self.host, &mut self.values, &mut self.domains, quota)
             {
                 Ok(Poll::Paused) => ContextPoll::Paused,
+                Ok(Poll::Await) => ContextPoll::Await,
                 Ok(Poll::Settling(domain)) => {
                     let message = parked.machine.fault.as_ref().unwrap().clone();
                     let report = self.host.activations.failure(
@@ -553,10 +614,24 @@ impl<'a> Contexts<'a> {
         {
             origin = parked.parent.unwrap();
             self.restore_await(origin, key.id, &mut parked.host.tracker);
+            if matches!(result, ContextPoll::Complete(_)) && self.callback_child(origin, key) {
+                let parent = ContextKey {
+                    session: self.identity.clone(),
+                    id: origin,
+                };
+                let ContextPoll::Complete(completion) =
+                    std::mem::replace(&mut result, ContextPoll::Resumed(parent.clone()))
+                else {
+                    unreachable!()
+                };
+                // Administrative completion propagates through the caller; it
+                // never invokes ordinary outcome delivery or fabricates fields.
+                self.await_continuation(&parent)?.result = Some(Ok(completion));
+            }
         }
         if let Some(outcome) = completed {
             self.completed.insert(key.id, Completed { parked, outcome });
-        } else if matches!(result, ContextPoll::Paused) {
+        } else if matches!(result, ContextPoll::Paused | ContextPoll::Await) {
             self.parked.insert(key.id, parked);
         }
         if let Some((domain, message, report, source_fault)) = settlement {
@@ -588,11 +663,22 @@ impl<'a> Contexts<'a> {
     }
     /// Consume a completed result once; early wait registration is separate.
     pub fn join(&mut self, parent: Option<&ContextKey>, key: &ContextKey) -> R<Completion> {
+        self.join_inner(parent, key, false)
+    }
+    fn join_inner(
+        &mut self,
+        parent: Option<&ContextKey>,
+        key: &ContextKey,
+        callback: bool,
+    ) -> R<Completion> {
         let completed = self.require_completed(key)?;
         let parked = &completed.parked;
         self.domains.require_open(&parked.machine.root.key, &[])?;
         if parent.map(|p| p.id) != parked.parent {
             return Err("E_NATIVE: completion belongs to another parent".into());
+        }
+        if parent.is_some_and(|p| self.callback_child(p.id, key)) != callback {
+            return Err("E_NATIVE: completion requires its compiled await delivery".into());
         }
         if let Some(parent) = parent {
             self.require(parent)?;
@@ -872,3 +958,7 @@ mod task_tests;
 #[cfg(test)]
 #[path = "sequential_await_tests.rs"]
 mod sequential_await_tests;
+
+#[cfg(test)]
+#[path = "await_handoff_tests.rs"]
+mod await_handoff_tests;
