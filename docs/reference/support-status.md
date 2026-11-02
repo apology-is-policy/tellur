@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.137.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.138.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -117,41 +117,25 @@ supervisor state, nested tail loops and asynchronous boundaries remain unsupport
 Constructor bodies are supported in 0.67; isolation inside them remains gated. Protocol graph analysis and source extraction reject
 lexical isolation rather than erasing its administrative edges.
 
-Native retained execution support is shared since 0.130: continuation frames,
-context/completion storage, fault-domain lifetime and emergency settlement are
-embedded in ordinary native output. The default entry lowering stays synchronous;
-test schedule drivers and compiled fixture callbacks are excluded. Source task
-queue/wait wiring and resumable lowering remain ahead; see the
-[shared execution checkpoint](../async-execution.md#shared-native-retained-execution-e1d2d3c).
+Native builds use retained compiled callbacks and a sequential entry driver since
+0.138. Calls, constructors, loops, named/lexical boundaries and cold awaits retain
+local frames, loans and original diagnostic state through completion and cleanup.
+The shared execution support introduced in 0.130 is now used by normal entry lowering;
+probe quota controls and independent-root schedules remain excluded. See
+[production retained callbacks](../async-execution.md#production-retained-native-callbacks-e1d2d3k).
 
-Since 0.131, reference/native support uses the same internal queue/join/readiness
-protocol. Each retained compiled activation has a distinct invocation owner and
-checked normal/emergency retirement. Native cold task payload/queue binding and
-source handoffs remain ahead; source acceptance and cold lexical moves are unchanged.
+Cold captures carry host, invocation, task and exact producer identities. Queue/wait
+admission validates those identities before transfer; retained child contexts deliver
+adopted results once to the original callback. Legal cold lexical movement and normal
+await obligations are unchanged. Discarded cold obligations retire during fault or
+recovery cleanup, while normal pending discard remains rejected. Borrowed captures
+do not retire their suppliers; declared resource dispositions still govern cleanup.
+See [task-bound contexts](../async-execution.md#task-bound-native-contexts-e1d2d3f)
+and [scoped retirement](../async-execution.md#scoped-native-task-retirement-e1d2d3g).
 
-Since 0.132, internal bound native payloads retain host/invocation/task/producer
-identity through cold movement and atomic queue/wait admission. FIFO capture dispatch
-is one-use. Emitted retained callbacks and context completion wiring remain ahead;
-default native source execution remains synchronous.
-
-Since 0.133, queued native tasks integrate with retained contexts, readiness and
-one-use result adoption after frame/resource/domain/owner admission preflight.
-Fault/process settlement retires their obligations. These are internal host APIs;
-retained source callbacks and production source scheduling remain separate work.
-
-Since 0.134, retained lexical/loop cleanup retires discarded bound cold obligations
-on fault/recovery and rejects normal pending discard. Moved handles remain awaitable;
-resource dispositions and borrowed suppliers are unchanged. Source handoffs remain ahead.
-
-Since 0.135, internal sequential await contexts preserve the caller's diagnostic chain
-through nested readiness, result adoption and fault settlement. Mixed child trees and
-source callback handoffs remain ahead; this does not enable source concurrency.
-
-Since 0.136, internal compiled await handoffs retain queued captures and one-use
-return callbacks through admission, result adoption and fault/process retirement.
-Generated source callback lowering and its driver remain ahead; source concurrency
-is still gated.
-
-Since 0.137, generated compiled probes bind cold captures and use retained await
-handoffs. Shared entry contexts return the original diagnostics and raw terminal error.
-Production callback lowering promotion remains next; source concurrency stays gated.
+Sequential await chains preserve original source/call sites, activation identities,
+fault causes and raw errors for final reports. Await handoffs and one-use result
+callbacks are distinct from host quota pauses, which do not introduce source
+interleaving. See [retained await handoffs](../async-execution.md#retained-native-await-handoffs-e1d2d3i).
+Mixed spawned-child integration and source concurrency remain gated; the internal
+readiness protocol does not provide a source scheduler or async host API.

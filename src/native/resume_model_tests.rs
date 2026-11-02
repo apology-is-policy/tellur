@@ -14,7 +14,7 @@ fn checked(text: &str) -> CheckedProgram {
 }
 
 #[test]
-fn model_keeps_named_boundaries_private_without_changing_standard_emission() {
+fn production_and_probes_keep_named_boundaries_private() {
     for text in [
         "boundary work() {terminate;} contingency(string reason) {terminate;} control main() exits done {supervise work();exit done;}",
         "boundary work() {terminate;} contingency(string reason) {terminate;} control main() exits done {fault boundary {supervise work();} contingency [] {terminate process 1;}exit done;}",
@@ -36,7 +36,8 @@ fn model_keeps_named_boundaries_private_without_changing_standard_emission() {
         assert_eq!(standard.matches(CONTEXTS).count(), 1);
         assert!(!standard.contains("TELLUR_NATIVE_MODEL_QUOTAS"));
         assert!(!standard.contains("context harness"));
-        assert!(!standard.contains("static MODEL_"));
+        assert!(standard.contains("static MODEL_"));
+        assert!(standard.contains("run_entry(host,args,"));
         assert!(!standard.contains("drive(host,args,"));
     }
 }
@@ -329,7 +330,7 @@ fn compare_fixture(
 }
 
 #[test]
-fn emitted_cold_callbacks_use_bound_handoffs_without_promoting_standard_emission() {
+fn production_and_probes_share_bound_cold_callbacks_without_probe_controls() {
     let p = checked(
         r#"
 async control child() exits done {exit done;}
@@ -345,7 +346,11 @@ control main() exits done {run startup();exit done;}
     assert!(emitted.contains("return Ok(Step::Await{task,deliver:"));
     assert!(emitted.contains("contexts.start_entry(control, args)?"));
     let standard = p.native_source("main").unwrap();
-    assert!(!standard.contains("let task=state.defer_task(host,&MODEL_"));
-    assert!(!standard.contains("let task=state.queue_task(host,&MODEL_"));
+    assert!(standard.contains("let task=state.defer_task(host,&MODEL_"));
+    assert!(standard.contains("let task=state.queue_task(host,&MODEL_"));
     assert!(!standard.contains("TELLUR_NATIVE_MODEL_QUOTAS"));
+    assert!(!standard.contains("fn region_"));
+    let callbacks = super::super::continuations::source(&p);
+    assert!(standard.contains(&callbacks));
+    assert!(emitted.contains(&callbacks));
 }

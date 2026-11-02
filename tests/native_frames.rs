@@ -51,23 +51,18 @@ fn frame_capacity_depends_on_local_storage_not_global_id_ranges() {
             .unwrap();
         let mut selected = vec![];
         for (id, region) in p.regions().enumerate() {
-            let prefix = format!("fn region_{id}(");
-            let function = source
+            let prefix = format!("static MODEL_{id}:Control=");
+            let descriptor = source
                 .split(&prefix)
                 .nth(1)
                 .unwrap()
-                .split("fn ")
+                .split(';')
                 .next()
                 .unwrap();
             let slots = region.slots.len();
             let atoms = region.atoms.len();
             assert!(
-                function.contains(&format!("v.enter({slots})?")),
-                "{}",
-                region.name
-            );
-            assert!(
-                function.contains(&format!("vec![false; {atoms}]")),
+                descriptor.contains(&format!(",slots:{slots},atoms:{atoms},")),
                 "{}",
                 region.name
             );

@@ -183,7 +183,9 @@ live. E1d.2d.3h now carries the original diagnostic chain through exclusive
 sequential native await contexts, joins and fault settlement. E1d.2d.3i adds
 explicit retained await handoffs and one-use administrative delivery. E1d.2d.3j
 wires generated fixture callbacks and probe drivers to that protocol, preserving
-entry diagnostics. Production lowering promotion remains next. Compiler **0.137.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
+entry diagnostics. E1d.2d.3k promotes that lowering and the sequential entry driver
+into normal native builds. Mixed spawned-child integration and source scheduling
+remain ahead. Compiler **0.138.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
 lifetime checkpoints of milestone 2, the array/vector/map core of milestone 3,
 and implicit entry, inline/stored adapters, owned capture, named outcome contracts
 and checked forwarding in milestone 4. A first [semantic foundation](semantic-foundation.md)
@@ -437,6 +439,7 @@ do not block this design work. E2 remains the native coroutine target.
 | E1d.2d.3h | Sequential native await contexts | Delivered in 0.135: exclusive cold-await context chains carry original diagnostic activations through nested readiness, join and fault settlement, preserving synchronous reports and resource adoption. Mixed child trees and emitted callback handoffs remain ahead |
 | E1d.2d.3i | Retained native await handoffs | Delivered in 0.136: compiled callbacks retain queued captures and one-use delivery across explicit await admission, result adoption and fault/process retirement. Failed admission can retry without source reevaluation; delivery is administrative. Generated callback lowering and its driver remain next |
 | E1d.2d.3j | Generated retained await callbacks | Delivered in 0.137: compiled fixture lowering binds deferred captures to their invocation and emits explicit await handoffs. Sequential and independent-root probe drivers use retained children and one-use delivery; entry tracker/raw-error return preserves full reports. Production lowering promotion remains next |
+| E1d.2d.3k | Production retained native callbacks | Delivered in 0.138: normal native builds share the compiled callback emitter and sequential entry driver with retained probes. Calls, loops, boundaries and cold awaits use retained frames; diagnostics, fuel, loans and resource settlement retain parity. Source concurrency and mixed spawned-child integration remain gated |
 | E2 | Native coroutine lowering | Preserved architectural target: direct LLVM coroutine primitives, pinned-toolchain experiment, frame lifetime rules and schedule-based differential tests; I1 must keep this route open |
 | T1 | Stronger source transformations | Hold current scope during P1–P5: extraction correspondence, continuation cuts, source-level lift and editor actions |
 | R1 | Mathematical foundations | Maintain existing evidence; defer extensions during P1–P5: preservation judgments, richer protocol abstractions, infinite/causal behavior, mechanization |

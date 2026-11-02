@@ -187,3 +187,31 @@ fn rejected_entry_admission_preserves_the_selected_host_chain() {
     c.terminate().unwrap();
     empty(&c);
 }
+
+#[test]
+fn production_entry_driver_matches_direct_reports_and_returns_without_test_quotas() {
+    for message in ["".into(), "nested failure".into(), "λ".repeat(5000)] {
+        for fuel in 0..=4 {
+            let expected = baseline(&message, fuel);
+            let mut h = host(fuel);
+            let (phase, error) =
+                match super::super::run_entry(&mut h, vec![V::String(message.clone())], &ROOT) {
+                    Ok(result) => {
+                        assert_eq!(result.outcome().unwrap().1, [V::U32(42)]);
+                        (fault::Phase::ResultValidation, "validation probe".into())
+                    }
+                    Err(error) => (fault::Phase::Execution, error),
+                };
+            assert!(h.tasks.is_empty() && h.resources.scopes.is_empty());
+            assert_eq!(
+                (
+                    h.activations.failure("root", phase, &error),
+                    h.events.clone(),
+                    h.fuel
+                ),
+                expected,
+                "fuel={fuel}"
+            );
+        }
+    }
+}

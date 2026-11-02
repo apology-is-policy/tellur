@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-darwin-arm64-0.137.0.vsix` using **Extensions:
+1. Install the supplied `tellur-language-darwin-arm64-0.138.0.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1253,3 +1253,10 @@ Compiled probes now lower cold tasks into bound captures and explicit retained a
 handoffs. Their drivers preserve original diagnostic chains, result ownership and
 fault cleanup. Production lowering promotion is next; source execution remains
 sequential and no scheduler syntax is enabled.
+
+## Production retained native callbacks in 0.138
+
+Normal native builds now use retained compiled callbacks for calls, constructors,
+loops, boundaries and cold awaits. The shared sequential entry driver preserves loans,
+resource cleanup, fuel and fault reports. Probe scheduling controls stay internal;
+source execution remains sequential and no new syntax is enabled.

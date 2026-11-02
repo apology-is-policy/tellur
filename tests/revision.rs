@@ -200,11 +200,15 @@ fn inferred_resource_exits_still_enforce_moves_and_completion() {
 }
 #[test]
 fn reserved_future_features_do_not_silently_compile() {
-    rejects(
+    // Async declarations and await are implemented. These remaining statement
+    // spellings must still reject instead of silently gaining execution semantics.
+    let p = compile(
         "async control main() exits done { [entry]: exit done; }",
-        "E_UNSUPPORTED",
-    );
-    for keyword in ["vary", "flux", "await", "spawn", "defer", "capture"] {
+        manifest(),
+    )
+    .unwrap();
+    assert!(p.region("main").unwrap().asynchronous);
+    for keyword in ["vary", "flux", "spawn", "async", "defer", "capture"] {
         rejects(
             &format!("control main() exits done {{ [entry]: {keyword} value; exit done; }}"),
             "E_UNSUPPORTED",

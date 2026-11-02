@@ -14,6 +14,8 @@ const EXECUTION: &str = include_str!("native/execution.rs");
 const CONTEXTS: &str = include_str!("native/contexts.rs");
 const CARGO: &str = include_str!("native/Cargo.template");
 const LOCK: &str = include_str!("native/Cargo.lock");
+#[path = "native/continuations.rs"]
+mod continuations;
 #[cfg(test)]
 #[path = "native/resume_model.rs"]
 mod resume_model;
@@ -565,44 +567,10 @@ impl CheckedProgram {
         g.code.push_str(CONTEXTS);
         g.code.push_str("\n}\n}\n");
         g.code.push_str(SUPPORT);
-        g.code.push_str("\n}\nuse support::*;\n");
+        g.code
+            .push_str("\n}\nuse support::*; use support::execution::*;\n");
         g.code.push_str(&crate::rust_host::source(self.manifest())?);
-        for r in self.regions() {
-            g.constructing = g.constructors.contains(r.name.as_str());
-            let destination_parameter = if g.constructing {
-                ", destination:usize"
-            } else {
-                ""
-            };
-            g.layout = FrameLayout::new(r);
-            let slots = g.layout.slots.len();
-            let atoms = g.layout.atoms.len();
-            let _ = writeln!(
-                g.code,
-                "fn region_{}(host:&mut Host, mut v:&mut Frames, args:Vec<V>, handover:&mut Vec<V>{destination_parameter})->R<Completion> {{\nhost.enter({})?;\nlet frame=v.enter({slots})?; let base=frame.base();\nlet result=(|| {{\nlet mut a = vec![false; {atoms}];\nlet mut args = args.into_iter();",
-                g.names[r.name.as_str()],
-                string(&self.runtime_name(&r.name))
-            );
-            for p in &r.parameters {
-                let _ = writeln!(g.code, "v[base + {}] = args.next();", g.layout.slots[&p.id]);
-            }
-            g.instructions(&r.code);
-            g.code
-                .push_str("Err(\"E_NATIVE: checked region fell through\".into())\n})();\n");
-            if let Some(b) = &r.boundary {
-                g.code
-                    .push_str("if result.is_err() && host.source_faulted() {\n");
-                for id in &b.retained {
-                    let id = g.layout.slots[id];
-                    let _ = writeln!(
-                        g.code,
-                        "handover.push(v[base + {id}].take().ok_or(\"E_NATIVE: retained boundary parameter unavailable\")?);"
-                    );
-                }
-                g.code.push_str("}\n");
-            }
-            g.code.push_str("if result.is_err() { host.release_frame(v.frame_values(&frame)?); } v.retire(&frame)?; if result.is_ok() { host.leave(); } result\n}\n");
-        }
+        g.code.push_str(&continuations::source(self));
         for r in self.regions() {
             let id = g.names[r.name.as_str()];
             if r.boundary.is_some()
@@ -617,7 +585,7 @@ impl CheckedProgram {
             } else {
                 let _ = writeln!(
                     g.code,
-                    "fn entry_{id}(host: &mut Host, args: Vec<V>)->R<Completion> {{ let mut v=Frames::default(); region_{id}(host, &mut v, args, &mut vec![]) }}",
+                    "fn entry_{id}(host:&mut Host,args:Vec<V>)->R<Completion>{{run_entry(host,args,&MODEL_{id})}}",
                 );
             }
         }

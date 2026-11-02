@@ -1218,6 +1218,7 @@ Those boundaries need explicit contracts before being accepted by the checker.
 | E1d.2d.3h | Sequential native await contexts | Delivered in 0.135: exclusive cold-await context chains carry original diagnostic activations through nested readiness, join and fault settlement, preserving synchronous reports and resource adoption. Mixed child trees and emitted callback handoffs remain ahead |
 | E1d.2d.3i | Retained native await handoffs | Delivered in 0.136: compiled callbacks retain queued captures and one-use delivery across explicit await admission, result adoption and fault/process retirement. Failed admission can retry without source reevaluation; delivery is administrative. Generated callback lowering and its driver remain next |
 | E1d.2d.3j | Generated retained await callbacks | Delivered in 0.137: compiled fixture lowering binds deferred captures to their invocation and emits explicit await handoffs. Sequential and independent-root probe drivers use retained children and one-use delivery; entry tracker/raw-error return preserves full reports. Production lowering promotion remains next |
+| E1d.2d.3k | Production retained native callbacks | Delivered in 0.138: normal native builds share the compiled callback emitter and sequential entry driver with retained probes. Calls, loops, boundaries and cold awaits use retained frames; diagnostics, fuel, loans and resource settlement retain parity. Source concurrency and mixed spawned-child integration remain gated |
 | E1e | Explicit cooperative cancellation and suspending cleanup; normal completion races, cleanup failures and no abandoned losers | Define cancellation observation and cleanup admission; no implicit cancellation exception |
 | E2 | Pinned native coroutine experiment, then checked lowering and schedule-based differential validation | Reference semantics and legal frame retirement must precede native destruction |
 
@@ -1727,6 +1728,41 @@ of the validated callback lowering and sequential driver is the next integration
 step. Mixed spawned-child trees, source `spawn`/`yield`, cancellation, suspending
 disposal and LLVM coroutine lowering remain later gates. No accepted source ownership,
 origin, outcome, fault or path-label rule changes.
+
+## Production retained native callbacks (E1d.2d.3k)
+
+Compiler 0.138 uses retained compiled callbacks for normal native builds. Checked
+regions lower through one [callback emitter](../src/native/continuations.rs); the
+quota and independent-context probes embed that same generated code. Ordinary calls,
+constructors, loops and named/lexical boundaries use retained frames and saved return
+callbacks. Cold `defer` binds captures to the current invocation and exact producer;
+consuming `await` admits a retained child and delivers its adopted result once.
+The previous synchronous region-function emission is removed.
+
+The production entry driver follows one sequential await chain. Synchronous calls
+continue within that chain, and a host quota pause cannot select another task. Normal
+result delivery, boundary recovery, administrative returns and process termination
+use the shared context lifecycle. Original diagnostic trackers and untruncated errors
+return to final host reporting. Invocation obligations and retained resource domains
+must be settled when the entry returns. The native backend remains compiled Rust;
+this change does not introduce LLVM coroutine lowering or a graph interpreter.
+
+Test quota parsing and explicit independent-root schedules remain confined to probe
+injection. Normal executables expose neither. Entry eligibility remains unchanged:
+constructors, named boundary work/handlers and borrowed-result controls do not become
+public launcher entries. Frame allocation still depends on each region's local layout.
+
+Validation compares production and probe emission, direct and retained entry reports,
+original/expanded native outcomes, fuel cutoffs, faults, borrowed constructors/carriers,
+cold tasks, resource adapters and the maintained settings/HTTP/file applications.
+The callback planning and emission body are unchanged from the validated 0.137 probe
+emitter; production integration receives fresh native-consumer coverage.
+
+Source execution remains sequential. Mixed spawned-child trees require diagnostic
+chain and fault-settlement integration before the accepted source scheduler is enabled.
+`spawn`, `yield`, cancellation, suspending disposal and async host adapters remain
+gated. Ownership, origin, outcome, fault/contingency and path-label semantics are
+unchanged; no new language-design decision is required for this promotion.
 
 ## Reference execution invariants
 

@@ -462,9 +462,16 @@ source scheduling remain ahead; see
 
 Since 0.137, generated compiled probes use bound `defer` captures and explicit await
 handoffs with retained child contexts. Entry driving returns the original diagnostic
-chain and untruncated error for final reporting. Ordinary native source emission stays
-synchronous until promotion of this lowering; no source scheduler is enabled. See
+chain and untruncated error for final reporting. This probe checkpoint preceded the
+production promotion in 0.138; no source scheduler is enabled. See
 [generated retained await callbacks](../async-execution.md#generated-retained-await-callbacks-e1d2d3j).
+
+Since 0.138, ordinary native builds use the same retained compiled callbacks and
+sequential entry driver. Calls, constructors, loops, boundaries and cold awaits retain
+frames, loans, source fuel and diagnostic chains through completion and cleanup.
+Executable entry eligibility is unchanged. Probe quota/schedule controls are absent
+from normal executables; source execution remains sequential. See
+[production retained callbacks](../async-execution.md#production-retained-native-callbacks-e1d2d3k).
 
 Since 0.128, entry process termination closes normal task admission and retires all
 registered execution contexts and results before delivering the original status.

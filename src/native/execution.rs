@@ -798,7 +798,7 @@ mod contexts;
 #[cfg(test)]
 #[path = "domains.rs"]
 mod domains;
-pub use contexts::{ContextKey, ContextPoll, Contexts, Readiness};
+pub use contexts::{ContextKey, ContextPoll, Contexts, Readiness, run_entry};
 
 #[cfg(test)]
 #[path = "invocation_tests.rs"]

@@ -61,27 +61,30 @@ fn owning_nested_construction_and_expansion() {
 #[test]
 fn native_constructors_deliver_to_caller_storage() {
     let p = checked(BASIC);
-    let native = support::scenario_executable(&p)
-        .native_source("main")
-        .unwrap();
+    let p = support::scenario_executable(&p);
+    let native = p.native_source("main").unwrap();
     let mut constructors = 0;
-    for function in native.split("fn region_").skip(1) {
-        let function = function.split("fn entry_").next().unwrap();
-        if !function
-            .lines()
-            .next()
-            .unwrap()
-            .contains("destination:usize")
-        {
+    for (id, region) in p.regions().enumerate() {
+        if !region.is_constructor() {
             continue;
         }
         constructors += 1;
+        let function = native
+            .split(&format!("fn model_{id}("))
+            .nth(1)
+            .unwrap()
+            .split("fn ")
+            .next()
+            .unwrap();
         assert!(function.contains("v[destination] = Some(constructed)"));
         assert!(function.contains("return Ok(Completion::Constructed)"));
         assert!(!function.contains("return Ok(Completion::Outcome"));
+        assert!(native.contains(&format!(
+            "control:&MODEL_{id},arguments,destination:Some(base+"
+        )));
     }
     assert_eq!(constructors, 2);
-    assert!(native.contains("?.constructed()?"));
+    assert!(native.contains("result.constructed()?"));
 }
 #[test]
 fn initialization_is_path_sensitive() {

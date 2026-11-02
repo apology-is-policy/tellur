@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.137.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.138.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -4085,3 +4085,26 @@ chains, sites, events, fuel and long-error truncation with direct compiled calls
 Ordinary source emission, the reference executor, checker, shared task protocol and
 LSP/editor logic retain prior evidence. This is selected coverage; source scheduling
 and production lowering promotion remain outside this checkpoint.
+
+## Production retained native callback checkpoint (0.138)
+
+E1d.2d.3k promotes the validated compiled callback emitter and shared sequential entry
+driver to normal native builds. The native-host suite includes a production-entry
+comparison of complete reports, events, fuel and long-error truncation against direct
+execution. Two lowering regressions check shared emission, unchanged private-entry
+restrictions and absence of probe quota/schedule controls. Frame-capacity checks retain
+the local-layout bound after synchronous region functions are removed.
+
+Fresh validation covers the retained compiled models and all integration-test targets
+that directly request native source/builds, including tasks, borrowed results,
+constructors, generic/trait calls, loops, named/lexical boundaries, process termination,
+Rust resource adapters and settings/file/HTTP applications. Original/expanded O0/O2
+fuel and fault matrices exercise the production path. This is selected coverage, not
+a rerun of every checker/editor test: unchanged LSP/Node evidence is reused, and a
+fresh isolated editor checks the packaged compiler and native execution. Source
+scheduling and mixed spawned-child integration remain outside this checkpoint.
+
+The broader native-consumer run also updates an old reserved-syntax regression:
+async declarations are accepted, while the remaining reserved statement forms still
+reject. Async/await acceptance and context restrictions retain their dedicated tests;
+this correction changes no parser or checker behavior.
