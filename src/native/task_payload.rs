@@ -31,6 +31,55 @@ impl PartialEq for TaskBinding {
 }
 impl Eq for TaskBinding {}
 
+/// Retire obligations carried by discarded owned values, without following loans
+/// or applying resource dispositions. Check the whole graph before any mutation.
+pub(super) fn retire_tasks<'a>(
+    host: &mut Host,
+    values: impl IntoIterator<Item = &'a V>,
+    abrupt: bool,
+) -> R<()> {
+    fn visit(
+        host: &Host,
+        value: &V,
+        abrupt: bool,
+        tasks: &mut std::collections::BTreeSet<TaskId>,
+    ) -> R<()> {
+        match value {
+            V::Task {
+                binding, arguments, ..
+            } => {
+                if let Some(binding) = binding {
+                    if !Arc::ptr_eq(&binding.registry, &host.resources.identity) {
+                        return Err("E_NATIVE: discarded task belongs to another host".into());
+                    }
+                    if !abrupt && host.tasks.contains(binding.task) {
+                        return Err("E_NATIVE: pending task cannot be discarded normally".into());
+                    }
+                    tasks.insert(binding.task);
+                }
+                for value in arguments {
+                    visit(host, value, abrupt, tasks)?;
+                }
+            }
+            V::Construct { fields, .. } => {
+                for value in fields {
+                    visit(host, value, abrupt, tasks)?;
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+    let mut tasks = std::collections::BTreeSet::new();
+    for value in values {
+        visit(host, value, abrupt, &mut tasks)?;
+    }
+    for task in tasks {
+        host.tasks.abandon(task);
+    }
+    Ok(())
+}
+
 /// Captures queued by a consuming await. Dropping this does not settle the task:
 /// the owner's outstanding obligation remains until completion or emergency unwind.
 #[derive(Debug)]

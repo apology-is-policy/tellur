@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.133.0** implements the v0.1 checked core and the current language
+Compiler release **0.134.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -736,3 +736,10 @@ Internal queued tasks now retain their original parent and completion wait throu
 native context admission, readiness, result delivery and fault/process cleanup.
 Failed admission preserves captures. Source callback and scheduler integration remain
 ahead; current source execution stays synchronous.
+
+## Scoped native task retirement in 0.134
+
+Retained native scopes now retire discarded cold-task obligations during fault and
+recovery cleanup, while preserving moved handles and borrowed suppliers. Normal
+scope exits and loop restarts still require task completion. Source callback and
+scheduler integration remain ahead.

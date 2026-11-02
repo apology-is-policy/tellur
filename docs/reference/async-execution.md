@@ -420,14 +420,14 @@ Since 0.131, the reference and native support share one internal task registry
 protocol. Retained compiled activations have separate invocation owners, including
 nested calls; normal completion requires their task obligations to be settled and
 emergency retirement invalidates only their obligations. Native task-payload/queue
-binding and source handoffs remain separate work. These internal identities do not
+binding and retained contexts are described below; source handoffs remain ahead. These internal identities do not
 change source lifetimes, cold lexical moves or public contracts. See
 [shared task ownership](../async-execution.md#shared-task-protocol-and-native-invocation-owners-e1d2d3d).
 
 Since 0.132, internal native APIs can bind cold captures to their original host,
 invocation, task and compiled producer. Queue/wait admission and FIFO capture dispatch
 preserve values on rejection. Default source generation still uses synchronous
-unbound tasks; retained context dispatch/completion integration remains ahead.
+unbound tasks; internal retained context integration is described below.
 The synchronous helper cannot consume bound payloads. Cold lexical movement and
 source contracts are unchanged. See
 [bound native payloads](../async-execution.md#bound-native-task-payloads-e1d2d3e).
@@ -438,6 +438,13 @@ through readiness and one-use result adoption; fault/process cleanup retires the
 obligations before suppliers and contingency. Source callbacks still use synchronous
 lowering, so this does not enable source scheduling. See
 [task-bound native contexts](../async-execution.md#task-bound-native-contexts-e1d2d3f).
+
+Since 0.134, retained native scopes retire bound cold obligations carried by values
+discarded during fault cleanup or recovery. Normal scope exit/restart rejects pending
+discard. Moved handles remain live, and borrowed captures do not retire their suppliers.
+Resource dispositions remain responsible for captured resources. This is preparation
+for source callback integration, not a new discard or scheduling feature. See
+[scoped native task retirement](../async-execution.md#scoped-native-task-retirement-e1d2d3g).
 
 Since 0.128, entry process termination closes normal task admission and retires all
 registered execution contexts and results before delivering the original status.

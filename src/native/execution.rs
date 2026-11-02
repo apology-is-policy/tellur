@@ -83,8 +83,18 @@ impl BoundaryScope {
         current: &mut DomainKey,
         base: usize,
         result: &R<()>,
+        abrupt: bool,
     ) -> R<()> {
         domains.require_quiescent(&self.domain, current)?;
+        task_payload::retire_tasks(
+            host,
+            self.control
+                .work
+                .iter()
+                .chain(self.control.handling)
+                .filter_map(|slot| values[base + slot].as_ref()),
+            abrupt,
+        )?;
         for slot in self.control.work.iter().chain(self.control.handling) {
             values[base + slot] = None;
         }
@@ -108,6 +118,14 @@ impl BoundaryScope {
                 .retained
                 .iter()
                 .filter_map(|id| values[base + id].as_ref()),
+        )?;
+        task_payload::retire_tasks(
+            host,
+            self.control
+                .retire
+                .iter()
+                .filter_map(|slot| values[base + slot].as_ref()),
+            true,
         )?;
         for slot in self.control.retire {
             values[base + slot] = None;
@@ -138,11 +156,14 @@ impl Activation {
         domains: &mut Domains,
         current: &mut DomainKey,
         remaining: usize,
+        abrupt: bool,
     ) -> R<()> {
+        let base = self.base();
         while self.scopes.len() > remaining {
-            if let Some(Scope::Boundary(mut boundary)) = self.scopes.pop() {
-                boundary.finish(host, values, domains, current, self.base(), &Ok(()))?;
+            if let Some(Scope::Boundary(boundary)) = self.scopes.last_mut() {
+                boundary.finish(host, values, domains, current, base, &Ok(()), abrupt)?;
             }
+            self.scopes.pop();
         }
         Ok(())
     }
@@ -384,7 +405,8 @@ impl Machine {
                 frame.pc = control.body;
             }
             Step::BoundaryEnd(control) => {
-                let Some(Scope::Boundary(mut boundary)) = frame.scopes.pop() else {
+                let base = frame.base();
+                let Some(Scope::Boundary(boundary)) = frame.scopes.last_mut() else {
                     return Err("E_NATIVE: missing compiled boundary continuation".into());
                 };
                 if !std::ptr::eq(boundary.control, control) {
@@ -395,9 +417,11 @@ impl Machine {
                     values,
                     domains,
                     &mut self.current,
-                    frame.base(),
+                    base,
                     &Ok(()),
+                    false,
                 )?;
+                frame.scopes.pop();
                 frame.pc = control.after;
                 // This sentinel is administrative and consumes no instruction quota.
                 return Ok((false, None));
@@ -406,6 +430,14 @@ impl Machine {
                 if frame.loop_target(control.target).is_ok() {
                     return Err("E_NATIVE: compiled loop already active".into());
                 }
+                task_payload::retire_tasks(
+                    host,
+                    control
+                        .locals
+                        .iter()
+                        .filter_map(|slot| values[frame.base() + slot].as_ref()),
+                    false,
+                )?;
                 (control.reset)(frame, values, arguments)?;
                 frame.scopes.push(Scope::Loop(control));
                 frame.pc = control.body;
@@ -432,13 +464,29 @@ impl Machine {
             }
             Step::Complete(Completion::Again(target, arguments)) => {
                 let (index, control) = frame.loop_target(target)?;
-                frame.close_scopes(host, values, domains, &mut self.current, index + 1)?;
+                frame.close_scopes(host, values, domains, &mut self.current, index + 1, false)?;
+                task_payload::retire_tasks(
+                    host,
+                    control
+                        .locals
+                        .iter()
+                        .filter_map(|slot| values[frame.base() + slot].as_ref()),
+                    false,
+                )?;
                 (control.reset)(frame, values, arguments)?;
                 frame.pc = control.body;
             }
             Step::Complete(Completion::Recover(target, arguments)) => {
                 let (index, control) = frame.loop_target(target)?;
-                frame.close_scopes(host, values, domains, &mut self.current, index + 1)?;
+                frame.close_scopes(host, values, domains, &mut self.current, index + 1, true)?;
+                task_payload::retire_tasks(
+                    host,
+                    control
+                        .locals
+                        .iter()
+                        .filter_map(|slot| values[frame.base() + slot].as_ref()),
+                    true,
+                )?;
                 for slot in control.locals {
                     host.release_frame(std::slice::from_ref(&values[frame.base() + slot]));
                 }
@@ -447,7 +495,7 @@ impl Machine {
             }
             Step::Complete(Completion::Complete(target)) => {
                 let (index, control) = frame.loop_target(target)?;
-                frame.close_scopes(host, values, domains, &mut self.current, index)?;
+                frame.close_scopes(host, values, domains, &mut self.current, index, false)?;
                 frame.pc = control.after;
             }
             Step::Call {
@@ -467,7 +515,7 @@ impl Machine {
                 // Reject outstanding obligations while the original frame and
                 // boundary state remain available for emergency retirement.
                 host.tasks.require_retire_owner(frame.owner, abrupt)?;
-                frame.close_scopes(host, values, domains, &mut self.current, 0)?;
+                frame.close_scopes(host, values, domains, &mut self.current, 0, abrupt)?;
                 host.tasks.retire_owner(frame.owner, abrupt)?;
                 let completed = self.stack.pop().unwrap();
                 values.retire(&completed.frame)?;
@@ -601,6 +649,7 @@ impl Machine {
                         &mut self.current,
                         frame.base(),
                         &Err(message.clone()),
+                        true,
                     )?;
                 }
             }
@@ -680,3 +729,7 @@ mod invocation_tests;
 #[path = "task_payload.rs"]
 mod task_payload;
 pub use task_payload::{QueuedTask, TaskBinding};
+
+#[cfg(test)]
+#[path = "task_retirement_tests.rs"]
+mod task_retirement_tests;

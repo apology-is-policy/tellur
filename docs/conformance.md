@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.133.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.134.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -4033,3 +4033,15 @@ Compiled model, native/LLVM, resource adapter and manual regression matrices cov
 integration. Reference continuation/checker/editor implementations are unchanged and
 retain their earlier evidence. This is selected internal-runtime coverage; source
 handoffs, resumable production lowering and full-suite conformance are not claimed.
+
+## Scoped native task retirement checkpoint (0.134)
+
+E1d.2d.3g adds five native-host cases for graph-wide preflight, foreign host identity,
+nested task captures, loan non-traversal, repeated retirement, normal-exit/restart
+rejection, lexical/recovery moves, captured-resource release and active-handler
+failure. Four focused cases and the later handler case pass independently; the 68
+existing host cases are checked separately without rerunning those focused cases.
+All 15 retained compiled-model cases and four retained resource-adapter cases provide
+regression evidence. Reference execution, shared task protocol, checker, LSP and
+extension implementation retain their earlier evidence. This selected coverage does
+not enable source scheduling or claim full-suite conformance.

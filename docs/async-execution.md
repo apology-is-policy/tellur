@@ -1214,6 +1214,7 @@ Those boundaries need explicit contracts before being accepted by the checker.
 | E1d.2d.3d | Shared task protocol and native invocation owners | Delivered in 0.131: reference/native adapters share queue/join/readiness transitions. Every retained compiled activation has a distinct invocation owner, capacity preflight and normal/emergency obligation retirement; native task payload/queue binding and source handoffs remain ahead |
 | E1d.2d.3e | Bound native task payloads | Delivered in 0.132: internal cold captures carry opaque host/invocation/task/producer identity; cold creation and consuming queue/wait admission preflight before moving values, with FIFO one-use capture dispatch. Retained source lowering and context completion wiring remain ahead |
 | E1d.2d.3f | Task-bound native contexts | Delivered in 0.133: queued captures enter retained contexts only after frame/resource/domain/owner preflight; original parent invocation and completion wait stay paired through readiness, result adoption and fault/process retirement. Retained source callback integration remains ahead |
+| E1d.2d.3g | Scoped native task retirement | Delivered in 0.134: discarded bound cold handles retire before lexical contingency and recovery reset; normal scope/restart checks reject pending discard, while moved handles and borrowed suppliers survive. Retained callback handoffs remain ahead |
 | E1e | Explicit cooperative cancellation and suspending cleanup; normal completion races, cleanup failures and no abandoned losers | Define cancellation observation and cleanup admission; no implicit cancellation exception |
 | E2 | Pinned native coroutine experiment, then checked lowering and schedule-based differential validation | Reference semantics and legal frame retirement must precede native destruction |
 
@@ -1572,6 +1573,37 @@ emit synchronous unbound defer/await operations; production resumable lowering a
 source `spawn`/`yield` remain ahead. Source ownership, origins, outcomes, fault policy
 and legal cold lexical movement do not change. The next step is to connect retained
 callback handoffs and continuation delivery to this task/context machinery.
+
+## Scoped native task retirement (E1d.2d.3g)
+
+Compiler 0.134 prepares retained callbacks for bound cold handles by retiring their
+obligations when lexical fault cleanup or recovery discards their owned values.
+The traversal follows task captures and constructed fields, never loan targets.
+It validates every encountered host identity before mutating the task registry;
+a foreign nested payload cannot retire an earlier local obligation. Repeated
+emergency retirement is harmless and never starts a cold body or fabricates a result.
+
+Normal scope exit and loop initialization/restart reject a still-pending task in a
+discarded slot. Boundary records remain installed until successful cleanup, so a
+rejected exit can still unwind the original scope. Fault cleanup, active-handler
+failure, recovery and administrative exits retire discarded obligations before
+resource dispositions and before the owning contingency proceeds. Task retirement
+itself does not release resources: existing boundary/loop cleanup keeps responsibility
+for owned captures and retained suppliers.
+
+A move removes the handle from its former slot. Handles moved out of lexical work
+or into recovery arguments therefore remain live and awaitable under the original
+invocation. Borrowed captures do not retire their supplying values. These rules
+match existing reference-value retirement; they add no normal task-discard operation
+and do not make handles transferable between invocations.
+
+Five [host cases](../src/native/task_retirement_tests.rs) cover whole-graph rejection,
+foreign colliding identities, nested captures, repeated emergency cleanup, loan
+non-traversal, normal-exit/restart rejection, legal lexical/recovery moves, real
+resource dispositions and failure inside an already active contingency. Existing
+retained-control and resource-adapter scenarios cover unchanged generated callbacks.
+Source callbacks still produce synchronous unbound tasks; binding their defer/await
+handoffs and preserving cold-await diagnostic chains remain the next integration step.
 
 ## Reference execution invariants
 

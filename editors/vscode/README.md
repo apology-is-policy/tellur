@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-darwin-arm64-0.133.0.vsix` using **Extensions:
+1. Install the supplied `tellur-language-darwin-arm64-0.134.0.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1225,3 +1225,10 @@ Internal queued tasks now retain their original parent and completion wait throu
 native context admission, readiness, result delivery and fault/process cleanup.
 Failed admission preserves captures. Source callback and scheduler integration remain
 ahead; current source execution stays synchronous.
+
+## Scoped native task retirement in 0.134
+
+Retained native scopes now retire discarded cold-task obligations during fault and
+recovery cleanup, while preserving moved handles and borrowed suppliers. Normal
+scope exits and loop restarts still require task completion. Source callback and
+scheduler integration remain ahead.
