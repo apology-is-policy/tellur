@@ -115,6 +115,9 @@ pub struct Manifest {
     pub rust: Option<crate::rust_host::Configuration>,
     #[serde(skip)]
     pub(crate) abstract_types: BTreeMap<String, Capabilities>,
+    /// Compiler-only owned capture types; never accepted as host manifest input.
+    #[serde(skip)]
+    pub(crate) task_captures: BTreeMap<String, Vec<String>>,
     pub version: String,
     pub types: Vec<TypeDef>,
     pub primitives: Vec<Primitive>,
@@ -127,6 +130,13 @@ pub fn reference_inner(ty: &str) -> Option<(bool, &str)> {
     ty.strip_prefix("&mutable ")
         .map(|t| (true, t))
         .or_else(|| ty.strip_prefix('&').map(|t| (false, t)))
+}
+/// Internal producer-indexed task identity, distinct from its completion contract.
+pub(crate) fn task_type(operation: &str) -> String {
+    format!("$task<{operation}>")
+}
+pub(crate) fn task_inner(ty: &str) -> Option<&str> {
+    ty.strip_prefix("$task<").and_then(|s| s.strip_suffix('>'))
 }
 /// Producer-indexed and anonymous compiler schemas; named outcomes use TypeDef::Outcome.
 pub fn outcome_inner(ty: &str) -> Option<&str> {
@@ -176,6 +186,9 @@ pub fn canonical_type(name: &str) -> String {
     .into()
 }
 pub fn display_type(name: &str) -> String {
+    if let Some(operation) = task_inner(name) {
+        return format!("task<{}>", display_type(operation));
+    }
     if let Some((application, member)) = crate::collection_support::qualified_member(name) {
         return format!("{}.{member}", display_type(application));
     }
@@ -466,6 +479,9 @@ impl Manifest {
     /// Normal outcome-handling obligations end with the boundary. Actual owned
     /// resources inside any possible alternative still need a fault disposition.
     pub(crate) fn permits_fault(&self, name: &str) -> bool {
+        if let Some(captures) = self.task_captures.get(name) {
+            return captures.iter().all(|ty| self.permits_fault(ty));
+        }
         if reference_inner(name).is_some() || !self.linear(name) {
             return true;
         }
@@ -700,7 +716,19 @@ impl Manifest {
                         && !["outcome", "Option", "array", "vector", "map"].contains(&base)
                         && args.iter().all(|arg| self.valid_type(arg))
                 });
-            if (!identifier(ty.name()) && !specialization) || !names.insert(ty.name()) {
+            let internal_task = task_inner(ty.name()).is_some()
+                && self.task_captures.contains_key(ty.name())
+                && matches!(
+                    ty,
+                    TypeDef::Opaque {
+                        linear: true,
+                        fault: None,
+                        ..
+                    }
+                );
+            if (!identifier(ty.name()) && !specialization && !internal_task)
+                || !names.insert(ty.name())
+            {
                 let mut e = error(format!("invalid or duplicate name `{}`", ty.name()));
                 e.span = spans.get(ty.name()).copied().unwrap_or_default();
                 return Err(e);

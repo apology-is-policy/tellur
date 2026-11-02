@@ -217,6 +217,7 @@ impl Trace<'_> {
         span: Span,
     ) -> ValueTrace {
         match operation {
+            Operation::Defer(_) => ValueTrace::default(),
             Operation::Variant(value) => self.value(value, flow, domain, span),
             Operation::BorrowedVariant(Expr::Reference(place, _)) => {
                 let mut value = self.place(place);
@@ -227,6 +228,7 @@ impl Trace<'_> {
             Operation::Region(name)
             | Operation::Run(name)
             | Operation::Await(name)
+            | Operation::AwaitTask(name)
             | Operation::Primitive(name)
             | Operation::Collection(name) => {
                 let Some(sig) = self.signatures.get(name) else {
@@ -300,6 +302,7 @@ impl Trace<'_> {
                         Operation::Region(name)
                         | Operation::Run(name)
                         | Operation::Await(name)
+                        | Operation::AwaitTask(name)
                         | Operation::Primitive(name) => {
                             self.signatures.get(name).is_some_and(|s| {
                                 s.parameters
@@ -414,6 +417,7 @@ impl Checker<'_> {
         if let Operation::Region(name)
         | Operation::Run(name)
         | Operation::Await(name)
+        | Operation::AwaitTask(name)
         | Operation::Primitive(name) = operation
         {
             if let Some(sig) = self.signatures.get(name) {

@@ -74,8 +74,12 @@ P2t adds named completion type locations through module/generic/trait checking;
 whole-contract shape/origin and contributor locations remain separate follow-ups.
 Broader physical copy elision and suspended activation frames remain separate work.
 
+E1c.2 now supports local cold tasks: eager owned captures, delayed body execution,
+consuming await and retained fault obligations. Borrowed captures, escaping/public
+task contracts, scheduling and coroutine lowering remain distinct next stages.
+
 2 November 2026. This is the working revision plan, not a claim that all proposed
-features are implemented. Compiler **0.105.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
+features are implemented. Compiler **0.106.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
 lifetime checkpoints of milestone 2, the array/vector/map core of milestone 3,
 and implicit entry, inline/stored adapters, owned capture, named outcome contracts
 and checked forwarding in milestone 4. A first [semantic foundation](semantic-foundation.md)

@@ -1172,3 +1172,60 @@ control main(string path,bool broken) exits done {
         }
     }
 }
+
+#[test]
+fn fault_settlement_releases_unstarted_task_captures_before_contingency() {
+    let f = Fixture::new();
+    let host=RESOURCE_HOST.replace("pub fn close(value:Counter,fail:bool)->rust_api::close_outcome {drop(value);", "pub fn close(value:Counter,fail:bool)->rust_api::close_outcome {use std::io::Write;writeln!(std::fs::OpenOptions::new().append(true).create(true).open(&value.path).unwrap(),\"close\").unwrap();drop(value);");
+    fs::write(f.root.join("host.rs"), host).unwrap();
+    let mut config = resource_config();
+    config["types"][0]["fault"] = json!("release");
+    config["primitives"][3]["contingent"] = json!(true);
+    let source = r#"
+async control finish(counter owned) exits done {
+    delta close(owned,false) {closed=>closed,failed=>failed}
+    [closed|failed]:exit done;
+}
+async control fail_with_pending(counter owned) faults {
+    auto pending=defer finish(owned);
+    fault "before await";
+}
+control main(string path) exits done {
+    delta make(borrow path) {made {counter parent}=>parent}
+    [parent]:delta make(borrow path) {made {counter child}=>child}
+    [child]:fault boundary {run fail_with_pending(child);} contingency [parent] {
+        delta close(parent,false) {closed=>closed,failed=>failed}
+        [closed|failed]:terminate process 23;
+    }
+}
+"#;
+    let p = compile(source, f.manifest(&config))
+        .unwrap()
+        .with_entry_exit_codes(
+            "main",
+            std::collections::BTreeMap::from([("done".into(), 0)]),
+        )
+        .unwrap();
+    let mut rejected = config.clone();
+    rejected["types"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("fault");
+    assert_eq!(
+        compile(source, f.manifest(&rejected)).unwrap_err().code,
+        "E_FAULT_RESOURCE"
+    );
+    for (index, p) in [p.clone(), p.expanded("main").unwrap()].iter().enumerate() {
+        let binary = f.root.join(format!("pending-{index}"));
+        p.build_native("main", &binary, 0).unwrap();
+        let log = f.root.join(format!("pending-drops-{index}"));
+        let output = Command::new(&binary).arg("--").arg(&log).output().unwrap();
+        assert_eq!(
+            output.status.code(),
+            Some(23),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(fs::read_to_string(log).unwrap(), "drop 7\nclose\ndrop 7\n");
+    }
+}

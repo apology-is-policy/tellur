@@ -318,3 +318,11 @@ test('direct async invocation keywords remain distinct from call names', () => {
     assert.ok(result.some(t => t.text === word && t.scopes.includes('keyword.control.tellur')), word);
   }
 });
+
+
+test('cold task creation and consuming await are keywords', () => {
+  const result = tokens('auto pending = defer work("text");\nforward await pending;');
+  for (const word of ['defer', 'await']) {
+    assert.ok(result.some(t => t.text === word && t.scopes.includes('keyword.control.tellur')), word);
+  }
+});

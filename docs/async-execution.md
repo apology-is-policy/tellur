@@ -8,17 +8,19 @@ Updated 2 November 2026. This is an E1 design and implementation plan. Compilers
 shared activation identities, persistent continuations and atomic invocation admission,
 prerequisites for overlapping execution contexts. They do **not** implement source
 tasks, source suspension, scheduling or async I/O. Compiler 0.105 additionally implements [direct async calls](reference/async-execution.md):
-`async control`, `run` and direct `await`, with sequential execution. Remaining
-task and scheduling rules below are proposals or accepted future semantics.
+`async control`, `run` and direct `await`, with sequential execution. Compiler 0.106
+adds local cold tasks with owned captures and consuming await. Borrowed tasks and
+scheduling rules below are proposals or accepted future semantics.
 
 ## Existing direction
 
 The roadmap already separates completed outcomes from pending computations:
 
 - `capture` invokes immediately and stores an ordinary completed outcome.
-- Planned `defer` evaluates and transfers arguments now, without running the body.
-- Planned `await` consumes a task handle, drives a cold task or waits for an already
-  running task, and exposes only its declared normal outcomes.
+- `defer` evaluates and transfers owned arguments now, without running the body;
+  borrowed captures remain planned.
+- `await` consumes a local cold task and exposes only its declared normal outcomes.
+  Waiting for an independently running task remains planned.
 - Planned `spawn` explicitly schedules child work. A child belongs to an owning
   scope; every path settles or explicitly transfers ownership. There is no hidden
   detach or parallelism caused by an ordinary call.
@@ -190,7 +192,12 @@ or `capture` a cold task. The next implementation needs these distinct pieces:
   `run`/`await` calls, public snapshots and hover. Trait implementations match the
   permission; synchronous host entries require a `run` wrapper. Expansion retains
   async calls. Reference/native execution is sequential without stored tasks.
-- Evaluate deferred arguments in their written order, retaining their owners and
+- **Delivered in 0.106 (E1c.2):** immutable local `auto` task bindings with owned
+  captures, moves and consuming `await pending`. Captured resources retain fault
+  obligations independently of completion payloads. Bodies remain cold until await;
+  reference/native execution, expansion, auto hover and contingency cleanup are checked.
+  Tasks cannot escape through outcomes; public task type contracts remain undecided.
+- Next, retain borrowed deferred arguments in their written order, retaining their owners and
   loans in task state. Body effects and body faults occur only when driven; argument
   construction and its faults remain immediate.
 - Represent pending captures separately from the result contract. A task can hold
@@ -311,8 +318,10 @@ Those boundaries need explicit contracts before being accepted by the checker.
 | E1a | Runtime audit and shared activation identity allocator; interleaved children, independent failure state, no reuse after return, overflow, and sequential reference/native report parity | Delivered in 0.98; shared identity is independent of scheduling policy |
 | E1b | Persistent reference continuations and explicit step/resume protocol; current synchronous outcomes, fuel, effects, faults, loans and expansion observations preserved under different step partitions | Delivered in 0.99; no source async claim |
 | E1b.1 | Separate argument preparation from frame installation; reject malformed later values, address exhaustion and frozen activation state without partial storage; preserve all synchronous observations | Delivered in 0.103; internal handoff only, no source task admission |
-| E1c | Bounded cold tasks and consuming await; eager argument transfer, no body effects before drive, fixed result contracts, task ownership and retained borrows | Await/transfer obligation and explicit `run` entry accepted; direct invocation delivered in E1c.1, stored captures and handles remain ahead |
+| E1c | Bounded cold tasks and consuming await; eager argument transfer, no body effects before drive, fixed result contracts, task ownership and retained borrows | Await/transfer obligation and explicit `run` entry accepted; direct invocation delivered in E1c.1, owned captures and handles delivered in E1c.2; borrowed captures remain ahead |
 | E1c.1 | Direct async permission and explicit entry | Delivered in 0.105: sequential `async control`, `run`, direct `await`, public/trait contracts and preserved graph boundaries; no stored tasks or scheduler |
+| E1c.2 | Local cold tasks with owned captures, consuming handles and separate capture fault dispositions | Delivered in 0.106; no borrowed captures or public task type erasure |
+| E1c.3 | Persistent borrowed captures and result-origin transfer | Next: retain loan holders and backing storage until consumption; keep unsupported public shapes rejected |
 | E1d | Scoped spawn and deterministic readiness; two overlapping children, duplicate/stale wake handling and owner settlement | Prompt owner-boundary fault propagation accepted; specify ownership transfers, sibling dispositions and deterministic multiple-fault selection |
 | E1e | Explicit cooperative cancellation and suspending cleanup; normal completion races, cleanup failures and no abandoned losers | Define cancellation observation and cleanup admission; no implicit cancellation exception |
 | E2 | Pinned native coroutine experiment, then checked lowering and schedule-based differential validation | Reference semantics and legal frame retirement must precede native destruction |

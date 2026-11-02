@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.105.0** implements the v0.1 checked core and the current language
+Compiler release **0.106.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -451,7 +451,7 @@ Local arrays, vectors and maps support shared-reference elements. Exclusive elem
 nested/public collection contracts, reference rebinding and reference loop parameters
 remain upcoming.
 Historical `region` syntax retains reusable values for compatibility. Borrowed slices,
-async tasks remain upcoming. Other
+scheduled async tasks remain upcoming. Other
 future work includes recursion, concurrency, richer proofs, general graph
 extraction and the graphical editor. Constant constructors do not refine path
 coverage or resource obligations. The editor reports bounded independent-control errors (one per body, up to 32).
@@ -490,5 +490,15 @@ isolation in the settings server. General annotation policies remain deferred.
 
 `async control`, `run` and direct `await` are available in the sequential execution
 profile. Try `./bin/tellurc exec playground/async_entry.tellur` or read the
-[reference chapter](docs/reference/async-execution.md). Stored tasks, concurrent
-scheduling, async I/O and LLVM coroutine lowering remain later checkpoints.
+[reference chapter](docs/reference/async-execution.md). Concurrent scheduling,
+async I/O and LLVM coroutine lowering remain later checkpoints.
+
+
+### Local cold tasks in 0.106
+
+`auto pending = defer operation(owned_arguments);` transfers arguments immediately
+without starting the async body. `await pending` consumes the handle; moving it
+transfers the obligation to await. Pending captures retain their fault dispositions.
+Try `./bin/tellurc exec playground/cold_tasks.tellur` and hover its `auto` bindings.
+Borrowed captures, public task types and concurrent scheduling remain ahead. The
+[reference](docs/reference/async-execution.md) gives the exact current rules.

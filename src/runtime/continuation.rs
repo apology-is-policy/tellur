@@ -572,6 +572,30 @@ impl<'a> Machine<'a> {
                 self.call(boundary, args)?;
             }
             Action::Decide {
+                operation: Operation::AwaitTask(name),
+                args,
+                arms,
+            } => {
+                let mut values = self.arguments(args)?;
+                let Some(Value::Task {
+                    operation,
+                    arguments,
+                    ..
+                }) = values.pop()
+                else {
+                    return Err(error(
+                        "interpreter invariant: await requires a pending task",
+                    ));
+                };
+                if !values.is_empty() || operation != *name {
+                    return Err(error(
+                        "interpreter invariant: pending task producer differs",
+                    ));
+                }
+                self.stack.push(Continuation::Decision(arms));
+                self.call(name, arguments)?;
+            }
+            Action::Decide {
                 operation: Operation::Region(name) | Operation::Run(name) | Operation::Await(name),
                 args,
                 arms,
@@ -692,6 +716,15 @@ impl<'a> Machine<'a> {
                     .map(|a| evaluate(a, values, base))
                     .collect::<Result<Vec<_>>>()?;
                 let (outcome, fields) = match operation {
+                    Operation::Defer(name) => (
+                        "$pending".into(),
+                        vec![Value::Task {
+                            ty: crate::manifest::task_type(name),
+                            operation: name.clone(),
+                            arguments: args,
+                        }],
+                    ),
+                    Operation::AwaitTask(_) => unreachable!("task await has a continuation"),
                     Operation::Collection(name) => collection(name, args, values)?,
                     Operation::Region(name) | Operation::Run(name) | Operation::Await(name) => {
                         unreachable!("control calls have an explicit continuation: {name}")

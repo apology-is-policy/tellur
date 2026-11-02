@@ -1,4 +1,5 @@
-// Direct async calls currently run sequentially. There are no stored tasks or async I/O yet.
+// Direct async calls currently run sequentially. For local cold tasks, see cold_tasks.tellur.
+// Async I/O remains planned.
 async control greeting(string name) exits ready { string text } {
     exit ready { concat("Hello, ", name) };
 }

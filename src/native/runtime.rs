@@ -84,6 +84,12 @@ pub enum V {
         root: usize,
         fields: Vec<usize>,
     },
+    #[serde(skip)]
+    Task {
+        ty: String,
+        operation: String,
+        arguments: Vec<V>,
+    },
     Opaque {
         ty: String,
         token: String,
@@ -102,8 +108,21 @@ impl V {
             Self::String(_) => "String",
             Self::Bytes(_) => "Bytes",
             Self::Unit => "Unit",
-            Self::Opaque { ty, .. } | Self::Construct { ty, .. } | Self::Reference { ty, .. } => ty,
+            Self::Task { ty, .. }
+            | Self::Opaque { ty, .. }
+            | Self::Construct { ty, .. }
+            | Self::Reference { ty, .. } => ty,
         }
+    }
+}
+pub fn await_arguments(mut values: Vec<V>, expected: &str) -> R<Vec<V>> {
+    match values.pop() {
+        Some(V::Task {
+            operation,
+            arguments,
+            ..
+        }) if values.is_empty() && operation == expected => Ok(arguments),
+        _ => Err("E_NATIVE: invalid pending task".into()),
     }
 }
 pub fn boolean(v: V) -> R<bool> {
@@ -539,7 +558,10 @@ impl Host {
                 V::Opaque { token, .. } => {
                     resources.values.remove(token);
                 }
-                V::Construct { fields, .. } => {
+                V::Construct { fields, .. }
+                | V::Task {
+                    arguments: fields, ..
+                } => {
                     for v in fields {
                         release(resources, v);
                     }
@@ -570,7 +592,10 @@ impl Host {
                 V::Opaque { token, .. } => {
                     into.insert(token.clone());
                 }
-                V::Construct { fields, .. } => {
+                V::Construct { fields, .. }
+                | V::Task {
+                    arguments: fields, ..
+                } => {
                     for v in fields {
                         tokens(v, into);
                     }
@@ -671,7 +696,10 @@ impl Host {
                 V::Opaque { token, .. } => {
                     into.insert(token.clone());
                 }
-                V::Construct { fields, .. } => {
+                V::Construct { fields, .. }
+                | V::Task {
+                    arguments: fields, ..
+                } => {
                     for v in fields {
                         tokens(v, into);
                     }

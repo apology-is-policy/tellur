@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Lexical structure](lexical-structure.md)
 
-This is a reading grammar for the modern compiler 0.105.0 profile, not a replacement
+This is a reading grammar for the modern compiler 0.106.0 profile, not a replacement
 for its type, ownership, origin or coverage rules. It omits legacy spellings and
 parser recovery details. `name`, `integer` and `string_literal` are lexical tokens.
 Quoted text denotes source tokens; `?` means optional, `*` repetition, `+` one or
@@ -227,11 +227,14 @@ loop may omit `()`, as may its ordinary `again name;` restart. Supervision does 
 relax the existing tail-loop or ownership rules. Process status is a literal 0–255;
 see [contingency](contingency.md) for placement and recovery restrictions.
 
-## Direct async operation operands
+## Async operation operands and cold tasks
 
 In an operation position (delta, capture, forward or a call statement), a call may
 be prefixed with `run` or `await`. `run` requires a synchronous caller and an async
 callee; `await` requires both to be async. Trait signatures and implementations
 match the `async` permission. These prefixes do not make calls value expressions.
-Async operations are unavailable in contingency code. Stored tasks and scheduling
-remain planned; see [direct async execution](async-execution.md).
+An immutable local `auto name = defer call;` binding creates a cold task inside an
+async control. `await name` consumes that task in an operation position. Only owned
+captures without references are admitted; the internal inferred task type has no
+source spelling and cannot occur in a control result. Async operations are unavailable
+in contingency code. Scheduling remains planned; see [async execution](async-execution.md).

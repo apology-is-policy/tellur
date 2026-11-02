@@ -7,6 +7,7 @@ pub enum CallMode {
     Direct,
     Run,
     Await,
+    Defer,
 }
 #[derive(Clone, Debug)]
 pub struct Expr {
@@ -1142,6 +1143,8 @@ impl Parser {
             CallMode::Run
         } else if self.eat("await") {
             CallMode::Await
+        } else if self.eat("defer") {
+            CallMode::Defer
         } else {
             CallMode::Direct
         };
@@ -1158,12 +1161,13 @@ impl Parser {
         };
         if mode != CallMode::Direct {
             if expression.call_mode != CallMode::Direct
-                || !matches!(expression.kind, ExprKind::Call(..))
+                || !(matches!(expression.kind, ExprKind::Call(..))
+                    || (mode == CallMode::Await && matches!(expression.kind, ExprKind::Name(_))))
             {
                 return Err(Diagnostic::new(
                     "E_ASYNC",
                     start,
-                    "run and await currently require one direct async control call",
+                    "run/defer require an async call; await accepts an async call or owned pending task",
                 )
                 .with_range(self.range_from(start)));
             }
@@ -1506,7 +1510,11 @@ impl Parser {
                                 self.need(";")?;
                                 return Ok(Statement::Assign(target, value));
                             }
-                            if matches!(target.kind, ExprKind::Call(..)) && self.eat(";") {
+                            if (matches!(target.kind, ExprKind::Call(..))
+                                || (target.call_mode == CallMode::Await
+                                    && matches!(target.kind, ExprKind::Name(_))))
+                                && self.eat(";")
+                            {
                                 return Ok(Statement::Invoke(target));
                             }
                         }

@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.105.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.106.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -3604,3 +3604,40 @@ Original and expanded native programs agree with reference execution. Snapshot a
 LSP tests cover public async permission and unsaved imported contract changes; editor
 coverage checks keyword scopes, hover, diagnostics, repair and a native sample.
 This is sequential direct invocation, not cold tasks, scheduling or coroutine lowering.
+
+## 0.106 — owned local cold tasks (E1c.2)
+
+`auto pending = defer operation(arguments);` evaluates and transfers owned arguments
+without entering the async body. The internal task type retains captured resource
+fault dispositions independently of the producer's normal completion contract.
+Consuming `await pending` uses ordinary delta/capture/forward/single-completion forms;
+local moves transfer the await obligation. A task cannot be copied, cloned, dropped
+or forgotten, including one with no captures. This profile rejects direct/contained
+borrowed captures and task-bearing control results, including wrapped tasks. It does
+not introduce a public task type or erase captured obligations behind a result type.
+
+Twelve `tests/cold_tasks.rs` tests cover eager constructor effects, cold body effects,
+generic captures, disjoint consuming paths, zero-capture obligations, local transfer,
+inline and stored completion adapters, body-fault permission at await, immediate
+argument faults with pending prefix resources, escaping and borrowed-capture
+rejection, one-instruction stepping, serialized expansion certificates and native
+original/expanded parity. `tests/rust_adapters.rs` also proves that faulting before
+await releases a captured retained Rust owner before contingency starts, without
+executing the cold body; absence of its fault disposition is rejected.
+
+Focused and relevant regression checks pass: **535 Rust tests across 21 targets**
+and **44 editor tests**, plus offline all-target checking and Rust formatting. This
+is selected regression coverage, not a full-suite claim. Existing ownership, moves,
+initializer access, lexical boundaries, generic/trait/module checking, public
+contracts, stepping, protocols, contributors, certificates and diagnostic recovery
+remain covered. The manual's examples, links and compiler version checks pass.
+
+The isolated VS Code test checks `task<producer>` hover on `auto`, keyword help,
+unsaved clone rejection and repair, and native execution of the new example with
+arguments captured before the body runs. Six compiler/server binary copies and nine
+packaged/installed payloads are verified for 0.106.0. The source backup excludes the
+protected unrelated C# file. Existing editor windows are not reloaded.
+
+Source and native execution remain sequential. Borrowed task captures need persistent
+loan holders and result-origin transfer in E1c.3; public task contracts, scheduling,
+spawn, readiness, cancellation and direct LLVM coroutine lowering remain ahead.

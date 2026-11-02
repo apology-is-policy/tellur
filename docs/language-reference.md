@@ -1,8 +1,8 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.105.0 -->
+<!-- tellur-reference-version: 0.106.0 -->
 
-This manual describes **compiler 0.105.0**, including the current ownership model,
+This manual describes **compiler 0.106.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -42,7 +42,7 @@ The companion chapters provide quick lookup:
 - [Outcome absorption](reference/outcome-absorption.md): internal contributors and changes hidden by an unchanged public contract.
 - [Explanations](reference/explanations.md): source-position histories and targeted outcome contributors, including private controls.
 - [Contingency and boundaries](reference/contingency.md): checked contingency calls, retained owners, supervision and terminal escalation.
-- [Direct async execution](reference/async-execution.md): `async control`, synchronous `run`, direct `await`, contracts and current limits.
+- [Async execution](reference/async-execution.md): `async control`, `run`, direct and stored-task `await`, owned cold captures and current limits.
 - [Execution failures](reference/execution-failures.md): `fault`/`faults`, public permissions, explicit resource dispositions and activation reports.
 - [Glossary](reference/glossary.md): precise meanings of Tellur's terminology.
 
@@ -125,7 +125,7 @@ their selected histories. Arguments and construction fields evaluate left to rig
 boolean `&&` and `||` short-circuit. Only the selected adapter arm executes. Source
 control calls cannot recurse; tail loops provide repetition. Explicit `run` and
 direct `await` support async control contracts within this sequential profile;
-[stored tasks and scheduling](reference/async-execution.md) remain planned. There are
+[local owned cold tasks](reference/async-execution.md) are also available; scheduling remains planned. There are
 no implicit exceptions or implicit error propagation.
 Declared failure outcomes are normal completions. Host failures, including allocation
 failure or an unsupported live primitive adapter, are outside those contracts.
@@ -805,7 +805,7 @@ that dependency to the selected payload; the other constructors contribute no lo
 as values; a typed adapter can explicitly map into an existing producer contract.
 Implicit cross-producer structural assignment, whole-outcome
 bindings inside adapter patterns, general expression-position adapters, general graph extraction,
-and async task support remain future work. See `playground/outcomes.tellur`.
+and borrowed or escaping async task support remain future work. See `playground/outcomes.tellur`.
 
 ## Single-completion calls and forwarding
 
@@ -2806,7 +2806,7 @@ General expression-type hover remains unsupported.
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and async tasks remain planned; they are not executable features of 0.105.0.
+and scheduled async tasks remain planned; they are not executable features of 0.106.0.
 ## Contingency and supervised boundaries
 
 The [contingency reference](reference/contingency.md) specifies `@contingent`,

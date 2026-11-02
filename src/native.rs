@@ -30,7 +30,9 @@ fn string(s: &str) -> String {
 }
 fn value(v: &Value) -> String {
     match v {
-        Value::Reference { .. } => unreachable!("references are never embedded literals"),
+        Value::Reference { .. } | Value::Task { .. } => {
+            unreachable!("references and tasks are never embedded literals")
+        }
         Value::Bool(b) => format!("V::Bool({b})"),
         Value::U32(n) => format!("V::U32({n})"),
         Value::Unit => "V::Unit".into(),
@@ -415,6 +417,19 @@ impl Generator<'_> {
                         continue;
                     }
                     let call = match operation {
+                        Operation::Defer(name) => format!(
+                            "(String::from({}), vec![V::Task {{ty: {}.into(), operation: {}.into(), arguments: {}}}])",
+                            string("$pending"),
+                            string(&crate::manifest::task_type(name)),
+                            string(name),
+                            expressions(args, &self.layout)
+                        ),
+                        Operation::AwaitTask(name) => format!(
+                            "{{ let args = await_arguments({}, {})?; region_{}(host, &mut v, args, &mut vec![])?.outcome()? }}",
+                            expressions(args, &self.layout),
+                            string(name),
+                            self.names[name.as_str()]
+                        ),
                         Operation::Collection(name) => format!(
                             "{{ let args={}; collection({},args,v)? }}",
                             expressions(args, &self.layout),

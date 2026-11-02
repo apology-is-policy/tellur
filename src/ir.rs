@@ -46,6 +46,12 @@ pub enum Value {
         ty: String,
         place: Place,
     },
+    #[serde(skip)]
+    Task {
+        ty: String,
+        operation: String,
+        arguments: Vec<Value>,
+    },
     Opaque {
         ty: String,
         token: String,
@@ -64,9 +70,10 @@ impl Value {
             Self::String(_) => "String".into(),
             Self::Bytes(_) => "Bytes".into(),
             Self::Unit => "Unit".into(),
-            Self::Opaque { ty, .. } | Self::Construct { ty, .. } | Self::Reference { ty, .. } => {
-                ty.clone()
-            }
+            Self::Task { ty, .. }
+            | Self::Opaque { ty, .. }
+            | Self::Construct { ty, .. }
+            | Self::Reference { ty, .. } => ty.clone(),
         }
     }
 }
@@ -108,6 +115,10 @@ pub struct Arm {
 }
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Operation {
+    /// Eagerly transfer owned arguments into a cold computation; do not invoke it.
+    Defer(String),
+    /// Consume a local cold task and deliver the producer's normal outcomes.
+    AwaitTask(String),
     /// Explicit synchronous entry into the bounded async execution profile.
     Run(String),
     /// Direct await; retains its boundary in expansion artifacts.

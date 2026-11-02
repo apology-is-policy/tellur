@@ -456,7 +456,11 @@ impl Verifier<'_> {
                                 .borrowed_outcomes(&self.expr(e)?)
                                 .ok_or_else(|| error("not a borrowed decision type"))?
                         }
-                        Operation::Region(name) | Operation::Run(name) | Operation::Await(name) => {
+                        Operation::Region(name)
+                        | Operation::Run(name)
+                        | Operation::Await(name)
+                        | Operation::Defer(name)
+                        | Operation::AwaitTask(name) => {
                             let r = self
                                 .program
                                 .region(name)
@@ -466,7 +470,11 @@ impl Verifier<'_> {
                                 // Lifting a synchronous helper into an async caller retains its
                                 // explicit run boundary. Source admission checks lexical placement.
                                 Operation::Run(_) => r.asynchronous,
-                                Operation::Await(_) => r.asynchronous && self.region.asynchronous,
+                                Operation::Await(_)
+                                | Operation::Defer(_)
+                                | Operation::AwaitTask(_) => {
+                                    r.asynchronous && self.region.asynchronous
+                                }
                                 _ => unreachable!(),
                             };
                             if !valid_mode {
@@ -481,20 +489,67 @@ impl Verifier<'_> {
                             if (self.region.contingent || self.handler) && !r.contingent {
                                 return Err(error("noncontingent call in contingent code"));
                             }
-                            if r.faults && !self.region.faults && self.boundaries == 0 {
+                            if r.faults
+                                && !matches!(operation, Operation::Defer(_))
+                                && !self.region.faults
+                                && self.boundaries == 0
+                            {
                                 return Err(error("faulting call without control permission"));
                             }
-                            self.args(
-                                args,
-                                &r.parameters
-                                    .iter()
-                                    .map(|p| Field {
-                                        name: p.name.clone(),
-                                        ty: p.ty.clone(),
-                                    })
-                                    .collect::<Vec<_>>(),
-                            )?;
-                            r.exits.clone()
+                            if matches!(operation, Operation::AwaitTask(_)) {
+                                self.args(
+                                    args,
+                                    &[Field {
+                                        name: "pending".into(),
+                                        ty: crate::manifest::task_type(name),
+                                    }],
+                                )?;
+                            } else {
+                                self.args(
+                                    args,
+                                    &r.parameters
+                                        .iter()
+                                        .map(|p| Field {
+                                            name: p.name.clone(),
+                                            ty: p.ty.clone(),
+                                        })
+                                        .collect::<Vec<_>>(),
+                                )?;
+                            }
+                            if matches!(operation, Operation::Defer(_)) {
+                                if r.parameters.iter().any(|p| {
+                                    crate::manifest::reference_inner(&p.ty).is_some()
+                                        || self.program.manifest().contains_references(&p.ty)
+                                }) {
+                                    return Err(error("deferred borrowed capture is unsupported"));
+                                }
+                                let ty = crate::manifest::task_type(name);
+                                let m = self.program.manifest();
+                                if !matches!(
+                                    m.type_def(&ty),
+                                    Some(crate::manifest::TypeDef::Opaque { linear: true, .. })
+                                ) || m.task_captures.get(&ty)
+                                    != Some(
+                                        &r.parameters
+                                            .iter()
+                                            .map(|p| p.ty.clone())
+                                            .collect::<Vec<_>>(),
+                                    )
+                                    || m.permits_fault(&ty)
+                                        != r.parameters.iter().all(|p| m.permits_fault(&p.ty))
+                                {
+                                    return Err(error("pending task capture disposition differs"));
+                                }
+                                vec![crate::manifest::Outcome {
+                                    name: "$pending".into(),
+                                    fields: vec![Field {
+                                        name: "pending".into(),
+                                        ty,
+                                    }],
+                                }]
+                            } else {
+                                r.exits.clone()
+                            }
                         }
                         Operation::Collection(name) => {
                             let first = args

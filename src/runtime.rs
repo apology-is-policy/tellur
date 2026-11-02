@@ -68,6 +68,9 @@ pub(crate) fn validate(value: &Value, expected: &str, manifest: &Manifest) -> Re
         )));
     }
     match value {
+        Value::Task { .. } => {
+            return Err(error("pending tasks cannot cross a host value boundary"));
+        }
         Value::Reference { place, .. } => {
             if crate::manifest::reference_inner(expected).is_none() || place.indirect {
                 return Err(error("invalid internal reference value"));

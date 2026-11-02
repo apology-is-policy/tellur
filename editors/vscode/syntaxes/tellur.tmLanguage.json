@@ -210,7 +210,7 @@
           }
         },
         {
-          "match": "\\b((?!(?:mutable|borrow|deref|move|from|ref|fault|faults|retains|supervise|supervised|recover|process|terminate|escalate|contingency)\\b)(?:auto|[a-z_][a-z_0-9]*)(?:\\.[a-z_][a-z_0-9]*)*(?:<[^;{}\\n]*>(?:\\.[a-z_][a-z_0-9]*)?)?)\\s+([a-z_][a-z_0-9]*)(?=\\s*(?:from\\b|<-|=|[,)};]))",
+          "match": "\\b((?!(?:async|run|await|defer|forward|mutable|borrow|deref|move|from|ref|fault|faults|retains|supervise|supervised|recover|process|terminate|escalate|contingency)\\b)(?:auto|[a-z_][a-z_0-9]*)(?:\\.[a-z_][a-z_0-9]*)*(?:<[^;{}\\n]*>(?:\\.[a-z_][a-z_0-9]*)?)?)\\s+([a-z_][a-z_0-9]*)(?=\\s*(?:from\\b|<-|=|[,)};]))",
           "captures": {
             "1": {
               "name": "storage.type.tellur"
@@ -368,7 +368,7 @@
         },
         {
           "name": "keyword.control.tellur",
-          "match": "\\b(?:async|run|await|constructor|control|region|boundary|retains|contingency|supervise|supervised|recover|process|terminate|escalate|exits|faults|fault|from|exit|again|loop|over|path|delta|capture)\\b|\u0394|\\bforward\\b(?!\\s*[({])"
+          "match": "\\b(?:async|run|await|defer|constructor|control|region|boundary|retains|contingency|supervise|supervised|recover|process|terminate|escalate|exits|faults|fault|from|exit|again|loop|over|path|delta|capture)\\b|\u0394|\\bforward\\b(?!\\s*[({])"
         },
         {
           "name": "support.function.tellur",

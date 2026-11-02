@@ -1,0 +1,26 @@
+// Arguments move now; the body starts only when the handle is awaited.
+async control greeting(string name) exits ready { string text } {
+    emit("body started");
+    exit ready { concat("Hello, ", name) };
+}
+
+async control startup() exits done {
+    auto pending = defer greeting("Tellur");
+    emit("arguments captured");
+    auto moved = move pending;
+    delta await moved {
+        ready { string text } => ready,
+    }
+
+    [ready]:
+        emit(borrow text);
+        exit done;
+}
+
+outcome program_result {
+    @exit 0 done
+}
+
+control main() exits program_result {
+    forward run startup();
+}

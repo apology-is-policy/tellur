@@ -5828,3 +5828,42 @@ fn imported_async_permission_and_unsaved_edits_update_diagnostics_and_hover() {
     assert_eq!(f.diagnostics(), json!([]));
     assert_eq!(hover_at(&f, source, "worker.work()"), h);
 }
+
+#[test]
+fn cold_task_auto_hover_and_unsaved_ownership_repair() {
+    let mut f = Fixture::new();
+    let source = "async control work() exits done {exit done;}\nasync control start() exits done {auto pending=defer work();await pending;exit done;}\ncontrol main() exits done {forward run start();}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let h = hover_at(&f, source, "auto pending");
+    assert!(
+        h["contents"]["value"]
+            .as_str()
+            .unwrap()
+            .contains("task<work>"),
+        "{h}"
+    );
+    assert!(
+        hover_at(&f, source, "defer work")["contents"]["value"]
+            .as_str()
+            .unwrap()
+            .contains("without starting")
+    );
+    assert!(
+        hover_at(&f, source, "await pending")["contents"]["value"]
+            .as_str()
+            .unwrap()
+            .contains("consumes a local cold task")
+    );
+    let broken = source.replace("await pending;", "");
+    f.change(&broken, 2);
+    assert_ne!(f.diagnostics(), json!([]));
+    assert!(
+        !hover_at(&f, &broken, "auto pending")
+            .to_string()
+            .contains("task<work>")
+    );
+    f.change(source, 3);
+    assert_eq!(f.diagnostics(), json!([]));
+    assert_eq!(hover_at(&f, source, "auto pending"), h);
+}

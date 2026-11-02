@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-0.105.0-darwin-arm64.vsix` using **Extensions:
+1. Install the supplied `tellur-language-0.106.0-darwin-arm64.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -987,6 +987,16 @@ named contract, repairs it, then builds and runs the importing counter.
 `async`, `run` and `await` have syntax highlighting and explanatory keyword hover.
 Callee hover preserves `async control`; diagnostics reject missing or mismatched
 invocation permission, including unsaved imported contracts. The compiler supports
-sequential direct calls, not stored tasks or async I/O. Try
+sequential calls; local owned cold tasks are added in 0.106. Try
 [`playground/async_entry.tellur`](https://github.com/apology-is-policy/tellur/blob/main/playground/async_entry.tellur) and the
 [async reference](https://github.com/apology-is-policy/tellur/blob/main/docs/reference/async-execution.md).
+
+
+## Local cold tasks in 0.106
+
+`defer` has keyword highlighting and hover. Hovering `auto` on a pending task
+shows `task<producer>`; this describes the inferred internal type rather than a
+public writable type. Diagnostics reject forgotten or reused tasks, borrowed
+captures and escaping task results. Unsaved repair refreshes checked hover.
+Try [cold_tasks.tellur](https://github.com/apology-is-policy/tellur/blob/main/playground/cold_tasks.tellur)
+and the [reference](https://github.com/apology-is-policy/tellur/blob/main/docs/reference/async-execution.md).

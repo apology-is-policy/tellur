@@ -44,6 +44,7 @@ mod public;
 mod recovery;
 mod stored;
 mod sums;
+mod tasks;
 
 struct Access {
     origin: LoanOrigin,
@@ -2268,7 +2269,9 @@ impl Checker<'_> {
             } => self.lexical_boundary(body, captures, handler, guard, domain, span)?,
             Statement::Recover(name) => self.recover(name, guard, domain, span)?,
             Statement::Forward(operand) => {
-                let syntax::ExprKind::Call(callee, args) = &operand.kind else {
+                let pending = self.pending_call(operand, span)?;
+                let contract_operand = pending.as_ref().unwrap_or(operand);
+                let syntax::ExprKind::Call(callee, args) = &contract_operand.kind else {
                     return Err(self.error(
                         "E_FORWARD",
                         span,
@@ -2317,7 +2320,9 @@ impl Checker<'_> {
                 checked?;
             }
             Statement::Invoke(operand) => {
-                let syntax::ExprKind::Call(callee, args) = &operand.kind else {
+                let pending = self.pending_call(operand, span)?;
+                let contract_operand = pending.as_ref().unwrap_or(operand);
+                let syntax::ExprKind::Call(callee, args) = &contract_operand.kind else {
                     return Err(self.error(
                         "E_DISPOSITION",
                         span,
@@ -2462,6 +2467,17 @@ impl Checker<'_> {
                 );
             }
             Statement::Bind(name, annotation, expression, mutable) => {
+                if expression.call_mode == syntax::CallMode::Defer {
+                    return self.defer_task(
+                        name,
+                        annotation.as_deref(),
+                        expression,
+                        *mutable,
+                        guard,
+                        domain,
+                        span,
+                    );
+                }
                 let projected = self.materialize_projection(expression, domain, span)?;
                 let expression = projected.as_ref().unwrap_or(expression);
                 if name.starts_with("$field_")
@@ -2823,7 +2839,9 @@ impl Checker<'_> {
         domain: Formula,
         span: Span,
     ) -> Result<()> {
-        let syntax::ExprKind::Call(producer, _) = &operand.kind else {
+        let pending = self.pending_call(operand, span)?;
+        let contract_operand = pending.as_ref().unwrap_or(operand);
+        let syntax::ExprKind::Call(producer, _) = &contract_operand.kind else {
             return Err(self.error("E_OUTCOME", span, "capture expects an operation call"));
         };
         let sig=self.signatures.get(producer).cloned().ok_or_else(||self.error("E_OUTCOME",span,"capture currently accepts source controls and manifest primitives; use delta for generic collection operations"))?;
@@ -3461,8 +3479,13 @@ impl Checker<'_> {
                 }
             }
         }
-        let (operation, args, outcomes, variant_type) = if let syntax::ExprKind::Call(name, args) =
-            &operand.kind
+        let (operation, args, outcomes, variant_type) = if operand.call_mode
+            == syntax::CallMode::Await
+            && matches!(operand.kind, syntax::ExprKind::Name(_))
+        {
+            let (operation, value, outcomes) = self.await_task(operand, domain, span)?;
+            (Operation::AwaitTask(operation), vec![value], outcomes, None)
+        } else if let syntax::ExprKind::Call(name, args) = &operand.kind
             && let Some(sig) = self
                 .signature(name, args, span)
                 .map_err(|e| operand.locate(e, span))?
@@ -3491,6 +3514,7 @@ impl Checker<'_> {
                         syntax::CallMode::Direct => Operation::Region(name.clone()),
                         syntax::CallMode::Run => Operation::Run(name.clone()),
                         syntax::CallMode::Await => Operation::Await(name.clone()),
+                        syntax::CallMode::Defer => unreachable!("defer is a binding initializer"),
                     }
                 } else if crate::collections::is_operation(name) {
                     Operation::Collection(name.clone())
@@ -5035,6 +5059,16 @@ pub(crate) fn compile_concrete_unit(
                         live,
                     ));
                 }
+                if checker
+                    .result
+                    .exits
+                    .iter()
+                    .flat_map(|o| &o.fields)
+                    .any(|f| crate::async_calls::contains_task(checker.manifest, &f.ty))
+                {
+                    return Err(checker.error("E_ASYNC", source.name_span,
+                        "pending tasks currently stay local; await them before returning an outcome"));
+                }
                 if source.infer_exits && checker.result.exits.is_empty() && !checker.result.faults {
                     return Err(Diagnostic::new(
                         "E_INFER",
@@ -5143,7 +5177,11 @@ pub(crate) fn compile_concrete_unit(
                 match &instruction.action {
                     Action::Decide {
                         operation:
-                            Operation::Region(name) | Operation::Run(name) | Operation::Await(name),
+                            Operation::Region(name)
+                            | Operation::Run(name)
+                            | Operation::Await(name)
+                            | Operation::Defer(name)
+                            | Operation::AwaitTask(name),
                         ..
                     } => result.push(name.as_str()),
                     Action::Loop { body, .. } => result.extend(callees(body)),

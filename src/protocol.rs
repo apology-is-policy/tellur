@@ -167,7 +167,10 @@ impl Graph {
                     operation, arms, ..
                 } => {
                     let primitive = match operation {
-                        Operation::Run(_) | Operation::Await(_) => {
+                        Operation::Run(_)
+                        | Operation::Await(_)
+                        | Operation::Defer(_)
+                        | Operation::AwaitTask(_) => {
                             return Err(error(
                                 "protocol analysis cannot erase run or await boundaries",
                             ));
