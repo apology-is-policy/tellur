@@ -349,6 +349,39 @@ owning boundary at the accepted safe point and retain causal diagnostics. This
 checkpoint supplies identities and admission guards, not that settlement driver.
 Source `spawn`/`yield`, async adapters, cancellation and LLVM lowering remain gated.
 
+## Reference sibling retirement (E1d.2c.4b.1)
+
+Compiler 0.121 retains the original failing context, diagnostic tracker and boundary
+continuation while it selects ready/waiting descendants for emergency retirement.
+An invocation with started children cannot release its frame; a boundary cannot
+enter contingency or close while nested domains or retained contexts remain. The
+reference driver follows each selected child's original unwind and await chain,
+retiring its task and wait registrations before returning to the parked emergency.
+Normal return still requires consuming children; it does not acquire an implicit join.
+
+A prepared invocation releases its captures without installing or executing its
+body. A waiting or resumed-ready invocation unwinds without executing more normal
+instructions. Nested named/lexical boundaries close through emergency retirement;
+they do not enter contingency or hand retained resources to an abandoned handler.
+The only handler selected by this cleanup is the original owning boundary's, after
+all affected chains have retired. Unrelated domains and their readiness remain live.
+The original causal report, shared fuel and source effect history are preserved.
+
+Checked-execution harnesses exercise two simultaneous borrowed children in prepared,
+waiting and resumed-ready states with small/large host quotas and an unrelated
+waiting root. They compare the original fault report and exact remaining fuel,
+reject late signals, and verify complete retirement of contexts, owners and domains.
+Nested named-plus-lexical and lexical-only cases prove their handlers cannot emit,
+escalate or terminate supervision during sibling cleanup. Existing recovery tests also
+check that no settlement contexts survive normal handling.
+
+This is private reference machinery: source `spawn`/`yield` and asynchronous adapter
+admission remain disabled. The scripted executor's abrupt value retirement is
+infallible. Its settlement restoration asserts that cleanup has fully unwound and
+preserved the original failure; this is not a policy for fallible or suspending host
+cleanup. Actual retained host-resource settlement evidence and owning-boundary
+fault delivery at source safe points remain the next integration gates.
+
 ## Separate the identities and continuations
 
 | Entity | Purpose | Must not be confused with |
@@ -386,6 +419,13 @@ disposition and cooperative cancellation remain distinct. A request boundary can
 send its emergency response only after child loans end and retained response
 capabilities are safe to hand over. This is an accepted design rule, not an
 implemented scheduler feature.
+
+Accepted by the author on 2 November 2026: when a failed owning boundary stops a
+sibling suspended inside a nested boundary, the sibling applies its declared resource
+fault dispositions. Its nested contingency does not run. Only the owning boundary's
+contingency handles the fault after settlement. Cleanup cannot recover into a stopped
+sibling, transform the fault into an outcome, or take over process termination through
+that sibling's handler. Fallible cleanup reporting remains a separate contract.
 
 Invocation ownership and the initial restriction on handle movement are accepted
 below. Cooperative scheduling points, deterministic observation of escaping faults
@@ -629,12 +669,13 @@ Those boundaries need explicit contracts before being accepted by the checker.
 | E1d.1 | Separate execution-wide state from resumable control chains | Delivered in 0.111: one storage arena/address allocator, script cursor, effect history and fuel budget; independent frames, continuations and emergency state; internal interleaving evidence, no source spawn |
 | E1d.2a | Invocation and cold-task identities | Delivered in 0.112: owner/producer admission, one-shot completion, normal obligation checks and emergency retirement in sequential execution |
 | E1d.2b | Queued cold dispatch and completion waits | Delivered in 0.113: ready admission, parked callers, one-use completion wait IDs, stale/duplicate rejection and unchanged sequential observations |
-| E1d.2c | External readiness and fault-domain admission | In progress: suspended/ready storage delivered in 0.117–0.118 and runtime readiness in 0.119; domain identities/admission are delivered in 0.120; automatic sibling settlement remains before source spawn |
+| E1d.2c | External readiness and fault-domain admission | In progress: suspended/ready storage delivered in 0.117–0.118 and runtime readiness in 0.119; domain identities/admission are delivered in 0.120 and reference sibling retirement in 0.121; host resource settlement and source integration remain before spawn |
 | E1d.2c.1 | Addressable suspended callers | Delivered in 0.117: one-use suspension registrations paired with task/wait identities, atomic admission, original context restoration and emergency retirement |
 | E1d.2c.2 | Independent ready-context admission | Delivered in 0.118: prepared child contexts retained outside the active stack, checked dispatch selection and active-chain protection; source execution remains sequential |
 | E1d.2c.3a | Executable readiness protocol model | Delivered as test-only evidence on 0.118: repeated execution-scoped, generation-safe waits over checked borrowed execution, separate signalling/selection/completion and fixed shared history. These scenarios now target runtime integration in E1d.2c.3b; fault-domain settlement remains next |
 | E1d.2c.3b | Runtime waiting and resumption | Delivered in 0.119: execution-scoped readiness tokens, explicit Waiting state, original contexts in wait storage, distinct start/resume dispatch and atomic signal admission. No source or adapter handoffs yet; owning fault-domain settlement is next |
 | E1d.2c.4a | Fault domain identity and admission | Delivered in 0.120: distinct live root/named/lexical domains, stopped-ancestor gates, context membership and quiescence checks. Automatic sibling draining and retained-resource settlement remain E1d.2c.4b |
+| E1d.2c.4b.1 | Reference sibling retirement | Delivered in 0.121: original emergency/boundary retention, borrower-before-owner retirement, queued-body suppression, descendant handler suppression, late-signal rejection and independent-domain preservation. Infallible scripted cleanup only; host resources and source concurrency remain follow-ups |
 | E1e | Explicit cooperative cancellation and suspending cleanup; normal completion races, cleanup failures and no abandoned losers | Define cancellation observation and cleanup admission; no implicit cancellation exception |
 | E2 | Pinned native coroutine experiment, then checked lowering and schedule-based differential validation | Reference semantics and legal frame retirement must precede native destruction |
 

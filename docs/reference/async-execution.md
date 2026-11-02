@@ -405,3 +405,13 @@ boundaries. Deferred handles inherit the executing domain when awaited; their
 existing movement across normal boundaries is unchanged. Stopped domains gate
 normal task admission and wake/dispatch. Domain tracking and checks for retained
 contexts do not yet provide automatic sibling settlement or enable source concurrency.
+
+Compiler 0.121 adds private reference settlement of retained siblings. A failed
+boundary keeps its original continuation and fault while queued, waiting or resumed
+children retire before their owning storage. Prepared bodies never start during
+cleanup. Nested sibling boundaries apply emergency resource retirement without
+entering their contingencies; only the owning boundary handles the original fault.
+This nested-handler policy is accepted for future source concurrency. Unrelated
+fault domains remain live, and settled readiness registrations cannot resume work.
+The current implementation covers infallible scripted retirement, with explicit
+harness admissions; it adds no source scheduling or fallible/suspending host cleanup.

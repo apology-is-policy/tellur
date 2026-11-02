@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-0.120.0-darwin-arm64.vsix` using **Extensions:
+1. Install the supplied `tellur-language-0.121.0-darwin-arm64.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1128,3 +1128,16 @@ Stopped domains reject normal task admission, readiness and ready dispatch. Boun
 finalization and contingency admission check for retained execution contexts first.
 These gates prepare for automatic sibling settlement; they do not enable source
 concurrency, async host adapters or cancellation.
+
+## Reference sibling settlement in 0.121
+
+The reference driver now preserves a failed boundary while retiring its retained
+children. Queued bodies do not start, waiting bodies do not resume normally, and
+borrowers unwind before their owners. Unrelated domains remain available, and late
+readiness signals cannot revive settled work. The original fault report survives.
+
+When a stopped sibling is inside a nested boundary, its resources follow emergency
+retirement without entering that sibling's contingency. Only the owning boundary
+handles the original fault after settlement. This implements the accepted policy
+in the private reference machinery; source `spawn`/`yield`, async host adapters and
+fallible or suspending cleanup remain ahead.

@@ -69,11 +69,26 @@ impl Domains {
             .stopped = true;
         Ok(())
     }
-    pub(super) fn require_no_children(&self, id: DomainId) -> Result<()> {
+    pub(super) fn has_children(&self, id: DomainId) -> Result<bool> {
         if !self.live.contains_key(&id) {
             return Err(error("fault domain has retired"));
         }
-        if self.live.values().any(|domain| domain.parent == Some(id)) {
+        Ok(self.live.values().any(|domain| domain.parent == Some(id)))
+    }
+    pub(super) fn contains(&self, root: DomainId, mut id: DomainId) -> bool {
+        while let Some(domain) = self.live.get(&id) {
+            if id == root {
+                return true;
+            }
+            match domain.parent {
+                Some(parent) => id = parent,
+                None => break,
+            }
+        }
+        false
+    }
+    pub(super) fn require_no_children(&self, id: DomainId) -> Result<()> {
+        if self.has_children(id)? {
             return Err(error("fault domain still has live nested boundaries"));
         }
         Ok(())
@@ -110,6 +125,10 @@ mod tests {
         let root = open(&mut d, None);
         let child = open(&mut d, Some(root.id));
         let other = open(&mut d, None);
+        assert!(d.contains(root.id, child.id));
+        assert!(d.contains(child.id, child.id));
+        assert!(!d.contains(child.id, root.id));
+        assert!(!d.contains(root.id, other.id));
         d.stop(root.id).unwrap();
         let before = d.clone();
         assert!(d.require_open(child.id).is_err());
@@ -118,6 +137,7 @@ mod tests {
         assert_eq!(d, before);
         d.require_open(other.id).unwrap();
         d.close(child).unwrap();
+        assert!(!d.contains(root.id, child.id));
         d.close(root).unwrap();
         d.close(other).unwrap();
         assert_eq!(d.count(), 0);

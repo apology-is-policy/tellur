@@ -213,6 +213,16 @@ impl Registry {
             self.owners.get_mut(&task.owner).unwrap().remove(&id);
         }
     }
+    pub(super) fn has_started_children(&self, owner: OwnerId) -> bool {
+        self.owners.get(&owner).is_some_and(|tasks| {
+            tasks.iter().any(|id| {
+                matches!(
+                    self.tasks[id].phase,
+                    Phase::Ready | Phase::Running | Phase::Waiting(_)
+                )
+            })
+        })
+    }
     pub(super) fn retire_owner(&mut self, owner: OwnerId, abrupt: bool) -> Result<()> {
         let pending = self
             .owners

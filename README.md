@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.120.0** implements the v0.1 checked core and the current language
+Compiler release **0.121.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -638,3 +638,16 @@ Stopped domains reject normal task admission, readiness and ready dispatch. Boun
 finalization and contingency admission check for retained execution contexts first.
 These gates prepare for automatic sibling settlement; they do not enable source
 concurrency, async host adapters or cancellation.
+
+## Reference sibling settlement in 0.121
+
+The reference driver now preserves a failed boundary while retiring its retained
+children. Queued bodies do not start, waiting bodies do not resume normally, and
+borrowers unwind before their owners. Unrelated domains remain available, and late
+readiness signals cannot revive settled work. The original fault report survives.
+
+When a stopped sibling is inside a nested boundary, its resources follow emergency
+retirement without entering that sibling's contingency. Only the owning boundary
+handles the original fault after settlement. This implements the accepted policy
+in the private reference machinery; source `spawn`/`yield`, async host adapters and
+fallible or suspending cleanup remain ahead.

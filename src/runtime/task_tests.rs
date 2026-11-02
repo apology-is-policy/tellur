@@ -22,6 +22,7 @@ fn assert_retired(m: &Machine<'_>) {
     assert!(m.shared.ready.is_empty());
     assert!(m.shared.waiting.is_empty());
     assert!(m.shared.suspended.calls.is_empty());
+    assert!(m.settlements.is_empty());
     assert!(m.shared.values.is_empty());
     assert!(m.context.stack.is_empty());
     assert!(m.context.frame.owner.is_none());

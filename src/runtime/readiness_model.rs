@@ -80,6 +80,7 @@ fn retired(m: &Machine<'_>) {
     assert!(m.shared.tasks.is_empty());
     assert!(m.shared.ready.is_empty());
     assert!(m.shared.suspended.calls.is_empty());
+    assert!(m.settlements.is_empty());
     assert!(m.context.stack.is_empty());
     assert!(m.context.frame.owner.is_none());
 }

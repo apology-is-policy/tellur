@@ -14,6 +14,9 @@ mod domain_tests;
 #[path = "readiness_model.rs"]
 mod readiness_model;
 #[cfg(test)]
+#[path = "settlement_tests.rs"]
+mod settlement_tests;
+#[cfg(test)]
 #[path = "task_tests.rs"]
 mod task_tests;
 
@@ -62,6 +65,7 @@ impl CheckedProgram {
                     waiting: BTreeMap::new(),
                 },
                 context: Context::new(crate::fault::Tracker::new(self.runtime_sites())),
+                settlements: vec![],
             }),
             scenario,
             initialized: false,
@@ -277,6 +281,8 @@ enum ReadyCall<'a> {
 struct Machine<'a> {
     shared: SharedExecution<'a>,
     context: Context<'a>,
+    // Original emergency contexts, including the unconsumed boundary continuation.
+    settlements: Vec<Context<'a>>,
 }
 fn completion(flow: Flow) -> Result<Completion> {
     match flow {
@@ -396,16 +402,47 @@ impl<'a> Machine<'a> {
             .map(|e| evaluate(e, &mut self.shared.values, self.context.frame.base))
             .collect()
     }
-    /// Returns false only at an instruction boundary with no effects performed for
-    /// that next instruction. No recursive source calls/loops/unwinding occur here.
+    /// Returns false before the next source instruction or while settlement lacks
+    /// an eligible child context. Neither case consumes the waiting continuation.
+    /// No recursive source calls/loops/unwinding occur here.
     fn drive(&mut self, mut quota: usize) -> bool {
-        while let Some(continuation) = self.context.stack.pop() {
+        loop {
+            let Some(continuation) = self.context.stack.pop() else {
+                if let Some(owner) = self.settlements.last() {
+                    // This slice supports infallible reference retirement only.
+                    // Never silently replace an unexpected cleanup failure with
+                    // the original emergency or restore an incompletely unwound chain.
+                    assert!(self.context.frame.owner.is_none());
+                    assert_eq!(
+                        self.context
+                            .flow
+                            .as_ref()
+                            .and_then(|flow| flow.as_ref().err()),
+                        owner.flow.as_ref().and_then(|flow| flow.as_ref().err()),
+                        "emergency retirement changed the retained failure"
+                    );
+                    let owner = self.settlements.pop().unwrap();
+                    self.context = owner;
+                    continue;
+                }
+                return true;
+            };
             if matches!(self.context.flow, Some(Err(_))) {
                 if let Some(domain) = self.context.domain {
                     if let Err(diagnostic) = self.shared.domains.stop(domain) {
                         self.context.flow = Some(Err(diagnostic));
                     }
                 }
+            }
+            // Keep both the original emergency and the exact continuation before
+            // inspecting children. A quota pause or unavailable child context must
+            // never consume the boundary or release its owners prematurely.
+            if matches!(self.context.flow, Some(Err(_))) && self.needs_settlement(&continuation) {
+                self.context.stack.push(continuation);
+                if self.begin_settlement() {
+                    continue;
+                }
+                return false;
             }
             if let Continuation::Block { code, next } = continuation {
                 if self.context.flow.is_some() {
@@ -451,6 +488,97 @@ impl<'a> Machine<'a> {
                 self.context.flow = Some(Err(diagnostic));
             }
         }
+    }
+    fn needs_settlement(&self, continuation: &Continuation<'a>) -> bool {
+        let boundary = match continuation {
+            Continuation::Call {
+                region,
+                root_domain,
+                ..
+            } => {
+                if self
+                    .context
+                    .frame
+                    .owner
+                    .is_some_and(|owner| self.shared.tasks.has_started_children(owner))
+                {
+                    return true;
+                }
+                root_domain.is_some() || region.boundary.is_some()
+            }
+            Continuation::SupervisedWork { .. }
+            | Continuation::SupervisedHandler { .. }
+            | Continuation::BoundaryWork { .. }
+            | Continuation::BoundaryHandler { .. } => true,
+            _ => false,
+        };
+        boundary
+            && self.context.domain.is_some_and(|domain| {
+                self.shared
+                    .domains
+                    .has_children(domain)
+                    .expect("a retained context has a live fault domain")
+                    || self.has_retained_contexts(domain)
+            })
+    }
+    /// Select affected descendants only for emergency retirement. Their nested
+    /// contingencies cannot run; only the original owning boundary may handle the
+    /// fault after every selected chain has retired. No candidate leaves the
+    /// original boundary parked intact rather than discarding its continuation.
+    fn begin_settlement(&mut self) -> bool {
+        let Some(domain) = self.context.domain else {
+            return false;
+        };
+        let ready = self.shared.ready.iter().filter_map(|(task, call)| {
+            let context = match call {
+                ReadyCall::Start { context, .. } | ReadyCall::Resume(context) => context,
+            };
+            context
+                .domain
+                .filter(|id| self.shared.domains.contains(domain, *id))
+                .map(|_| *task)
+        });
+        let waiting = self.shared.waiting.iter().filter_map(|(task, context)| {
+            context
+                .domain
+                .filter(|id| self.shared.domains.contains(domain, *id))
+                .map(|_| *task)
+        });
+        let Some(task) = ready.chain(waiting).min() else {
+            return false;
+        };
+        let context = if let Some(call) = self.shared.ready.remove(&task) {
+            match call {
+                ReadyCall::Start {
+                    invocation,
+                    context,
+                } => {
+                    // Never install a not-yet-started body during emergency cleanup.
+                    // Reference retirement is infallible here; fallible/suspending
+                    // external cleanup needs its own future settlement contract.
+                    for argument in invocation.arguments {
+                        retire_value(&mut self.shared.tasks, argument, true)
+                            .expect("emergency captured-value retirement is infallible");
+                    }
+                    context
+                }
+                ReadyCall::Resume(context) => context,
+            }
+        } else {
+            self.shared.waiting.remove(&task).unwrap()
+        };
+        let diagnostic = self
+            .context
+            .flow
+            .as_ref()
+            .unwrap()
+            .as_ref()
+            .err()
+            .unwrap()
+            .clone();
+        let original = std::mem::replace(&mut self.context, context);
+        self.settlements.push(original);
+        self.context.flow = Some(Err(diagnostic));
         true
     }
     fn dispatch_ready(&mut self) -> Result<()> {
@@ -559,7 +687,10 @@ impl<'a> Machine<'a> {
                     if root_domain.is_some() || region.boundary.is_some() {
                         self.require_domain_quiescent(self.context.domain.unwrap())?;
                     }
-                    if flow.is_err() && self.context.activations.is_source_fault() {
+                    if flow.is_err()
+                        && self.context.activations.is_source_fault()
+                        && self.settlements.is_empty()
+                    {
                         if let Some(boundary) = &region.boundary {
                             for id in &boundary.retained {
                                 self.context.handover.push(
@@ -676,7 +807,10 @@ impl<'a> Machine<'a> {
                 parent,
                 domain,
             } => match flow {
-                Err(diagnostic) if self.context.activations.is_source_fault() => {
+                Err(diagnostic)
+                    if self.context.activations.is_source_fault()
+                        && self.settlements.is_empty() =>
+                {
                     self.require_domain_quiescent(domain.id)?;
                     let report = self.report(&self.shared.program.runtime_name(name), &diagnostic);
                     self.shared.events.push(Event::Fault {
@@ -712,7 +846,10 @@ impl<'a> Machine<'a> {
                 domain,
             } => {
                 match flow {
-                    Err(diagnostic) if self.context.activations.is_source_fault() => {
+                    Err(diagnostic)
+                        if self.context.activations.is_source_fault()
+                            && self.settlements.is_empty() =>
+                    {
                         self.require_domain_quiescent(domain.id)?;
                         let Action::Boundary {
                             handler,
@@ -784,15 +921,14 @@ impl<'a> Machine<'a> {
         }
         Ok(())
     }
-    fn require_domain_quiescent(&self, domain: DomainId) -> Result<()> {
-        self.shared.domains.require_no_children(domain)?;
+    fn has_retained_contexts(&self, domain: DomainId) -> bool {
         let ready = self.shared.ready.values().any(|call| {
             let context = match call {
                 ReadyCall::Start { context, .. } | ReadyCall::Resume(context) => context,
             };
             context.domain == Some(domain)
         });
-        if ready
+        ready
             || self
                 .shared
                 .waiting
@@ -804,7 +940,10 @@ impl<'a> Machine<'a> {
                 .calls
                 .values()
                 .any(|call| call.context.domain == Some(domain))
-        {
+    }
+    fn require_domain_quiescent(&self, domain: DomainId) -> Result<()> {
+        self.shared.domains.require_no_children(domain)?;
+        if self.has_retained_contexts(domain) {
             return Err(error(
                 "fault domain still has retained execution contexts requiring settlement",
             ));

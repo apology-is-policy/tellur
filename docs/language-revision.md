@@ -104,10 +104,13 @@ in E1d.2c.3b. Execution-scoped generation checks separate signals from task comp
 source/adapter handoffs remain disabled until owning fault-domain settlement.
 E1d.2c.4a now gives roots and named/lexical boundaries distinct live domains, carries
 them with retained contexts, and gates normal admission and contingency entry.
-Automatic sibling draining and borrower settlement remain E1d.2c.4b.
+E1d.2c.4b.1 now retains the original failed boundary while retiring queued, waiting
+and resumed children in its subtree. Nested sibling contingencies are suppressed
+under the accepted disposition-only policy; source scheduling and host resource
+settlement evidence remain ahead.
 
 2 November 2026. This is the working revision plan, not a claim that all proposed
-features are implemented. Compiler **0.120.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
+features are implemented. Compiler **0.121.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
 lifetime checkpoints of milestone 2, the array/vector/map core of milestone 3,
 and implicit entry, inline/stored adapters, owned capture, named outcome contracts
 and checked forwarding in milestone 4. A first [semantic foundation](semantic-foundation.md)
@@ -324,12 +327,13 @@ do not block this design work. E2 remains the native coroutine target.
 | E1d.1 | Shared execution and independent continuations | **Delivered in 0.111:** one value arena, address allocator, script cursor, effect history and fuel budget; independent control/fault state; internal interleavings preserve owners, retirement and admission without source concurrency |
 | E1d.2a | Invocation and cold-task identities | **Delivered in 0.112:** distinct owner/task IDs, original-owner/producer admission, one-shot completion, pending-obligation checks and emergency retirement; sequential execution unchanged |
 | E1d.2b | Queued cold dispatch and completion waits | **Delivered in 0.113:** ready admission and dispatch, parked caller contexts, one-use completion waits and emergency retirement with unchanged sequential execution |
-| E1d.2c | External readiness and fault-domain admission | In progress: suspended/ready storage delivered in 0.117–0.118 and runtime readiness in 0.119; domain identities/admission are delivered in 0.120; automatic sibling settlement remains before source spawn |
+| E1d.2c | External readiness and fault-domain admission | In progress: suspended/ready storage delivered in 0.117–0.118 and runtime readiness in 0.119; domain identities/admission are delivered in 0.120 and reference sibling retirement in 0.121; host resource settlement and source integration remain before spawn |
 | E1d.2c.1 | Addressable suspended callers | **Delivered in 0.117:** suspension IDs paired with task/completion waits; atomic admission, one-use restoration, stale/crossed rejection and emergency retirement; storage, fuel and sequential observations unchanged |
 | E1d.2c.2 | Independent ready-context admission | **Delivered in 0.118:** prepared child invocations and contexts reside outside the active stack; dispatch checks queue/context agreement and rejects active-chain replacement. Host quotas, fuel, borrowed storage and sequential source behavior are unchanged |
 | E1d.2c.3a | Executable readiness protocol model | **Delivered on 0.118:** generation-safe repeated waits, separate readiness and completion, no active-chain preemption, one scripted-input/fuel history and retained exclusive borrowers. Harness cuts only; runtime integration follows in E1d.2c.3b below, while fault-domain settlement and source concurrency remain ahead |
 | E1d.2c.3b | Runtime waiting and resumption | **Delivered in 0.119:** generation-safe execution-scoped readiness, Waiting state and retained original contexts, separate start/resume dispatch and failure-atomic admission. Internal safe points only; fault-domain settlement precedes source concurrency |
 | E1d.2c.4a | Fault domain identity and admission | **Delivered in 0.120:** live root/named/lexical domains, stopped-ancestor gates, current-context membership and quiescence checks; cold-task boundary movement preserved. Automatic sibling draining and borrower settlement remain E1d.2c.4b |
+| E1d.2c.4b.1 | Reference sibling retirement | Delivered in 0.121: original emergency/boundary retention, borrower-before-owner retirement, queued-body suppression, descendant handler suppression, late-signal rejection and independent-domain preservation. Infallible scripted cleanup only; host resources and source concurrency remain follow-ups |
 | E2 | Native coroutine lowering | Preserved architectural target: direct LLVM coroutine primitives, pinned-toolchain experiment, frame lifetime rules and schedule-based differential tests; I1 must keep this route open |
 | T1 | Stronger source transformations | Hold current scope during P1–P5: extraction correspondence, continuation cuts, source-level lift and editor actions |
 | R1 | Mathematical foundations | Maintain existing evidence; defer extensions during P1–P5: preservation judgments, richer protocol abstractions, infinite/causal behavior, mechanization |

@@ -37,6 +37,7 @@ fn retired(m: &Machine<'_>) {
     assert!(m.shared.ready.is_empty());
     assert!(m.shared.waiting.is_empty());
     assert!(m.shared.suspended.calls.is_empty());
+    assert!(m.settlements.is_empty());
 }
 #[test]
 fn nested_named_and_lexical_boundaries_restore_open_parents_after_handling() {
