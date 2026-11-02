@@ -431,3 +431,9 @@ frame clears only its slots and resources, preserving other live ranges and borr
 addresses. Freed ranges can be reused after retirement. Native calls still run
 synchronously: independently retireable storage does not implement suspended
 continuations or enable source scheduling.
+
+The [compiled continuation model](../async-execution.md#compiled-native-continuation-model-e1d2c4b4a)
+provides test-only call/await/constructor resume evidence on 0.123. It retains original
+frames, decision facts and result delivery across host observation cuts. It rejects
+loop and boundary continuations; it is not a public native mode, source scheduler or
+new async permission. Existing compiler and editor behavior is unchanged.

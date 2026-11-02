@@ -496,6 +496,40 @@ The next stage must retain executable continuations and select their diagnostic 
 resource contexts together before source scheduling can be admitted. No source
 `spawn`/`yield`, async adapters, cancellation or LLVM coroutine ABI is added here.
 
+## Compiled native continuation model (E1d.2c.4b.4a)
+
+An internal test-only model now emits compiled resume functions for ordinary
+instructions, decisions, synchronous calls, `run`, direct `await`, cold-task await
+and constructor delivery. Each activation retains its original frame identity,
+decision facts, next instruction and one-use result-delivery continuation. A call
+parks its caller and admits a separate child activation. Completion transfers its
+normal payload or constructor destination before resuming the caller. This is
+compiled Rust control flow, not a checked-graph interpreter or a retained Rust stack.
+
+The model can return to its host between instructions while preserving the shared
+value arena, script cursor, effects, diagnostic activation chain and fuel budget.
+Zero instruction budgets do nothing. Completion and errors retire the entire model
+chain; an already finished machine cannot be advanced again. Source faults remain
+errors with their original activation trace and never enter normal result delivery.
+The cuts are test observation points, not source task switches or `yield` semantics.
+
+Differential tests compile original and expanded source at optimization levels 0
+and 2. They compare normal results/effects and failure sites, identities, phases and
+causes at every fuel cut under multiple quota partitions, including zero-sized
+pauses. Source-fault reports match exactly. Only the existing native/reference
+host-fuel message wording is normalized. The fixture combines a reference-bearing
+constructor, selected decision facts, one scripted primitive, a moved cold handle,
+an exclusive captured borrow, returned borrowed completion and a nested child fault.
+
+Loops, lexical/named boundary continuations and administrative recovery are explicitly
+rejected by this model. Public native generation remains the synchronous 0.123 path;
+no compiler/LSP/VSIX release or editor reload is required. A shared build-helper
+extraction lets tests use the real locked native toolchain without a new public mode.
+Next, retain structured loop and boundary continuation state and bind diagnostic and
+resource context selection before integrating resumable native execution or source
+concurrency. Resource settlement with suspended native boundaries remains unproved by
+this bounded call model.
+
 ## Separate the identities and continuations
 
 | Entity | Purpose | Must not be confused with |
@@ -793,6 +827,7 @@ Those boundaries need explicit contracts before being accepted by the checker.
 | E1d.2c.4b.2a | Repeated recovery and host-resource audit | Delivered as tests/documentation on 0.121: repeated borrowed sibling recovery in reference/expanded execution and real Rust frame-release probes; explicit native boundary resource membership remains the next gate |
 | E1d.2c.4b.2b | Native resource scope membership | Delivered in 0.122: registry-scoped live identities, owned-input/capture adoption, borrowed-input exclusion, before-handler temporary cleanup and normal outgoing-owner promotion. Independent later allocations survive; native source scheduling remains ahead |
 | E1d.2c.4b.3 | Native activation frame ranges | Delivered in 0.123: independently retired dense ranges, arena-scoped identities, hole reuse/coalescing and exact fault-resource release. Existing borrowed offsets and constructor destinations remain stable; executable native continuations are next |
+| E1d.2c.4b.4a | Compiled native continuation model | Test-only evidence on 0.123: retained call/await/constructor activations, decision facts, one-use return delivery and quota/fuel/fault parity. Structured loops/boundaries and context selection remain gated; public native execution is unchanged |
 | E1e | Explicit cooperative cancellation and suspending cleanup; normal completion races, cleanup failures and no abandoned losers | Define cancellation observation and cleanup admission; no implicit cancellation exception |
 | E2 | Pinned native coroutine experiment, then checked lowering and schedule-based differential validation | Reference semantics and legal frame retirement must precede native destruction |
 

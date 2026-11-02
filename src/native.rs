@@ -12,6 +12,9 @@ use std::{
 const SUPPORT: &str = include_str!("native/runtime.rs");
 const CARGO: &str = include_str!("native/Cargo.template");
 const LOCK: &str = include_str!("native/Cargo.lock");
+#[cfg(test)]
+#[path = "native/resume_model.rs"]
+mod resume_model;
 fn error(message: impl Into<String>) -> Diagnostic {
     Diagnostic::new("E_BACKEND", Span::default(), message)
 }
@@ -701,7 +704,14 @@ impl CheckedProgram {
         if opt > 3 {
             return Err(error("optimization level must be 0..3"));
         }
-        let (output, directory, generated, package) = self.native_project(entry, output)?;
+        self.finish_native_build(self.native_project(entry, output)?, opt)
+    }
+    fn finish_native_build(
+        &self,
+        project: (PathBuf, PathBuf, PathBuf, String),
+        opt: u8,
+    ) -> Result<NativeBuild> {
+        let (output, directory, generated, package) = project;
         let lock = if let Some(config) = &self.manifest().rust {
             let lock=fs::read_to_string(&config.lockfile).map_err(|e|error(format!("cannot read {}: {e}; run tellurc lock-native explicitly to resolve dependencies",config.lockfile.display())))?;
             if !lock.contains("name = \"tellur_adapter_lock\"") {

@@ -1,0 +1,65 @@
+struct text_view['a] {
+    ref string text <- 'a;
+
+    constructor(ref string input, bool first)[input] {
+        delta first {
+            true => first,
+            false => second
+        }
+
+        [first]: self.text = input;
+        [second]: self.text = input;
+    }
+}
+
+async control lend(ref mutable string input, bool stop)
+    exits lent { ref mutable string value from input } faults {
+    emit("child");
+    delta stop {
+        true => failed,
+        false => ready
+    }
+
+    [failed]: fault "child invariant";
+    [ready]: exit lent { input };
+}
+
+async control relay(ref mutable string input, bool stop)
+    exits lent { ref mutable string value from input } faults {
+    forward await lend(input, stop);
+}
+
+async control startup(ref mutable string input, bool stop) exits done faults {
+    auto pending = defer relay(input, stop);
+    emit("queued");
+    auto moved = move pending;
+    delta await moved {
+        lent { auto value } => lent
+    }
+
+    [lent]:
+        deref value = "changed";
+        emit(value);
+        exit done;
+}
+
+control main(bool stop) exits done faults {
+    string owner = "view";
+    auto view = text_view(borrow owner, stop);
+    emit(view.text);
+    delta parse_u32("7") {
+        number { u32 parsed } => parsed,
+        malformed => parse_bad,
+        overflow => parse_big,
+    }
+
+    [parse_bad]: fault "parse rejected";
+    [parse_big]: fault "parse rejected";
+    [parsed]:
+        emit(u32_text(parsed));
+        mutable string text = "initial";
+        run startup(borrow mutable text, stop);
+        text = "settled";
+        emit(borrow text);
+        exit done;
+}
