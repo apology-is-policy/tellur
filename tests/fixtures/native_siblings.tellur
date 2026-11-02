@@ -58,6 +58,42 @@ control descendant(ref counter local) exits done {
     exit done;
 }
 
+boundary handling(counter local) retains local {
+    fault "sibling local";
+}
+contingency(string reason) {
+    emit("sibling handler ready");
+    close(local);
+    emit("forbidden handler continuation");
+    terminate;
+}
+
+control sibling_named_handler(ref counter owner, string path) exits done {
+    inspect(owner);
+    delta make(borrow path, 2) {
+        made { counter local } => made
+    }
+    [made]:
+        supervise handling(local);
+        exit done;
+}
+
+control sibling_lexical_handler(ref counter owner, string path) exits done faults {
+    inspect(owner);
+    delta make(borrow path, 2) {
+        made { counter local } => made
+    }
+    [made]:
+        fault boundary {
+            fault "sibling local";
+        } contingency [local] {
+            emit("sibling handler ready");
+            close(local);
+            emit("forbidden handler continuation");
+            escalate;
+        }
+}
+
 control failing(ref counter owner) exits done faults {
     inspect(owner);
     fault "child failed";

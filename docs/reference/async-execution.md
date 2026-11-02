@@ -494,6 +494,12 @@ delivers a failed owning root's report once, preserving the original child cause
 when the owning contingency escalates. Fuel exhaustion with retained children skips
 source handlers, settles borrowers and owners, and propagates through related parents
 and ancestors with live children. Unrelated roots retain their state until selected but
-observe the same exhausted shared fuel budget. These are test-only native scenarios;
-process-wide stop, active sibling handlers, readiness and source handoffs remain gates
-before production integration. Installed source behavior is unchanged.
+observe the same exhausted shared fuel budget.
+
+Further [active-handler coverage](../async-execution.md#stopping-active-sibling-contingencies-e1d2c4b4d6)
+pauses a sibling in its own named or lexical contingency before another child faults.
+Its retained owner is released without resuming that handler; the original owning
+contingency still receives the triggering child's cause. Nonempty host diagnostic and
+contingency state is restored after settlement. These are test-only native scenarios;
+process-wide stop, readiness and source handoffs remain gates before production
+integration. Installed source behavior is unchanged.

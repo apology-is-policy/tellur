@@ -803,9 +803,29 @@ destruction. Each round ends with empty frames, memberships, domains, resources 
 terminal delivery storage. Existing independent-context fuel-cut tests also pass.
 
 This remains test-only evidence on compiler 0.125. Context keys are harness selectors,
-not source task handles or readiness signals. Process-wide stop, siblings already in
-contingency, readiness integration and explicit source handoffs remain separate gates;
+not source task handles or readiness signals. Active sibling contingencies are covered
+by the following slice. Process-wide stop, readiness integration and explicit source handoffs remain separate gates;
 no production scheduler, new cleanup-failure policy or language syntax is introduced.
+
+## Stopping active sibling contingencies (E1d.2c.4b.4d.6)
+
+The related native fixture now pauses a sibling inside an already-entered named or
+lexical contingency, before it completes its retained Rust owner. When another child
+faults, settlement releases that owner without executing the remaining handler, then
+enters the original owning boundary's contingency. The sibling's earlier local fault
+remains a separate diagnostic event; it does not replace the triggering child's cause.
+No child is newly admitted into the paused handler in these scenarios.
+
+Original/expanded O0/O2 tests repeat both handler forms over three quota partitions
+and three rounds. Exact destructor logs distinguish emergency release from the skipped
+normal `close`. Other retained work includes a parent borrower and an unrun owned
+capture; the independent root completes normally. A nonempty host activation and
+contingency baseline is restored after every round, with no leaked cause or fault mode.
+The earlier six sibling scenarios run through the same baseline assertions.
+
+This adds test-only coverage of the accepted stopped-sibling policy on 0.125. It
+changes no runtime or compiler behavior. Whole-session process termination, readiness
+integration and explicit source handoffs remain the next gates.
 
 ## Separate the identities and continuations
 
@@ -1113,7 +1133,8 @@ Those boundaries need explicit contracts before being accepted by the checker.
 | E1d.2c.4b.4d.2 | Shared native host contexts | Delivered in 0.125: host-bound retained state, dormant ownership-root admission, paired selection/restoration and checked retirement. Compiled models use the shared operations; native owning-domain membership and sibling settlement remain ahead |
 | E1d.2c.4b.4d.3 | Compiled fault-domain lifetimes | Test-only on 0.125: distinct owning/current domains retained through named and lexical boundaries, exact parked-boundary validation and quiescent retirement across normal/error crossings. Related sibling admission and stopped-domain settlement remain ahead |
 | E1d.2c.4b.4d.4 | Related compiled sibling settlement | Test-only on 0.125: child membership, stopped admission, retained owning handover, borrower-first resource cleanup and suppressed nested sibling handlers. Explicit parent-join harness; terminal/fuel coverage follows in 4d.5 |
-| E1d.2c.4b.4d.5 | Owning terminal reports and host limits | Test-only on 0.125: one-use owning terminal reports preserve child causes; related fuel failures bypass contingencies and propagate through ancestors with retained children. Exact owner release and shared-fuel isolation; process-wide stop, active sibling handlers, readiness and source scheduling remain ahead |
+| E1d.2c.4b.4d.5 | Owning terminal reports and host limits | Test-only on 0.125: one-use owning terminal reports preserve child causes; related fuel failures bypass contingencies and propagate through ancestors with retained children. Exact owner release and shared-fuel isolation; active handler coverage follows in 4d.6 |
+| E1d.2c.4b.4d.6 | Stopping active sibling contingencies | Test-only on 0.125: named and lexical handlers paused with retained owners are retired without running remaining handler work. Exact release, isolated causes and host baseline restoration; process-wide stop, readiness and source scheduling remain ahead |
 | E1e | Explicit cooperative cancellation and suspending cleanup; normal completion races, cleanup failures and no abandoned losers | Define cancellation observation and cleanup admission; no implicit cancellation exception |
 | E2 | Pinned native coroutine experiment, then checked lowering and schedule-based differential validation | Reference semantics and legal frame retirement must precede native destruction |
 

@@ -52,7 +52,7 @@ fn complete(contexts: &mut Contexts<'_>, key: &ContextKey, quotas: &[usize]) -> 
 
 pub fn drive_siblings(
     host: &mut Host,
-    controls: [&'static Control; 9],
+    controls: [&'static Control; 11],
     path: String,
     mode: &str,
     quotas: &[usize],
@@ -67,16 +67,26 @@ pub fn drive_siblings(
         recovering_control,
         unhandled_control,
         ancestor_control,
+        named_handler_control,
+        lexical_handler_control,
     ] = controls;
     let fail = mode != "normal";
     let fuel = mode.starts_with("fuel");
     let cascade = mode == "fuel-parent" || mode == "fuel-peer";
     let escaping = mode == "root";
+    let handling = mode.starts_with("handler-");
+    let sibling_control = match mode {
+        "handler-named" => named_handler_control,
+        "handler-lexical" => lexical_handler_control,
+        _ => sibling_control,
+    };
     let parent_control = if escaping {
         unhandled_control
     } else {
         parent_control
     };
+    host.enter("sibling harness")?;
+    host.contingencies.push("host contingency marker".into());
     let mut contexts = Contexts::new(host);
     let initial_fuel = contexts.host.fuel;
     for round in 0..3 {
@@ -115,9 +125,21 @@ pub fn drive_siblings(
             sibling_control,
             vec![parent_loan, V::String(path.clone())],
         )?;
-        until_marker(&mut contexts, &sibling, "sibling ready")?;
-        let nested_loan = borrowed_counter(&contexts, &sibling);
-        let descendant = contexts.start_child(&sibling, descendant_control, vec![nested_loan])?;
+        until_marker(
+            &mut contexts,
+            &sibling,
+            if handling {
+                "sibling handler ready"
+            } else {
+                "sibling ready"
+            },
+        )?;
+        // No new child admission into the handler is needed to stop active
+        // contingency work: this child borrows the original parent instead.
+        let borrower_parent = if handling { &parent } else { &sibling };
+        let nested_loan = borrowed_counter(&contexts, borrower_parent);
+        let descendant =
+            contexts.start_child(borrower_parent, descendant_control, vec![nested_loan])?;
         until_marker(&mut contexts, &descendant, "descendant ready")?;
         let loan = borrowed_counter(&contexts, &parent);
         let recovering = contexts.start_child(&parent, recovering_control, vec![loan])?;
@@ -138,7 +160,9 @@ pub fn drive_siblings(
             contexts.domains.len(),
         );
         assert!(contexts.advance(&parent, 1).is_err());
-        assert!(contexts.advance(&sibling, 1).is_err());
+        if !handling {
+            assert!(contexts.advance(&sibling, 1).is_err());
+        }
         assert_eq!(
             before,
             (
@@ -295,6 +319,7 @@ pub fn drive_siblings(
                 .any(|message| message.starts_with("forbidden"))
         );
         assert!(messages.contains(&"local recovered"));
+        assert_eq!(messages.contains(&"sibling handler ready"), handling);
         assert_eq!(messages.contains(&"owner handler"), fail && !fuel);
         for normal in [
             "owner continued",
@@ -315,10 +340,21 @@ pub fn drive_siblings(
         assert!(
             contexts.host.resources.values.is_empty() && contexts.host.resources.scopes.is_empty()
         );
+        assert_eq!(contexts.host.contingencies, ["host contingency marker"]);
+        let baseline = contexts.host.activations.failure(
+            "sibling harness",
+            fault::Phase::Execution,
+            "host observation",
+        );
+        assert_eq!(baseline.activations.len(), 1);
+        assert_eq!(baseline.activations[0].control, "sibling harness");
+        assert!(baseline.cause.is_none() && !contexts.host.source_faulted());
         if fuel {
             contexts.host.fuel = initial_fuel;
         }
     }
+    contexts.host.contingencies.pop();
+    contexts.host.leave();
     contexts.host.events.push(
         serde_json::json!({"kind":"siblings_settled", "fault":fail, "mode":mode, "rounds":3}),
     );

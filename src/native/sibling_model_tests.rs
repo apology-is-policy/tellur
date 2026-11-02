@@ -47,6 +47,8 @@ fn related_compiled_children_settle_borrowers_before_the_owning_contingency() {
             "recovering",
             "root_unhandled",
             "ancestor",
+            "sibling_named_handler",
+            "sibling_lexical_handler",
         ]
         .map(|name| format!("&MODEL_{}", names[name]))
         .join(",");
@@ -73,9 +75,12 @@ fn related_compiled_children_settle_borrowers_before_the_owning_contingency() {
                 "fuel",
                 "fuel-parent",
                 "fuel-peer",
+                "handler-named",
+                "handler-lexical",
             ] {
                 let fail = mode != "normal";
                 let fuel = mode.starts_with("fuel");
+                let handling = mode.starts_with("handler-");
                 for quotas in ["1", "0,2,0,7", "3,1,9"] {
                     if log.exists() {
                         fs::remove_file(&log).unwrap();
@@ -95,7 +100,9 @@ fn related_compiled_children_settle_borrowers_before_the_owning_contingency() {
                     let events = output["events"].as_array().unwrap();
                     assert_eq!(events.last().unwrap()["kind"], "siblings_settled");
                     assert_eq!(events.last().unwrap()["rounds"], 3);
-                    let expected = if mode == "fuel-peer" {
+                    let expected = if handling {
+                        "make 1\nmake 3\nborrow 1\nmake 2\nborrow 1\nmake 5\nborrow 1\ndrop 5\ndrop 2\nclose 1\ndrop 1\nborrow 3\nclose 3\ndrop 3\n"
+                    } else if mode == "fuel-peer" {
                         "make 6\nmake 7\nmake 1\nmake 3\nborrow 1\nmake 2\nmake 4\nborrow 1\nmake 5\ndrop 5\ndrop 4\ndrop 2\ndrop 1\ndrop 7\ndrop 6\ndrop 3\n"
                     } else if mode == "fuel-parent" {
                         "make 6\nmake 1\nmake 3\nborrow 1\nmake 2\nmake 4\nborrow 1\nmake 5\ndrop 5\ndrop 4\ndrop 2\ndrop 1\ndrop 6\ndrop 3\n"
@@ -111,7 +118,23 @@ fn related_compiled_children_settle_borrowers_before_the_owning_contingency() {
                         .iter()
                         .filter(|event| event["kind"] == "fault")
                         .collect();
-                    assert_eq!(faults.len(), if fail && !fuel { 6 } else { 3 });
+                    assert_eq!(
+                        faults.len(),
+                        if handling {
+                            9
+                        } else if fail && !fuel {
+                            6
+                        } else {
+                            3
+                        }
+                    );
+                    assert_eq!(
+                        faults
+                            .iter()
+                            .filter(|event| event["report"]["message"] == "E_FAULT: sibling local")
+                            .count(),
+                        if handling { 3 } else { 0 }
+                    );
                     assert_eq!(
                         faults
                             .iter()
