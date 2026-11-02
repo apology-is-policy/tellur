@@ -772,11 +772,40 @@ memberships, domains and resources are empty after each settled round.
 
 This is a bounded parent-join harness on compiler 0.125: normal parent execution stays
 parked while its children are live. It does not implement source `spawn`/`yield` or a
-general scheduler. Related-context fuel exhaustion, process-wide termination, external
-readiness, already-running sibling handlers and broader backend comparisons remain
-validation/integration gates. Production generated execution, ownership rules and
+general scheduler. Terminal reports and related-context fuel exhaustion are covered by
+the following slice. Process-wide termination, external readiness, already-running
+sibling handlers and broader backend comparisons remain validation/integration gates.
+Production generated execution, ownership rules and
 fault policy are unchanged; async adapters, cancellation and suspending cleanup remain
 separate work.
+
+## Owning terminal reports and host limits (E1d.2c.4b.4d.5)
+
+The compiled context model now preserves the owning root's full terminal report when
+settlement escapes its boundary. It delivers that report once through the original
+context key, separately from the triggering child's report. The original child remains
+in the causal chain. A zero-quota observation leaves pending delivery untouched;
+foreign-session keys and duplicate delivery are rejected without effects or fuel use.
+
+The related resource fixture now covers an owning contingency that escalates after
+completing its retained owner, plus fuel exhaustion after siblings and borrowed frames
+are retained. A host limit bypasses source contingencies and applies resource fault
+dispositions. Propagation through a related parent settles its ancestor, including an
+ancestor with another retained child, without resuming normal parent work. The unrelated
+root survives domain settlement but subsequently observes the same exhausted shared
+fuel budget and releases its own owner. The test resets that budget only after the
+whole round has settled so it can repeat the same fixture.
+
+Original and expanded code at O0/O2 run normal, handled fault, escaping fault and three
+fuel arrangements across three quota partitions and three rounds. Exact Rust logs check
+descendant-before-owner release, skipped normal closes on host failure, and no repeated
+destruction. Each round ends with empty frames, memberships, domains, resources and
+terminal delivery storage. Existing independent-context fuel-cut tests also pass.
+
+This remains test-only evidence on compiler 0.125. Context keys are harness selectors,
+not source task handles or readiness signals. Process-wide stop, siblings already in
+contingency, readiness integration and explicit source handoffs remain separate gates;
+no production scheduler, new cleanup-failure policy or language syntax is introduced.
 
 ## Separate the identities and continuations
 
@@ -1083,7 +1112,8 @@ Those boundaries need explicit contracts before being accepted by the checker.
 | E1d.2c.4b.4d.1 | Independent compiled native contexts | Test-only evidence on 0.124: paired tracker/contingency/resource selection, original compiled machines, session-scoped keys and independent root cleanup over shared frames/effects/scripts/fuel. Native sibling settlement within an owning fault domain remains ahead |
 | E1d.2c.4b.4d.2 | Shared native host contexts | Delivered in 0.125: host-bound retained state, dormant ownership-root admission, paired selection/restoration and checked retirement. Compiled models use the shared operations; native owning-domain membership and sibling settlement remain ahead |
 | E1d.2c.4b.4d.3 | Compiled fault-domain lifetimes | Test-only on 0.125: distinct owning/current domains retained through named and lexical boundaries, exact parked-boundary validation and quiescent retirement across normal/error crossings. Related sibling admission and stopped-domain settlement remain ahead |
-| E1d.2c.4b.4d.4 | Related compiled sibling settlement | Test-only on 0.125: child membership, stopped admission, retained owning handover, borrower-first resource cleanup and suppressed nested sibling handlers. Explicit parent-join harness; source scheduling, related fuel/process/readiness cases and broader integration remain ahead |
+| E1d.2c.4b.4d.4 | Related compiled sibling settlement | Test-only on 0.125: child membership, stopped admission, retained owning handover, borrower-first resource cleanup and suppressed nested sibling handlers. Explicit parent-join harness; terminal/fuel coverage follows in 4d.5 |
+| E1d.2c.4b.4d.5 | Owning terminal reports and host limits | Test-only on 0.125: one-use owning terminal reports preserve child causes; related fuel failures bypass contingencies and propagate through ancestors with retained children. Exact owner release and shared-fuel isolation; process-wide stop, active sibling handlers, readiness and source scheduling remain ahead |
 | E1e | Explicit cooperative cancellation and suspending cleanup; normal completion races, cleanup failures and no abandoned losers | Define cancellation observation and cleanup admission; no implicit cancellation exception |
 | E2 | Pinned native coroutine experiment, then checked lowering and schedule-based differential validation | Reference semantics and legal frame retirement must precede native destruction |
 

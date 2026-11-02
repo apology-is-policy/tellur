@@ -27,6 +27,7 @@ pub struct Contexts<'a> {
     identity: Arc<()>,
     next: u64,
     parked: BTreeMap<u64, Parked>,
+    terminal: BTreeMap<u64, ContextPoll>,
 }
 impl<'a> Contexts<'a> {
     pub fn new(host: &'a mut Host) -> Self {
@@ -37,6 +38,7 @@ impl<'a> Contexts<'a> {
             identity: Arc::new(()),
             next: 0,
             parked: BTreeMap::new(),
+            terminal: BTreeMap::new(),
         }
     }
     pub fn start(&mut self, control: &'static Control, arguments: Vec<V>) -> R<ContextKey> {
@@ -144,6 +146,16 @@ impl<'a> Contexts<'a> {
         })
     }
     pub fn advance(&mut self, key: &ContextKey, quota: usize) -> R<ContextPoll> {
+        if !Arc::ptr_eq(&self.identity, &key.session) {
+            return Err("E_NATIVE: context belongs to another session".into());
+        }
+        if self.terminal.contains_key(&key.id) {
+            return Ok(if quota == 0 {
+                ContextPoll::Paused
+            } else {
+                self.terminal.remove(&key.id).unwrap()
+            });
+        }
         self.require(key)?;
         self.parked[&key.id]
             .machine
@@ -208,7 +220,9 @@ impl<'a> Contexts<'a> {
         }
         if let Some((domain, message, report, source_fault)) = settlement {
             self.settle(&domain, key.id, &message, report.clone(), source_fault)?;
-            if !self.parked.contains_key(&key.id) {
+            if let Some(terminal) = self.terminal.remove(&key.id) {
+                result = terminal;
+            } else if !self.parked.contains_key(&key.id) {
                 result = ContextPoll::Failed(report);
             }
         }
@@ -274,18 +288,50 @@ impl<'a> Contexts<'a> {
             message.into(),
             true,
         );
+        let mut next = None;
         if parked.machine.finished {
+            let error = result
+                .as_ref()
+                .err()
+                .ok_or("E_NATIVE: failed owner lost its terminal error")?;
+            let terminal =
+                self.host
+                    .activations
+                    .failure(parked.name, fault::Phase::Execution, error);
+            if parked.parent.is_some() {
+                next = Some((
+                    parked.machine.root.key.clone(),
+                    error.clone(),
+                    terminal,
+                    self.host.source_faulted(),
+                ));
+            } else {
+                assert!(
+                    self.terminal
+                        .insert(owner, ContextPoll::Failed(terminal))
+                        .is_none()
+                );
+            }
             self.host.finish_context(&mut parked.root, true)?;
+        } else if let Some(message) = &parked.machine.fault {
+            next = Some((
+                parked.machine.current.clone(),
+                message.clone(),
+                self.host
+                    .activations
+                    .failure(parked.name, fault::Phase::Execution, message),
+                self.host.source_faulted(),
+            ));
         }
         self.host.exchange_context(&mut parked.host)?;
+        let finished = parked.machine.finished;
         if !parked.machine.finished {
             self.parked.insert(owner, parked);
         }
-        // Terminal failure is reported by the caller's original fault event.
-        if let Err(error) = result {
-            if error != message {
-                return Err(error);
-            }
+        if let Some((domain, message, report, source_fault)) = next {
+            self.settle(&domain, owner, &message, report, source_fault)?;
+        } else if !finished {
+            result?;
         }
         Ok(())
     }
@@ -471,6 +517,7 @@ pub fn drive_contexts(
         turns += 1;
     }
     assert!(contexts.values.is_empty());
+    assert!(contexts.terminal.is_empty());
     assert_eq!(contexts.domains.len(), 0);
     assert_eq!(contexts.domains.member_count(), 0);
     assert_eq!(contexts.host.resources.scopes.len(), baseline.3);

@@ -45,15 +45,17 @@ fn related_compiled_children_settle_borrowers_before_the_owning_contingency() {
             "unstarted",
             "independent",
             "recovering",
+            "root_unhandled",
+            "ancestor",
         ]
         .map(|name| format!("&MODEL_{}", names[name]))
         .join(",");
         let replacement = format!(
             r#"fn entry_{entry}(host:&mut Host,mut args:Vec<V>)->R<Completion>{{
             let V::String(path)=args.remove(0) else {{panic!("path")}};
-            let fail=std::env::var("TELLUR_SIBLING_FAIL").unwrap()=="true";
+            let mode=std::env::var("TELLUR_SIBLING_MODE").unwrap();
             let quotas=std::env::var("TELLUR_NATIVE_MODEL_QUOTAS").unwrap().split(',').map(|s|s.parse::<usize>().unwrap()).collect::<Vec<_>>();
-            drive_siblings(host,[{controls}],path,fail,&quotas)
+            drive_siblings(host,[{controls}],path,&mode,&quotas)
         }}"#
         );
         let source = source(&program, "main").unwrap();
@@ -64,27 +66,42 @@ fn related_compiled_children_settle_borrowers_before_the_owning_contingency() {
             let project = program.native_project("main", &binary).unwrap();
             fs::write(&project.2, &source).unwrap();
             program.finish_native_build(project, opt).unwrap();
-            for fail in [false, true] {
+            for mode in [
+                "normal",
+                "fault",
+                "root",
+                "fuel",
+                "fuel-parent",
+                "fuel-peer",
+            ] {
+                let fail = mode != "normal";
+                let fuel = mode.starts_with("fuel");
                 for quotas in ["1", "0,2,0,7", "3,1,9"] {
                     if log.exists() {
                         fs::remove_file(&log).unwrap();
                     }
                     let output = Command::new(&binary)
                         .args(["--json", "--fuel", "10000", "--", log.to_str().unwrap()])
-                        .env("TELLUR_SIBLING_FAIL", fail.to_string())
+                        .env("TELLUR_SIBLING_MODE", mode)
                         .env("TELLUR_NATIVE_MODEL_QUOTAS", quotas)
                         .output()
                         .unwrap();
                     assert!(
                         output.status.success(),
-                        "expanded={is_expanded},opt={opt},fail={fail},quotas={quotas}: {}",
+                        "expanded={is_expanded},opt={opt},mode={mode},quotas={quotas}: {}",
                         String::from_utf8_lossy(&output.stderr)
                     );
                     let output: Json = serde_json::from_slice(&output.stdout).unwrap();
                     let events = output["events"].as_array().unwrap();
                     assert_eq!(events.last().unwrap()["kind"], "siblings_settled");
                     assert_eq!(events.last().unwrap()["rounds"], 3);
-                    let expected = if fail {
+                    let expected = if mode == "fuel-peer" {
+                        "make 6\nmake 7\nmake 1\nmake 3\nborrow 1\nmake 2\nmake 4\nborrow 1\nmake 5\ndrop 5\ndrop 4\ndrop 2\ndrop 1\ndrop 7\ndrop 6\ndrop 3\n"
+                    } else if mode == "fuel-parent" {
+                        "make 6\nmake 1\nmake 3\nborrow 1\nmake 2\nmake 4\nborrow 1\nmake 5\ndrop 5\ndrop 4\ndrop 2\ndrop 1\ndrop 6\ndrop 3\n"
+                    } else if fuel {
+                        "make 1\nmake 3\nborrow 1\nmake 2\nmake 4\nborrow 1\nmake 5\ndrop 5\ndrop 4\ndrop 2\ndrop 1\ndrop 3\n"
+                    } else if fail {
                         "make 1\nmake 3\nborrow 1\nmake 2\nmake 4\nborrow 1\nmake 5\nborrow 1\ndrop 5\ndrop 4\ndrop 2\nclose 1\ndrop 1\nborrow 3\nclose 3\ndrop 3\n"
                     } else {
                         "make 1\nmake 3\nborrow 1\nmake 2\nmake 4\nborrow 1\nmake 5\nborrow 4\nborrow 4\nclose 4\ndrop 4\nclose 2\ndrop 2\nclose 5\ndrop 5\nborrow 1\nclose 1\ndrop 1\nborrow 3\nclose 3\ndrop 3\n"
@@ -94,7 +111,7 @@ fn related_compiled_children_settle_borrowers_before_the_owning_contingency() {
                         .iter()
                         .filter(|event| event["kind"] == "fault")
                         .collect();
-                    assert_eq!(faults.len(), if fail { 6 } else { 3 });
+                    assert_eq!(faults.len(), if fail && !fuel { 6 } else { 3 });
                     assert_eq!(
                         faults
                             .iter()
@@ -102,7 +119,7 @@ fn related_compiled_children_settle_borrowers_before_the_owning_contingency() {
                             .count(),
                         3
                     );
-                    if fail {
+                    if fail && !fuel {
                         for (round, fault) in faults
                             .iter()
                             .filter(|event| event["report"]["message"] == "E_FAULT: child failed")
@@ -123,6 +140,40 @@ fn related_compiled_children_settle_borrowers_before_the_owning_contingency() {
                                     .iter()
                                     .any(|activation| activation["control"] == "failing")
                             );
+                        }
+                    }
+                    let terminal: Vec<_> = events
+                        .iter()
+                        .filter(|event| event["kind"] == "owner_failure")
+                        .collect();
+                    assert_eq!(terminal.len(), if fuel || mode == "root" { 3 } else { 0 });
+                    for (round, terminal) in terminal.iter().enumerate() {
+                        let original = &events
+                            .iter()
+                            .find(|event| {
+                                event["kind"] == "sibling_failure" && event["round"] == round
+                            })
+                            .unwrap()["report"];
+                        assert_ne!(&terminal["report"], original);
+                        let mut current = &terminal["report"];
+                        let mut found = false;
+                        while !current.is_null() {
+                            if current == original {
+                                found = true;
+                            }
+                            current = &current["cause"];
+                        }
+                        assert!(found, "terminal owner lost the original child cause");
+                        if fuel {
+                            assert!(
+                                terminal["report"]["message"]
+                                    .as_str()
+                                    .unwrap()
+                                    .starts_with("E_FUEL")
+                            );
+                            assert!(terminal["report"].get("kind").is_none());
+                        } else {
+                            assert_eq!(terminal["report"]["kind"], "source_fault");
                         }
                     }
                 }

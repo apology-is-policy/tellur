@@ -142,7 +142,11 @@ admission and stopped-domain settlement are the next gate.
 E1d.2c.4b.4d.4 now proves related child membership and stopped-sibling settlement in
 an explicit compiled parent-join harness. Real nested owners settle before the retained
 owning contingency; sibling handlers are suppressed and independent roots survive.
-Source scheduling and related fuel/process/readiness integration remain ahead.
+E1d.2c.4b.4d.5 preserves one-use owning terminal reports with original child causes and
+tests host-limit propagation through related parents and ancestors with retained
+children. Fuel failures bypass source handlers and release owners without ordinary
+continuation; unrelated roots still share the exhausted host budget. Process-wide
+stop, active sibling handlers, readiness and source scheduling remain ahead.
 
 2 November 2026. This is the working revision plan, not a claim that all proposed
 features are implemented. Compiler **0.125.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
@@ -380,7 +384,8 @@ do not block this design work. E2 remains the native coroutine target.
 | E1d.2c.4b.4d.1 | Independent compiled native contexts | Test-only evidence on 0.124: paired tracker/contingency/resource selection, original compiled machines, session-scoped keys and independent root cleanup over shared frames/effects/scripts/fuel. Native sibling settlement within an owning fault domain remains ahead |
 | E1d.2c.4b.4d.2 | Shared native host contexts | Delivered in 0.125: host-bound retained state, dormant ownership-root admission, paired selection/restoration and checked retirement. Compiled models use the shared operations; native owning-domain membership and sibling settlement remain ahead |
 | E1d.2c.4b.4d.3 | Compiled fault-domain lifetimes | Test-only on 0.125: distinct owning/current domains retained through named and lexical boundaries, exact parked-boundary validation and quiescent retirement across normal/error crossings. Related sibling admission and stopped-domain settlement remain ahead |
-| E1d.2c.4b.4d.4 | Related compiled sibling settlement | Test-only on 0.125: child membership, stopped admission, retained owning handover, borrower-first resource cleanup and suppressed nested sibling handlers. Explicit parent-join harness; source scheduling, related fuel/process/readiness cases and broader integration remain ahead |
+| E1d.2c.4b.4d.4 | Related compiled sibling settlement | Test-only on 0.125: child membership, stopped admission, retained owning handover, borrower-first resource cleanup and suppressed nested sibling handlers. Explicit parent-join harness; terminal/fuel coverage follows in 4d.5 |
+| E1d.2c.4b.4d.5 | Owning terminal reports and host limits | Test-only on 0.125: one-use owning terminal reports preserve child causes; related fuel failures bypass contingencies and propagate through ancestors with retained children. Exact owner release and shared-fuel isolation; process-wide stop, active sibling handlers, readiness and source scheduling remain ahead |
 | E2 | Native coroutine lowering | Preserved architectural target: direct LLVM coroutine primitives, pinned-toolchain experiment, frame lifetime rules and schedule-based differential tests; I1 must keep this route open |
 | T1 | Stronger source transformations | Hold current scope during P1–P5: extraction correspondence, continuation cuts, source-level lift and editor actions |
 | R1 | Mathematical foundations | Maintain existing evidence; defer extensions during P1–P5: preservation judgments, richer protocol abstractions, infinite/causal behavior, mechanization |

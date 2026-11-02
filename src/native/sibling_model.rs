@@ -52,9 +52,9 @@ fn complete(contexts: &mut Contexts<'_>, key: &ContextKey, quotas: &[usize]) -> 
 
 pub fn drive_siblings(
     host: &mut Host,
-    controls: [&'static Control; 7],
+    controls: [&'static Control; 9],
     path: String,
-    fail: bool,
+    mode: &str,
     quotas: &[usize],
 ) -> R<Completion> {
     let [
@@ -65,11 +65,47 @@ pub fn drive_siblings(
         unstarted_control,
         independent_control,
         recovering_control,
+        unhandled_control,
+        ancestor_control,
     ] = controls;
+    let fail = mode != "normal";
+    let fuel = mode.starts_with("fuel");
+    let cascade = mode == "fuel-parent" || mode == "fuel-peer";
+    let escaping = mode == "root";
+    let parent_control = if escaping {
+        unhandled_control
+    } else {
+        parent_control
+    };
     let mut contexts = Contexts::new(host);
+    let initial_fuel = contexts.host.fuel;
     for round in 0..3 {
         let begin = contexts.host.events.len();
-        let parent = contexts.start(parent_control, vec![V::String(path.clone())])?;
+        let ancestor = if cascade {
+            let key = contexts.start(ancestor_control, vec![V::String(path.clone())])?;
+            until_marker(&mut contexts, &key, "owner ready")?;
+            Some(key)
+        } else {
+            None
+        };
+        let peer = if mode == "fuel-peer" {
+            let (made, mut fields) = contexts
+                .host
+                .primitive("make", vec![V::String(path.clone()), V::U32(7)])?;
+            assert_eq!(made, "made");
+            Some(contexts.start_child(
+                ancestor.as_ref().unwrap(),
+                unstarted_control,
+                vec![fields.remove(0)],
+            )?)
+        } else {
+            None
+        };
+        let parent = if let Some(ancestor) = &ancestor {
+            contexts.start_child(ancestor, parent_control, vec![V::String(path.clone())])?
+        } else {
+            contexts.start(parent_control, vec![V::String(path.clone())])?
+        };
         until_marker(&mut contexts, &parent, "owner ready")?;
         let other = contexts.start(independent_control, vec![V::String(path.clone())])?;
         until_marker(&mut contexts, &other, "independent ready")?;
@@ -115,12 +151,20 @@ pub fn drive_siblings(
         if fail {
             let loan = borrowed_counter(&contexts, &parent);
             let failing = contexts.start_child(&parent, failing_control, vec![loan])?;
+            if fuel {
+                contexts.host.fuel = Some(0);
+            }
             let mut failed = false;
             for quota in quotas.iter().copied().cycle().take(1000) {
                 match contexts.advance(&failing, quota)? {
                     ContextPoll::Paused => {}
                     ContextPoll::Failed(report) => {
-                        assert_eq!(report.message, "E_FAULT: child failed");
+                        if fuel {
+                            assert!(report.message.starts_with("E_FUEL"));
+                            assert_eq!(report.kind, fault::Kind::ReturnedError);
+                        } else {
+                            assert_eq!(report.message, "E_FAULT: child failed");
+                        }
                         contexts.host.events.push(serde_json::json!({"kind":"sibling_failure", "report":report, "round":round}));
                         failed = true;
                         break;
@@ -137,7 +181,11 @@ pub fn drive_siblings(
                         .is_err()
                 );
             }
-            let loan = borrowed_counter(&contexts, &parent);
+            let arguments = if fuel {
+                vec![]
+            } else {
+                vec![borrowed_counter(&contexts, &parent)]
+            };
             let before = (
                 contexts.next,
                 contexts.domains.member_count(),
@@ -146,7 +194,7 @@ pub fn drive_siblings(
             );
             assert!(
                 contexts
-                    .start_child(&parent, failing_control, vec![loan])
+                    .start_child(&parent, failing_control, arguments)
                     .is_err()
             );
             assert_eq!(
@@ -163,8 +211,79 @@ pub fn drive_siblings(
             complete(&mut contexts, &sibling, quotas)?;
             complete(&mut contexts, &unstarted, quotas)?;
         }
-        complete(&mut contexts, &parent, quotas)?;
-        complete(&mut contexts, &other, quotas)?;
+        let terminal_owner = ancestor.as_ref().unwrap_or(&parent);
+        if cascade {
+            assert!(contexts.advance(&parent, 0).is_err());
+            if let Some(peer) = &peer {
+                assert!(contexts.advance(peer, 0).is_err());
+            }
+        }
+        if fuel || escaping {
+            let before = (
+                contexts.host.fuel,
+                contexts.host.events.len(),
+                contexts.terminal.len(),
+            );
+            assert!(matches!(
+                contexts.advance(terminal_owner, 0)?,
+                ContextPoll::Paused
+            ));
+            let foreign = ContextKey {
+                session: Arc::new(()),
+                id: terminal_owner.id,
+            };
+            assert!(contexts.advance(&foreign, 1).is_err());
+            assert_eq!(
+                before,
+                (
+                    contexts.host.fuel,
+                    contexts.host.events.len(),
+                    contexts.terminal.len()
+                )
+            );
+            let mut delivered = false;
+            for quota in quotas.iter().copied().cycle().take(1000) {
+                match contexts.advance(terminal_owner, quota)? {
+                    ContextPoll::Paused => {}
+                    ContextPoll::Failed(report) => {
+                        assert_eq!(
+                            report.boundary,
+                            if cascade {
+                                ancestor_control.name
+                            } else {
+                                parent_control.name
+                            }
+                        );
+                        assert_eq!(
+                            report.kind,
+                            if fuel {
+                                fault::Kind::ReturnedError
+                            } else {
+                                fault::Kind::SourceFault
+                            }
+                        );
+                        contexts.host.events.push(serde_json::json!({"kind":"owner_failure", "report":report, "round":round}));
+                        delivered = true;
+                        break;
+                    }
+                    _ => panic!("terminal owner completed normally"),
+                }
+            }
+            assert!(delivered && contexts.advance(terminal_owner, 0).is_err());
+        } else {
+            complete(&mut contexts, &parent, quotas)?;
+        }
+        if fuel {
+            assert!(contexts.parked.contains_key(&other.id));
+            assert_eq!(contexts.host.resources.values.len(), 1);
+            let ContextPoll::Failed(report) = contexts.advance(&other, 1)? else {
+                panic!("shared fuel limit")
+            };
+            assert!(report.message.starts_with("E_FUEL"));
+            assert_eq!(report.kind, fault::Kind::ReturnedError);
+        } else {
+            complete(&mut contexts, &other, quotas)?;
+        }
         let messages: Vec<_> = contexts.host.events[begin..]
             .iter()
             .filter(|event| event["kind"] == "emit")
@@ -176,7 +295,7 @@ pub fn drive_siblings(
                 .any(|message| message.starts_with("forbidden"))
         );
         assert!(messages.contains(&"local recovered"));
-        assert_eq!(messages.contains(&"owner handler"), fail);
+        assert_eq!(messages.contains(&"owner handler"), fail && !fuel);
         for normal in [
             "owner continued",
             "sibling continued",
@@ -185,8 +304,10 @@ pub fn drive_siblings(
         ] {
             assert_eq!(messages.contains(&normal), !fail);
         }
-        assert!(messages.contains(&"independent complete") && messages.contains(&"owner complete"));
+        assert_eq!(messages.contains(&"independent complete"), !fuel);
+        assert_eq!(messages.contains(&"owner complete"), !escaping && !fuel);
         assert!(contexts.parked.is_empty() && contexts.values.is_empty());
+        assert!(contexts.terminal.is_empty());
         assert_eq!(
             (contexts.domains.len(), contexts.domains.member_count()),
             (0, 0)
@@ -194,10 +315,12 @@ pub fn drive_siblings(
         assert!(
             contexts.host.resources.values.is_empty() && contexts.host.resources.scopes.is_empty()
         );
+        if fuel {
+            contexts.host.fuel = initial_fuel;
+        }
     }
-    contexts
-        .host
-        .events
-        .push(serde_json::json!({"kind":"siblings_settled", "fault":fail, "rounds":3}));
+    contexts.host.events.push(
+        serde_json::json!({"kind":"siblings_settled", "fault":fail, "mode":mode, "rounds":3}),
+    );
     Ok(Completion::Outcome(("done".into(), vec![])))
 }

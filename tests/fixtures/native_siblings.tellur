@@ -1,4 +1,4 @@
-boundary request(counter owner) retains owner {
+boundary request(counter owner, bool escape) retains owner, escape {
     emit("owner ready");
     inspect(borrow owner);
     emit("owner continued");
@@ -9,7 +9,12 @@ contingency(string reason) {
     emit("owner handler");
     emit(reason);
     close(owner);
-    terminate;
+    delta escape {
+        true => escaped,
+        false => handled
+    }
+    [escaped]: escalate;
+    [handled]: terminate;
 }
 
 boundary nested(counter local, string path) retains local {
@@ -91,13 +96,33 @@ control independent(string path) exits done {
         exit done;
 }
 
-control main(string path) exits done {
+control root_unhandled(string path) exits done faults {
+    delta make(borrow path, 1) {
+        made { counter value } => made
+    }
+    [made]:
+        supervise request(value, true);
+        emit("owner complete");
+        exit done;
+}
+
+control ancestor(string path) exits done faults {
+    delta make(borrow path, 6) {
+        made { counter value } => made
+    }
+    [made]:
+        supervise request(value, false);
+        emit("forbidden ancestor continuation");
+        exit done;
+}
+
+control main(string path) exits done faults {
     delta make(borrow path, 1) {
         made { counter value } => made
     }
 
     [made]:
-        supervise request(value);
+        supervise request(value, false);
         emit("owner complete");
         exit done;
 }

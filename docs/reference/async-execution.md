@@ -487,5 +487,13 @@ and resources settle. Nested sibling handlers are suppressed, unrun bodies stay 
 and only the owning contingency handles the escaping child fault. A child that handles
 its own fault leaves siblings live. Real Rust-owner tests cover repeated normal joins
 and fault cleanup while an unrelated root remains available. This harness parks normal
-parent execution until its children settle; it is not source concurrency. Related fuel,
-process-wide stop and readiness cases remain gates before production integration.
+parent execution until its children settle; it is not source concurrency.
+
+The [terminal-report extension](../async-execution.md#owning-terminal-reports-and-host-limits-e1d2c4b4d5)
+delivers a failed owning root's report once, preserving the original child cause even
+when the owning contingency escalates. Fuel exhaustion with retained children skips
+source handlers, settles borrowers and owners, and propagates through related parents
+and ancestors with live children. Unrelated roots retain their state until selected but
+observe the same exhausted shared fuel budget. These are test-only native scenarios;
+process-wide stop, active sibling handlers, readiness and source handoffs remain gates
+before production integration. Installed source behavior is unchanged.
