@@ -14,7 +14,7 @@ fn checked(text: &str) -> CheckedProgram {
 }
 
 #[test]
-fn model_gates_unimplemented_continuations_without_changing_standard_emission() {
+fn model_keeps_named_boundaries_private_without_changing_standard_emission() {
     for text in [
         "boundary work() {terminate;} contingency(string reason) {terminate;} control main() exits done {supervise work();exit done;}",
         "boundary work() {terminate;} contingency(string reason) {terminate;} control main() exits done {fault boundary {supervise work();} contingency [] {terminate process 1;}exit done;}",
@@ -22,14 +22,58 @@ fn model_gates_unimplemented_continuations_without_changing_standard_emission() 
         let p = checked(text)
             .with_entry_exit_codes("main", BTreeMap::from([("done".into(), 0)]))
             .unwrap();
-        assert!(
-            source(&p, "main")
-                .unwrap_err()
-                .message
-                .contains("does not yet support")
+        let model = source(&p, "main").unwrap();
+        assert!(model.contains("Step::Supervise"));
+        // Named work and contingency remain unavailable as public entry controls.
+        assert_eq!(
+            model
+                .matches("entry controls cannot require borrowed arguments")
+                .count(),
+            2
         );
         assert!(!p.native_source("main").unwrap().contains("struct Machine"));
     }
+}
+
+#[test]
+fn compiled_named_supervision_preserves_handover_borrowed_awaits_and_repeated_requests() {
+    compare_fixture(
+        "supervision",
+        include_str!("../../tests/fixtures/native_resume_supervision.tellur"),
+        [&[7, 9], &[7, 9]],
+        400,
+        false,
+    );
+}
+
+#[test]
+fn compiled_named_handler_faults_and_escalation_preserve_outer_lexical_causes() {
+    compare_fixture(
+        "supervision-causes",
+        r#"
+boundary inner(bool stop) retains stop {
+    fault boundary {fault "original";} contingency [] {escalate;}
+} contingency(string reason) {
+    emit(reason);
+    delta stop {true => failed, false => propagated}
+    [failed]: fault "handler failed";
+    [propagated]: escalate;
+}
+boundary outer(bool stop) {
+    supervise inner(stop);
+    terminate;
+} contingency(string reason) {emit(reason);escalate;}
+control main(bool stop) exits done faults {
+    fault boundary {supervise outer(stop);} contingency [] {
+        emit(borrow @fault.message);escalate;
+    }
+    exit done;
+}
+"#,
+        [&[], &[]],
+        150,
+        false,
+    );
 }
 
 #[test]

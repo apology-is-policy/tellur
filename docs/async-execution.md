@@ -604,10 +604,41 @@ process status, JSON and diagnostics also match without normalization. The exist
 call/constructor and loop models pass the shared continuation changes.
 
 This is evidence on compiler 0.124, with no public backend, compiler/LSP/VSIX or source
-semantics change. Named supervision and retained-parameter delivery remain explicitly
-gated. Those continuations and independent diagnostic/resource context selection must
-precede native sibling settlement and source scheduling. Host quotas still observe a
-single execution chain; they never select source siblings.
+semantics change. The following slice adds named supervision and retained-parameter
+delivery. Independent diagnostic/resource context selection must still precede native
+sibling settlement and source scheduling. Host quotas observe a single execution chain;
+they never select source siblings.
+
+## Compiled named supervision (E1d.2c.4b.4c.3)
+
+The compiled model parks a named supervision record in its caller while work executes
+in a separate retained frame. The record owns the shared boundary lifecycle and the
+handler target. On a source fault, nested child frames retire first. Retained work
+parameters then move out of their original slots before the failed work frame is
+released. The same resource scope preserves those owners while unretained values settle;
+the handler receives the retained parameters and original fault message once.
+
+Normal work and handler completion require the administrative `terminate` result. They
+restore the supervising caller without delivering an ordinary outcome. Handler faults
+and escalation finalize the same named record before reaching an outer named or lexical
+boundary. Ordinary host failures finalize the record without entering contingency. Named
+work and handlers remain unavailable as public entry controls.
+
+The [supervision fixture](../tests/fixtures/native_resume_supervision.tellur) combines
+guarded supervision, nested named and lexical boundaries, a repeated request loop,
+borrowed cold awaits, retained context and a contingent helper call. Differential cases
+also cover nested named handler faults/escalation and real retained Rust owners. Each
+runs original/expanded O0/O2 programs at every fuel cut with the existing quota
+partitions. The Rust-resource case requires exact destruction order, diagnostics and
+completion; the other cases use the existing reference comparison, including its
+fuel-message-only normalization. Earlier call, loop and lexical cases exercise the
+shared driver changes.
+
+The model remains test-only on 0.124. It retains one execution chain and does not yet
+select independent native diagnostic/resource contexts. Integrating those contexts,
+settling stopped siblings and broader backend validation must precede public source
+scheduling. There is no new native mode, async adapter contract or compiler/editor
+release in this checkpoint.
 
 ## Separate the identities and continuations
 
@@ -910,6 +941,7 @@ Those boundaries need explicit contracts before being accepted by the checker.
 | E1d.2c.4b.4b | Compiled native loop continuations | Test-only evidence on 0.123: iteration reset, staged owned arguments, nested expanded completion and repeated cold awaits under quota/fuel/fault comparisons. Boundary continuations and context selection remain gated |
 | E1d.2c.4b.4c.1 | Retained native host boundary lifecycle | Delivered in 0.124: shared boundary admission, source-fault handover, contingency entry and finalization with retained parent tracker/resource scope. Executable boundary resumes and independent context selection remain ahead |
 | E1d.2c.4b.4c.2 | Compiled lexical boundary continuations | Test-only evidence on 0.124: ordered work/handler resumes, loop/recovery/process crossings, nested fault causes and real Rust owner cleanup across quota/fuel cuts. Named supervision and independent context selection remain gated |
+| E1d.2c.4b.4c.3 | Compiled named supervision | Test-only evidence on 0.124: retained caller supervision, failed-work parameter handover before frame retirement, separate handler execution and exact real-owner cleanup. Independent context selection and native sibling settlement remain ahead |
 | E1e | Explicit cooperative cancellation and suspending cleanup; normal completion races, cleanup failures and no abandoned losers | Define cancellation observation and cleanup admission; no implicit cancellation exception |
 | E2 | Pinned native coroutine experiment, then checked lowering and schedule-based differential validation | Reference semantics and legal frame retirement must precede native destruction |
 

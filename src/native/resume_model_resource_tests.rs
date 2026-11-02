@@ -53,7 +53,40 @@ control main(string path, bool stop) exits done {
 
 #[test]
 fn compiled_boundary_pauses_preserve_real_owner_cleanup_at_every_fuel_cut() {
-    let root = std::env::temp_dir().join(format!("tellur-resume-resources-{}", std::process::id()));
+    compare_resources("lexical", SOURCE, [0, 23]);
+}
+
+#[test]
+fn compiled_named_handover_preserves_real_owners_before_work_frame_retirement() {
+    let source = SOURCE
+        .replace(
+            "control main(string path, bool stop) exits done {",
+            r#"boundary request(counter parent, counter child, bool stop) retains parent {
+    run work(borrow parent, child, stop);
+    close(parent);
+    terminate;
+} contingency(string reason) {close(parent);terminate;}
+control main(string path, bool stop) exits done {"#,
+        )
+        .replace(
+            r#"[child]: fault boundary {
+        run work(borrow parent, child, stop);
+    } contingency [parent] {
+        close(parent);
+        terminate process 23;
+    }
+    [child]: close(parent); exit done;"#,
+            "[child]: supervise request(parent, child, stop); exit done;",
+        );
+    assert!(source.contains("supervise request(parent, child, stop)"));
+    compare_resources("named", &source, [0, 0]);
+}
+
+fn compare_resources(label: &str, source: &str, statuses: [i32; 2]) {
+    let root = std::env::temp_dir().join(format!(
+        "tellur-resume-resources-{label}-{}",
+        std::process::id()
+    ));
     fs::create_dir_all(&root).unwrap();
     fs::write(root.join("host.rs"), HOST).unwrap();
     fs::write(
@@ -74,7 +107,7 @@ fn compiled_boundary_pauses_preserve_real_owner_cleanup_at_every_fuel_cut() {
     let manifest =
         crate::manifest::Manifest::from_json_at(&config.to_string(), &root.join("manifest.json"))
             .unwrap();
-    let p = crate::compile(SOURCE, manifest)
+    let p = crate::compile(source, manifest)
         .unwrap()
         .with_entry_exit_codes("main", BTreeMap::from([("done".into(), 0)]))
         .unwrap();
@@ -84,7 +117,7 @@ fn compiled_boundary_pauses_preserve_real_owner_cleanup_at_every_fuel_cut() {
             program.build_native("main", &normal, opt).unwrap();
             let resumed = root.join(format!("resumed-{expanded}-{opt}"));
             let project = program.native_project("main", &resumed).unwrap();
-            fs::write(&project.2, source(&program, "main").unwrap()).unwrap();
+            fs::write(&project.2, super::source(&program, "main").unwrap()).unwrap();
             program.finish_native_build(project, opt).unwrap();
             let log = root.join("owners.log");
             for stop in [false, true] {
@@ -120,7 +153,7 @@ fn compiled_boundary_pauses_preserve_real_owner_cleanup_at_every_fuel_cut() {
                         assert_eq!(actual.stderr, expected.stderr, "{context}");
                         assert_eq!(actual_drops, drops, "{context}");
                     }
-                    if expected.status.code() == Some(if stop { 23 } else { 0 }) {
+                    if expected.status.code() == Some(statuses[usize::from(stop)]) {
                         assert_eq!(
                             drops,
                             if stop {

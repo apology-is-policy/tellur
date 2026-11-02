@@ -58,21 +58,6 @@ fn points<'a>(code: &'a [Instruction], result: &mut Vec<Point<'a>>) {
 }
 
 fn source(program: &CheckedProgram, entry: &str) -> Result<String> {
-    fn unsupported(code: &[Instruction]) -> bool {
-        code.iter().any(|i| match &i.action {
-            Action::Loop { body, .. } => unsupported(body),
-            Action::Boundary { body, handler, .. } => unsupported(body) || unsupported(handler),
-            Action::Supervise { .. } | Action::Terminate => true,
-            _ => false,
-        })
-    }
-    for region in program.regions() {
-        if region.boundary.is_some() || region.contingency || unsupported(&region.code) {
-            return Err(error(
-                "compiled continuation model does not yet support named supervision",
-            ));
-        }
-    }
     let names: BTreeMap<_, _> = program
         .regions()
         .enumerate()
@@ -110,12 +95,19 @@ fn source(program: &CheckedProgram, entry: &str) -> Result<String> {
         g.constructing = g.constructors.contains(region.name.as_str());
         let _ = writeln!(
             g.code,
-            "static MODEL_{id}:Control=Control{{name:{},slots:{},atoms:{},parameters:&{:?},constructor:{},resume:model_{id}}};",
+            "static MODEL_{id}:Control=Control{{name:{},slots:{},atoms:{},parameters:&{:?},retained:&{:?},constructor:{},resume:model_{id}}};",
             string(&program.runtime_name(&region.name)),
             g.layout.slots.len(),
             g.layout.atoms.len(),
             g.layout
                 .slots(&region.parameters.iter().map(|p| p.id).collect::<Vec<_>>()),
+            g.layout.slots(
+                region
+                    .boundary
+                    .as_ref()
+                    .map(|b| b.retained.as_slice())
+                    .unwrap_or(&[])
+            ),
             g.constructing
         );
         let mut deliveries = String::new();
@@ -145,6 +137,23 @@ fn source(program: &CheckedProgram, entry: &str) -> Result<String> {
                 }
             };
             let _ = writeln!(g.code, "{pc}=>{{state.pc={};", point.next);
+            if let Action::Supervise { boundary, args } = &instruction.action {
+                let work = program.region(boundary).unwrap();
+                let handler = &work.boundary.as_ref().unwrap().handler;
+                let p = &instruction.provenance;
+                let _ = writeln!(
+                    g.code,
+                    "host.at({});host.tick({}, {})?;if {} {{let arguments={};return Ok(Step::Supervise{{work:&MODEL_{},handler:&MODEL_{},arguments}});}}Ok(Step::Continue)}},",
+                    instruction.id,
+                    p.span.line,
+                    p.span.column,
+                    guard(&instruction.guard, &g.layout),
+                    expressions(args, &g.layout),
+                    names[boundary.as_str()],
+                    names[handler.as_str()]
+                );
+                continue;
+            }
             if let Action::Boundary {
                 retained,
                 retire,
@@ -318,7 +327,11 @@ fn source(program: &CheckedProgram, entry: &str) -> Result<String> {
         g.code
             .push_str("_=>Err(\"E_NATIVE: checked region fell through\".into()),}}\n");
         g.code.push_str(&deliveries);
-        if !region.is_constructor() && !region.parameters.iter().any(|p| p.ty.starts_with('&')) {
+        if !region.is_constructor()
+            && region.boundary.is_none()
+            && !region.contingency
+            && !region.parameters.iter().any(|p| p.ty.starts_with('&'))
+        {
             let old = format!(
                 "fn entry_{id}(host: &mut Host, args: Vec<V>)->R<Completion> {{ let mut v=Frames::default(); region_{id}(host, &mut v, args, &mut vec![]) }}"
             );

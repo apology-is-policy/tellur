@@ -452,5 +452,9 @@ retains work/handler positions and ordered boundary/loop state across host pause
 checks borrowed cold awaits, recovery, expanded completion, process termination and
 nested handler faults against reference execution. Real Rust-resource comparisons also
 check captured owner destruction once before contingency and retained-parent cleanup.
-Named supervision and independent context selection remain gated; these tests do not
-enable source scheduling or change the installed compiler's behavior.
+The [named supervision extension](../async-execution.md#compiled-named-supervision-e1d2c4b4c3)
+also retains its caller while work and contingency run in separate frames. It verifies
+retained parameters leave failed work before frame retirement, and only administrative
+settlement resumes the supervisor. Independent context selection and native sibling
+settlement remain ahead; these tests do not enable source scheduling or change the
+installed compiler's behavior.

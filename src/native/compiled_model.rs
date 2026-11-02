@@ -7,17 +7,26 @@ pub struct Control {
     pub slots: usize,
     pub atoms: usize,
     pub parameters: &'static [usize],
+    pub retained: &'static [usize],
     pub constructor: bool,
     pub resume: fn(&mut Host, &mut Frames, &mut Activation) -> R<Step>,
 }
 pub struct Activation {
     frame: Frame,
     control: &'static Control,
-    pending: Option<Deliver>,
+    pending: Option<Pending>,
     scopes: Vec<Scope>,
     pub facts: Vec<bool>,
     pub pc: usize,
     pub destination: Option<usize>,
+}
+enum Pending {
+    Call(Deliver),
+    Supervise(Supervision),
+}
+struct Supervision {
+    state: BoundaryState,
+    handler: &'static Control,
 }
 pub struct LoopControl {
     pub target: usize,
@@ -118,6 +127,11 @@ pub enum Step {
     Complete(Completion),
     Boundary(&'static BoundaryControl),
     BoundaryEnd(&'static BoundaryControl),
+    Supervise {
+        work: &'static Control,
+        handler: &'static Control,
+        arguments: Vec<V>,
+    },
     Loop {
         control: &'static LoopControl,
         arguments: Vec<V>,
@@ -220,6 +234,19 @@ impl Machine {
                 frame.scopes.push(Scope::Loop(control));
                 frame.pc = control.body;
             }
+            Step::Supervise {
+                work,
+                handler,
+                arguments,
+            } => {
+                if frame.pending.is_some() {
+                    return Err("E_NATIVE: duplicate compiled supervision continuation".into());
+                }
+                let state = host.begin_boundary(work.name, &arguments, false)?;
+                frame.pending = Some(Pending::Supervise(Supervision { state, handler }));
+                self.stack
+                    .push(Self::admit(host, values, work, arguments, None)?);
+            }
             Step::Complete(Completion::Again(target, arguments)) => {
                 let (index, control) = frame.loop_target(target)?;
                 frame.close_scopes(host, values, index + 1)?;
@@ -246,7 +273,7 @@ impl Machine {
                 destination,
                 deliver,
             } => {
-                if frame.pending.replace(deliver).is_some() {
+                if frame.pending.replace(Pending::Call(deliver)).is_some() {
                     return Err("E_NATIVE: duplicate compiled return continuation".into());
                 }
                 self.stack
@@ -258,11 +285,18 @@ impl Machine {
                 values.retire(&completed.frame)?;
                 host.leave();
                 if let Some(parent) = self.stack.last_mut() {
-                    let deliver = parent
+                    let pending = parent
                         .pending
                         .take()
                         .ok_or("E_NATIVE: missing compiled return continuation")?;
-                    deliver(parent, values, result)?;
+                    match pending {
+                        Pending::Call(deliver) => deliver(parent, values, result)?,
+                        Pending::Supervise(mut supervision) => {
+                            let result = result.settled();
+                            host.finish_boundary(&mut supervision.state, &result)?;
+                            result?;
+                        }
+                    }
                 } else {
                     self.finished = true;
                     return Ok((true, Some(result)));
@@ -272,7 +306,39 @@ impl Machine {
         Ok((true, None))
     }
     fn unwind_error(&mut self, host: &mut Host, values: &mut Frames, mut message: String) -> R<()> {
+        let mut retained = vec![];
         while let Some(frame) = self.stack.last_mut() {
+            // A named work frame has already handed over retained parameters and
+            // retired. Its caller still owns the original supervision record.
+            if let Some(Pending::Supervise(mut supervision)) = frame.pending.take() {
+                if host.source_faulted() && supervision.state.fault_message.is_none() {
+                    let handler = (|| {
+                        let keep = host.resources.owned_tokens(&retained)?;
+                        host.boundary_fault(&mut supervision.state, &message, &keep)?;
+                        retained.push(V::String(
+                            message.strip_prefix("E_FAULT: ").unwrap_or(&message).into(),
+                        ));
+                        host.enter_contingency(&mut supervision.state)?;
+                        Self::admit(
+                            host,
+                            values,
+                            supervision.handler,
+                            std::mem::take(&mut retained),
+                            None,
+                        )
+                    })();
+                    match handler {
+                        Ok(handler) => {
+                            frame.pending = Some(Pending::Supervise(supervision));
+                            self.stack.push(handler);
+                            return Ok(());
+                        }
+                        Err(error) => message = error,
+                    }
+                }
+                host.finish_boundary(&mut supervision.state, &Err::<(), _>(message.clone()))?;
+            }
+            retained.clear();
             // A child fault retires its original frame before handover in its caller.
             while let Some(scope) = frame.scopes.pop() {
                 if let Scope::Boundary(mut boundary) = scope {
@@ -291,6 +357,15 @@ impl Machine {
                 }
             }
             let frame = self.stack.pop().unwrap();
+            if host.source_faulted() {
+                for slot in frame.control.retained {
+                    retained.push(
+                        values[frame.base() + slot]
+                            .take()
+                            .ok_or("E_NATIVE: retained boundary parameter unavailable")?,
+                    );
+                }
+            }
             host.release_frame(values.frame_values(&frame.frame)?);
             values.retire(&frame.frame)?;
             // Failed activation diagnostics remain available until handover/reporting.

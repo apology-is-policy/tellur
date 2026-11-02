@@ -1,0 +1,78 @@
+async control visit(ref string context, bool stop) exits done faults {
+    delta parse_u32("1") {
+        number { u32 value } => parsed,
+        malformed => fault "malformed",
+        overflow => fault "overflow",
+    }
+    [parsed]:
+        emit(context);
+        delta stop {
+            true => failed,
+            false => ready
+        }
+    [failed]: fault "request failed";
+    [ready]: exit done;
+}
+
+async control startup(ref string context, bool stop) exits done faults {
+    auto pending = defer visit(context, stop);
+    await pending;
+    exit done;
+}
+
+@contingent
+control report(ref string context, string reason) exits done {
+    emit(context);
+    emit(reason);
+    exit done;
+}
+
+boundary request(bool stop, string context) retains context {
+    run startup(borrow context, stop);
+    emit("normal request");
+    terminate;
+}
+contingency(string reason) {
+    report(borrow context, reason);
+    terminate;
+}
+
+boundary server(bool stop) {
+    loop requests(bool first = true) {
+        supervise request(first && stop, "request context");
+        delta first {
+            true => next,
+            false => done
+        }
+        [next]: again requests(false);
+        [done]: terminate;
+    }
+}
+contingency(string reason) {
+    emit(reason);
+    terminate;
+}
+
+boundary selected() {
+    emit("selected");
+    terminate;
+}
+contingency(string reason) {
+    terminate;
+}
+
+control main(bool stop) exits done {
+    delta stop {
+        true => observed,
+        false => quiet
+    }
+    [observed]: supervise selected();
+    [entry]:
+        fault boundary {
+            supervise server(stop);
+        } contingency [] {
+            terminate process 23;
+        }
+        emit("supervisor continued");
+        exit done;
+}
