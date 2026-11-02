@@ -87,9 +87,11 @@ lowering remain distinct next stages. E1d.1 separates shared interpreter storage
 fuel and observations from independently retained control chains; source execution
 is still sequential. E1d.2a integrates invocation/task identities, one-shot await
 completion and normal/emergency obligation retirement in the reference executor.
+E1d.2b queues cold children, parks their callers and validates one-use completion
+waits while preserving sequential effects, fuel and fault traces.
 
 2 November 2026. This is the working revision plan, not a claim that all proposed
-features are implemented. Compiler **0.112.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
+features are implemented. Compiler **0.113.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
 lifetime checkpoints of milestone 2, the array/vector/map core of milestone 3,
 and implicit entry, inline/stored adapters, owned capture, named outcome contracts
 and checked forwarding in milestone 4. A first [semantic foundation](semantic-foundation.md)
@@ -301,7 +303,8 @@ do not block this design work. E2 remains the native coroutine target.
 | E1d | Scoped spawn and readiness | Shared-state/context separation delivered in E1d.1 (0.111). Next: invocation-owned children, required await on normal paths and no handle escape across invocations/fault boundaries (accepted 2 November). Shared frame storage, scheduler admission, deterministic readiness and child-fault settlement precede source concurrency |
 | E1d.1 | Shared execution and independent continuations | **Delivered in 0.111:** one value arena, address allocator, script cursor, effect history and fuel budget; independent control/fault state; internal interleavings preserve owners, retirement and admission without source concurrency |
 | E1d.2a | Invocation and cold-task identities | **Delivered in 0.112:** distinct owner/task IDs, original-owner/producer admission, one-shot completion, pending-obligation checks and emergency retirement; sequential execution unchanged |
-| E1d.2b | Readiness and scheduling lifecycle | Next: ready/wait identities and transitions, duplicate/stale wakes and fault-domain settlement admission |
+| E1d.2b | Queued cold dispatch and completion waits | **Delivered in 0.113:** ready admission and dispatch, parked caller contexts, one-use completion waits and emergency retirement with unchanged sequential execution |
+| E1d.2c | External readiness and fault-domain admission | Next: independent ready/wait contexts, modeled I/O readiness and owner-boundary settlement before source spawn |
 | E2 | Native coroutine lowering | Preserved architectural target: direct LLVM coroutine primitives, pinned-toolchain experiment, frame lifetime rules and schedule-based differential tests; I1 must keep this route open |
 | T1 | Stronger source transformations | Hold current scope during P1–P5: extraction correspondence, continuation cuts, source-level lift and editor actions |
 | R1 | Mathematical foundations | Maintain existing evidence; defer extensions during P1–P5: preservation judgments, richer protocol abstractions, infinite/causal behavior, mechanization |

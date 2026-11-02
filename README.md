@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.112.0** implements the v0.1 checked core and the current language
+Compiler release **0.113.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -555,3 +555,11 @@ one-shot await lifecycle. Normal completion cannot forget pending work; faults a
 supervised recovery retire abandoned task records before contingency. Existing
 source syntax, borrowing and sequential native behavior are unchanged. Readiness
 and source `spawn` remain the next async implementation steps.
+
+
+## Cold-await dispatch in 0.113
+
+Cold-task awaits now use queued dispatch and parked caller state in the reference
+executor. One-use completion waits reject early or duplicate delivery; borrowed
+storage, fault traces and instruction quotas keep their existing behavior. Source
+execution is still sequential. External readiness and scoped `spawn` remain ahead.

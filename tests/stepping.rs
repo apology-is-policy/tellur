@@ -248,6 +248,69 @@ fn partitions_preserve_lexical_recovery_contingency_calls_and_process_terminatio
         ["retired work", "request failed", "request context"]
     );
 }
+
+#[test]
+fn queued_cold_awaits_preserve_partitions_borrowed_storage_and_fault_reports() {
+    const COLD: &str = r#"
+async control leaf(ref string text, bool broken) exits ready {ref string value from text} {
+    emit(text);
+    delta broken {true => fault "child failed", false => exit ready {text}}
+}
+async control relay(ref string text, bool broken) exits ready {ref string value from text} {
+    auto inner = defer leaf(text, broken);
+    forward await inner;
+}
+async control start() exits done {
+    supervised loop attempts(mutable bool first = true) {
+        bool broken = first; first = false;
+        string text = "retained";
+        fault boundary {
+            auto pending = defer relay(borrow text, broken);
+            delta await pending {ready {auto value} => received}
+            [received]: emit(value); exit done;
+        } contingency [] {recover again attempts;}
+    }
+}
+control main() exits done {forward run start();}
+"#;
+    let original = checked(COLD);
+    for p in [original.clone(), original.expanded("start").unwrap()] {
+        for fuel in 0..110 {
+            partitions(&p, &scenario(), fuel);
+        }
+    }
+    let RunCompletion::Outcome(run) = partitioned(&original, &scenario(), 300, &[1]).unwrap()
+    else {
+        panic!()
+    };
+    let report = run
+        .events
+        .iter()
+        .find_map(|event| match event {
+            Event::Fault { report } => Some(report),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(
+        report
+            .activations
+            .iter()
+            .map(|a| a.control.as_str())
+            .collect::<Vec<_>>(),
+        ["start$boundary@14", "relay", "leaf"]
+    );
+    assert_eq!(run.outcome, "done");
+    assert_eq!(
+        run.events
+            .iter()
+            .filter_map(|event| match event {
+                Event::Emit { message } => Some(message.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>(),
+        ["retained", "retained", "retained"]
+    );
+}
 #[test]
 fn entry_driver_and_result_failures_keep_their_phase_and_cannot_resume() {
     let p = checked(

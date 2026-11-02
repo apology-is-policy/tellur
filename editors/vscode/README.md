@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-0.112.0-darwin-arm64.vsix` using **Extensions:
+1. Install the supplied `tellur-language-0.113.0-darwin-arm64.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1053,3 +1053,11 @@ one-shot await lifecycle. Normal completion cannot forget pending work; faults a
 supervised recovery retire abandoned task records before contingency. Existing
 source syntax, borrowing and sequential native behavior are unchanged. Readiness
 and source `spawn` remain the next async implementation steps.
+
+
+## Cold-await dispatch in 0.113
+
+Cold-task awaits now use queued dispatch and parked caller state in the reference
+executor. One-use completion waits reject early or duplicate delivery; borrowed
+storage, fault traces and instruction quotas keep their existing behavior. Source
+execution is still sequential. External readiness and scoped `spawn` remain ahead.

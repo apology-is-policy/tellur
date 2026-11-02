@@ -148,8 +148,39 @@ exhaustion. These checks supplement the existing static ownership checks.
 This is integrated bookkeeping for the sequential interpreter, not independent
 progress or source `spawn`. The native executor keeps its current checked inline
 captures. No public task-type syntax or change to cold-task boundary permission is
-introduced. E1d.2b adds readiness identities and scheduling transitions; fault-domain
-settlement and source concurrency still require their own integrated checkpoints.
+introduced. E1d.2b below adds queued dispatch and completion waits; external readiness,
+fault-domain settlement and source concurrency still require their own checkpoints.
+
+## Queued cold dispatch and completion waits (E1d.2b)
+
+Compiler 0.113 integrates a ready queue and distinct completion-wait IDs into cold
+await execution. Arguments are validated before ready admission; the registry then
+checks the original owner and producer, allocates a non-reused wait token and queues
+the task. A dispatch selects the next ready task exactly once. Failed admission or
+wait-ID exhaustion leaves the registry unchanged; retiring queued work removes it
+from dispatch as well as the owner's obligations.
+
+The executor parks the caller's entire control state and retains a prepared child
+invocation. The child runs against the same value arena, fuel and observation history.
+Its normal completion validates the wait token before restoring the caller; result
+consumption remains a separate obligation. Early, stale, wrong-task or duplicate
+completion signals cannot resume the caller. An escaping fault retires the wait and
+unwinds the parked caller through the existing emergency channel, without delivering
+a normal completion. All source behavior remains sequential.
+
+The diagnostic tracker moves into the selected child and back to its caller; it is
+not cloned or reset. Nested async call traces, activation identities, causes and
+borrowed payloads retain their prior meaning. Dispatch and restoration are
+administrative steps, preserving instruction fuel and host stepping quotas. Tests
+check the parked frame's original storage, early/duplicate delivery, repeated fault
+recovery, every small fuel budget under different quota partitions, and exact native
+fault reports before and after expansion.
+
+This queue currently dispatches the sole child demanded by a consuming cold await.
+It does not yet select independently progressing siblings or wait on host I/O. Queue
+ordering tests exercise the internal registry; they do not establish a source FIFO
+fairness guarantee. E1d.2c covers external readiness and fault-domain admission before
+source `spawn`. Cancellation and native coroutine lowering remain separate work.
 
 ## Separate the identities and continuations
 
@@ -204,7 +235,7 @@ fault boundary. No explicit `task scope { ... }` ownership block is required.
 An escaping child fault still stops ordinary work in the owning fault boundary
 and settles affected children and retained resources before contingency. Moving a
 handle does not move its owner or redirect emergency propagation. This is the
-accepted direction for E1d; compiler 0.112 still executes cold tasks sequentially
+accepted direction for E1d; compiler 0.113 still executes cold tasks sequentially
 and does not yet accept `spawn`.
 
 ## Cold-task contract audit
@@ -417,7 +448,8 @@ Those boundaries need explicit contracts before being accepted by the checker.
 | E1d | Scoped spawn and deterministic readiness; two overlapping children, duplicate/stale wake handling and owner settlement | Invocation ownership and no cross-invocation/boundary handle transfer accepted; implement scoped scheduling, sibling settlement and deterministic fault observation |
 | E1d.1 | Separate execution-wide state from resumable control chains | Delivered in 0.111: one storage arena/address allocator, script cursor, effect history and fuel budget; independent frames, continuations and emergency state; internal interleaving evidence, no source spawn |
 | E1d.2a | Invocation and cold-task identities | Delivered in 0.112: owner/producer admission, one-shot completion, normal obligation checks and emergency retirement in sequential execution |
-| E1d.2b | Readiness and scheduling lifecycle | Next: ready/wait identities and transitions, duplicate/stale wake rejection and fault-domain settlement admission before source scheduling |
+| E1d.2b | Queued cold dispatch and completion waits | Delivered in 0.113: ready admission, parked callers, one-use completion wait IDs, stale/duplicate rejection and unchanged sequential observations |
+| E1d.2c | External readiness and fault-domain admission | Next: independent ready/wait contexts, modeled I/O readiness and owner-boundary settlement before source spawn |
 | E1e | Explicit cooperative cancellation and suspending cleanup; normal completion races, cleanup failures and no abandoned losers | Define cancellation observation and cleanup admission; no implicit cancellation exception |
 | E2 | Pinned native coroutine experiment, then checked lowering and schedule-based differential validation | Reference semantics and legal frame retirement must precede native destruction |
 

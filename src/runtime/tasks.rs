@@ -1,14 +1,18 @@
-//! Invocation-owned identities for the sequential cold-task executor. Captures
-//! remain in values; this ledger tracks obligations, not scheduling or storage.
+//! Invocation-owned tasks, ready admission and one-use completion waits.
+//! Captures and continuations stay in the executor; no external I/O readiness yet.
 use super::*;
+use std::collections::VecDeque;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(super) struct OwnerId(u64);
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(super) struct TaskId(pub(super) u64);
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct WaitId(u64);
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Phase {
     Cold,
+    Ready,
     Running,
     Completed,
 }
@@ -17,13 +21,16 @@ struct Task {
     owner: OwnerId,
     operation: String,
     phase: Phase,
+    waiter: Option<WaitId>,
 }
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
 pub(super) struct Registry {
     next_owner: u64,
     next_task: u64,
+    next_wait: u64,
     owners: BTreeMap<OwnerId, BTreeSet<TaskId>>,
     tasks: BTreeMap<TaskId, Task>,
+    ready: VecDeque<TaskId>,
 }
 impl Registry {
     /// Check capacity before diagnostic activation admission. Commit is infallible
@@ -55,6 +62,7 @@ impl Registry {
                 owner,
                 operation: operation.into(),
                 phase: Phase::Cold,
+                waiter: None,
             },
         );
         self.owners.get_mut(&owner).unwrap().insert(id);
@@ -73,10 +81,34 @@ impl Registry {
         }
         Ok(task)
     }
-    pub(super) fn begin(&mut self, id: TaskId, owner: OwnerId, operation: &str) -> Result<()> {
+    pub(super) fn schedule(
+        &mut self,
+        id: TaskId,
+        owner: OwnerId,
+        operation: &str,
+    ) -> Result<WaitId> {
         if self.require(id, owner, Phase::Cold)?.operation != operation {
             return Err(error("pending task producer differs"));
         }
+        let wait = WaitId(
+            self.next_wait
+                .checked_add(1)
+                .ok_or_else(|| error("completion wait identity space exhausted"))?,
+        );
+        self.next_wait = wait.0;
+        let task = self.tasks.get_mut(&id).unwrap();
+        task.phase = Phase::Ready;
+        task.waiter = Some(wait);
+        self.ready.push_back(id);
+        Ok(wait)
+    }
+    pub(super) fn dispatch(&mut self, id: TaskId) -> Result<()> {
+        if self.ready.front() != Some(&id)
+            || !self.tasks.get(&id).is_some_and(|t| t.phase == Phase::Ready)
+        {
+            return Err(error("task is not next in the ready queue"));
+        }
+        self.ready.pop_front();
         self.tasks.get_mut(&id).unwrap().phase = Phase::Running;
         Ok(())
     }
@@ -85,14 +117,28 @@ impl Registry {
         self.tasks.get_mut(&id).unwrap().phase = Phase::Completed;
         Ok(())
     }
+    /// Completion delivery is administrative, not a new source outcome. A late
+    /// or repeated signal cannot resume another task or deliver the payload twice.
+    pub(super) fn deliver(&mut self, id: TaskId, owner: OwnerId, wait: WaitId) -> Result<()> {
+        if self.require(id, owner, Phase::Completed)?.waiter != Some(wait) {
+            return Err(error("completion wait is stale or already delivered"));
+        }
+        self.tasks.get_mut(&id).unwrap().waiter = None;
+        Ok(())
+    }
     pub(super) fn consume(&mut self, id: TaskId, owner: OwnerId) -> Result<()> {
-        self.require(id, owner, Phase::Completed)?;
+        if self.require(id, owner, Phase::Completed)?.waiter.is_some() {
+            return Err(error("task completion has not been delivered"));
+        }
         self.abandon(id);
         Ok(())
     }
     /// Emergency retirement does not manufacture a completion or run a cold body.
     pub(super) fn abandon(&mut self, id: TaskId) {
         if let Some(task) = self.tasks.remove(&id) {
+            if task.phase == Phase::Ready {
+                self.ready.retain(|queued| *queued != id);
+            }
             self.owners.get_mut(&task.owner).unwrap().remove(&id);
         }
     }
@@ -107,6 +153,7 @@ impl Registry {
         for task in self.owners.remove(&owner).unwrap() {
             self.tasks.remove(&task);
         }
+        self.ready.retain(|task| self.tasks.contains_key(task));
         Ok(())
     }
     #[cfg(test)]
@@ -115,7 +162,7 @@ impl Registry {
     }
     #[cfg(test)]
     pub(super) fn is_empty(&self) -> bool {
-        self.owners.is_empty() && self.tasks.is_empty()
+        self.owners.is_empty() && self.tasks.is_empty() && self.ready.is_empty()
     }
 }
 
@@ -155,11 +202,16 @@ mod tests {
         let task = r.defer(a, "work").unwrap();
         assert!(r.retire_owner(a, false).is_err());
         assert!(r.consume(task, a).is_err());
-        r.begin(task, a, "work").unwrap();
-        assert!(r.begin(task, a, "work").is_err());
+        let wait = r.schedule(task, a, "work").unwrap();
+        assert!(r.complete(task, a).is_err());
+        r.dispatch(task).unwrap();
+        assert!(r.schedule(task, a, "work").is_err());
         r.complete(task, a).unwrap();
         assert!(r.complete(task, a).is_err());
         assert!(r.retire_owner(a, false).is_err());
+        assert!(r.consume(task, a).is_err());
+        r.deliver(task, a, wait).unwrap();
+        assert!(r.deliver(task, a, wait).is_err());
         r.consume(task, a).unwrap();
         assert!(r.consume(task, a).is_err());
         r.retire_owner(a, false).unwrap();
@@ -172,14 +224,18 @@ mod tests {
         let b = owner(&mut r);
         let task = r.defer(a, "first").unwrap();
         let before = r.clone();
-        assert!(r.begin(task, b, "first").is_err());
+        assert!(r.schedule(task, b, "first").is_err());
         assert_eq!(r, before);
-        assert!(r.begin(task, a, "other").is_err());
+        assert!(r.schedule(task, a, "other").is_err());
         assert_eq!(r, before);
-        r.begin(task, a, "first").unwrap();
+        let wait = r.schedule(task, a, "first").unwrap();
+        r.dispatch(task).unwrap();
         assert!(r.complete(task, b).is_err());
         r.complete(task, a).unwrap();
         assert!(r.consume(task, b).is_err());
+        assert!(r.consume(task, a).is_err());
+        r.deliver(task, a, wait).unwrap();
+        assert!(r.deliver(task, a, wait).is_err());
         r.consume(task, a).unwrap();
         r.retire_owner(a, false).unwrap();
         r.retire_owner(b, false).unwrap();
@@ -212,15 +268,69 @@ mod tests {
         let b = owner(&mut r);
         let cold = r.defer(a, "cold").unwrap();
         let running = r.defer(a, "running").unwrap();
-        r.begin(running, a, "running").unwrap();
+        r.schedule(running, a, "running").unwrap();
+        r.dispatch(running).unwrap();
         let other = r.defer(b, "other").unwrap();
         r.retire_owner(a, true).unwrap();
         assert!(r.complete(running, a).is_err());
         assert!(r.consume(cold, a).is_err());
-        r.begin(other, b, "other").unwrap();
+        let wait = r.schedule(other, b, "other").unwrap();
+        r.dispatch(other).unwrap();
         r.complete(other, b).unwrap();
+        r.deliver(other, b, wait).unwrap();
         r.consume(other, b).unwrap();
         r.retire_owner(b, false).unwrap();
+        assert!(r.is_empty());
+    }
+
+    #[test]
+    fn ready_dispatch_is_ordered_and_retirement_removes_queued_work() {
+        let mut r = Registry::default();
+        let a = owner(&mut r);
+        let b = owner(&mut r);
+        let first = r.defer(a, "first").unwrap();
+        let second = r.defer(b, "second").unwrap();
+        r.schedule(first, a, "first").unwrap();
+        let wait = r.schedule(second, b, "second").unwrap();
+        let before = r.clone();
+        assert!(r.dispatch(second).is_err());
+        assert_eq!(r, before);
+        assert!(r.retire_owner(a, false).is_err());
+        r.retire_owner(a, true).unwrap();
+        assert!(r.dispatch(first).is_err());
+        r.dispatch(second).unwrap();
+        assert!(r.dispatch(second).is_err());
+        r.complete(second, b).unwrap();
+        r.deliver(second, b, wait).unwrap();
+        r.consume(second, b).unwrap();
+        r.retire_owner(b, false).unwrap();
+        assert!(r.is_empty());
+    }
+
+    #[test]
+    fn wait_exhaustion_and_stale_signals_never_change_ready_or_completion_state() {
+        let mut r = Registry::default();
+        let a = owner(&mut r);
+        let first = r.defer(a, "work").unwrap();
+        let old_wait = r.schedule(first, a, "work").unwrap();
+        r.abandon(first);
+        let second = r.defer(a, "work").unwrap();
+        let wait = r.schedule(second, a, "work").unwrap();
+        assert_ne!(wait, old_wait);
+        r.dispatch(second).unwrap();
+        r.complete(second, a).unwrap();
+        let before = r.clone();
+        assert!(r.deliver(second, a, old_wait).is_err());
+        assert!(r.deliver(first, a, old_wait).is_err());
+        assert_eq!(r, before);
+        r.deliver(second, a, wait).unwrap();
+        r.consume(second, a).unwrap();
+        let third = r.defer(a, "work").unwrap();
+        r.next_wait = u64::MAX;
+        let before = r.clone();
+        assert!(r.schedule(third, a, "work").is_err());
+        assert_eq!(r, before);
+        r.retire_owner(a, true).unwrap();
         assert!(r.is_empty());
     }
 }

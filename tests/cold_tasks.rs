@@ -349,3 +349,47 @@ fn raw_carrier_temporary_does_not_implicitly_become_a_deferred_borrow() {
     let text = "struct view['a] {ref string text <- 'a;} async control work(ref view input) exits done {exit done;} async control main(ref string text) exits done {auto pending=defer work(view {text});await pending;exit done;}";
     assert_eq!(compile(text, manifest()).unwrap_err().code, "E_BORROW");
 }
+
+#[test]
+fn queued_nested_await_fault_reports_match_native_and_expansion() {
+    use std::{fs, process::Command};
+    let source = r#"
+async control leaf(ref string text) faults { emit(text); fault "child failed"; }
+async control relay(ref string text) faults {
+    auto inner = defer leaf(text); await inner;
+}
+async control start() faults {
+    string text = "captured";
+    auto pending = defer relay(borrow text); await pending;
+}
+control main() faults { run start(); }
+"#;
+    let p = compile(source, manifest()).unwrap();
+    let root = std::env::temp_dir().join(format!("tellur-queued-fault-{}", std::process::id()));
+    fs::create_dir_all(&root).unwrap();
+    let input = root.join("scenario.json");
+    fs::write(&input, serde_json::to_vec(&scenario()).unwrap()).unwrap();
+    for (index, p) in [p.clone(), p.expanded("start").unwrap()].iter().enumerate() {
+        let expected = p.run_detailed(&scenario(), 200).unwrap_err();
+        assert_eq!(
+            expected
+                .report
+                .activations
+                .iter()
+                .map(|a| a.control.as_str())
+                .collect::<Vec<_>>(),
+            ["main", "start", "relay", "leaf"]
+        );
+        let binary = root.join(format!("fault-{index}"));
+        p.build_native("main", &binary, 0).unwrap();
+        let output = Command::new(binary)
+            .args(["--scenario", input.to_str().unwrap()])
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(1));
+        assert!(output.stdout.is_empty());
+        let report: tellur::fault::Report = serde_json::from_slice(&output.stderr).unwrap();
+        assert_eq!(report, expected.report);
+    }
+    fs::remove_dir_all(root).unwrap();
+}

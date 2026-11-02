@@ -1,6 +1,6 @@
 //! Host stepping of sequential checked execution, including local cold tasks.
 //! No source scheduler or independently progressing work.
-use super::tasks::{OwnerId, Registry, TaskId, retire_value};
+use super::tasks::{OwnerId, Registry, TaskId, WaitId, retire_value};
 use super::*;
 
 #[cfg(test)]
@@ -118,6 +118,15 @@ enum Continuation<'a> {
     TaskDecision {
         task: TaskId,
         arms: &'a [Arm],
+    },
+    StartTask {
+        task: TaskId,
+        invocation: PreparedInvocation<'a>,
+    },
+    ResumeAwait {
+        task: TaskId,
+        wait: WaitId,
+        caller: Box<Context<'a>>,
     },
     Loop(&'a Action),
     SupervisedWork {
@@ -324,6 +333,17 @@ impl<'a> Machine<'a> {
                     Ok(Flow::Fallthrough) => {}
                     result => self.context.flow = Some(result),
                 }
+            } else if let Continuation::StartTask { task, invocation } = continuation {
+                // Dispatch is administrative: it does not consume instruction fuel
+                // or permit the parked caller to run before its child completes.
+                if let Err(diagnostic) = self
+                    .shared
+                    .tasks
+                    .dispatch(task)
+                    .and_then(|()| self.start_call(invocation))
+                {
+                    self.context.flow = Some(Err(diagnostic));
+                }
             } else if let Err(diagnostic) = self.resume(continuation) {
                 self.context.flow = Some(Err(diagnostic));
             }
@@ -337,7 +357,7 @@ impl<'a> Machine<'a> {
             .take()
             .expect("a continuation receives completed nested work");
         match continuation {
-            Continuation::Block { .. } => unreachable!(),
+            Continuation::Block { .. } | Continuation::StartTask { .. } => unreachable!(),
             Continuation::Call { region, caller } => {
                 self.context.handover.clear();
                 let result = (|| {
@@ -391,7 +411,6 @@ impl<'a> Machine<'a> {
                 match flow.and_then(completion).and_then(Completion::outcome) {
                     Ok((outcome, fields)) => {
                         let owner = self.context.frame.owner.unwrap();
-                        self.shared.tasks.complete(task, owner)?;
                         self.shared.tasks.consume(task, owner)?;
                         self.bind(arms, outcome, fields)?;
                     }
@@ -400,6 +419,34 @@ impl<'a> Machine<'a> {
                         return Err(diagnostic);
                     }
                 }
+            }
+            Continuation::ResumeAwait {
+                task,
+                wait,
+                mut caller,
+            } => {
+                let owner = caller.frame.owner.unwrap();
+                let result = match flow {
+                    Ok(flow @ Flow::Exit(..)) => self
+                        .shared
+                        .tasks
+                        .complete(task, owner)
+                        .and_then(|()| self.shared.tasks.deliver(task, owner, wait))
+                        .map(|()| flow),
+                    other => {
+                        // Fault delivery is an unwind, never a normal completion
+                        // signal. Retire the wait before the caller's contingency.
+                        self.shared.tasks.abandon(task);
+                        other
+                    }
+                };
+                // The sequential diagnostic chain travels with the selected
+                // child, preserving activation IDs, fault causes and call sites.
+                caller.activations = std::mem::take(&mut self.context.activations);
+                caller.phase = self.context.phase.clone();
+                caller.handover = std::mem::take(&mut self.context.handover);
+                caller.flow = Some(result);
+                self.context = *caller;
             }
             Continuation::Loop(action) => {
                 let Action::Loop { id, .. } = action else {
@@ -707,13 +754,26 @@ impl<'a> Machine<'a> {
                     ));
                 }
                 let task = TaskId(id);
-                self.shared
-                    .tasks
-                    .begin(task, self.context.frame.owner.unwrap(), name)?;
+                let invocation = self.prepare_call(name, arguments)?;
+                let wait =
+                    self.shared
+                        .tasks
+                        .schedule(task, self.context.frame.owner.unwrap(), name)?;
                 self.context
                     .stack
                     .push(Continuation::TaskDecision { task, arms });
-                self.call(name, arguments)?;
+                let activations = std::mem::take(&mut self.context.activations);
+                let mut child = Context::new(activations);
+                child.phase = self.context.phase.clone();
+                let caller = std::mem::replace(&mut self.context, child);
+                self.context.stack.push(Continuation::ResumeAwait {
+                    task,
+                    wait,
+                    caller: Box::new(caller),
+                });
+                self.context
+                    .stack
+                    .push(Continuation::StartTask { task, invocation });
             }
             Action::Decide {
                 operation: Operation::Region(name) | Operation::Run(name) | Operation::Await(name),

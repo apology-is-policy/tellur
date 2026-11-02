@@ -3,7 +3,7 @@
 [Language reference](../language-reference.md) · [Design and next steps](../async-execution.md) ·
 [Execution failures](execution-failures.md)
 
-Compiler 0.112 supports `async control`, synchronous entry with `run`, direct
+Compiler 0.113 supports `async control`, synchronous entry with `run`, direct
 `await operation(arguments)` and local cold tasks with owned and borrowed captures, including reference-bearing carriers, and borrowed completions. Execution
 remains sequential. There is no concurrent scheduler, I/O readiness or LLVM coroutine
 lowering yet.
@@ -364,6 +364,13 @@ same bounded profile with sequential calls and stable caller storage. Since 0.11
 the interpreter separates shared storage, fuel and effect history from its
 resumable control chain. This internal preparation does not change source execution
 order or introduce scheduling points.
+Since 0.113, a cold await queues its prepared child and parks the caller's control
+state. One-use completion tokens validate delivery before the caller resumes.
+Captured storage stays in the shared arena, and the diagnostic activation chain
+travels with the child and back to its caller. Dispatch is administrative: it does
+not consume extra instruction fuel or change host quota behavior. These internal
+waits cover child completion only; source execution still has no overlapping work
+or external I/O readiness.
 
 Path expansion retains `run`, `defer`, direct `await` and task consumption as
 explicit operations. It may inline ordinary

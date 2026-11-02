@@ -221,3 +221,68 @@ control main() exits done { forward run start("unused", false); }
     assert_eq!(messages(m), ["paused", "paused", "survives"]);
     assert_retired(m);
 }
+
+#[test]
+fn queued_await_parks_the_original_caller_and_delivers_its_borrow_once() {
+    let p = checked(
+        r#"
+async control edit(ref mutable string text)
+    exits ready { ref mutable string value from text }
+{
+    emit("child entered"); deref text = "after"; exit ready {text};
+}
+async control start() exits done {
+    mutable string text = "before";
+    auto pending = defer edit(borrow mutable text);
+    emit("created");
+    delta await pending {ready {auto value} => received}
+    [received]: emit(value); drop(value); text = "released"; emit(borrow text); exit done;
+}
+control main() exits done {forward run start();}
+"#,
+    );
+    let s = scenario();
+    let mut session = p.start_execution(&s, 200);
+    let m = session.machine.as_mut().unwrap();
+    m.enter(&s).unwrap();
+    while m.shared.events.len() < 2 {
+        assert!(!m.drive(1));
+    }
+    let (task, wait, caller) = m
+        .context
+        .stack
+        .iter()
+        .find_map(|c| match c {
+            Continuation::ResumeAwait { task, wait, caller } => Some((*task, *wait, caller)),
+            _ => None,
+        })
+        .expect("await must retain a separate parked caller");
+    assert_ne!(caller.frame.owner, m.context.frame.owner);
+    assert!(matches!(
+        caller.stack.last(),
+        Some(Continuation::TaskDecision { .. })
+    ));
+    let owner = caller.frame.owner.unwrap();
+    let address = caller.frame.base
+        + p.region("start")
+            .unwrap()
+            .slots
+            .values()
+            .find(|slot| slot.name == "text")
+            .unwrap()
+            .id;
+    assert_eq!(m.shared.values[&address], Value::String("before".into()));
+    let registry = m.shared.tasks.clone();
+    assert!(m.shared.tasks.deliver(task, owner, wait).is_err());
+    assert_eq!(
+        m.shared.tasks, registry,
+        "early signal must not resume caller"
+    );
+    assert!(m.drive(200));
+    assert_eq!(
+        messages(m),
+        ["created", "child entered", "after", "released"]
+    );
+    assert!(m.shared.tasks.deliver(task, owner, wait).is_err());
+    assert_retired(m);
+}
