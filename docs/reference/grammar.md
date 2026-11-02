@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Lexical structure](lexical-structure.md)
 
-This is a reading grammar for the modern compiler 0.104.0 profile, not a replacement
+This is a reading grammar for the modern compiler 0.105.0 profile, not a replacement
 for its type, ownership, origin or coverage rules. It omits legacy spellings and
 parser recovery details. `name`, `integer` and `string_literal` are lexical tokens.
 Quoted text denotes source tokens; `?` means optional, `*` repetition, `+` one or
@@ -45,7 +45,7 @@ field            = type name ;
 trait            = "trait" name "{" (associated_requirement | control_signature)* "}" ;
 associated_requirement = "type" name (":" bounds)? ";" ;
 contingent       = "@" "contingent" ;
-control_signature = contingent? "control" name "(" trailing_list(field)? ")"
+control_signature = contingent? "async"? "control" name "(" trailing_list(field)? ")"
                     ("exits" explicit_exits "faults"? | "faults") ";" ;
 implementation   = "implement" qualified_name "for" type
                    "{" (associated_assignment | control)* "}" ;
@@ -96,7 +96,7 @@ semantically; they are not interchangeable.
 ## Controls, bodies and paths
 
 ```ebnf
-control          = contingent? "control" name control_parameters?
+control          = contingent? "async"? "control" name control_parameters?
                    "(" trailing_list(field)? ")" ("exits" exits "faults"? | "faults") body ;
 boundary         = "boundary" name "(" trailing_list(field)? ")"
                    ("retains" list(name))? "faults"? body
@@ -226,3 +226,12 @@ ambient_fault    = "@" "fault" ;
 loop may omit `()`, as may its ordinary `again name;` restart. Supervision does not
 relax the existing tail-loop or ownership rules. Process status is a literal 0–255;
 see [contingency](contingency.md) for placement and recovery restrictions.
+
+## Direct async operation operands
+
+In an operation position (delta, capture, forward or a call statement), a call may
+be prefixed with `run` or `await`. `run` requires a synchronous caller and an async
+callee; `await` requires both to be async. Trait signatures and implementations
+match the `async` permission. These prefixes do not make calls value expressions.
+Async operations are unavailable in contingency code. Stored tasks and scheduling
+remain planned; see [direct async execution](async-execution.md).

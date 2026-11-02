@@ -52,6 +52,11 @@ impl CheckedProgram {
         let region = self
             .region(entry)
             .ok_or_else(|| error(format!("unknown executable entry `{entry}`")))?;
+        if region.asynchronous {
+            return Err(error(
+                "async controls require a synchronous entry using run",
+            ));
+        }
         if region.is_constructor() {
             return Err(error(
                 "constructors produce values and cannot be executable entries",

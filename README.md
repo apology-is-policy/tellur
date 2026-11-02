@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.104.0** implements the v0.1 checked core and the current language
+Compiler release **0.105.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -485,3 +485,10 @@ It demonstrates separate returned-field dependencies and inferred forwarding.
 The 0.63 checkpoint adds [contingency and supervised boundaries](docs/reference/contingency.md):
 `@contingent`, explicit retained-owner handover and `supervise`, with per-request
 isolation in the settings server. General annotation policies remain deferred.
+
+### Direct async calls in 0.105
+
+`async control`, `run` and direct `await` are available in the sequential execution
+profile. Try `./bin/tellurc exec playground/async_entry.tellur` or read the
+[reference chapter](docs/reference/async-execution.md). Stored tasks, concurrent
+scheduling, async I/O and LLVM coroutine lowering remain later checkpoints.

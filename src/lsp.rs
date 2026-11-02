@@ -522,6 +522,15 @@ impl Server {
                     _ => continue,
                 };
                 let info = match text {
+                    "async" => Some(
+                        "`async control` permits direct `await` calls. Synchronous callers enter with `run`. The current profile executes sequentially; stored tasks, scheduling and async I/O remain planned.",
+                    ),
+                    "run" => Some(
+                        "`run operation(arguments)` enters an async control from synchronous code and waits for its completion. It exposes only normal outcomes and preserves the surrounding fault boundary. It does not catch faults or detach work.",
+                    ),
+                    "await" => Some(
+                        "`await operation(arguments)` invokes an async control inside an async control. Arguments transfer in written order; caller storage and loans remain valid through completion. The current profile supports direct calls, not stored task handles.",
+                    ),
                     "fault" if index > 0 && tokens[index - 1].is("@") => Some(
                         "`@fault: ref fault_report`\n\nImmutable contingency-local diagnostic. Fields: `string message`, `vector<string> stack`, `vector<string> sites`. Stack and current sites are bounded observations, not a complete execution history. It cannot cross a recovery edge.",
                     ),

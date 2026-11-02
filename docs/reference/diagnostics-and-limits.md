@@ -1274,3 +1274,12 @@ control caller() exits done {
     exit done;
 }
 ```
+
+## Async invocation permissions
+
+`E_ASYNC` reports a missing or mismatched explicit async invocation, a `run` or
+`await` used as a value expression, mismatched trait/implementation permissions,
+or async invocation in contingency code. Use `run` from a synchronous control and
+`await` from an async control; both require an async callee. Errors on calls select
+the complete invocation. These declaration-phase checks report the first async
+admission error per control; see [direct async execution](async-execution.md).

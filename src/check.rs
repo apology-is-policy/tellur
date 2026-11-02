@@ -3315,10 +3315,9 @@ impl Checker<'_> {
             });
             self.expire_initializer_loans(first_initializer_loan, &staged);
         }
-        Ok(Some((
-            S::Call(name.clone(), staged).at(operand.range),
-            release,
-        )))
+        let mut call = operand.clone();
+        call.kind = S::Call(name.clone(), staged);
+        Ok(Some((call, release)))
     }
     #[allow(clippy::too_many_arguments)]
     fn decision(
@@ -3488,7 +3487,11 @@ impl Checker<'_> {
             }
             (
                 if sig.region {
-                    Operation::Region(name.clone())
+                    match operand.call_mode {
+                        syntax::CallMode::Direct => Operation::Region(name.clone()),
+                        syntax::CallMode::Run => Operation::Run(name.clone()),
+                        syntax::CallMode::Await => Operation::Await(name.clone()),
+                    }
                 } else if crate::collections::is_operation(name) {
                     Operation::Collection(name.clone())
                 } else {
@@ -4692,11 +4695,17 @@ pub(crate) fn compile_concrete_unit(
             },
         );
     }
+    let async_controls = parsed
+        .iter()
+        .filter(|r| r.asynchronous)
+        .map(|r| r.name.clone())
+        .collect();
     let mut operation_names = signatures.keys().cloned().collect::<BTreeSet<_>>();
     let declared = crate::diagnostics::collect_checks(parsed.iter().map(|region| -> Result<_> {
         // Reserve every authored name, including an invalid declaration's name,
         // so a later duplicate remains an independent declaration error.
         let duplicate = !operation_names.insert(region.name.clone());
+        crate::async_calls::validate(region, &async_controls)?;
         if region.boundary.is_some()
             && region
                 .parameters
@@ -4750,7 +4759,7 @@ pub(crate) fn compile_concrete_unit(
             region.name.clone(),
             Signature {
                 entry_only: syntax::entry_only(&region.body),
-                contingent: region.contingent_contract.unwrap_or(true),
+                contingent: !region.asynchronous && region.contingent_contract.unwrap_or(true),
                 boundary: region.boundary.is_some(),
                 contingency: region.contingency,
                 supervision_faults: false,
@@ -4891,7 +4900,9 @@ pub(crate) fn compile_concrete_unit(
                     visibility,
                     type_bindings: &source.type_bindings,
                     result: Region {
-                        contingent: source.contingent_contract.unwrap_or(true),
+                        asynchronous: source.asynchronous,
+                        contingent: !source.asynchronous
+                            && source.contingent_contract.unwrap_or(true),
                         contingency: source.contingency,
                         boundary: None,
                         faults: source.fault_contract.unwrap_or(false),
@@ -5131,7 +5142,8 @@ pub(crate) fn compile_concrete_unit(
             for instruction in code {
                 match &instruction.action {
                     Action::Decide {
-                        operation: Operation::Region(name),
+                        operation:
+                            Operation::Region(name) | Operation::Run(name) | Operation::Await(name),
                         ..
                     } => result.push(name.as_str()),
                     Action::Loop { body, .. } => result.extend(callees(body)),

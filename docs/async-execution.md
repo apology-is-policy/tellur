@@ -4,11 +4,12 @@
 [Fault boundaries](faults-and-activations.md) ·
 [Current feature status](reference/support-status.md)
 
-1 November 2026. This is an E1 design and implementation plan. Compilers 0.98–0.103 add
+Updated 2 November 2026. This is an E1 design and implementation plan. Compilers 0.98–0.103 add
 shared activation identities, persistent continuations and atomic invocation admission,
 prerequisites for overlapping execution contexts. They do **not** implement source
-tasks, source suspension, scheduling or async I/O. Proposed execution rules below
-are not new executable syntax.
+tasks, source suspension, scheduling or async I/O. Compiler 0.105 additionally implements [direct async calls](reference/async-execution.md):
+`async control`, `run` and direct `await`, with sequential execution. Remaining
+task and scheduling rules below are proposals or accepted future semantics.
 
 ## Existing direction
 
@@ -61,7 +62,7 @@ Ordinary synchronous calls use both steps immediately. This provides a concrete
 handoff point for later deferred execution; it is not yet a source task. The handoff
 has no scheduler, public task type, captured-loan checker or cancellation contract.
 Host simulation disposal must not be treated as permission to drop a Tellur task.
-The source entry-syntax question remains independent and unanswered.
+The source entry form is now accepted as `run`; source admission remains separate.
 
 Reference values already use invocation-specific logical slot ranges. A reference
 identifies storage and projections rather than a Rust vector element pointer.
@@ -166,28 +167,29 @@ dispositions; it does not satisfy normal completion by pretending the task ran.
 The host `ExecutionSession` remains a scripted simulation with a different disposal
 contract. These source task rules are accepted for E1c but not yet executable.
 
-### Pending entry-syntax decision
+### Accepted decision: explicit runtime entry with `run`
 
-The accepted direction requires an explicit runtime boundary when synchronous code
-starts async work. The remaining question is its source form:
+Accepted by the language author on 2 November 2026: synchronous code enters async
+execution explicitly with `run`, for example `delta run startup(args) { ... }`.
+It drives the async operation and its owned scope to settlement, then exposes normal
+outcomes through the existing delta syntax. A lexical `runtime { ... }` block is
+not part of the accepted entry form.
 
-| Choice | Source shape and meaning |
-| --- | --- |
-| Recommended: explicit `run` operation | `delta run startup(args) { ... }` drives the async operation and its owned scope to settlement, then exposes normal outcomes through the existing delta syntax. |
-| Alternative: lexical runtime block | `runtime { ... }` allows `await` inside a synchronous caller's explicit runtime scope. |
-
-This question is open with the author. Neither spelling is implemented or accepted
-here. In either form, the runtime boundary is not a fault boundary: faults keep their
-emergency channel and propagate to the surrounding fault boundary. Scheduler scope
-settlement cannot leave detached children or borrowed storage behind.
+The runtime entry is not a fault boundary: faults retain their emergency channel
+and propagate to the surrounding fault boundary. Scheduler scope settlement cannot
+leave detached children or borrowed storage behind. This decision selects the source
+form. Compiler 0.105 implements the direct sequential subset; owned child scopes
+and scheduler settlement remain part of the later task implementation.
 
 ### E1c admission and representation work
 
 The two accepted task policies do not make the current instruction quota a scheduler
 or `capture` a cold task. The next implementation needs these distinct pieces:
 
-- Preserve a control's async permission in source signatures, checked calls and
-  public contracts. Ordinary calls must not acquire an implicit suspension effect.
+- **Delivered in 0.105 (E1c.1):** async permission in source signatures, direct
+  `run`/`await` calls, public snapshots and hover. Trait implementations match the
+  permission; synchronous host entries require a `run` wrapper. Expansion retains
+  async calls. Reference/native execution is sequential without stored tasks.
 - Evaluate deferred arguments in their written order, retaining their owners and
   loans in task state. Body effects and body faults occur only when driven; argument
   construction and its faults remain immediate.
@@ -216,14 +218,14 @@ those static permissions or extend temporary lifetimes.
 Acceptance must cover argument effects before body effects, no execution merely from
 creating/moving a task, duplicate consumption and dropped-task rejection, a borrowed
 capture protecting its owner until settlement, a fault during argument construction,
-a fault before the task starts, and normal payload/origin delivery. Source entry
-spelling remains pending; implementation must not choose it by timeout.
+a fault before the task starts, and normal payload/origin delivery. The accepted
+`run` entry must preserve the surrounding fault channel.
 
 ## Capture-transfer requirements
 
 This audit derives implementation requirements from the accepted task rules. It does
-not enable source syntax, choose the pending synchronous-entry form, or settle a
-public capture/effect type spelling. E1b.1's runtime argument vector is necessary
+not enable source syntax or settle a public capture/effect type spelling. The
+synchronous-entry form is accepted separately as `run`. E1b.1's runtime argument vector is necessary
 execution state; it is not the static proof that retaining those arguments is legal.
 
 ### State that must survive deferral
@@ -309,7 +311,8 @@ Those boundaries need explicit contracts before being accepted by the checker.
 | E1a | Runtime audit and shared activation identity allocator; interleaved children, independent failure state, no reuse after return, overflow, and sequential reference/native report parity | Delivered in 0.98; shared identity is independent of scheduling policy |
 | E1b | Persistent reference continuations and explicit step/resume protocol; current synchronous outcomes, fuel, effects, faults, loans and expansion observations preserved under different step partitions | Delivered in 0.99; no source async claim |
 | E1b.1 | Separate argument preparation from frame installation; reject malformed later values, address exhaustion and frozen activation state without partial storage; preserve all synchronous observations | Delivered in 0.103; internal handoff only, no source task admission |
-| E1c | Bounded cold tasks and consuming await; eager argument transfer, no body effects before drive, fixed result contracts, task ownership and retained borrows | Await/transfer obligation accepted; settle source runtime entry/suspension effect contracts before enabling syntax |
+| E1c | Bounded cold tasks and consuming await; eager argument transfer, no body effects before drive, fixed result contracts, task ownership and retained borrows | Await/transfer obligation and explicit `run` entry accepted; direct invocation delivered in E1c.1, stored captures and handles remain ahead |
+| E1c.1 | Direct async permission and explicit entry | Delivered in 0.105: sequential `async control`, `run`, direct `await`, public/trait contracts and preserved graph boundaries; no stored tasks or scheduler |
 | E1d | Scoped spawn and deterministic readiness; two overlapping children, duplicate/stale wake handling and owner settlement | Prompt owner-boundary fault propagation accepted; specify ownership transfers, sibling dispositions and deterministic multiple-fault selection |
 | E1e | Explicit cooperative cancellation and suspending cleanup; normal completion races, cleanup failures and no abandoned losers | Define cancellation observation and cleanup admission; no implicit cancellation exception |
 | E2 | Pinned native coroutine experiment, then checked lowering and schedule-based differential validation | Reference semantics and legal frame retirement must precede native destruction |

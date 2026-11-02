@@ -108,6 +108,10 @@ pub struct Arm {
 }
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Operation {
+    /// Explicit synchronous entry into the bounded async execution profile.
+    Run(String),
+    /// Direct await; retains its boundary in expansion artifacts.
+    Await(String),
     Primitive(String),
     Collection(String),
     Region(String),
@@ -339,6 +343,8 @@ pub struct StoredReturn {
 }
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Region {
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub asynchronous: bool,
     #[serde(default, skip_serializing_if = "is_false")]
     pub contingent: bool,
     #[serde(default, skip_serializing_if = "is_false")]

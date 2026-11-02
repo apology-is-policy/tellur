@@ -1,7 +1,16 @@
 use crate::{Diagnostic, Result, SourceRange, Span};
 
+/// Explicit invocation permission; retained through name and argument rewrites.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum CallMode {
+    #[default]
+    Direct,
+    Run,
+    Await,
+}
 #[derive(Clone, Debug)]
 pub struct Expr {
+    pub call_mode: CallMode,
     pub kind: ExprKind,
     pub range: SourceRange,
     /// A possible implicit local binding, retained through module qualification.
@@ -62,6 +71,7 @@ pub enum ExprKind {
 impl ExprKind {
     pub fn at(self, range: SourceRange) -> Expr {
         Expr {
+            call_mode: CallMode::Direct,
             kind: self,
             range,
             local_spelling: None,
@@ -223,6 +233,7 @@ pub enum Item {
 pub type TypeBounds = std::collections::BTreeMap<String, Vec<String>>;
 #[derive(Clone, Debug)]
 pub struct Region {
+    pub asynchronous: bool,
     pub contingent_contract: Option<bool>,
     pub boundary: Option<Boundary>,
     pub contingency: bool,
@@ -706,7 +717,11 @@ impl Parser {
         } else {
             None
         };
+        let asynchronous = self.eat("async");
         let modern = self.eat("control");
+        if asynchronous && !modern {
+            return Err(self.error("async requires control syntax"));
+        }
         if !modern {
             self.need("region")?;
         }
@@ -833,6 +848,7 @@ impl Parser {
             self.body()?
         };
         Ok(Region {
+            asynchronous,
             contingent_contract,
             boundary: None,
             contingency: false,
@@ -1116,8 +1132,45 @@ impl Parser {
     }
     fn primary(&mut self) -> Result<Expr> {
         let start = self.here();
-        let kind = self.primary_kind()?;
-        Ok(kind.at(self.range_from(start)))
+        let mode = if self.at("run")
+            && self
+                .tokens
+                .get(self.pos + 1)
+                .is_some_and(|t| matches!(t.kind, Kind::Word(_)))
+        {
+            self.pos += 1;
+            CallMode::Run
+        } else if self.eat("await") {
+            CallMode::Await
+        } else {
+            CallMode::Direct
+        };
+        // Parentheses preserve invocation metadata as well as the expression.
+        let mut expression = if self.eat("(") {
+            let previous = self.brace_expr;
+            self.brace_expr = true;
+            let value = self.expr(0)?;
+            self.need(")")?;
+            self.brace_expr = previous;
+            value
+        } else {
+            self.primary_kind()?.at(self.range_from(start))
+        };
+        if mode != CallMode::Direct {
+            if expression.call_mode != CallMode::Direct
+                || !matches!(expression.kind, ExprKind::Call(..))
+            {
+                return Err(Diagnostic::new(
+                    "E_ASYNC",
+                    start,
+                    "run and await currently require one direct async control call",
+                )
+                .with_range(self.range_from(start)));
+            }
+            expression.call_mode = mode;
+        }
+        expression.range = self.range_from(start);
+        Ok(expression)
     }
     fn range_from(&self, start: Span) -> SourceRange {
         SourceRange {
@@ -1145,14 +1198,6 @@ impl Parser {
             self.need("]")?;
             self.brace_expr = previous;
             return Ok(ExprKind::List(values));
-        }
-        if self.eat("(") {
-            let previous = self.brace_expr;
-            self.brace_expr = true;
-            let e = self.expr(0)?;
-            self.need(")")?;
-            self.brace_expr = previous;
-            return Ok(e.kind);
         }
         let token = self.tokens[self.pos].clone();
         match token.kind {
@@ -1338,11 +1383,9 @@ impl Parser {
     }
     fn statement_inner(&mut self) -> Result<Statement> {
         let start = self.here();
-        if [
-            "async", "await", "spawn", "defer", "capture", "vary", "flux",
-        ]
-        .iter()
-        .any(|word| self.at(word))
+        if ["async", "spawn", "defer", "capture", "vary", "flux"]
+            .iter()
+            .any(|word| self.at(word))
         {
             return Err(Diagnostic::new(
                 "E_UNSUPPORTED",
@@ -1791,6 +1834,7 @@ pub(crate) fn parse_with_layout(source: &str) -> Result<(Unit, Vec<Token>, crate
             let handler_body = p.body()?;
             let handler_name = format!("{name}$contingency");
             let common = Region {
+                asynchronous: false,
                 contingent_contract: None,
                 boundary: None,
                 contingency: false,
@@ -1957,6 +2001,7 @@ pub(crate) fn parse_with_layout(source: &str) -> Result<(Unit, Vec<Token>, crate
                         };
                         let body = p.body()?;
                         constructor = Some(Region {
+                            asynchronous: false,
                             contingent_contract: if contingent {
                                 Some(true)
                             } else if visible {
@@ -2119,13 +2164,6 @@ pub(crate) fn parse_with_layout(source: &str) -> Result<(Unit, Vec<Token>, crate
             });
             p.eat(";");
             continue;
-        }
-        if p.at("async") {
-            return Err(Diagnostic::new(
-                "E_UNSUPPORTED",
-                p.here(),
-                "async controls are specified in the revision roadmap but not implemented yet",
-            ));
         }
         regions.push(p.control(span, public, false)?);
     }

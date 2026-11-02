@@ -311,3 +311,10 @@ test('struct constructors distinguish declarations, calls and self fields', () =
   has(ts, '@contingent', 'storage.modifier.annotation.tellur');
   has(ts, 'move', 'keyword.operator.tellur');
 });
+
+test('direct async invocation keywords remain distinct from call names', () => {
+  const result = tokens('pub async control work() exits done {\n    delta await child() { done => done }\n}\ncontrol main() exits done { forward run work(); }');
+  for (const word of ['async', 'await', 'run']) {
+    assert.ok(result.some(t => t.text === word && t.scopes.includes('keyword.control.tellur')), word);
+  }
+});

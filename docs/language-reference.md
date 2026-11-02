@@ -1,8 +1,8 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.104.0 -->
+<!-- tellur-reference-version: 0.105.0 -->
 
-This manual describes **compiler 0.104.0**, including the current ownership model,
+This manual describes **compiler 0.105.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -42,6 +42,7 @@ The companion chapters provide quick lookup:
 - [Outcome absorption](reference/outcome-absorption.md): internal contributors and changes hidden by an unchanged public contract.
 - [Explanations](reference/explanations.md): source-position histories and targeted outcome contributors, including private controls.
 - [Contingency and boundaries](reference/contingency.md): checked contingency calls, retained owners, supervision and terminal escalation.
+- [Direct async execution](reference/async-execution.md): `async control`, synchronous `run`, direct `await`, contracts and current limits.
 - [Execution failures](reference/execution-failures.md): `fault`/`faults`, public permissions, explicit resource dispositions and activation reports.
 - [Glossary](reference/glossary.md): precise meanings of Tellur's terminology.
 
@@ -122,8 +123,10 @@ need a complete [status policy](reference/process-entry.md).
 The current execution model is sequential. Statements execute in source order on
 their selected histories. Arguments and construction fields evaluate left to right;
 boolean `&&` and `||` short-circuit. Only the selected adapter arm executes. Source
-control calls cannot recurse; tail loops provide repetition. There are no async
-tasks, implicit exceptions, or implicit error propagation in this compiler profile.
+control calls cannot recurse; tail loops provide repetition. Explicit `run` and
+direct `await` support async control contracts within this sequential profile;
+[stored tasks and scheduling](reference/async-execution.md) remain planned. There are
+no implicit exceptions or implicit error propagation.
 Declared failure outcomes are normal completions. Host failures, including allocation
 failure or an unsupported live primitive adapter, are outside those contracts.
 
@@ -2803,7 +2806,7 @@ General expression-type hover remains unsupported.
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and async tasks remain planned; they are not executable features of 0.104.0.
+and async tasks remain planned; they are not executable features of 0.105.0.
 ## Contingency and supervised boundaries
 
 The [contingency reference](reference/contingency.md) specifies `@contingent`,

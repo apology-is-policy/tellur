@@ -52,6 +52,8 @@ pub struct Field {
 #[serde(deny_unknown_fields)]
 pub struct Control {
     #[serde(default, skip_serializing_if = "crate::ir::is_false")]
+    pub asynchronous: bool,
+    #[serde(default, skip_serializing_if = "crate::ir::is_false")]
     pub entry_only: bool,
     #[serde(default, skip_serializing_if = "crate::ir::is_false")]
     pub contingent: bool,
@@ -362,6 +364,7 @@ impl Builder<'_> {
             Exits::Inline { alternatives }
         };
         Control {
+            asynchronous: region.asynchronous,
             entry_only: syntax::entry_only(&region.body),
             contingent: region.contingent_contract == Some(true),
             retains: region.boundary.as_ref().map(|b| b.retained.clone()),

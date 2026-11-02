@@ -75,7 +75,7 @@ whole-contract shape/origin and contributor locations remain separate follow-ups
 Broader physical copy elision and suspended activation frames remain separate work.
 
 2 November 2026. This is the working revision plan, not a claim that all proposed
-features are implemented. Compiler **0.104.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
+features are implemented. Compiler **0.105.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
 lifetime checkpoints of milestone 2, the array/vector/map core of milestone 3,
 and implicit entry, inline/stored adapters, owned capture, named outcome contracts
 and checked forwarding in milestone 4. A first [semantic foundation](semantic-foundation.md)
@@ -282,7 +282,8 @@ do not block this design work. E2 remains the native coroutine target.
 | E1a | Async activation groundwork | **Delivered in 0.98:** related execution contexts allocate unique monotonic invocation IDs before joining; separate fault state/active chains, no completed history, exhaustion checks and existing sequential reference/native report parity. No scheduler or source async syntax |
 | E1b | Persistent reference continuations | **Delivered in 0.99:** explicit call/loop/boundary frames and host step/resume API; quota pauses preserve synchronous effects, outcomes, fixed fuel, faults, loans and expansion observations. No source task or scheduler syntax |
 | E1b.1 | Atomic invocation admission | **Delivered in 0.103:** internal validated-argument handoff precedes frame installation; malformed later values, address exhaustion and frozen contexts leave no partial storage. Synchronous calls still prepare/start immediately; no source task or entry-syntax choice |
-| E1c | Cold tasks and consuming await | [Contract audit](async-execution.md#cold-task-contract-audit) and [capture-transfer requirements](async-execution.md#capture-transfer-requirements) record concrete checker seams, retained state, temporary backing, result-origin and fault requirements. Await/transfer is required even before a task starts; explicit discard is disallowed. Escaping spawned-child faults reach the owning boundary at the next scheduler safe point, before contingency after resource settlement. Both policies are accepted; source implementation remains ahead |
+| E1c | Cold tasks and consuming await | [Contract audit](async-execution.md#cold-task-contract-audit) and [capture-transfer requirements](async-execution.md#capture-transfer-requirements) record concrete checker seams, retained state, temporary backing, result-origin and fault requirements. Await/transfer is required even before a task starts; explicit discard is disallowed. Escaping spawned-child faults reach the owning boundary at the next scheduler safe point, before contingency after resource settlement. Both policies and explicit `run` entry are accepted. Direct invocation is delivered in E1c.1; stored captures and handles remain ahead |
+| E1c.1 | Direct async admission | **Delivered in 0.105:** `async control`, synchronous `run` and direct `await`; checked generic/trait/public permissions, editor hover and diagnostics, sequential reference/native execution, borrow/fault preservation and opaque async expansion boundaries. No stored tasks or scheduler |
 | E2 | Native coroutine lowering | Preserved architectural target: direct LLVM coroutine primitives, pinned-toolchain experiment, frame lifetime rules and schedule-based differential tests; I1 must keep this route open |
 | T1 | Stronger source transformations | Hold current scope during P1–P5: extraction correspondence, continuation cuts, source-level lift and editor actions |
 | R1 | Mathematical foundations | Maintain existing evidence; defer extensions during P1–P5: preservation judgments, richer protocol abstractions, infinite/causal behavior, mechanization |
@@ -744,7 +745,7 @@ the body. `await` consumes a deferred task and drives it, suspending its caller 
 needed. `spawn` explicitly schedules concurrent work and returns an owned running
 handle. Awaiting a running handle observes its completion without rescheduling it.
 Direct `delta await operation(...)` fuses creation, execution/wait and handling.
-A synchronous entry uses an explicit runtime boundary; calling an async control does
+A synchronous entry uses explicit `run`; calling an async control does
 not silently create parallel work.
 
 Start with a single-thread cooperative executor, explicit runnable/waiting/completed

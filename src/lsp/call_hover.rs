@@ -277,12 +277,13 @@ fn trait_description(
         None => alternatives.clone(),
     };
     format!(
-        "**Trait control contract**\n\n```tellur\n{}control {}({}){}\n```{}\n\n{}",
+        "**Trait control contract**\n\n```tellur\n{}{}control {}({}){}\n```{}\n\n{}",
         if source.contingent_contract == Some(true) {
             "@contingent\n"
         } else {
             ""
         },
+        if source.asynchronous { "async " } else { "" },
         display_type(written),
         source
             .parameters
@@ -459,12 +460,13 @@ fn generic_description(written: &str, resolved: &str, program: &CheckedProgram) 
         None => alternatives.clone(),
     };
     Some(format!(
-        "**Control contract**\n\n```tellur\n{}control {}({}){}\n```\n\n{SYMBOLIC_CONTRACT}{}{}{}{}",
+        "**Control contract**\n\n```tellur\n{}{}control {}({}){}\n```\n\n{SYMBOLIC_CONTRACT}{}{}{}{}",
         if checked.contingent {
             "@contingent\n"
         } else {
             ""
         },
+        if source.asynchronous { "async " } else { "" },
         display_type(written),
         source
             .parameters
@@ -756,8 +758,9 @@ pub(super) fn hover(
             } else {
                 String::new()
             };
+            let permission = if checked.asynchronous { "async " } else { "" };
             format!(
-                "**Control contract**\n\n```tellur\n{annotation}control {}({params}){}\n```{inferred}{details}{}",
+                "**Control contract**\n\n```tellur\n{annotation}{permission}control {}({params}){}\n```{inferred}{details}{}",
                 display_type(written),
                 completion_description(&exits, checked.faults),
                 if source.public {

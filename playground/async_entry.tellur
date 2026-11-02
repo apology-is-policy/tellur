@@ -1,0 +1,22 @@
+// Direct async calls currently run sequentially. There are no stored tasks or async I/O yet.
+async control greeting(string name) exits ready { string text } {
+    exit ready { concat("Hello, ", name) };
+}
+
+async control startup() exits done {
+    delta await greeting("Tellur") {
+        ready { string text } => ready,
+    }
+
+    [ready]:
+        emit(borrow text);
+        exit done;
+}
+
+control main() exits program_result {
+    forward run startup();
+}
+
+outcome program_result {
+    @exit 0 done,
+}

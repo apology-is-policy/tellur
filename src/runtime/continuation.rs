@@ -156,6 +156,11 @@ fn completion(flow: Flow) -> Result<Completion> {
 impl<'a> Machine<'a> {
     fn enter(&mut self, scenario: &Scenario) -> Result<()> {
         let region = self.program.region(&scenario.entry);
+        if region.is_some_and(|r| r.asynchronous) {
+            return Err(error(
+                "async controls require a synchronous entry using run",
+            ));
+        }
         if region.is_some_and(|r| r.is_constructor()) {
             return Err(error(
                 "constructors produce values and cannot be executable entries",
@@ -567,7 +572,7 @@ impl<'a> Machine<'a> {
                 self.call(boundary, args)?;
             }
             Action::Decide {
-                operation: Operation::Region(name),
+                operation: Operation::Region(name) | Operation::Run(name) | Operation::Await(name),
                 args,
                 arms,
             } => {
@@ -688,7 +693,7 @@ impl<'a> Machine<'a> {
                     .collect::<Result<Vec<_>>>()?;
                 let (outcome, fields) = match operation {
                     Operation::Collection(name) => collection(name, args, values)?,
-                    Operation::Region(name) => {
+                    Operation::Region(name) | Operation::Run(name) | Operation::Await(name) => {
                         unreachable!("control calls have an explicit continuation: {name}")
                     }
                     Operation::Variant(expr) => match evaluate(expr, values, base)? {

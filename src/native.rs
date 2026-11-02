@@ -433,11 +433,13 @@ impl Generator<'_> {
                                 expressions(args, &self.layout)
                             )
                         }
-                        Operation::Region(name) => format!(
-                            "{{ let args = {}; region_{}(host, &mut v, args, &mut vec![])?.outcome()? }}",
-                            expressions(args, &self.layout),
-                            self.names[name.as_str()]
-                        ),
+                        Operation::Region(name) | Operation::Run(name) | Operation::Await(name) => {
+                            format!(
+                                "{{ let args = {}; region_{}(host, &mut v, args, &mut vec![])?.outcome()? }}",
+                                expressions(args, &self.layout),
+                                self.names[name.as_str()]
+                            )
+                        }
                     };
                     let _ = writeln!(
                         self.code,

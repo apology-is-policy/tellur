@@ -5783,3 +5783,48 @@ fn named_completion_type_ranges_follow_unsaved_imports_and_restore_hover() {
     assert_eq!(f.diagnostics(), json!([]));
     assert_eq!(hover_at(&f, source, "auto text"), initial);
 }
+
+#[test]
+fn imported_async_permission_and_unsaved_edits_update_diagnostics_and_hover() {
+    let mut f = Fixture::new();
+    let source = "import \"worker.tellur\" as worker;\ncontrol main() exits done {forward run worker.work();}";
+    let worker = "pub async control work() exits done {exit done;}";
+    fs::write(f.root.join("worker.tellur"), worker).unwrap();
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let h = hover_at(&f, source, "worker.work()");
+    assert!(
+        h["contents"]["value"]
+            .as_str()
+            .unwrap()
+            .contains("async control worker.work()"),
+        "{h}"
+    );
+    assert!(
+        hover_at(&f, source, "run worker")["contents"]["value"]
+            .as_str()
+            .unwrap()
+            .contains("does not catch faults")
+    );
+    let uri = url::Url::from_file_path(f.root.join("worker.tellur"))
+        .unwrap()
+        .to_string();
+    let synchronous = worker.replace("async ", "");
+    f.server.notification(
+        "textDocument/didOpen",
+        &json!({"textDocument":{"uri":uri,"languageId":"tellur","version":1,"text":synchronous}}),
+    );
+    assert_eq!(f.diagnostics()[0]["code"], "E_ASYNC");
+    let start = source.lines().nth(1).unwrap().find("run worker").unwrap();
+    assert_eq!(
+        f.diagnostics()[0]["range"],
+        json!({"start":{"line":1,"character":start},"end":{"line":1,"character":start+"run worker.work()".len()}})
+    );
+    assert!(hover_at(&f, source, "worker.work()").is_null());
+    f.server.notification(
+        "textDocument/didChange",
+        &json!({"textDocument":{"uri":uri,"version":2},"contentChanges":[{"text":worker}]}),
+    );
+    assert_eq!(f.diagnostics(), json!([]));
+    assert_eq!(hover_at(&f, source, "worker.work()"), h);
+}

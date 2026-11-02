@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.104.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.105.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -3591,6 +3591,16 @@ for that correction. The isolated editor test checks multiline/compact unsaved
 contracts and repair, then builds and runs the counter to emit 1 through 5.
 
 Compiler/LSP version checks, six binary copies and nine packaged/installed payloads
-are verified for 0.104.0. Existing user windows are not reloaded, and the source
+are verified for 0.105.0. Existing user windows are not reloaded, and the source
 backup excludes the protected unrelated C# file. No runtime semantics, async entry
 spelling or task permissions change; the existing async design question remains open.
+
+## 0.105 — direct async admission (E1c.1)
+
+`tests/async_entry.rs` checks explicit call permission, generic and trait dispatch,
+parenthesized/staged arguments, temporary and returned borrows, step/resume order,
+fault-channel preservation, host entry rejection and expansion certificate tampering.
+Original and expanded native programs agree with reference execution. Snapshot and
+LSP tests cover public async permission and unsaved imported contract changes; editor
+coverage checks keyword scopes, hover, diagnostics, repair and a native sample.
+This is sequential direct invocation, not cold tasks, scheduling or coroutine lowering.

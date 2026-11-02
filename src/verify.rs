@@ -456,11 +456,22 @@ impl Verifier<'_> {
                                 .borrowed_outcomes(&self.expr(e)?)
                                 .ok_or_else(|| error("not a borrowed decision type"))?
                         }
-                        Operation::Region(name) => {
+                        Operation::Region(name) | Operation::Run(name) | Operation::Await(name) => {
                             let r = self
                                 .program
                                 .region(name)
                                 .ok_or_else(|| error("unknown callee"))?;
+                            let valid_mode = match operation {
+                                Operation::Region(_) => !r.asynchronous,
+                                // Lifting a synchronous helper into an async caller retains its
+                                // explicit run boundary. Source admission checks lexical placement.
+                                Operation::Run(_) => r.asynchronous,
+                                Operation::Await(_) => r.asynchronous && self.region.asynchronous,
+                                _ => unreachable!(),
+                            };
+                            if !valid_mode {
+                                return Err(error("invalid async invocation permission"));
+                            }
                             if r.entry_only() {
                                 return Err(error("entry-only control used as an ordinary call"));
                             }

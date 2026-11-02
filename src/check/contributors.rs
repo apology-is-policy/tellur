@@ -224,7 +224,11 @@ impl Trace<'_> {
                 value
             }
             Operation::BorrowedVariant(_) => ValueTrace::default(),
-            Operation::Region(name) | Operation::Primitive(name) | Operation::Collection(name) => {
+            Operation::Region(name)
+            | Operation::Run(name)
+            | Operation::Await(name)
+            | Operation::Primitive(name)
+            | Operation::Collection(name) => {
                 let Some(sig) = self.signatures.get(name) else {
                     return ValueTrace::default();
                 };
@@ -293,7 +297,10 @@ impl Trace<'_> {
                     let value = self.operation(operation, &flow, domain, span);
                     let mutates = match operation {
                         Operation::Collection(_) => true,
-                        Operation::Region(name) | Operation::Primitive(name) => {
+                        Operation::Region(name)
+                        | Operation::Run(name)
+                        | Operation::Await(name)
+                        | Operation::Primitive(name) => {
                             self.signatures.get(name).is_some_and(|s| {
                                 s.parameters
                                     .iter()
@@ -404,7 +411,11 @@ impl Checker<'_> {
         missing: &[String],
     ) -> Diagnostic {
         // A call error already points at the call; avoid a duplicate related note.
-        if let Operation::Region(name) | Operation::Primitive(name) = operation {
+        if let Operation::Region(name)
+        | Operation::Run(name)
+        | Operation::Await(name)
+        | Operation::Primitive(name) = operation
+        {
             if let Some(sig) = self.signatures.get(name) {
                 return self.with_contributors(diagnostic, sig, missing);
             }

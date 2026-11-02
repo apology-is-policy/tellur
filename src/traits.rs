@@ -588,6 +588,20 @@ pub(crate) fn lower(
             expected.push(method);
         }
         for mut method in i.methods.clone() {
+            if method.asynchronous
+                != d.methods
+                    .iter()
+                    .find(|m| m.name == method.name)
+                    .unwrap()
+                    .asynchronous
+            {
+                return Err(Diagnostic::new(
+                    "E_ASYNC",
+                    method.span,
+                    "implementation must match the trait control's async permission",
+                )
+                .into());
+            }
             let permission = d
                 .methods
                 .iter()

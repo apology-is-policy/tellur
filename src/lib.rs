@@ -1,6 +1,7 @@
 //! Experimental Tellur front end. Checked programs originate in the front end or validated expansion artifacts.
 pub mod absorption;
 pub mod algebra;
+mod async_calls;
 pub mod bdd;
 pub mod certificate;
 mod check;

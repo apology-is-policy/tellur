@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-0.104.0-darwin-arm64.vsix` using **Extensions:
+1. Install the supplied `tellur-language-0.105.0-darwin-arm64.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -981,3 +981,12 @@ origin mappings retain their own contract meaning and are excluded from the type
 range. Imported unsaved changes refresh the exact location and invalidate stale
 hover until repaired. The isolated editor check edits a generic public helper's
 named contract, repairs it, then builds and runs the importing counter.
+
+## Direct async calls in 0.105
+
+`async`, `run` and `await` have syntax highlighting and explanatory keyword hover.
+Callee hover preserves `async control`; diagnostics reject missing or mismatched
+invocation permission, including unsaved imported contracts. The compiler supports
+sequential direct calls, not stored tasks or async I/O. Try
+[`playground/async_entry.tellur`](https://github.com/apology-is-policy/tellur/blob/main/playground/async_entry.tellur) and the
+[async reference](https://github.com/apology-is-policy/tellur/blob/main/docs/reference/async-execution.md).

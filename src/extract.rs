@@ -469,6 +469,7 @@ pub fn extract_tail(
             .eq(after.parameters.iter().map(|p| (&p.name, &p.ty)));
         if !parameters_equal
             || before.exits != after.exits
+            || before.asynchronous != after.asynchronous
             || before.faults != after.faults
             || before.contingent != after.contingent
             || before.boundary != after.boundary

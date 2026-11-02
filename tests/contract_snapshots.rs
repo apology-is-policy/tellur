@@ -612,3 +612,23 @@ fn constructor_result_origin_mappings_are_public_contracts() {
         json!(["right"])
     );
 }
+
+#[test]
+fn public_async_permission_is_visible_and_changes_the_contract_snapshot() {
+    let f = Fixture::new();
+    let source = "pub control work() exits done {exit done;}";
+    let before = f.snapshot(source);
+    let after = f.snapshot(&source.replace("pub control", "pub async control"));
+    assert_eq!(entry(&after)["work"]["asynchronous"], true);
+    let difference = before.compare(&after).unwrap();
+    assert!(!difference.equal);
+    assert!(
+        serde_json::to_string(&difference)
+            .unwrap()
+            .contains("asynchronous")
+    );
+    assert_eq!(
+        after,
+        Snapshot::from_json(&serde_json::to_string(&after).unwrap()).unwrap()
+    );
+}
