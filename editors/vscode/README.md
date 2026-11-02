@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-0.124.0-darwin-arm64.vsix` using **Extensions:
+1. Install the supplied `tellur-language-0.125.0-darwin-arm64.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1156,3 +1156,10 @@ Native calls now use separately identified frame ranges, preserving borrowed slo
 addresses while permitting independent retirement and storage reuse. Fault cleanup
 releases only the affected frame's resources. This prepares persistent native
 execution contexts; source task scheduling remains unimplemented.
+
+## Native host contexts in 0.125
+
+The bundled compiler adds shared native host-context admission, selection/restoration
+and retirement. Fault causes, contingency messages and resource selection stay paired,
+with checks for foreign, stale and nested-active state. Public calls remain synchronous;
+source scheduling and native sibling settlement are still ahead.

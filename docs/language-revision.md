@@ -130,11 +130,14 @@ named supervision with retained-parameter handover before failed work-frame reti
 and separate handler dispatch. E1d.2c.4b.4d.1 now selects independent compiled roots
 with paired diagnostic, contingency and resource state over a shared host and arena.
 Fuel-cut tests cover borrowed storage, isolated causes and real Rust owner cleanup.
-Native sibling settlement within an owning fault domain remains ahead; public native
-execution is unchanged.
+E1d.2c.4b.4d.2 moves dormant root admission, paired host-state selection and checked
+retirement into shared native runtime support in 0.125. Compiled models use those
+operations; foreign/stale/nested-active transitions and repeated real-owner cleanup
+have direct host coverage. Native owning-domain membership and sibling settlement
+remain ahead; public native execution stays synchronous.
 
 2 November 2026. This is the working revision plan, not a claim that all proposed
-features are implemented. Compiler **0.124.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
+features are implemented. Compiler **0.125.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
 lifetime checkpoints of milestone 2, the array/vector/map core of milestone 3,
 and implicit entry, inline/stored adapters, owned capture, named outcome contracts
 and checked forwarding in milestone 4. A first [semantic foundation](semantic-foundation.md)
@@ -367,6 +370,7 @@ do not block this design work. E2 remains the native coroutine target.
 | E1d.2c.4b.4c.2 | Compiled lexical boundary continuations | Test-only evidence on 0.124: ordered work/handler resumes, loop/recovery/process crossings, nested fault causes and real Rust owner cleanup across quota/fuel cuts. Named supervision and independent context selection remain gated |
 | E1d.2c.4b.4c.3 | Compiled named supervision | Test-only evidence on 0.124: retained caller supervision, failed-work parameter handover before frame retirement, separate handler execution and exact real-owner cleanup. Independent context selection and native sibling settlement remain ahead |
 | E1d.2c.4b.4d.1 | Independent compiled native contexts | Test-only evidence on 0.124: paired tracker/contingency/resource selection, original compiled machines, session-scoped keys and independent root cleanup over shared frames/effects/scripts/fuel. Native sibling settlement within an owning fault domain remains ahead |
+| E1d.2c.4b.4d.2 | Shared native host contexts | Delivered in 0.125: host-bound retained state, dormant ownership-root admission, paired selection/restoration and checked retirement. Compiled models use the shared operations; native owning-domain membership and sibling settlement remain ahead |
 | E2 | Native coroutine lowering | Preserved architectural target: direct LLVM coroutine primitives, pinned-toolchain experiment, frame lifetime rules and schedule-based differential tests; I1 must keep this route open |
 | T1 | Stronger source transformations | Hold current scope during P1–P5: extraction correspondence, continuation cuts, source-level lift and editor actions |
 | R1 | Mathematical foundations | Maintain existing evidence; defer extensions during P1–P5: preservation judgments, richer protocol abstractions, infinite/causal behavior, mechanization |

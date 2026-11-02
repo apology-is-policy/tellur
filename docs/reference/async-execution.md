@@ -464,3 +464,11 @@ shared fuel/input consumption and real Rust cleanup while another root remains l
 These are explicit harness selections of independent roots. Stopped-sibling settlement
 within an owning fault domain remains ahead; the tests do not enable source scheduling
 or change the installed compiler's behavior.
+
+Compiler 0.125 promotes host-context admission, selection/restoration and retirement
+into shared native support. Retained state is bound to its host; resource selection
+must remain beneath the original live root, and root retirement requires nested work
+to be settled. Fault causes and contingency messages move together, while effects,
+input cursor, fuel and resource owners stay shared. The compiled models use the same
+operations. Public native calls remain synchronous; owning-domain sibling settlement
+and source scheduling are still unimplemented.

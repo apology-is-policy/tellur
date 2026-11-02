@@ -678,7 +678,40 @@ inputs instead of applying the launcher's single-root unused-script check; produ
 launch behavior is unchanged. It does not yet stop sibling contexts in one owning fault
 domain, suppress their nested handlers during retirement or expose async host readiness.
 Those settlement paths and broader backend parity remain the next integration gates.
-Compiler/LSP/VSIX 0.124 and the public native backend are unchanged.
+This model checkpoint left the 0.124 public backend unchanged; the following release
+moves its host-state operations into shared runtime support.
+
+## Shared native host contexts (E1d.2c.4b.4d.2)
+
+Compiler 0.125 provides shared native operations for dormant context admission, paired
+selection/restoration, ownership validation and root retirement. A retained host context
+owns its diagnostic tracker, contingency messages and resource selection. It is tied
+to its host even while holding a scope-less baseline. Both selections are validated
+before any field moves. The original context is restored by exchanging the same record;
+callers keep exclusive host access throughout that interval.
+
+An independent root is registered without selecting it or inheriting the host's current
+boundary. Its owned inputs transfer resource membership, while borrowed leaves remain
+with their owner. Root admission rejects invalid handles, a retired current scope or
+scope-identity exhaustion before changing ownership or diagnostic allocation. A parked
+context must select a live scope beneath its original root. Retirement requires that
+root to be selected with no nested live scopes; it releases failed-root owners or
+promotes normal outgoing owners, then rejects duplicate retirement.
+
+The compiled context model now uses these shared operations. Direct host tests pause
+inside a contingency, select unrelated work, then restore the original handler message
+and cause without affecting the other root's Rust owners. Other tests cover foreign
+hosts including scope-less records, wrong roots, nested-active retirement, failed
+admission, stale selections, normal survivor promotion and 32 repeated context pairs
+with distinct diagnostic IDs and bounded live storage. Existing native boundary,
+resource and compiled continuation comparisons validate the shared extraction.
+
+The public generated backend still executes calls and boundaries synchronously. These
+operations do not by themselves supply task scheduling, fault-domain membership,
+stopped-sibling retirement, process-wide stopping, async adapters or suspending cleanup.
+Binding native contexts to owning fault domains and draining borrowers before the
+owning contingency remains next, under the already accepted suppression policy for
+nested sibling handlers. No source ownership, origin, fault or path-label rule changes.
 
 ## Separate the identities and continuations
 
@@ -983,6 +1016,7 @@ Those boundaries need explicit contracts before being accepted by the checker.
 | E1d.2c.4b.4c.2 | Compiled lexical boundary continuations | Test-only evidence on 0.124: ordered work/handler resumes, loop/recovery/process crossings, nested fault causes and real Rust owner cleanup across quota/fuel cuts. Named supervision and independent context selection remain gated |
 | E1d.2c.4b.4c.3 | Compiled named supervision | Test-only evidence on 0.124: retained caller supervision, failed-work parameter handover before frame retirement, separate handler execution and exact real-owner cleanup. Independent context selection and native sibling settlement remain ahead |
 | E1d.2c.4b.4d.1 | Independent compiled native contexts | Test-only evidence on 0.124: paired tracker/contingency/resource selection, original compiled machines, session-scoped keys and independent root cleanup over shared frames/effects/scripts/fuel. Native sibling settlement within an owning fault domain remains ahead |
+| E1d.2c.4b.4d.2 | Shared native host contexts | Delivered in 0.125: host-bound retained state, dormant ownership-root admission, paired selection/restoration and checked retirement. Compiled models use the shared operations; native owning-domain membership and sibling settlement remain ahead |
 | E1e | Explicit cooperative cancellation and suspending cleanup; normal completion races, cleanup failures and no abandoned losers | Define cancellation observation and cleanup admission; no implicit cancellation exception |
 | E2 | Pinned native coroutine experiment, then checked lowering and schedule-based differential validation | Reference semantics and legal frame retirement must precede native destruction |
 

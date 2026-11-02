@@ -1,5 +1,5 @@
 //! Test-only selection of independent compiled roots over the actual native host.
-use super::super::{ResourceScope, Resources, fault};
+use super::super::{ContextRoot, HostContext, fault};
 use super::*;
 use std::{collections::BTreeMap, sync::Arc};
 
@@ -8,46 +8,10 @@ pub struct ContextKey {
     session: Arc<()>,
     id: u64,
 }
-struct HostContext {
-    tracker: fault::Tracker,
-    contingencies: Vec<String>,
-    scope: Option<ResourceScope>,
-}
-impl HostContext {
-    fn current_scope(resources: &Resources) -> R<Option<ResourceScope>> {
-        resources
-            .current
-            .map(|id| {
-                let parent = *resources
-                    .scopes
-                    .get(&id)
-                    .ok_or("E_NATIVE: selected context scope has retired")?;
-                Ok(ResourceScope {
-                    registry: resources.identity.clone(),
-                    id,
-                    parent,
-                })
-            })
-            .transpose()
-    }
-    /// Validate both selections before moving any diagnostic/contingency state.
-    /// The caller exclusively borrows Host, so no external operation can interleave.
-    fn exchange(&mut self, host: &mut Host) -> R<()> {
-        let previous = Self::current_scope(&host.resources)?;
-        if let Some(scope) = &self.scope {
-            host.resources.require_scope(scope)?;
-        }
-        host.resources.select_scope(self.scope.as_ref())?;
-        self.scope = previous;
-        std::mem::swap(&mut self.tracker, &mut host.activations);
-        std::mem::swap(&mut self.contingencies, &mut host.contingencies);
-        Ok(())
-    }
-}
 struct Parked {
     machine: Machine,
     host: HostContext,
-    root: ResourceScope,
+    root: ContextRoot,
     name: &'static str,
 }
 pub enum ContextPoll {
@@ -80,26 +44,13 @@ impl<'a> Contexts<'a> {
         if control.constructor || arguments.len() != control.parameters.len() {
             return Err("E_NATIVE: invalid independent context admission".into());
         }
-        // Independent roots have explicit ownership scopes. They do not inherit
-        // whichever boundary the host happened to have selected before this call.
-        let previous = self.host.resources.current.take();
-        let prepared = self.host.resources.prepare_scope(&arguments);
-        self.host.resources.current = previous;
-        let prepared = prepared?;
-        self.host.resources.current = None;
-        let root = self.host.resources.commit_scope(prepared);
-        self.host.resources.current = previous;
-        let mut context = HostContext {
-            tracker: self.host.activations.child(),
-            contingencies: vec![],
-            scope: Some(root.clone()),
-        };
-        context.exchange(self.host)?;
+        let (mut root, mut context) = self.host.prepare_context(&arguments)?;
+        self.host.exchange_context(&mut context)?;
         let started = Machine::start(self.host, &mut self.values, control, arguments);
         if started.is_err() {
-            self.host.resources.finish_scope(&root, true)?;
+            self.host.finish_context(&mut root, true)?;
         }
-        context.exchange(self.host)?;
+        self.host.exchange_context(&mut context)?;
         let machine = started?;
         self.next = id;
         self.parked.insert(
@@ -121,26 +72,7 @@ impl<'a> Contexts<'a> {
             return Err("E_NATIVE: context is foreign or retired".into());
         }
         let parked = &self.parked[&key.id];
-        self.host.resources.require_scope(&parked.root)?;
-        let scope = parked
-            .host
-            .scope
-            .as_ref()
-            .ok_or("E_NATIVE: context has no resource scope")?;
-        self.host.resources.require_scope(scope)?;
-        let mut ancestor = Some(scope.id);
-        while let Some(id) = ancestor {
-            if id == parked.root.id {
-                return Ok(());
-            }
-            ancestor = *self
-                .host
-                .resources
-                .scopes
-                .get(&id)
-                .ok_or("E_NATIVE: context resource ancestor has retired")?;
-        }
-        Err("E_NATIVE: selected resource scope belongs to another context".into())
+        self.host.require_context(&parked.host, &parked.root)
     }
     pub fn advance(&mut self, key: &ContextKey, quota: usize) -> R<ContextPoll> {
         self.require(key)?;
@@ -148,13 +80,13 @@ impl<'a> Contexts<'a> {
             return Ok(ContextPoll::Paused);
         }
         let mut parked = self.parked.remove(&key.id).unwrap();
-        parked.host.exchange(self.host)?;
+        self.host.exchange_context(&mut parked.host)?;
         let result = match parked.machine.advance(self.host, &mut self.values, quota) {
             Ok(Poll::Paused) => ContextPoll::Paused,
             Ok(Poll::Complete(completion)) => {
                 // Outgoing owners survive normal completion; failed roots below
                 // release stranded temporary owners as well as retired frames.
-                self.host.resources.finish_scope(&parked.root, false)?;
+                self.host.finish_context(&mut parked.root, false)?;
                 ContextPoll::Complete(completion)
             }
             Err(message) => {
@@ -162,11 +94,11 @@ impl<'a> Contexts<'a> {
                     self.host
                         .activations
                         .failure(parked.name, fault::Phase::Execution, &message);
-                self.host.resources.finish_scope(&parked.root, true)?;
+                self.host.finish_context(&mut parked.root, true)?;
                 ContextPoll::Failed(report)
             }
         };
-        parked.host.exchange(self.host)?;
+        self.host.exchange_context(&mut parked.host)?;
         if matches!(result, ContextPoll::Paused) {
             self.parked.insert(key.id, parked);
         }
@@ -236,10 +168,10 @@ pub fn drive_contexts(
         );
         assert!(contexts.advance(&keys[0], 1).is_err());
         contexts.parked.get_mut(&keys[0].id).unwrap().host.scope = original;
-        let original = contexts.parked[&keys[0].id].root.clone();
-        contexts.parked.get_mut(&keys[0].id).unwrap().root.id = u64::MAX;
+        let original = contexts.parked[&keys[0].id].root.scope.clone();
+        contexts.parked.get_mut(&keys[0].id).unwrap().root.scope.id = u64::MAX;
         assert!(contexts.advance(&keys[0], 1).is_err());
-        contexts.parked.get_mut(&keys[0].id).unwrap().root = original;
+        contexts.parked.get_mut(&keys[0].id).unwrap().root.scope = original;
         assert_eq!(contexts.host.cursor, baseline.0);
         assert_eq!(contexts.host.fuel, baseline.1);
         assert_eq!(contexts.host.events.len(), baseline.2);

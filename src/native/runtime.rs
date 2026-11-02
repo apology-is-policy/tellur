@@ -9,6 +9,9 @@ mod boundary_state_tests;
 #[path = "../collection_support.rs"]
 mod collection_support;
 #[cfg(test)]
+#[path = "context_state_tests.rs"]
+mod context_state_tests;
+#[cfg(test)]
 #[path = "../fault.rs"]
 mod fault;
 #[cfg(test)]
@@ -552,10 +555,14 @@ impl Resources {
         &self,
         values: impl IntoIterator<Item = &'a V>,
     ) -> R<PreparedResourceScope> {
-        if self
-            .current
-            .is_some_and(|id| !self.scopes.contains_key(&id))
-        {
+        self.prepare_scope_at(values, self.current)
+    }
+    fn prepare_scope_at<'a>(
+        &self,
+        values: impl IntoIterator<Item = &'a V>,
+        parent: Option<u64>,
+    ) -> R<PreparedResourceScope> {
+        if parent.is_some_and(|id| !self.scopes.contains_key(&id)) {
             return Err("E_HOST: active resource scope has retired".into());
         }
         let owned = self.owned_tokens(values)?;
@@ -567,23 +574,44 @@ impl Resources {
             scope: ResourceScope {
                 registry: self.identity.clone(),
                 id,
-                parent: self.current,
+                parent,
             },
             owned,
         })
     }
     fn commit_scope(&mut self, prepared: PreparedResourceScope) -> ResourceScope {
+        assert_eq!(self.current, prepared.scope.parent);
+        let scope = self.register_scope(prepared);
+        self.current = Some(scope.id);
+        scope
+    }
+    /// Register dormant independent ownership without selecting its execution.
+    fn register_scope(&mut self, prepared: PreparedResourceScope) -> ResourceScope {
         let PreparedResourceScope { scope, owned } = prepared;
         assert!(Arc::ptr_eq(&self.identity, &scope.registry));
-        assert_eq!(self.current, scope.parent);
+        assert!(scope.parent.is_none_or(|id| self.scopes.contains_key(&id)));
         assert_eq!(self.next_scope.checked_add(1), Some(scope.id));
         self.next_scope = scope.id;
         assert!(self.scopes.insert(scope.id, scope.parent).is_none());
         for token in owned {
             self.values.get_mut(&token).unwrap().scope = Some(scope.id);
         }
-        self.current = Some(scope.id);
         scope
+    }
+    fn current_scope(&self) -> R<Option<ResourceScope>> {
+        self.current
+            .map(|id| {
+                let parent = *self
+                    .scopes
+                    .get(&id)
+                    .ok_or("E_HOST: selected resource scope has retired")?;
+                Ok(ResourceScope {
+                    registry: self.identity.clone(),
+                    id,
+                    parent,
+                })
+            })
+            .transpose()
     }
     fn require_scope(&self, scope: &ResourceScope) -> R<()> {
         if !Arc::ptr_eq(&self.identity, &scope.registry)
@@ -649,6 +677,19 @@ pub struct BoundaryState {
     contingency_active: bool,
     contingency_depth: usize,
 }
+/// Execution-local host state. Resource owners, effects, input cursor and fuel
+/// remain in Host. This record is moved, never cloned, during context selection.
+pub struct HostContext {
+    registry: Arc<()>,
+    tracker: fault::Tracker,
+    contingencies: Vec<String>,
+    scope: Option<ResourceScope>,
+}
+/// A live independent ownership root, distinct from diagnostics and frame IDs.
+pub struct ContextRoot {
+    scope: ResourceScope,
+    retired: bool,
+}
 pub struct Host {
     contingencies: Vec<String>,
     pub rust_adapter: Option<RustAdapter>,
@@ -696,6 +737,82 @@ impl Host {
     }
     pub fn enter(&mut self, control: &str) -> R<()> {
         self.activations.enter(control)
+    }
+    /// Admit a dormant independent root without changing the selected context.
+    /// Owned inputs transfer scope membership; borrowed inputs do not.
+    pub fn prepare_context<'a>(
+        &mut self,
+        inputs: impl IntoIterator<Item = &'a V>,
+    ) -> R<(ContextRoot, HostContext)> {
+        self.resources.current_scope()?;
+        let prepared = self.resources.prepare_scope_at(inputs, None)?;
+        let tracker = self.activations.child();
+        let scope = self.resources.register_scope(prepared);
+        let context = HostContext {
+            registry: self.resources.identity.clone(),
+            tracker,
+            contingencies: vec![],
+            scope: Some(scope.clone()),
+        };
+        Ok((
+            ContextRoot {
+                scope,
+                retired: false,
+            },
+            context,
+        ))
+    }
+    /// Validate a parked context against its original independent ownership root.
+    /// A scheduler must do this before selection, even for a zero instruction quota.
+    pub fn require_context(&self, context: &HostContext, root: &ContextRoot) -> R<()> {
+        if root.retired || !Arc::ptr_eq(&context.registry, &self.resources.identity) {
+            return Err("E_NATIVE: context is foreign or retired".into());
+        }
+        self.resources.require_scope(&root.scope)?;
+        let scope = context
+            .scope
+            .as_ref()
+            .ok_or("E_NATIVE: context has no resource scope")?;
+        self.resources.require_scope(scope)?;
+        let mut ancestor = Some(scope.id);
+        while let Some(id) = ancestor {
+            if id == root.scope.id {
+                return Ok(());
+            }
+            ancestor = *self
+                .resources
+                .scopes
+                .get(&id)
+                .ok_or("E_NATIVE: context resource ancestor has retired")?;
+        }
+        Err("E_NATIVE: selected resource scope belongs to another context".into())
+    }
+    /// Select and later restore a context by exchanging the same record. Both
+    /// scopes and host ownership are checked before any field changes. The caller
+    /// must keep exclusive access to Host until restoring its prior context.
+    pub fn exchange_context(&mut self, context: &mut HostContext) -> R<()> {
+        if !Arc::ptr_eq(&context.registry, &self.resources.identity) {
+            return Err("E_NATIVE: context belongs to another host".into());
+        }
+        let previous = self.resources.current_scope()?;
+        if let Some(scope) = &context.scope {
+            self.resources.require_scope(scope)?;
+        }
+        self.resources.select_scope(context.scope.as_ref())?;
+        context.scope = previous;
+        std::mem::swap(&mut context.tracker, &mut self.activations);
+        std::mem::swap(&mut context.contingencies, &mut self.contingencies);
+        Ok(())
+    }
+    /// Retire the selected root after all nested work has settled. Normal outgoing
+    /// owners survive; a failed root releases even owners stranded in temporaries.
+    pub fn finish_context(&mut self, root: &mut ContextRoot, failed: bool) -> R<()> {
+        if root.retired {
+            return Err("E_NATIVE: context root already retired".into());
+        }
+        self.resources.finish_scope(&root.scope, failed)?;
+        root.retired = true;
+        Ok(())
     }
     pub fn leave(&mut self) {
         self.activations.leave();

@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.124.0** implements the v0.1 checked core and the current language
+Compiler release **0.125.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -666,3 +666,11 @@ Native calls now use separately identified frame ranges, preserving borrowed slo
 addresses while permitting independent retirement and storage reuse. Fault cleanup
 releases only the affected frame's resources. This prepares persistent native
 execution contexts; source task scheduling remains unimplemented.
+
+## Native host contexts in 0.125
+
+The native host now retains diagnostic, contingency and resource-selection state
+together, with checked admission and retirement of independent ownership roots.
+Compiled context tests share these runtime operations and verify that a failed root
+preserves unrelated owners and the host's original context. Public calls remain
+synchronous; source scheduling and native sibling settlement are still ahead.
