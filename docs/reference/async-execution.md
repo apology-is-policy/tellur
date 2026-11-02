@@ -3,8 +3,8 @@
 [Language reference](../language-reference.md) · [Design and next steps](../async-execution.md) ·
 [Execution failures](execution-failures.md)
 
-Compiler 0.109 supports `async control`, synchronous entry with `run`, direct
-`await operation(arguments)` and local cold tasks with owned and direct borrowed captures and borrowed completions. Execution
+Compiler 0.110 supports `async control`, synchronous entry with `run`, direct
+`await operation(arguments)` and local cold tasks with owned and borrowed captures, including reference-bearing carriers, and borrowed completions. Execution
 remains sequential. There is no concurrent scheduler, I/O readiness or LLVM coroutine
 lowering yet.
 
@@ -68,7 +68,7 @@ Repair the call above to `forward run work();`. Inside an async control, use
 then stores an owned task without entering the async body. The declaration must be
 an immutable local `auto` binding inside an async control. Owned arguments may contain strings, records, sums, resources and their checked
 contained references. Existing collection-origin boundary restrictions still apply.
-Direct shared and exclusive references to existing reference-free storage are also
+Direct shared and exclusive references to existing storage are also
 supported; see the borrowing rules below. A constructor can use transient borrows
 while producing an owned argument with no references.
 
@@ -115,8 +115,8 @@ task parameters/results and result-contract erasure have not been designed yet.
 ## Borrowed captures
 
 A direct `ref t` or `ref mutable t` capture borrows existing storage until the task
-is consumed by await or its execution boundary faults. `t` must not itself contain
-references in this profile. Multiple shared captures may coexist. Exclusive
+is consumed by await or its execution boundary faults. `t` may itself contain
+references; those dependencies are retained along with the carrier storage. Multiple shared captures may coexist. Exclusive
 captures exclude overlapping reads, writes and other borrows. Disjoint record fields
 can be captured independently. Moving the task keeps its loans and original backing
 storage; it does not copy the referent or make the owner available early.
@@ -171,8 +171,8 @@ Bind a temporary owner or reference before deferring work; deferred borrowing do
 not adopt a synchronous temporary's lifetime. Tasks with borrowed captures require
 unique local binding names and cannot yet be nested inside sums, records or
 collections, passed through a control boundary, or returned. Direct reference
-values extracted from existing record fields can be captured when their referent
-is reference-free; the task retains their established external dependencies.
+values extracted from existing record fields can be captured even when their referent
+itself contains references; the task retains their established external dependencies.
 
 ## Borrowed completions
 
@@ -263,10 +263,13 @@ Such a capture retains both its referent's storage and the external origins carr
 inside it. A returned contained reference preserves its declared storage guards and
 origin groups. Selected tags and groups are not merged into one lifetime.
 
-Borrowing a whole reference-bearing carrier as the task parameter is a separate,
-currently unsupported case. Capture an already checked owning view value instead:
+## Borrowing reference-bearing carriers
 
-<!-- tellur:reject E_ASYNC -->
+A task parameter may borrow an entire record or sum that contains references.
+The capture retains both the carrier storage and its nested external dependencies.
+The same rules apply when the carrier is reached through another reference.
+
+<!-- tellur:check -->
 ```tellur
 struct view['a] { ref string text <- 'a; }
 async control show(ref view input) exits done { emit(input.text); exit done; }
@@ -278,6 +281,40 @@ async control startup() exits done {
     exit done;
 }
 ```
+
+The carrier cannot be moved or dropped while the pending task borrows it. An
+exclusive outer borrow also prevents conflicting access through the original
+carrier; a shared outer borrow never grants mutation through an exclusive field.
+Ordinary reference arguments reborrow; explicitly moving an exclusive alias into
+the task consumes that alias.
+
+A whole-carrier result such as `ref view value from input` retains the carrier's
+storage and its contained origins after await. A detached shared field such as
+`ref string value from input['a]` retains only its external origin: once no other
+use needs the carrier, that carrier may be dropped while the result remains live.
+References reached through exclusive carrier fields also retain their checked
+storage guards. Await preserves these distinctions, including nested origin paths
+and active sum payloads; it does not flatten them into one lifetime.
+
+See [carrier_tasks.tellur](../../playground/carrier_tasks.tellur) for a detached
+shared completion that releases the carrier at await but still protects its source.
+
+<!-- tellur:reject E_LOAN -->
+```tellur
+struct view['a] { ref string text <- 'a; }
+async control show(ref view input) exits done { emit(input.text); exit done; }
+async control startup() exits done {
+    string owner = "hello";
+    view saved = view { borrow owner };
+    auto pending = defer show(borrow saved);
+    drop(saved);
+    await pending;
+    exit done;
+}
+```
+
+Move `drop(saved);` after await. Owning a copy of the view instead, as in the
+previous section, permits the original shared view to be dropped immediately.
 
 ## Contracts and resources
 
@@ -324,6 +361,6 @@ synchronous calls around them, but cannot erase the async boundary. Expansion
 certificates check this distinction. Protocol analysis currently rejects these
 boundaries rather than treating them as ordinary unobservable decisions.
 
-Direct borrows of reference-bearing carrier storage, escaping tasks, a public `task<...>` spelling, `spawn`,
+Escaping tasks, a public `task<...>` spelling, nested borrowed task storage, `spawn`,
 scheduling, cancellation and async host adapters remain unimplemented. No implicit
 detach or cancellation by destruction is permitted. See the [design plan](../async-execution.md).

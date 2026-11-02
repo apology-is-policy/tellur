@@ -1,0 +1,40 @@
+// Borrow a whole view; the task retains its storage and contained references.
+struct text_pair['left, 'right] {
+    ref string left <- 'left;
+    ref string right <- 'right;
+}
+
+async control first(ref text_pair input)
+    exits ready { ref string value from input['left] }
+{
+    exit ready { input.left };
+}
+
+async control startup() exits done {
+    mutable string left = "first";
+    mutable string right = "second";
+    text_pair words = text_pair { borrow left, borrow right };
+    auto pending = defer first(borrow words);
+    emit("carrier borrowed");
+
+    delta await pending {
+        ready { auto value } => ready
+    }
+
+    [ready]:
+        drop(words);
+        right = "released at await";
+        emit(value);
+        left = "released after last use";
+        emit(borrow right);
+        emit(borrow left);
+        exit done;
+}
+
+control main() exits program_result {
+    forward run startup();
+}
+
+outcome program_result {
+    @exit 0 done
+}

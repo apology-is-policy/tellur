@@ -3441,7 +3441,13 @@ impl Checker<'_> {
                 let mut parents = vec![];
                 for source in sources {
                     let dependencies = if pending.is_some() {
-                        self.task_origin_dependencies(operand, source, domain, span)?
+                        self.task_origin_dependencies(
+                            operand,
+                            source,
+                            &sig.parameters[source.parameter],
+                            domain,
+                            span,
+                        )?
                     } else {
                         self.call_origin_dependencies(
                             source,

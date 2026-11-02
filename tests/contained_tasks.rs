@@ -207,9 +207,9 @@ fn contained_pending_loans_survive_fault_paths_and_keep_existing_isolation() {
     );
 }
 #[test]
-fn whole_carrier_borrows_and_nested_task_storage_remain_gated() {
+fn whole_carrier_borrows_are_supported_but_nested_task_storage_remains_gated() {
     let source = "struct view['a] {ref string text <- 'a;} async control show(ref view input) exits done {exit done;} async control start(ref view input) exits done {auto pending=defer show(input);await pending;exit done;}";
-    assert_eq!(compile(source, manifest()).unwrap_err().code, "E_ASYNC");
+    compile(source, manifest()).unwrap();
     let source = PAIR.replace("auto moved=move pending;", "auto wrapped=some {pending};");
     assert!(
         compile(&source, manifest())

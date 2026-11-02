@@ -12,7 +12,8 @@ tasks, source suspension, scheduling or async I/O. Compiler 0.105 additionally i
 adds local cold tasks with owned captures and consuming await. Compiler 0.107
 retains direct shared/exclusive captured loans through await. Compiler 0.108
 transfers selected borrowed completion origins. Compiler 0.109 retains contained
-references in owned captures. Whole borrowed carriers and scheduling remain future work.
+references in owned captures. Compiler 0.110 retains whole borrowed carrier storage
+and nested dependencies through cold capture and result delivery. Scheduling remains future work.
 
 ## Existing direction
 
@@ -135,6 +136,19 @@ The owner-scope relationship, moving handles across fault boundaries, determinis
 selection of multiple escaping faults, and secondary settlement failures must be
 specified before general `spawn`. An atomic ID allocator makes no choice here.
 
+## Accepted decision: invocation-owned spawned children
+
+Accepted by the language author on 2 November 2026: each async invocation owns
+its spawned children. Every normal path must await them. In the first bounded
+profile, handles may move locally but cannot escape that invocation or cross a
+fault boundary. No explicit `task scope { ... }` ownership block is required.
+
+An escaping child fault still stops ordinary work in the owning fault boundary
+and settles affected children and retained resources before contingency. Moving a
+handle does not move its owner or redirect emergency propagation. This is the
+accepted direction for E1d; compiler 0.110 still executes cold tasks sequentially
+and does not yet accept `spawn`.
+
 ## Cold-task contract audit
 
 The next E1c slice must distinguish creating a computation from invoking it. This
@@ -209,7 +223,10 @@ or `capture` a cold task. The next implementation needs these distinct pieces:
 - **Delivered in 0.109 (E1c.3c.1):** owning captures of reference-bearing records,
   sums and options, including nested carrier contents, tagged origins, selected
   result delivery, retained fault obligations and reference/native parity.
-- Next, support whole borrowed reference-bearing carriers as captured parameters. Body effects and body faults occur only when driven; argument
+- **Delivered in 0.110 (E1c.3c.2):** whole borrowed reference-bearing carrier
+  parameters retain direct storage authority and nested contents, including
+  result origin groups, tagged leaves and storage guards. Shared outer authority
+  cannot grant exclusive inner access. Body effects and body faults occur only when driven; argument
   construction and its faults remain immediate.
 - Represent pending captures separately from the result contract. A task can hold
   a must-complete owner or borrow even if all eventual outcomes have empty payloads.
@@ -296,7 +313,7 @@ evidence for these synchronous rules. They are not evidence of task support.
 ### Transfer and settlement cases
 
 The following are acceptance requirements for the future source implementation,
-partly covered through E1c.3c.1; whole borrowed carriers and cancellation are not yet executable:
+covered for local cold tasks through E1c.3c.2; cancellation is not yet executable:
 
 | Situation | Required observation |
 | --- | --- |
@@ -329,16 +346,16 @@ Those boundaries need explicit contracts before being accepted by the checker.
 | E1a | Runtime audit and shared activation identity allocator; interleaved children, independent failure state, no reuse after return, overflow, and sequential reference/native report parity | Delivered in 0.98; shared identity is independent of scheduling policy |
 | E1b | Persistent reference continuations and explicit step/resume protocol; current synchronous outcomes, fuel, effects, faults, loans and expansion observations preserved under different step partitions | Delivered in 0.99; no source async claim |
 | E1b.1 | Separate argument preparation from frame installation; reject malformed later values, address exhaustion and frozen activation state without partial storage; preserve all synchronous observations | Delivered in 0.103; internal handoff only, no source task admission |
-| E1c | Bounded cold tasks and consuming await; eager argument transfer, no body effects before drive, fixed result contracts, task ownership and retained borrows | Await/transfer obligation and explicit `run` entry accepted; direct invocation delivered in E1c.1, owned captures/handles delivered in E1c.2 and direct borrowed captures in E1c.3a and borrowed results in E1c.3b; owned contained captures are delivered in E1c.3c.1; whole borrowed carriers remain ahead |
+| E1c | Bounded cold tasks and consuming await; eager argument transfer, no body effects before drive, fixed result contracts, task ownership and retained borrows | Await/transfer obligation and explicit `run` entry accepted; direct invocation delivered in E1c.1, owned captures/handles delivered in E1c.2 and direct borrowed captures in E1c.3a and borrowed results in E1c.3b; owned contained captures are delivered in E1c.3c.1 and whole borrowed carriers in E1c.3c.2; scoped scheduling remains ahead |
 | E1c.1 | Direct async permission and explicit entry | Delivered in 0.105: sequential `async control`, `run`, direct `await`, public/trait contracts and preserved graph boundaries; no stored tasks or scheduler |
 | E1c.2 | Local cold tasks with owned captures, consuming handles and separate capture fault dispositions | Delivered in 0.106; no borrowed captures or public task type erasure |
-| E1c.3 | Persistent borrowed captures and result-origin transfer | Direct capture holders delivered in E1c.3a and result delivery in E1c.3b; owned contained captures are delivered in E1c.3c.1; whole borrowed carriers remain ahead |
+| E1c.3 | Persistent borrowed captures and result-origin transfer | Direct capture holders delivered in E1c.3a and result delivery in E1c.3b; owned contained captures are delivered in E1c.3c.1 and whole borrowed carriers in E1c.3c.2; scoped scheduling remains ahead |
 | E1c.3a | Direct borrowed captures of existing reference-free storage; moves, explicit transfer, faults and native addresses | Delivered in 0.107; no nested borrowed task storage or borrowed results |
 | E1c.3b | Captured dependency mapping for borrowed completions | Delivered in 0.108: per-parameter capture origins and selected result holders, including records/sums and adapters |
-| E1c.3c | Contained capture shapes | Owned inputs delivered in E1c.3c.1; whole borrowed carriers remain next |
+| E1c.3c | Contained capture shapes | Owned inputs delivered in E1c.3c.1 and whole borrowed carriers in E1c.3c.2 |
 | E1c.3c.1 | Owned record/sum captures containing references | Delivered in 0.109: field/tag identities, carrier contents and origin-group delivery |
-| E1c.3c.2 | Whole borrowed carrier parameters | Next: retain carrier authority and nested contents through reborrows, moves and await |
-| E1d | Scoped spawn and deterministic readiness; two overlapping children, duplicate/stale wake handling and owner settlement | Prompt owner-boundary fault propagation accepted; specify ownership transfers, sibling dispositions and deterministic multiple-fault selection |
+| E1c.3c.2 | Whole borrowed carrier parameters | Delivered in 0.110: retained storage authority, nested contents, reborrows, moves and selected result origins |
+| E1d | Scoped spawn and deterministic readiness; two overlapping children, duplicate/stale wake handling and owner settlement | Invocation ownership and no cross-invocation/boundary handle transfer accepted; implement scoped scheduling, sibling settlement and deterministic fault observation |
 | E1e | Explicit cooperative cancellation and suspending cleanup; normal completion races, cleanup failures and no abandoned losers | Define cancellation observation and cleanup admission; no implicit cancellation exception |
 | E2 | Pinned native coroutine experiment, then checked lowering and schedule-based differential validation | Reference semantics and legal frame retirement must precede native destruction |
 

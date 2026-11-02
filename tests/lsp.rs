@@ -5960,3 +5960,35 @@ fn contained_task_capture_loans_and_auto_types_refresh_after_unsaved_repair() {
     assert_eq!(f.diagnostics(), json!([]));
     assert_eq!(hover_at(&f, source, "auto pending"), pending);
 }
+
+#[test]
+fn whole_carrier_task_loans_and_auto_types_refresh_after_unsaved_repair() {
+    let mut f = Fixture::new();
+    let source = include_str!("../playground/carrier_tasks.tellur");
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let pending = hover_at(&f, source, "auto pending");
+    assert!(
+        pending["contents"]["value"]
+            .as_str()
+            .unwrap()
+            .contains("task<first>")
+    );
+    assert!(
+        hover_at(&f, source, "auto value")["contents"]["value"]
+            .as_str()
+            .unwrap()
+            .contains("ref string")
+    );
+    let broken = source.replace("emit(\"carrier borrowed\");", "right=\"too soon\";");
+    f.change(&broken, 2);
+    assert_eq!(f.diagnostics()[0]["code"], "E_LOAN");
+    assert!(
+        !hover_at(&f, &broken, "auto pending")
+            .to_string()
+            .contains("task<first>")
+    );
+    f.change(source, 3);
+    assert_eq!(f.diagnostics(), json!([]));
+    assert_eq!(hover_at(&f, source, "auto pending"), pending);
+}

@@ -517,17 +517,6 @@ impl Verifier<'_> {
                                 )?;
                             }
                             if matches!(operation, Operation::Defer(_)) {
-                                if r.parameters.iter().any(|p| {
-                                    crate::manifest::reference_inner(&p.ty).is_some_and(
-                                        |(_, inner)| {
-                                            self.program.manifest().contains_references(inner)
-                                        },
-                                    )
-                                }) {
-                                    return Err(error(
-                                        "deferred reference-bearing carrier borrow is unsupported",
-                                    ));
-                                }
                                 let ty = crate::manifest::task_type(name);
                                 let m = self.program.manifest();
                                 if !matches!(

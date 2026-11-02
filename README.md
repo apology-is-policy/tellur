@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.109.0** implements the v0.1 checked core and the current language
+Compiler release **0.110.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -527,3 +527,14 @@ retaining each field's origins and nested carrier dependencies. Passing shared
 reference records preserves ordinary copying; exclusive references transfer with
 the owning value. Try `./bin/tellurc exec playground/contained_tasks.tellur`.
 Borrowing a whole reference-bearing carrier remains the next bounded step.
+
+
+## Whole borrowed carrier captures in 0.110
+
+Cold tasks can borrow an entire reference-bearing record or sum. The task retains
+both its storage and the references inside it. Awaited results preserve separate
+storage and contained-origin contracts, including nested carriers and tagged sums.
+A shared outer borrow cannot grant exclusive access to an inner reference.
+Try `./bin/tellurc exec playground/carrier_tasks.tellur`; hover `auto` to inspect
+the pending task and its detached borrowed completion. Public/escaping tasks,
+nested task storage and scheduling remain separate work.

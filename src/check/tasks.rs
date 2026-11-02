@@ -1,4 +1,4 @@
-//! Local cold tasks retain owned captures, including their contained references.
+//! Local cold tasks retain owned and borrowed captures, including carrier contents.
 //! Captures retain parameter identity so completion loans can select their origins.
 use super::*;
 impl Checker<'_> {
@@ -26,13 +26,6 @@ impl Checker<'_> {
         let sig = self
             .signature(operation, args, span)?
             .ok_or_else(|| self.error("E_ASYNC", span, "unknown deferred control"))?;
-        if sig.parameters.iter().any(|p| {
-            manifest::reference_inner(&p.ty)
-                .is_some_and(|(_, inner)| self.manifest.contains_references(inner))
-        }) {
-            return Err(operand.locate(self.error("E_ASYNC", span,
-                "deferred borrows of reference-bearing storage require carrier retention; capture the reference-bearing value by ownership instead"), span));
-        }
         self.contingent_call(false, span)?;
         // Arguments are evaluated/transferred now. Only initializer faults apply;
         // callee body fault permission is checked later, when the task is awaited.
@@ -140,6 +133,7 @@ impl Checker<'_> {
                 let target = self.reference_argument(arg, mutable, domain, span)?;
                 self.expect_type(&target.ty, inner, span)?;
                 let origins = self.origins(&target);
+                let contents = self.snapshot_carrier_contents(&target, domain);
                 let parents = if transfer {
                     let source = source.as_ref().ok_or_else(|| {
                         self.error(
@@ -156,7 +150,7 @@ impl Checker<'_> {
                 values.push(Expr::Reference(target.place.clone(), p.ty.clone()));
                 let id = self.stash_stored_loan(
                     Loan {
-                        contents: vec![],
+                        contents,
                         sum_leaf: None,
                         id: 0,
                         target,
@@ -197,6 +191,7 @@ impl Checker<'_> {
         &mut self,
         operand: &syntax::Expr,
         source: &BorrowSource,
+        parameter: &manifest::Parameter,
         domain: Formula,
         span: Span,
     ) -> Result<Vec<(Vec<LoanOrigin>, Vec<Id>)>> {
@@ -207,16 +202,33 @@ impl Checker<'_> {
             .ok_or_else(|| self.error("E_ASYNC", span, "await requires an owned pending task"))?;
         let captures = self.snapshot_carrier_contents(&holder, domain);
         if let Some(contained) = &source.contained {
-            // The owned argument's storage was transferred into the task; its
-            // contained references still point to the original external owners.
+            // An owned argument has field/tag holders beneath its parameter
+            // prefix. A borrowed carrier keeps that tree inside its direct loan,
+            // alongside the authority that permits access to its contents.
             // Tagged leaves are selected abstractly, never read at runtime here.
-            let mut contents = captures
-                .into_iter()
-                .filter_map(|(path, loan)| {
-                    path.strip_prefix(&[source.parameter])
-                        .map(|fields| (fields.to_vec(), loan, Vec::new()))
-                })
-                .collect::<Vec<_>>();
+            let mut contents = if manifest::reference_inner(&parameter.ty).is_some() {
+                captures
+                    .into_iter()
+                    .filter(|(path, loan)| *path == [source.parameter] && loan.sum_leaf.is_none())
+                    .flat_map(|(_, loan)| {
+                        let mut parents = loan.parents;
+                        if loan.mutable {
+                            parents.push(loan.id);
+                        }
+                        loan.contents
+                            .into_iter()
+                            .map(move |(fields, child)| (fields, child, parents.clone()))
+                    })
+                    .collect::<Vec<_>>()
+            } else {
+                captures
+                    .into_iter()
+                    .filter_map(|(path, loan)| {
+                        path.strip_prefix(&[source.parameter])
+                            .map(|fields| (fields.to_vec(), loan, Vec::new()))
+                    })
+                    .collect::<Vec<_>>()
+            };
             for step in &contained.through {
                 contents = contents
                     .into_iter()

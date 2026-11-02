@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-0.109.0-darwin-arm64.vsix` using **Extensions:
+1. Install the supplied `tellur-language-0.110.0-darwin-arm64.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1025,3 +1025,14 @@ The checker and inferred-type hover support task captures containing shared or
 exclusive references. Dropping another shared copy does not release the task's
 borrow; diagnostics and repair track this in unsaved buffers. The isolated fixture
 builds and runs [contained_tasks.tellur](https://github.com/apology-is-policy/tellur/blob/main/playground/contained_tasks.tellur).
+
+
+## Whole borrowed carrier captures in 0.110
+
+Cold tasks can borrow an entire reference-bearing record or sum. The task retains
+both its storage and the references inside it. Awaited results preserve separate
+storage and contained-origin contracts, including nested carriers and tagged sums.
+A shared outer borrow cannot grant exclusive access to an inner reference.
+Try `./bin/tellurc exec playground/carrier_tasks.tellur`; hover `auto` to inspect
+the pending task and its detached borrowed completion. Public/escaping tasks,
+nested task storage and scheduling remain separate work.

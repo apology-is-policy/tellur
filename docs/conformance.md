@@ -3758,3 +3758,46 @@ a separate filtered invocation supplies the tenth and contributes no LSP/manual
 results. The full baseline supplies 191 LSP tests, three reference checks and 28
 Rust-adapter cases; the separately repeated resource case is counted only once.
 Previously completed tests are reused after version/help-only and test/doc edits.
+
+## 0.110 — whole borrowed carrier captures (E1c.3c.2)
+
+A cold task can borrow a whole record or sum containing references. Its direct
+capture loan now retains a snapshot of the carrier's nested contents. Borrowed
+completion lookup starts from that snapshot while preserving the outer authority,
+then follows the existing field, tag and nested origin selectors. Direct storage
+origins and contained external origins remain distinct.
+
+Eleven `tests/carrier_tasks.rs` cases cover shared/exclusive carrier parameters,
+whole-carrier versus detached results, explicit alias transfer versus reborrowing,
+shared outer restrictions, nested guards, empty/nested sum alternatives, generic
+parameters, disjoint producer instances, projected results, path-sensitive/fault
+retention, repeated capture through an async parameter, isolation and temporary
+lifetime rejection. Reference execution agrees with expansion, instruction stepping
+and native execution for shared, exclusive, nested and sum captures. A retained-Rust
+resource case checks missing fault dispositions, normal/fault settlement, no body
+execution before await and exactly one host release.
+
+The maintained reference documents both forms of carrier capture with accepted and
+rejected examples. `playground/carrier_tasks.tellur` demonstrates releasing the
+borrowed carrier after await while retaining the selected external source. LSP and
+isolated VS Code checks cover pending/result inference, unsaved `E_LOAN`, stale-hover
+removal, repair and native execution. Release 0.110.0 verifies six binary copies and
+nine packaged/installed payloads without reloading existing windows. The source
+backup excludes the protected unrelated C# file.
+
+Public/escaping task contracts, nested borrowed task storage, temporary lifetime
+extension, scheduling and coroutine lowering remain outside this checkpoint.
+The author accepted invocation ownership for E1d: each async invocation owns its
+spawned children, normal paths await them, and handles cannot escape the invocation
+or cross fault boundaries in the first profile. No extra task-scope syntax is
+required. This decision does not claim implemented `spawn` support.
+
+Validation passes **352 Rust tests in 15 targets**, **44 Node editor tests**,
+all-target compilation, formatting and whitespace checks. These are selected
+regressions, not a full-suite claim. The first focus invocation supplies only its
+two successful targets; an obsolete cold-task rejection expected `E_ASYNC` for a
+raw carrier temporary where a reference was required. Its replacement explicitly
+checks `E_BORROW`, and the final task invocation passes the remaining three task
+targets. A separately added forwarding case brings the new carrier suite to eleven.
+The filtered Rust-adapter run contributes one resource test. Repeated manual checks
+are counted once, using the final log after adding the carrier rejection example.

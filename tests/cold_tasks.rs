@@ -52,9 +52,9 @@ fn pending_task_cannot_be_discarded_cloned_or_reused() {
     }
 }
 #[test]
-fn cold_handles_stay_local_and_reject_whole_carrier_borrows() {
+fn cold_handles_stay_local_with_whole_carrier_borrows() {
     let borrowed = "struct view['a] {ref string text <- 'a;} async control work(ref view input) exits done {exit done;} async control main() exits done {string text=\"a\";view v=view {borrow text};auto pending=defer work(borrow v);await pending;exit done;}";
-    assert_eq!(compile(borrowed, manifest()).unwrap_err().code, "E_ASYNC");
+    compile(borrowed, manifest()).unwrap();
     let escape = "async control work() exits done {exit done;} async control factory() exits auto {auto pending=defer work();exit ready {pending};}";
     assert_eq!(compile(escape, manifest()).unwrap_err().code, "E_ASYNC");
 }
@@ -335,7 +335,6 @@ fn inline_await_adapters_handle_outcomes_without_erasing_task_creation() {
         "async control work() exits done {exit done;} control main() exits done {auto pending=defer work();await pending;exit done;}",
         "async control work() exits done {exit done;} async control main() exits done {auto pending=defer work();auto value=await pending;exit done;}",
         "async control work() exits done {exit done;} async control main() exits done {fault boundary {fault \"fail\";} contingency [] {auto pending=defer work();terminate process 1;}exit done;}",
-        "struct view['a] {ref string text <- 'a;} async control work(ref view input) exits done {exit done;} async control main(ref string text) exits done {auto pending=defer work(view {text});await pending;exit done;}",
     ] {
         assert_eq!(
             compile(text, manifest()).unwrap_err().code,
@@ -343,4 +342,10 @@ fn inline_await_adapters_handle_outcomes_without_erasing_task_creation() {
             "{text}"
         );
     }
+}
+
+#[test]
+fn raw_carrier_temporary_does_not_implicitly_become_a_deferred_borrow() {
+    let text = "struct view['a] {ref string text <- 'a;} async control work(ref view input) exits done {exit done;} async control main(ref string text) exits done {auto pending=defer work(view {text});await pending;exit done;}";
+    assert_eq!(compile(text, manifest()).unwrap_err().code, "E_BORROW");
 }

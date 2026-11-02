@@ -1,8 +1,8 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.109.0 -->
+<!-- tellur-reference-version: 0.110.0 -->
 
-This manual describes **compiler 0.109.0**, including the current ownership model,
+This manual describes **compiler 0.110.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -42,7 +42,7 @@ The companion chapters provide quick lookup:
 - [Outcome absorption](reference/outcome-absorption.md): internal contributors and changes hidden by an unchanged public contract.
 - [Explanations](reference/explanations.md): source-position histories and targeted outcome contributors, including private controls.
 - [Contingency and boundaries](reference/contingency.md): checked contingency calls, retained owners, supervision and terminal escalation.
-- [Async execution](reference/async-execution.md): `async control`, `run`, direct and stored-task `await`, owned captures with contained references, direct borrowed cold captures, borrowed completions and current limits.
+- [Async execution](reference/async-execution.md): `async control`, `run`, direct and stored-task `await`, owned captures with contained references, whole borrowed carrier captures, borrowed completions and current limits.
 - [Execution failures](reference/execution-failures.md): `fault`/`faults`, public permissions, explicit resource dispositions and activation reports.
 - [Glossary](reference/glossary.md): precise meanings of Tellur's terminology.
 
@@ -2806,7 +2806,7 @@ General expression-type hover remains unsupported.
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and scheduled async tasks remain planned; they are not executable features of 0.109.0.
+and scheduled async tasks remain planned; they are not executable features of 0.110.0.
 ## Contingency and supervised boundaries
 
 The [contingency reference](reference/contingency.md) specifies `@contingent`,

@@ -1443,3 +1443,75 @@ control main(string path,bool broken) exits done {
         }
     }
 }
+
+#[test]
+fn borrowed_carrier_task_captures_keep_resource_dispositions_and_release_once() {
+    let f = Fixture::new();
+    fs::write(f.root.join("host.rs"), RESOURCE_HOST).unwrap();
+    let mut config = resource_config();
+    config["types"][0]["fault"] = json!("release");
+    let source = r#"
+struct retained['a] {ref counter value <- 'a;}
+async control examine(ref retained input) exits done {
+    delta inspect(input.value,input.value) {number {u32 n}=>ready}
+    [ready]:exit done;
+}
+async control start(counter owned,bool broken) exits done faults {
+    retained input=retained {borrow owned};auto pending=defer examine(borrow input);
+    delta broken {true=>fail,false=>finish}
+    [fail]:fault "before await";
+    [finish]:await pending;drop(input);
+        delta close(owned,false) {closed=>closed,failed=>failed}
+    [closed|failed]:exit done;
+}
+control main(string path,bool broken) exits done {
+    fault boundary {
+        delta make(borrow path) {made {counter owned}=>made}
+        [made]:run start(owned,broken);
+    } contingency [] {terminate process 23;}
+    exit done;
+}
+"#;
+    assert_eq!(
+        compile(source, f.manifest(&resource_config()))
+            .unwrap_err()
+            .code,
+        "E_FAULT_RESOURCE"
+    );
+    let p = compile(source, f.manifest(&config))
+        .unwrap()
+        .with_entry_exit_codes(
+            "main",
+            std::collections::BTreeMap::from([("done".into(), 0)]),
+        )
+        .unwrap();
+    for (index, p) in [p.clone(), p.expanded("main").unwrap()].iter().enumerate() {
+        let binary = f.root.join(format!("carrier-borrow-{index}"));
+        p.build_native("main", &binary, 0).unwrap();
+        for broken in [false, true] {
+            let log = f.root.join(format!("carrier-borrow-{index}-{broken}"));
+            let output = Command::new(&binary)
+                .args(["--json", "--"])
+                .arg(&log)
+                .arg(broken.to_string())
+                .output()
+                .unwrap();
+            assert_eq!(
+                output.status.code(),
+                Some(if broken { 23 } else { 0 }),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert_eq!(fs::read_to_string(log).unwrap(), "drop 7\n");
+            let report: Json = serde_json::from_slice(&output.stdout).unwrap();
+            let events = report["events"].as_array().unwrap();
+            assert_eq!(
+                events
+                    .iter()
+                    .filter(|e| e["operation"] == "inspect")
+                    .count(),
+                if broken { 0 } else { 1 }
+            );
+        }
+    }
+}
