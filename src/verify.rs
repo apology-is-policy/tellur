@@ -517,9 +517,6 @@ impl Verifier<'_> {
                                 )?;
                             }
                             if matches!(operation, Operation::Defer(_)) {
-                                if !r.borrow_returns.is_empty() || !r.stored_returns.is_empty() {
-                                    return Err(error("deferred borrowed result is unsupported"));
-                                }
                                 if r.parameters.iter().any(|p| {
                                     let inner = crate::manifest::reference_inner(&p.ty)
                                         .map_or(p.ty.as_str(), |(_, inner)| inner);

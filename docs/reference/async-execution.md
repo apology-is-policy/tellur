@@ -3,8 +3,8 @@
 [Language reference](../language-reference.md) · [Design and next steps](../async-execution.md) ·
 [Execution failures](execution-failures.md)
 
-Compiler 0.107 supports `async control`, synchronous entry with `run`, direct
-`await operation(arguments)` and local cold tasks with owned and direct borrowed captures. Execution
+Compiler 0.108 supports `async control`, synchronous entry with `run`, direct
+`await operation(arguments)` and local cold tasks with owned and direct borrowed captures and borrowed completions. Execution
 remains sequential. There is no concurrent scheduler, I/O readiness or LLVM coroutine
 lowering yet.
 
@@ -163,9 +163,9 @@ async control startup() exits done {
 }
 ```
 
-Move the assignment after `await pending;`. Await currently admits only owned,
-reference-free completion payloads, so all capture loans end on delivery. Returning
-a borrow requires the next result-origin transfer checkpoint.
+Move the assignment after `await pending;`. A completion without references releases
+all capture loans. If the completion returns a reference, that result retains its
+declared origins after delivery. Unrelated captures are released at await.
 
 Bind a temporary owner or reference before deferring work; deferred borrowing does
 not adopt a synchronous temporary's lifetime. Tasks with borrowed captures require
@@ -174,16 +174,65 @@ collections, passed through a control boundary, or returned. Direct reference
 values extracted from existing record fields can be captured when their referent
 is reference-free; the task retains their established external dependencies.
 
+## Borrowed completions
+
+A task keeps each captured parameter's dependencies through local moves. On await,
+the selected completion receives the direct and contained result origins described
+by the producer's checked contract. This includes shared/exclusive references,
+references in returned records and sums, and ordinary inferred result contracts.
+No new lifetime annotation is needed at await.
+
+<!-- tellur:check -->
+```tellur
+async control first(ref string left, ref string right)
+    exits ready { ref string value from left }
+{
+    exit ready { left };
+}
+
+async control startup() exits done {
+    mutable string left = "first";
+    mutable string right = "second";
+    auto pending = defer first(borrow left, borrow right);
+    delta await pending { ready { auto value } => ready }
+
+    [ready]:
+        right = "available";
+        emit(value);
+        left = "available after last use";
+        exit done;
+}
+
+control main() exits done { forward run startup(); }
+```
+
+Writing `left` before `emit(value)` is an `E_LOAN` error. Only `left` occurs in
+this result's contract, so `right` is available immediately after await. An inferred contract that can return either input conservatively retains both
+while the result is live. Distinct outcomes and public origin groups preserve their separate
+contracts; await does not merge their dependencies.
+
+`capture await pending`, inline outcome adapters and `forward await pending` also
+preserve result origins. An exclusive result keeps its parent reference unavailable
+for conflicting use until the result's last use, as with a synchronous borrowed
+result. Explicitly moving that parent into the task still consumes the old alias.
+No result may borrow a task-owned local that is destroyed at completion, or escape
+the lifetime of the caller's local storage.
+
 <!-- tellur:reject E_ASYNC -->
 ```tellur
-async control lend(ref string text) exits ready { ref string value from text } {
-    exit ready { text };
-}
-async control startup(ref string text) exits done {
-    auto pending = defer lend(text);
+struct view['a] { ref string text <- 'a; }
+async control show(view input) exits done { emit(input.text); exit done; }
+async control startup() exits done {
+    string text = "hello";
+    view input = view { borrow text };
+    auto pending = defer show(input);
+    await pending;
     exit done;
 }
 ```
+
+The remaining restriction above concerns a reference **inside a captured value**.
+It is separate from references inside a completed result, which are supported.
 
 ## Contracts and resources
 
@@ -230,6 +279,6 @@ synchronous calls around them, but cannot erase the async boundary. Expansion
 certificates check this distinction. Protocol analysis currently rejects these
 boundaries rather than treating them as ordinary unobservable decisions.
 
-Contained reference captures, borrowed results, escaping tasks, a public `task<...>` spelling, `spawn`,
+Contained reference captures, escaping tasks, a public `task<...>` spelling, `spawn`,
 scheduling, cancellation and async host adapters remain unimplemented. No implicit
 detach or cancellation by destruction is permitted. See the [design plan](../async-execution.md).

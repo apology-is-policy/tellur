@@ -1,0 +1,33 @@
+// The task retains both captures until await. Its result retains only `left`.
+async control first(ref string left, ref string right)
+    exits ready { ref string value from left }
+{
+    exit ready { left };
+}
+
+async control startup() exits done {
+    mutable string left = "first";
+    mutable string right = "second";
+    auto pending = defer first(borrow left, borrow right);
+    emit("task created");
+
+    delta await pending {
+        ready { auto value } => ready
+    }
+
+    [ready]:
+        right = "released at await";
+        emit(value);
+        left = "released after last use";
+        emit(borrow right);
+        emit(borrow left);
+        exit done;
+}
+
+control main() exits program_result {
+    forward run startup();
+}
+
+outcome program_result {
+    @exit 0 done
+}

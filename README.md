@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.107.0** implements the v0.1 checked core and the current language
+Compiler release **0.108.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -511,3 +511,11 @@ storage. Moving a task preserves the loans; consuming await releases them. Ordin
 reference arguments reborrow, while `move alias` transfers an exclusive reference.
 Try `./bin/tellurc exec playground/borrowed_tasks.tellur`. Contained captures,
 borrowed completion payloads and nested storage of borrowed tasks remain ahead.
+
+### Borrowed task completions in 0.108
+
+Await now delivers borrowed completion payloads, preserving each result's checked
+origins through task moves, selected outcomes, records, sums and outcome adapters.
+Unrelated captures become available at await; returned references protect their
+sources until their last use. Try `./bin/tellurc exec playground/task_results.tellur`.
+Contained captures and public task contracts remain ahead; execution is sequential.

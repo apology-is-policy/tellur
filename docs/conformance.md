@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.107.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.108.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -3682,3 +3682,37 @@ payloads, nesting borrowed tasks in aggregates and public/escaping task contract
 remain rejected. E1c.3b must preserve per-capture dependency identities and transfer
 only the selected completion's origins. Scheduling, cancellation and coroutine
 lowering remain later work.
+
+## 0.108 — borrowed cold-task completions (E1c.3b)
+
+Captured loans now retain their parameter identity through local task moves. Await
+maps the producer's checked completion origins onto those saved dependencies, then
+retires the captures and installs only the selected result's loans. An unrelated
+capture is available immediately after await; a returned reference continues to
+protect its source until its last use. The ordinary result machinery preserves
+exclusive reborrow ancestry, inferred projections, opaque split permissions,
+conservative inferred unions and separate outcome domains.
+
+Ten `tests/task_results.rs` cases cover direct shared/exclusive results, explicit
+reference transfer, disjoint task moves, separate capture instances of one producer,
+grouped record and option results, stored/inline adapters, forwarding, generic and
+trait producers, source lifetime rejection, instruction stepping and native parity
+before and after expansion. Existing task ownership, captured-resource fault
+settlement and boundary isolation regressions still pass. Contained captures,
+references to reference-bearing capture storage, nested borrowed tasks and
+public/escaping task types remain rejected; no scheduler or coroutine lowering is
+introduced.
+
+Validation passes **488 Rust tests in 20 targets**, **44 Node editor tests**,
+all-target compilation, Rust formatting and whitespace checks. These are selected
+regressions, not a full-suite claim. The first nine new result tests are recorded in
+the final focus log; the repeated-producer-instance check was added and passed
+separately. Prior successful capture/owned-task targets are reused after version
+and hover-help-only edits. Three reference checks cover documented examples and
+links, including the distinction between borrowed results and contained captures.
+
+The isolated VS Code test checks task/result `auto` hover, unsaved `E_LOAN`, repair
+and native execution of `playground/task_results.tellur`. Release 0.108.0 verifies
+six binary copies and nine packaged/installed payloads. Existing windows are not
+reloaded. The verified source backup excludes the protected unrelated C# file.
+Next E1c.3c extends captured reference-bearing values and carrier dependencies.

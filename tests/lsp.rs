@@ -5894,3 +5894,37 @@ fn borrowed_task_loan_diagnostics_and_unsaved_repair_refresh_auto_hover() {
     assert_eq!(f.diagnostics(), json!([]));
     assert_eq!(hover_at(&f, source, "auto pending"), h);
 }
+
+#[test]
+fn awaited_borrowed_result_hover_and_origin_diagnostics_refresh_after_repair() {
+    let mut f = Fixture::new();
+    let source = include_str!("../playground/task_results.tellur");
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let pending = hover_at(&f, source, "auto pending");
+    assert!(
+        pending["contents"]["value"]
+            .as_str()
+            .unwrap()
+            .contains("task<first>")
+    );
+    let result = hover_at(&f, source, "auto value");
+    assert!(
+        result["contents"]["value"]
+            .as_str()
+            .unwrap()
+            .contains("ref string"),
+        "{result}"
+    );
+    let broken = source.replace("right = \"released at await\";", "left = \"too soon\";");
+    f.change(&broken, 2);
+    assert_eq!(f.diagnostics()[0]["code"], "E_LOAN");
+    assert!(
+        !hover_at(&f, &broken, "auto value")
+            .to_string()
+            .contains("ref string")
+    );
+    f.change(source, 3);
+    assert_eq!(f.diagnostics(), json!([]));
+    assert_eq!(hover_at(&f, source, "auto value"), result);
+}

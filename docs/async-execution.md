@@ -10,8 +10,9 @@ prerequisites for overlapping execution contexts. They do **not** implement sour
 tasks, source suspension, scheduling or async I/O. Compiler 0.105 additionally implements [direct async calls](reference/async-execution.md):
 `async control`, `run` and direct `await`, with sequential execution. Compiler 0.106
 adds local cold tasks with owned captures and consuming await. Compiler 0.107
-retains direct shared/exclusive captured loans through await. Contained
-captures, borrowed results and scheduling below remain future work.
+retains direct shared/exclusive captured loans through await. Compiler 0.108
+transfers selected borrowed completion origins. Contained captures and scheduling
+below remain future work.
 
 ## Existing direction
 
@@ -202,8 +203,10 @@ or `capture` a cold task. The next implementation needs these distinct pieces:
   existing reference-free storage, persistent holders through moves, ordinary
   reborrowing versus explicit reference transfer, and release on consuming await.
   Native addresses and resource settlement agree with reference execution.
-- Next, retain contained borrowed arguments and propagate returned dependencies, retaining owners and
-  loans in task state. Body effects and body faults occur only when driven; argument
+- **Delivered in 0.108 (E1c.3b):** per-parameter captured dependencies and selected
+  borrowed result origins, including grouped records/sums, forwarding/adapters,
+  reborrow ancestry and native/reference delivery.
+- Next, retain contained borrowed arguments, retaining owners and loans in task state. Body effects and body faults occur only when driven; argument
   construction and its faults remain immediate.
 - Represent pending captures separately from the result contract. A task can hold
   a must-complete owner or borrow even if all eventual outcomes have empty payloads.
@@ -290,7 +293,7 @@ evidence for these synchronous rules. They are not evidence of task support.
 ### Transfer and settlement cases
 
 The following are acceptance requirements for the future source implementation,
-partly covered by E1c.2/E1c.3a; contained captures, returned loans and cancellation are not yet executable:
+partly covered by E1c.2/E1c.3a/E1c.3b; contained captures and cancellation are not yet executable:
 
 | Situation | Required observation |
 | --- | --- |
@@ -323,12 +326,13 @@ Those boundaries need explicit contracts before being accepted by the checker.
 | E1a | Runtime audit and shared activation identity allocator; interleaved children, independent failure state, no reuse after return, overflow, and sequential reference/native report parity | Delivered in 0.98; shared identity is independent of scheduling policy |
 | E1b | Persistent reference continuations and explicit step/resume protocol; current synchronous outcomes, fuel, effects, faults, loans and expansion observations preserved under different step partitions | Delivered in 0.99; no source async claim |
 | E1b.1 | Separate argument preparation from frame installation; reject malformed later values, address exhaustion and frozen activation state without partial storage; preserve all synchronous observations | Delivered in 0.103; internal handoff only, no source task admission |
-| E1c | Bounded cold tasks and consuming await; eager argument transfer, no body effects before drive, fixed result contracts, task ownership and retained borrows | Await/transfer obligation and explicit `run` entry accepted; direct invocation delivered in E1c.1, owned captures/handles delivered in E1c.2 and direct borrowed captures in E1c.3a; contained captures and borrowed results remain ahead |
+| E1c | Bounded cold tasks and consuming await; eager argument transfer, no body effects before drive, fixed result contracts, task ownership and retained borrows | Await/transfer obligation and explicit `run` entry accepted; direct invocation delivered in E1c.1, owned captures/handles delivered in E1c.2 and direct borrowed captures in E1c.3a and borrowed results in E1c.3b; contained captures remain ahead |
 | E1c.1 | Direct async permission and explicit entry | Delivered in 0.105: sequential `async control`, `run`, direct `await`, public/trait contracts and preserved graph boundaries; no stored tasks or scheduler |
 | E1c.2 | Local cold tasks with owned captures, consuming handles and separate capture fault dispositions | Delivered in 0.106; no borrowed captures or public task type erasure |
-| E1c.3 | Persistent borrowed captures and result-origin transfer | Direct capture holders delivered in E1c.3a; contained captures and borrowed results remain ahead |
+| E1c.3 | Persistent borrowed captures and result-origin transfer | Direct capture holders delivered in E1c.3a and result delivery in E1c.3b; contained captures remain ahead |
 | E1c.3a | Direct borrowed captures of existing reference-free storage; moves, explicit transfer, faults and native addresses | Delivered in 0.107; no nested borrowed task storage or borrowed results |
-| E1c.3b | Captured dependency mapping for borrowed completions and contained capture shapes | Next: preserve per-capture origins and selected result holders; retain conservative rejection until proven |
+| E1c.3b | Captured dependency mapping for borrowed completions | Delivered in 0.108: per-parameter capture origins and selected result holders, including records/sums and adapters |
+| E1c.3c | Contained capture shapes | Next: retain reference leaves and carrier dependencies inside owned/ref inputs; keep unsupported shapes rejected until proven |
 | E1d | Scoped spawn and deterministic readiness; two overlapping children, duplicate/stale wake handling and owner settlement | Prompt owner-boundary fault propagation accepted; specify ownership transfers, sibling dispositions and deterministic multiple-fault selection |
 | E1e | Explicit cooperative cancellation and suspending cleanup; normal completion races, cleanup failures and no abandoned losers | Define cancellation observation and cleanup admission; no implicit cancellation exception |
 | E2 | Pinned native coroutine experiment, then checked lowering and schedule-based differential validation | Reference semantics and legal frame retirement must precede native destruction |

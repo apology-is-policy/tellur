@@ -1,5 +1,5 @@
 //! Local cold tasks retain owned captures and direct borrowed leaf captures.
-//! Contained references and returned loans need a separate origin-transfer slice.
+//! Captures retain parameter identity so completion loans can select their origins.
 use super::*;
 impl Checker<'_> {
     #[allow(clippy::too_many_arguments)]
@@ -33,13 +33,6 @@ impl Checker<'_> {
             return Err(operand.locate(self.error("E_ASYNC", span,
                 "deferred captures support owned values and direct references to reference-free storage; contained reference captures are not implemented"), span));
         }
-        if !sig.borrow_returns.is_empty() || !sig.stored_returns.is_empty() {
-            return Err(self.error(
-                "E_ASYNC",
-                span,
-                "deferred borrowed results require captured-loan propagation",
-            ));
-        }
         self.contingent_call(false, span)?;
         // Arguments are evaluated/transferred now. Only initializer faults apply;
         // callee body fault permission is checked later, when the task is awaited.
@@ -64,7 +57,7 @@ impl Checker<'_> {
             ));
         }
         let id = self.define(name, &ty, domain, span)?;
-        for loan_id in loans {
+        for (parameter, loan_id) in loans {
             let loan = self
                 .scopes
                 .last_mut()
@@ -73,11 +66,11 @@ impl Checker<'_> {
                 .values_mut()
                 .find(|l| l.id == loan_id)
                 .unwrap();
-            // These are hidden captures, not source-projectable record fields.
-            // No result-origin transfer uses individual captures in this slice.
+            // Hidden capture paths survive local moves but are never exposed as
+            // source-projectable fields or interpreted as runtime task layout.
             loan.holder = Some(Place {
                 root: id,
-                fields: vec![],
+                fields: vec![parameter],
                 indirect: false,
             });
         }
@@ -104,7 +97,7 @@ impl Checker<'_> {
         parameters: &[manifest::Parameter],
         domain: Formula,
         span: Span,
-    ) -> Result<(Vec<Expr>, Vec<Id>)> {
+    ) -> Result<(Vec<Expr>, Vec<(usize, Id)>)> {
         if args.len() != parameters.len() {
             return Err(self.error("E_ARITY", span, "wrong deferred argument count"));
         }
@@ -136,7 +129,7 @@ impl Checker<'_> {
         self.argument_aliases(args, parameters, domain, span)?;
         let mut values = vec![];
         let mut loans = vec![];
-        for (arg, p) in args.iter().zip(parameters) {
+        for (parameter, (arg, p)) in args.iter().zip(parameters).enumerate() {
             if let Some((mutable, inner)) = manifest::reference_inner(&p.ty) {
                 let (arg, transfer) = if let syntax::ExprKind::Move(value) = &arg.kind {
                     (value.as_ref(), true)
@@ -161,7 +154,7 @@ impl Checker<'_> {
                     self.parents(&target)
                 };
                 values.push(Expr::Reference(target.place.clone(), p.ty.clone()));
-                loans.push(self.stash_stored_loan(
+                let id = self.stash_stored_loan(
                     Loan {
                         contents: vec![],
                         sum_leaf: None,
@@ -175,7 +168,8 @@ impl Checker<'_> {
                         holder: None,
                     },
                     domain,
-                ));
+                );
+                loans.push((parameter, id));
             } else {
                 // No contained references reach this branch. Existing argument
                 // checking preserves owning transfer, constructor order and faults.
@@ -188,6 +182,43 @@ impl Checker<'_> {
             }
         }
         Ok((values, loans))
+    }
+    /// Snapshot a captured input's external dependencies before consuming the
+    /// task. The ordinary completion machinery projects and partitions these
+    /// origins by result leaf and selected outcome, just as for a direct call.
+    pub(super) fn task_origin_dependencies(
+        &mut self,
+        operand: &syntax::Expr,
+        source: &BorrowSource,
+        domain: Formula,
+        span: Span,
+    ) -> Result<Vec<(Vec<LoanOrigin>, Vec<Id>)>> {
+        if source.contained.is_some() {
+            return Err(self.error(
+                "E_ASYNC",
+                span,
+                "contained task captures are not implemented",
+            ));
+        }
+        let mut value = operand.clone();
+        value.call_mode = syntax::CallMode::Direct;
+        let holder = self
+            .resolve_place(&value, span)?
+            .ok_or_else(|| self.error("E_ASYNC", span, "await requires an owned pending task"))?;
+        let captures = self.snapshot_carrier_contents(&holder, domain);
+        let dependencies = captures
+            .into_iter()
+            .filter(|(path, _)| *path == [source.parameter])
+            .map(|(_, loan)| {
+                let mut parents = loan.parents;
+                parents.push(loan.id);
+                (loan.origins, parents)
+            })
+            .collect::<Vec<_>>();
+        if dependencies.is_empty() {
+            return Err(self.error("E_LIFETIME", span, "missing captured result origin"));
+        }
+        Ok(dependencies)
     }
     /// Resolve the future completion contract without consuming the handle.
     pub(super) fn pending_call(
@@ -231,8 +262,9 @@ impl Checker<'_> {
                 self.terminate_fault(domain);
             }
         }
-        // The synchronous drive retains backing storage until completion. No
-        // borrowed result is admitted yet, so no captured loan survives delivery.
+        // The sequential drive retains backing storage until completion. The
+        // decision has already snapshotted result dependencies; retire captures
+        // before attaching only the selected completion's result loans.
         for (_, id) in stored.loans {
             for scope in &mut self.scopes {
                 if let Some(loan) = scope.loans.values_mut().find(|l| l.id == id) {

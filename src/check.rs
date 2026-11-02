@@ -3404,12 +3404,14 @@ impl Checker<'_> {
         let mut nested_loans = vec![];
         let mut retained_contents = vec![];
         let mut public_returns = vec![];
-        if let syntax::ExprKind::Call(callee, call_args) = &operand.kind
+        let pending = self.pending_call(operand, span)?;
+        let result_call = pending.as_ref().unwrap_or(operand);
+        if let syntax::ExprKind::Call(callee, call_args) = &result_call.kind
             && let Some(sig) = self
                 .signature(callee, call_args, span)
                 .map_err(|e| operand.locate(e, span))?
         {
-            if call_args.len() != sig.parameters.len() {
+            if pending.is_none() && call_args.len() != sig.parameters.len() {
                 return Err(
                     operand.locate(self.error("E_ARITY", span, "wrong argument count"), span)
                 );
@@ -3434,13 +3436,17 @@ impl Checker<'_> {
                 let mut origins = vec![];
                 let mut parents = vec![];
                 for source in sources {
-                    let dependencies = self.call_origin_dependencies(
-                        source,
-                        &call_args[source.parameter],
-                        &sig.parameters[source.parameter],
-                        domain,
-                        span,
-                    )?;
+                    let dependencies = if pending.is_some() {
+                        self.task_origin_dependencies(operand, source, domain, span)?
+                    } else {
+                        self.call_origin_dependencies(
+                            source,
+                            &call_args[source.parameter],
+                            &sig.parameters[source.parameter],
+                            domain,
+                            span,
+                        )?
+                    };
                     for (target_origins, target_parents) in dependencies {
                         for mut origin in target_origins {
                             origin.project(&source.fields);

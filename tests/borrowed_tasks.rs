@@ -102,11 +102,8 @@ fn disjoint_branches_release_only_the_task_they_await() {
 }
 #[test]
 fn borrowed_task_storage_and_result_contracts_remain_bounded() {
-    let borrowed_result = "async control inspect_text(ref string input) exits ready {ref string value from input} {exit ready {input};} async control main(ref string input) exits done {auto pending=defer inspect_text(input);exit done;}";
-    assert_eq!(
-        compile(borrowed_result, manifest()).unwrap_err().code,
-        "E_ASYNC"
-    );
+    let contained = "struct view['a] {ref string text <- 'a;} async control inspect_text(ref view input) exits done {exit done;} async control main(ref view input) exits done {auto pending=defer inspect_text(input);await pending;exit done;}";
+    assert_eq!(compile(contained, manifest()).unwrap_err().code, "E_ASYNC");
     let nested = source(
         r#"string text="initial";auto pending=defer inspect_text(borrow text);auto wrapped=some {pending};exit done;"#,
     );
