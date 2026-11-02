@@ -854,7 +854,45 @@ nonempty diagnostic and contingency baseline is restored.
 
 This remains test-only context execution on 0.125. It does not make host quotas source
 handoffs or implement source `spawn`, `yield`, external readiness or a production
-scheduler. Readiness identities and broader backend integration are the next gates.
+scheduler. Readiness identities follow below; broader backend integration remains ahead.
+
+## Compiled context readiness protocol (E1d.2c.4b.4d.8)
+
+The test-only native context model now retains readiness registrations separately from
+context selectors and terminal reports. A token identifies its execution session,
+context and fresh registration generation. Registering a wait requires normal work
+that has already started; unrun bodies, contingencies, stopped domains and outstanding
+waits or unselected signals are rejected. Generation exhaustion is checked before
+changing registration state. The original machine, frame storage and host context stay
+parked throughout the wait.
+
+Waiting contexts cannot advance or admit children. A valid signal changes eligibility
+once without source execution, completion delivery, effects, fuel use or script
+consumption. Explicit positive-quota harness selection consumes that eligibility;
+zero-quota observations preserve it, as does rejected parent selection while children
+remain live. A later wait receives a new generation. Duplicate, stale, crossed and
+foreign-session tokens cannot wake it; a registration without its original retained
+context cannot consume a signal. Contingencies remain outside readiness admission,
+matching the private reference executor's current limits.
+
+Domain settlement invalidates the owning registration and all affected child
+registrations before handover. This covers both waiting and signalled-but-unselected
+work, including recursive host-limit propagation. Unrelated waits remain usable.
+Process settlement invalidates every registration along with pending terminal reports.
+Readiness never replaces normal completion or the owning terminal report.
+
+The existing real-owner scenarios now exercise these transitions across normal joins,
+source faults, host limits and process stop, with original/expanded O0/O2 code and
+three quota partitions. Repeated waits retain borrowed storage, and fresh process
+sessions reject old tokens despite matching local counters. Snapshot checks preserve
+internal values and observable host state on rejected operations and successful
+signals. Exact Rust logs and causal reports retain their earlier expectations; all
+wait storage is empty after settlement.
+
+This is an explicitly selected context harness, not a FIFO scheduler or external I/O
+adapter. Registration is a harness operation, never an automatic response to exhausting
+a host quota. Compiler/LSP/VSIX remains 0.125 with unchanged public execution. Shared
+native integration and accepted source `await`/`yield` handoffs remain ahead.
 
 ## Separate the identities and continuations
 
@@ -1164,7 +1202,8 @@ Those boundaries need explicit contracts before being accepted by the checker.
 | E1d.2c.4b.4d.4 | Related compiled sibling settlement | Test-only on 0.125: child membership, stopped admission, retained owning handover, borrower-first resource cleanup and suppressed nested sibling handlers. Explicit parent-join harness; terminal/fuel coverage follows in 4d.5 |
 | E1d.2c.4b.4d.5 | Owning terminal reports and host limits | Test-only on 0.125: one-use owning terminal reports preserve child causes; related fuel failures bypass contingencies and propagate through ancestors with retained children. Exact owner release and shared-fuel isolation; active handler coverage follows in 4d.6 |
 | E1d.2c.4b.4d.6 | Stopping active sibling contingencies | Test-only on 0.125: named and lexical handlers paused with retained owners are retired without running remaining handler work. Exact release, isolated causes and host baseline restoration; process settlement follows in 4d.7 |
-| E1d.2c.4b.4d.7 | Whole-session native process settlement | Test-only on 0.125: administrative process stop closes admission/selection, retires all roots and child trees, clears pending reports and applies resource dispositions before status delivery. Readiness and source scheduling remain ahead |
+| E1d.2c.4b.4d.7 | Whole-session native process settlement | Test-only on 0.125: administrative process stop closes admission/selection, retires all roots and child trees, clears pending reports and applies resource dispositions before status delivery. Readiness follows in 4d.8 |
+| E1d.2c.4b.4d.8 | Compiled context readiness protocol | Test-only on 0.125: session/context/generation tokens, separate wait/signal/selection, atomic rejection and fault/process invalidation over retained real-owner contexts. Readiness does not deliver completion; shared native integration and source handoffs remain ahead |
 | E1e | Explicit cooperative cancellation and suspending cleanup; normal completion races, cleanup failures and no abandoned losers | Define cancellation observation and cleanup admission; no implicit cancellation exception |
 | E2 | Pinned native coroutine experiment, then checked lowering and schedule-based differential validation | Reference semantics and legal frame retirement must precede native destruction |
 

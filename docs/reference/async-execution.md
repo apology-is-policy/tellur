@@ -461,25 +461,25 @@ The test-only [independent context model](../async-execution.md#independent-comp
 selects compiled roots with their original diagnostic, contingency and resource state,
 sharing one host and frame arena. It checks isolated fault causes, borrowed storage,
 shared fuel/input consumption and real Rust cleanup while another root remains live.
-These are explicit harness selections of independent roots. Stopped-sibling settlement
-within an owning fault domain remains ahead; the tests do not enable source scheduling
-or change the installed compiler's behavior.
+These are explicit harness selections of independent roots. The related models below
+add fault-domain settlement; they do not enable source scheduling or change the
+installed compiler's behavior.
 
 Compiler 0.125 promotes host-context admission, selection/restoration and retirement
 into shared native support. Retained state is bound to its host; resource selection
 must remain beneath the original live root, and root retirement requires nested work
 to be settled. Fault causes and contingency messages move together, while effects,
 input cursor, fuel and resource owners stay shared. The compiled models use the same
-operations. Public native calls remain synchronous; owning-domain sibling settlement
-and source scheduling are still unimplemented.
+operations. Public native calls remain synchronous; related-context execution below
+remains test-only, with source scheduling still unimplemented.
 
 The test-only [fault-domain extension](../async-execution.md#compiled-native-fault-domain-lifetimes-e1d2c4b4d3)
 also retains owning/current fault domains separately from native resource scopes.
 Named and lexical boundaries keep their original domain across work, handler and
 host pauses. Parked selection checks the exact active boundary; retirement requires
-its nested domains to have settled. This establishes identity and lifetime only:
-related sibling admission, stopped-domain cleanup and deferred owning-handler entry
-remain unimplemented in the compiled model. Installed source behavior is unchanged.
+its nested domains to have settled. This extension establishes identity and lifetime;
+the subsequent model adds related admission, stopped-domain cleanup and deferred
+owning-handler entry. Installed source behavior is unchanged.
 
 The subsequent test-only [sibling-settlement model](../async-execution.md#related-compiled-sibling-settlement-e1d2c4b4d4)
 admits related children and keeps the owning continuation until their stopped frames
@@ -508,5 +508,13 @@ all parked roots and child trees, applies resource fault dispositions, suppresse
 handler work and clears pending reports before delivering the process status. Further
 admission and selection are rejected. This includes entry-owned resources outside the
 outermost contingency; its retained obligations must still satisfy the existing checker.
-Readiness and source handoffs remain gates before production integration. Installed
-source behavior is unchanged.
+
+The [compiled readiness protocol](../async-execution.md#compiled-context-readiness-protocol-e1d2c4b4d8)
+adds separate session-bound readiness tokens with fresh registration generations.
+Only normal started work can wait. Signals change eligibility without executing source
+work or delivering completion; explicit harness selection resumes the original context.
+Duplicate, stale, crossed or foreign signals are rejected without consuming state.
+Domain/process settlement invalidates affected registrations before handler/status
+delivery, while unrelated waits survive isolated failure. The original resource logs
+and causes are preserved. Shared native integration and source handoffs remain ahead;
+no source syntax, scheduler or async adapter is added by this test-only protocol.

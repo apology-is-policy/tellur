@@ -50,6 +50,113 @@ fn complete(contexts: &mut Contexts<'_>, key: &ContextKey, quotas: &[usize]) -> 
     Err("E_NATIVE: sibling harness failed to complete".into())
 }
 
+fn observed(contexts: &Contexts<'_>) -> serde_json::Value {
+    let positions: Vec<_> = contexts
+        .parked
+        .iter()
+        .map(|(id, parked)| {
+            (
+                *id,
+                parked
+                    .machine
+                    .stack
+                    .iter()
+                    .map(|frame| (frame.base(), frame.pc))
+                    .collect::<Vec<_>>(),
+            )
+        })
+        .collect();
+    serde_json::json!({
+        "fuel":contexts.host.fuel,"cursor":contexts.host.cursor,"events":contexts.host.events,
+        "values":format!("{:?}", &*contexts.values),"contexts":contexts.parked.len(),"next":contexts.next,
+        "domains":contexts.domains.len(),"members":contexts.domains.member_count(),
+        "owners":contexts.host.resources.values.len(),"scopes":contexts.host.resources.scopes.len(),
+        "terminal":contexts.terminal.len(),"contingencies":contexts.host.contingencies,"positions":positions
+    })
+}
+
+fn register_wait(contexts: &mut Contexts<'_>, key: &ContextKey) -> R<Readiness> {
+    let before = observed(contexts);
+    let generation = contexts.next_readiness;
+    let registrations = contexts.waits.clone();
+    contexts.next_readiness = u64::MAX;
+    assert!(
+        contexts
+            .park_for_readiness(key)
+            .unwrap_err()
+            .contains("generation exhausted")
+    );
+    assert_eq!(observed(contexts), before);
+    assert_eq!(contexts.waits, registrations);
+    assert_eq!(contexts.next_readiness, u64::MAX);
+    contexts.next_readiness = generation;
+    let token = contexts.park_for_readiness(key)?;
+    assert_eq!(token.generation, generation + 1);
+    assert_eq!(observed(contexts), before);
+    let waiting = contexts.waits.clone();
+    assert!(contexts.park_for_readiness(key).is_err());
+    assert!(contexts.advance(key, 0).is_err());
+    assert!(contexts.advance(key, 1).is_err());
+    let control = contexts.parked[&key.id]
+        .machine
+        .stack
+        .last()
+        .unwrap()
+        .control;
+    assert!(contexts.start_child(key, control, vec![]).is_err());
+    let mut foreign = token.clone();
+    foreign.session = Arc::new(());
+    assert!(contexts.signal_readiness(&foreign).is_err());
+    let mut crossed = token.clone();
+    crossed.generation = generation;
+    assert!(contexts.signal_readiness(&crossed).is_err());
+    // A registration alone cannot authorize a wake if its original machine
+    // storage has gone missing. Failure must not consume the registration.
+    let parked = contexts.parked.remove(&key.id).unwrap();
+    assert!(contexts.signal_readiness(&token).is_err());
+    contexts.parked.insert(key.id, parked);
+    assert_eq!(contexts.waits, waiting);
+    assert_eq!(contexts.next_readiness, token.generation);
+    assert_eq!(observed(contexts), before);
+    Ok(token)
+}
+
+fn signal_wait(contexts: &mut Contexts<'_>, token: &Readiness) -> R<()> {
+    let before = observed(contexts);
+    let generation = contexts.next_readiness;
+    contexts.signal_readiness(token)?;
+    assert_eq!(observed(contexts), before);
+    let ready = contexts.waits.clone();
+    assert!(contexts.signal_readiness(token).is_err());
+    let key = ContextKey {
+        session: token.session.clone(),
+        id: token.context,
+    };
+    assert!(contexts.park_for_readiness(&key).is_err());
+    if contexts
+        .domains
+        .has_children(&contexts.parked[&key.id].machine.member)?
+    {
+        assert!(contexts.advance(&key, 1).is_err());
+    } else {
+        assert!(matches!(contexts.advance(&key, 0)?, ContextPoll::Paused));
+    }
+    assert_eq!(contexts.waits, ready);
+    assert_eq!(contexts.next_readiness, generation);
+    assert_eq!(observed(contexts), before);
+    Ok(())
+}
+
+fn rejected_wait(contexts: &mut Contexts<'_>, key: &ContextKey) {
+    let before = observed(contexts);
+    let waits = contexts.waits.clone();
+    let generation = contexts.next_readiness;
+    assert!(contexts.park_for_readiness(key).is_err());
+    assert_eq!(observed(contexts), before);
+    assert_eq!(contexts.waits, waits);
+    assert_eq!(contexts.next_readiness, generation);
+}
+
 pub fn drive_siblings(
     host: &mut Host,
     controls: [&'static Control; 11],
@@ -172,9 +279,39 @@ pub fn drive_siblings(
                 contexts.domains.len()
             )
         );
-        if fail {
+        let failing = if fail {
             let loan = borrowed_counter(&contexts, &parent);
-            let failing = contexts.start_child(&parent, failing_control, vec![loan])?;
+            Some(contexts.start_child(&parent, failing_control, vec![loan])?)
+        } else {
+            None
+        };
+        rejected_wait(&mut contexts, &unstarted);
+        let parent_wait = register_wait(&mut contexts, &parent)?;
+        let other_wait = register_wait(&mut contexts, &other)?;
+        let descendant_wait = register_wait(&mut contexts, &descendant)?;
+        let sibling_wait = if handling {
+            rejected_wait(&mut contexts, &sibling);
+            None
+        } else {
+            Some(register_wait(&mut contexts, &sibling)?)
+        };
+        let ancestor_wait = if let Some(ancestor) = &ancestor {
+            Some(register_wait(&mut contexts, ancestor)?)
+        } else {
+            None
+        };
+        // Keep both waiting and signalled-but-unselected work live at a fault.
+        signal_wait(&mut contexts, &descendant_wait)?;
+        if !fail || round % 2 == 0 {
+            signal_wait(&mut contexts, &parent_wait)?;
+        }
+        if let Some(token) = &sibling_wait {
+            if !fail || round % 2 != 0 {
+                signal_wait(&mut contexts, token)?;
+            }
+        }
+        if fail {
+            let failing = failing.unwrap();
             if fuel {
                 contexts.host.fuel = Some(0);
             }
@@ -231,9 +368,27 @@ pub fn drive_siblings(
                 )
             );
         } else {
+            assert!(matches!(
+                contexts.advance(&descendant, 1)?,
+                ContextPoll::Paused
+            ));
+            let again = register_wait(&mut contexts, &descendant)?;
+            assert_ne!(again.generation, descendant_wait.generation);
+            assert!(contexts.signal_readiness(&descendant_wait).is_err());
+            signal_wait(&mut contexts, &again)?;
             complete(&mut contexts, &descendant, quotas)?;
             complete(&mut contexts, &sibling, quotas)?;
             complete(&mut contexts, &unstarted, quotas)?;
+        }
+        for token in [&parent_wait, &descendant_wait]
+            .into_iter()
+            .chain(sibling_wait.as_ref())
+            .chain(ancestor_wait.as_ref())
+        {
+            assert!(contexts.signal_readiness(token).is_err());
+        }
+        if fail {
+            rejected_wait(&mut contexts, &parent);
         }
         let terminal_owner = ancestor.as_ref().unwrap_or(&parent);
         if cascade {
@@ -297,6 +452,7 @@ pub fn drive_siblings(
         } else {
             complete(&mut contexts, &parent, quotas)?;
         }
+        signal_wait(&mut contexts, &other_wait)?;
         if fuel {
             assert!(contexts.parked.contains_key(&other.id));
             assert_eq!(contexts.host.resources.values.len(), 1);
@@ -333,6 +489,7 @@ pub fn drive_siblings(
         assert_eq!(messages.contains(&"owner complete"), !escaping && !fuel);
         assert!(contexts.parked.is_empty() && contexts.values.is_empty());
         assert!(contexts.terminal.is_empty());
+        assert!(contexts.waits.is_empty());
         assert_eq!(
             (contexts.domains.len(), contexts.domains.member_count()),
             (0, 0)
@@ -356,7 +513,7 @@ pub fn drive_siblings(
     contexts.host.contingencies.pop();
     contexts.host.leave();
     contexts.host.events.push(
-        serde_json::json!({"kind":"siblings_settled", "fault":fail, "mode":mode, "rounds":3}),
+        serde_json::json!({"kind":"siblings_settled", "fault":fail, "mode":mode, "rounds":3,"readiness":true}),
     );
     Ok(Completion::Outcome(("done".into(), vec![])))
 }
@@ -388,6 +545,7 @@ pub fn drive_process(
     };
     host.enter("process harness")?;
     host.contingencies.push("host contingency marker".into());
+    let mut previous_waits: Vec<Readiness> = vec![];
     for round in 0..3 {
         let mut contexts = Contexts::new(host);
         let begin = contexts.host.events.len();
@@ -424,6 +582,31 @@ pub fn drive_process(
         until_marker(&mut contexts, &pending, "pending ready")?;
         let loan = borrowed_counter(&contexts, &pending);
         let failure = contexts.start_child(&pending, failing_control, vec![loan])?;
+        rejected_wait(&mut contexts, &unstarted);
+        let mut waits = vec![
+            register_wait(&mut contexts, &parent)?,
+            register_wait(&mut contexts, &other)?,
+            register_wait(&mut contexts, &descendant)?,
+            register_wait(&mut contexts, &pending)?,
+        ];
+        if handling {
+            rejected_wait(&mut contexts, &sibling);
+        } else {
+            waits.push(register_wait(&mut contexts, &sibling)?);
+        }
+        let before = observed(&contexts);
+        let registrations = contexts.waits.clone();
+        // Fresh sessions reuse local context/generation numbers, not identity.
+        for old in &previous_waits {
+            assert!(contexts.signal_readiness(old).is_err());
+        }
+        assert_eq!(contexts.waits, registrations);
+        assert_eq!(observed(&contexts), before);
+        for (index, token) in waits.iter().enumerate() {
+            if (index + round) % 2 == 0 {
+                signal_wait(&mut contexts, token)?;
+            }
+        }
         let mut failed = false;
         for quota in quotas.iter().copied().cycle().take(1000) {
             match contexts.advance(&failure, quota)? {
@@ -437,11 +620,15 @@ pub fn drive_process(
             }
         }
         assert!(failed && contexts.terminal.len() == 1);
+        assert!(contexts.signal_readiness(&waits[3]).is_err());
+        rejected_wait(&mut contexts, &pending);
         assert!(matches!(
             contexts.advance(&pending, 0)?,
             ContextPoll::Paused
         ));
         let entry = contexts.start(entry_control, vec![V::String(path.clone())])?;
+        until_marker(&mut contexts, &entry, "process selected")?;
+        rejected_wait(&mut contexts, &entry);
         let mut terminated = false;
         for quota in quotas.iter().copied().cycle().take(1000) {
             match contexts.advance(&entry, quota)? {
@@ -455,6 +642,7 @@ pub fn drive_process(
         }
         assert!(terminated && contexts.terminated);
         assert!(contexts.parked.is_empty() && contexts.terminal.is_empty());
+        assert!(contexts.waits.is_empty());
         assert!(contexts.values.is_empty());
         assert_eq!(
             (contexts.domains.len(), contexts.domains.member_count()),
@@ -492,6 +680,9 @@ pub fn drive_process(
                 .start(independent_control, vec![V::String(path.clone())])
                 .is_err()
         );
+        for token in &waits {
+            assert!(contexts.signal_readiness(token).is_err());
+        }
         assert_eq!(
             before,
             (
@@ -529,8 +720,9 @@ pub fn drive_process(
         assert_eq!(baseline.activations[0].control, "process harness");
         assert!(baseline.cause.is_none() && !contexts.host.source_faulted());
         contexts.host.events.push(
-            serde_json::json!({"kind":"process_settled","round":round,"mode":mode,"status":23}),
+            serde_json::json!({"kind":"process_settled","round":round,"mode":mode,"status":23,"readiness":true}),
         );
+        previous_waits = waits;
     }
     host.contingencies.pop();
     host.leave();

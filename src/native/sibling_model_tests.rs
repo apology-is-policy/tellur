@@ -100,6 +100,7 @@ fn related_compiled_children_settle_borrowers_before_the_owning_contingency() {
                     let events = output["events"].as_array().unwrap();
                     assert_eq!(events.last().unwrap()["kind"], "siblings_settled");
                     assert_eq!(events.last().unwrap()["rounds"], 3);
+                    assert_eq!(events.last().unwrap()["readiness"], true);
                     let expected = if handling {
                         "make 1\nmake 3\nborrow 1\nmake 2\nborrow 1\nmake 5\nborrow 1\ndrop 5\ndrop 2\nclose 1\ndrop 1\nborrow 3\nclose 3\ndrop 3\n"
                     } else if mode == "fuel-peer" {
@@ -295,6 +296,12 @@ fn process_termination_settles_all_compiled_contexts_before_status_delivery() {
                     assert!(output.get("outcome").is_none());
                     let events = output["events"].as_array().unwrap();
                     assert_eq!(events.last().unwrap()["kind"], "process_settled");
+                    assert!(
+                        events
+                            .iter()
+                            .filter(|e| e["kind"] == "process_settled")
+                            .all(|e| e["readiness"] == true)
+                    );
                     assert_eq!(
                         events
                             .iter()

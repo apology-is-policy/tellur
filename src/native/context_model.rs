@@ -8,12 +8,24 @@ pub struct ContextKey {
     session: Arc<()>,
     id: u64,
 }
+#[derive(Clone, Debug)]
+pub struct Readiness {
+    session: Arc<()>,
+    context: u64,
+    generation: u64,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct WaitState {
+    generation: u64,
+    signalled: bool,
+}
 struct Parked {
     machine: Machine,
     host: HostContext,
     root: ContextRoot,
     name: &'static str,
     parent: Option<u64>,
+    started: bool,
 }
 pub enum ContextPoll {
     Paused,
@@ -29,6 +41,8 @@ pub struct Contexts<'a> {
     parked: BTreeMap<u64, Parked>,
     terminal: BTreeMap<u64, ContextPoll>,
     terminated: bool,
+    next_readiness: u64,
+    waits: BTreeMap<u64, WaitState>,
 }
 impl<'a> Contexts<'a> {
     pub fn new(host: &'a mut Host) -> Self {
@@ -41,6 +55,8 @@ impl<'a> Contexts<'a> {
             parked: BTreeMap::new(),
             terminal: BTreeMap::new(),
             terminated: false,
+            next_readiness: 0,
+            waits: BTreeMap::new(),
         }
     }
     pub fn start(&mut self, control: &'static Control, arguments: Vec<V>) -> R<ContextKey> {
@@ -78,6 +94,7 @@ impl<'a> Contexts<'a> {
                 root,
                 name: control.name,
                 parent: None,
+                started: false,
             },
         );
         Ok(ContextKey {
@@ -107,6 +124,11 @@ impl<'a> Contexts<'a> {
         arguments: Vec<V>,
     ) -> R<ContextKey> {
         self.require(parent)?;
+        if self.waits.contains_key(&parent.id) {
+            return Err(
+                "E_NATIVE: waiting or unselected ready parent cannot admit children".into(),
+            );
+        }
         let owner = self.parked[&parent.id].machine.current.clone();
         let membership = self.parked[&parent.id].machine.member.clone();
         self.domains.require_open(&owner, &[])?;
@@ -148,12 +170,62 @@ impl<'a> Contexts<'a> {
                 root,
                 name: control.name,
                 parent: Some(parent.id),
+                started: false,
             },
         );
         Ok(ContextKey {
             session: self.identity.clone(),
             id,
         })
+    }
+    pub fn park_for_readiness(&mut self, key: &ContextKey) -> R<Readiness> {
+        self.require(key)?;
+        let parked = &self.parked[&key.id];
+        if !parked.started
+            || parked.machine.fault.is_some()
+            || !parked.host.contingencies.is_empty()
+            || self.waits.contains_key(&key.id)
+        {
+            return Err("E_NATIVE: readiness requires a live normal selected continuation".into());
+        }
+        self.domains.require_open(&parked.machine.current, &[])?;
+        let generation = self
+            .next_readiness
+            .checked_add(1)
+            .ok_or("E_NATIVE: readiness generation exhausted")?;
+        self.waits.insert(
+            key.id,
+            WaitState {
+                generation,
+                signalled: false,
+            },
+        );
+        self.next_readiness = generation;
+        Ok(Readiness {
+            session: self.identity.clone(),
+            context: key.id,
+            generation,
+        })
+    }
+    pub fn signal_readiness(&mut self, token: &Readiness) -> R<()> {
+        let key = ContextKey {
+            session: token.session.clone(),
+            id: token.context,
+        };
+        self.require(&key)?;
+        self.domains
+            .require_open(&self.parked[&key.id].machine.current, &[])?;
+        let state = self
+            .waits
+            .get_mut(&key.id)
+            .ok_or("E_NATIVE: context has no readiness registration")?;
+        if state.generation != token.generation || state.signalled {
+            return Err("E_NATIVE: stale or already signalled readiness".into());
+        }
+        // Signalling only changes eligibility. The original machine and host
+        // context stay parked until an explicit positive-quota selection.
+        state.signalled = true;
+        Ok(())
     }
     pub fn advance(&mut self, key: &ContextKey, quota: usize) -> R<ContextPoll> {
         self.require_live()?;
@@ -168,6 +240,13 @@ impl<'a> Contexts<'a> {
             });
         }
         self.require(key)?;
+        if self
+            .waits
+            .get(&key.id)
+            .is_some_and(|state| !state.signalled)
+        {
+            return Err("E_NATIVE: context is waiting for readiness".into());
+        }
         self.parked[&key.id]
             .machine
             .require_runnable(&self.domains)?;
@@ -182,7 +261,9 @@ impl<'a> Contexts<'a> {
         if quota == 0 {
             return Ok(ContextPoll::Paused);
         }
+        self.waits.remove(&key.id);
         let mut parked = self.parked.remove(&key.id).unwrap();
+        parked.started = true;
         self.host.exchange_context(&mut parked.host)?;
         let mut settlement = None;
         let mut result =
@@ -249,6 +330,7 @@ impl<'a> Contexts<'a> {
     fn terminate(&mut self) -> R<()> {
         self.terminated = true;
         self.terminal.clear();
+        self.waits.clear();
         // Administrative process completion retires every context, including
         // independent roots and active handlers, before the status is delivered.
         // Admission order always places children after their supplying parent.
@@ -284,6 +366,7 @@ impl<'a> Contexts<'a> {
             })
             .ok_or("E_NATIVE: stopped domain has no retained owning continuation")?;
         self.domains.stop(domain)?;
+        self.waits.remove(&owner);
         // Child IDs are allocated after their parent. Reverse order retires
         // every borrower descendant before the frame that supplied its storage.
         let stopped: Vec<_> = self
@@ -300,6 +383,7 @@ impl<'a> Contexts<'a> {
             })
             .collect();
         for id in stopped {
+            self.waits.remove(&id);
             let mut parked = self.parked.remove(&id).unwrap();
             self.host.exchange_context(&mut parked.host)?;
             parked
