@@ -13,6 +13,9 @@ const SUPPORT: &str = include_str!("native/runtime.rs");
 const CARGO: &str = include_str!("native/Cargo.template");
 const LOCK: &str = include_str!("native/Cargo.lock");
 #[cfg(test)]
+#[path = "native/domain_model.rs"]
+mod domain_model;
+#[cfg(test)]
 #[path = "native/resume_model.rs"]
 mod resume_model;
 fn error(message: impl Into<String>) -> Diagnostic {

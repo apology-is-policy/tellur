@@ -472,3 +472,11 @@ to be settled. Fault causes and contingency messages move together, while effect
 input cursor, fuel and resource owners stay shared. The compiled models use the same
 operations. Public native calls remain synchronous; owning-domain sibling settlement
 and source scheduling are still unimplemented.
+
+The test-only [fault-domain extension](../async-execution.md#compiled-native-fault-domain-lifetimes-e1d2c4b4d3)
+also retains owning/current fault domains separately from native resource scopes.
+Named and lexical boundaries keep their original domain across work, handler and
+host pauses. Parked selection checks the exact active boundary; retirement requires
+its nested domains to have settled. This establishes identity and lifetime only:
+related sibling admission, stopped-domain cleanup and deferred owning-handler entry
+remain unimplemented in the compiled model. Installed source behavior is unchanged.

@@ -84,8 +84,9 @@ fn source(program: &CheckedProgram, entry: &str) -> Result<String> {
     source = source.replacen(
         SUPPORT,
         &format!(
-            "{SUPPORT}\nmod compiled_model {{\n{}\nmod context_model {{\n{}\n}}\npub use context_model::*;\n}}\npub use compiled_model::*;\n",
+            "{SUPPORT}\nmod compiled_model {{\n{}\nmod domain_model {{\n{}\n}}\nmod context_model {{\n{}\n}}\npub use context_model::*;\n}}\npub use compiled_model::*;\n",
             include_str!("compiled_model.rs"),
+            include_str!("domain_model.rs"),
             include_str!("context_model.rs")
         ),
         1,

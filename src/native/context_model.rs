@@ -22,6 +22,7 @@ pub enum ContextPoll {
 pub struct Contexts<'a> {
     host: &'a mut Host,
     values: Frames,
+    domains: Domains,
     identity: Arc<()>,
     next: u64,
     parked: BTreeMap<u64, Parked>,
@@ -31,6 +32,7 @@ impl<'a> Contexts<'a> {
         Self {
             host,
             values: Frames::default(),
+            domains: Domains::default(),
             identity: Arc::new(()),
             next: 0,
             parked: BTreeMap::new(),
@@ -44,9 +46,17 @@ impl<'a> Contexts<'a> {
         if control.constructor || arguments.len() != control.parameters.len() {
             return Err("E_NATIVE: invalid independent context admission".into());
         }
+        // Validate identity capacity before transferring any input owners.
+        self.domains.prepare(None)?;
         let (mut root, mut context) = self.host.prepare_context(&arguments)?;
         self.host.exchange_context(&mut context)?;
-        let started = Machine::start(self.host, &mut self.values, control, arguments);
+        let started = Machine::start(
+            self.host,
+            &mut self.values,
+            &mut self.domains,
+            control,
+            arguments,
+        );
         if started.is_err() {
             self.host.finish_context(&mut root, true)?;
         }
@@ -72,6 +82,7 @@ impl<'a> Contexts<'a> {
             return Err("E_NATIVE: context is foreign or retired".into());
         }
         let parked = &self.parked[&key.id];
+        parked.machine.require_domain(&self.domains)?;
         self.host.require_context(&parked.host, &parked.root)
     }
     pub fn advance(&mut self, key: &ContextKey, quota: usize) -> R<ContextPoll> {
@@ -81,23 +92,28 @@ impl<'a> Contexts<'a> {
         }
         let mut parked = self.parked.remove(&key.id).unwrap();
         self.host.exchange_context(&mut parked.host)?;
-        let result = match parked.machine.advance(self.host, &mut self.values, quota) {
-            Ok(Poll::Paused) => ContextPoll::Paused,
-            Ok(Poll::Complete(completion)) => {
-                // Outgoing owners survive normal completion; failed roots below
-                // release stranded temporary owners as well as retired frames.
-                self.host.finish_context(&mut parked.root, false)?;
-                ContextPoll::Complete(completion)
-            }
-            Err(message) => {
-                let report =
-                    self.host
-                        .activations
-                        .failure(parked.name, fault::Phase::Execution, &message);
-                self.host.finish_context(&mut parked.root, true)?;
-                ContextPoll::Failed(report)
-            }
-        };
+        let result =
+            match parked
+                .machine
+                .advance(self.host, &mut self.values, &mut self.domains, quota)
+            {
+                Ok(Poll::Paused) => ContextPoll::Paused,
+                Ok(Poll::Complete(completion)) => {
+                    // Outgoing owners survive normal completion; failed roots below
+                    // release stranded temporary owners as well as retired frames.
+                    self.host.finish_context(&mut parked.root, false)?;
+                    ContextPoll::Complete(completion)
+                }
+                Err(message) => {
+                    let report = self.host.activations.failure(
+                        parked.name,
+                        fault::Phase::Execution,
+                        &message,
+                    );
+                    self.host.finish_context(&mut parked.root, true)?;
+                    ContextPoll::Failed(report)
+                }
+            };
         self.host.exchange_context(&mut parked.host)?;
         if matches!(result, ContextPoll::Paused) {
             self.parked.insert(key.id, parked);
@@ -161,6 +177,23 @@ pub fn drive_contexts(
     assert_eq!(contexts.host.fuel, baseline.1);
     assert_eq!(contexts.host.events.len(), baseline.2);
     if keys.len() > 1 {
+        let other = contexts.parked[&keys[1].id].machine.current.clone();
+        let original = std::mem::replace(
+            &mut contexts
+                .parked
+                .get_mut(&keys[0].id)
+                .unwrap()
+                .machine
+                .current,
+            other,
+        );
+        assert!(contexts.advance(&keys[0], 0).is_err());
+        contexts
+            .parked
+            .get_mut(&keys[0].id)
+            .unwrap()
+            .machine
+            .current = original;
         let other = contexts.parked[&keys[1].id].host.scope.clone();
         let original = std::mem::replace(
             &mut contexts.parked.get_mut(&keys[0].id).unwrap().host.scope,
@@ -177,6 +210,23 @@ pub fn drive_contexts(
         assert_eq!(contexts.host.events.len(), baseline.2);
         assert_eq!(contexts.parked.len(), keys.len());
     }
+    let foreign_domain = Domains::default().prepare(None)?;
+    let original = std::mem::replace(
+        &mut contexts
+            .parked
+            .get_mut(&keys[0].id)
+            .unwrap()
+            .machine
+            .current,
+        foreign_domain.key,
+    );
+    assert!(contexts.advance(&keys[0], 0).is_err());
+    contexts
+        .parked
+        .get_mut(&keys[0].id)
+        .unwrap()
+        .machine
+        .current = original;
     let mut done = vec![false; keys.len()];
     let mut turns = 0;
     while done.iter().any(|v| !v) {
@@ -191,6 +241,7 @@ pub fn drive_contexts(
                 contexts.host.events.len(),
                 contexts.host.resources.values.len(),
                 contexts.host.resources.scopes.len(),
+                contexts.domains.len(),
             );
             let result = contexts.advance(&keys[index], quota)?;
             if quota == 0 {
@@ -201,12 +252,36 @@ pub fn drive_contexts(
                         contexts.host.fuel,
                         contexts.host.events.len(),
                         contexts.host.resources.values.len(),
-                        contexts.host.resources.scopes.len()
+                        contexts.host.resources.scopes.len(),
+                        contexts.domains.len()
                     )
                 );
             }
             let event = match result {
-                ContextPoll::Paused => continue,
+                ContextPoll::Paused => {
+                    // A live ancestor is not the selected nested boundary. Reject
+                    // such a parked-state mismatch even when no work is requested.
+                    let parked = contexts.parked.get_mut(&keys[index].id).unwrap();
+                    let original = std::mem::replace(
+                        &mut parked.machine.current,
+                        parked.machine.root.key.clone(),
+                    );
+                    if contexts
+                        .domains
+                        .require_selected(&parked.machine.root, &original)
+                        .is_err()
+                    {
+                        assert!(contexts.advance(&keys[index], 0).is_err());
+                    }
+                    contexts
+                        .parked
+                        .get_mut(&keys[index].id)
+                        .unwrap()
+                        .machine
+                        .current = original;
+                    contexts.require(&keys[index])?;
+                    continue;
+                }
                 ContextPoll::Complete(Completion::Outcome((outcome, fields))) => {
                     serde_json::json!({"kind":"context_complete","context":index,"outcome":outcome,"fields":fields})
                 }
@@ -227,6 +302,7 @@ pub fn drive_contexts(
         turns += 1;
     }
     assert!(contexts.values.is_empty());
+    assert_eq!(contexts.domains.len(), 0);
     assert_eq!(contexts.host.resources.scopes.len(), baseline.3);
     assert_eq!(contexts.host.contingencies, ["host contingency marker"]);
     let baseline_report = contexts.host.activations.failure(

@@ -713,6 +713,36 @@ Binding native contexts to owning fault domains and draining borrowers before th
 owning contingency remains next, under the already accepted suppression policy for
 nested sibling handlers. No source ownership, origin, fault or path-label rule changes.
 
+## Compiled native fault-domain lifetimes (E1d.2c.4b.4d.3)
+
+The test-only compiled model now gives each independent execution an owning fault
+domain and a current domain. These identities belong to a shared domain registry,
+separate from resource scopes, context keys, activation ranges and diagnostic IDs.
+Ordinary calls, cold awaits and loop iterations retain their current domain. Named
+supervision and lexical boundaries open child domains and retain the original domain
+record with their work/handler continuation. Returning, recovery, process completion
+and error unwind close the selected child before restoring its parent.
+
+Every advance, including a zero-quota request, validates the owning/current ancestry
+and the exact innermost boundary retained by the compiled continuation. A live ancestor
+or an unrelated root is not a valid substitute for that boundary. Handler entry and
+boundary retirement require a quiescent domain. Foreign, stale, forged-parent and
+duplicate transitions fail before registry mutation; admission exhaustion is checked
+before context input ownership transfers. Retired IDs are not reused.
+
+Three registry cases cover independent roots, invalid selection and admission, and
+64 repeated nested lifetimes with bounded live state. The compiled call, loop,
+boundary, resource and independent-context cases now exercise domain retention across
+host pauses and shared fuel cuts, and require an empty domain registry after final
+settlement. The context harness also rejects substituting a live parent while paused
+inside a nested boundary.
+
+This checkpoint remains test-only on compiler 0.125. It establishes domain identity
+and lifetime; it does not yet admit related sibling contexts, mark domains stopped,
+or defer an owning handler while draining those siblings. That settlement protocol
+must preserve the original owning boundary and suppress nested sibling contingencies
+under the accepted policy before source scheduling or production backend promotion.
+
 ## Separate the identities and continuations
 
 | Entity | Purpose | Must not be confused with |
@@ -1017,6 +1047,7 @@ Those boundaries need explicit contracts before being accepted by the checker.
 | E1d.2c.4b.4c.3 | Compiled named supervision | Test-only evidence on 0.124: retained caller supervision, failed-work parameter handover before frame retirement, separate handler execution and exact real-owner cleanup. Independent context selection and native sibling settlement remain ahead |
 | E1d.2c.4b.4d.1 | Independent compiled native contexts | Test-only evidence on 0.124: paired tracker/contingency/resource selection, original compiled machines, session-scoped keys and independent root cleanup over shared frames/effects/scripts/fuel. Native sibling settlement within an owning fault domain remains ahead |
 | E1d.2c.4b.4d.2 | Shared native host contexts | Delivered in 0.125: host-bound retained state, dormant ownership-root admission, paired selection/restoration and checked retirement. Compiled models use the shared operations; native owning-domain membership and sibling settlement remain ahead |
+| E1d.2c.4b.4d.3 | Compiled fault-domain lifetimes | Test-only on 0.125: distinct owning/current domains retained through named and lexical boundaries, exact parked-boundary validation and quiescent retirement across normal/error crossings. Related sibling admission and stopped-domain settlement remain ahead |
 | E1e | Explicit cooperative cancellation and suspending cleanup; normal completion races, cleanup failures and no abandoned losers | Define cancellation observation and cleanup admission; no implicit cancellation exception |
 | E2 | Pinned native coroutine experiment, then checked lowering and schedule-based differential validation | Reference semantics and legal frame retirement must precede native destruction |
 
