@@ -261,7 +261,8 @@ impl<'a> Contexts<'a> {
         Ok(())
     }
     /// Sequential cold await carries the caller's diagnostic chain, rather than
-    /// creating a distinct child fault cause. Source callbacks are wired separately.
+    /// creating a distinct child fault cause. An independent child may carry its
+    /// own chain through cold awaits; each awaiting context must have no other children.
     pub fn start_await(
         &mut self,
         parent: &ContextKey,
@@ -269,10 +270,7 @@ impl<'a> Contexts<'a> {
     ) -> R<ContextKey> {
         self.require(parent)?;
         let parked = &self.parked[&parent.id];
-        if (parked.parent.is_some() && !parked.sequential)
-            || parked.awaiting.is_some()
-            || self.domains.has_children(&parked.machine.member)?
-        {
+        if parked.awaiting.is_some() || self.domains.has_children(&parked.machine.member)? {
             return Err("E_NATIVE: sequential await requires an exclusive caller chain".into());
         }
         self.start_queued(parent, queued, true)
@@ -787,16 +785,16 @@ impl<'a> Contexts<'a> {
         caller.host.tracker = std::mem::take(tracker);
         caller.awaiting = None;
     }
-    /// Move a failing sequential chain back through its parked callers before
-    /// retiring their frames. A distinct child keeps the existing causal report.
-    fn restore_fault_chain(&mut self, origin: u64, owner: u64) -> bool {
+    /// Return a failing sequential segment to its retained head before retiring
+    /// frames. An independently admitted child anchors a separate causal boundary.
+    fn restore_fault_chain(&mut self, origin: u64, owner: u64) -> Option<u64> {
         let mut cursor = origin;
         while cursor != owner {
             let Some(child) = self.parked.get(&cursor) else {
-                return false;
+                return None;
             };
             if !child.sequential {
-                return false;
+                break;
             }
             let parent = child.parent.unwrap();
             if self
@@ -804,17 +802,17 @@ impl<'a> Contexts<'a> {
                 .get(&parent)
                 .is_none_or(|p| p.awaiting != Some(cursor))
             {
-                return false;
+                return None;
             }
             cursor = parent;
         }
-        if origin != owner {
+        if origin != cursor {
             let tracker = std::mem::take(&mut self.parked.get_mut(&origin).unwrap().host.tracker);
-            let caller = self.parked.get_mut(&owner).unwrap();
+            let caller = self.parked.get_mut(&cursor).unwrap();
             caller.host.tracker = tracker;
             caller.awaiting = None;
         }
-        true
+        Some(cursor)
     }
     fn retire_completed(&mut self, id: u64) -> R<()> {
         let mut completed = self
@@ -869,7 +867,7 @@ impl<'a> Contexts<'a> {
         domain: &DomainKey,
         origin: u64,
         message: &str,
-        report: fault::Report,
+        mut report: fault::Report,
         source_fault: bool,
     ) -> R<()> {
         let owner = self
@@ -882,7 +880,18 @@ impl<'a> Contexts<'a> {
                     .then_some(*id)
             })
             .ok_or("E_NATIVE: stopped domain has no retained owning continuation")?;
-        let sequential = self.restore_fault_chain(origin, owner);
+        let head = self.restore_fault_chain(origin, owner);
+        let sequential = head == Some(owner);
+        if let Some(head) = head.filter(|head| *head != owner && *head != origin) {
+            let child = self.parked.get_mut(&head).unwrap();
+            // Cold awaits retain one diagnostic chain inside the independently
+            // admitted child. Its outer cause names that child, not an internal
+            // cold-await context, and retains original sites/IDs/raw error text.
+            report = child
+                .host
+                .tracker
+                .failure(child.name, fault::Phase::Execution, message);
+        }
         self.domains.stop(domain)?;
         self.waits.remove(&owner);
         let completed: Vec<_> = self

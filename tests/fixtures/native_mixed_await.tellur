@@ -1,0 +1,41 @@
+async control leaf(ref mutable string text, bool stop) exits done faults {
+    deref text = "changed";
+    emit(text);
+    delta stop {
+        true => failed,
+        false => ready
+    }
+
+    [failed]: fault "child invariant";
+    [ready]: exit done;
+}
+
+async control relay(ref mutable string text, bool stop) exits done faults {
+    auto pending = defer leaf(text, stop);
+    await pending;
+    exit done;
+}
+
+async control worker(bool stop) exits done faults {
+    supervised loop request(mutable bool first = true) {
+        bool broken = first;
+        first = false;
+        mutable string text = "initial";
+        fault boundary {
+            auto pending = defer relay(borrow mutable text, broken);
+            await pending;
+        } contingency [text] {
+            emit(borrow @fault.message);
+            recover again request;
+        }
+        auto pending = defer relay(borrow mutable text, stop);
+        await pending;
+        emit(borrow text);
+        exit done;
+    }
+}
+
+// The compiled test harness admits worker as an independent child of this root.
+control main(bool stop) exits done {
+    exit done;
+}

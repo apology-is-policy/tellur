@@ -604,3 +604,182 @@ fn await_in_synchronous_callee_delivers_to_its_original_activation() {
     assert_eq!(c.host.fuel, Some(993));
     empty(&c);
 }
+
+fn mixed_outer(h: &mut Host, _: &mut Frames, _: &mut Activation) -> R<Step> {
+    h.tick(0, 1)?;
+    Ok(Step::Complete(Completion::Outcome(("done".into(), vec![]))))
+}
+static MIXED_OUTER: Control = Control {
+    name: "outer",
+    resume: mixed_outer,
+    ..SETTLED
+};
+#[test]
+fn independent_child_await_adopts_owners_and_borrows_once_after_atomic_admission() {
+    let mut h = host();
+    let mut c = Contexts::new(&mut h);
+    let drops = Rc::new(RefCell::new(vec![]));
+    let root = c.start(&MIXED_OUTER, vec![]).unwrap();
+    let args = vec![make(&mut c, 0, &drops), make(&mut c, 1, &drops)];
+    let parent = c.start_child(&root, &PARENT, args).unwrap();
+    assert!(matches!(
+        c.advance_retained(&parent, 99).unwrap(),
+        ContextPoll::Await
+    ));
+    let next = c.next;
+    let before = (
+        format!("{:?}", c.host.tasks),
+        format!("{:?}", c.parked[&parent.id].host.tracker),
+        c.host.fuel,
+    );
+    c.next = u64::MAX;
+    assert!(
+        c.admit_await(&parent)
+            .unwrap_err()
+            .contains("identity exhausted")
+    );
+    assert_eq!(
+        (
+            format!("{:?}", c.host.tasks),
+            format!("{:?}", c.parked[&parent.id].host.tracker),
+            c.host.fuel
+        ),
+        before
+    );
+    c.next = next;
+    let child = finish_child(&mut c, &parent);
+    assert!(c.return_await(&root, &child).is_err());
+    c.return_await(&parent, &child).unwrap();
+    assert!(c.return_await(&parent, &child).is_err());
+    assert!(matches!(
+        c.advance_retained(&parent, 0).unwrap(),
+        ContextPoll::Paused
+    ));
+    assert!(!c.parked[&parent.id].machine.stack[0].facts[0]);
+    assert!(matches!(
+        c.advance_retained(&parent, 1).unwrap(),
+        ContextPoll::Ready
+    ));
+    let (_, fields) = c.join(Some(&root), &parent).unwrap().outcome().unwrap();
+    assert!(drops.borrow().is_empty());
+    c.host
+        .release_frame(&fields.into_iter().map(Some).collect::<Vec<_>>());
+    assert_eq!(*drops.borrow(), [0, 1]);
+    assert!(matches!(
+        c.advance_retained(&root, 1).unwrap(),
+        ContextPoll::Ready
+    ));
+    c.join(None, &root).unwrap();
+    empty(&c);
+}
+#[test]
+fn sibling_fault_retires_an_independent_childs_pending_await_and_result_before_suppliers() {
+    for phase in 0..=3 {
+        let mut h = host();
+        let mut c = Contexts::new(&mut h);
+        let drops = Rc::new(RefCell::new(vec![]));
+        let root = c.start(&MIXED_OUTER, vec![]).unwrap();
+        let args = vec![make(&mut c, 0, &drops), make(&mut c, 1, &drops)];
+        let parent = c.start_child(&root, &PARENT, args).unwrap();
+        assert!(matches!(
+            c.advance_retained(&parent, 99).unwrap(),
+            ContextPoll::Await
+        ));
+        let mut wake = None;
+        let child = if phase == 1 {
+            let child = c.admit_await(&parent).unwrap();
+            c.advance_retained(&child, 1).unwrap();
+            wake = Some(c.park_for_readiness(&child).unwrap());
+            Some(child)
+        } else if phase >= 2 {
+            let child = finish_child(&mut c, &parent);
+            if phase == 3 {
+                c.return_await(&parent, &child).unwrap();
+            }
+            Some(child)
+        } else {
+            None
+        };
+        let failed = c
+            .start_child(&root, &FAULT, vec![V::Unit, V::Unit])
+            .unwrap();
+        assert!(matches!(
+            c.advance_retained(&failed, 1).unwrap(),
+            ContextPoll::Failed(_)
+        ));
+        assert_eq!(*drops.borrow(), [1, 0], "phase={phase}");
+        if let Some(wake) = wake {
+            assert!(c.signal_readiness(&wake).is_err());
+        }
+        if let Some(child) = child {
+            assert!(c.return_await(&parent, &child).is_err());
+        }
+        assert!(c.advance_retained(&parent, 1).is_err());
+        let ContextPoll::Failed(report) = c.advance_retained(&root, 1).unwrap() else {
+            panic!()
+        };
+        assert_eq!(report.boundary, "outer");
+        assert_eq!(report.cause.unwrap().boundary, "fault");
+        empty(&c);
+    }
+}
+fn independent_chain(
+    retained: bool,
+    fuel: usize,
+    quotas: &[usize],
+) -> (serde_json::Value, Vec<serde_json::Value>, Option<usize>) {
+    let mut h = host();
+    h.fuel = Some(fuel);
+    let mut c = Contexts::new(&mut h);
+    let root = c.start(&MIXED_OUTER, vec![]).unwrap();
+    let child = c
+        .start_child(
+            &root,
+            if retained { &CHAIN } else { &DIRECT_CHAIN },
+            vec![V::U32(8)],
+        )
+        .unwrap();
+    let mut chain = vec![root.clone(), child];
+    let mut child_result = None;
+    let mut quotas = quotas.iter().cycle();
+    let result = loop {
+        let key = chain.last().unwrap().clone();
+        match c.advance_retained(&key, *quotas.next().unwrap()).unwrap() {
+            ContextPoll::Paused => {}
+            ContextPoll::Await => chain.push(c.admit_await(&key).unwrap()),
+            ContextPoll::Ready if chain.len() > 2 => {
+                chain.pop();
+                c.return_await(chain.last().unwrap(), &key).unwrap();
+            }
+            ContextPoll::Ready if chain.len() == 2 => {
+                child_result = Some(c.join(Some(&root), &key).unwrap().outcome().unwrap());
+                chain.pop();
+            }
+            ContextPoll::Ready => {
+                break serde_json::json!({"outcome":c.join(None, &key).unwrap().outcome().unwrap(), "child":child_result});
+            }
+            ContextPoll::Failed(report) if key.id == root.id => {
+                break serde_json::json!({"fault":report});
+            }
+            ContextPoll::Failed(_) => {
+                chain.clear();
+                chain.push(root.clone());
+            }
+            _ => panic!(),
+        }
+    };
+    empty(&c);
+    (result, c.host.events.clone(), c.host.fuel)
+}
+#[test]
+fn independent_nested_cold_awaits_match_direct_children_at_every_fuel_cut() {
+    for fuel in 0..=19 {
+        for quotas in [&[1][..], &[0, 3, 1][..], &[99][..]] {
+            assert_eq!(
+                independent_chain(true, fuel, quotas),
+                independent_chain(false, fuel, quotas),
+                "fuel={fuel},quotas={quotas:?}"
+            );
+        }
+    }
+}

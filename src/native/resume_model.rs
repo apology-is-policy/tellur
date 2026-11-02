@@ -46,3 +46,7 @@ mod sibling_tests;
 #[cfg(test)]
 #[path = "result_model_tests.rs"]
 mod result_tests;
+
+#[cfg(test)]
+#[path = "mixed_await_model_tests.rs"]
+mod mixed_await_tests;

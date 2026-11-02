@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.138.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.139.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -4108,3 +4108,24 @@ The broader native-consumer run also updates an old reserved-syntax regression:
 async declarations are accepted, while the remaining reserved statement forms still
 reject. Async/await acceptance and context restrictions retain their dedicated tests;
 this correction changes no parser or checker behavior.
+
+## Independent-child native cold-await checkpoint (0.139)
+
+E1d.2d.3l permits an independently admitted child to perform exclusive cold awaits.
+Four native-host cases cover exact independent-child causes, lexical handler faults,
+long-message truncation, one-use owned/borrowed result delivery, atomic admission
+exhaustion, sibling-fault retirement at each await phase and every fuel cutoff.
+Existing process-retirement coverage now also includes mixed child trees.
+
+A compiled fixture covers nested borrowed awaits, recovery followed by another await
+and an escaping child fault using the production callback emitter. Original/expanded
+O0/O2 builds compare complete observations across positive/zero quota partitions and
+fuel cutoffs. The retained model regression suite and selected cold-task, fault,
+process and resource targets verify unchanged sequential behavior. Previous broad
+native-consumer and unchanged LSP/Node evidence is reused; this is selected coverage,
+not a full-suite claim. A fresh isolated editor checks the release payload.
+
+Independent admission is explicit in the test harness. Parents with live children
+still cannot begin their own await, and sequential/awaiting contexts cannot admit
+independent children. This checkpoint neither adds source scheduling nor changes
+accepted ownership, origin, outcome, fault/contingency or path-label semantics.

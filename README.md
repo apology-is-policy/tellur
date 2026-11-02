@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.138.0** implements the v0.1 checked core and the current language
+Compiler release **0.139.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -771,3 +771,10 @@ Normal native builds now use retained compiled callbacks for calls, constructors
 loops, boundaries and cold awaits. The shared sequential entry driver preserves loans,
 resource cleanup, fuel and fault reports. Probe scheduling controls stay internal;
 source execution remains sequential and no new syntax is enabled.
+
+## Native independent-child cold awaits in 0.139
+
+Internal native children can now perform nested cold awaits while preserving their
+original fault cause, one-use result delivery and resource cleanup order. The shared
+runtime has host and compiled O0/O2 evidence. Source execution remains sequential;
+`spawn`, `yield` and parent awaits alongside live children remain gated.

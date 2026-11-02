@@ -1219,6 +1219,7 @@ Those boundaries need explicit contracts before being accepted by the checker.
 | E1d.2d.3i | Retained native await handoffs | Delivered in 0.136: compiled callbacks retain queued captures and one-use delivery across explicit await admission, result adoption and fault/process retirement. Failed admission can retry without source reevaluation; delivery is administrative. Generated callback lowering and its driver remain next |
 | E1d.2d.3j | Generated retained await callbacks | Delivered in 0.137: compiled fixture lowering binds deferred captures to their invocation and emits explicit await handoffs. Sequential and independent-root probe drivers use retained children and one-use delivery; entry tracker/raw-error return preserves full reports. Production lowering promotion remains next |
 | E1d.2d.3k | Production retained native callbacks | Delivered in 0.138: normal native builds share the compiled callback emitter and sequential entry driver with retained probes. Calls, loops, boundaries and cold awaits use retained frames; diagnostics, fuel, loans and resource settlement retain parity. Source concurrency and mixed spawned-child integration remain gated |
+| E1d.2d.3l | Independent-child cold awaits | Delivered in 0.139: an independently admitted native child can cold-await an exclusive descendant chain. Normal delivery, full child fault causes and borrower-first resource settlement agree with direct execution. Parent-with-live-children awaits and source scheduling remain gated |
 | E1e | Explicit cooperative cancellation and suspending cleanup; normal completion races, cleanup failures and no abandoned losers | Define cancellation observation and cleanup admission; no implicit cancellation exception |
 | E2 | Pinned native coroutine experiment, then checked lowering and schedule-based differential validation | Reference semantics and legal frame retirement must precede native destruction |
 
@@ -1763,6 +1764,40 @@ chain and fault-settlement integration before the accepted source scheduler is e
 `spawn`, `yield`, cancellation, suspending disposal and async host adapters remain
 gated. Ownership, origin, outcome, fault/contingency and path-label semantics are
 unchanged; no new language-design decision is required for this promotion.
+
+## Independent-child cold awaits (E1d.2d.3l)
+
+Compiler 0.139 permits an independently admitted native child to cold-await its own
+exclusive descendant chain. Each cold await still requires a caller with no other
+children. Independent admission from a sequential or already-awaiting context remains
+rejected, as does a parent beginning a cold await while its other children remain live.
+The production entry driver continues to select one sequential chain; independent
+admission and schedules are exercised only by internal host and compiled probes.
+
+A fault moves the retained diagnostic tracker back to the head of its cold-await
+segment before retiring affected frames. If that head is an independently admitted
+child, its original control remains the outer fault cause, including activation IDs,
+source/call sites, nested causes and bounded report truncation. A child-owned lexical
+boundary restores its own chain before contingency and can recover to await again.
+Stopped siblings still apply resource dispositions without running nested handlers.
+
+Normal result adoption preserves owned resources and borrowed storage and delivers
+once to the original caller. Admission exhaustion leaves captures and registrations
+unchanged. Sibling faults retire pending captures, suspended children, completed
+results and pending callback results before their suppliers; stale readiness, joins
+and delivery reject. Administrative process termination also retires mixed trees.
+
+Host tests compare exact direct/retained fault reports, long messages, events and fuel
+at every cutoff. Resource probes check destruction order across each await phase.
+The [compiled fixture](../tests/fixtures/native_mixed_await.tellur) uses generated
+callbacks for nested borrowed cold awaits, lexical recovery and an escaping child
+fault. Original/expanded O0/O2 runs compare full observations across quota partitions.
+The explicit harness admits the independent child; this is not source `spawn` syntax.
+
+Owner awaits alongside other live children require a separate tracker-restoration
+slice. Source `spawn`/`yield`, started-task await lowering, cancellation, suspending
+disposal, async adapters and LLVM coroutine lowering remain gated. Accepted language
+ownership, origin, outcome, fault/contingency and path-label semantics are unchanged.
 
 ## Reference execution invariants
 

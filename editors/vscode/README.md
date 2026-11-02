@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-darwin-arm64-0.138.0.vsix` using **Extensions:
+1. Install the supplied `tellur-language-darwin-arm64-0.139.0.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1260,3 +1260,10 @@ Normal native builds now use retained compiled callbacks for calls, constructors
 loops, boundaries and cold awaits. The shared sequential entry driver preserves loans,
 resource cleanup, fuel and fault reports. Probe scheduling controls stay internal;
 source execution remains sequential and no new syntax is enabled.
+
+## Native independent-child cold awaits in 0.139
+
+Internal native children can now perform nested cold awaits while preserving their
+original fault cause, one-use result delivery and resource cleanup order. The shared
+runtime has host and compiled O0/O2 evidence. Source execution remains sequential;
+`spawn`, `yield` and parent awaits alongside live children remain gated.

@@ -81,7 +81,11 @@ fn leaf(h: &mut Host, v: &mut Frames, a: &mut Activation) -> R<Step> {
         return Ok(Step::Continue);
     }
     if matches!(v[a.base()], Some(V::Bool(true))) {
-        return h.fault(V::String("leaf failed".into()));
+        let message = match &v[a.base() + 1] {
+            Some(V::String(message)) => message.clone(),
+            _ => "leaf failed".into(),
+        };
+        return h.fault(V::String(message));
     }
     Ok(Step::Complete(Completion::Outcome((
         "done".into(),
@@ -522,62 +526,69 @@ fn administrative_await_and_process_retirement_do_not_fabricate_outcomes() {
     assert_eq!(report.activations[0].id, 1);
     assert!(report.cause.is_none());
 
-    for completed in [false, true] {
-        let drops = Rc::new(RefCell::new(0));
-        let mut h = host();
-        let mut c = Contexts::new(&mut h);
-        let owner = c
-            .host
-            .resources
-            .insert("probe", Probe(drops.clone()))
-            .unwrap();
-        let parent = c
-            .start(&PARKED_CALLER, vec![V::Bool(false), owner])
-            .unwrap();
-        c.advance_retained(&parent, 1).unwrap();
-        let base = c.parked[&parent.id].machine.stack[0].base();
-        let capture = c
-            .host
-            .resources
-            .insert("probe", Probe(drops.clone()))
-            .unwrap();
-        let value = V::Construct {
-            ty: "carrier".into(),
-            name: "carrier".into(),
-            fields: vec![
-                capture,
-                V::Reference {
-                    ty: "&probe".into(),
-                    root: base + 1,
-                    fields: vec![],
-                },
-            ],
-        };
-        let mut q = queue(&mut c, &parent, &LEAF, vec![V::Bool(false), value]);
-        let child = c.start_await(&parent, &mut q).unwrap();
-        c.advance_retained(&child, 1).unwrap();
-        let wake = c.park_for_readiness(&child).unwrap();
-        if completed {
-            c.signal_readiness(&wake).unwrap();
+    for independent in [false, true] {
+        for completed in [false, true] {
+            let drops = Rc::new(RefCell::new(0));
+            let mut h = host();
+            let mut c = Contexts::new(&mut h);
+            let owner = c
+                .host
+                .resources
+                .insert("probe", Probe(drops.clone()))
+                .unwrap();
+            let parent = if independent {
+                let root = c.start(&OUTER, vec![]).unwrap();
+                c.start_child(&root, &PARKED_CALLER, vec![V::Bool(false), owner])
+                    .unwrap()
+            } else {
+                c.start(&PARKED_CALLER, vec![V::Bool(false), owner])
+                    .unwrap()
+            };
+            c.advance_retained(&parent, 1).unwrap();
+            let base = c.parked[&parent.id].machine.stack[0].base();
+            let capture = c
+                .host
+                .resources
+                .insert("probe", Probe(drops.clone()))
+                .unwrap();
+            let value = V::Construct {
+                ty: "carrier".into(),
+                name: "carrier".into(),
+                fields: vec![
+                    capture,
+                    V::Reference {
+                        ty: "&probe".into(),
+                        root: base + 1,
+                        fields: vec![],
+                    },
+                ],
+            };
+            let mut q = queue(&mut c, &parent, &LEAF, vec![V::Bool(false), value]);
+            let child = c.start_await(&parent, &mut q).unwrap();
             c.advance_retained(&child, 1).unwrap();
+            let wake = c.park_for_readiness(&child).unwrap();
+            if completed {
+                c.signal_readiness(&wake).unwrap();
+                c.advance_retained(&child, 1).unwrap();
+            }
+            let stop = c.start(&PROCESS, vec![]).unwrap();
+            assert!(matches!(
+                c.advance_retained(&stop, 1).unwrap(),
+                ContextPoll::Complete(Completion::Process(23))
+            ));
+            assert_eq!(*drops.borrow(), 2);
+            assert!(c.host.events.is_empty());
+            assert!(
+                c.host.tasks.is_empty()
+                    && c.values.is_empty()
+                    && c.parked.is_empty()
+                    && c.completed.is_empty()
+                    && c.waits.is_empty()
+            );
+            assert_eq!(c.domains.len(), 0);
+            assert!(c.signal_readiness(&wake).is_err());
+            assert!(c.join(Some(&parent), &child).is_err());
         }
-        let stop = c.start(&PROCESS, vec![]).unwrap();
-        assert!(matches!(
-            c.advance_retained(&stop, 1).unwrap(),
-            ContextPoll::Complete(Completion::Process(23))
-        ));
-        assert_eq!(*drops.borrow(), 2);
-        assert!(c.host.events.is_empty());
-        assert!(
-            c.host.tasks.is_empty()
-                && c.values.is_empty()
-                && c.parked.is_empty()
-                && c.completed.is_empty()
-                && c.waits.is_empty()
-        );
-        assert_eq!(c.domains.len(), 0);
-        assert!(c.signal_readiness(&wake).is_err());
-        assert!(c.join(Some(&parent), &child).is_err());
     }
 }
 
@@ -685,4 +696,85 @@ fn await_fuel_exhaustion_keeps_host_failure_kind_and_original_chain_at_each_retu
         assert!(c.host.tasks.is_empty() && c.values.is_empty());
         assert_eq!(c.domains.len(), 0);
     }
+}
+
+fn outer(h: &mut Host, _: &mut Frames, _: &mut Activation) -> R<Step> {
+    h.at(4);
+    h.tick(4, 3)?;
+    Ok(Step::Complete(Completion::Outcome(("done".into(), vec![]))))
+}
+static OUTER: Control = Control {
+    name: "outer",
+    slots: 0,
+    atoms: 0,
+    parameters: &[],
+    retained: &[],
+    constructor: false,
+    resume: outer,
+};
+fn independent_faults(
+    retained: bool,
+    bounded: bool,
+    fail: bool,
+    payload: V,
+) -> (fault::Report, Vec<serde_json::Value>, Option<usize>) {
+    let mut h = host();
+    let mut c = Contexts::new(&mut h);
+    let root = c.start(&OUTER, vec![]).unwrap();
+    let control = match (retained, bounded) {
+        (false, false) => &CALLER,
+        (true, false) => &PARKED_CALLER,
+        (false, true) => &BOUNDED,
+        (true, true) => &PARKED_BOUNDED,
+    };
+    let child = c
+        .start_child(&root, control, vec![V::Bool(fail), payload])
+        .unwrap();
+    if retained {
+        c.advance_retained(&child, if bounded { 2 } else { 1 })
+            .unwrap();
+        let mid = start(&mut c, &child, &PARKED_MIDDLE);
+        c.advance_retained(&mid, 1).unwrap();
+        let leaf = start(&mut c, &mid, &LEAF);
+        let result = c.advance_retained(&leaf, 2).unwrap();
+        if matches!(result, ContextPoll::Ready) {
+            join(&mut c, &mid, &leaf);
+            c.advance_retained(&mid, 1).unwrap();
+            join(&mut c, &child, &mid);
+        }
+        if c.parked.contains_key(&child.id) {
+            assert!(matches!(
+                c.advance_retained(&child, 99).unwrap(),
+                ContextPoll::Failed(_)
+            ));
+        }
+        assert!(c.advance_retained(&mid, 1).is_err());
+        assert!(c.join(Some(&child), &leaf).is_err());
+    } else {
+        assert!(matches!(
+            c.advance_retained(&child, 99).unwrap(),
+            ContextPoll::Failed(_)
+        ));
+    }
+    let report = terminal(&mut c, &root);
+    assert!(c.parked.is_empty() && c.completed.is_empty() && c.values.is_empty());
+    assert!(c.host.tasks.is_empty() && c.terminal.is_empty());
+    assert_eq!((c.domains.len(), c.domains.member_count()), (0, 0));
+    (report, c.host.events.clone(), c.host.fuel)
+}
+#[test]
+fn independent_children_cold_awaits_preserve_full_outer_causes_and_local_boundary_faults() {
+    for (bounded, fail) in [(false, false), (false, true), (true, true)] {
+        let expected = independent_faults(false, bounded, fail, V::Unit);
+        assert_eq!(
+            independent_faults(true, bounded, fail, V::Unit),
+            expected,
+            "bounded={bounded},fail={fail}"
+        );
+    }
+    let message = "λ".repeat(5000);
+    assert_eq!(
+        independent_faults(true, false, true, V::String(message.clone())),
+        independent_faults(false, false, true, V::String(message))
+    );
 }

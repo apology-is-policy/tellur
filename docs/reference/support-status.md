@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.138.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.139.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -137,5 +137,8 @@ Sequential await chains preserve original source/call sites, activation identiti
 fault causes and raw errors for final reports. Await handoffs and one-use result
 callbacks are distinct from host quota pauses, which do not introduce source
 interleaving. See [retained await handoffs](../async-execution.md#retained-native-await-handoffs-e1d2d3i).
-Mixed spawned-child integration and source concurrency remain gated; the internal
-readiness protocol does not provide a source scheduler or async host API.
+Since 0.139, independently admitted native children may perform exclusive cold
+awaits, preserving the independent child as the outer fault cause and retiring result
+borrowers before suppliers. Parent awaits alongside live children and source
+concurrency remain gated; the internal readiness protocol provides no source scheduler
+or async host API. See [independent-child cold awaits](../async-execution.md#independent-child-cold-awaits-e1d2d3l).
