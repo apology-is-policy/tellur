@@ -237,6 +237,46 @@ fault-domain admission/settlement remain the next E1d.2c slice. Until those prot
 are complete, this storage separation does not enable source `spawn`, `yield`, async
 host adapters or independently progressing siblings.
 
+## Executable readiness protocol model (E1d.2c.3a)
+
+The [readiness model](../src/runtime/readiness_model.rs) runs real checked borrowed
+calls through explicit test-harness suspension cuts. It is compiled only for tests;
+compiler 0.118 and its installed tools still expose no external readiness API or
+source scheduler. This model fixes the transition obligations before those are
+integrated with runtime waiting states and fault domains.
+
+A parking registration owns one original control context. Its token pairs a dedicated
+execution-driver identity with a monotonically allocated generation, separate from
+the task's one-use completion wait. A wake moves that registration from waiting to
+eligible exactly once; it neither executes the context nor completes the task.
+Unknown, repeated and stale signals leave other registrations unchanged. Parking
+the same context again uses a new generation, so a late signal for its previous
+wait cannot wake it. A token from another driver is rejected even when its generation
+matches a live local wait. Late tokens retain the dedicated driver identity, preventing
+identity reuse after that driver retires; it is not a frame or diagnostic identity.
+Generation exhaustion is checked before moving an active frame or changing its loans.
+
+Selection is separate from signalling. A signal may make another context eligible
+while the current one runs, but selection cannot replace that active chain. Host
+quota pauses do not themselves signal or select work. The explicit harness cuts
+model future I/O suspension boundaries; they do not grant arbitrary source code new
+handoff points. The accepted source policy remains `await`/`yield` only.
+
+The regression scenario retains two independent exclusive borrows across repeated
+waiting, changes wake order, and consumes one shared scripted-input history. It
+checks source identities through emitted owner values, rejects late/duplicate wakes,
+keeps fixed fuel and parked caller state, and delivers each borrowed result only
+when its checked child actually completes. Both chains must finish with no values,
+tasks, ready contexts or suspended callers left behind. Separate cases check generation
+exhaustion and cross-execution signals, including a late token after its driver retires.
+
+These are independent harness chains, not spawned siblings in one fault domain.
+The model does not settle a failed domain or define cancellation. Runtime integration
+must add an explicit waiting phase, resumed-ready entries and execution-scoped tokens,
+then stop normal dispatch and settle every affected borrower before contingency.
+No source `spawn` or async host adapter is enabled by this model, and unchanged
+production binaries do not require a new release.
+
 ## Separate the identities and continuations
 
 | Entity | Purpose | Must not be confused with |
@@ -520,6 +560,7 @@ Those boundaries need explicit contracts before being accepted by the checker.
 | E1d.2c | External readiness and fault-domain admission | In progress: suspended/ready context storage delivered in 0.117–0.118; modeled I/O readiness and owner-boundary settlement remain before source spawn |
 | E1d.2c.1 | Addressable suspended callers | Delivered in 0.117: one-use suspension registrations paired with task/wait identities, atomic admission, original context restoration and emergency retirement |
 | E1d.2c.2 | Independent ready-context admission | Delivered in 0.118: prepared child contexts retained outside the active stack, checked dispatch selection and active-chain protection; source execution remains sequential |
+| E1d.2c.3a | Executable readiness protocol model | Delivered as test-only evidence on 0.118: repeated execution-scoped, generation-safe waits over checked borrowed execution, separate signalling/selection/completion and fixed shared history. Runtime waiting and fault-domain settlement remain next |
 | E1e | Explicit cooperative cancellation and suspending cleanup; normal completion races, cleanup failures and no abandoned losers | Define cancellation observation and cleanup admission; no implicit cancellation exception |
 | E2 | Pinned native coroutine experiment, then checked lowering and schedule-based differential validation | Reference semantics and legal frame retirement must precede native destruction |
 

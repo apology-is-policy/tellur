@@ -388,3 +388,7 @@ boundaries rather than treating them as ordinary unobservable decisions.
 Escaping tasks, a public `task<...>` spelling, nested borrowed task storage, `spawn`,
 scheduling, cancellation and async host adapters remain unimplemented. No implicit
 detach or cancellation by destruction is permitted. See the [design plan](../async-execution.md).
+
+The [executable readiness model](../async-execution.md#executable-readiness-protocol-model-e1d2c3a)
+checks future wait/wake obligations against retained checked frames. It is test-only;
+it does not add an I/O API, source suspension points or scheduling to this profile.

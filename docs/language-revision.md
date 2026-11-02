@@ -99,7 +99,9 @@ work, while synchronous stretches remain uninterrupted. E1d.2c.1 now stores park
 callers independently, with paired one-use suspension identities and checked
 restoration/retirement. E1d.2c.2 now retains prepared children in separate ready
 storage with checked dispatch and active-chain protection. External readiness and
-fault-domain admission remain next.
+fault-domain admission remain next. A test-only readiness model now exercises repeated
+waits over checked borrowed execution, including cross-execution token rejection,
+without changing the compiler profile.
 
 2 November 2026. This is the working revision plan, not a claim that all proposed
 features are implemented. Compiler **0.118.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
@@ -322,6 +324,7 @@ do not block this design work. E2 remains the native coroutine target.
 | E1d.2c | External readiness and fault-domain admission | In progress: suspended/ready context storage delivered in 0.117–0.118; modeled I/O readiness and owner-boundary settlement remain before source spawn |
 | E1d.2c.1 | Addressable suspended callers | **Delivered in 0.117:** suspension IDs paired with task/completion waits; atomic admission, one-use restoration, stale/crossed rejection and emergency retirement; storage, fuel and sequential observations unchanged |
 | E1d.2c.2 | Independent ready-context admission | **Delivered in 0.118:** prepared child invocations and contexts reside outside the active stack; dispatch checks queue/context agreement and rejects active-chain replacement. Host quotas, fuel, borrowed storage and sequential source behavior are unchanged |
+| E1d.2c.3a | Executable readiness protocol model | **Delivered on 0.118:** generation-safe repeated waits, separate readiness and completion, no active-chain preemption, one scripted-input/fuel history and retained exclusive borrowers. Test-harness cuts only; production waiting states, fault-domain settlement and source concurrency remain ahead |
 | E2 | Native coroutine lowering | Preserved architectural target: direct LLVM coroutine primitives, pinned-toolchain experiment, frame lifetime rules and schedule-based differential tests; I1 must keep this route open |
 | T1 | Stronger source transformations | Hold current scope during P1–P5: extraction correspondence, continuation cuts, source-level lift and editor actions |
 | R1 | Mathematical foundations | Maintain existing evidence; defer extensions during P1–P5: preservation judgments, richer protocol abstractions, infinite/causal behavior, mechanization |

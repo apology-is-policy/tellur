@@ -7,6 +7,9 @@ use super::*;
 #[path = "context_tests.rs"]
 mod context_tests;
 #[cfg(test)]
+#[path = "readiness_model.rs"]
+mod readiness_model;
+#[cfg(test)]
 #[path = "task_tests.rs"]
 mod task_tests;
 
