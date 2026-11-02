@@ -434,6 +434,9 @@ continuations or enable source scheduling.
 
 The [compiled continuation model](../async-execution.md#compiled-native-continuation-model-e1d2c4b4a)
 provides test-only call/await/constructor resume evidence on 0.123. It retains original
-frames, decision facts and result delivery across host observation cuts. It rejects
-loop and boundary continuations; it is not a public native mode, source scheduler or
-new async permission. Existing compiler and editor behavior is unchanged.
+frames, decision facts and result delivery across host observation cuts. Its
+[loop continuation extension](../async-execution.md#compiled-native-loop-continuations-e1d2c4b4b)
+also checks iteration reset, moved loop parameters and nested expanded helper returns
+across repeated cold awaits. Lexically nested source loops remain unsupported.
+Boundary continuations are still gated; the model is not a public native mode, source
+scheduler or new async permission. Existing compiler and editor behavior is unchanged.

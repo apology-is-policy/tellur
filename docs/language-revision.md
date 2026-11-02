@@ -118,7 +118,9 @@ borrowed offsets, exact frame cleanup and coalesced storage reuse. Executable na
 continuations and context/resource selection remain the next integration gate.
 E1d.2c.4b.4a now provides a bounded compiled call/await continuation model with
 retained frames/facts and native/reference quota, fuel and source-fault comparisons.
-The model is test-only; loops and boundary resumes remain the next gate.
+E1d.2c.4b.4b extends that model to loop iteration reset, staged owned arguments and
+nested expanded completion, including repeated borrowed cold awaits and faults after
+restart. The model is test-only; boundary resumes and context selection remain next.
 
 2 November 2026. This is the working revision plan, not a claim that all proposed
 features are implemented. Compiler **0.123.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
@@ -348,7 +350,8 @@ do not block this design work. E2 remains the native coroutine target.
 | E1d.2c.4b.2a | Repeated recovery and host-resource audit | Delivered as tests/documentation on 0.121: repeated borrowed sibling recovery in reference/expanded execution and real Rust frame-release probes; explicit native boundary resource membership remains the next gate |
 | E1d.2c.4b.2b | Native resource scope membership | Delivered in 0.122: registry-scoped live identities, owned-input/capture adoption, borrowed-input exclusion, before-handler temporary cleanup and normal outgoing-owner promotion. Independent later allocations survive; native source scheduling remains ahead |
 | E1d.2c.4b.3 | Native activation frame ranges | Delivered in 0.123: independently retired dense ranges, arena-scoped identities, hole reuse/coalescing and exact fault-resource release. Borrowed offsets and constructor destinations remain stable; executable native continuations are next |
-| E1d.2c.4b.4a | Compiled native continuation model | Test-only evidence on 0.123: retained call/await/constructor activations, decision facts, one-use return delivery and quota/fuel/fault parity. Structured loops/boundaries and context selection remain gated; public native execution is unchanged |
+| E1d.2c.4b.4a | Compiled native continuation model | Test-only evidence on 0.123: retained call/await/constructor activations, decision facts, one-use return delivery and quota/fuel/fault parity; public native execution is unchanged |
+| E1d.2c.4b.4b | Compiled native loop continuations | Test-only evidence on 0.123: iteration reset, staged owned arguments, nested expanded completion and repeated cold awaits under quota/fuel/fault comparisons. Boundary continuations and context selection remain gated |
 | E2 | Native coroutine lowering | Preserved architectural target: direct LLVM coroutine primitives, pinned-toolchain experiment, frame lifetime rules and schedule-based differential tests; I1 must keep this route open |
 | T1 | Stronger source transformations | Hold current scope during P1–P5: extraction correspondence, continuation cuts, source-level lift and editor actions |
 | R1 | Mathematical foundations | Maintain existing evidence; defer extensions during P1–P5: preservation judgments, richer protocol abstractions, infinite/causal behavior, mechanization |

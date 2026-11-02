@@ -1,0 +1,67 @@
+control choose(bool selected) exits chosen { bool value } {
+    delta selected {
+        true => quick,
+        false => slow
+    }
+
+    [slow]: {
+        loop helper(bool first = true) {
+            delta first {
+                true => retry,
+                false => ready
+            }
+
+            [retry]:
+                emit("helper retry");
+                again helper(false);
+            [ready]: exit chosen { selected };
+        }
+    }
+    [quick]: exit chosen { selected };
+}
+
+async control visit(ref mutable string input, bool stop, bool first) exits done faults {
+    delta parse_u32("1") {
+        number { u32 value } => parsed,
+        malformed => malformed,
+        overflow => overflow,
+    }
+
+    [malformed]: fault "malformed input";
+    [overflow]: fault "overflow input";
+    [parsed]:
+        deref input = u32_text(value);
+        delta (stop && !first) {
+            true => failed,
+            false => ready
+        }
+
+    [failed]: fault "second iteration invariant";
+    [ready]: exit done;
+}
+
+async control startup(bool stop) exits done faults {
+    mutable string text = "initial";
+    loop rounds(bool first = true, string left = "left", string right = "right") {
+        delta choose(first) {
+            chosen { bool active } => chosen
+        }
+
+        [chosen]:
+            auto pending = defer visit(borrow mutable text, stop, active);
+            await pending;
+            emit(borrow text);
+            emit(borrow left);
+            delta active {
+                true => repeat,
+                false => finish
+            }
+
+        [repeat]: again rounds(false, move right, move left);
+        [finish]: exit done;
+    }
+}
+
+control main(bool stop) exits done faults {
+    forward run startup(stop);
+}

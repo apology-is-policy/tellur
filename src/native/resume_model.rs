@@ -1,30 +1,50 @@
 //! Bounded compiled-continuation experiment. Public native emission is unchanged.
 use super::*;
 
+struct Point<'a> {
+    instruction: Option<&'a Instruction>,
+    next: usize,
+    body: Option<usize>,
+}
+fn points<'a>(code: &'a [Instruction], result: &mut Vec<Point<'a>>) {
+    for instruction in code {
+        let pc = result.len();
+        result.push(Point {
+            instruction: Some(instruction),
+            next: pc + 1,
+            body: None,
+        });
+        if let Action::Loop { body, .. } = &instruction.action {
+            result[pc].body = Some(result.len());
+            points(body, result);
+            let end = result.len();
+            result.push(Point {
+                instruction: None,
+                next: end,
+                body: None,
+            });
+            result[pc].next = result.len();
+        }
+    }
+}
+
 fn source(program: &CheckedProgram, entry: &str) -> Result<String> {
+    fn unsupported(code: &[Instruction]) -> bool {
+        code.iter().any(|i| match &i.action {
+            Action::Loop { body, .. } => unsupported(body),
+            Action::Boundary { .. }
+            | Action::Supervise { .. }
+            | Action::Recover { .. }
+            | Action::Terminate
+            | Action::TerminateProcess(_)
+            | Action::Escalate => true,
+            _ => false,
+        })
+    }
     for region in program.regions() {
-        if region.boundary.is_some()
-            || region.contingency
-            || region.code.iter().any(|i| {
-                matches!(
-                    i.action,
-                    Action::Loop { .. }
-                        | Action::Boundary { .. }
-                        | Action::Supervise { .. }
-                        | Action::Again { .. }
-                        | Action::Recover { .. }
-                        | Action::Terminate
-                        | Action::TerminateProcess(_)
-                        | Action::Escalate
-                        | Action::Complete {
-                            unwind: Some(_),
-                            ..
-                        }
-                )
-            })
-        {
+        if region.boundary.is_some() || region.contingency || unsupported(&region.code) {
             return Err(error(
-                "compiled continuation model does not yet support loops or boundaries",
+                "compiled continuation model does not yet support boundaries",
             ));
         }
     }
@@ -76,10 +96,71 @@ fn source(program: &CheckedProgram, entry: &str) -> Result<String> {
         let mut deliveries = String::new();
         let _ = writeln!(
             g.code,
-            "fn model_{id}(host:&mut Host, mut v:&mut Frames, state:&mut Activation)->R<Step>{{\nlet pc=state.pc;state.pc+=1;let base=state.base();let destination=state.destination.unwrap_or(0);let mut a=&mut state.facts;\nmatch pc {{"
+            "fn model_{id}(host:&mut Host, mut v:&mut Frames, state:&mut Activation)->R<Step>{{\nlet pc=state.pc;let base=state.base();let destination=state.destination.unwrap_or(0);let mut a=&mut state.facts;\nmatch pc {{"
         );
-        for (pc, instruction) in region.code.iter().enumerate() {
-            let _ = writeln!(g.code, "{pc}=>{{");
+        let mut plan = vec![];
+        points(&region.code, &mut plan);
+        for (pc, point) in plan.iter().enumerate() {
+            let Some(instruction) = point.instruction else {
+                let _ = writeln!(
+                    g.code,
+                    "{pc}=>Err(\"E_NATIVE: checked loop fell through\".into()),"
+                );
+                continue;
+            };
+            let _ = writeln!(g.code, "{pc}=>{{state.pc={};", point.next);
+            if let Action::Loop {
+                id: target,
+                parameters,
+                local_slots,
+                local_atoms,
+                ..
+            } = &instruction.action
+            {
+                let p = &instruction.provenance;
+                let _ = writeln!(
+                    g.code,
+                    "host.at({});host.tick({}, {})?;if {} {{",
+                    instruction.id,
+                    p.span.line,
+                    p.span.column,
+                    guard(&instruction.guard, &g.layout)
+                );
+                let arguments = expressions(
+                    &parameters
+                        .iter()
+                        .map(|(_, e)| e.clone())
+                        .collect::<Vec<_>>(),
+                    &g.layout,
+                );
+                let _ = writeln!(
+                    g.code,
+                    "let arguments={arguments};return Ok(Step::Loop{{control:&LOOP_{id}_{pc},arguments}});}}Ok(Step::Continue)}},"
+                );
+                let _ = writeln!(
+                    deliveries,
+                    "static LOOP_{id}_{pc}:LoopControl=LoopControl{{target:{target},body:{},after:{},reset:reset_{id}_{pc}}};",
+                    point.body.unwrap(),
+                    point.next
+                );
+                let _ = writeln!(
+                    deliveries,
+                    "fn reset_{id}_{pc}(state:&mut Activation,v:&mut Frames,args:Vec<V>)->R<()>{{if args.len()!={}{{return Err(\"E_NATIVE: invalid compiled loop arguments\".into());}}let base=state.base();let a=&mut state.facts;",
+                    parameters.len()
+                );
+                for slot in local_slots {
+                    let _ = writeln!(deliveries, "v[base+{}]=None;", g.layout.slots[slot]);
+                }
+                for atom in local_atoms {
+                    let _ = writeln!(deliveries, "a[{}]=false;", g.layout.atoms[atom]);
+                }
+                deliveries.push_str("let mut args=args.into_iter();\n");
+                for (slot, _) in parameters {
+                    let _ = writeln!(deliveries, "v[base+{}]=args.next();", g.layout.slots[slot]);
+                }
+                deliveries.push_str("Ok(())}\n");
+                continue;
+            }
             let call = match &instruction.action {
                 Action::Decide {
                     operation:

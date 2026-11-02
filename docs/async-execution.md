@@ -521,14 +521,35 @@ host-fuel message wording is normalized. The fixture combines a reference-bearin
 constructor, selected decision facts, one scripted primitive, a moved cold handle,
 an exclusive captured borrow, returned borrowed completion and a nested child fault.
 
-Loops, lexical/named boundary continuations and administrative recovery are explicitly
-rejected by this model. Public native generation remains the synchronous 0.123 path;
+This first slice rejected loops, lexical/named boundary continuations and administrative
+recovery. Public native generation remains the synchronous 0.123 path;
 no compiler/LSP/VSIX release or editor reload is required. A shared build-helper
 extraction lets tests use the real locked native toolchain without a new public mode.
-Next, retain structured loop and boundary continuation state and bind diagnostic and
-resource context selection before integrating resumable native execution or source
-concurrency. Resource settlement with suspended native boundaries remains unproved by
-this bounded call model.
+Resource settlement with suspended native boundaries remains unproved by this bounded
+call model.
+
+## Compiled native loop continuations (E1d.2c.4b.4b)
+
+The test-only model now retains active loop targets and their body/continuation
+positions within each activation. Loop entry and `again` stage argument values before
+resetting the iteration's local slots and decision facts. A restart reuses the same
+activation and frame; it does not admit a call or deliver an ordinary outcome.
+Expanded helper completion unwinds the selected loop and resumes its compiled
+continuation, preserving any enclosing loop. A skipped loop jumps over its whole body.
+
+The loop fixture combines a selected helper loop, simultaneous movement of owned loop
+parameters, repeated cold awaits capturing the same exclusive borrow, two scripted
+inputs and a fault after restart. Original and expanded native programs at O0/O2 match
+reference results and fault reports at every fuel cut under the same quota partitions
+as the call model. Expansion explicitly targets the async caller as well as the entry,
+and the test requires nested loop IR and an administrative completion. Source-level
+lexically nested loops remain unsupported. The original call/constructor fixture also
+continues to pass with the shared resume machinery.
+
+Lexical/named boundary continuations and administrative recovery remain gated. The
+public native backend, compiler/editor release and source handoff rules are unchanged.
+Next, retain boundary work/handler continuations and select diagnostic/resource context
+alongside them before admitting suspended-boundary settlement or source concurrency.
 
 ## Separate the identities and continuations
 
@@ -827,7 +848,8 @@ Those boundaries need explicit contracts before being accepted by the checker.
 | E1d.2c.4b.2a | Repeated recovery and host-resource audit | Delivered as tests/documentation on 0.121: repeated borrowed sibling recovery in reference/expanded execution and real Rust frame-release probes; explicit native boundary resource membership remains the next gate |
 | E1d.2c.4b.2b | Native resource scope membership | Delivered in 0.122: registry-scoped live identities, owned-input/capture adoption, borrowed-input exclusion, before-handler temporary cleanup and normal outgoing-owner promotion. Independent later allocations survive; native source scheduling remains ahead |
 | E1d.2c.4b.3 | Native activation frame ranges | Delivered in 0.123: independently retired dense ranges, arena-scoped identities, hole reuse/coalescing and exact fault-resource release. Existing borrowed offsets and constructor destinations remain stable; executable native continuations are next |
-| E1d.2c.4b.4a | Compiled native continuation model | Test-only evidence on 0.123: retained call/await/constructor activations, decision facts, one-use return delivery and quota/fuel/fault parity. Structured loops/boundaries and context selection remain gated; public native execution is unchanged |
+| E1d.2c.4b.4a | Compiled native continuation model | Test-only evidence on 0.123: retained call/await/constructor activations, decision facts, one-use return delivery and quota/fuel/fault parity; public native execution is unchanged |
+| E1d.2c.4b.4b | Compiled native loop continuations | Test-only evidence on 0.123: iteration reset, staged owned arguments, nested expanded completion and repeated cold awaits under quota/fuel/fault comparisons. Boundary continuations and context selection remain gated |
 | E1e | Explicit cooperative cancellation and suspending cleanup; normal completion races, cleanup failures and no abandoned losers | Define cancellation observation and cleanup admission; no implicit cancellation exception |
 | E2 | Pinned native coroutine experiment, then checked lowering and schedule-based differential validation | Reference semantics and legal frame retirement must precede native destruction |
 

@@ -14,9 +14,16 @@ pub struct Activation {
     frame: Frame,
     control: &'static Control,
     pending: Option<Deliver>,
+    loops: Vec<&'static LoopControl>,
     pub facts: Vec<bool>,
     pub pc: usize,
     pub destination: Option<usize>,
+}
+pub struct LoopControl {
+    pub target: usize,
+    pub body: usize,
+    pub after: usize,
+    pub reset: fn(&mut Activation, &mut Frames, Vec<V>) -> R<()>,
 }
 impl Activation {
     pub fn base(&self) -> usize {
@@ -26,6 +33,10 @@ impl Activation {
 pub enum Step {
     Continue,
     Complete(Completion),
+    Loop {
+        control: &'static LoopControl,
+        arguments: Vec<V>,
+    },
     Call {
         control: &'static Control,
         arguments: Vec<V>,
@@ -64,6 +75,7 @@ impl Machine {
             frame,
             control,
             pending: None,
+            loops: vec![],
             facts: vec![false; control.atoms],
             pc: 0,
             destination,
@@ -88,6 +100,38 @@ impl Machine {
                 .ok_or("E_NATIVE: missing compiled activation")?;
             match (frame.control.resume)(host, values, frame)? {
                 Step::Continue => {}
+                Step::Loop { control, arguments } => {
+                    if frame
+                        .loops
+                        .iter()
+                        .any(|active| active.target == control.target)
+                    {
+                        return Err("E_NATIVE: compiled loop already active".into());
+                    }
+                    (control.reset)(frame, values, arguments)?;
+                    frame.loops.push(control);
+                    frame.pc = control.body;
+                }
+                Step::Complete(Completion::Again(target, arguments)) => {
+                    let index = frame
+                        .loops
+                        .iter()
+                        .rposition(|l| l.target == target)
+                        .ok_or("E_NATIVE: compiled restart has no active loop")?;
+                    let control = frame.loops[index];
+                    (control.reset)(frame, values, arguments)?;
+                    frame.loops.truncate(index + 1);
+                    frame.pc = control.body;
+                }
+                Step::Complete(Completion::Complete(target)) => {
+                    let index = frame
+                        .loops
+                        .iter()
+                        .rposition(|l| l.target == target)
+                        .ok_or("E_NATIVE: compiled completion has no active loop")?;
+                    frame.pc = frame.loops[index].after;
+                    frame.loops.truncate(index);
+                }
                 Step::Call {
                     control,
                     arguments,
