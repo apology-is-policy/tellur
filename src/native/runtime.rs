@@ -1,4 +1,7 @@
 #[cfg(test)]
+#[path = "execution.rs"]
+pub mod execution;
+#[cfg(test)]
 #[path = "frames.rs"]
 mod frames;
 pub use frames::Frames;

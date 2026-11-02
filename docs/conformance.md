@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.129.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.130.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -3970,3 +3970,20 @@ compiled result, independent-context and sibling/process suites check the shared
 Selected direct native/LLVM and Rust resource-adapter regressions cover default
 emission and existing ownership/fault behavior. No source concurrency or ownership
 permission changes are introduced.
+
+## Shared native retained execution checkpoint (0.130)
+
+E1d.2d.3c extracts the compiled model's continuation, context/completion and domain
+implementation into ordinary native support. Only fixture callbacks and explicit
+schedule drivers remain injected by tests. An emission regression checks that the
+shared implementation appears once and that model quota environment readers,
+fixture control tables and driver calls are absent from normal output.
+
+Three direct shared-context tests use actual Rust owners and check retained owned
+and borrowed results, separate readiness and join transitions, atomic invalid/foreign
+or repeated operations, result-before-supplier fault cleanup, independent result
+survival and whole-session process cleanup before status. All fifteen compiled model
+cases now exercise this same shared implementation across their existing expansion,
+optimization, quota and fuel matrices. Native-host, selected direct native/resource
+adapter and reference-manual checks cover integration. Source behavior is unchanged;
+this is selected coverage, not a full-suite or source-concurrency claim.

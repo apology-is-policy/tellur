@@ -31,7 +31,13 @@ fn model_keeps_named_boundaries_private_without_changing_standard_emission() {
                 .count(),
             2
         );
-        assert!(!p.native_source("main").unwrap().contains("struct Machine"));
+        let standard = p.native_source("main").unwrap();
+        assert_eq!(standard.matches(EXECUTION).count(), 1);
+        assert_eq!(standard.matches(CONTEXTS).count(), 1);
+        assert!(!standard.contains("TELLUR_NATIVE_MODEL_QUOTAS"));
+        assert!(!standard.contains("context harness"));
+        assert!(!standard.contains("static MODEL_"));
+        assert!(!standard.contains("drive(host,args,"));
     }
 }
 

@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.129.0** implements the v0.1 checked core and the current language
+Compiler release **0.130.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -706,3 +706,11 @@ result resources into a receiving scope without selecting either context or foll
 borrowed references. Foreign/stale/duplicate owners and incomplete result graphs
 reject before mutation. The compiled completion model uses this API; source execution
 remains synchronous and scheduler integration is still ahead.
+
+## Shared native retained execution in 0.130
+
+The native continuation, context/completion and fault-domain implementation now lives
+in normal generated support. Compiled regression probes use that same code for
+retained results, readiness and fault/process cleanup; their scheduling drivers remain
+test-only. Default native entries still use synchronous control flow. Source task
+queue/wait wiring, resumable lowering and `spawn`/`yield` remain ahead.

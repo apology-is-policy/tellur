@@ -1210,6 +1210,7 @@ Those boundaries need explicit contracts before being accepted by the checker.
 | E1d.2d.2c | Reference process-wide retirement | Delivered in 0.128: entry process termination closes normal admission and retires registered completed results, ready/waiting work and parked callers across all domains before status delivery. Original status, fuel and entry-only source rules are preserved; source scheduling remains gated |
 | E1d.2d.3a | Native retained completion model | Test-only on 0.127: completed compiled results retain their original domain membership, host context and resource scope until consuming join or emergency retirement. Owned Rust results and external borrows survive child frames; fault/process cleanup releases results before suppliers. Shared native scheduling and source handoffs remain ahead |
 | E1d.2d.3b | Shared native result adoption | Delivered in 0.129: host API atomically validates a parked source, receiving scope and complete unique result-owner graph, transfers only owned leaves and retires the source resource root. The compiled completion model uses it; task lifecycle and scheduler integration remain ahead |
+| E1d.2d.3c | Shared native retained execution | Delivered in 0.130: compiled continuations, fault-domain membership and retained contexts/results now live in normal native support. The compiled probes use that exact implementation; explicit selection/readiness, one-use result adoption and fault/process retirement remain separate from source scheduler/lowering integration |
 | E1e | Explicit cooperative cancellation and suspending cleanup; normal completion races, cleanup failures and no abandoned losers | Define cancellation observation and cleanup admission; no implicit cancellation exception |
 | E2 | Pinned native coroutine experiment, then checked lowering and schedule-based differential validation | Reference semantics and legal frame retirement must precede native destruction |
 
@@ -1402,6 +1403,49 @@ The operation is an internal native foundation. Default source execution remains
 synchronous, and native task/completion storage plus scheduler integration remain
 separate checkpoints. No source `spawn`/`yield`, cancellation, asynchronous disposal
 or change to source raw-construction/ownership permissions is introduced.
+
+## Shared native retained execution (E1d.2d.3c)
+
+Compiler 0.130 promotes the validated compiled continuation, context and fault-domain
+implementation into the support embedded by ordinary native generation. The
+[execution module](../src/native/execution.rs) retains native function-pointer
+continuations, frames, decisions, loops, calls/awaits and named/lexical boundary
+handover. The [context module](../src/native/contexts.rs) owns the shared arena and
+host selection, ready/parked contexts, completed results and one-use terminal reports.
+[Domain membership](../src/native/domains.rs) keeps the owning/current identities and
+prevents normal retirement before nested boundaries and retained children settle.
+
+Normal child completion retires executable frames while preserving the original
+host/resource root, owning domain and result values. Consuming join checks the
+original parent and exact owning boundary before the shared resource-adoption API
+transfers owners; returned references keep their suppliers. A waiting/signalled
+context is not a completed result. Readiness remains scoped to the execution,
+context and generation, with separate signal and explicit positive-quota selection.
+Fault settlement releases affected results before supplying frames and runs only
+the owning contingency. Process settlement closes the session and drains all results,
+waiters and unstarted roots before returning the status. Administrative cleanup does
+not consume source fuel or resume ordinary work or stopped sibling handlers.
+
+The original compiled fixture lowering and schedule drivers remain test-only and
+inject only fixture callbacks/test schedules around this shared implementation.
+Normal emitted programs include no environment-driven model quota reader, fixture
+control table or harness schedule. Their default entry wrappers still use synchronous
+generated control flow; shared support does not silently select tasks. Its bounded
+parent gate still waits for all retained children, and native early join registration
+and source queue/await handoffs remain separate integration work.
+
+Three [direct shared-context tests](../src/native/execution_tests.rs) exercise the
+exported runtime operations without the compiled fixture generator: retained owned
+and borrowed results across readiness, rejected/duplicate joins, domain-local fault
+retirement with independent results, and process-wide draining before status delivery.
+Real Rust destruction logs and fuel/state checks distinguish result cleanup from
+supplier retirement. The existing compiled single-chain, loop, boundary, context,
+sibling/readiness and delayed-result probes now use the same emitted support.
+
+This checkpoint changes the location and availability of native execution machinery,
+not source semantics. Invocation-level task queue/completion-wait integration and
+production resumable lowering still precede `spawn`/`yield`. Cancellation, async host
+adapters/disposal and the direct LLVM coroutine target remain separate work.
 
 ## Reference execution invariants
 

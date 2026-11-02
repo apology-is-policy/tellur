@@ -1,4 +1,4 @@
-//! Test-only native fault-domain identity and lexical lifetime model.
+//! Native fault-domain identity, retained membership and lexical lifetime.
 use std::{
     collections::{BTreeMap, BTreeSet},
     sync::Arc,

@@ -10,11 +10,10 @@ use std::{
     process::Command,
 };
 const SUPPORT: &str = include_str!("native/runtime.rs");
+const EXECUTION: &str = include_str!("native/execution.rs");
+const CONTEXTS: &str = include_str!("native/contexts.rs");
 const CARGO: &str = include_str!("native/Cargo.template");
 const LOCK: &str = include_str!("native/Cargo.lock");
-#[cfg(test)]
-#[path = "native/domain_model.rs"]
-mod domain_model;
 #[cfg(test)]
 #[path = "native/resume_model.rs"]
 mod resume_model;
@@ -551,6 +550,13 @@ impl CheckedProgram {
         g.code.push_str("mod frames {\n");
         g.code.push_str(include_str!("native/frames.rs"));
         g.code.push_str("\n}\n");
+        g.code.push_str("pub mod execution {\n");
+        g.code.push_str(EXECUTION);
+        g.code.push_str("\nmod domains {\n");
+        g.code.push_str(include_str!("native/domains.rs"));
+        g.code.push_str("\n}\nmod contexts {\n");
+        g.code.push_str(CONTEXTS);
+        g.code.push_str("\n}\n}\n");
         g.code.push_str(SUPPORT);
         g.code.push_str("\n}\nuse support::*;\n");
         g.code.push_str(&crate::rust_host::source(self.manifest())?);

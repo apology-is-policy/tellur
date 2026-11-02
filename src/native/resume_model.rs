@@ -80,17 +80,33 @@ fn source(program: &CheckedProgram, entry: &str) -> Result<String> {
         layout: FrameLayout::default(),
     };
     let mut source = program.native_source(entry)?;
-    assert_eq!(source.matches(SUPPORT).count(), 1);
+    // Exercise the exact shared implementation embedded by normal generation.
+    // Only compiled fixture entry points and explicit test schedules are injected.
+    assert_eq!(source.matches(EXECUTION).count(), 1);
+    assert_eq!(source.matches(CONTEXTS).count(), 1);
     source = source.replacen(
-        SUPPORT,
+        EXECUTION,
+        &format!("{EXECUTION}\n{}", include_str!("compiled_model.rs")),
+        1,
+    );
+    source = source.replacen(
+        CONTEXTS,
         &format!(
-            "{SUPPORT}\nmod compiled_model {{\n{}\nmod domain_model {{\n{}\n}}\nmod context_model {{\n{}\nmod sibling_model {{\n{}\n}}\nmod result_model {{\n{}\n}}\npub use result_model::*;\npub use sibling_model::*;\n}}\npub use context_model::*;\n}}\npub use compiled_model::*;\n",
-            include_str!("compiled_model.rs"),
-            include_str!("domain_model.rs"),
+            "{CONTEXTS}\n{}\nmod sibling_model {{\n{}\n}}\nmod result_model {{\n{}\n}}\npub use result_model::*;\npub use sibling_model::*;\n",
             include_str!("context_model.rs"),
             include_str!("sibling_model.rs"),
             include_str!("result_model.rs")
         ),
+        1,
+    );
+    source = source.replacen(
+        "pub use contexts::{ContextKey, ContextPoll, Contexts, Readiness};",
+        "pub use contexts::*;",
+        1,
+    );
+    source = source.replacen(
+        "use support::*;",
+        "use support::*; use support::execution::*;",
         1,
     );
     for region in program.regions() {

@@ -406,7 +406,15 @@ Since 0.129, that model uses a shared host operation for result resource adoptio
 It validates complete unique owned resources and their source/receiving scopes before
 moving ownership, never follows borrowed references, and preserves host selection,
 diagnostics and fuel. Task/domain authorization and completion storage remain
-separate integration work; see [native result adoption](../async-execution.md#shared-native-result-adoption-e1d2d3b).
+separate integration work in that checkpoint; see [native result adoption](../async-execution.md#shared-native-result-adoption-e1d2d3b).
+
+Since 0.130, native continuation, context/completion and fault-domain machinery is
+embedded in ordinary native support. The compiled probes exercise that same code,
+with test schedules kept separate. Its explicit context API preserves one-use joins,
+result ownership, readiness identities and fault/process cleanup. Default native
+entries still run synchronous generated control flow; invocation queue/wait wiring,
+resumable source lowering and source task handoffs remain unimplemented. See
+[shared native retained execution](../async-execution.md#shared-native-retained-execution-e1d2d3c).
 
 Since 0.128, entry process termination closes normal task admission and retires all
 registered execution contexts and results before delivering the original status.

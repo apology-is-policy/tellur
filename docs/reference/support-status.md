@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.129.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.130.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -116,3 +116,10 @@ uses this form. Reference-bearing captures, direct protected-work access to
 supervisor state, nested tail loops and asynchronous boundaries remain unsupported.
 Constructor bodies are supported in 0.67; isolation inside them remains gated. Protocol graph analysis and source extraction reject
 lexical isolation rather than erasing its administrative edges.
+
+Native retained execution support is shared since 0.130: continuation frames,
+context/completion storage, fault-domain lifetime and emergency settlement are
+embedded in ordinary native output. The default entry lowering stays synchronous;
+test schedule drivers and compiled fixture callbacks are excluded. Source task
+queue/wait wiring and resumable lowering remain ahead; see the
+[shared execution checkpoint](../async-execution.md#shared-native-retained-execution-e1d2d3c).

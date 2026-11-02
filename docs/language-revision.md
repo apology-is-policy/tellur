@@ -169,7 +169,9 @@ handoffs remain next. E1d.2d.2c now retires every registered reference execution
 chain and retained result on administrative process termination, preserving the
 original status and entry-only source restriction. E1d.2d.3b promotes native result
 resource adoption into the shared host API; completion/domain authority still belongs
-to the caller. Compiler **0.129.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
+to the caller. E1d.2d.3c now moves the validated continuation, context/completion
+and fault-domain implementation into shared native support; test schedules remain
+separate, and source scheduler/lowering integration is still ahead. Compiler **0.130.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
 lifetime checkpoints of milestone 2, the array/vector/map core of milestone 3,
 and implicit entry, inline/stored adapters, owned capture, named outcome contracts
 and checked forwarding in milestone 4. A first [semantic foundation](semantic-foundation.md)
@@ -415,6 +417,7 @@ do not block this design work. E2 remains the native coroutine target.
 | E1d.2d.2c | Reference process-wide retirement | Delivered in 0.128: entry process termination closes normal admission and retires registered completed results, ready/waiting work and parked callers across all domains before status delivery. Original status, fuel and entry-only source rules are preserved; source scheduling remains gated |
 | E1d.2d.3a | Native retained completion model | Test-only on 0.127: completed compiled results retain their original domain membership, host context and resource scope until consuming join or emergency retirement. Owned Rust results and external borrows survive child frames; fault/process cleanup releases results before suppliers. Shared native scheduling and source handoffs remain ahead |
 | E1d.2d.3b | Shared native result adoption | Delivered in 0.129: host API atomically validates a parked source, receiving scope and complete unique result-owner graph, transfers only owned leaves and retires the source resource root. The compiled completion model uses it; task lifecycle and scheduler integration remain ahead |
+| E1d.2d.3c | Shared native retained execution | Delivered in 0.130: compiled continuations, fault-domain membership and retained contexts/results now live in normal native support. The compiled probes use that exact implementation; explicit selection/readiness, one-use result adoption and fault/process retirement remain separate from source scheduler/lowering integration |
 | E2 | Native coroutine lowering | Preserved architectural target: direct LLVM coroutine primitives, pinned-toolchain experiment, frame lifetime rules and schedule-based differential tests; I1 must keep this route open |
 | T1 | Stronger source transformations | Hold current scope during P1–P5: extraction correspondence, continuation cuts, source-level lift and editor actions |
 | R1 | Mathematical foundations | Maintain existing evidence; defer extensions during P1–P5: preservation judgments, richer protocol abstractions, infinite/causal behavior, mechanization |
