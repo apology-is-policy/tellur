@@ -1,6 +1,6 @@
 //! Test-only compiled continuation driver; no checked graph is interpreted here.
 use super::{BoundaryState, Completion, Frames, Host, R, V, frames::Frame};
-use domain_model::{DomainKey, DomainScope, Domains};
+use domain_model::{DomainKey, DomainScope, Domains, Membership};
 
 pub type Deliver = fn(&mut Activation, &mut Frames, Completion) -> R<()>;
 pub struct Control {
@@ -180,12 +180,18 @@ pub enum Step {
 pub enum Poll {
     Paused,
     Complete(Completion),
+    Settling(DomainKey),
 }
 pub struct Machine {
     stack: Vec<Activation>,
     finished: bool,
     root: DomainScope,
     current: DomainKey,
+    member: Membership,
+    owns_root: bool,
+    fault: Option<String>,
+    handover: Vec<V>,
+    fault_target: Option<DomainKey>,
 }
 impl Machine {
     fn admit(
@@ -224,13 +230,46 @@ impl Machine {
         args: Vec<V>,
     ) -> R<Self> {
         let root = domains.prepare(None)?;
+        domains.require_member_capacity()?;
         let activation = Self::admit(host, values, control, args, None)?;
         domains.commit(&root)?;
+        let member = domains.attach(&root.key, None)?;
         Ok(Self {
             stack: vec![activation],
             finished: false,
             current: root.key.clone(),
             root,
+            member,
+            owns_root: true,
+            fault: None,
+            handover: vec![],
+            fault_target: None,
+        })
+    }
+    fn start_related(
+        host: &mut Host,
+        values: &mut Frames,
+        domains: &mut Domains,
+        control: &'static Control,
+        args: Vec<V>,
+        owner: &DomainKey,
+        parent: &Membership,
+    ) -> R<Self> {
+        domains.require_open(owner, &[])?;
+        domains.require_member_capacity()?;
+        let root = domains.scope(owner)?;
+        let activation = Self::admit(host, values, control, args, None)?;
+        let member = domains.attach(owner, Some(parent))?;
+        Ok(Self {
+            stack: vec![activation],
+            finished: false,
+            current: owner.clone(),
+            root,
+            member,
+            owns_root: false,
+            fault: None,
+            handover: vec![],
+            fault_target: None,
         })
     }
     fn require_domain(&self, domains: &Domains) -> R<()> {
@@ -238,6 +277,7 @@ impl Machine {
             return Err("E_NATIVE: compiled execution already retired".into());
         }
         domains.require_member(&self.root.key, &self.current)?;
+        domains.require_membership(&self.member, &self.root.key)?;
         let expected = self
             .stack
             .iter()
@@ -255,9 +295,39 @@ impl Machine {
         domains.require_selected(expected, &self.current)
     }
     fn finish_root(&mut self, domains: &mut Domains) -> R<()> {
-        domains.close(&self.root, &self.current)?;
+        if self.owns_root {
+            domains.finish_root(&self.root, &self.current, &self.member)?;
+        } else {
+            domains.require_selected(&self.root, &self.current)?;
+            domains.detach(&self.member)?;
+        }
         self.finished = true;
         Ok(())
+    }
+    fn require_runnable(&self, domains: &Domains) -> R<()> {
+        self.require_domain(domains)?;
+        let mut handling = vec![];
+        for frame in &self.stack {
+            if let Some(Pending::Supervise(supervision)) = &frame.pending {
+                if supervision.state.contingency_active {
+                    handling.push(&supervision.domain.key);
+                }
+            }
+            for scope in &frame.scopes {
+                if let Scope::Boundary(boundary) = scope {
+                    if boundary.state.contingency_active {
+                        handling.push(&boundary.domain.key);
+                    }
+                }
+            }
+        }
+        domains.require_open(&self.current, &handling)
+    }
+    fn owns_domain(&self, domains: &Domains, key: &DomainKey) -> bool {
+        (self.owns_root && domains.same(&self.root.key, key)) || self.stack.iter().any(|frame| {
+            matches!(&frame.pending, Some(Pending::Supervise(supervision)) if domains.same(&supervision.domain.key, key))
+                || frame.scopes.iter().any(|scope| matches!(scope, Scope::Boundary(boundary) if domains.same(&boundary.domain.key, key)))
+        })
     }
     fn step(
         &mut self,
@@ -403,13 +473,27 @@ impl Machine {
         values: &mut Frames,
         domains: &mut Domains,
         mut message: String,
+        handle: bool,
     ) -> R<()> {
-        let mut retained = vec![];
-        while let Some(frame) = self.stack.last_mut() {
+        let mut retained = std::mem::take(&mut self.handover);
+        while !self.stack.is_empty() {
+            if handle && domains.has_others(&self.current, &self.member)? {
+                self.fault = Some(message);
+                self.handover = retained;
+                return Ok(());
+            }
+            let frame = self.stack.last_mut().unwrap();
             // A named work frame has already handed over retained parameters and
             // retired. Its caller still owns the original supervision record.
             if let Some(Pending::Supervise(mut supervision)) = frame.pending.take() {
-                if host.source_faulted() && supervision.state.fault_message.is_none() {
+                if handle
+                    && self
+                        .fault_target
+                        .as_ref()
+                        .is_none_or(|target| domains.same(target, &supervision.domain.key))
+                    && host.source_faulted()
+                    && supervision.state.fault_message.is_none()
+                {
                     let handler = (|| {
                         domains.require_quiescent(&supervision.domain, &self.current)?;
                         let keep = host.resources.owned_tokens(&retained)?;
@@ -430,6 +514,7 @@ impl Machine {
                         Ok(handler) => {
                             frame.pending = Some(Pending::Supervise(supervision));
                             self.stack.push(handler);
+                            self.fault_target = None;
                             return Ok(());
                         }
                         Err(error) => message = error,
@@ -439,9 +524,27 @@ impl Machine {
             }
             retained.clear();
             // A child fault retires its original frame before handover in its caller.
-            while let Some(scope) = frame.scopes.pop() {
+            while !frame.scopes.is_empty() {
+                if handle && domains.has_others(&self.current, &self.member)? {
+                    self.fault = Some(message);
+                    self.handover = retained;
+                    return Ok(());
+                }
+                let scope = frame.scopes.pop().unwrap();
                 if let Scope::Boundary(mut boundary) = scope {
-                    if host.source_faulted() && boundary.state.fault_message.is_none() {
+                    if !handle && boundary.state.fault_message.is_none() {
+                        // Emergency sibling retirement applies the nested fault
+                        // disposition without entering that boundary's handler.
+                        boundary.state.fault_message = Some(message.clone());
+                    }
+                    if handle
+                        && self
+                            .fault_target
+                            .as_ref()
+                            .is_none_or(|target| domains.same(target, &boundary.domain.key))
+                        && host.source_faulted()
+                        && boundary.state.fault_message.is_none()
+                    {
                         match boundary.handle(
                             host,
                             values,
@@ -454,6 +557,7 @@ impl Machine {
                                 frame.pending = None;
                                 frame.pc = boundary.control.handler;
                                 frame.scopes.push(Scope::Boundary(boundary));
+                                self.fault_target = None;
                                 return Ok(());
                             }
                             Err(error) => message = error,
@@ -470,7 +574,7 @@ impl Machine {
                 }
             }
             let frame = self.stack.pop().unwrap();
-            if host.source_faulted() {
+            if handle && host.source_faulted() {
                 for slot in frame.control.retained {
                     retained.push(
                         values[frame.base() + slot]
@@ -486,6 +590,19 @@ impl Machine {
         self.finish_root(domains)?;
         Err(message)
     }
+    fn abort(
+        &mut self,
+        host: &mut Host,
+        values: &mut Frames,
+        domains: &mut Domains,
+        message: &str,
+    ) -> R<()> {
+        self.require_domain(domains)?;
+        self.fault = None;
+        host.activations.source_fault();
+        let result = self.unwind_error(host, values, domains, message.into(), false);
+        if self.finished { Ok(()) } else { result }
+    }
     pub fn advance(
         &mut self,
         host: &mut Host,
@@ -493,14 +610,20 @@ impl Machine {
         domains: &mut Domains,
         quota: usize,
     ) -> R<Poll> {
-        self.require_domain(domains)?;
+        self.require_runnable(domains)?;
+        if self.fault.is_some() {
+            return Ok(Poll::Settling(self.current.clone()));
+        }
         let mut remaining = quota;
         while remaining > 0 {
             match self.step(host, values, domains) {
                 Ok((_, Some(result))) => return Ok(Poll::Complete(result)),
                 Ok((instruction, None)) => remaining -= usize::from(instruction),
                 Err(error) => {
-                    self.unwind_error(host, values, domains, error)?;
+                    self.unwind_error(host, values, domains, error, true)?;
+                    if self.fault.is_some() {
+                        return Ok(Poll::Settling(self.current.clone()));
+                    }
                     remaining -= 1;
                 }
             }
@@ -526,15 +649,20 @@ pub fn drive(host: &mut Host, args: Vec<V>, control: &'static Control) -> R<Comp
     for quota in quotas.into_iter().cycle() {
         match machine.advance(host, &mut values, &mut domains, quota) {
             Ok(Poll::Paused) => {}
+            Ok(Poll::Settling(_)) => {
+                return Err("E_NATIVE: independent driver has retained sibling work".into());
+            }
             Ok(Poll::Complete(result)) => {
                 assert!(values.is_empty() && machine.stack.is_empty());
                 assert_eq!(domains.len(), 0);
+                assert_eq!(domains.member_count(), 0);
                 assert!(machine.advance(host, &mut values, &mut domains, 1).is_err());
                 return Ok(result);
             }
             Err(error) => {
                 assert!(values.is_empty() && machine.stack.is_empty());
                 assert_eq!(domains.len(), 0);
+                assert_eq!(domains.member_count(), 0);
                 assert!(machine.advance(host, &mut values, &mut domains, 1).is_err());
                 return Err(error);
             }

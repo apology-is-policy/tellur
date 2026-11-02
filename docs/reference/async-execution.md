@@ -480,3 +480,12 @@ host pauses. Parked selection checks the exact active boundary; retirement requi
 its nested domains to have settled. This establishes identity and lifetime only:
 related sibling admission, stopped-domain cleanup and deferred owning-handler entry
 remain unimplemented in the compiled model. Installed source behavior is unchanged.
+
+The subsequent test-only [sibling-settlement model](../async-execution.md#related-compiled-sibling-settlement-e1d2c4b4d4)
+admits related children and keeps the owning continuation until their stopped frames
+and resources settle. Nested sibling handlers are suppressed, unrun bodies stay unrun,
+and only the owning contingency handles the escaping child fault. A child that handles
+its own fault leaves siblings live. Real Rust-owner tests cover repeated normal joins
+and fault cleanup while an unrelated root remains available. This harness parks normal
+parent execution until its children settle; it is not source concurrency. Related fuel,
+process-wide stop and readiness cases remain gates before production integration.

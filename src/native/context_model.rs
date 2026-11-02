@@ -13,6 +13,7 @@ struct Parked {
     host: HostContext,
     root: ContextRoot,
     name: &'static str,
+    parent: Option<u64>,
 }
 pub enum ContextPoll {
     Paused,
@@ -48,6 +49,7 @@ impl<'a> Contexts<'a> {
         }
         // Validate identity capacity before transferring any input owners.
         self.domains.prepare(None)?;
+        self.domains.require_member_capacity()?;
         let (mut root, mut context) = self.host.prepare_context(&arguments)?;
         self.host.exchange_context(&mut context)?;
         let started = Machine::start(
@@ -70,6 +72,7 @@ impl<'a> Contexts<'a> {
                 host: context,
                 root,
                 name: control.name,
+                parent: None,
             },
         );
         Ok(ContextKey {
@@ -85,19 +88,96 @@ impl<'a> Contexts<'a> {
         parked.machine.require_domain(&self.domains)?;
         self.host.require_context(&parked.host, &parked.root)
     }
+    pub fn start_child(
+        &mut self,
+        parent: &ContextKey,
+        control: &'static Control,
+        arguments: Vec<V>,
+    ) -> R<ContextKey> {
+        self.require(parent)?;
+        let owner = self.parked[&parent.id].machine.current.clone();
+        let membership = self.parked[&parent.id].machine.member.clone();
+        self.domains.require_open(&owner, &[])?;
+        self.domains.require_member_capacity()?;
+        let id = self
+            .next
+            .checked_add(1)
+            .ok_or("E_NATIVE: context identity exhausted")?;
+        if control.constructor || arguments.len() != control.parameters.len() {
+            return Err("E_NATIVE: invalid related context admission".into());
+        }
+        // Derive the child's diagnostics from the original selected parent.
+        let parent_state = &mut self.parked.get_mut(&parent.id).unwrap().host;
+        self.host.exchange_context(parent_state)?;
+        let prepared = self.host.prepare_context(&arguments);
+        self.host.exchange_context(parent_state)?;
+        let (mut root, mut context) = prepared?;
+        self.host.exchange_context(&mut context)?;
+        let started = Machine::start_related(
+            self.host,
+            &mut self.values,
+            &mut self.domains,
+            control,
+            arguments,
+            &owner,
+            &membership,
+        );
+        if started.is_err() {
+            self.host.finish_context(&mut root, true)?;
+        }
+        self.host.exchange_context(&mut context)?;
+        let machine = started?;
+        self.next = id;
+        self.parked.insert(
+            id,
+            Parked {
+                machine,
+                host: context,
+                root,
+                name: control.name,
+                parent: Some(parent.id),
+            },
+        );
+        Ok(ContextKey {
+            session: self.identity.clone(),
+            id,
+        })
+    }
     pub fn advance(&mut self, key: &ContextKey, quota: usize) -> R<ContextPoll> {
         self.require(key)?;
+        self.parked[&key.id]
+            .machine
+            .require_runnable(&self.domains)?;
+        // This bounded harness only resumes a parent after its children settle.
+        // General source scheduling/await handoffs are a separate integration gate.
+        if self
+            .domains
+            .has_children(&self.parked[&key.id].machine.member)?
+        {
+            return Err("E_NATIVE: parent still awaits retained child contexts".into());
+        }
         if quota == 0 {
             return Ok(ContextPoll::Paused);
         }
         let mut parked = self.parked.remove(&key.id).unwrap();
         self.host.exchange_context(&mut parked.host)?;
-        let result =
+        let mut settlement = None;
+        let mut result =
             match parked
                 .machine
                 .advance(self.host, &mut self.values, &mut self.domains, quota)
             {
                 Ok(Poll::Paused) => ContextPoll::Paused,
+                Ok(Poll::Settling(domain)) => {
+                    let message = parked.machine.fault.as_ref().unwrap().clone();
+                    let report = self.host.activations.failure(
+                        parked.name,
+                        fault::Phase::Execution,
+                        &message,
+                    );
+                    settlement = Some((domain, message, report, self.host.source_faulted()));
+                    ContextPoll::Paused
+                }
                 Ok(Poll::Complete(completion)) => {
                     // Outgoing owners survive normal completion; failed roots below
                     // release stranded temporary owners as well as retired frames.
@@ -111,6 +191,14 @@ impl<'a> Contexts<'a> {
                         &message,
                     );
                     self.host.finish_context(&mut parked.root, true)?;
+                    if parked.parent.is_some() {
+                        settlement = Some((
+                            parked.machine.root.key.clone(),
+                            message,
+                            report.clone(),
+                            self.host.source_faulted(),
+                        ));
+                    }
                     ContextPoll::Failed(report)
                 }
             };
@@ -118,7 +206,88 @@ impl<'a> Contexts<'a> {
         if matches!(result, ContextPoll::Paused) {
             self.parked.insert(key.id, parked);
         }
+        if let Some((domain, message, report, source_fault)) = settlement {
+            self.settle(&domain, key.id, &message, report.clone(), source_fault)?;
+            if !self.parked.contains_key(&key.id) {
+                result = ContextPoll::Failed(report);
+            }
+        }
         Ok(result)
+    }
+    fn settle(
+        &mut self,
+        domain: &DomainKey,
+        origin: u64,
+        message: &str,
+        report: fault::Report,
+        source_fault: bool,
+    ) -> R<()> {
+        let owner = self
+            .parked
+            .iter()
+            .find_map(|(id, parked)| {
+                parked
+                    .machine
+                    .owns_domain(&self.domains, domain)
+                    .then_some(*id)
+            })
+            .ok_or("E_NATIVE: stopped domain has no retained owning continuation")?;
+        self.domains.stop(domain)?;
+        // Child IDs are allocated after their parent. Reverse order retires
+        // every borrower descendant before the frame that supplied its storage.
+        let stopped: Vec<_> = self
+            .parked
+            .iter()
+            .rev()
+            .filter_map(|(id, parked)| {
+                (*id != owner
+                    && self
+                        .domains
+                        .require_member(domain, &parked.machine.root.key)
+                        .is_ok())
+                .then_some(*id)
+            })
+            .collect();
+        for id in stopped {
+            let mut parked = self.parked.remove(&id).unwrap();
+            self.host.exchange_context(&mut parked.host)?;
+            parked
+                .machine
+                .abort(self.host, &mut self.values, &mut self.domains, message)?;
+            self.host.finish_context(&mut parked.root, true)?;
+            self.host.exchange_context(&mut parked.host)?;
+        }
+        let mut parked = self.parked.remove(&owner).unwrap();
+        self.host.exchange_context(&mut parked.host)?;
+        if source_fault {
+            self.host.activations.source_fault();
+        }
+        if origin != owner {
+            self.host.activations.with_cause(report);
+        }
+        parked.machine.fault = None;
+        parked.machine.fault_target = Some(domain.clone());
+        let result = parked.machine.unwind_error(
+            self.host,
+            &mut self.values,
+            &mut self.domains,
+            message.into(),
+            true,
+        );
+        if parked.machine.finished {
+            self.host.finish_context(&mut parked.root, true)?;
+        }
+        self.host.exchange_context(&mut parked.host)?;
+        if !parked.machine.finished {
+            self.parked.insert(owner, parked);
+        }
+        // Terminal failure is reported by the caller's original fault event.
+        if let Err(error) = result {
+            if error != message {
+                return Err(error);
+            }
+        }
+        Ok(())
     }
 }
 
@@ -303,6 +472,7 @@ pub fn drive_contexts(
     }
     assert!(contexts.values.is_empty());
     assert_eq!(contexts.domains.len(), 0);
+    assert_eq!(contexts.domains.member_count(), 0);
     assert_eq!(contexts.host.resources.scopes.len(), baseline.3);
     assert_eq!(contexts.host.contingencies, ["host contingency marker"]);
     let baseline_report = contexts.host.activations.failure(

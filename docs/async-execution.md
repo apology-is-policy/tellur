@@ -743,6 +743,41 @@ or defer an owning handler while draining those siblings. That settlement protoc
 must preserve the original owning boundary and suppress nested sibling contingencies
 under the accepted policy before source scheduling or production backend promotion.
 
+## Related compiled sibling settlement (E1d.2c.4b.4d.4)
+
+The test-only native model now admits related child contexts into their parent's
+current owning domain. A separate membership identity records the parent context;
+normal child completion retires that membership without closing the shared domain.
+Live children prevent parent retirement, and stopped ancestors reject child admission
+before resource ownership or diagnostic state changes. Independent roots remain live.
+
+An escaping child fault retains its original report and the original owning boundary
+continuation. The model stops that domain, retires affected descendants before their
+parent frames, and then resumes the owning fault handover. A stopped sibling applies
+its nested resource fault dispositions without entering its lexical or named handlers.
+An admitted child whose body has not run releases its captures without executing that
+body. The owning handler sees the original child report as its cause; a locally handled
+child fault leaves the enclosing domain and other children intact. Handler execution
+does not reopen the stopped domain to new child admission.
+
+The [resource fixture](../tests/fixtures/native_siblings.tellur) exercises a retained
+named owner, a sibling paused inside nested named/lexical work, a descendant borrowing
+the inner owner, an admitted but unrun owned capture, and an unrelated root. Its explicit
+harness checks both normal joins and child-fault settlement over three repeated rounds,
+original/expanded code, O0/O2 and several host-quota partitions. Actual Rust destructor
+logs verify exact release order and counts; fault events preserve the original child
+cause. Retired context selectors, admission into a stopped handler and attempts to
+resume a parent with live children are rejected before observable work. Frames,
+memberships, domains and resources are empty after each settled round.
+
+This is a bounded parent-join harness on compiler 0.125: normal parent execution stays
+parked while its children are live. It does not implement source `spawn`/`yield` or a
+general scheduler. Related-context fuel exhaustion, process-wide termination, external
+readiness, already-running sibling handlers and broader backend comparisons remain
+validation/integration gates. Production generated execution, ownership rules and
+fault policy are unchanged; async adapters, cancellation and suspending cleanup remain
+separate work.
+
 ## Separate the identities and continuations
 
 | Entity | Purpose | Must not be confused with |
@@ -1048,6 +1083,7 @@ Those boundaries need explicit contracts before being accepted by the checker.
 | E1d.2c.4b.4d.1 | Independent compiled native contexts | Test-only evidence on 0.124: paired tracker/contingency/resource selection, original compiled machines, session-scoped keys and independent root cleanup over shared frames/effects/scripts/fuel. Native sibling settlement within an owning fault domain remains ahead |
 | E1d.2c.4b.4d.2 | Shared native host contexts | Delivered in 0.125: host-bound retained state, dormant ownership-root admission, paired selection/restoration and checked retirement. Compiled models use the shared operations; native owning-domain membership and sibling settlement remain ahead |
 | E1d.2c.4b.4d.3 | Compiled fault-domain lifetimes | Test-only on 0.125: distinct owning/current domains retained through named and lexical boundaries, exact parked-boundary validation and quiescent retirement across normal/error crossings. Related sibling admission and stopped-domain settlement remain ahead |
+| E1d.2c.4b.4d.4 | Related compiled sibling settlement | Test-only on 0.125: child membership, stopped admission, retained owning handover, borrower-first resource cleanup and suppressed nested sibling handlers. Explicit parent-join harness; source scheduling, related fuel/process/readiness cases and broader integration remain ahead |
 | E1e | Explicit cooperative cancellation and suspending cleanup; normal completion races, cleanup failures and no abandoned losers | Define cancellation observation and cleanup admission; no implicit cancellation exception |
 | E2 | Pinned native coroutine experiment, then checked lowering and schedule-based differential validation | Reference semantics and legal frame retirement must precede native destruction |
 

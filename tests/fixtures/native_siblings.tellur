@@ -1,0 +1,103 @@
+boundary request(counter owner) retains owner {
+    emit("owner ready");
+    inspect(borrow owner);
+    emit("owner continued");
+    close(owner);
+    terminate;
+}
+contingency(string reason) {
+    emit("owner handler");
+    emit(reason);
+    close(owner);
+    terminate;
+}
+
+boundary nested(counter local, string path) retains local {
+    fault boundary {
+        delta make(borrow path, 4) {
+            made { counter inner } => made
+        }
+        [made]:
+            emit("sibling ready");
+            inspect(borrow inner);
+            close(inner);
+    } contingency [] {
+        emit("forbidden lexical handler");
+        escalate;
+    }
+    close(local);
+    emit("sibling continued");
+    terminate;
+}
+contingency(string reason) {
+    emit("forbidden named handler");
+    close(local);
+    terminate;
+}
+
+control sibling(ref counter owner, string path) exits done {
+    inspect(owner);
+    delta make(borrow path, 2) {
+        made { counter local } => made
+    }
+
+    [made]:
+        supervise nested(local, path);
+        exit done;
+}
+
+control descendant(ref counter local) exits done {
+    emit("descendant ready");
+    inspect(local);
+    emit("descendant continued");
+    exit done;
+}
+
+control failing(ref counter owner) exits done faults {
+    inspect(owner);
+    fault "child failed";
+}
+
+boundary local_recovery() {
+    fault "local child";
+}
+contingency(string reason) {
+    emit("local recovered");
+    terminate;
+}
+
+control recovering(ref counter owner) exits done {
+    inspect(owner);
+    supervise local_recovery();
+    exit done;
+}
+
+control unstarted(counter value) exits done {
+    emit("unstarted body");
+    close(value);
+    exit done;
+}
+
+control independent(string path) exits done {
+    delta make(borrow path, 3) {
+        made { counter value } => made
+    }
+
+    [made]:
+        emit("independent ready");
+        inspect(borrow value);
+        close(value);
+        emit("independent complete");
+        exit done;
+}
+
+control main(string path) exits done {
+    delta make(borrow path, 1) {
+        made { counter value } => made
+    }
+
+    [made]:
+        supervise request(value);
+        emit("owner complete");
+        exit done;
+}
