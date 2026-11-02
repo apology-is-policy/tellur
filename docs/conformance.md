@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.136.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.137.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -4073,3 +4073,15 @@ retained resource-adapter cases and three manual cases supply integration covera
 Reference execution, checker, shared task protocol, fault tracker and editor logic
 retain prior evidence. This selected coverage does not claim generated callback
 handoff lowering, source scheduling or full conformance.
+
+## Generated retained await callback checkpoint (0.137)
+
+E1d.2d.3j adds two entry-context host cases and one generated-lowering regression.
+The full selected matrix comprises 90 native-host cases, 16 compiled models, four
+retained resource-adapter cases and three manual checks. Generated probes now exercise
+actual bound `defer` and retained `await` callbacks across original/expanded O0/O2
+programs, fuel cutoffs and quota partitions. Entry tests compare complete ambient
+chains, sites, events, fuel and long-error truncation with direct compiled calls.
+Ordinary source emission, the reference executor, checker, shared task protocol and
+LSP/editor logic retain prior evidence. This is selected coverage; source scheduling
+and production lowering promotion remain outside this checkpoint.

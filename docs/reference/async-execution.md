@@ -460,6 +460,12 @@ retires pending captures and results before suppliers. Generated source callback
 source scheduling remain ahead; see
 [retained native await handoffs](../async-execution.md#retained-native-await-handoffs-e1d2d3i).
 
+Since 0.137, generated compiled probes use bound `defer` captures and explicit await
+handoffs with retained child contexts. Entry driving returns the original diagnostic
+chain and untruncated error for final reporting. Ordinary native source emission stays
+synchronous until promotion of this lowering; no source scheduler is enabled. See
+[generated retained await callbacks](../async-execution.md#generated-retained-await-callbacks-e1d2d3j).
+
 Since 0.128, entry process termination closes normal task admission and retires all
 registered execution contexts and results before delivering the original status.
 Prepared bodies never start; parked callers unwind without normal instructions or

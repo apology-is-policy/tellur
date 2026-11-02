@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.136.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.137.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -151,3 +151,7 @@ Since 0.136, internal compiled await handoffs retain queued captures and one-use
 return callbacks through admission, result adoption and fault/process retirement.
 Generated source callback lowering and its driver remain ahead; source concurrency
 is still gated.
+
+Since 0.137, generated compiled probes bind cold captures and use retained await
+handoffs. Shared entry contexts return the original diagnostics and raw terminal error.
+Production callback lowering promotion remains next; source concurrency stays gated.

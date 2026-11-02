@@ -327,3 +327,25 @@ fn compare_fixture(
     }
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn emitted_cold_callbacks_use_bound_handoffs_without_promoting_standard_emission() {
+    let p = checked(
+        r#"
+async control child() exits done {exit done;}
+async control startup() exits done {auto pending = defer child();await pending;exit done;}
+control main() exits done {run startup();exit done;}
+"#,
+    )
+    .with_entry_exit_codes("main", BTreeMap::from([("done".into(), 0)]))
+    .unwrap();
+    let emitted = source(&p, "main").unwrap();
+    assert!(emitted.contains("let task=state.defer_task(host,&MODEL_"));
+    assert!(emitted.contains("let task=state.queue_task(host,&MODEL_"));
+    assert!(emitted.contains("return Ok(Step::Await{task,deliver:"));
+    assert!(emitted.contains("contexts.start_entry(control, args)?"));
+    let standard = p.native_source("main").unwrap();
+    assert!(!standard.contains("let task=state.defer_task(host,&MODEL_"));
+    assert!(!standard.contains("let task=state.queue_task(host,&MODEL_"));
+    assert!(!standard.contains("TELLUR_NATIVE_MODEL_QUOTAS"));
+}

@@ -105,6 +105,7 @@ pub fn drive_contexts(
         .machine
         .current = original;
     let mut done = vec![false; keys.len()];
+    let mut chains: Vec<_> = keys.iter().map(|key| vec![key.clone()]).collect();
     let mut turns = 0;
     while done.iter().any(|v| !v) {
         for &index in &order {
@@ -120,7 +121,8 @@ pub fn drive_contexts(
                 contexts.host.resources.scopes.len(),
                 contexts.domains.len(),
             );
-            let result = contexts.advance(&keys[index], quota)?;
+            let selected = chains[index].last().unwrap().clone();
+            let result = contexts.advance_retained(&selected, quota)?;
             if quota == 0 {
                 assert_eq!(
                     snapshot,
@@ -134,11 +136,46 @@ pub fn drive_contexts(
                     )
                 );
             }
+            let result = match result {
+                ContextPoll::Await => {
+                    match contexts.admit_await(&selected) {
+                        Ok(child) => chains[index].push(child),
+                        Err(error) => contexts.reject_await(&selected, error)?,
+                    }
+                    continue;
+                }
+                ContextPoll::Ready if selected.id != keys[index].id => {
+                    chains[index].pop();
+                    contexts.return_await(chains[index].last().unwrap(), &selected)?;
+                    continue;
+                }
+                ContextPoll::Ready => ContextPoll::Complete(contexts.join(None, &selected)?),
+                ContextPoll::Resumed(parent) => {
+                    chains[index].pop();
+                    assert_eq!(chains[index].last().unwrap().id, parent.id);
+                    continue;
+                }
+                ContextPoll::Failed(_) if selected.id != keys[index].id => {
+                    while chains[index].last().is_some_and(|key| {
+                        key.id != keys[index].id && !contexts.parked.contains_key(&key.id)
+                    }) {
+                        chains[index].pop();
+                    }
+                    continue;
+                }
+                other => other,
+            };
             let event = match result {
                 ContextPoll::Paused => {
+                    // An escaping child can leave its root's terminal report
+                    // queued. Zero quota defers that report without live frames.
+                    if contexts.terminal.contains_key(&selected.id) {
+                        assert_eq!(quota, 0);
+                        continue;
+                    }
                     // A live ancestor is not the selected nested boundary. Reject
                     // such a parked-state mismatch even when no work is requested.
-                    let parked = contexts.parked.get_mut(&keys[index].id).unwrap();
+                    let parked = contexts.parked.get_mut(&selected.id).unwrap();
                     let original = std::mem::replace(
                         &mut parked.machine.current,
                         parked.machine.root.key.clone(),
@@ -148,15 +185,15 @@ pub fn drive_contexts(
                         .require_selected(&parked.machine.root, &original)
                         .is_err()
                     {
-                        assert!(contexts.advance(&keys[index], 0).is_err());
+                        assert!(contexts.advance(&selected, 0).is_err());
                     }
                     contexts
                         .parked
-                        .get_mut(&keys[index].id)
+                        .get_mut(&selected.id)
                         .unwrap()
                         .machine
                         .current = original;
-                    contexts.require(&keys[index])?;
+                    contexts.require(&selected)?;
                     continue;
                 }
                 ContextPoll::Complete(Completion::Outcome((outcome, fields))) => {

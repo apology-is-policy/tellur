@@ -1,4 +1,4 @@
-// Explicit single-chain test driver for shared native execution.
+// Explicit sequential fixture driver. Quotas never select a different source task.
 pub fn drive(host: &mut Host, args: Vec<V>, control: &'static Control) -> R<Completion> {
     let quotas: Vec<usize> = std::env::var("TELLUR_NATIVE_MODEL_QUOTAS")
         .unwrap_or("1".into())
@@ -11,33 +11,51 @@ pub fn drive(host: &mut Host, args: Vec<V>, control: &'static Control) -> R<Comp
     if !quotas.iter().any(|q| *q > 0) {
         return Err("E_NATIVE: model quotas cannot make progress".into());
     }
-    let mut values = Frames::default();
-    let mut domains = Domains::default();
-    let mut machine = Machine::start(host, &mut values, &mut domains, control, args)?;
-    for quota in quotas.into_iter().cycle() {
-        match machine.advance(host, &mut values, &mut domains, quota) {
-            Ok(Poll::Paused) => {}
-            Ok(Poll::Await) => return Err("E_NATIVE: fixture callback handoff is not wired".into()),
-            Ok(Poll::Settling(_)) => {
-                return Err("E_NATIVE: independent driver has retained sibling work".into());
-            }
-            Ok(Poll::Complete(result)) => {
-                assert!(values.is_empty() && machine.stack.is_empty());
-                assert!(host.tasks.is_empty());
-                assert_eq!(domains.len(), 0);
-                assert_eq!(domains.member_count(), 0);
-                assert!(machine.advance(host, &mut values, &mut domains, 1).is_err());
-                return Ok(result);
-            }
-            Err(error) => {
-                assert!(values.is_empty() && machine.stack.is_empty());
-                assert!(host.tasks.is_empty());
-                assert_eq!(domains.len(), 0);
-                assert_eq!(domains.member_count(), 0);
-                assert!(machine.advance(host, &mut values, &mut domains, 1).is_err());
-                return Err(error);
+    let mut contexts = Contexts::new(host);
+    let root = contexts.start_entry(control, args)?;
+    let mut chain = vec![root.clone()];
+    let result = 'run: loop {
+        for quota in &quotas {
+            let selected = chain.last().expect("live sequential entry").clone();
+            match contexts.advance_retained(&selected, *quota)? {
+                ContextPoll::Paused => {}
+                ContextPoll::Await => match contexts.admit_await(&selected) {
+                    Ok(child) => chain.push(child),
+                    Err(error) => contexts.reject_await(&selected, error)?,
+                },
+                ContextPoll::Ready if selected.id == root.id => {
+                    break 'run Ok(contexts.join(None, &root)?);
+                }
+                ContextPoll::Ready => {
+                    chain.pop();
+                    contexts.return_await(chain.last().unwrap(), &selected)?;
+                }
+                ContextPoll::Resumed(parent) => {
+                    chain.pop();
+                    assert_eq!(chain.last().unwrap().id, parent.id);
+                }
+                ContextPoll::Complete(result) => break 'run Ok(result),
+                ContextPoll::Failed(_) if selected.id == root.id => {
+                    break 'run Err(contexts.entry_error.take().expect("original entry error"));
+                }
+                ContextPoll::Failed(_) => {
+                    // Owning settlement can retire several descendants and recover
+                    // an ancestor. Never resume a stale child or replay its await.
+                    while chain.last().is_some_and(|key| {
+                        key.id != root.id && !contexts.parked.contains_key(&key.id)
+                    }) {
+                        chain.pop();
+                    }
+                }
             }
         }
-    }
-    unreachable!()
+    };
+    assert!(contexts.parked.is_empty() && contexts.completed.is_empty());
+    assert!(contexts.values.is_empty() && contexts.host.tasks.is_empty());
+    assert!(contexts.terminal.is_empty() && contexts.waits.is_empty());
+    assert_eq!(
+        (contexts.domains.len(), contexts.domains.member_count()),
+        (0, 0)
+    );
+    result
 }

@@ -1217,6 +1217,7 @@ Those boundaries need explicit contracts before being accepted by the checker.
 | E1d.2d.3g | Scoped native task retirement | Delivered in 0.134: discarded bound cold handles retire before lexical contingency and recovery reset; normal scope/restart checks reject pending discard, while moved handles and borrowed suppliers survive. Retained callback handoffs remain ahead |
 | E1d.2d.3h | Sequential native await contexts | Delivered in 0.135: exclusive cold-await context chains carry original diagnostic activations through nested readiness, join and fault settlement, preserving synchronous reports and resource adoption. Mixed child trees and emitted callback handoffs remain ahead |
 | E1d.2d.3i | Retained native await handoffs | Delivered in 0.136: compiled callbacks retain queued captures and one-use delivery across explicit await admission, result adoption and fault/process retirement. Failed admission can retry without source reevaluation; delivery is administrative. Generated callback lowering and its driver remain next |
+| E1d.2d.3j | Generated retained await callbacks | Delivered in 0.137: compiled fixture lowering binds deferred captures to their invocation and emits explicit await handoffs. Sequential and independent-root probe drivers use retained children and one-use delivery; entry tracker/raw-error return preserves full reports. Production lowering promotion remains next |
 | E1e | Explicit cooperative cancellation and suspending cleanup; normal completion races, cleanup failures and no abandoned losers | Define cancellation observation and cleanup admission; no implicit cancellation exception |
 | E2 | Pinned native coroutine experiment, then checked lowering and schedule-based differential validation | Reference semantics and legal frame retirement must precede native destruction |
 
@@ -1685,6 +1686,47 @@ explicit compiled test callbacks.
 Generated fixture/source callback lowering and its driver are the next checkpoint;
 source scheduling, mixed child trees, `spawn`/`yield`, cancellation, suspending disposal
 and LLVM coroutine lowering remain gated. Accepted source contracts are unchanged.
+
+## Generated retained await callbacks (E1d.2d.3j)
+
+Compiler 0.137 connects generated compiled probes to the shared retained await
+protocol. `defer` captures its written arguments once, binds the cold value to the
+current invocation and exact compiled producer, and stores it in the checked slot.
+Consuming `await` queues that bound value and returns `Step::Await` with the original
+outcome callback. The existing expression emitter preserves written evaluation order
+and borrowed storage locations; source instructions still set their original sites
+and charge fuel once.
+
+The sequential probe driver follows only the selected await chain. It admits queued
+children, retains the caller, adopts normal results through `return_await`, and selects
+the caller for administrative delivery before its next source instruction. Failed
+admission records rejection without reevaluation. Fault settlement can retire multiple
+descendants and recover an ancestor; selection follows surviving contexts rather than
+stale children. Non-outcome returns and process status never invoke ordinary outcome
+callbacks. Independent-root probes maintain a separate await chain per explicitly
+scheduled root; their host-selected interleaving is not a source scheduler.
+
+Shared `Contexts::start_entry` moves the host's original diagnostic tracker into an
+entry root and returns it after result join or terminal failure. An escaping fault
+also retains its original untruncated error for final host reporting. Ambient callers,
+source/call sites, activation IDs, fault kind, causes and truncation therefore survive
+entry driving without a fabricated causal wrapper. Rejected entry admission leaves
+the selected chain intact; process termination retires entry authority.
+
+Two [entry host cases](../src/native/entry_context_tests.rs) compare complete reports,
+ambient call chains, sites, fuel, events and long-error truncation against direct
+compiled execution, and check rejected entry admission. A lowering regression verifies
+that generated probes use bound captures and explicit handoffs while ordinary native
+source emission remains synchronous. The compiled matrix exercises original/expanded
+programs at O0/O2 over fuel cutoffs and quota partitions, including nested awaits,
+borrowed constructors, lexical recovery, named contingencies, independent roots,
+owned resources and process termination.
+
+This checkpoint deliberately keeps the production `Generator` unchanged. Promotion
+of the validated callback lowering and sequential driver is the next integration
+step. Mixed spawned-child trees, source `spawn`/`yield`, cancellation, suspending
+disposal and LLVM coroutine lowering remain later gates. No accepted source ownership,
+origin, outcome, fault or path-label rule changes.
 
 ## Reference execution invariants
 

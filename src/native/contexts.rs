@@ -55,6 +55,8 @@ pub struct Contexts<'a> {
     terminated: bool,
     next_readiness: u64,
     waits: BTreeMap<u64, WaitState>,
+    entry: Option<u64>,
+    entry_error: Option<String>,
 }
 impl<'a> Contexts<'a> {
     pub fn new(host: &'a mut Host) -> Self {
@@ -70,9 +72,37 @@ impl<'a> Contexts<'a> {
             terminated: false,
             next_readiness: 0,
             waits: BTreeMap::new(),
+            entry: None,
+            entry_error: None,
         }
     }
     pub fn start(&mut self, control: &'static Control, arguments: Vec<V>) -> R<ContextKey> {
+        self.start_root(control, arguments, false)
+    }
+    /// A sequential executable entry borrows the host's whole diagnostic chain.
+    /// Terminal reporting must receive that chain back, not a new causal wrapper.
+    pub fn start_entry(&mut self, control: &'static Control, arguments: Vec<V>) -> R<ContextKey> {
+        if self.entry.is_some()
+            || !self.parked.is_empty()
+            || !self.completed.is_empty()
+            || !self.terminal.is_empty()
+        {
+            return Err("E_NATIVE: entry requires an empty execution session".into());
+        }
+        self.start_root(control, arguments, true)
+    }
+    fn restore_entry(&mut self, id: u64, tracker: &mut fault::Tracker) {
+        if self.entry == Some(id) {
+            self.host.activations = std::mem::take(tracker);
+            self.entry = None;
+        }
+    }
+    fn start_root(
+        &mut self,
+        control: &'static Control,
+        arguments: Vec<V>,
+        entry: bool,
+    ) -> R<ContextKey> {
         self.require_live()?;
         let id = self
             .next
@@ -86,6 +116,9 @@ impl<'a> Contexts<'a> {
         self.domains.require_member_capacity()?;
         self.host.tasks.prepare_owner()?;
         let (mut root, mut context) = self.host.prepare_context(&arguments)?;
+        if entry {
+            context.tracker = std::mem::take(&mut self.host.activations);
+        }
         self.host.exchange_context(&mut context)?;
         let started = Machine::start(
             self.host,
@@ -98,9 +131,16 @@ impl<'a> Contexts<'a> {
             self.host.finish_context(&mut root, true)?;
         }
         self.host.exchange_context(&mut context)?;
+        if entry && started.is_err() {
+            self.host.activations = std::mem::take(&mut context.tracker);
+        }
         let mut machine = started?;
         machine.retain_completion = true;
         self.next = id;
+        if entry {
+            self.entry = Some(id);
+            self.entry_error = None;
+        }
         self.parked.insert(
             id,
             Parked {
@@ -582,6 +622,9 @@ impl<'a> Contexts<'a> {
                     ContextPoll::Complete(completion)
                 }
                 Err(message) => {
+                    if self.entry == Some(key.id) {
+                        self.entry_error = Some(message.clone());
+                    }
                     let report = self.host.activations.failure(
                         parked.name,
                         fault::Phase::Execution,
@@ -603,6 +646,9 @@ impl<'a> Contexts<'a> {
                 }
             };
         self.host.exchange_context(&mut parked.host)?;
+        if matches!(result, ContextPoll::Complete(_) | ContextPoll::Failed(_)) {
+            self.restore_entry(key.id, &mut parked.host.tracker);
+        }
         if matches!(result, ContextPoll::Complete(Completion::Process(_))) {
             self.terminate()?;
             return Ok(result);
@@ -729,6 +775,7 @@ impl<'a> Contexts<'a> {
                 &mut completed.parked.host.tracker,
             );
         }
+        self.restore_entry(key.id, &mut completed.parked.host.tracker);
         Ok(completed.outcome)
     }
     fn restore_await(&mut self, parent: u64, child: u64, tracker: &mut fault::Tracker) {
@@ -791,6 +838,8 @@ impl<'a> Contexts<'a> {
     }
     fn terminate(&mut self) -> R<()> {
         self.terminated = true;
+        self.entry = None;
+        self.entry_error = None;
         self.terminal.clear();
         self.waits.clear();
         while let Some(id) = self.completed.keys().next_back().copied() {
@@ -904,6 +953,9 @@ impl<'a> Contexts<'a> {
                 .as_ref()
                 .err()
                 .ok_or("E_NATIVE: failed owner lost its terminal error")?;
+            if self.entry == Some(owner) {
+                self.entry_error = Some(error.clone());
+            }
             let terminal =
                 self.host
                     .activations
@@ -935,6 +987,9 @@ impl<'a> Contexts<'a> {
         }
         self.host.exchange_context(&mut parked.host)?;
         let finished = parked.machine.finished;
+        if finished {
+            self.restore_entry(owner, &mut parked.host.tracker);
+        }
         if !parked.machine.finished {
             self.parked.insert(owner, parked);
         }
@@ -962,3 +1017,7 @@ mod sequential_await_tests;
 #[cfg(test)]
 #[path = "await_handoff_tests.rs"]
 mod await_handoff_tests;
+
+#[cfg(test)]
+#[path = "entry_context_tests.rs"]
+mod entry_context_tests;

@@ -85,14 +85,10 @@ fn source(program: &CheckedProgram, entry: &str) -> Result<String> {
     assert_eq!(source.matches(EXECUTION).count(), 1);
     assert_eq!(source.matches(CONTEXTS).count(), 1);
     source = source.replacen(
-        EXECUTION,
-        &format!("{EXECUTION}\n{}", include_str!("compiled_model.rs")),
-        1,
-    );
-    source = source.replacen(
         CONTEXTS,
         &format!(
-            "{CONTEXTS}\n{}\nmod sibling_model {{\n{}\n}}\nmod result_model {{\n{}\n}}\npub use result_model::*;\npub use sibling_model::*;\n",
+            "{CONTEXTS}\n{}\n{}\nmod sibling_model {{\n{}\n}}\nmod result_model {{\n{}\n}}\npub use result_model::*;\npub use sibling_model::*;\n",
+            include_str!("compiled_model.rs"),
             include_str!("context_model.rs"),
             include_str!("sibling_model.rs"),
             include_str!("result_model.rs")
@@ -261,6 +257,30 @@ fn source(program: &CheckedProgram, entry: &str) -> Result<String> {
                 deliveries.push_str("Ok(())}\n");
                 continue;
             }
+            if let Action::Decide {
+                operation: Operation::Defer(name),
+                args,
+                arms,
+            } = &instruction.action
+            {
+                debug_assert_eq!(arms.len(), 1);
+                debug_assert_eq!(arms[0].slots.len(), 1);
+                let p = &instruction.provenance;
+                let target = names[name.as_str()];
+                let _ = writeln!(
+                    g.code,
+                    "host.at({});host.tick({}, {})?;if {} {{let mut arguments={};let task=state.defer_task(host,&MODEL_{target},{},&mut arguments)?;v[base+{}]=Some(task);state.facts[{}]=true;}}Ok(Step::Continue)}},",
+                    instruction.id,
+                    p.span.line,
+                    p.span.column,
+                    guard(&instruction.guard, &g.layout),
+                    expressions(args, &g.layout),
+                    string(&crate::manifest::task_type(name)),
+                    g.layout.slots[&arms[0].slots[0]],
+                    g.layout.atoms[&arms[0].atom]
+                );
+                continue;
+            }
             let call = match &instruction.action {
                 Action::Decide {
                     operation:
@@ -283,26 +303,32 @@ fn source(program: &CheckedProgram, entry: &str) -> Result<String> {
                     p.span.column,
                     guard(&instruction.guard, &g.layout)
                 );
-                let mut arguments = expressions(args, &g.layout);
-                if matches!(
+                let arguments = expressions(args, &g.layout);
+                let awaiting = matches!(
                     &instruction.action,
                     Action::Decide {
                         operation: Operation::AwaitTask(_),
                         ..
                     }
-                ) {
-                    arguments = format!("await_arguments({arguments}, {})?", string(name));
-                }
+                );
                 let destination = if g.constructors.contains(name.as_str()) {
                     format!("Some(base+{})", g.layout.slots[&arms[0].slots[0]])
                 } else {
                     "None".into()
                 };
                 let target = names[name.as_str()];
-                let _ = writeln!(
-                    g.code,
-                    "let arguments={arguments};return Ok(Step::Call{{control:&MODEL_{target},arguments,destination:{destination},deliver:deliver_{id}_{pc}}});\n}}Ok(Step::Continue)\n}},"
-                );
+                if awaiting {
+                    debug_assert_eq!(args.len(), 1);
+                    let _ = writeln!(
+                        g.code,
+                        "let mut arguments={arguments};let mut value=arguments.pop();let task=state.queue_task(host,&MODEL_{target},&mut value)?;return Ok(Step::Await{{task,deliver:deliver_{id}_{pc}}});\n}}Ok(Step::Continue)\n}},"
+                    );
+                } else {
+                    let _ = writeln!(
+                        g.code,
+                        "let arguments={arguments};return Ok(Step::Call{{control:&MODEL_{target},arguments,destination:{destination},deliver:deliver_{id}_{pc}}});\n}}Ok(Step::Continue)\n}},"
+                    );
+                }
                 let _ = writeln!(
                     deliveries,
                     "fn deliver_{id}_{pc}(state:&mut Activation,v:&mut Frames,result:Completion)->R<()>{{let base=state.base();let a=&mut state.facts;"
