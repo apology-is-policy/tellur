@@ -3513,3 +3513,40 @@ Next audit: boundary-bearing helpers that reach explicit handoffs. Establish pre
 fault routing when a sibling faults while the original parent is inside a different
 inline boundary, before changing admission. Direct parent boundaries, task-handle
 crossing, async I/O readiness and cancellation remain separate.
+
+## Owning-domain routing model (E1e.23a)
+
+This internal checkpoint keeps the 0.187 source profile and installed release.
+A test-only model compiles a legal helper-before-spawn program, verifies that the
+corresponding spawn-before-helper source is rejected, then relocates the adjacent
+zero-argument helper call in checked IR. Both instructions have unconditional guards;
+the helper has one completion with no payload slots. IR verification follows the
+relocation. This deliberately constructed schedule is neither source admission nor
+a general ownership-preserving transformation.
+
+The model exposed a reference-runtime routing error: an escaping child fault could
+enter an inline boundary currently surrounding the parent, instead of the original
+child-owning boundary. Reference contexts now retain that original target through
+await restoration. Settlement stops the original domain and drains its retained
+contexts before inline helper frames retire. Intervening named/lexical contingencies
+are skipped; named retained values stay on the ordinary abrupt retirement path,
+not a handover into a handler that will never run. The owning contingency clears the
+target, allowing subsequent faults after recovery to use their own boundaries.
+
+Eight models combine named/lexical helper boundaries, inline `yield`/nested `await`,
+and terminal/recovering owning boundaries. Recovery variants include a fresh nested
+fault; named recovery variants include retained string storage. Full observations
+and reports agree with the unchanged production native emitter and scheduler for
+original/expanded IR, O0/O2, every fuel cutoff through completion and host quotas
+`99`, `1`, and `0,3,1`. Private reference censuses use quotas `1`, `3`, and unlimited
+and require empty contexts, frames, slots, tasks, joins, handles and live domains.
+Supported source task/fault/boundary regressions also remain covered. The initial
+failing reference observation and final test logs are retained in the work directory.
+
+This evidence does not yet cover real adapter resources inside the intervening
+boundary, outstanding borrowers of its storage, or nested source parents forwarding
+a routed fault. E1e.23b must establish those cases, including retained named owners,
+before relaxing the source gate. Direct parent boundary statements, task-handle
+crossing, async I/O readiness and cancellation remain separate. No compiler/LSP/VSIX
+release is needed for this still-gated model; the installed 0.187 artifacts remain
+unchanged.

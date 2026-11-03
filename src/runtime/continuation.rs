@@ -221,6 +221,8 @@ struct Context<'a> {
     task: Option<(TaskId, OwnerId)>,
     started: Option<StartedOrigin<'a>>,
     source_cause: Option<crate::fault::Report>,
+    // A routed child fault skips intervening inline boundary contingencies.
+    source_fault_target: Option<DomainId>,
     contingencies: Vec<Diagnostic>,
     activations: crate::fault::Tracker,
     phase: crate::fault::Phase,
@@ -236,6 +238,7 @@ impl Context<'_> {
             task: None,
             started: None,
             source_cause: None,
+            source_fault_target: None,
             contingencies: vec![],
             activations,
             phase: crate::fault::Phase::EntryValidation,
@@ -784,6 +787,10 @@ impl<'a> Machine<'a> {
                     if flow.is_err()
                         && self.context.activations.is_source_fault()
                         && self.settlements.is_empty()
+                        && self
+                            .context
+                            .source_fault_target
+                            .is_none_or(|target| Some(target) == self.context.domain)
                     {
                         if let Some(boundary) = &region.boundary {
                             for id in &boundary.retained {
@@ -880,6 +887,11 @@ impl<'a> Machine<'a> {
                 caller.phase = self.context.phase.clone();
                 caller.handover = std::mem::take(&mut self.context.handover);
                 caller.flow = Some(result);
+                caller.source_fault_target = self
+                    .context
+                    .source_fault_target
+                    .take()
+                    .or(caller.source_fault_target);
                 self.context = caller;
             }
             Continuation::SourceStop => {
@@ -890,7 +902,8 @@ impl<'a> Machine<'a> {
                 // resume through this chain's unwind before the owning boundary
                 // requires full domain quiescence. They cannot be settled here.
                 self.context.stack.push(Continuation::SourceStop);
-                if !self.begin_settlement() {
+                let domain = self.context.source_fault_target.or(self.context.domain);
+                if !self.begin_retained_settlement(domain) {
                     self.context.stack.pop();
                 }
             }
@@ -926,8 +939,13 @@ impl<'a> Machine<'a> {
             } => match flow {
                 Err(diagnostic)
                     if self.context.activations.is_source_fault()
-                        && self.settlements.is_empty() =>
+                        && self.settlements.is_empty()
+                        && self
+                            .context
+                            .source_fault_target
+                            .is_none_or(|target| target == domain.id) =>
                 {
+                    self.context.source_fault_target = None;
                     self.require_domain_quiescent(domain.id)?;
                     let report = self.report(&self.shared.program.runtime_name(name), &diagnostic);
                     self.shared.events.push(Event::Fault {
@@ -965,8 +983,13 @@ impl<'a> Machine<'a> {
                 match flow {
                     Err(diagnostic)
                         if self.context.activations.is_source_fault()
-                            && self.settlements.is_empty() =>
+                            && self.settlements.is_empty()
+                            && self
+                                .context
+                                .source_fault_target
+                                .is_none_or(|target| target == domain.id) =>
                     {
+                        self.context.source_fault_target = None;
                         self.require_domain_quiescent(domain.id)?;
                         let Action::Boundary {
                             handler,

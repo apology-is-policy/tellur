@@ -3,6 +3,8 @@ pub mod absorption;
 pub mod algebra;
 mod async_calls;
 pub mod bdd;
+#[cfg(test)]
+mod boundary_handoff_model;
 pub mod certificate;
 mod check;
 mod collection_support;

@@ -871,6 +871,14 @@ remain in its diagnostic chain; separately awaited work is excluded from that ch
 Affected retained borrowers retire before any inline helper frame releases storage.
 Stopped work cannot resume normally or run a nested contingency.
 
+An internal gated model now also preserves the original child-owning domain when
+that parent is inside a different inline boundary. The child fault skips that
+intervening boundary's contingency and retained-parameter handover. After the owning
+contingency begins, the routing target is cleared so a later fault uses its own
+boundary. This is implementation evidence only: source calls combining a boundary
+and a handoff beside live children remain rejected pending resource and nested-owner
+settlement proof. See [the routing audit](../async-execution.md#owning-domain-routing-model-e1e23a).
+
 ## Calling and entering
 
 A synchronous control uses `run` to invoke an async control. An async control uses

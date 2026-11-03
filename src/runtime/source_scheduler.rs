@@ -277,6 +277,7 @@ impl<'a> Machine<'a> {
         };
         let diagnostic = diagnostic.clone();
         let owner = origin.owner;
+        let domain = origin.domain;
         let name = self.shared.program.runtime_name(&origin.producer.name);
         let parent = if let Some(index) = self
             .shared
@@ -313,11 +314,13 @@ impl<'a> Machine<'a> {
             .scheduler
             .runnable
             .push_back(Runnable::Context(child));
+        self.context.source_fault_target = Some(domain);
+        self.shared.domains.stop(domain)?;
         if self
             .context
             .started
             .as_ref()
-            .is_some_and(|origin| self.context.domain == Some(origin.domain))
+            .is_some_and(|origin| domain == origin.domain)
         {
             self.context.source_cause = Some(report.clone());
         }
@@ -384,6 +387,56 @@ impl<'a> Machine<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn gated_boundary_handoffs_retire_every_context_at_every_fuel_cut() {
+        gated_boundary_census(crate::boundary_handoff_model::program);
+    }
+    #[test]
+    fn gated_recovered_boundary_handoffs_retire_every_context_at_every_fuel_cut() {
+        gated_boundary_census(crate::boundary_handoff_model::recovery_program);
+    }
+    fn gated_boundary_census(build: fn(bool, bool) -> CheckedProgram) {
+        for named in [false, true] {
+            for awaited in [false, true] {
+                let p = build(named, awaited);
+                for p in [p.clone(), p.expanded("main").unwrap()] {
+                    for fuel in 0..256 {
+                        let mut finished = false;
+                        for quota in [1, 3, usize::MAX] {
+                            let scenario = Scenario {
+                                entry: "main".into(),
+                                arguments: vec![],
+                                calls: vec![],
+                            };
+                            let mut session = p.start_execution(&scenario, fuel);
+                            let mut m = session.machine.take().unwrap();
+                            m.enter(&scenario).unwrap();
+                            let mut polls = 0;
+                            while !m.drive(quota) {
+                                polls += 1;
+                                assert!(
+                                    polls < 1000,
+                                    "named={named}, awaited={awaited}, fuel={fuel}, quota={quota}"
+                                );
+                            }
+                            m.prune_source();
+                            super::super::settlement_tests::retired(&m);
+                            assert!(
+                                m.shared.scheduler.runnable.is_empty()
+                                    && m.shared.scheduler.joins.is_empty()
+                                    && m.shared.scheduler.handles.is_empty()
+                            );
+                            finished = m.finish("main").is_ok();
+                        }
+                        if finished {
+                            break;
+                        }
+                        assert!(fuel < 255);
+                    }
+                }
+            }
+        }
+    }
     #[test]
     fn source_schedules_retire_every_context_at_every_fuel_cut() {
         for text in [

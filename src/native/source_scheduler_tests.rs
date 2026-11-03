@@ -812,11 +812,6 @@ fn compiled_source_grandchild_fault() {
     );
 }
 fn compare(label: &str, text: &str) {
-    let root = std::env::temp_dir().join(format!(
-        "tellur-source-schedules-{label}-{}",
-        std::process::id()
-    ));
-    fs::create_dir_all(&root).unwrap();
     let original = crate::compile(
         text,
         crate::manifest::Manifest::from_json(include_str!("../../playground/manifest.json"))
@@ -825,6 +820,14 @@ fn compare(label: &str, text: &str) {
     .unwrap()
     .with_entry_exit_codes("main", BTreeMap::from([("done".into(), 0)]))
     .unwrap();
+    compare_program(label, original);
+}
+fn compare_program(label: &str, original: crate::CheckedProgram) {
+    let root = std::env::temp_dir().join(format!(
+        "tellur-source-schedules-{label}-{}",
+        std::process::id()
+    ));
+    fs::create_dir_all(&root).unwrap();
     for (expanded, program) in [
         (false, original.clone()),
         (true, original.expanded("main").unwrap()),
@@ -1687,4 +1690,28 @@ control main(string path) exits done {forward run startup(path);}
         }
     }
     fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn compiled_gated_boundary_handoff_model() {
+    for named in [false, true] {
+        for awaited in [false, true] {
+            let p = crate::boundary_handoff_model::program(named, awaited)
+                .with_entry_exit_codes("main", BTreeMap::from([("done".into(), 0)]))
+                .unwrap();
+            compare_program(&format!("boundary_handoff_{named}_{awaited}"), p);
+        }
+    }
+}
+
+#[test]
+fn compiled_gated_recovered_boundary_handoff_model() {
+    for named in [false, true] {
+        for awaited in [false, true] {
+            let p = crate::boundary_handoff_model::recovery_program(named, awaited)
+                .with_entry_exit_codes("main", BTreeMap::from([("done".into(), 0)]))
+                .unwrap();
+            compare_program(&format!("boundary_handoff_recovery_{named}_{awaited}"), p);
+        }
+    }
 }

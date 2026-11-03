@@ -324,7 +324,7 @@ handling for active/empty/nested borrowed outcomes and transferred handling for 
 carriers. Holder storage, selected origins, exclusive ancestry and fault retirement
 retain their existing rules. Audit the remaining source admission gates against cold-task
 support and application needs before choosing the next extension.
-Compiler **0.186.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
+Compiler **0.187.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
 lifetime checkpoints of milestone 2, the array/vector/map core of milestone 3,
 and implicit entry, inline/stored adapters, owned capture, named outcome contracts
 and checked forwarding in milestone 4. A first [semantic foundation](semantic-foundation.md)
@@ -629,6 +629,7 @@ do not block this design work. E2 remains the native coroutine target.
 | E1e.20 | Tagged reference chains | Delivered in 0.185: option/closed-variant nodes may mix with records in owned/borrowed captures and results. Active/empty holder storage, selected suppliers, exclusive guards and resource retirement survive joins; named-outcome nodes are the next audit |
 | E1e.21 | Named-outcome reference chains | Delivered in 0.186: complete named-outcome origins preserve every holder and selected supplier through borrowed and owned chain captures/results. Caller handling remains mandatory for borrowed active/empty/nested outcomes; owned transfers retain handling across repeated joins. Remaining anonymous/collection/handle and parent-boundary gates require separate audits against existing cold support and application needs |
 | E1e.22 | Uninterrupted boundary helpers | Delivered in 0.187: checked synchronous chains without handoffs may enter local named/lexical boundaries beside live children. Local recovery preserves original child ownership; escaping faults settle that owner. Generic dependency closure includes named contingencies. Direct boundaries and boundary-bearing helper handoffs remain separate |
+| E1e.23a | Owning-domain routing model | Internal on 0.187: test-only gated IR exposes a child fault while its parent is inside an inline named/lexical helper boundary. Reference routing now retains the original owning domain, suppresses intervening contingencies/retained handover, and settles affected contexts before helper storage. Recovery clears the target. Production-native differential and context-census evidence cover direct and awaited handoffs; real resource/borrower models and nested source-owner routing remain required before source admission |
 | E2 | Native coroutine lowering | Preserved architectural target: direct LLVM coroutine primitives, pinned-toolchain experiment, frame lifetime rules and schedule-based differential tests; I1 must keep this route open |
 | T1 | Stronger source transformations | Hold current scope during P1–P5: extraction correspondence, continuation cuts, source-level lift and editor actions |
 | R1 | Mathematical foundations | Maintain existing evidence; defer extensions during P1–P5: preservation judgments, richer protocol abstractions, infinite/causal behavior, mechanization |
