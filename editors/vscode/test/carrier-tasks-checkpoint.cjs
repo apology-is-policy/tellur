@@ -150,6 +150,22 @@ exports.run = async function (root) {
   assert.equal(resultRun.code, 0, resultRun.stderr);
   assert.deepEqual(JSON.parse(resultRun.stdout).events.filter(e => e.kind === 'emit').map(e => e.message),
     ['queued', 'released at join', 'edited through result', 'released after result', 'right']);
+  const carrierSource = await fs.readFile(path.join(__dirname, '../../../playground/carrier_spawn.tellur'), 'utf8');
+  await replace(carrierSource);
+  await waitFor(async () => diagnostics().length === 0 && (await hover('spawn first')).includes('Flat record captures'), 'flat carrier admission');
+  const carrierConflict = carrierSource.replace('auto moved = move selected;', 'right = "too soon";auto moved = move selected;');
+  assert.notEqual(carrierConflict, carrierSource);
+  await replace(carrierConflict);
+  await waitFor(() => diagnostics().some(d => code(d) === 'E_LOAN'), 'contained capture loan before join');
+  await replace(carrierSource);
+  await waitFor(async () => diagnostics().length === 0 && (await hover('auto changed')).includes('ref mutable string'), 'carrier loan repair');
+  await document.save();
+  const carrierRun = await vscode.commands.executeCommand('tellur.buildAndRun', {
+    arguments:['--json'], output:path.join(root, 'native output', 'carrier-spawn')
+  });
+  assert.equal(carrierRun.code, 0, carrierRun.stderr);
+  assert.deepEqual(JSON.parse(carrierRun.stdout).events.filter(e => e.kind === 'emit').map(e => e.message),
+    ['queued', 'other capture', 'editing', 'released at join', 'selected', 'edited in child', 'released after edit']);
   await fs.writeFile(path.join(fixture, 'passed.txt'), 'cold and started tasks, synchronous helpers, diagnostics, unsaved repair and native execution passed\n');
   console.log('TELLUR_CARRIER_TASKS_EDITOR_TESTS_PASSED: pending type hover, diagnostic repair and native run');
 };

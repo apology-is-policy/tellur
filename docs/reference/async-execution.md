@@ -3,9 +3,9 @@
 [Language reference](../language-reference.md) · [Design and next steps](../async-execution.md) ·
 [Execution failures](execution-failures.md)
 
-Compiler 0.172 supports `async control`, synchronous entry with `run`, direct
+Compiler 0.173 supports `async control`, synchronous entry with `run`, direct
 `await`, cold tasks with owned and borrowed captures, and a bounded cooperative
-scheduler for `spawn` tasks with owned or direct borrowed captures. Source handoffs occur at `await` and `yield`.
+scheduler for `spawn` tasks with owned, direct borrowed or flat record captures. Source handoffs occur at `await` and `yield`.
 Async host I/O, cancellation and LLVM coroutine lowering remain later work.
 
 ## Owned spawned children
@@ -52,10 +52,10 @@ Checked cold/direct awaits remain available beside wrapped children. Their possi
 producer faults still apply at handoffs. There is no detach or implicit await at scope exit.
 
 The source profile accepts direct shared/exclusive borrows of existing reference-free
-storage and owned captures with **no references**, including structs, sums and resources.
-Normal result fields may also be direct references to reference-free storage, with
-their declared origins. Captures and result carriers containing references, including
-borrowed carriers with reference fields, remain gated. Broader reference-bearing
+storage, reference-free owned values, and owned flat records whose fields are
+reference-free values or direct borrows of reference-free storage. Normal result
+fields may also be direct references with their declared origins. Nested or borrowed
+capture carriers and result carriers containing references remain gated. Broader reference-bearing
 `defer` tasks keep their existing semantics. A spawned body may itself use such
 cold/direct awaits and may own further spawned children. Before a parent enters a synchronous
 control whose inline call chain may enter a fault boundary, it must join its started
@@ -201,6 +201,47 @@ Completed but unjoined results remain retirement obligations. Sibling faults set
 them before supplier storage and the owning contingency. Result carriers containing
 references and aggregate storage of borrowed task handles remain outside this profile.
 
+## Flat record captures
+
+An owned record may capture shared or exclusive references directly in its fields.
+Other fields may hold reference-free values, including resources whose existing
+fault dispositions permit stop settlement. A nested record, sum or collection with
+reference contents is outside this bounded profile, as is a reference to a carrier.
+
+<!-- tellur:check -->
+```tellur
+struct view['text] { ref mutable string text <- 'text; }
+async control edit(view input) exits ready { ref mutable string value from input['text] } {
+    yield;
+    deref input.text = "edited";
+    exit ready { move input.text };
+}
+async control startup() exits done {
+    mutable string text = "before";
+    view input = view { borrow mutable text };
+    auto child = spawn edit(move input);
+    delta await child { ready { auto value } => ready }
+    [ready]:
+        emit(value);
+        text = "released";
+        exit done;
+}
+control main() exits done { forward run startup(); }
+```
+
+The ordinary Copy rule still applies: a record consisting of shared references can
+be copied, even with an explicit `move`. A record with an exclusive reference moves
+into the child. Each captured leaf retains its origin, loan and any carrier-storage
+guards through queued, running and completed-but-unjoined states. Local handle moves
+do not release those obligations. Shared siblings keep independent loans; disjoint
+exclusive fields may be captured by different children.
+
+Join adopts only the selected direct result origins and releases unrelated captures.
+A returned exclusive reference still prevents access through its supplying parent or
+guarded carrier until final use. Generic forwarding and imported contracts preserve
+these relationships. See [flat record spawn](../../playground/carrier_spawn.tellur).
+Result carriers with references and aggregate wrappers of borrowed handles remain gated.
+
 ## Parent awaits beside children
 
 A parent may await a cold task or invoke an async control directly while its owned
@@ -240,7 +281,7 @@ The awaited producer must permit enclosing stop settlement for its owners across
 handoffs, even if the currently known siblings do not fault. This is the same
 conservative producer proof used by spawn. Join the started children first when a
 sequential producer cannot satisfy it. Fault-capable siblings also require fault
-permission for the parent's owners and queued await captures. Parent inline fault-boundary crossing, borrowed spawn and escaping handles remain
+permission for the parent's owners and queued await captures. Parent inline fault-boundary crossing and escaping handles remain
 outside this profile.
 
 ## Helpers that reach handoffs

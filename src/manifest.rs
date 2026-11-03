@@ -953,6 +953,19 @@ impl Manifest {
         }
         visit(self, name, &mut BTreeSet::new())
     }
+    /// Source spawn results remain reference-free values or direct borrows of
+    /// reference-free storage. A contained reference is a separate proof case.
+    pub(crate) fn supports_spawn_result(&self, name: &str) -> bool {
+        let inner = reference_inner(name).map_or(name, |(_, inner)| inner);
+        !self.contains_references(inner)
+    }
+    /// Flat owned record captures carry their existing leaf loans into the task.
+    /// Borrowed carriers and nested reference-bearing fields remain gated.
+    pub(crate) fn supports_spawn_capture(&self, name: &str) -> bool {
+        self.supports_spawn_result(name)
+            || matches!(self.type_def(name), Some(TypeDef::Record { fields, .. })
+                if fields.iter().all(|field| self.supports_spawn_result(&field.ty)))
+    }
     pub fn check_type(&self, name: &str) -> Result<()> {
         if self.contains_references(name) {
             return Err(error(

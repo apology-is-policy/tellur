@@ -1499,3 +1499,8 @@ borrowed results remain outside this bounded profile.
 Release 0.172 supports direct borrowed spawn results with declared origins. Hover
 explains result loans after join; unsaved conflicting parent access is diagnosed,
 repair restores result hover, and the borrowed-result example runs natively.
+
+Release 0.173 supports flat record spawn captures with direct reference fields. Hover
+explains retained leaf loans; unsaved capture conflicts report `E_LOAN`, and repair
+restores result hover and native build/run. Try `playground/carrier_spawn.tellur`.
+Nested/borrowed capture carriers and reference-bearing result carriers remain gated.

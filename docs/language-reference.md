@@ -1,8 +1,8 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.172.0 -->
+<!-- tellur-reference-version: 0.173.0 -->
 
-This manual describes **compiler 0.172.0**, including the current ownership model,
+This manual describes **compiler 0.173.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -15,10 +15,12 @@ as a bug to investigate, not a promise that either must remain unchanged. The
 updates at every implementation checkpoint.
 
 
-Compiler 0.170 also supports [owned spawned children](reference/async-execution.md#owned-spawned-children)
+Compiler 0.173 also supports [owned spawned children](reference/async-execution.md#owned-spawned-children)
 with explicit `await`/`yield` handoffs, required normal-path joins and owning-boundary
-fault settlement. The first profile requires reference-free captures/results and
-joins before synchronous calls that may enter an inline fault boundary. Cold/direct
+fault settlement. The current profile admits reference-free values, direct borrows and flat record
+captures with direct reference fields. Results remain reference-free or direct
+references. Children must be joined before synchronous calls that may enter an
+inline fault boundary. Cold/direct
 awaits and checked synchronous helpers may retain borrowed parent storage beside live
 children. Helpers can reach handoffs through inline `run`; only the reached
 `await`/`yield` switches tasks. Spawned producers
@@ -2822,7 +2824,7 @@ General expression-type hover remains unsupported.
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and borrowed spawn remain planned; they are not executable features of 0.172.0.
+and borrowed spawn remain planned; they are not executable features of 0.173.0.
 ## Contingency and supervised boundaries
 
 The [contingency reference](reference/contingency.md) specifies `@contingent`,

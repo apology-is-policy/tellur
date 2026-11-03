@@ -6374,3 +6374,59 @@ fn spawned_result_origins_follow_unsaved_producer_contracts() {
     assert_eq!(f.diagnostics(), json!([]));
     assert_eq!(hover_at(&f, source, "auto value"), initial);
 }
+
+#[test]
+fn spawned_carrier_origins_follow_unsaved_import_contracts() {
+    let mut f = Fixture::new();
+    let path = f.root.join("worker.tellur");
+    let uri = url::Url::from_file_path(&path).unwrap().to_string();
+    let valid = "pub struct view['a,'b] {pub ref string left <- 'a;pub ref string right <- 'b;}pub async control lend(view input) exits ready {ref string value from input['a]} {yield;exit ready {input.left};}";
+    fs::write(&path, valid).unwrap();
+    let source = "import \"worker.tellur\" as worker;async control startup() exits done {mutable string a=\"a\";mutable string b=\"b\";auto task=spawn worker.lend(worker.view {borrow a,borrow b});delta await task {ready {auto value}=>ready} [ready]:b=\"free\";emit(value);exit done;}control main() exits done {forward run startup();}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let initial = hover_at(&f, source, "auto value");
+    assert!(initial.to_string().contains("ref string"));
+    let broken = valid
+        .replace("from input['a]", "from input['b]")
+        .replace("ready {input.left}", "ready {input.right}");
+    f.server.notification(
+        "textDocument/didOpen",
+        &json!({"textDocument":{"uri":uri,"version":1,"text":broken}}),
+    );
+    let errors = f.diagnostics();
+    assert_eq!(errors[0]["code"], "E_LOAN", "{errors}");
+    assert!(hover_at(&f, source, "auto value").is_null());
+    f.server.notification(
+        "textDocument/didClose",
+        &json!({"textDocument":{"uri":uri}}),
+    );
+    assert_eq!(f.diagnostics(), json!([]));
+    assert_eq!(hover_at(&f, source, "auto value"), initial);
+}
+
+#[test]
+fn flat_spawn_capture_unsaved_conflict_and_repair_preserve_hover() {
+    let mut f = Fixture::new();
+    let text = include_str!("../playground/carrier_spawn.tellur");
+    f.open(text);
+    assert_eq!(f.diagnostics(), json!([]));
+    assert!(
+        hover_at(&f, text, "auto selected")
+            .to_string()
+            .contains("task<first>")
+    );
+    let broken = text.replace(
+        "auto moved = move selected;",
+        "right=\"bad\";auto moved = move selected;",
+    );
+    f.change(&broken, 2);
+    assert_eq!(f.diagnostics()[0]["code"], "E_LOAN");
+    f.change(text, 3);
+    assert_eq!(f.diagnostics(), json!([]));
+    assert!(
+        hover_at(&f, text, "spawn first")
+            .to_string()
+            .contains("Flat record captures")
+    );
+}

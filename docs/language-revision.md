@@ -263,7 +263,11 @@ loans survive unjoined completion; consuming join adopts selected result loans a
 releases unrelated captures. Completed and delivered results preserve supplier storage
 through ordinary final use and owning-boundary fault settlement. Reference-bearing
 carriers and borrowed-handle aggregate storage remain gated.
-Compiler **0.172.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
+E1e.8 admits owned flat record captures with direct reference fields and reference-free
+other fields. Ordinary Copy/move behavior, per-leaf origins and exclusive guard
+ancestry survive scheduling and consuming join. Nested/borrowed capture carriers,
+reference-bearing result carriers and borrowed-handle aggregate storage remain gated.
+Compiler **0.173.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
 lifetime checkpoints of milestone 2, the array/vector/map core of milestone 3,
 and implicit entry, inline/stored adapters, owned capture, named outcome contracts
 and checked forwarding in milestone 4. A first [semantic foundation](semantic-foundation.md)
@@ -553,6 +557,7 @@ do not block this design work. E2 remains the native coroutine target.
 | E1e.5 | Inline helper handoffs | Delivered in 0.170: boundary-free inline Region/Run chains can reach explicit await/yield with stopped-owner proof; exact owner lookup and pre-unwind borrower settlement preserve original invocation ownership. Borrowed spawn remains the next source-capture audit; inline boundary crossing stays gated |
 | E1e.6 | Direct borrowed spawn captures | Delivered in 0.171: shared/exclusive direct captures retain ordinary loans until consuming join, including queued and completed children; native/reference schedules and emergency retirement preserve backing storage. Reference-bearing carriers and borrowed results remain separate audits |
 | E1e.7 | Direct borrowed spawn results | Delivered in 0.172: consuming joins adopt selected direct result origins once, preserving capture/result loans, outcome alternatives, exclusive ancestry and completed-result emergency retirement. Reference-bearing carriers remain the next admission audit |
+| E1e.8 | Flat record spawn captures | Delivered in 0.173: owned records carry direct shared/exclusive reference fields and reference-free other fields through queued, running, completed and joined phases. Per-leaf loans, selected direct result origins, Copy/transfer rules and detached guards are preserved; nested/borrowed capture carriers and reference-bearing result carriers remain separate audits |
 | E2 | Native coroutine lowering | Preserved architectural target: direct LLVM coroutine primitives, pinned-toolchain experiment, frame lifetime rules and schedule-based differential tests; I1 must keep this route open |
 | T1 | Stronger source transformations | Hold current scope during P1–P5: extraction correspondence, continuation cuts, source-level lift and editor actions |
 | R1 | Mathematical foundations | Maintain existing evidence; defer extensions during P1–P5: preservation judgments, richer protocol abstractions, infinite/causal behavior, mechanization |

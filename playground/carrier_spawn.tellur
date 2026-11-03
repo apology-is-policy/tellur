@@ -1,0 +1,61 @@
+struct text_pair['left, 'right] {
+    ref string left <- 'left;
+    ref string right <- 'right;
+}
+
+struct edit_view['text] {
+    ref mutable string text <- 'text;
+    string label;
+}
+
+async control first(text_pair input) exits ready { ref string value from input['left] } {
+    emit(input.right);
+    yield;
+    exit ready { input.left };
+}
+
+async control edit(edit_view input) exits ready { ref mutable string value from input['text] } {
+    emit(borrow input.label);
+    yield;
+    deref input.text = "edited in child";
+    exit ready { move input.text };
+}
+
+async control startup() exits done {
+    mutable string left = "selected";
+    mutable string right = "other capture";
+    mutable string text = "before";
+    text_pair pair = text_pair { borrow left, borrow right };
+    edit_view view = edit_view { borrow mutable text, "editing" };
+    auto selected = spawn first(pair);
+    auto edited = spawn edit(move view);
+    emit("queued");
+    yield;
+    yield;
+    auto moved = move selected;
+    delta await moved {
+        ready { auto value } => ready
+    }
+
+    [ready]:
+        right = "released at join";
+        emit(borrow right);
+        emit(value);
+        left = "released after result";
+        delta await edited {
+            ready { auto changed } => changed
+        }
+
+    [changed]:
+        emit(changed);
+        text = "released after edit";
+        emit(borrow text);
+        exit done;
+}
+
+outcome program_result {
+    @exit 0 done
+}
+control main() exits program_result {
+    forward run startup();
+}

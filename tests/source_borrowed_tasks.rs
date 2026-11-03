@@ -162,7 +162,7 @@ fn reference_reborrows_moves_and_path_joins_preserve_authority() {
 fn borrowed_spawn_does_not_admit_temporary_carrier_or_result_references() {
     for s in [
         "struct view['a] {ref string text <- 'a;} async control work(ref view value) exits done {exit done;} async control caller(ref view value) exits done {auto task=spawn work(value);await task;exit done;}",
-        "struct view['a] {ref string text <- 'a;} async control work(view value) exits done {exit done;} async control caller(view value) exits done {auto task=spawn work(value);await task;exit done;}",
+        "struct view['a] {ref string text <- 'a;} struct nested['a] {view['a] value;} async control work(nested value) exits done {exit done;} async control caller(nested value) exits done {auto task=spawn work(value);await task;exit done;}",
         "struct view['a] {ref string value <- 'a;} async control work(ref string value) exits ready {view[value] result} {exit ready {view {value}};} async control caller(ref string value) exits done {auto task=spawn work(value);await task;exit done;}",
         "struct message {string text;constructor(string text){self.text=move text;}} async control work(ref message value) exits done {exit done;} async control caller() exits done {auto task=spawn work(borrow message(\"temporary\"));await task;exit done;}",
     ] {

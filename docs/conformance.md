@@ -4567,3 +4567,15 @@ stall, without releasing supplier storage early or running stopped nested handle
 Fault reports retain the awaited spawning activation and original site in both
 executors, while excluding unrelated stopped await frames. Reference-bearing carriers
 remain gated.
+
+## Flat record spawned captures (0.173)
+
+Owned records with direct reference fields preserve leaf loans until join and selected
+direct result origins afterward. Tests cover shared Copy records, exclusive transfer,
+disjoint sibling captures, generic outcome alternatives, moved handles and detached
+carrier guards. Unsaved imported origin edits invalidate conflicting callers; repair
+restores diagnostics and hover. Nested/borrowed/tagged captures, result carriers and
+borrowed-handle wrappers remain rejected. Original/expanded O0/O2 native comparisons,
+zero/nonzero quota partitions, all fuel cuts and the expanded reference context census
+cover normal results, awaited-owner faults and resource/borrower retirement. Only the
+owning contingency runs after stopped child settlement.

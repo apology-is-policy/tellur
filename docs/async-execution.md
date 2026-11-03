@@ -3153,3 +3153,31 @@ The next source-profile audit is reference-bearing capture/result carriers, begi
 with existing checked leaf origins and guarded carrier authority. Do not infer broad
 carrier admission from this direct-reference checkpoint. Inline boundary crossing,
 handle escape, async adapters and cancellation remain separate work.
+
+## Flat record source captures (E1e.8)
+
+Compiler 0.173 admits owned record parameters whose fields are reference-free values
+or direct references to reference-free storage. One shared manifest predicate serves
+the checker and structural verifier; result admission retains the 0.172 direct-only
+rule. No runtime storage or scheduler access rules change.
+
+The ordinary owned-carrier argument path already records each contained reference
+under its parameter/field path in the handle. Capture transfers preserve origin
+snapshots, exclusive ancestry and guards for detached references. Shared-only Copy
+records remain copyable, including explicit moves; exclusive records transfer.
+Completion releases captures once and adopts selected direct result dependencies.
+This retains existing cold-task and ordinary call semantics.
+
+Source tests cover shared siblings, disjoint exclusive fields, queued/running/unjoined
+loans, selected generic outcomes, local handle moves, detached guarded ancestry and
+unsaved imported contracts. Original/expanded native O0/O2, quota partitions and every
+fuel cutoff cover normal execution, guarded references, awaited-owner sibling faults,
+and records combining an owned resource with a borrowed supplier. The reference
+context census includes these shapes. Stopped nested contingencies remain suppressed;
+resource retirement precedes the owning contingency.
+
+Nested reference-bearing fields, references to carriers, tagged/collection capture
+carriers and reference-bearing result carriers remain gated. Audit each retained
+origin/authority shape before widening it; owned flat result carriers are the next
+bounded candidate. Borrowed-handle aggregate storage, inline boundary crossing,
+async adapters and cancellation remain separate work.

@@ -168,19 +168,22 @@ impl Checker<'_> {
                 return Err(self.error("E_ASYNC", span,
                     "spawn requires fault dispositions for every owner retained across a handoff in its producer or callees; complete such owners before awaiting or yielding"));
             }
-            // Direct captures retain loans until consuming join; selected direct
-            // result loans then retain their declared origins. Carriers remain gated.
-            if sig.parameters.iter().any(|p| {
-                let inner = manifest::reference_inner(&p.ty).map_or(p.ty.as_str(), |(_, t)| t);
-                self.manifest.contains_references(inner)
-            }) || sig.outcomes.iter().flat_map(|o| &o.fields).any(|p| {
-                let inner = manifest::reference_inner(&p.ty).map_or(p.ty.as_str(), |(_, t)| t);
-                self.manifest.contains_references(inner)
-            }) {
+            // Flat records preserve their leaf loans and guards until join;
+            // selected direct results retain their declared captured origins.
+            if sig
+                .parameters
+                .iter()
+                .any(|p| !self.manifest.supports_spawn_capture(&p.ty))
+                || sig
+                    .outcomes
+                    .iter()
+                    .flat_map(|o| &o.fields)
+                    .any(|p| !self.manifest.supports_spawn_result(&p.ty))
+            {
                 return Err(self.error(
                     "E_ASYNC",
                     span,
-                    "spawn currently accepts reference-free values or direct borrows of reference-free storage in captures/results",
+                    "spawn accepts reference-free values, direct borrows of reference-free storage, and flat record captures with direct borrowed fields; nested capture and result carriers remain gated",
                 ));
             }
             if sig.faults {

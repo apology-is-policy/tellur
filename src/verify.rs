@@ -926,17 +926,15 @@ impl Verifier<'_> {
                             }
                             if matches!(operation, Operation::Spawn(_))
                                 && (r.parameters.iter().any(|p| {
-                                    let inner = crate::manifest::reference_inner(&p.ty)
-                                        .map_or(p.ty.as_str(), |(_, t)| t);
-                                    self.program.manifest().contains_references(inner)
-                                }) || r.exits.iter().flat_map(|o| &o.fields).any(|f| {
-                                    let inner = crate::manifest::reference_inner(&f.ty)
-                                        .map_or(f.ty.as_str(), |(_, t)| t);
-                                    self.program.manifest().contains_references(inner)
-                                }))
+                                    !self.program.manifest().supports_spawn_capture(&p.ty)
+                                }) || r
+                                    .exits
+                                    .iter()
+                                    .flat_map(|o| &o.fields)
+                                    .any(|f| !self.program.manifest().supports_spawn_result(&f.ty)))
                             {
                                 return Err(error(
-                                    "spawn requires reference-free values or direct borrows of reference-free storage in captures/results",
+                                    "spawn capture/result is outside the direct-reference and flat-record capture profile",
                                 ));
                             }
                             if matches!(operation, Operation::AwaitTask(_) | Operation::Join(_)) {

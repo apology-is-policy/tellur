@@ -1,6 +1,31 @@
 //! Differential source execution using the exact production emitter and scheduler.
 use super::*;
 #[test]
+fn compiled_source_flat_carrier_captures() {
+    compare(
+        "carrier_captures",
+        include_str!("../../playground/carrier_spawn.tellur"),
+    );
+}
+#[test]
+fn compiled_source_flat_carrier_guards() {
+    compare(
+        "carrier_guards",
+        include_str!("../../tests/fixtures/source_carrier_guards.tellur"),
+    );
+}
+#[test]
+fn compiled_source_flat_carrier_fault() {
+    compare(
+        "carrier_fault",
+        include_str!("../../tests/fixtures/source_carrier_fault.tellur"),
+    );
+}
+#[test]
+fn compiled_source_flat_carrier_resources() {
+    source_resources(SourceResources::CarrierCapture);
+}
+#[test]
 fn compiled_source_direct_borrowed_result_guards() {
     let source = include_str!("../../playground/guarded_task_captures.tellur")
         .replace("defer ", "spawn ")
@@ -328,6 +353,7 @@ enum SourceResources {
     ParentAwait,
     InlineHelper,
     BorrowedCapture,
+    CarrierCapture,
     BorrowedResult,
 }
 fn source_resources(mode: SourceResources) {
@@ -337,10 +363,14 @@ fn source_resources(mode: SourceResources) {
         SourceResources::ParentAwait
             | SourceResources::InlineHelper
             | SourceResources::BorrowedCapture
+            | SourceResources::CarrierCapture
             | SourceResources::BorrowedResult
     );
     let inline_helper = matches!(mode, SourceResources::InlineHelper);
-    let borrowed_spawn = matches!(mode, SourceResources::BorrowedCapture);
+    let borrowed_spawn = matches!(
+        mode,
+        SourceResources::BorrowedCapture | SourceResources::CarrierCapture
+    );
     let root = std::env::temp_dir().join(format!(
         "tellur-source-resource-{mode:?}-{}",
         std::process::id()
@@ -453,6 +483,22 @@ async control helper_work(ref counter local,string path) exits done {{
                 "inspect(parent);fault boundary {inspect(borrow value);",
             )
             .replace("spawn sibling(second)", "spawn sibling(parent,second)")
+    } else {
+        source
+    };
+    let source = if matches!(mode, SourceResources::CarrierCapture) {
+        let (before, after) = source.split_once("async control fail").unwrap();
+        let before = before
+            .replace(
+                "sibling(ref counter parent,counter value)",
+                "sibling(worker_input input)",
+            )
+            .replace(
+                "inspect(parent);",
+                "inspect(input.parent);counter value=move input.value;",
+            );
+        format!("struct worker_input['parent] {{ref counter parent <- 'parent;counter value;}}\n{before}async control fail{after}")
+            .replace("spawn sibling(parent,second)", "spawn sibling(worker_input {parent,second})")
     } else {
         source
     };
