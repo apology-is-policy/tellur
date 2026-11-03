@@ -3,9 +3,9 @@
 [Language reference](../language-reference.md) · [Design and next steps](../async-execution.md) ·
 [Execution failures](execution-failures.md)
 
-Compiler 0.173 supports `async control`, synchronous entry with `run`, direct
+Compiler 0.174 supports `async control`, synchronous entry with `run`, direct
 `await`, cold tasks with owned and borrowed captures, and a bounded cooperative
-scheduler for `spawn` tasks with owned, direct borrowed or flat record captures. Source handoffs occur at `await` and `yield`.
+scheduler for `spawn` tasks with owned, direct borrowed or flat record captures/results. Source handoffs occur at `await` and `yield`.
 Async host I/O, cancellation and LLVM coroutine lowering remain later work.
 
 ## Owned spawned children
@@ -54,8 +54,8 @@ producer faults still apply at handoffs. There is no detach or implicit await at
 The source profile accepts direct shared/exclusive borrows of existing reference-free
 storage, reference-free owned values, and owned flat records whose fields are
 reference-free values or direct borrows of reference-free storage. Normal result
-fields may also be direct references with their declared origins. Nested or borrowed
-capture carriers and result carriers containing references remain gated. Broader reference-bearing
+fields may also be direct references or flat owned records with their declared
+origins. Nested reference-bearing fields and references to carriers remain gated. Broader reference-bearing
 `defer` tasks keep their existing semantics. A spawned body may itself use such
 cold/direct awaits and may own further spawned children. Before a parent enters a synchronous
 control whose inline call chain may enter a fault boundary, it must join its started
@@ -198,12 +198,13 @@ these relationships. A result cannot borrow a child's owned input or local stora
 See [borrowed spawned results](../../playground/borrowed_spawn_results.tellur).
 
 Completed but unjoined results remain retirement obligations. Sibling faults settle
-them before supplier storage and the owning contingency. Result carriers containing
-references and aggregate storage of borrowed task handles remain outside this profile.
+them before supplier storage and the owning contingency. Flat owned result records
+may contain direct reference fields as described below. Aggregate storage of borrowed
+task handles remains outside this profile.
 
-## Flat record captures
+## Flat record captures and results
 
-An owned record may capture shared or exclusive references directly in its fields.
+An owned record may capture or return shared/exclusive references directly in its fields.
 Other fields may hold reference-free values, including resources whose existing
 fault dispositions permit stop settlement. A nested record, sum or collection with
 reference contents is outside this bounded profile, as is a reference to a carrier.
@@ -211,10 +212,10 @@ reference contents is outside this bounded profile, as is a reference to a carri
 <!-- tellur:check -->
 ```tellur
 struct view['text] { ref mutable string text <- 'text; }
-async control edit(view input) exits ready { ref mutable string value from input['text] } {
+async control edit(view input) exits ready { view[input['text]] value } {
     yield;
     deref input.text = "edited";
-    exit ready { move input.text };
+    exit ready { input };
 }
 async control startup() exits done {
     mutable string text = "before";
@@ -222,7 +223,7 @@ async control startup() exits done {
     auto child = spawn edit(move input);
     delta await child { ready { auto value } => ready }
     [ready]:
-        emit(value);
+        emit(value.text);
         text = "released";
         exit done;
 }
@@ -236,11 +237,20 @@ guards through queued, running and completed-but-unjoined states. Local handle m
 do not release those obligations. Shared siblings keep independent loans; disjoint
 exclusive fields may be captured by different children.
 
-Join adopts only the selected direct result origins and releases unrelated captures.
+Join adopts the selected result field origins and releases unrelated captures.
 A returned exclusive reference still prevents access through its supplying parent or
 guarded carrier until final use. Generic forwarding and imported contracts preserve
-these relationships. See [flat record spawn](../../playground/carrier_spawn.tellur).
-Result carriers with references and aggregate wrappers of borrowed handles remain gated.
+these relationships. A result can combine returned owned fields with external borrows;
+its own moved input or local storage cannot supply an escaping reference. Shared result
+records follow ordinary Copy rules; exclusive records transfer their permissions.
+Field-sensitive final use releases each leaf loan independently. A shared reference to
+a result record cannot mutate an exclusive field through shared authority.
+
+See [flat record captures](../../playground/carrier_spawn.tellur) and
+[flat record results](../../playground/carrier_spawn_results.tellur). Nested or borrowed
+carriers, reference-bearing tagged/collection payloads and aggregate wrappers of borrowed
+handles remain gated. Completed unjoined result records remain obligations and settle
+before supplying storage on an owning fault, including owned resource fields.
 
 ## Parent awaits beside children
 

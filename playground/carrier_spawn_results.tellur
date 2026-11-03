@@ -1,0 +1,50 @@
+struct pair['left, 'right] {
+    ref string left <- 'left;
+    ref string right <- 'right;
+}
+struct edit_view['text] {
+    ref mutable string text <- 'text;
+    string label;
+}
+async control relay(pair input) exits ready { pair[input['left], input['right]] value } {
+    yield;
+    exit ready { input };
+}
+async control edit(ref mutable string text) exits ready { edit_view[text] value } {
+    deref text = "edited in child";
+    exit ready { edit_view { text, "owned result" } };
+}
+async control startup() exits done {
+    mutable string left = "left";
+    mutable string right = "right";
+    mutable string text = "before";
+    auto first = spawn relay(pair { borrow left, borrow right });
+    auto second = spawn edit(borrow mutable text);
+    emit("queued");
+    yield;
+    yield;
+    auto moved = move first;
+    delta await moved {
+        ready { auto result } => ready
+    }
+    [ready]:
+        emit(result.left);
+        left = "released left";
+        emit(result.right);
+        right = "released right";
+        delta await second {
+            ready { auto edited } => edited
+        }
+    [edited]:
+        emit(borrow edited.label);
+        emit(edited.text);
+        text = "released after result";
+        emit(borrow text);
+        exit done;
+}
+outcome program_result {
+    @exit 0 done
+}
+control main() exits program_result {
+    forward run startup();
+}

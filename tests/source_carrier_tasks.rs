@@ -219,7 +219,7 @@ control main() exits done {forward run startup();}
 }
 
 #[test]
-fn nested_borrowed_tagged_and_result_carriers_remain_outside_spawn_profile() {
+fn nested_borrowed_and_tagged_carriers_remain_outside_spawn_profile() {
     for ty in ["ref view", "nested", "indirect", "option<ref string>"] {
         let source = format!(
             "struct view['a] {{ref string text <- 'a;}} struct nested['a] {{view['a] value;}} struct indirect['storage,'a] {{ref view['a] value <- 'storage;}} async control work({ty} input) exits done {{exit done;}} async control caller({ty} input) exits done {{auto child=spawn work(input);await child;exit done;}}"
@@ -230,7 +230,7 @@ fn nested_borrowed_tagged_and_result_carriers_remain_outside_spawn_profile() {
             "{ty}"
         );
     }
-    let result = "struct view['a] {ref string text <- 'a;} async control work(view input) exits ready {view[input['a]] value} {exit ready {input};} async control caller(view input) exits done {auto child=spawn work(input);await child;exit done;}";
+    let result = "struct view['a] {ref string text <- 'a;} struct nested['a] {view['a] value;} async control work(view input) exits ready {nested[input['a]] value} {exit ready {nested {input}};} async control caller(view input) exits done {auto child=spawn work(input);await child;exit done;}";
     assert_eq!(compile(result, manifest()).unwrap_err().code, "E_ASYNC");
     let wrapped=SOURCE.replace("auto moved = move selected;","auto wrapped=some {selected};delta wrapped {some {auto moved}=>ready,none=>empty} [empty]:exit done;[ready]:");
     assert_eq!(

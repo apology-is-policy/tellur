@@ -3181,3 +3181,30 @@ carriers and reference-bearing result carriers remain gated. Audit each retained
 origin/authority shape before widening it; owned flat result carriers are the next
 bounded candidate. Borrowed-handle aggregate storage, inline boundary crossing,
 async adapters and cancellation remain separate work.
+
+## Flat record source results (E1e.9)
+
+Compiler 0.174 admits owned flat result records whose fields are reference-free values
+or direct references to reference-free storage. The checker and verifier now share a
+payload predicate with an explicit leaf predicate. Checking a record field never
+recursively admits another reference-bearing carrier. Existing capture admission
+therefore stays bounded while the result profile widens.
+
+Consuming join snapshots captured dependencies before removing handle loans. Ordinary
+completion checking partitions them by selected outcome and result field, preserving
+contained origins, exclusive parents and guards. Record copies, moves and shared outer
+authority retain the existing rules. Each leaf remains borrowed through its final use;
+unused alternatives and unrelated captures may release. No runtime behavior changes.
+
+Source and unsaved-import tests cover field-sensitive release, generic forwarding,
+stored outcomes, shared copies, exclusive moves, detached guards and nested-shape
+rejection. The reference census adds normal/guarded result records and faults before
+and after join. Original/expanded native O0/O2 models compare quota partitions and fuel
+cutoffs, including an awaited spawning owner and a result carrying an owned counter
+beside a borrowed supplier. Completed resources and borrowed result dependencies retire
+before the owning contingency; stopped nested handlers remain suppressed.
+
+Nested owned record payloads are the next bounded audit. Trace their full leaf paths
+and selected result adoption before relaxing the flat predicate. References to carriers,
+tagged/collection payloads, borrowed-handle wrappers, inline boundary crossing, async
+adapters and cancellation remain separate proof cases.

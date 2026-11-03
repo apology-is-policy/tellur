@@ -6430,3 +6430,37 @@ fn flat_spawn_capture_unsaved_conflict_and_repair_preserve_hover() {
             .contains("Flat record captures")
     );
 }
+
+#[test]
+fn spawned_carrier_results_follow_unsaved_origins_and_reject_nested_shapes() {
+    let mut f = Fixture::new();
+    let path = f.root.join("worker.tellur");
+    let uri = url::Url::from_file_path(&path).unwrap().to_string();
+    let valid = "pub struct view['a] {pub ref string text <- 'a;}pub async control lend(ref string a,ref string b) exits ready {view[a] value} {yield;exit ready {view {a}};}";
+    fs::write(&path, valid).unwrap();
+    let source = "import \"worker.tellur\" as worker;async control startup() exits done {mutable string a=\"a\";mutable string b=\"b\";auto task=spawn worker.lend(borrow a,borrow b);delta await task {ready {auto result}=>ready} [ready]:b=\"free\";emit(result.text);exit done;}control main() exits done {forward run startup();}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let initial = hover_at(&f, source, "auto result");
+    assert!(!initial.is_null());
+    let broken = valid
+        .replace("view[a] value", "view[b] value")
+        .replace("view {a}", "view {b}");
+    f.server.notification(
+        "textDocument/didOpen",
+        &json!({"textDocument":{"uri":uri,"version":1,"text":broken}}),
+    );
+    assert_eq!(f.diagnostics()[0]["code"], "E_LOAN");
+    let nested = "pub struct leaf['a] {pub ref string text <- 'a;}pub struct view['a] {pub leaf['a] text;}pub async control lend(ref string a,ref string b) exits ready {view[a] value} {yield;exit ready {view {leaf {a}}};}";
+    f.server.notification(
+        "textDocument/didChange",
+        &json!({"textDocument":{"uri":uri,"version":2},"contentChanges":[{"text":nested}]}),
+    );
+    assert_eq!(f.diagnostics()[0]["code"], "E_ASYNC");
+    f.server.notification(
+        "textDocument/didClose",
+        &json!({"textDocument":{"uri":uri}}),
+    );
+    assert_eq!(f.diagnostics(), json!([]));
+    assert_eq!(hover_at(&f, source, "auto result"), initial);
+}

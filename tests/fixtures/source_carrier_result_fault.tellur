@@ -1,0 +1,57 @@
+struct edit_view['text] {
+    ref mutable string text <- 'text;
+}
+struct read_view['text] {
+    ref string text <- 'text;
+}
+async control lend(edit_view input)
+    exits ready { edit_view[input['text]] value } {
+    emit("result completed");
+    exit ready { input };
+}
+async control sibling(read_view input) exits done {
+    emit(input.text);
+    fault boundary {
+        yield;
+        yield;
+    } contingency [] {
+        emit("stopped nested handler");
+        escalate;
+    }
+    emit("stopped sibling resumed");
+    exit done;
+}
+async control fail() faults {
+    yield;
+    fault "child failed";
+}
+async control startup() exits done faults {
+    mutable string text = "original";
+    string peer = "sibling started";
+    auto result = spawn lend(edit_view { borrow mutable text });
+    auto worker = spawn sibling(read_view { borrow peer });
+    auto failure = spawn fail();
+    yield;
+    yield;
+    delta await result {
+        ready { auto value } => ready
+    }
+    [ready]:
+        emit("stopped parent resumed");
+        emit(value.text);
+        await worker;
+        await failure;
+}
+async control outer() exits done faults {
+    await startup();
+    exit done;
+}
+control main() exits done {
+    fault boundary {
+        run outer();
+    } contingency [] {
+        emit("owner contingency");
+        terminate process 23;
+    }
+    exit done;
+}

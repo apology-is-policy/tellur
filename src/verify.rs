@@ -926,15 +926,13 @@ impl Verifier<'_> {
                             }
                             if matches!(operation, Operation::Spawn(_))
                                 && (r.parameters.iter().any(|p| {
-                                    !self.program.manifest().supports_spawn_capture(&p.ty)
-                                }) || r
-                                    .exits
-                                    .iter()
-                                    .flat_map(|o| &o.fields)
-                                    .any(|f| !self.program.manifest().supports_spawn_result(&f.ty)))
+                                    !self.program.manifest().supports_spawn_payload(&p.ty)
+                                }) || r.exits.iter().flat_map(|o| &o.fields).any(|f| {
+                                    !self.program.manifest().supports_spawn_payload(&f.ty)
+                                }))
                             {
                                 return Err(error(
-                                    "spawn capture/result is outside the direct-reference and flat-record capture profile",
+                                    "spawn capture/result is outside the direct-reference and flat-record payload profile",
                                 ));
                             }
                             if matches!(operation, Operation::AwaitTask(_) | Operation::Join(_)) {

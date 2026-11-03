@@ -4579,3 +4579,15 @@ borrowed-handle wrappers remain rejected. Original/expanded O0/O2 native compari
 zero/nonzero quota partitions, all fuel cuts and the expanded reference context census
 cover normal results, awaited-owner faults and resource/borrower retirement. Only the
 owning contingency runs after stopped child settlement.
+
+## Flat record spawned results (0.174)
+
+Result records preserve selected contained origins and field-sensitive loan release.
+Tests cover queue/run/unjoined/adopted phases, generic outcome alternatives, shared
+copies, exclusive moves, shared outer authority, detached guards and forbidden child
+storage escape. Unsaved imported origin and nested-shape edits refresh caller diagnostics
+and repair restores hover. Nested/borrowed/tagged result carriers remain rejected.
+Original/expanded O0/O2 models exercise normal execution, guards, faults before/after
+join, awaited owners and real resources returned beside borrowed fields. Quota partitions,
+every fuel cutoff and the 26-variant reference census verify settlement before the
+owning contingency. Fresh editor checks include result-loan conflict repair and native run.

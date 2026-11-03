@@ -169,21 +169,21 @@ impl Checker<'_> {
                     "spawn requires fault dispositions for every owner retained across a handoff in its producer or callees; complete such owners before awaiting or yielding"));
             }
             // Flat records preserve their leaf loans and guards until join;
-            // selected direct results retain their declared captured origins.
+            // selected result leaves retain their declared captured origins.
             if sig
                 .parameters
                 .iter()
-                .any(|p| !self.manifest.supports_spawn_capture(&p.ty))
+                .any(|p| !self.manifest.supports_spawn_payload(&p.ty))
                 || sig
                     .outcomes
                     .iter()
                     .flat_map(|o| &o.fields)
-                    .any(|p| !self.manifest.supports_spawn_result(&p.ty))
+                    .any(|p| !self.manifest.supports_spawn_payload(&p.ty))
             {
                 return Err(self.error(
                     "E_ASYNC",
                     span,
-                    "spawn accepts reference-free values, direct borrows of reference-free storage, and flat record captures with direct borrowed fields; nested capture and result carriers remain gated",
+                    "spawn accepts reference-free values, direct borrows of reference-free storage, and flat record captures/results with direct borrowed fields; nested or borrowed carriers remain gated",
                 ));
             }
             if sig.faults {

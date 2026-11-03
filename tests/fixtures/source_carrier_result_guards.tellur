@@ -1,0 +1,78 @@
+struct exclusive_view['text] {
+    ref mutable string text <- 'text;
+}
+
+struct shared_view['text] {
+    ref string text <- 'text;
+}
+
+async control lend(exclusive_view input)
+    exits ready { exclusive_view[input['text]] value }
+{
+    exit ready { input };
+}
+
+async control inspect(shared_view input) exits ready { shared_view[input['text]] value } {
+    exit ready { input };
+}
+
+control detach(ref mutable exclusive_view input) exits ready... {
+    exit ready { borrow mutable deref input.text };
+}
+
+async control exclusive() exits done {
+    mutable string owner = "before";
+    mutable exclusive_view saved = exclusive_view { borrow mutable owner };
+    ref mutable exclusive_view carrier = borrow mutable saved;
+    delta detach(carrier) {
+        ready { auto detached } => borrowed
+    }
+
+    [borrowed]:
+        auto pending = spawn lend(exclusive_view { borrow mutable deref detached });
+        yield;
+        yield;
+        auto moved = move pending;
+        delta await moved {
+            ready { auto value } => ready
+        }
+
+    [ready]:
+        deref value.text = "after";
+        emit(value.text);
+        deref detached = "available after result";
+        emit(detached);
+        drop(saved);
+        owner = "free";
+        exit done;
+}
+
+async control shared() exits done {
+    mutable string owner = "shared";
+    shared_view saved = shared_view { borrow owner };
+    ref shared_view carrier = borrow saved;
+    ref string detached = carrier.text;
+    drop(saved);
+    auto pending = spawn inspect(shared_view { detached });
+    yield;
+    yield;
+    auto moved = move pending;
+    delta await moved {
+        ready { auto value } => ready
+    }
+
+    [ready]:
+        emit(value.text);
+        owner = "free";
+        exit done;
+}
+
+async control startup() exits done {
+    await exclusive();
+    await shared();
+    exit done;
+}
+
+control main() exits done {
+    forward run startup();
+}

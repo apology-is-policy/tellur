@@ -166,6 +166,22 @@ exports.run = async function (root) {
   assert.equal(carrierRun.code, 0, carrierRun.stderr);
   assert.deepEqual(JSON.parse(carrierRun.stdout).events.filter(e => e.kind === 'emit').map(e => e.message),
     ['queued', 'other capture', 'editing', 'released at join', 'selected', 'edited in child', 'released after edit']);
+  const flatResultSource = await fs.readFile(path.join(__dirname, '../../../playground/carrier_spawn_results.tellur'), 'utf8');
+  await replace(flatResultSource);
+  await waitFor(async () => diagnostics().length === 0 && (await hover('spawn relay')).includes('selected result leaf loans'), 'flat result admission');
+  const flatResultConflict = flatResultSource.replace('emit(result.right);', 'right = "too soon";emit(result.right);');
+  assert.notEqual(flatResultConflict, flatResultSource);
+  await replace(flatResultConflict);
+  await waitFor(() => diagnostics().some(d => code(d) === 'E_LOAN'), 'result carrier retains its selected leaf loan');
+  await replace(flatResultSource);
+  await waitFor(async () => diagnostics().length === 0 && (await hover('auto edited')).includes('edit_view'), 'flat result repair');
+  await document.save();
+  const flatResultRun = await vscode.commands.executeCommand('tellur.buildAndRun', {
+    arguments:['--json'], output:path.join(root, 'native output', 'carrier-spawn-results')
+  });
+  assert.equal(flatResultRun.code, 0, flatResultRun.stderr);
+  assert.deepEqual(JSON.parse(flatResultRun.stdout).events.filter(e => e.kind === 'emit').map(e => e.message),
+    ['queued', 'left', 'right', 'owned result', 'edited in child', 'released after result']);
   await fs.writeFile(path.join(fixture, 'passed.txt'), 'cold and started tasks, synchronous helpers, diagnostics, unsaved repair and native execution passed\n');
   console.log('TELLUR_CARRIER_TASKS_EDITOR_TESTS_PASSED: pending type hover, diagnostic repair and native run');
 };

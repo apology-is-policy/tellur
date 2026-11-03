@@ -1504,3 +1504,8 @@ Release 0.173 supports flat record spawn captures with direct reference fields. 
 explains retained leaf loans; unsaved capture conflicts report `E_LOAN`, and repair
 restores result hover and native build/run. Try `playground/carrier_spawn.tellur`.
 Nested/borrowed capture carriers and reference-bearing result carriers remain gated.
+
+Release 0.174 supports flat record spawn results with declared contained origins.
+Hover describes selected result leaf loans, and unsaved origin/shape edits refresh
+caller diagnostics. Try `playground/carrier_spawn_results.tellur`; conflicting access
+before a returned field's final use reports `E_LOAN`. Nested/borrowed carriers stay gated.

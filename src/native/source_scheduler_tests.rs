@@ -1,6 +1,41 @@
 //! Differential source execution using the exact production emitter and scheduler.
 use super::*;
 #[test]
+fn compiled_source_flat_result_values() {
+    compare(
+        "flat_result_values",
+        include_str!("../../playground/carrier_spawn_results.tellur"),
+    );
+}
+#[test]
+fn compiled_source_flat_result_guards() {
+    compare(
+        "flat_result_guards",
+        include_str!("../../tests/fixtures/source_carrier_result_guards.tellur"),
+    );
+}
+#[test]
+fn compiled_source_flat_result_fault() {
+    compare(
+        "flat_result_fault",
+        include_str!("../../tests/fixtures/source_carrier_result_fault.tellur"),
+    );
+}
+#[test]
+fn compiled_source_flat_result_joined_fault() {
+    let source = include_str!("../../tests/fixtures/source_carrier_result_fault.tellur")
+        .replace(
+            "    yield;\n    yield;\n    delta await result",
+            "    delta await result",
+        )
+        .replace("emit(\"stopped parent resumed\");", "yield;yield;");
+    compare("flat_result_joined_fault", &source);
+}
+#[test]
+fn compiled_source_flat_result_resources() {
+    source_resources(SourceResources::CarrierResult);
+}
+#[test]
 fn compiled_source_flat_carrier_captures() {
     compare(
         "carrier_captures",
@@ -354,6 +389,7 @@ enum SourceResources {
     InlineHelper,
     BorrowedCapture,
     CarrierCapture,
+    CarrierResult,
     BorrowedResult,
 }
 fn source_resources(mode: SourceResources) {
@@ -364,6 +400,7 @@ fn source_resources(mode: SourceResources) {
             | SourceResources::InlineHelper
             | SourceResources::BorrowedCapture
             | SourceResources::CarrierCapture
+            | SourceResources::CarrierResult
             | SourceResources::BorrowedResult
     );
     let inline_helper = matches!(mode, SourceResources::InlineHelper);
@@ -508,6 +545,18 @@ async control helper_work(ref counter local,string path) exits done {{
             .replace("spawn produce(first)", "spawn produce(first,parent)")
             .replace("ready {counter value}=>ready", "ready {counter value,auto retained}=>ready")
             .replace("close(value);await worker;await failure;exit done;", "close(value);await worker;await failure;inspect(retained);exit done;")
+    } else {
+        source
+    };
+    let source = if matches!(mode, SourceResources::CarrierResult) {
+        let source=source.replace("produce(counter value) exits ready {counter result} {exit ready {value};}",
+            "produce(counter value,ref counter parent) exits ready {produced[parent] result} {exit ready {produced {value,parent}};}")
+            .replace("spawn produce(first)", "spawn produce(first,parent)")
+            .replace("ready {counter value}=>ready", "ready {auto value}=>ready")
+            .replace("close(value);await worker;await failure;exit done;", "close(value.owned);await worker;await failure;inspect(value.retained);exit done;");
+        format!(
+            "struct produced['parent] {{counter owned;ref counter retained <- 'parent;}}\n{source}"
+        )
     } else {
         source
     };
