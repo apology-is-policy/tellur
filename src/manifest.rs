@@ -958,8 +958,8 @@ impl Manifest {
         let inner = reference_inner(name).map_or(name, |(_, inner)| inner);
         !self.contains_references(inner)
     }
-    /// Owned records, options and closed variants may nest. Reference leaves
-    /// still point to reference-free storage; outcomes/collections stay separate.
+    /// Owned records, options, variants and named outcomes may nest. Reference
+    /// leaves still require reference-free storage; anonymous outcomes stay local.
     pub(crate) fn supports_spawn_payload(&self, name: &str) -> bool {
         fn visit(m: &Manifest, name: &str, active: &mut BTreeSet<String>) -> bool {
             if m.supports_spawn_leaf(name) {
@@ -975,7 +975,10 @@ impl Manifest {
                     Some(TypeDef::Record { fields, .. }) => {
                         fields.iter().all(|field| visit(m, &field.ty, active))
                     }
-                    Some(TypeDef::Variant { constructors, .. }) => constructors
+                    Some(
+                        TypeDef::Variant { constructors, .. }
+                        | TypeDef::Outcome { constructors, .. },
+                    ) if outcome_inner(name).is_none() => constructors
                         .iter()
                         .all(|tag| tag.fields.iter().all(|field| visit(m, &field.ty, active))),
                     _ => false,

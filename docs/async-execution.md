@@ -3262,3 +3262,30 @@ Reference-bearing named/completed outcome payloads are the next audit. Their man
 handling obligations must remain distinct from optional/variant storage. Borrowed
 carriers, collections, borrowed-handle wrappers, inline fault-boundary crossing, async
 adapters and cancellation remain separate work.
+
+## Named outcome source payloads (E1e.12)
+
+Compiler 0.177 admits named outcome payloads with complete origin schemas through the
+shared capture/result predicate. Anonymous reference-bearing `outcome<producer>`
+contracts keep their existing cold-call restriction and are not admitted by this
+predicate. References still require reference-free pointees. Borrowed carriers and
+reference-bearing collections remain separate cases.
+
+The ordinary outcome obligation survives argument transfer, task moves, completion,
+join and nesting in records/options/variants. Shared contents never make an outcome
+Copy or droppable, and empty outcomes remain mandatory to handle. Join adopts selected
+contained origin paths and guarded ancestry before consuming the handle; unpacking an
+outcome only discharges handling, not the completion duty of any resource payload.
+Fault settlement continues to retire all borrower obligations before supplier storage
+and the owning contingency, suppressing stopped sibling handlers.
+
+Tests cover selected/empty named outcomes, generic forwarding, nested obligations,
+nominal identity, forbidden copying/discarding/reuse, exclusive guards and unsaved
+imported origin changes. Original/expanded O0/O2 native fuel/quota models and the
+38-variant reference census cover completed/unjoined and joined results plus real
+resources in named outcome captures/results. No production runtime machinery changes.
+
+Borrowed carriers are next: retain the entire holder's authority and contained leaf
+origins across spawn, join and stopped retirement without promoting incomplete or
+unknown proof metadata. Reference-bearing collections, borrowed-handle wrappers,
+inline boundary crossing, async adapters and cancellation remain separate work.

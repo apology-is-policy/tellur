@@ -4615,3 +4615,14 @@ stay rejected. Original/expanded native O0/O2 quota/fuel comparisons and the 34-
 reference census cover tagged values, guards, faults before/after join and real resources
 in variant captures/option results. Fresh editor checks exercise tag-specific loan repair
 and native execution. Existing fault dispositions and handling obligations are unchanged.
+
+## Named outcome spawned payloads (0.177)
+
+Named outcomes retain mandatory handling across owned capture and result delivery,
+including empty/shared alternatives and nested records/options. Nominal identity,
+selected origins, generic forwarding and imported unsaved origin changes stay checked;
+discard, clone, duplicate capture and normal unhandled exit remain rejected. Anonymous
+reference-bearing contracts retain their earlier cold-call restriction. Original/expanded
+native O0/O2 fuel/quota models and the 38-variant reference census cover guards, faults
+before/after join and real resources inside named outcome captures/results. Fresh editor
+checks cover nested handling diagnostics, repair and native execution.

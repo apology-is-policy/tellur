@@ -1,0 +1,122 @@
+outcome selection<t>['left, 'right] {
+    left { ref t text <- 'left },
+    right { ref t text <- 'right },
+    empty
+}
+struct request<t>['left, 'right] {
+    selection<t>['left, 'right] selected;
+}
+async control relay<t>(request<t> input)
+    exits ready { request<t>[input['left], input['right]] value }
+{
+    yield;
+    exit ready { input };
+}
+outcome update['text] {
+    changed { ref mutable string text <- 'text },
+    absent
+}
+async control edit(update input)
+    exits ready { update[input['text]] value }
+{
+    yield;
+    exit ready { input };
+}
+control prepare<t>(ref t a, ref t b, u32 which)
+    exits ready { request<t>[a, b] value }
+{
+    delta (which == 0) {
+        true => first,
+        false => other
+    }
+    [first]: exit ready { request<t> { selection<t>.left { a } } };
+    [other]: delta (which == 1) {
+        true => second,
+        false => neither
+    }
+    [second]: exit ready { request<t> { selection<t>.right { b } } };
+    [neither]: exit ready { request<t> { selection<t>.empty {} } };
+}
+async control choose(u32 which) exits done {
+    mutable string left = "left";
+    mutable string right = "right";
+    delta prepare<string>(borrow left, borrow right, which) {
+        ready { auto input } => prepared
+    }
+    [prepared]:
+        auto pending = spawn relay<string>(input);
+        yield;
+        yield;
+        auto moved = move pending;
+        auto result = capture await moved;
+        delta result {
+            ready { auto value } => ready
+        }
+    [ready]:
+        auto selected = move value.selected;
+        delta selected {
+            left { auto a } => left,
+            right { auto b } => right,
+            empty => empty
+        }
+    [left]: right = "free";
+        emit(a);
+        left = "free";
+        exit done;
+    [right]: left = "free";
+        emit(b);
+        right = "free";
+        exit done;
+    [empty]: left = "free";
+        right = "free";
+        emit("empty");
+        exit done;
+}
+control maybe(ref mutable string owner, bool present)
+    exits ready { update[owner] value }
+{
+    delta present {
+        true => yes,
+        false => no
+    }
+    [yes]: exit ready { update.changed { owner } };
+    [no]: exit ready { update.absent {} };
+}
+async control optional(bool present) exits done {
+    mutable string owner = "before";
+    delta maybe(borrow mutable owner, present) {
+        ready { auto input } => prepared
+    }
+    [prepared]:
+        auto child = spawn edit(move input);
+        yield;
+        yield;
+        delta await child {
+            ready { auto result } => ready
+        }
+    [ready]: delta result {
+        changed { auto text } => present,
+        absent => absent
+    }
+    [present]: deref text = "edited";
+        emit(text);
+        owner = "free";
+        exit done;
+    [absent]: owner = "free";
+        emit("none");
+        exit done;
+}
+async control startup() exits done {
+    await choose(0);
+    await choose(1);
+    await choose(2);
+    await optional(true);
+    await optional(false);
+    exit done;
+}
+outcome program_result {
+    @exit 0 done
+}
+control main() exits program_result {
+    forward run startup();
+}

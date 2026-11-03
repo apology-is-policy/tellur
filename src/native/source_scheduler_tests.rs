@@ -1,6 +1,41 @@
 //! Differential source execution using the exact production emitter and scheduler.
 use super::*;
 #[test]
+fn compiled_source_outcome_payloads_values() {
+    compare(
+        "outcome_values",
+        include_str!("../../playground/outcome_spawn.tellur"),
+    );
+}
+#[test]
+fn compiled_source_outcome_payloads_guards() {
+    compare(
+        "outcome_guards",
+        include_str!("../../tests/fixtures/source_outcome_guards.tellur"),
+    );
+}
+#[test]
+fn compiled_source_outcome_payloads_fault() {
+    compare(
+        "outcome_fault",
+        include_str!("../../tests/fixtures/source_outcome_fault.tellur"),
+    );
+}
+#[test]
+fn compiled_source_outcome_payloads_joined_fault() {
+    let source = include_str!("../../tests/fixtures/source_outcome_fault.tellur")
+        .replace(
+            "    yield;\n    yield;\n    delta await result",
+            "    delta await result",
+        )
+        .replace("emit(\"stopped parent resumed\");", "yield;yield;");
+    compare("outcome_joined_fault", &source);
+}
+#[test]
+fn compiled_source_outcome_payloads_resources() {
+    source_resources(SourceResources::OutcomePayloads);
+}
+#[test]
 fn compiled_source_tagged_payloads_values() {
     compare(
         "tagged_values",
@@ -462,6 +497,7 @@ enum SourceResources {
     CarrierResult,
     NestedRecords,
     TaggedPayloads,
+    OutcomePayloads,
     BorrowedResult,
 }
 fn source_resources(mode: SourceResources) {
@@ -475,6 +511,7 @@ fn source_resources(mode: SourceResources) {
             | SourceResources::CarrierResult
             | SourceResources::NestedRecords
             | SourceResources::TaggedPayloads
+            | SourceResources::OutcomePayloads
             | SourceResources::BorrowedResult
     );
     let inline_helper = matches!(mode, SourceResources::InlineHelper);
@@ -484,6 +521,7 @@ fn source_resources(mode: SourceResources) {
             | SourceResources::CarrierCapture
             | SourceResources::NestedRecords
             | SourceResources::TaggedPayloads
+            | SourceResources::OutcomePayloads
     );
     let root = std::env::temp_dir().join(format!(
         "tellur-source-resource-{mode:?}-{}",
@@ -605,6 +643,7 @@ async control helper_work(ref counter local,string path) exits done {{
         SourceResources::CarrierCapture
             | SourceResources::NestedRecords
             | SourceResources::TaggedPayloads
+            | SourceResources::OutcomePayloads
     ) {
         let (before, after) = source.split_once("async control fail").unwrap();
         let before = before
@@ -635,6 +674,7 @@ async control helper_work(ref counter local,string path) exits done {{
         SourceResources::CarrierResult
             | SourceResources::NestedRecords
             | SourceResources::TaggedPayloads
+            | SourceResources::OutcomePayloads
     ) {
         let source=source.replace("produce(counter value) exits ready {counter result} {exit ready {value};}",
             "produce(counter value,ref counter parent) exits ready {produced[parent] result} {exit ready {produced {value,parent}};}")
@@ -661,7 +701,10 @@ async control helper_work(ref counter local,string path) exits done {{
     } else {
         source
     };
-    let source = if matches!(mode, SourceResources::TaggedPayloads) {
+    let source = if matches!(
+        mode,
+        SourceResources::TaggedPayloads | SourceResources::OutcomePayloads
+    ) {
         source.replace("struct worker_input['parent] {ref counter parent <- 'parent;counter value;}",
             "variant worker_input['parent] {held {ref counter parent <- 'parent,counter value}}")
             .replace("inspect(input.parent);counter value=move input.value;", "delta input {held {auto retained,counter value}=>held} [held]:inspect(retained);")
@@ -670,6 +713,25 @@ async control helper_work(ref counter local,string path) exits done {{
             .replace("exit ready {produced {value,parent}}", "exit ready {some {produced {value,parent}}}")
             .replace("ready {auto value}=>ready", "ready {auto tagged}=>tagged")
             .replace("[ready]:close(value.owned)", "[tagged]:delta tagged {some {auto value}=>ready,none=>empty} [empty]:await worker;await failure;exit done;[ready]:close(value.owned)")
+    } else {
+        source
+    };
+    let source = if matches!(mode, SourceResources::OutcomePayloads) {
+        let source = source
+            .replace(
+                "variant worker_input['parent]",
+                "outcome worker_input['parent]",
+            )
+            .replace("option<produced>[parent] result", "delivery[parent] result")
+            .replace(
+                "some {produced {value,parent}}",
+                "delivery.ready {produced {value,parent}}",
+            )
+            .replace(
+                "some {auto value}=>ready,none=>empty",
+                "ready {auto value}=>ready,empty=>empty",
+            );
+        format!("outcome delivery['parent] {{ready {{produced['parent] value}},empty}}\n{source}")
     } else {
         source
     };

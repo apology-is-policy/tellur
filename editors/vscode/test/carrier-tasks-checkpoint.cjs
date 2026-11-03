@@ -152,7 +152,7 @@ exports.run = async function (root) {
     ['queued', 'released at join', 'edited through result', 'released after result', 'right']);
   const carrierSource = await fs.readFile(path.join(__dirname, '../../../playground/carrier_spawn.tellur'), 'utf8');
   await replace(carrierSource);
-  await waitFor(async () => diagnostics().length === 0 && (await hover('spawn first')).includes('Owned record, option and variant captures/results'), 'flat carrier admission');
+  await waitFor(async () => diagnostics().length === 0 && (await hover('spawn first')).includes('captures/results may nest'), 'flat carrier admission');
   const carrierConflict = carrierSource.replace('auto moved = move selected;', 'right = "too soon";auto moved = move selected;');
   assert.notEqual(carrierConflict, carrierSource);
   await replace(carrierConflict);
@@ -200,7 +200,7 @@ exports.run = async function (root) {
     ['shared', 'queued', 'worker', 'shared', 'worker', 'left edited', 'right edited']);
   const tagged = await fs.readFile(path.join(__dirname, '../../../playground/tagged_spawn.tellur'), 'utf8');
   await replace(tagged);
-  await waitFor(async () => diagnostics().length === 0 && (await hover('spawn edit')).includes('option and variant'), 'tagged payload admission');
+  await waitFor(async () => diagnostics().length === 0 && (await hover('spawn edit')).includes('Named outcomes retain mandatory handling'), 'tagged payload admission');
   await replace(tagged.replace('emit(a);', 'left="too soon";emit(a);'));
   await waitFor(() => diagnostics().some(d => code(d) === 'E_LOAN'), 'selected variant retains its own origin');
   await replace(tagged);
@@ -211,6 +211,20 @@ exports.run = async function (root) {
   });
   assert.equal(taggedRun.code, 0, taggedRun.stderr);
   assert.deepEqual(JSON.parse(taggedRun.stdout).events.filter(e => e.kind === 'emit').map(e => e.message),
+    ['left', 'right', 'empty', 'edited', 'none']);
+  const outcomeSource = await fs.readFile(path.join(__dirname, '../../../playground/outcome_spawn.tellur'), 'utf8');
+  await replace(outcomeSource);
+  await waitFor(async () => diagnostics().length === 0 && (await hover('spawn edit')).includes('Named outcomes retain mandatory handling'), 'named outcome admission');
+  await replace(outcomeSource.replace('auto selected = move value.selected;', 'drop(value.selected);auto selected = move value.selected;'));
+  await waitFor(() => diagnostics().some(d => code(d) === 'E_RESOURCE'), 'nested outcome cannot be discarded');
+  await replace(outcomeSource);
+  await waitFor(async () => diagnostics().length === 0 && (await hover('auto selected')).includes('selection'), 'named outcome repair');
+  await document.save();
+  const outcomeRun = await vscode.commands.executeCommand('tellur.buildAndRun', {
+    arguments:['--json'], output:path.join(root, 'native output', 'outcome-spawn')
+  });
+  assert.equal(outcomeRun.code, 0, outcomeRun.stderr);
+  assert.deepEqual(JSON.parse(outcomeRun.stdout).events.filter(e => e.kind === 'emit').map(e => e.message),
     ['left', 'right', 'empty', 'edited', 'none']);
   await fs.writeFile(path.join(fixture, 'passed.txt'), 'cold and started tasks, synchronous helpers, diagnostics, unsaved repair and native execution passed\n');
   console.log('TELLUR_CARRIER_TASKS_EDITOR_TESTS_PASSED: pending type hover, diagnostic repair and native run');

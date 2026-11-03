@@ -1,8 +1,8 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.176.0 -->
+<!-- tellur-reference-version: 0.177.0 -->
 
-This manual describes **compiler 0.176.0**, including the current ownership model,
+This manual describes **compiler 0.177.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -15,9 +15,9 @@ as a bug to investigate, not a promise that either must remain unchanged. The
 updates at every implementation checkpoint.
 
 
-Compiler 0.176 also supports [owned spawned children](reference/async-execution.md#owned-spawned-children)
+Compiler 0.177 also supports [owned spawned children](reference/async-execution.md#owned-spawned-children)
 with explicit `await`/`yield` handoffs, required normal-path joins and owning-boundary
-fault settlement. The current profile admits reference-free values, direct borrows and nested owned record/option/variant
+fault settlement. The current profile admits reference-free values, direct borrows and nested owned record/option/variant/named-outcome
 captures/results with reference leaves to reference-free storage. Selected result origins remain
 borrowed through field-sensitive final use. Children must be joined before synchronous calls that may enter an
 inline fault boundary. Cold/direct
@@ -2687,9 +2687,9 @@ callers cannot use specialization to reach a private control or field.
 
 Borrowed parameters and immediate borrowed exits retain the existing lifetime rules:
 `control view<item>(ref item value) exits found { ref item value } { exit found { value }; }`.
-Grouped reference-bearing records and source variants also cross generic control
-boundaries. Ungrouped sums, builtin options and whole completed outcomes retain
-their local-storage restriction. Reference types as generic
+Grouped reference-bearing records, variants and named outcomes, plus options with
+complete inner schemas, also cross generic control boundaries. Ungrouped sums and
+anonymous reference-bearing completed outcomes retain their local-storage restriction. Reference types as generic
 arguments, higher-kinded parameters,
 recursive control calls and type-argument inference remain unsupported. Type parameters
 represent owned types; write `ref item` or `ref mutable item` at the borrowing boundary.
@@ -2824,7 +2824,7 @@ General expression-type hover remains unsupported.
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and borrowed-carrier spawn remain planned; they are not executable features of 0.176.0.
+and borrowed-carrier spawn remain planned; they are not executable features of 0.177.0.
 ## Contingency and supervised boundaries
 
 The [contingency reference](reference/contingency.md) specifies `@contingent`,

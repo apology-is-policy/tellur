@@ -174,9 +174,8 @@ control main() exits done {forward run startup();}"#;
     same(one);
 }
 #[test]
-fn named_outcomes_borrowed_carriers_and_reference_pointees_stay_gated() {
+fn borrowed_carriers_and_reference_pointees_stay_gated() {
     for source in [
-        "outcome result['a] {ready {ref string text <- 'a}} async control work(result input) exits done {delta input {ready {auto text}=>ready} [ready]:emit(text);exit done;} async control start(result input) exits done {auto child=spawn work(input);await child;exit done;}",
         "struct view['a] {ref string text <- 'a;}async control work(option<ref view> input) exits done {exit done;}async control start(option<ref view> input) exits done {auto child=spawn work(input);await child;exit done;}",
         "variant carrier['storage,'a] {held {ref view['a] value <- 'storage}}struct view['a] {ref string text <- 'a;}async control work(carrier input) exits done {exit done;}async control start(carrier input) exits done {auto child=spawn work(input);await child;exit done;}",
     ] {

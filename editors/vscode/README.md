@@ -1520,3 +1520,9 @@ nested records. Hover describes the reference-leaf boundary; unsaved imported ta
 changes and selected payload conflicts refresh diagnostics. Try `playground/tagged_spawn.tellur`.
 The editor checks repair and native execution for both present and empty alternatives.
 Reference-bearing outcome payloads, borrowed carriers and collections remain gated.
+
+Release 0.177 supports named outcome spawn captures/results with declared origins.
+Hover explains mandatory handling; unsaved imported origin edits refresh permission
+checks. Try `playground/outcome_spawn.tellur`: discarding the nested outcome reports
+`E_RESOURCE`, repair restores hover, and native execution covers active/empty alternatives.
+Anonymous reference-bearing contracts and borrowed carriers retain their existing limits.
