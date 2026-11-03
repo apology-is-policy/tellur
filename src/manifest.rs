@@ -958,9 +958,9 @@ impl Manifest {
         let inner = reference_inner(name).map_or(name, |(_, inner)| inner);
         !self.contains_references(inner)
     }
-    /// Borrowed captures retain record/option/variant storage and its direct
+    /// Borrowed captures retain record/option/variant/named-outcome storage and its direct
     /// reference leaves. Keep this separate from whole borrowed-carrier results
-    /// and borrowed named outcomes, which require distinct evidence.
+    /// and anonymous outcome contracts, which require distinct evidence.
     pub(crate) fn supports_spawn_capture(&self, name: &str) -> bool {
         if self.supports_spawn_payload(name) {
             return true;
@@ -979,7 +979,10 @@ impl Manifest {
                     Some(TypeDef::Record { fields, .. }) => {
                         fields.iter().all(|f| contents(m, &f.ty, active))
                     }
-                    Some(TypeDef::Variant { constructors, .. }) => constructors
+                    Some(
+                        TypeDef::Variant { constructors, .. }
+                        | TypeDef::Outcome { constructors, .. },
+                    ) if outcome_inner(name).is_none() => constructors
                         .iter()
                         .all(|tag| tag.fields.iter().all(|f| contents(m, &f.ty, active))),
                     _ => false,

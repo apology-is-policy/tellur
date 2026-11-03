@@ -258,6 +258,22 @@ exports.run = async function (root) {
   assert.equal(borrowedTagRun.code, 0, borrowedTagRun.stderr);
   assert.deepEqual(JSON.parse(borrowedTagRun.stdout).events.filter(e => e.kind === 'emit').map(e => e.message),
     ['left', 'right', 'empty', 'edited', 'none']);
+  const borrowedOutcomes = await fs.readFile(path.join(__dirname, '../../../playground/borrowed_outcome_spawn.tellur'), 'utf8');
+  await replace(borrowedOutcomes);
+  await waitFor(async () => diagnostics().length === 0 && (await hover('spawn first')).includes('Borrowed named outcomes retain the owning caller handling obligation'), 'borrowed outcome admission');
+  await replace(borrowedOutcomes.replaceAll('consume_envelope<string>(saved);', ''));
+  await waitFor(() => diagnostics().some(d => code(d) === 'E_OUTCOME'), 'borrowed reader leaves caller handling obligation');
+  await replace(borrowedOutcomes.replace('auto moved = move pending;', 'consume_envelope<string>(saved);auto moved = move pending;'));
+  await waitFor(() => diagnostics().some(d => code(d) === 'E_LOAN'), 'borrowed outcome holder retained until join');
+  await replace(borrowedOutcomes);
+  await waitFor(async () => diagnostics().length === 0 && (await hover('auto a')).includes('ref string'), 'borrowed outcome repair');
+  await document.save();
+  const borrowedOutcomeRun = await vscode.commands.executeCommand('tellur.buildAndRun', {
+    arguments:['--json'], output:path.join(root, 'native output', 'borrowed-outcome-spawn')
+  });
+  assert.equal(borrowedOutcomeRun.code, 0, borrowedOutcomeRun.stderr);
+  assert.deepEqual(JSON.parse(borrowedOutcomeRun.stdout).events.filter(e => e.kind === 'emit').map(e => e.message),
+    ['left', 'right', 'empty', 'edited', 'none']);
   await fs.writeFile(path.join(fixture, 'passed.txt'), 'cold and started tasks, synchronous helpers, diagnostics, unsaved repair and native execution passed\n');
   console.log('TELLUR_CARRIER_TASKS_EDITOR_TESTS_PASSED: pending type hover, diagnostic repair and native run');
 };

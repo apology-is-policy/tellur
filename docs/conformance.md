@@ -4650,3 +4650,15 @@ unsaved origin invalidation, repair and native execution. Five
 `compiled_source_borrowed_tags_*` models compare original/expanded O0/O2 execution at
 every fuel cutoff and quota partition, including real resources in borrowed variant
 storage and joined/unjoined faults. The source census includes these fixtures.
+
+## Borrowed named outcome spawn captures (0.180)
+
+`source_borrowed_outcomes` checks shared/exclusive borrowed outcome storage, nested and
+empty alternatives, unchanged caller handling obligations, selected origins, detached
+guards, moves, siblings, nominal identity and generic forwarding. Consuming an outcome
+before join, leaving it unhandled, dropping/cloning it or hiding it in a wrapper remains
+rejected. Imported unsaved origin changes invalidate callers and repair restores hover.
+Five `compiled_source_borrowed_outcomes_*` models compare original/expanded O0/O2 programs
+at every fuel cutoff and quota partition, including real resources in borrowed outcome
+storage and joined/unjoined faults. The source census includes these fixtures; fresh
+editor checks cover caller handling, holder conflicts, repair and native execution.

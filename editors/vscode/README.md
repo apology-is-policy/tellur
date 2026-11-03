@@ -1538,3 +1538,9 @@ direct reference leaves. Selected and empty alternatives retain holder and suppl
 permissions; exclusive detached results keep holder guards. Hover describes the
 profile. Unsaved holder/result conflicts invalidate inferred hovers and repair restores
 them. Borrowed reference-bearing outcomes and whole borrowed-carrier results stay gated.
+
+Release 0.180 supports borrowed named-outcome captures, including nested outcomes.
+The owning caller must still handle the outcome after joining its reader; empty
+outcomes keep this obligation. Hover describes the rule, and unsaved missing handling
+or premature consumption invalidates inferred types until repair. Whole borrowed-carrier
+results and deeper reference pointees remain gated.

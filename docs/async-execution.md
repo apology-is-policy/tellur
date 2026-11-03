@@ -3333,3 +3333,24 @@ obligations, including nested outcomes. Deeper reference pointees, whole borrowe
 results, reference-bearing collections and borrowed-handle wrappers remain separate.
 Partial or unknown dependency evidence must stay conservative. No ownership, handoff,
 fault-boundary or contingency policy changes are made.
+
+## Borrowed named outcome captures (E1e.15)
+
+Compiler 0.180 admits borrowed named outcomes, including nested outcomes within
+record/option/variant storage, with complete declared origin schemas. The existing
+borrow path retains holder authority and contained leaves; it does not transfer or
+discharge the caller's owning handling obligation. Empty outcomes remain mandatory to
+handle. Shared/exclusive selected results retain supplier loans and detached guards.
+
+The capture predicate adds named outcome contents and retains the explicit anonymous
+contract boundary. Tests cover caller handling, empty/nested cases, clone/drop/wrapper
+rejection, nominal identity, moves, siblings, generic forwarding and unsaved origin
+changes. Native original/expanded O0/O2 models compare every fuel cutoff/quota partition,
+including resources inside borrowed outcome storage, completed results and suspended
+awaited owners. The reference census covers faults before/after join. Production
+schedulers and conservative dependency metadata policies are unchanged.
+
+Next audit: whole borrowed record results whose contained leaves point to reference-free
+storage. Retain both holder storage authority and contained origin/guard metadata through
+completion, join and fault retirement; reject escapes from child-owned storage. Whole
+borrowed tagged results and deeper reference pointees require separate evidence.

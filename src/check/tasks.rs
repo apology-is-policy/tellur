@@ -183,7 +183,7 @@ impl Checker<'_> {
                 return Err(self.error(
                     "E_ASYNC",
                     span,
-                    "spawn accepts reference-free values, direct borrows, owned record/option/variant/named-outcome payloads with direct borrowed leaves, and borrowed record/option/variant captures with nested owned contents and direct reference leaves; borrowed outcomes, whole borrowed-carrier results, anonymous outcomes and reference-bearing collections remain gated",
+                    "spawn accepts reference-free values, direct borrows, owned record/option/variant/named-outcome payloads with direct borrowed leaves, and borrowed record/option/variant/named-outcome captures with nested owned contents and direct reference leaves; whole borrowed-carrier results, anonymous outcomes and reference-bearing collections remain gated",
                 ));
             }
             if sig.faults {

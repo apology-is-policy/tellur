@@ -932,7 +932,7 @@ impl Verifier<'_> {
                                 }))
                             {
                                 return Err(error(
-                                    "spawn capture/result is outside the direct-reference, owned record/option/variant/named-outcome payload and borrowed record/option/variant capture profile",
+                                    "spawn capture/result is outside the direct-reference, owned record/option/variant/named-outcome payload and borrowed record/option/variant/named-outcome capture profile",
                                 ));
                             }
                             if matches!(operation, Operation::AwaitTask(_) | Operation::Join(_)) {

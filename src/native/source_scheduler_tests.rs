@@ -1,6 +1,41 @@
 //! Differential source execution using the exact production emitter and scheduler.
 use super::*;
 #[test]
+fn compiled_source_borrowed_outcomes_values() {
+    compare(
+        "borrowed_outcome_values",
+        include_str!("../../playground/borrowed_outcome_spawn.tellur"),
+    );
+}
+#[test]
+fn compiled_source_borrowed_outcomes_guards() {
+    compare(
+        "borrowed_outcome_guards",
+        include_str!("../../tests/fixtures/source_borrowed_outcome_guards.tellur"),
+    );
+}
+#[test]
+fn compiled_source_borrowed_outcomes_fault() {
+    compare(
+        "borrowed_outcome_fault",
+        include_str!("../../tests/fixtures/source_borrowed_outcome_fault.tellur"),
+    );
+}
+#[test]
+fn compiled_source_borrowed_outcomes_joined_fault() {
+    let source = include_str!("../../tests/fixtures/source_borrowed_outcome_fault.tellur")
+        .replace(
+            "    yield;\n    yield;\n    delta await result",
+            "    delta await result",
+        )
+        .replace("emit(\"stopped parent resumed\");", "yield;yield;");
+    compare("borrowed_outcome_joined_fault", &source);
+}
+#[test]
+fn compiled_source_borrowed_outcomes_resources() {
+    source_resources(SourceResources::BorrowedOutcomes);
+}
+#[test]
 fn compiled_source_borrowed_tags_values() {
     compare(
         "borrowed_tagged_values",
@@ -570,6 +605,7 @@ enum SourceResources {
     OutcomePayloads,
     BorrowedRecords,
     BorrowedTags,
+    BorrowedOutcomes,
     BorrowedResult,
 }
 fn source_resources(mode: SourceResources) {
@@ -586,6 +622,7 @@ fn source_resources(mode: SourceResources) {
             | SourceResources::OutcomePayloads
             | SourceResources::BorrowedRecords
             | SourceResources::BorrowedTags
+            | SourceResources::BorrowedOutcomes
             | SourceResources::BorrowedResult
     );
     let inline_helper = matches!(mode, SourceResources::InlineHelper);
@@ -821,7 +858,10 @@ async control helper_work(ref counter local,string path) exits done {{
     } else {
         source
     };
-    let source = if matches!(mode, SourceResources::BorrowedTags) {
+    let source = if matches!(
+        mode,
+        SourceResources::BorrowedTags | SourceResources::BorrowedOutcomes
+    ) {
         r#"
 variant worker_input['parent] {held {ref counter parent <- 'parent,counter value},empty}
 async control produce(counter value,ref counter parent) exits ready {counter result,ref counter retained from parent} {exit ready {value,parent};}
@@ -862,6 +902,14 @@ control main(string path,bool stop) exits done {
     [ready]:close(owner);exit done;
 }
 "#.to_owned()
+    } else {
+        source
+    };
+    let source = if matches!(mode, SourceResources::BorrowedOutcomes) {
+        source.replace(
+            "variant worker_input['parent]",
+            "outcome worker_input['parent]",
+        )
     } else {
         source
     };

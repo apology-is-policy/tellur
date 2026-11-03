@@ -192,13 +192,8 @@ fn borrowed_tagged_faults_settle_joined_and_unjoined_results_before_owning_handl
     }
 }
 #[test]
-fn borrowed_outcomes_deeper_pointees_and_whole_borrowed_results_stay_gated() {
-    for ty in [
-        "ref reply",
-        "ref option<reply>",
-        "ref wrapped",
-        "ref option<ref leaf>",
-    ] {
+fn deeper_pointees_and_whole_borrowed_tagged_results_stay_gated() {
+    for ty in ["ref option<ref leaf>"] {
         let source = format!(
             "struct leaf['a] {{ref string text <- 'a;}} outcome reply['a] {{held {{leaf['a] value}}}} struct wrapped['a] {{reply['a] value;}} async control work({ty} input) exits done {{exit done;}} async control caller({ty} input) exits done {{auto child=spawn work(input);await child;exit done;}}"
         );

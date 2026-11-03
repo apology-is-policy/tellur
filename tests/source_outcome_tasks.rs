@@ -213,14 +213,14 @@ control main() exits done {forward run start();}
     );
 }
 #[test]
-fn anonymous_contract_and_borrowed_outcome_bounds_remain_unchanged() {
+fn anonymous_contract_bounds_and_borrowed_outcome_admission_are_distinct() {
     let anonymous = "control view(ref string input) exits found {ref string text from input} {exit found {input};}async control relay(outcome<view> input) exits auto {exit input;}async control start(outcome<view> input) exits done {auto child=spawn relay(input);delta await child {found {auto value}=>found} [found]:emit(value);exit done;}";
     for source in [anonymous.to_owned(), anonymous.replace("spawn ", "defer ")] {
         assert_eq!(compile(&source, manifest()).unwrap_err().code, "E_MANIFEST");
     }
     let borrowed = "outcome result['a] {ready {ref string value <- 'a}}async control work(ref result input) exits done {exit done;}async control start(ref result input) exits done {auto child=spawn work(input);await child;exit done;}";
     compile(&borrowed.replace("spawn ", "defer "), manifest()).unwrap();
-    assert_eq!(compile(borrowed, manifest()).unwrap_err().code, "E_ASYNC");
+    compile(borrowed, manifest()).unwrap();
 }
 #[test]
 fn named_outcome_identity_and_no_implicit_copy_survive_spawn() {
