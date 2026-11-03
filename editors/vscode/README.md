@@ -1495,3 +1495,7 @@ Release 0.171 admits direct borrowed spawn captures. Hover explains capture loan
 through consuming join; unsaved conflicting parent access produces `E_LOAN`, and
 repair restores task hover and native build/run. Reference-bearing carriers and
 borrowed results remain outside this bounded profile.
+
+Release 0.172 supports direct borrowed spawn results with declared origins. Hover
+explains result loans after join; unsaved conflicting parent access is diagnosed,
+repair restores result hover, and the borrowed-result example runs natively.

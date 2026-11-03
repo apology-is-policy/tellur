@@ -396,6 +396,8 @@ mod tests {
             include_str!("../../playground/parent_await.tellur"),
             include_str!("../../playground/cooperative_helpers.tellur"),
             include_str!("../../playground/borrowed_spawn.tellur"),
+            include_str!("../../playground/borrowed_spawn_results.tellur"),
+            include_str!("../../tests/fixtures/source_borrowed_result_fault.tellur"),
             include_str!("../../tests/fixtures/source_borrowed_task_fault.tellur"),
             include_str!("../../tests/fixtures/source_inline_helper_fault.tellur"),
             include_str!("../../tests/fixtures/source_parent_await_fault.tellur"),
@@ -414,7 +416,18 @@ mod tests {
                     &format!("emit(\"inline started\");{body}"),
                 )
             }),
-        ) {
+        )
+        .chain([
+            include_str!("../../playground/guarded_task_captures.tellur")
+                .replace("defer ", "spawn ")
+                .replace(
+                    "auto moved = move pending;",
+                    "yield;yield;auto moved = move pending;",
+                ),
+        ])
+        .chain([include_str!("../../tests/fixtures/source_borrowed_result_fault.tellur")
+            .replace("control main()", "async control outer() exits done faults {await startup();exit done;} control main()")
+            .replace("run startup();", "run outer();")]) {
             let p = crate::compile(
                 &text,
                 Manifest::from_json(include_str!("../../playground/manifest.json")).unwrap(),
@@ -435,7 +448,15 @@ mod tests {
                         let mut polls = 0;
                         while !m.drive(quota) {
                             polls += 1;
-                            assert!(polls < 1000);
+                            assert!(
+                                polls < 1000,
+                                "fuel={fuel}, quota={quota}, owner={:?}, domain={:?}, task={:?}, settlements={}, suspended={}",
+                                m.context.frame.owner,
+                                m.context.domain,
+                                m.context.task,
+                                m.settlements.len(),
+                                m.shared.suspended.calls.len()
+                            );
                         }
                         m.prune_source();
                         assert!(

@@ -1,0 +1,44 @@
+// Joining adopts the selected result's origin; unrelated captures are released.
+async control lend(ref string text) exits ready { ref string value from text } {
+    yield;
+    exit ready { text };
+}
+async control lend_mut(ref mutable string text, ref string unused)
+    exits ready { ref mutable string value from text } {
+    yield;
+    exit ready { text };
+}
+async control startup() exits done {
+    mutable string left = "left";
+    mutable string right = "right";
+    mutable string unused = "captured";
+    auto first = spawn lend_mut(borrow mutable left, borrow unused);
+    auto second = spawn lend(borrow right);
+    emit("queued");
+    yield;
+    yield;
+    auto moved = move first;
+    delta await moved {
+        ready { auto value } => ready
+    }
+    [ready]:
+        unused = "released at join";
+        emit(borrow unused);
+        delta await second {
+            ready { auto other } => joined
+        }
+    [joined]:
+        deref value = "edited through result";
+        emit(value);
+        left = "released after result";
+        emit(borrow left);
+        emit(other);
+        right = "released too";
+        exit done;
+}
+outcome program_result {
+    @exit 0 done
+}
+control main() exits program_result {
+    forward run startup();
+}

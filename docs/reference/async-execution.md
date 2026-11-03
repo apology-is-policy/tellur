@@ -3,7 +3,7 @@
 [Language reference](../language-reference.md) · [Design and next steps](../async-execution.md) ·
 [Execution failures](execution-failures.md)
 
-Compiler 0.171 supports `async control`, synchronous entry with `run`, direct
+Compiler 0.172 supports `async control`, synchronous entry with `run`, direct
 `await`, cold tasks with owned and borrowed captures, and a bounded cooperative
 scheduler for `spawn` tasks with owned or direct borrowed captures. Source handoffs occur at `await` and `yield`.
 Async host I/O, cancellation and LLVM coroutine lowering remain later work.
@@ -15,7 +15,9 @@ an independent child of the current async invocation. The body does not run unti
 an explicit handoff. `yield;` places the caller behind already runnable work;
 `await child;` consumes its handle and waits for the declared normal completion.
 An already completed child is joined without running it again. Host instruction
-quotas pause the selected chain and never introduce a source handoff.
+quotas pause the selected chain and never introduce a source handoff. Emergency
+cleanup retires spawned borrowers before their backing storage, then unwinds suspended
+await callers. The owning boundary waits for complete settlement before contingency.
 
 <!-- tellur:check -->
 ```tellur
@@ -51,8 +53,9 @@ producer faults still apply at handoffs. There is no detach or implicit await at
 
 The source profile accepts direct shared/exclusive borrows of existing reference-free
 storage and owned captures with **no references**, including structs, sums and resources.
-Normal results remain reference-free. Captures containing references, borrowed carriers
-with reference fields and borrowed results remain gated. Broader reference-bearing
+Normal result fields may also be direct references to reference-free storage, with
+their declared origins. Captures and result carriers containing references, including
+borrowed carriers with reference fields, remain gated. Broader reference-bearing
 `defer` tasks keep their existing semantics. A spawned body may itself use such
 cold/direct awaits and may own further spawned children. Before a parent enters a synchronous
 control whose inline call chain may enter a fault boundary, it must join its started
@@ -155,6 +158,48 @@ Child faults and instruction-budget exhaustion settle retained borrowers before
 supplier storage. Stopped children apply resource fault dispositions without running
 their nested contingencies. The original invocation and boundary still own the child;
 borrowing does not permit handles to escape or cross an inline boundary.
+
+## Borrowed results from spawned children
+
+A child may return direct shared/exclusive references to reference-free storage
+borrowed by its inputs. Declared result origins use the ordinary `from` rules.
+The capture loan remains live while the child is queued, running or completed but
+unjoined. Consuming `await` adopts the selected result's origins and releases
+unrelated capture loans. The result's loan then lasts through its final use.
+
+<!-- tellur:check -->
+```tellur
+async control lend(ref mutable string text)
+    exits ready { ref mutable string value from text } {
+    yield;
+    exit ready { text };
+}
+async control startup() exits done {
+    mutable string text = "original";
+    auto child = spawn lend(borrow mutable text);
+    yield;
+    yield;
+    delta await child { ready { auto value } => ready }
+    [ready]:
+        deref value = "through result";
+        emit(value);
+        text = "available after result";
+        exit done;
+}
+control main() exits done { forward run startup(); }
+```
+
+Accessing `text` before `emit(value)` would conflict with the live result loan,
+even though the child has already been joined. Outcome alternatives retain only
+their declared result origins; same-producer task instances keep separate captures.
+Explicitly moving an exclusive reference into a child still consumes the original
+reference. Generic forwarding, `capture await` and inline result adapters preserve
+these relationships. A result cannot borrow a child's owned input or local storage.
+See [borrowed spawned results](../../playground/borrowed_spawn_results.tellur).
+
+Completed but unjoined results remain retirement obligations. Sibling faults settle
+them before supplier storage and the owning contingency. Result carriers containing
+references and aggregate storage of borrowed task handles remain outside this profile.
 
 ## Parent awaits beside children
 

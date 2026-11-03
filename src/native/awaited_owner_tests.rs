@@ -204,9 +204,13 @@ fn awaited_owner_fault_settles_completed_waiting_nested_and_ready_descendants_be
                     if mode == 2 {
                         vec!["owner", "supervised"]
                     } else {
-                        vec!["owner"]
+                        // Both the root and its awaited spawning invocation are
+                        // causal frames, despite sharing the same control name.
+                        vec!["owner", "owner"]
                     }
                 );
+                assert_ne!(report.activations[0].id, report.activations[1].id);
+                assert_eq!(report.activations[1].parent, Some(report.activations[0].id));
                 let mut cause = report.cause.unwrap();
                 if mode == 2 {
                     assert_eq!(cause.boundary, "owning");

@@ -1,6 +1,54 @@
 //! Differential source execution using the exact production emitter and scheduler.
 use super::*;
 #[test]
+fn compiled_source_direct_borrowed_result_guards() {
+    let source = include_str!("../../playground/guarded_task_captures.tellur")
+        .replace("defer ", "spawn ")
+        .replace(
+            "auto moved = move pending;",
+            "yield;yield;auto moved = move pending;",
+        );
+    compare("borrowed_result_guards", &source);
+}
+#[test]
+fn compiled_source_direct_borrowed_results() {
+    compare(
+        "borrowed_results",
+        include_str!("../../playground/borrowed_spawn_results.tellur"),
+    );
+}
+#[test]
+fn compiled_source_direct_borrowed_result_fault() {
+    compare(
+        "borrowed_result_fault",
+        include_str!("../../tests/fixtures/source_borrowed_result_fault.tellur"),
+    );
+}
+#[test]
+fn compiled_source_direct_borrowed_result_joined_fault() {
+    let text = include_str!("../../tests/fixtures/source_borrowed_result_fault.tellur")
+        .replace(
+            "    yield;\n    yield;\n    delta await result",
+            "    delta await result",
+        )
+        .replace("emit(\"stopped parent resumed\");", "yield;yield;");
+    compare("borrowed_result_joined_fault", &text);
+}
+#[test]
+fn compiled_source_direct_borrowed_result_awaited_owner_fault() {
+    let source = include_str!("../../tests/fixtures/source_borrowed_result_fault.tellur")
+        .replace(
+            "control main()",
+            "async control outer() exits done faults {await startup();exit done;} control main()",
+        )
+        .replace("run startup();", "run outer();");
+    compare("borrowed_result_awaited_owner_fault", &source);
+}
+#[test]
+fn compiled_source_direct_borrowed_result_resources() {
+    source_resources(SourceResources::BorrowedResult);
+}
+#[test]
 fn compiled_source_borrowed_captures() {
     compare(
         "borrowed_captures",
@@ -16,7 +64,7 @@ fn compiled_source_borrowed_capture_fault() {
 }
 #[test]
 fn compiled_source_borrowed_capture_resources() {
-    source_resources(false, true, false, true);
+    source_resources(SourceResources::BorrowedCapture);
 }
 #[test]
 fn compiled_source_cooperative_helpers() {
@@ -68,7 +116,7 @@ fn inline_helper_fault(body: &str, early: bool) {
 }
 #[test]
 fn compiled_source_inline_helper_resource_retirement() {
-    source_resources(false, true, true, false);
+    source_resources(SourceResources::InlineHelper);
 }
 #[test]
 fn compiled_source_parent_await() {
@@ -177,14 +225,22 @@ fn compare(label: &str, text: &str) {
             fs::write(&project.2, &generated).unwrap();
             program.finish_native_build(project, opt).unwrap();
             for fuel in 0..100 {
-                let expected = program.run_completion(
-                    &crate::runtime::Scenario {
-                        entry: "main".into(),
-                        arguments: vec![],
-                        calls: vec![],
-                    },
-                    fuel,
-                );
+                let scenario = crate::runtime::Scenario {
+                    entry: "main".into(),
+                    arguments: vec![],
+                    calls: vec![],
+                };
+                let mut session = program.start_execution(&scenario, fuel);
+                let mut polls = 0;
+                let expected = loop {
+                    polls += 1;
+                    assert!(polls < 1000, "{label}: fuel={fuel}, expanded={expanded}");
+                    match session.advance(99) {
+                        crate::runtime::ExecutionProgress::Paused => {}
+                        crate::runtime::ExecutionProgress::Complete(result) => break result,
+                        other => panic!("unexpected source progress: {other:?}"),
+                    }
+                };
                 for quotas in ["99", "1", "0,3,1"] {
                     let out = Command::new(&binary)
                         .args(["--json", "--fuel", &fuel.to_string()])
@@ -255,24 +311,38 @@ fn compare(label: &str, text: &str) {
 
 #[test]
 fn compiled_source_resources_retire_queued_running_and_completed_owners() {
-    source_resources(false, false, false, false);
+    source_resources(SourceResources::Normal);
 }
 #[test]
 fn compiled_source_helper_fault_retires_suspended_and_completed_owners() {
-    source_resources(true, false, false, false);
+    source_resources(SourceResources::HelperFault);
 }
 #[test]
 fn compiled_source_parent_await_retires_borrowers_before_owner_contingency() {
-    source_resources(false, true, false, false);
+    source_resources(SourceResources::ParentAwait);
 }
-fn source_resources(
-    helper_fault: bool,
-    parent_await: bool,
-    inline_helper: bool,
-    borrowed_spawn: bool,
-) {
+#[derive(Clone, Copy, Debug)]
+enum SourceResources {
+    Normal,
+    HelperFault,
+    ParentAwait,
+    InlineHelper,
+    BorrowedCapture,
+    BorrowedResult,
+}
+fn source_resources(mode: SourceResources) {
+    let helper_fault = matches!(mode, SourceResources::HelperFault);
+    let parent_await = matches!(
+        mode,
+        SourceResources::ParentAwait
+            | SourceResources::InlineHelper
+            | SourceResources::BorrowedCapture
+            | SourceResources::BorrowedResult
+    );
+    let inline_helper = matches!(mode, SourceResources::InlineHelper);
+    let borrowed_spawn = matches!(mode, SourceResources::BorrowedCapture);
     let root = std::env::temp_dir().join(format!(
-        "tellur-source-resource-{helper_fault}-{parent_await}-{inline_helper}-{borrowed_spawn}-{}",
+        "tellur-source-resource-{mode:?}-{}",
         std::process::id()
     ));
     fs::create_dir_all(&root).unwrap();
@@ -383,6 +453,15 @@ async control helper_work(ref counter local,string path) exits done {{
                 "inspect(parent);fault boundary {inspect(borrow value);",
             )
             .replace("spawn sibling(second)", "spawn sibling(parent,second)")
+    } else {
+        source
+    };
+    let source = if matches!(mode, SourceResources::BorrowedResult) {
+        source.replace("produce(counter value) exits ready {counter result} {exit ready {value};}",
+            "produce(counter value,ref counter parent) exits ready {counter result,ref counter retained from parent} {exit ready {value,parent};}")
+            .replace("spawn produce(first)", "spawn produce(first,parent)")
+            .replace("ready {counter value}=>ready", "ready {counter value,auto retained}=>ready")
+            .replace("close(value);await worker;await failure;exit done;", "close(value);await worker;await failure;inspect(retained);exit done;")
     } else {
         source
     };

@@ -410,7 +410,8 @@ fn runtime_retirement_failure_hands_off_settlement_before_supplier_unwind() {
     assert!(c.values[base].is_some() && drops.borrow().is_empty());
     assert!(!c.host.source_faulted());
     c.host.exchange_context(&mut p.host).unwrap();
-    c.settle(&domain, root.id, &message, report, false).unwrap();
+    c.settle(&domain, root.id, None, &message, report, false)
+        .unwrap();
     assert!(matches!(
         c.advance_retained(&root, 1).unwrap(),
         ContextPoll::Failed(_)

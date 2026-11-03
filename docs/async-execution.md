@@ -3121,3 +3121,35 @@ and a final context census exercise the newly admitted storage sharing.
 Reference-bearing carriers, borrowed result delivery and inline boundary crossing
 remain gated. Audit their loan/authority transport and retained completion lifetimes
 before extending this profile. Async adapters and cancellation are separate work.
+
+## Direct borrowed source results (E1e.7)
+
+Compiler 0.172 extends the source and structural spawn profile to direct result
+references whose pointee contains no references. Existing declared origins connect
+those results to captured inputs. Reference-bearing capture/result carriers and
+borrowed-handle aggregate storage stay gated.
+
+Before consuming a started handle, completion checking snapshots its capture origins
+and reference ancestry. Join ends capture loans and adopts only the selected outcome's
+result loans. Queuing, execution completion and host pauses never release captures.
+Returned exclusive references retain reborrow ancestry; explicit reference moves
+remain consuming. Same-producer instances and alternative outcomes do not share loans.
+A child's owned inputs or locals cannot supply escaping results.
+
+The existing reference/native retained-completion machinery already preserves values
+and backing storage through join or stopped-domain retirement. Reference source-stop
+cleanup now drains selectable borrowers before unwinding suspended await ancestors.
+An awaited invocation can share its fault domain with those ancestors; waiting for
+full domain quiescence at the child's stop barrier deadlocked on fuel exhaustion.
+The owning boundary still requires complete settlement before contingency. Native
+settlement also recovers the awaited spawning invocation's diagnostic chain before
+trimming unrelated awaited work, retaining its activation and original fault site.
+Bounded context-census and differential reference polls guard against this stall.
+Original/expanded O0/O2 comparisons cover every fuel cut, varied quotas, completed
+and joined result faults, awaited owners, detached carrier guards and real resource
+drops. Ordinary native host selection gates stay intact.
+
+The next source-profile audit is reference-bearing capture/result carriers, beginning
+with existing checked leaf origins and guarded carrier authority. Do not infer broad
+carrier admission from this direct-reference checkpoint. Inline boundary crossing,
+handle escape, async adapters and cancellation remain separate work.

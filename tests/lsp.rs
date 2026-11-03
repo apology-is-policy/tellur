@@ -6344,3 +6344,33 @@ fn borrowed_spawn_unsaved_conflict_repair_restores_task_hover() {
             .contains("task<edit>")
     );
 }
+
+#[test]
+fn spawned_result_origins_follow_unsaved_producer_contracts() {
+    let mut f = Fixture::new();
+    let path = f.root.join("worker.tellur");
+    let uri = url::Url::from_file_path(&path).unwrap().to_string();
+    let valid = "pub async control lend(ref string a,ref string b) exits ready {ref string value from a} {yield;exit ready {a};}";
+    fs::write(&path, valid).unwrap();
+    let source = "import \"worker.tellur\" as worker;async control startup() exits done {mutable string a=\"a\";mutable string b=\"b\";auto task=spawn worker.lend(borrow a,borrow b);delta await task {ready {auto value}=>ready} [ready]:b=\"free\";emit(value);exit done;}control main() exits done {forward run startup();}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let initial = hover_at(&f, source, "auto value");
+    assert!(initial.to_string().contains("ref string"));
+    let broken = valid
+        .replace("from a", "from b")
+        .replace("ready {a}", "ready {b}");
+    f.server.notification(
+        "textDocument/didOpen",
+        &json!({"textDocument":{"uri":uri,"version":1,"text":broken}}),
+    );
+    let errors = f.diagnostics();
+    assert_eq!(errors[0]["code"], "E_LOAN", "{errors}");
+    assert!(hover_at(&f, source, "auto value").is_null());
+    f.server.notification(
+        "textDocument/didClose",
+        &json!({"textDocument":{"uri":uri}}),
+    );
+    assert_eq!(f.diagnostics(), json!([]));
+    assert_eq!(hover_at(&f, source, "auto value"), initial);
+}

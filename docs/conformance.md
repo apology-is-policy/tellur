@@ -4551,3 +4551,19 @@ rejected aggregate wrappers, branch joins, stored sources, generic/trait calls a
 sibling accesses. Temporary captures, nested/reference-bearing captures and borrowed
 results remain rejected. Original/expanded native O0/O2, quota/fuel cuts, nested
 fault settlement and real resource lifetime checks agree with reference execution.
+
+## Direct borrowed spawned results (0.172)
+
+Conformance checks queued/completed capture loans, consuming result adoption,
+unrelated capture release, selected outcome origins, distinct producer instances,
+exclusive reborrow ancestry, moves, generic forwarding and stored/inline adapters.
+Child-owned/local storage cannot escape. Unsaved imported result-origin changes
+invalidate conflicting caller access and repair restores hover. Original/expanded
+O0/O2, quota/fuel cuts and resource/census models cover unjoined and delivered result
+retirement before owning contingency. Detached carrier guards and an awaited child
+owner exercise stopped cleanup with suspended ancestors. Bounded reference polling
+and the nineteen-variant context census reject the previously observed fuel-cut
+stall, without releasing supplier storage early or running stopped nested handlers.
+Fault reports retain the awaited spawning activation and original site in both
+executors, while excluding unrelated stopped await frames. Reference-bearing carriers
+remain gated.

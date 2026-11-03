@@ -1,0 +1,47 @@
+async control lend(ref mutable string text)
+    exits ready { ref mutable string value from text } {
+    emit("result completed");
+    exit ready { text };
+}
+async control sibling(ref string text) exits done {
+    emit(text);
+    fault boundary {
+        yield;
+        yield;
+    } contingency [] {
+        emit("stopped nested handler");
+        escalate;
+    }
+    emit("stopped sibling resumed");
+    exit done;
+}
+async control fail() faults {
+    yield;
+    fault "child failed";
+}
+async control startup() exits done faults {
+    mutable string text = "original";
+    string peer = "sibling started";
+    auto result = spawn lend(borrow mutable text);
+    auto worker = spawn sibling(borrow peer);
+    auto failure = spawn fail();
+    yield;
+    yield;
+    delta await result {
+        ready { auto value } => ready
+    }
+    [ready]:
+        emit("stopped parent resumed");
+        emit(value);
+        await worker;
+        await failure;
+}
+control main() exits done {
+    fault boundary {
+        run startup();
+    } contingency [] {
+        emit("owner contingency");
+        terminate process 23;
+    }
+    exit done;
+}

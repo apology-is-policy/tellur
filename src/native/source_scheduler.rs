@@ -1,5 +1,5 @@
 //! Checked source driver. Direct child captures retain loans until consuming join;
-//! results remain reference-free. Checked awaits and inline helpers retain stopped-owner
+//! selected direct result loans retain their origins. Inline helpers retain stopped-owner
 //! obligations. Inline boundaries remain gated. Host APIs keep stricter gates.
 use super::super::super::tasks::TaskId;
 use super::*;

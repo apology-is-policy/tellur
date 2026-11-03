@@ -929,14 +929,14 @@ impl Verifier<'_> {
                                     let inner = crate::manifest::reference_inner(&p.ty)
                                         .map_or(p.ty.as_str(), |(_, t)| t);
                                     self.program.manifest().contains_references(inner)
-                                }) || r
-                                    .exits
-                                    .iter()
-                                    .flat_map(|o| &o.fields)
-                                    .any(|f| self.program.manifest().contains_references(&f.ty)))
+                                }) || r.exits.iter().flat_map(|o| &o.fields).any(|f| {
+                                    let inner = crate::manifest::reference_inner(&f.ty)
+                                        .map_or(f.ty.as_str(), |(_, t)| t);
+                                    self.program.manifest().contains_references(inner)
+                                }))
                             {
                                 return Err(error(
-                                    "spawn requires direct borrows of reference-free storage or reference-free owned captures, and reference-free results",
+                                    "spawn requires reference-free values or direct borrows of reference-free storage in captures/results",
                                 ));
                             }
                             if matches!(operation, Operation::AwaitTask(_) | Operation::Join(_)) {

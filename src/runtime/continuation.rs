@@ -582,8 +582,7 @@ impl<'a> Machine<'a> {
                 }
                 root_domain.is_some() || region.boundary.is_some()
             }
-            Continuation::SourceStop
-            | Continuation::SupervisedWork { .. }
+            Continuation::SupervisedWork { .. }
             | Continuation::SupervisedHandler { .. }
             | Continuation::BoundaryWork { .. }
             | Continuation::BoundaryHandler { .. } => true,
@@ -886,6 +885,14 @@ impl<'a> Machine<'a> {
             Continuation::SourceStop => {
                 assert!(matches!(flow, Err(_)));
                 self.context.flow = Some(flow);
+                // Retire selectable borrowers before releasing inline frames.
+                // Suspended await ancestors can share this domain, but must
+                // resume through this chain's unwind before the owning boundary
+                // requires full domain quiescence. They cannot be settled here.
+                self.context.stack.push(Continuation::SourceStop);
+                if !self.begin_settlement() {
+                    self.context.stack.pop();
+                }
             }
             Continuation::StoppedAwait(task) => {
                 assert!(!self.settlements.is_empty());

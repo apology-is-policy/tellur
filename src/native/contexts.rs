@@ -915,13 +915,27 @@ impl<'a> Contexts<'a> {
                 self.await_continuation(&parent)?.result = Some(Ok(completion));
             }
         }
+        // Terminal independent failures can bypass retained settlement entirely.
+        // Preserve their spawning link before the failed context is discarded.
+        let retired_parent = if !parked.sequential && matches!(result, ContextPoll::Failed(_)) {
+            parked.parent
+        } else {
+            None
+        };
         if let Some(outcome) = completed {
             self.completed.insert(key.id, Completed { parked, outcome });
         } else if matches!(result, ContextPoll::Paused | ContextPoll::Await) {
             self.parked.insert(key.id, parked);
         }
         if let Some((domain, message, report, source_fault)) = settlement {
-            self.settle(&domain, origin, &message, report.clone(), source_fault)?;
+            self.settle(
+                &domain,
+                origin,
+                retired_parent,
+                &message,
+                report.clone(),
+                source_fault,
+            )?;
             if let Some(terminal) = self.terminal.remove(&key.id) {
                 result = terminal;
             } else if !self.parked.contains_key(&key.id) {
@@ -1187,6 +1201,7 @@ impl<'a> Contexts<'a> {
         &mut self,
         domain: &DomainKey,
         origin: u64,
+        retired_parent: Option<u64>,
         message: &str,
         mut report: fault::Report,
         source_fault: bool,
@@ -1212,6 +1227,19 @@ impl<'a> Contexts<'a> {
                 .host
                 .tracker
                 .failure(child.name, fault::Phase::Execution, message);
+        }
+        if let Some(parent) = head
+            .filter(|head| *head != owner)
+            .and_then(|head| self.parked[&head].parent)
+            .or(retired_parent)
+            .filter(|parent| *parent != owner && self.parked[parent].sequential)
+        {
+            // The spawning invocation is part of the owning diagnostic chain,
+            // even when reached through await. Only its unrelated awaited work
+            // is stopped; preserve the spawning frames before restoring the
+            // outer domain owner, or restore_stopped_await would trim them too.
+            self.restore_stopped_await(parent)?;
+            self.restore_fault_chain(parent, owner);
         }
         self.restore_stopped_await(owner)?;
         self.domains.stop(domain)?;
@@ -1318,6 +1346,14 @@ impl<'a> Contexts<'a> {
         }
         self.host.exchange_context(&mut parked.host)?;
         let finished = parked.machine.finished;
+        // A nested boundary may retire its independent child before forwarding
+        // the fault outward. Keep its spawning link for diagnostic restoration;
+        // it no longer has a live context for restore_fault_chain to inspect.
+        let retired_parent = if finished && !parked.sequential {
+            parked.parent
+        } else {
+            None
+        };
         let mut next_origin = owner;
         if finished {
             self.restore_entry(owner, &mut parked.host.tracker);
@@ -1333,7 +1369,14 @@ impl<'a> Contexts<'a> {
             self.parked.insert(owner, parked);
         }
         if let Some((domain, message, report, source_fault)) = next {
-            self.settle(&domain, next_origin, &message, report, source_fault)?;
+            self.settle(
+                &domain,
+                next_origin,
+                retired_parent,
+                &message,
+                report,
+                source_fault,
+            )?;
         } else if !finished {
             result?;
         }
