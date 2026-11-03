@@ -3,6 +3,10 @@ use super::super::{ContextRoot, HostContext, fault};
 use super::*;
 use std::{collections::BTreeMap, sync::Arc};
 
+#[cfg(test)]
+#[path = "adapter_operation_model.rs"]
+pub(super) mod adapter_operation_model;
+
 #[derive(Clone, Debug)]
 pub struct ContextKey {
     session: Arc<()>,

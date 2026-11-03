@@ -171,6 +171,8 @@ pub struct Activation {
     pub destination: Option<usize>,
 }
 enum Pending {
+    #[cfg(test)]
+    Adapter(Box<contexts::adapter_operation_model::Operation>),
     Call(Deliver),
     Await(AwaitContinuation),
     Supervise(Supervision),
@@ -352,6 +354,11 @@ impl Activation {
     }
 }
 pub enum Step {
+    #[cfg(test)]
+    Adapter {
+        arguments: Vec<V>,
+        deliver: Deliver,
+    },
     Continue,
     Spawn {
         task: QueuedTask,
@@ -616,6 +623,18 @@ impl Machine {
             .stack
             .last_mut()
             .ok_or("E_NATIVE: missing compiled activation")?;
+        #[cfg(test)]
+        if let Some(Pending::Adapter(operation)) = &frame.pending {
+            operation.require(host, values, frame, domains, &self.current)?;
+            if !operation.ready() {
+                return Ok((false, None));
+            }
+            let Some(Pending::Adapter(operation)) = frame.pending.take() else {
+                unreachable!()
+            };
+            operation.deliver(values, frame)?;
+            return Ok((false, None));
+        }
         // Returning a child is administrative: it neither evaluates the source
         // await again nor consumes another instruction/fuel allowance.
         let (instruction, step) = if matches!(&frame.pending, Some(Pending::Await(p)) if p.result.is_some())
@@ -659,6 +678,22 @@ impl Machine {
             }
         }
         match step {
+            #[cfg(test)]
+            Step::Adapter { arguments, deliver } => {
+                if frame.pending.is_some() {
+                    return Err("E_NATIVE: duplicate adapter continuation".into());
+                }
+                frame.pending = Some(Pending::Adapter(Box::new(
+                    contexts::adapter_operation_model::Operation::new(
+                        host,
+                        values,
+                        frame,
+                        self.current.clone(),
+                        arguments,
+                        deliver,
+                    )?,
+                )));
+            }
             Step::Continue => {}
             Step::Spawn { task, slot, ty } => {
                 self.source_handoff = Some(SourceHandoff::Spawn { task, slot, ty });
@@ -840,6 +875,12 @@ impl Machine {
                         .take()
                         .ok_or("E_NATIVE: missing compiled return continuation")?;
                     match pending {
+                        #[cfg(test)]
+                        Pending::Adapter(_) => {
+                            return Err(
+                                "E_NATIVE: call returned into an adapter continuation".into()
+                            );
+                        }
                         Pending::Call(deliver) => deliver(parent, values, result)?,
                         Pending::Await(_) => {
                             return Err("E_NATIVE: call returned into an await continuation".into());
@@ -879,6 +920,12 @@ impl Machine {
                 return Ok(());
             }
             let frame = self.stack.last_mut().unwrap();
+            #[cfg(test)]
+            if let Some(Pending::Adapter(operation)) = &frame.pending {
+                operation.require(host, values, frame, domains, &self.current)?;
+                // Drop the partial host operation before any supplier scope or frame.
+                drop(frame.pending.take());
+            }
             if let Some(Pending::Await(pending)) = &mut frame.pending {
                 // Captures may still be queued after failed admission; returned
                 // fields may already be adopted but not yet delivered.
@@ -1070,6 +1117,12 @@ impl Machine {
         }
         let mut remaining = quota;
         while remaining > 0 {
+            #[cfg(test)]
+            if matches!(&self.stack.last().unwrap().pending,
+                Some(Pending::Adapter(operation)) if !operation.ready())
+            {
+                return Ok(Poll::Paused);
+            }
             let delivery =
                 if let Some(Pending::Await(pending)) = &self.stack.last().unwrap().pending {
                     if pending.result.is_none() {

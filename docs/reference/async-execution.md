@@ -8,11 +8,14 @@ Compiler 0.189 supports `async control`, synchronous entry with `run`, direct
 scheduler for `spawn` tasks with owned values, direct borrows and nested owned record/option/variant/named-outcome captures/results, plus borrowed record/option/variant/named-outcome captures and whole borrowed record/option/variant/named-outcome results, plus reference chains through records. Source handoffs occur at `await` and `yield`.
 Async host I/O, cancellation and LLVM coroutine lowering remain later work.
 
-The private E1f.1 reference model retains an unfinished adapter operation through
-readiness waits and fault settlement. It adds no source syntax or manifest mode:
+The private E1f.1 reference and E1f.2a native models retain unfinished adapter
+operations through readiness waits and fault settlement. The native model also
+checks real resource destruction and original host/invocation/supplier identities.
+They add no source syntax or manifest mode:
 existing `immediate` and `blocking` Rust bindings still complete synchronously.
 See the [operation model](../async-execution.md#pending-adapter-operation-reference-model-e1f1)
-for its evidence and remaining native/resource integration.
+and [native resource model](../async-execution.md#native-pending-operation-resource-lifetime-model-e1f2a)
+for their evidence; generated adapter integration and differential checks remain open.
 
 ## Owned spawned children
 

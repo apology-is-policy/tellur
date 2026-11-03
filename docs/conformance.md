@@ -4831,3 +4831,18 @@ The existing runtime census and readiness/settlement regressions remain separate
 checks. This model has no live I/O, native adapter implementation, public pending
 result, cancellation or fallible cleanup claim. No compiler/LSP/VSIX release is
 needed for these test-only branches and documentation.
+
+
+The E1f.2a `native_host` pending-operation model adds five cases over real native
+contexts and registered Rust resources. It covers six overlapping completion/order
+and quota schedules; twelve waiting/signalled/result-ready fault or process-stop
+schedules; fifteen fuel/quota combinations through normal completion; malformed
+completion and readiness-exhaustion atomicity; and rejection of foreign or changed
+operation, host, invocation, domain and supplier identities. Lease destructors
+assert that borrowed resources remain alive, and traces check exact destruction
+counts, no replay, no source fuel on polls/delivery and no late wake revival.
+
+These are private callback models, separate from generated checked-source native
+comparisons. E1f.2b must add original/expanded O0/O2, nested-boundary, report and
+resource-trace differential evidence before production adapter integration. The
+current model adds no source handoff, manifest mode, live I/O or cleanup policy.

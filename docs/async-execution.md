@@ -3686,3 +3686,36 @@ proved before generated adapter or source/manifest admission. Current synchronou
 bindings and the settings application's single-writer storage policy are unchanged.
 Cancellation races and fallible or suspending cleanup still need their own rules;
 this model does not complete the broader E1 async acceptance specimen.
+
+
+## Native pending operation resource lifetime model (E1f.2a)
+
+[The private native model](../src/native/adapter_operation_model.rs) retains a
+pending operation directly in the compiled machine's activation. Its source
+callback transfers the request once and advances its program counter. The record
+owns the request, partial input and fixed deadline until completion or settlement;
+readiness alone cannot replay the callback or deliver a result. Delivery is an
+administrative transition and consumes no additional source fuel.
+
+The record binds the original host registry, invocation, fault domain, activation
+storage, supplier allocation and opaque resource token. Polling and completion
+check those identities before changing state. A same-type replacement resource,
+foreign host, invocation, domain or operation ticket cannot redirect the loan.
+Malformed normal completions and duplicate delivery preserve the pending state.
+
+Two operations borrow a real registered Rust object. Their owned operation leases
+have observable destructors that assert the supplier is still alive. Normal
+completion, owning faults, process termination and explicit context termination
+exercise the actual native context and frame retirement paths. Waiting, signalled
+and completed-but-undelivered operations retire before the supplier; abandoned
+normal continuations do not run. Owning faults leave an independent root runnable,
+and late readiness/completion tickets cannot revive stopped work. Fuel-cutoff
+checks include failure before creation, after administrative delivery and in the
+parent after consuming the result, across three host quotas.
+
+This checkpoint uses private native callbacks and no live I/O. All added execution
+branches are `cfg(test)`; the installed compiler/LSP/VSIX remains 0.189. E1f.2b must
+connect the model to generated checked source and compare reference/native,
+original/expanded O0/O2 execution, nested boundary settlement, diagnostics and
+resource traces before a production adapter ABI or source/manifest admission.
+The broader E1 cancellation and cleanup acceptance specimen remains open.
