@@ -62,3 +62,7 @@ mod selection_tests;
 #[cfg(test)]
 #[path = "cold_await_model_tests.rs"]
 mod cold_await_tests;
+
+#[cfg(test)]
+#[path = "direct_await_model_tests.rs"]
+mod direct_await_tests;

@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.161.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.162.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -300,3 +300,11 @@ explicit handoff before executing the child. Normal result delivery remains sepa
 is internal scheduling support: source execution stays sequential, and ordinary drivers,
 direct await/call/effect admission and retirement gates remain. See
 [cold-await admission](../async-execution.md#checked-cold-await-admission-e1d2d3t).
+
+Since 0.162, direct `await operation(arguments)` uses an explicit retained handoff in both
+executors. Arguments evaluate once in written order; queued captures and returned borrows
+retain their original storage and fault ownership. Task/wait identity allocation is atomic,
+and result delivery does not reevaluate the call or consume additional source fuel.
+Synchronous calls and `run` retain their call behavior. Source execution remains sequential;
+started-task joins, spawn/yield and broader parent admission remain gated. See
+[direct-await handoffs](../async-execution.md#direct-await-handoffs-e1d2d3u).

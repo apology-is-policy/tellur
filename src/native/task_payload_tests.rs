@@ -354,3 +354,57 @@ fn cold_payload_moves_into_a_lexical_boundary_without_reparenting() {
     assert!(h.tasks.is_empty() && values.is_empty());
     assert_eq!(h.fuel, Some(99));
 }
+
+#[test]
+fn direct_await_queue_preserves_arguments_and_resources_on_rejection() {
+    for invalid in 0..6 {
+        let mut h = host();
+        let mut v = Frames::default();
+        let mut d = Domains::default();
+        let mut m = start(&mut h, &mut v, &mut d);
+        let drops = Rc::new(RefCell::new(vec![]));
+        let mut args = vec![make(&mut h, 1, &drops), V::Unit];
+        match invalid {
+            0 => h.tasks.exhaust_task_space(),
+            1 => h.tasks.exhaust_wait_space(),
+            2 => {
+                args.pop();
+            }
+            3 => h.tasks.retire_owner(m.stack[0].owner, true).unwrap(),
+            _ => {}
+        }
+        let before = args.clone();
+        let registry = h.tasks.clone();
+        let producer = if invalid == 4 {
+            &CONSTRUCTOR
+        } else {
+            &PRODUCER
+        };
+        if invalid == 5 {
+            let mut other = host();
+            let foreign = other.tasks.clone();
+            assert!(
+                m.stack[0]
+                    .queue_invocation(&mut other, producer, &mut args)
+                    .is_err()
+            );
+            assert_eq!(other.tasks, foreign);
+        } else {
+            assert!(
+                m.stack[0]
+                    .queue_invocation(&mut h, producer, &mut args)
+                    .is_err()
+            );
+        }
+        assert_eq!(args, before);
+        assert_eq!(h.tasks, registry);
+        assert_eq!(h.fuel, Some(100));
+        assert!(drops.borrow().is_empty());
+        h.release_frame(&args.drain(..).map(Some).collect::<Vec<_>>());
+        // The stale-owner case deliberately retired its registry entry already.
+        if invalid != 3 {
+            m.abort(&mut h, &mut v, &mut d, "stop").unwrap();
+        }
+        assert_eq!(*drops.borrow(), [1]);
+    }
+}

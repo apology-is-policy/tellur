@@ -204,6 +204,30 @@ impl Activation {
             arguments: std::mem::take(arguments),
         })
     }
+    /// Queue eagerly evaluated direct-await arguments without an intermediate
+    /// cold handle. Failed admission leaves the caller's arguments intact.
+    pub fn queue_invocation(
+        &self,
+        host: &mut Host,
+        producer: &'static Control,
+        arguments: &mut Vec<V>,
+    ) -> R<QueuedTask> {
+        self.require_task_host(host)?;
+        if producer.constructor || arguments.len() != producer.parameters.len() {
+            return Err("E_NATIVE: invalid direct await producer or arguments".into());
+        }
+        let (task, wait) = host.tasks.queue_await(self.owner, producer.name)?;
+        Ok(QueuedTask {
+            binding: TaskBinding {
+                registry: self.registry.clone(),
+                owner: self.owner,
+                task,
+                producer,
+            },
+            wait,
+            arguments: Some(std::mem::take(arguments)),
+        })
+    }
     pub(super) fn prepare_cold_task(
         &self,
         host: &Host,

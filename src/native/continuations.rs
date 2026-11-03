@@ -316,6 +316,17 @@ pub(super) fn source(program: &CheckedProgram) -> String {
                         g.code,
                         "let mut arguments={arguments};let mut value=arguments.pop();let task=state.queue_task(host,&MODEL_{target},&mut value)?;return Ok(Step::Await{{task,deliver:deliver_{id}_{pc}}});\n}}Ok(Step::Continue)\n}},"
                     );
+                } else if matches!(
+                    &instruction.action,
+                    Action::Decide {
+                        operation: Operation::Await(_),
+                        ..
+                    }
+                ) {
+                    let _ = writeln!(
+                        g.code,
+                        "let mut arguments={arguments};let task=state.queue_invocation(host,&MODEL_{target},&mut arguments)?;return Ok(Step::Await{{task,deliver:deliver_{id}_{pc}}});\n}}Ok(Step::Continue)\n}},"
+                    );
                 } else {
                     let _ = writeln!(
                         g.code,

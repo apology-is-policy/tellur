@@ -533,3 +533,133 @@ control main() exits done {forward run start("unused");}
     assert!(m.dispatch_ready().is_err());
     assert_retired(m);
 }
+
+#[test]
+fn direct_await_prepares_a_retained_handoff_before_child_execution() {
+    let p = checked(
+        r#"
+async control edit(ref mutable string text, string message)
+    exits ready {ref mutable string value from text}
+{emit(borrow message); deref text="after"; exit ready {text};}
+async control start() exits done {
+    mutable string text="before";
+    emit("captured");
+    delta await edit(borrow mutable text,"child") {ready {auto value}=>received}
+    [received]:emit(value);exit done;
+}
+control main() exits done {forward run start();}
+"#,
+    );
+    let s = scenario();
+    let mut session = p.start_execution(&s, 200);
+    let m = session.machine.as_mut().unwrap();
+    m.enter(&s).unwrap();
+    loop {
+        if matches!(m.context.stack.last(), Some(Continuation::Block {code, next})
+            if matches!(code.get(*next).map(|i| &i.action), Some(Action::Decide {operation:Operation::Await(_), ..})))
+        {
+            break;
+        }
+        assert!(!m.drive(1));
+    }
+    assert_eq!(messages(m), ["captured"]);
+    let Continuation::Block { code, next } = m.context.stack.pop().unwrap() else {
+        panic!()
+    };
+    let instruction = &code[next];
+    m.context.activations.at(instruction.id);
+    m.shared.steps_left -= 1;
+    m.context.stack.push(Continuation::Block {
+        code,
+        next: next + 1,
+    });
+    assert!(matches!(
+        m.instruction(instruction).unwrap(),
+        Flow::Fallthrough
+    ));
+    assert_eq!(m.shared.ready.len(), 1);
+    assert_eq!(m.shared.suspended.calls.len(), 1);
+    assert_eq!(m.shared.tasks.live_counts(), (2, 1));
+    assert_eq!(messages(m), ["captured"]);
+    assert!(matches!(
+        m.context.stack.pop(),
+        Some(Continuation::Dispatch)
+    ));
+    let fuel = m.shared.steps_left;
+    m.dispatch_ready().unwrap();
+    assert!(!m.drive(0));
+    assert_eq!(m.shared.steps_left, fuel);
+    assert_eq!(messages(m), ["captured"]);
+    assert!(m.drive(200));
+    assert_eq!(messages(m), ["captured", "child", "after"]);
+    assert_retired(m);
+}
+
+#[test]
+fn direct_and_cold_awaits_share_nested_storage_and_quota_invariants() {
+    let original = checked(include_str!("../../playground/direct_await.tellur"));
+    for p in [
+        original.clone(),
+        original
+            .expanded("startup")
+            .unwrap()
+            .expanded("main")
+            .unwrap(),
+    ] {
+        let s = scenario();
+        let expected = p.run(&s).unwrap();
+        let mut fuel = None;
+        for quotas in [vec![1], vec![0, 3, 1], vec![99]] {
+            let mut session = p.start_execution(&s, 500);
+            let m = session.machine.as_mut().unwrap();
+            m.enter(&s).unwrap();
+            let mut peak = 0;
+            let mut quotas = quotas.iter().cycle();
+            while !m.drive(*quotas.next().unwrap()) {
+                peak = peak.max(m.shared.suspended.calls.len());
+            }
+            if fuel.is_none() {
+                assert!(peak >= 2);
+            }
+            assert_eq!(
+                serde_json::to_value(&m.shared.events).unwrap(),
+                serde_json::to_value(&expected.events).unwrap()
+            );
+            if let Some(before) = fuel {
+                assert_eq!(m.shared.steps_left, before);
+            }
+            fuel = Some(m.shared.steps_left);
+            assert_retired(m);
+        }
+    }
+}
+
+#[test]
+fn direct_await_capacity_failures_unwind_without_child_effects_or_obligations() {
+    let p = checked(
+        r#"
+async control work(string text) exits done {emit(borrow text);exit done;}
+async control start() exits done {emit("before"); await work("must not run"); exit done;}
+control main() exits done {forward run start();}
+"#,
+    );
+    for capacity in 0..4 {
+        let s = scenario();
+        let mut session = p.start_execution(&s, 200);
+        let m = session.machine.as_mut().unwrap();
+        m.enter(&s).unwrap();
+        while m.shared.events.is_empty() {
+            assert!(!m.drive(1));
+        }
+        match capacity {
+            0 => m.shared.tasks.exhaust_task_space(),
+            1 => m.shared.tasks.exhaust_wait_space(),
+            2 => m.shared.suspended.next = u64::MAX,
+            _ => m.shared.next_base = usize::MAX,
+        }
+        assert!(m.drive(200));
+        assert!(matches!(m.context.flow, Some(Err(_))));
+        assert_eq!(messages(m), ["before"]);
+        assert_retired(m);
+    }
+}

@@ -54,9 +54,15 @@ fn handoff(
             fields: vec![],
         },
     ];
-    let mut cold = Some(a.defer_task(h, producer, "pending", &mut args)?);
-    let task = a.queue_task(h, producer, &mut cold)?;
-    assert!(cold.is_none() && args.is_empty());
+    let task = if a.control.name.starts_with("direct_") {
+        a.queue_invocation(h, producer, &mut args)?
+    } else {
+        let mut cold = Some(a.defer_task(h, producer, "pending", &mut args)?);
+        let task = a.queue_task(h, producer, &mut cold)?;
+        assert!(cold.is_none());
+        task
+    };
+    assert!(args.is_empty());
     a.pc += 1;
     Ok(Step::Await { task, deliver })
 }
@@ -1117,5 +1123,79 @@ fn access_queries_distinguish_pending_delivery_from_arguments_and_administrative
     c.host
         .release_frame(&fields.into_iter().map(Some).collect::<Vec<_>>());
     assert_eq!(*drops.borrow(), [0, 1]);
+    empty(&c);
+}
+
+static DIRECT_PARENT: Control = Control {
+    name: "direct_parent",
+    ..PARENT
+};
+static DIRECT_LEXICAL: Control = Control {
+    name: "direct_lexical",
+    ..LEXICAL
+};
+#[test]
+fn direct_await_retains_and_retires_queued_running_and_completed_captures() {
+    for phase in 0..5 {
+        let mut h = host();
+        let mut c = Contexts::new(&mut h);
+        let drops = Rc::new(RefCell::new(vec![]));
+        let parent = start(&mut c, &DIRECT_PARENT, &drops);
+        if phase > 0 {
+            let child = c.admit_await(&parent).unwrap();
+            assert!(c.admit_await(&parent).is_err());
+            if phase > 1 {
+                assert!(matches!(
+                    c.advance_retained(&child, 99).unwrap(),
+                    ContextPoll::Ready
+                ));
+                if phase > 2 {
+                    c.return_await(&parent, &child).unwrap();
+                    assert!(c.return_await(&parent, &child).is_err());
+                }
+            }
+        }
+        assert!(drops.borrow().is_empty());
+        if phase == 4 {
+            let fuel = c.host.fuel;
+            assert!(matches!(
+                c.advance_retained(&parent, 1).unwrap(),
+                ContextPoll::Ready
+            ));
+            assert_eq!(c.host.fuel, fuel.map(|n| n - 1));
+            let (_, fields) = c.join(None, &parent).unwrap().outcome().unwrap();
+            c.host
+                .release_frame(&fields.into_iter().map(Some).collect::<Vec<_>>());
+            assert_eq!(*drops.borrow(), [0, 1]);
+        } else {
+            c.terminate().unwrap();
+            assert_eq!(*drops.borrow(), [1, 0]);
+        }
+        empty(&c);
+    }
+}
+#[test]
+fn direct_await_fault_settles_captures_before_owning_contingency() {
+    let mut h = host();
+    let mut c = Contexts::new(&mut h);
+    let drops = Rc::new(RefCell::new(vec![]));
+    let args = vec![make(&mut c, 0, &drops), make(&mut c, 1, &drops)];
+    let parent = c.start(&DIRECT_LEXICAL, args).unwrap();
+    assert!(matches!(
+        c.advance_retained(&parent, 99).unwrap(),
+        ContextPoll::Await
+    ));
+    let child = c.admit_await(&parent).unwrap();
+    assert!(matches!(
+        c.advance_retained(&child, 1).unwrap(),
+        ContextPoll::Failed(_)
+    ));
+    assert_eq!(*drops.borrow(), [1]);
+    assert!(matches!(
+        c.advance_retained(&parent, 99).unwrap(),
+        ContextPoll::Ready
+    ));
+    c.join(None, &parent).unwrap();
+    assert_eq!(*drops.borrow(), [1, 0]);
     empty(&c);
 }

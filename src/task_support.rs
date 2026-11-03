@@ -73,15 +73,17 @@ impl Registry {
         self.next_owner = owner.0;
         assert!(self.owners.insert(owner, BTreeSet::new()).is_none());
     }
-    pub(crate) fn defer(&mut self, owner: OwnerId, operation: &str) -> Result<TaskId> {
+    fn prepare_task(&self, owner: OwnerId) -> Result<TaskId> {
         if !self.owners.contains_key(&owner) {
             return Err(error("task owner is no longer active"));
         }
-        let id = TaskId(
-            self.next_task
-                .checked_add(1)
-                .ok_or_else(|| error("task identity space exhausted"))?,
-        );
+        self.next_task
+            .checked_add(1)
+            .map(TaskId)
+            .ok_or_else(|| error("task identity space exhausted"))
+    }
+    pub(crate) fn defer(&mut self, owner: OwnerId, operation: &str) -> Result<TaskId> {
+        let id = self.prepare_task(owner)?;
         self.next_task = id.0;
         self.tasks.insert(
             id,
@@ -94,6 +96,23 @@ impl Registry {
         );
         self.owners.get_mut(&owner).unwrap().insert(id);
         Ok(id)
+    }
+    /// Fused direct await: all identity checks precede creation of its obligation.
+    /// The caller owns queued work, but no source cold handle is materialized.
+    pub(crate) fn queue_await(
+        &mut self,
+        owner: OwnerId,
+        operation: &str,
+    ) -> Result<(TaskId, WaitId)> {
+        self.prepare_task(owner)?;
+        let wait = self.prepare_wait()?;
+        let task = self
+            .defer(owner, operation)
+            .expect("prevalidated task capacity");
+        self.enqueue(task, owner, operation)
+            .expect("fresh cold task");
+        self.commit_join(task, wait);
+        Ok((task, wait))
     }
     fn require_owner(&self, id: TaskId, owner: OwnerId) -> Result<&Task> {
         let task = self
@@ -428,6 +447,36 @@ mod tests {
         r.consume(task, a).unwrap();
         r.retire_owner(a, false).unwrap();
         r.retire_owner(b, false).unwrap();
+        assert!(r.is_empty());
+    }
+    #[test]
+    fn direct_await_queue_is_atomic_and_requires_its_original_owner() {
+        for invalid in 0..3 {
+            let mut r = Registry::default();
+            let owner = owner(&mut r);
+            let earlier = r.defer(owner, "earlier").unwrap();
+            r.enqueue(earlier, owner, "earlier").unwrap();
+            match invalid {
+                0 => r.exhaust_task_space(),
+                1 => r.exhaust_wait_space(),
+                _ => r.retire_owner(owner, true).unwrap(),
+            }
+            let before = r.clone();
+            assert!(r.queue_await(owner, "direct").is_err());
+            assert_eq!(r, before);
+        }
+        let mut r = Registry::default();
+        let owner = owner(&mut r);
+        let (task, wait) = r.queue_await(owner, "direct").unwrap();
+        assert_eq!(r.next_ready(), Some(task));
+        assert!(r.retire_owner(owner, false).is_err());
+        assert!(r.join(task, owner, "direct").is_err());
+        r.dispatch(task).unwrap();
+        r.complete(task, owner).unwrap();
+        r.deliver(task, owner, wait).unwrap();
+        assert!(r.deliver(task, owner, wait).is_err());
+        r.consume(task, owner).unwrap();
+        r.retire_owner(owner, false).unwrap();
         assert!(r.is_empty());
     }
     #[test]

@@ -4438,3 +4438,14 @@ facts, fuel and queues; actual callback failure settles the owning work. Generat
 expanded O0/O2 models match reference observations under zero/small/large quota partitions.
 Lexical/named sibling-fault models now inject the sibling before await preparation and retain
 owning diagnostic restoration through nested work, active handlers and result delivery.
+
+## Direct-await handoffs (0.162)
+
+Protocol and host cases cover atomic task/wait allocation, stale owners, foreign registries,
+invalid producers/arity and unchanged captured arguments on rejection. Reference tests
+observe separate parked callers before child execution, nested direct/cold awaits, storage
+and suspension capacity failures, unchanged events and fuel across host quota partitions.
+Generated original/expanded O0/O2 probes verify direct/cold handoff counts, stable repeated
+pending polls and one-use borrowed completion. Named/lexical fault comparisons preserve
+reports at every fuel cutoff; real-resource probes compare releases and retained owners.
+Source scheduling remains gated.

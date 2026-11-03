@@ -2792,11 +2792,46 @@ owning-fault models now admit a sibling before preparation, then exercise failur
 after child admission, during nested work/contingency and around completion delivery.
 
 This completes a bounded host integration step. Production source execution remains sequential;
-ordinary quota drivers do not gain implicit parent selection or task switching. Direct await
-still shares ordinary call lowering, and broader source scheduling must distinguish that
+ordinary quota drivers do not gain implicit parent selection or task switching. At that checkpoint direct await
+still shared ordinary call lowering, and broader source scheduling must distinguish that
 handoff as well as started-task joins. Host quota exhaustion and rejected proofs never become
 source handoffs. Spawn/yield, cancellation, async adapters/disposal and LLVM coroutine lowering
 remain separate work under the accepted invocation-owned, explicit-handoff policy.
+
+## Direct-await handoffs (E1d.2d.3u)
+
+Compiler 0.162 lowers direct `await operation(arguments)` through the same retained
+queue, dispatch and one-use completion machinery as consuming a cold task. Argument
+expressions still evaluate eagerly, once and in written order. A direct await creates
+an invocation-owned obligation without exposing an intermediate source task handle.
+Task and wait identity capacity are checked together before registry mutation; native
+queue rejection preserves the already evaluated argument vector and its resources.
+
+The reference executor retains the caller and emits its internal dispatch continuation.
+The native callback returns an explicit `Await` poll before the child body runs. Child
+admission, execution and result delivery remain separate. Repeating a pending poll or
+retrying failed admission never reevaluates arguments or consumes more source fuel.
+Returning a result is administrative and selects exactly one original result arm.
+Synchronous calls and explicit `run` keep their existing call behavior.
+
+Direct awaits carry the caller's original diagnostic chain and owning fault domain.
+They do not introduce a spawned-child fault cause. Queued captures, active children and
+completed borrowed results settle before owning contingency or process retirement, using
+the existing resource dispositions. Borrowed argument/result storage stays live across
+nested direct and cold awaits. Expansion preserves the explicit async operation.
+
+`playground/direct_await.tellur` demonstrates direct awaits around cold awaits, cold awaits
+around direct awaits, and borrowing a whole record before receiving a reference to its
+stored owner. Generated original/expanded O0/O2 probes observe the actual handoffs, pending
+poll stability and one-use results. Native/reference comparisons cover fault reports and
+host fuel cutoffs in named and lexical boundaries. Real-resource probes compare releases
+and retained owners across native schedule partitions.
+
+Source execution remains sequential. Direct-await callback admission beside retained
+siblings stays conservative; the cold-handle witness from 0.161 does not authorize arbitrary
+argument preparation. Started-task joins, source spawn/yield and scheduler selection remain
+next integration work. Host quota exhaustion never becomes a source handoff. Cancellation,
+async adapters/disposal and LLVM coroutine lowering remain separate checkpoints.
 
 ## Reference execution invariants
 

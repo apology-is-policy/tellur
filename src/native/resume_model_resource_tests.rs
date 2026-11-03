@@ -182,3 +182,16 @@ fn compare_built_resources(root: &Path, p: CheckedProgram, statuses: [i32; 2]) {
         }
     }
 }
+
+#[test]
+fn compiled_direct_awaits_preserve_real_owner_cleanup_at_every_fuel_cut() {
+    let direct = SOURCE
+        .replace("    auto borrowed = defer observe(parent);\n", "")
+        .replace("    auto owned = defer dispose(child);\n", "")
+        .replace(
+            "await borrowed; await owned;",
+            "await observe(parent); await dispose(child);",
+        );
+    assert!(direct.contains("await observe(parent)"));
+    compare_resources("direct-lexical", &direct, [0, 23]);
+}

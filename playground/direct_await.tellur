@@ -1,0 +1,69 @@
+// Direct and cold awaits retain the same borrowed storage through nested calls.
+struct text_view['text] {
+    ref string text <- 'text;
+}
+
+async control edit(ref mutable string text, string message)
+    exits ready { ref mutable string value from text }
+{
+    emit(borrow message);
+    deref text = "edited";
+    exit ready { text };
+}
+
+async control through_cold(ref mutable string text)
+    exits ready { ref mutable string value from text }
+{
+    auto pending = defer edit(text, "cold child");
+    forward await pending;
+}
+
+async control through_direct(ref mutable string text)
+    exits ready { ref mutable string value from text }
+{
+    forward await edit(text, "direct child");
+}
+
+async control read_view(ref text_view input) exits ready { ref string value from input['text] } {
+    exit ready { input.text };
+}
+
+async control startup() exits done {
+    mutable string text = "initial";
+    emit("before");
+    delta await through_cold(borrow mutable text) {
+        ready { auto first } => first_ready
+    }
+
+    [first_ready]:
+        emit(first);
+        drop(first);
+        auto pending = defer through_direct(borrow mutable text);
+        delta await pending {
+            ready { auto second } => second_ready
+        }
+
+    [second_ready]:
+        emit(second);
+        drop(second);
+        text_view saved = text_view { borrow text };
+        delta await read_view(borrow saved) {
+            ready { auto value } => received
+        }
+
+    [received]:
+        drop(saved);
+        emit(value);
+        drop(value);
+        text = "released";
+        emit(borrow text);
+        exit done;
+}
+
+control main() exits command_result {
+    forward run startup();
+}
+
+outcome command_result {
+    @exit 0 done
+}

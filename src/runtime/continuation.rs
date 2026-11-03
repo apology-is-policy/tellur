@@ -1195,7 +1195,7 @@ impl<'a> Machine<'a> {
                 self.call(boundary, args)?;
             }
             Action::Decide {
-                operation: Operation::AwaitTask(name),
+                operation: op @ (Operation::AwaitTask(name) | Operation::Await(name)),
                 args,
                 arms,
             } => {
@@ -1203,29 +1203,34 @@ impl<'a> Machine<'a> {
                     .domains
                     .require_open(self.context.domain.unwrap())?;
                 let mut values = self.arguments(args)?;
-                let Some(Value::Task {
-                    id,
-                    operation,
-                    arguments,
-                    ..
-                }) = values.pop()
-                else {
-                    return Err(error(
-                        "interpreter invariant: await requires a pending task",
-                    ));
+                let (task, arguments) = if matches!(op, Operation::AwaitTask(_)) {
+                    let Some(Value::Task {
+                        id,
+                        operation,
+                        arguments,
+                        ..
+                    }) = values.pop()
+                    else {
+                        return Err(error(
+                            "interpreter invariant: await requires a pending task",
+                        ));
+                    };
+                    if !values.is_empty() || operation != *name {
+                        return Err(error(
+                            "interpreter invariant: pending task producer differs",
+                        ));
+                    }
+                    (Some(TaskId(id)), arguments)
+                } else {
+                    (None, values)
                 };
-                if !values.is_empty() || operation != *name {
-                    return Err(error(
-                        "interpreter invariant: pending task producer differs",
-                    ));
-                }
-                let task = TaskId(id);
                 let invocation = self.prepare_call(name, arguments)?;
                 let suspension = self.shared.suspended.prepare()?;
-                let wait =
-                    self.shared
-                        .tasks
-                        .schedule(task, self.context.frame.owner.unwrap(), name)?;
+                let owner = self.context.frame.owner.unwrap();
+                let (task, wait) = match task {
+                    Some(task) => (task, self.shared.tasks.schedule(task, owner, name)?),
+                    None => self.shared.tasks.queue_await(owner, name)?,
+                };
                 self.context
                     .stack
                     .push(Continuation::TaskDecision { task, arms });
@@ -1256,7 +1261,7 @@ impl<'a> Machine<'a> {
                 self.context.stack.push(Continuation::Dispatch);
             }
             Action::Decide {
-                operation: Operation::Region(name) | Operation::Run(name) | Operation::Await(name),
+                operation: Operation::Region(name) | Operation::Run(name),
                 args,
                 arms,
             } => {

@@ -354,3 +354,13 @@ control main() exits done {run startup();exit done;}
     assert!(standard.contains(&callbacks));
     assert!(emitted.contains(&callbacks));
 }
+
+#[test]
+fn compiled_direct_awaits_preserve_named_and_lexical_fault_context() {
+    let text = include_str!("../../tests/fixtures/native_resume_supervision.tellur").replace(
+        "    auto pending = defer visit(context, stop);\n    await pending;",
+        "    await visit(context, stop);",
+    );
+    assert!(text.contains("await visit(context, stop)"));
+    compare_fixture("direct-supervision", &text, [&[7, 9], &[7, 9]], 400, false);
+}
