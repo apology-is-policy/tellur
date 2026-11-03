@@ -242,6 +242,22 @@ exports.run = async function (root) {
   assert.equal(borrowedRecordRun.code, 0, borrowedRecordRun.stderr);
   assert.deepEqual(JSON.parse(borrowedRecordRun.stdout).events.filter(e => e.kind === 'emit').map(e => e.message),
     ['queued', 'reader', 'released at join', 'selected', 'edited']);
+  const borrowedTags = await fs.readFile(path.join(__dirname, '../../../playground/borrowed_tagged_spawn.tellur'), 'utf8');
+  await replace(borrowedTags);
+  await waitFor(async () => diagnostics().length === 0 && (await hover('spawn first')).includes('Borrowed option/variant captures'), 'borrowed tagged admission');
+  await replace(borrowedTags.replace('auto moved = move pending;', 'drop(saved);auto moved = move pending;'));
+  await waitFor(() => diagnostics().some(d => code(d) === 'E_LOAN'), 'borrowed tagged holder retained until join');
+  await replace(borrowedTags.replace('emit(a);', 'left = "too soon";emit(a);'));
+  await waitFor(() => diagnostics().some(d => code(d) === 'E_LOAN'), 'borrowed selected tag survives join');
+  await replace(borrowedTags);
+  await waitFor(async () => diagnostics().length === 0 && (await hover('auto a')).includes('ref string'), 'borrowed tagged repair');
+  await document.save();
+  const borrowedTagRun = await vscode.commands.executeCommand('tellur.buildAndRun', {
+    arguments:['--json'], output:path.join(root, 'native output', 'borrowed-tagged-spawn')
+  });
+  assert.equal(borrowedTagRun.code, 0, borrowedTagRun.stderr);
+  assert.deepEqual(JSON.parse(borrowedTagRun.stdout).events.filter(e => e.kind === 'emit').map(e => e.message),
+    ['left', 'right', 'empty', 'edited', 'none']);
   await fs.writeFile(path.join(fixture, 'passed.txt'), 'cold and started tasks, synchronous helpers, diagnostics, unsaved repair and native execution passed\n');
   console.log('TELLUR_CARRIER_TASKS_EDITOR_TESTS_PASSED: pending type hover, diagnostic repair and native run');
 };

@@ -173,15 +173,8 @@ fn borrowed_record_faults_settle_joined_and_unjoined_results_before_owning_handl
     }
 }
 #[test]
-fn tagged_pointees_deeper_references_and_whole_borrowed_results_stay_gated() {
-    for ty in [
-        "ref option<leaf>",
-        "ref choice",
-        "ref reply",
-        "ref tagged",
-        "ref indirect",
-        "ref mutable tagged",
-    ] {
+fn outcome_pointees_deeper_references_and_whole_borrowed_results_stay_gated() {
+    for ty in ["ref reply", "ref indirect"] {
         let source = format!(
             "struct leaf['a] {{ref string text <- 'a;}} variant choice['a] {{yes {{leaf['a] value}}}} outcome reply['a] {{yes {{leaf['a] value}}}} struct tagged['a] {{option<leaf>['a] item;}} struct indirect['storage,'a] {{ref leaf['a] item <- 'storage;}} async control work({ty} input) exits done {{exit done;}} async control caller({ty} input) exits done {{auto child=spawn work(input);await child;exit done;}}"
         );

@@ -3311,3 +3311,25 @@ storage guard evidence. Deeper reference pointees, whole borrowed-carrier result
 reference-bearing collections and borrowed-handle wrappers require distinct evidence.
 Unknown or partial host dependency metadata must remain conservative. This changes no
 ownership, source handoff, fault boundary or contingency policy.
+
+## Borrowed tagged captures (E1e.14)
+
+Compiler 0.179 extends borrowed captures to options and closed variants, nested with
+records and direct reference leaves. The capture predicate traverses owned/tagged
+contents, but stops at reference-bearing pointees and outcomes. Result admission stays
+separate. Existing holder snapshots, tag-specific contained origins and mutable parent
+guards remain the source of join permissions; no production scheduler changes are needed.
+
+Probes cover selected/empty alternatives, queued/running/completed holder loans,
+exclusive and shared detached result guards, moves, siblings, disjoint fields, generic
+forwarding and unsaved imported origin changes. Native original/expanded O0/O2 models
+exercise every fuel cutoff/quota partition, including resources in borrowed variant
+storage, completed results and awaited parent chains. The census also covers nested
+tagged holders and faults before/after join. Ordinary reborrow, binding and termination
+rules remain enforced.
+
+Next audit: borrowed reference-bearing named outcome captures and their handling
+obligations, including nested outcomes. Deeper reference pointees, whole borrowed-carrier
+results, reference-bearing collections and borrowed-handle wrappers remain separate.
+Partial or unknown dependency evidence must stay conservative. No ownership, handoff,
+fault-boundary or contingency policy changes are made.

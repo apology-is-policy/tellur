@@ -1,6 +1,41 @@
 //! Differential source execution using the exact production emitter and scheduler.
 use super::*;
 #[test]
+fn compiled_source_borrowed_tags_values() {
+    compare(
+        "borrowed_tagged_values",
+        include_str!("../../playground/borrowed_tagged_spawn.tellur"),
+    );
+}
+#[test]
+fn compiled_source_borrowed_tags_guards() {
+    compare(
+        "borrowed_tagged_guards",
+        include_str!("../../tests/fixtures/source_borrowed_tagged_guards.tellur"),
+    );
+}
+#[test]
+fn compiled_source_borrowed_tags_fault() {
+    compare(
+        "borrowed_tagged_fault",
+        include_str!("../../tests/fixtures/source_borrowed_tagged_fault.tellur"),
+    );
+}
+#[test]
+fn compiled_source_borrowed_tags_joined_fault() {
+    let source = include_str!("../../tests/fixtures/source_borrowed_tagged_fault.tellur")
+        .replace(
+            "    yield;\n    yield;\n    delta await result",
+            "    delta await result",
+        )
+        .replace("emit(\"stopped parent resumed\");", "yield;yield;");
+    compare("borrowed_tagged_joined_fault", &source);
+}
+#[test]
+fn compiled_source_borrowed_tags_resources() {
+    source_resources(SourceResources::BorrowedTags);
+}
+#[test]
 fn compiled_source_borrowed_records_values() {
     compare(
         "borrowed_record_values",
@@ -534,6 +569,7 @@ enum SourceResources {
     TaggedPayloads,
     OutcomePayloads,
     BorrowedRecords,
+    BorrowedTags,
     BorrowedResult,
 }
 fn source_resources(mode: SourceResources) {
@@ -549,6 +585,7 @@ fn source_resources(mode: SourceResources) {
             | SourceResources::TaggedPayloads
             | SourceResources::OutcomePayloads
             | SourceResources::BorrowedRecords
+            | SourceResources::BorrowedTags
             | SourceResources::BorrowedResult
     );
     let inline_helper = matches!(mode, SourceResources::InlineHelper);
@@ -781,6 +818,50 @@ async control helper_work(ref counter local,string path) exits done {{
             .replace("spawn produce(first)", "spawn produce(first,parent)")
             .replace("ready {counter value}=>ready", "ready {counter value,auto retained}=>ready")
             .replace("close(value);await worker;", "inspect(retained);close(value);await worker;")
+    } else {
+        source
+    };
+    let source = if matches!(mode, SourceResources::BorrowedTags) {
+        r#"
+variant worker_input['parent] {held {ref counter parent <- 'parent,counter value},empty}
+async control produce(counter value,ref counter parent) exits ready {counter result,ref counter retained from parent} {exit ready {value,parent};}
+async control sibling(ref worker_input input) exits done {
+    delta input {held {auto parent,auto value}=>held,empty=>empty}
+    [held]:inspect(parent);inspect(value);fault boundary {yield;yield;yield;yield;}
+    contingency [] {emit("must not handle stopped sibling");escalate;}
+    [entry]:exit done;
+}
+async control fail(bool stop) exits done faults {
+    delta stop {true=>failed,false=>ok}
+    [failed]:yield;yield;fault "stop children";
+    [ok]:exit done;
+}
+async control observe(ref counter parent,string path) exits done {
+    delta make(borrow path,4) {made {counter local}=>made}
+    [made]:inspect(parent);fault boundary {yield;yield;yield;}
+    contingency [] {emit("must not handle stopped observer");escalate;}
+    [made]:close(local);exit done;
+}
+async control startup(string path,bool stop,ref counter parent) exits done faults {
+    delta make(borrow path,1) {made {counter first}=>first}
+    [first]:delta make(borrow path,2) {made {counter second}=>second}
+    [second]:worker_input holder=worker_input.held {parent,second};
+    auto result=spawn produce(first,parent);
+    auto worker=spawn sibling(borrow holder);auto failure=spawn fail(stop);
+    await observe(parent,path);
+    delta await result {ready {counter value,auto retained}=>ready}
+    [ready]:inspect(retained);close(value);await worker;
+    delta holder {held {auto supplier,counter second_value}=>held,empty=>empty}
+    [held]:close(second_value);
+    [entry]:await failure;exit done;
+}
+control main(string path,bool stop) exits done {
+    delta make(borrow path,3) {made {counter owner}=>ready}
+    [ready]:fault boundary {run startup(path,stop,borrow owner);}
+    contingency [owner] {close(owner);terminate process 23;}
+    [ready]:close(owner);exit done;
+}
+"#.to_owned()
     } else {
         source
     };

@@ -4638,3 +4638,15 @@ repair. Five `compiled_source_borrowed_records_*` models cover original/expanded
 execution, all fuel cutoffs and quota partitions, joined/unjoined faults and exact-once
 resource retirement before the owning contingency. The source census includes these
 fixtures. Existing cold semantics and conservative host evidence remain unchanged.
+
+## Borrowed option and variant spawn captures (0.179)
+
+`source_borrowed_tags` checks selected/empty alternatives in shared/exclusive holders,
+including nested records/options/variants, field reborrows, generic forwarding,
+siblings and disjoint storage. Holder loans last through join; selected result loans
+and exclusive guards last through final use. Borrowed outcomes, deeper references and
+whole borrowed-carrier results remain rejected. LSP and fresh editor probes check
+unsaved origin invalidation, repair and native execution. Five
+`compiled_source_borrowed_tags_*` models compare original/expanded O0/O2 execution at
+every fuel cutoff and quota partition, including real resources in borrowed variant
+storage and joined/unjoined faults. The source census includes these fixtures.

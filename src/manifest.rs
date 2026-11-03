@@ -958,28 +958,37 @@ impl Manifest {
         let inner = reference_inner(name).map_or(name, |(_, inner)| inner);
         !self.contains_references(inner)
     }
-    /// Captures may also borrow record storage containing owned records and
-    /// direct reference leaves. Keep this separate from result admission: a
-    /// whole borrowed carrier result needs its own storage/contents proof.
+    /// Borrowed captures retain record/option/variant storage and its direct
+    /// reference leaves. Keep this separate from whole borrowed-carrier results
+    /// and borrowed named outcomes, which require distinct evidence.
     pub(crate) fn supports_spawn_capture(&self, name: &str) -> bool {
         if self.supports_spawn_payload(name) {
             return true;
         }
-        fn record(m: &Manifest, name: &str, active: &mut BTreeSet<String>) -> bool {
-            let Some(TypeDef::Record { fields, .. }) = m.type_def(name) else {
-                return false;
-            };
-            if !active.insert(name.to_owned()) {
+        fn contents(m: &Manifest, name: &str, active: &mut BTreeSet<String>) -> bool {
+            if m.supports_spawn_leaf(name) {
+                return true;
+            }
+            if reference_inner(name).is_some() || !active.insert(name.to_owned()) {
                 return false;
             }
-            let supported = fields.iter().all(|field| {
-                m.supports_spawn_leaf(&field.ty)
-                    || (reference_inner(&field.ty).is_none() && record(m, &field.ty, active))
-            });
+            let supported = if let Some(inner) = option_inner(name) {
+                contents(m, inner, active)
+            } else {
+                match m.type_def(name) {
+                    Some(TypeDef::Record { fields, .. }) => {
+                        fields.iter().all(|f| contents(m, &f.ty, active))
+                    }
+                    Some(TypeDef::Variant { constructors, .. }) => constructors
+                        .iter()
+                        .all(|tag| tag.fields.iter().all(|f| contents(m, &f.ty, active))),
+                    _ => false,
+                }
+            };
             active.remove(name);
             supported
         }
-        reference_inner(name).is_some_and(|(_, inner)| record(self, inner, &mut BTreeSet::new()))
+        reference_inner(name).is_some_and(|(_, inner)| contents(self, inner, &mut BTreeSet::new()))
     }
     /// Owned records, options, variants and named outcomes may nest. Reference
     /// leaves still require reference-free storage; anonymous outcomes stay local.

@@ -1532,3 +1532,9 @@ direct reference leaves. Holder storage stays borrowed until consuming join; sel
 results retain supplier loans and any exclusive holder guards. Hover describes the
 bounded profile. Unsaved holder/result conflicts report `E_LOAN` and recover after
 repair. Borrowed tagged captures and whole borrowed-carrier results remain gated.
+
+Release 0.179 supports borrowed option/closed-variant captures nested with records and
+direct reference leaves. Selected and empty alternatives retain holder and supplier
+permissions; exclusive detached results keep holder guards. Hover describes the
+profile. Unsaved holder/result conflicts invalidate inferred hovers and repair restores
+them. Borrowed reference-bearing outcomes and whole borrowed-carrier results stay gated.
