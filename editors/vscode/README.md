@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-darwin-arm64-0.148.0.vsix` using **Extensions:
+1. Install the supplied `tellur-language-darwin-arm64-0.149.0.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1334,3 +1334,10 @@ unguarded references can carry complete dependency coverage; guarded, contained 
 conditional cases remain partial. Native reborrows require complete incoming evidence,
 and partial dependencies stay partial through result merging. Expansion certificates
 protect the coverage status. Parent execution and source scheduling remain gated.
+
+## Immutable native interference queries in 0.149
+
+Native support can compare one retained child's complete dependencies with its owner's
+next local callback under exact invocation and fault-domain identity. Results distinguish
+disjoint storage, conservative overlap and inconclusive evidence. Queries preserve all
+state, and both parent-selection gates remain in place. Source concurrency is unchanged.

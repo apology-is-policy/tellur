@@ -116,6 +116,22 @@ pub fn drive_selection(
             delivery |= matches!(&m.stack.last().unwrap().pending, Some(Pending::Await(p)) if p.result.is_some());
             let borrower = c.start_child(&root, &SELECTION_CHILD, vec![])?;
             let before = selection_snapshot(&c, &root);
+            let interference = c.child_interference(&root, &borrower);
+            for _ in 0..3 {
+                assert_eq!(c.child_interference(&root, &borrower), interference);
+                assert_eq!(selection_snapshot(&c, &root), before);
+            }
+            // A fresh empty child has complete empty dependencies. Supported
+            // local callbacks can be disjoint without permitting parent progress.
+            let description = c.parked[&root.id].machine.next_access();
+            if !description.opaque && matches!(description.transition,
+                Transition::Skip | Transition::Local | Transition::Delivery)
+                && description.delivery.is_empty()
+            {
+                assert_eq!(interference, dependencies::Interference::Disjoint);
+            } else {
+                assert!(matches!(interference, dependencies::Interference::Inconclusive(_)));
+            }
             for quota in [1, 0, 99] {
                 let p = c.parked.get_mut(&root.id).unwrap();
                 c.host.exchange_context(&mut p.host)?;

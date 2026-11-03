@@ -577,6 +577,53 @@ impl<'a> Contexts<'a> {
             Ok(&self.require_completed(key)?.parked.dependencies)
         }
     }
+    /// Compare the current callback with one retained direct child. This result
+    /// does not account for other children and never grants execution permission.
+    /// Requery after any state change; no reusable authority token is produced.
+    pub fn child_interference(
+        &self,
+        parent: &ContextKey,
+        child: &ContextKey,
+    ) -> dependencies::Interference {
+        let query = || -> R<dependencies::Interference> {
+            self.require(parent)?;
+            let owner = &self.parked[&parent.id];
+            owner.machine.require_runnable(&self.domains)?;
+            self.domains.require_open(&owner.machine.current, &[])?;
+            if self.waits.contains_key(&parent.id) || owner.awaiting.is_some() {
+                return Err("E_NATIVE: interference parent is waiting".into());
+            }
+            let activation = owner
+                .machine
+                .stack
+                .last()
+                .ok_or("E_NATIVE: query owner has retired")?;
+            activation.require_task_host(self.host)?;
+            let borrower = if self.parked.contains_key(&child.id) {
+                self.require(child)?;
+                &self.parked[&child.id]
+            } else {
+                &self.require_completed(child)?.parked
+            };
+            if borrower.parent != Some(parent.id)
+                || borrower.parent_invocation != Some(activation.owner)
+            {
+                return Err("E_NATIVE: interference child belongs to another invocation".into());
+            }
+            if !self
+                .domains
+                .same(&owner.machine.current, &borrower.machine.root.key)
+            {
+                return Err(
+                    "E_NATIVE: interference crosses the child's owning fault domain".into(),
+                );
+            }
+            self.domains.require_open(&borrower.machine.root.key, &[])?;
+            let plan = owner.machine.resolve_interference_access(&self.values)?;
+            Ok(borrower.dependencies.interference(&self.values, &plan))
+        };
+        query().unwrap_or_else(dependencies::Interference::Inconclusive)
+    }
     pub fn advance_retained(&mut self, key: &ContextKey, quota: usize) -> R<ContextPoll> {
         self.require_live()?;
         if !Arc::ptr_eq(&self.identity, &key.session) {
@@ -1222,3 +1269,7 @@ mod entry_context_tests;
 #[cfg(test)]
 #[path = "retirement_preflight_tests.rs"]
 mod retirement_preflight_tests;
+
+#[cfg(test)]
+#[path = "interference_tests.rs"]
+mod interference_tests;

@@ -2240,6 +2240,51 @@ and contained completeness remains separate work; both parent-selection and reti
 gates, source scheduling, `spawn`/`yield`, cancellation, async adapter/disposal and LLVM
 coroutine lowering remain unchanged.
 
+## Immutable native interference queries (E1d.2d.3s.4)
+
+Compiler 0.149 adds a diagnostic comparison between one retained direct child and its
+owner's current callback. The query validates the current activation, original parent
+invocation, host context, open owning fault domain and live allocation identities.
+An unrelated context, a later invocation in the same context, a different current
+boundary, a waiting owner or a retired/foreign child yields `Inconclusive`. Retained
+completed children keep their dependency snapshots until join and are compared by the
+same rules. This is a per-child observation, not an aggregate scheduling decision or a
+reusable permission token; callers must requery after any state change.
+
+Only nonopaque `Skip`, `Local` and normal pending `Delivery` plans qualify. Pending
+normal delivery compares result writes, not already consumed argument accesses. Fault,
+process, call, loop, boundary, retirement transitions and other administrative results
+remain inconclusive. Local slot retirement is still represented as an access; frame and
+scope retirement are separate unsupported transitions. Indirect callback accesses also
+require their reference's saved formation identity to match the current target. An old
+absolute slot cannot regain authority when a new allocation reuses that address.
+
+Only `Complete` dependency descriptions with complete unguarded/nonopaque origins are
+compared. The whole description's identities are validated before any overlap is
+reported; partial/unknown evidence and stale later entries cannot be hidden by a valid
+prefix. Equal allocation identity plus equal or ancestor/descendant field paths gives
+`Overlap`; otherwise the comparison can return `Disjoint`. Broad checked ancestor
+origins keep their own paths. Origins are not evaluated as runtime reads. Since their
+access modes and result families are not represented, all overlaps stay conservative,
+including shared read/read overlap. No result-family disjointness is invented.
+
+Access resolution has a 4096 entry/path budget. Dependency and combined query validation
+are bounded by the existing capture budgets, with at most 65536 pair comparisons.
+Exhaustion is inconclusive. Queries neither evaluate source operands nor consume fuel,
+move values, change facts, transfer resources or deliver results. Native-host cases
+cover field and allocation identity, broad ancestors, completed children, foreign and
+reused storage, incomplete evidence, unsupported transitions, exact invocation/domain
+checks, pending delivery and bounded comparison. Generated original/expanded O0/O2
+probes query actual callbacks under both quota partitions while preserving observations
+and immutable rejections at both parent-selection layers.
+
+Neither parent-selection nor retirement gates are relaxed. This completes the narrow
+immutable query, not independent parent execution. The next integration step must
+aggregate all relevant retained borrowers under one current owner and account for
+pending results and descendant relationships before any permission gate can change.
+Guarded/contained/conditional completeness, source scheduling, `spawn`/`yield`,
+cancellation, async adapters/disposal and LLVM coroutine lowering remain separate work.
+
 ## Reference execution invariants
 
 A step partition must not itself become a source effect. The same selected schedule

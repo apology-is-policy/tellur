@@ -1,9 +1,27 @@
 //! Conservative capture descriptions. Unknown metadata never changes execution.
-use super::access_resolution::StoragePlace;
+use super::Transition;
+use super::access_resolution::{ResolvedAccess, ResolvedPlan, StoragePlace};
 use super::reference_evidence::Origins;
 use super::{Frames, R, V};
 
 const LIMIT: usize = 4096;
+
+/// One immutable comparison, never selection or retirement authorization.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Interference {
+    Disjoint,
+    /// Conservative overlap, including ancestor origins whose access mode is
+    /// unrepresented. Even a read/read overlap is not certified disjoint here.
+    Overlap {
+        access: ResolvedAccess,
+        dependency: StoragePlace,
+    },
+    Inconclusive(String),
+}
+
+fn overlaps(a: &StoragePlace, b: &StoragePlace) -> bool {
+    a.storage == b.storage && (a.fields.starts_with(&b.fields) || b.fields.starts_with(&a.fields))
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Dependency {
@@ -27,6 +45,78 @@ pub enum Dependencies {
     Unknown(String),
 }
 impl Dependencies {
+    pub(super) fn interference(&self, values: &Frames, plan: &ResolvedPlan) -> Interference {
+        match self.compare(values, plan) {
+            Ok(result) => result,
+            Err(message) => Interference::Inconclusive(message),
+        }
+    }
+    fn compare(&self, values: &Frames, plan: &ResolvedPlan) -> R<Interference> {
+        let Self::Complete {
+            reachable,
+            origins: Origins::Complete(origins),
+        } = self
+        else {
+            return Err("E_NATIVE: dependency coverage is incomplete".into());
+        };
+        if plan.opaque
+            || !matches!(
+                plan.transition,
+                Transition::Skip | Transition::Local | Transition::Delivery
+            )
+            || !plan.delivery.is_empty()
+        {
+            return Err("E_NATIVE: unsupported interference transition".into());
+        }
+        // Validate the whole description before reporting any overlap. A valid
+        // prefix must not hide stale/foreign identity or unsupported guard evidence.
+        let mut cost = 0usize;
+        for place in reachable
+            .iter()
+            .map(|d| &d.place)
+            .chain(origins.iter().map(|o| &o.place))
+        {
+            cost = cost.saturating_add(1).saturating_add(place.fields.len());
+            if cost > LIMIT * 2 {
+                return Err("E_NATIVE: dependency query limit exceeded".into());
+            }
+            values.require_storage(&place.storage)?;
+        }
+        if origins.iter().any(|o| o.guard || o.opaque) {
+            return Err("E_NATIVE: guarded or opaque complete origins are unsupported".into());
+        }
+        for access in &plan.accesses {
+            cost = cost
+                .saturating_add(1)
+                .saturating_add(access.place.fields.len());
+            if cost > LIMIT * 3 {
+                return Err("E_NATIVE: access query limit exceeded".into());
+            }
+            access.place.require(values, access.kind)?;
+        }
+        // Origins remain symbolic dependency paths, never runtime reads. Broad
+        // ancestors cannot be narrowed by a descendant's actual reference path.
+        let mut comparisons = 0usize;
+        for access in &plan.accesses {
+            for place in reachable
+                .iter()
+                .map(|d| &d.place)
+                .chain(origins.iter().map(|o| &o.place))
+            {
+                comparisons += 1;
+                if comparisons > LIMIT * 16 {
+                    return Err("E_NATIVE: interference comparison limit exceeded".into());
+                }
+                if overlaps(&access.place, place) {
+                    return Ok(Interference::Overlap {
+                        access: access.clone(),
+                        dependency: place.clone(),
+                    });
+                }
+            }
+        }
+        Ok(Interference::Disjoint)
+    }
     fn resolved(reachable: Vec<Dependency>, origins: Origins) -> Self {
         if origins.is_complete() {
             Self::Complete { reachable, origins }

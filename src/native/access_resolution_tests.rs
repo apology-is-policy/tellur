@@ -324,3 +324,28 @@ fn constructor_destination_and_deferred_writes_resolve_in_their_own_frames() {
     );
     assert!(plan.resolve(&values, &callee, Some(usize::MAX)).is_err());
 }
+
+#[test]
+fn strict_query_budget_counts_inherited_paths_and_holder_reads_before_allocation() {
+    let mut values = Frames::default();
+    let owner = values.enter(1).unwrap();
+    let frame = values.enter(1).unwrap();
+    values[owner.base()] = Some(record(vec![record(vec![V::U32(7)])]));
+    values[frame.base()] = Some(
+        super::super::super::reference(&values, owner.base(), &[0, 0], false, "&U32").unwrap(),
+    );
+    let input = Access {
+        slot: Some(0),
+        fields: &[],
+        indirect: true,
+        kind: AccessKind::Read,
+    };
+    let before = format!("{:?}", &*values);
+    assert!(resolve_checked(&vec![input; 1024], &values, &frame, None, true).is_ok());
+    assert!(
+        resolve_checked(&vec![input; 1025], &values, &frame, None, true)
+            .unwrap_err()
+            .contains("resolved callback access query limit")
+    );
+    assert_eq!(format!("{:?}", &*values), before);
+}

@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.148.0** implements the v0.1 checked core and the current language
+Compiler release **0.149.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -845,3 +845,10 @@ unguarded references can carry complete dependency coverage; guarded, contained 
 conditional cases remain partial. Native reborrows require complete incoming evidence,
 and partial dependencies stay partial through result merging. Expansion certificates
 protect the coverage status. Parent execution and source scheduling remain gated.
+
+## Immutable native interference queries in 0.149
+
+Native support can compare one retained child's complete dependencies with its owner's
+next local callback under exact invocation and fault-domain identity. Results distinguish
+disjoint storage, conservative overlap and inconclusive evidence. Queries preserve all
+state, and both parent-selection gates remain in place. Source concurrency is unchanged.

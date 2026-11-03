@@ -4294,3 +4294,15 @@ direct-capture probe requires complete admission and pending-delivery descriptio
 guarded probes retain partial origin checks. Native consumers, checker/contract/LSP
 regressions and source/reference observations remain covered. No parent-selection or
 retirement gate is relaxed, and complete coverage alone grants no access permission.
+
+## Immutable native interference queries (0.149)
+
+Six native-host cases compare direct child dependencies with field accesses, broad
+ancestor origins and retained results. They reject incomplete/unknown evidence,
+unsupported transitions, stale or foreign allocations, wrong invocations and boundaries,
+and waiting owners without state changes. Indirect callback references require saved
+formation identity after allocation reuse. Pending normal delivery compares result
+writes only. Mode checks preserve conservative shared overlap; bounded comparison
+returns inconclusive. Generated original/expanded O0/O2 selection probes repeat queries
+at real callbacks across quota partitions and retain immutable gate rejections. This
+query does not authorize independent parent execution or source concurrency.

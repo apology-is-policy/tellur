@@ -702,3 +702,10 @@ forms remain partial. Native completeness requires complete incoming evidence an
 lost when merged with partial dependencies. This coverage grants no execution permission;
 callback interference and invocation/domain authority still gate parent progress. See
 [direct reference completeness](../async-execution.md#conservative-direct-reference-completeness-e1d2d3s3).
+
+Since 0.149, an immutable native query compares one retained child's complete dependencies
+with its owner's current local callback. It distinguishes disjoint storage, conservative
+overlap and inconclusive evidence, checking exact invocation/fault-domain and allocation
+identity. Normal pending delivery uses only result writes. This per-child observation
+grants no permission; both parent-selection and retirement gates remain unchanged. See
+[interference queries](../async-execution.md#immutable-native-interference-queries-e1d2d3s4).
