@@ -151,6 +151,7 @@ fn queued_payloads_move_buffers_and_owned_captures_once_in_fifo_order() {
                 fields: vec![V::String(text), own],
             },
             V::Reference {
+                evidence: Default::default(),
                 ty: "&probe".into(),
                 root: usize::MAX,
                 fields: vec![],
@@ -290,6 +291,7 @@ fn unawaited_bound_payloads_release_owned_leaves_on_emergency_return() {
     let mut args = vec![
         make(&mut h, 1, &drops),
         V::Reference {
+            evidence: Default::default(),
             ty: "&probe".into(),
             root: usize::MAX,
             fields: vec![],

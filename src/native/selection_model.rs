@@ -57,6 +57,7 @@ pub fn drive_selection(
     probes: bool,
     quotas: &[usize],
     expected: &[&str],
+    expect_guards: bool,
 ) -> R<Completion> {
     let mut c = Contexts::new(host);
     let root = c.start_entry(control, args)?;
@@ -68,6 +69,8 @@ pub fn drive_selection(
     let mut indirect = false;
     let mut destination = false;
     let mut captured = false;
+    let mut guarded_capture = false;
+    let mut guarded_delivery = false;
     let every_point = quotas == [1];
     let mut quotas = quotas.iter().cycle();
     let result = loop {
@@ -79,9 +82,11 @@ pub fn drive_selection(
             let resolved = m.resolve_access(&c.values)?;
             let dependencies = c.dependencies(&selected)?;
             dependencies.require_live(&c.values)?;
-            captured |= matches!(dependencies, Dependencies::Known(entries) if !entries.is_empty());
+            guarded_capture |= has_checked_guard(dependencies);
+            captured |= matches!(dependencies, Dependencies::Partial { reachable: entries, .. } if !entries.is_empty());
             if let Some(Pending::Await(p)) = &m.stack.last().unwrap().pending {
                 p.dependencies.require_live(&c.values)?;
+                guarded_delivery |= p.result.is_some() && has_checked_guard(&p.dependencies);
             }
             assert_ne!(description.transition, Transition::Unknown);
             assert_eq!(resolved.transition, description.transition);
@@ -138,6 +143,12 @@ pub fn drive_selection(
     };
     assert!(!probes || (checked > 5 && nested && delivery));
     if probes && every_point {
+        if expect_guards {
+            assert!(
+                guarded_capture && guarded_delivery,
+                "checked guards must reach admission and pending delivery"
+            );
+        }
         assert!(
             captured,
             "fixture must retain borrowed capture dependencies"
@@ -163,4 +174,8 @@ pub fn drive_selection(
     assert!(c.host.tasks.is_empty() && c.waits.is_empty() && c.entry.is_none());
     assert_eq!((c.domains.len(), c.domains.member_count()), (0, 0));
     Ok(result)
+}
+
+fn has_checked_guard(dependencies: &Dependencies) -> bool {
+    matches!(dependencies, Dependencies::Partial { origins: super::reference_evidence::Origins::Partial(origins), .. } if origins.iter().any(|o| o.guard))
 }

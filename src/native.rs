@@ -91,7 +91,16 @@ impl FrameLayout {
 }
 fn expression(e: &Expr, layout: &FrameLayout) -> String {
     match e {
-        Expr::WithReferenceEvidence(value, _) => expression(value, layout),
+        Expr::WithReferenceEvidence(value, ReferenceEvidence::Partial(origins)) => {
+            let origins = origins.iter().map(|o| format!(
+                "execution::reference_evidence::Origin{{root:base+{},fields:&{:?},indirect:{},guard:{},opaque:{}}}",
+                layout.slots[&o.place.root], o.place.fields, o.place.indirect, o.guard, o.opaque
+            )).collect::<Vec<_>>().join(",");
+            format!(
+                "{{let reference_value={}; execution::reference_evidence::attach(v,reference_value,&[{origins}])}}",
+                expression(value, layout)
+            )
+        }
         Expr::Length(e) => format!(
             "{{ let value={}; collection_length(value,v)? }}",
             expression(e, layout)
@@ -566,6 +575,9 @@ impl CheckedProgram {
         g.code.push_str(include_str!("native/access_resolution.rs"));
         g.code.push_str("\n}\npub mod dependencies {\n");
         g.code.push_str(include_str!("native/dependencies.rs"));
+        g.code.push_str("\n}\npub mod reference_evidence {\n");
+        g.code
+            .push_str(include_str!("native/reference_evidence.rs"));
         g.code.push_str("\n}\n");
         g.code.push_str("\nmod task_payload {\n");
         g.code.push_str(include_str!("native/task_payload.rs"));

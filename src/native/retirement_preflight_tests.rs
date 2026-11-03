@@ -209,6 +209,7 @@ fn runtime_retirement_rejects_live_waiting_and_completed_borrowers_before_mutati
                     vec![
                         child_owner,
                         V::Reference {
+                            evidence: Default::default(),
                             ty: "&value".into(),
                             root: base + 1,
                             fields: vec![],
@@ -288,6 +289,7 @@ fn joining_the_last_result_allows_parent_retirement_and_preserves_borrowed_stora
             vec![
                 value,
                 V::Reference {
+                    evidence: Default::default(),
                     ty: "&value".into(),
                     root: base + 1,
                     fields: vec![],
@@ -377,6 +379,7 @@ fn runtime_retirement_failure_hands_off_settlement_before_supplier_unwind() {
             vec![
                 value,
                 V::Reference {
+                    evidence: Default::default(),
                     ty: "&probe".into(),
                     root: base,
                     fields: vec![],
@@ -458,6 +461,7 @@ fn machine_selection_rejects_before_operand_moves_facts_effects_or_fuel() {
                 vec![
                     value,
                     V::Reference {
+                        evidence: Default::default(),
                         ty: "&probe".into(),
                         root: base,
                         fields: vec![],

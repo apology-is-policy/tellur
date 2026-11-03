@@ -137,11 +137,17 @@ fn capture_dependencies_survive_all_admission_routes_readiness_and_retained_resu
         let captured = make(&mut c, 1, &drops);
         let args = vec![
             captured,
-            V::Reference {
-                ty: "&probe".into(),
-                root: base,
-                fields: vec![],
-            },
+            super::super::reference_evidence::attach(
+                &c.values,
+                super::super::super::reference(&c.values, base, &[], false, "&probe").unwrap(),
+                &[super::super::reference_evidence::Origin {
+                    root: base,
+                    fields: &[],
+                    indirect: false,
+                    guard: true,
+                    opaque: true,
+                }],
+            ),
         ];
         let expected = Dependencies::describe(&c.values, &args);
         let child = if route == 0 {
@@ -277,6 +283,7 @@ fn queued_contexts_pair_readiness_and_one_use_results_with_the_original_parent()
         vec![
             captured,
             V::Reference {
+                evidence: Default::default(),
                 ty: "&probe".into(),
                 root: base,
                 fields: vec![],
@@ -420,6 +427,7 @@ fn stopped_task_contexts_retire_results_and_waiters_before_suppliers() {
             vec![
                 own,
                 V::Reference {
+                    evidence: Default::default(),
                     ty: "&probe".into(),
                     root: base,
                     fields: vec![],
@@ -439,6 +447,7 @@ fn stopped_task_contexts_retire_results_and_waiters_before_suppliers() {
             vec![
                 own,
                 V::Reference {
+                    evidence: Default::default(),
                     ty: "&probe".into(),
                     root: base,
                     fields: vec![],
@@ -570,6 +579,7 @@ fn owning_contingency_resumes_only_after_bound_task_resources_and_waits_retire()
         vec![
             own,
             V::Reference {
+                evidence: Default::default(),
                 ty: "&probe".into(),
                 root: base,
                 fields: vec![],
@@ -586,6 +596,7 @@ fn owning_contingency_resumes_only_after_bound_task_resources_and_waits_retire()
         vec![
             own,
             V::Reference {
+                evidence: Default::default(),
                 ty: "&probe".into(),
                 root: base,
                 fields: vec![],

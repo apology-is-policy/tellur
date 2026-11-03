@@ -4,6 +4,7 @@ use std::{cell::RefCell, rc::Rc};
 
 fn reference(root: usize, mutable: bool, fields: &[usize]) -> V {
     V::Reference {
+        evidence: Default::default(),
         ty: if mutable { "&mutable value" } else { "&value" }.into(),
         root,
         fields: fields.to_vec(),
@@ -17,7 +18,10 @@ fn record(fields: Vec<V>) -> V {
     }
 }
 fn entries(d: &Dependencies) -> &[Dependency] {
-    let Dependencies::Known(entries) = d else {
+    let Dependencies::Partial {
+        reachable: entries, ..
+    } = d
+    else {
         panic!("{d:?}")
     };
     entries
@@ -112,6 +116,7 @@ fn traversal_limits_and_unavailable_places_stay_explicitly_unknown() {
         reference(usize::MAX, false, &[]),
         reference(f.base(), false, &[9]),
         V::Reference {
+            evidence: Default::default(),
             ty: "&mutable ".into(),
             root: f.base(),
             fields: vec![],
@@ -133,9 +138,15 @@ fn traversal_limits_and_unavailable_places_stay_explicitly_unknown() {
         deep = record(vec![deep]);
     }
     assert!(describe(&values, &[deep], 64).is_err());
-    let mut known = Dependencies::Known(vec![]);
+    let mut known = Dependencies::Partial {
+        reachable: vec![],
+        origins: Origins::default(),
+    };
     known.extend(Dependencies::Unknown("bounded".into()));
-    known.extend(Dependencies::Known(vec![]));
+    known.extend(Dependencies::Partial {
+        reachable: vec![],
+        origins: Origins::default(),
+    });
     assert_eq!(known, Dependencies::Unknown("bounded".into()));
 }
 

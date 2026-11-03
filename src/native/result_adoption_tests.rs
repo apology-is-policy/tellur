@@ -74,6 +74,7 @@ fn adoption_into_parked_nested_receiver_moves_owners_without_selecting_or_follow
                 arguments: vec![b.clone()],
             },
             V::Reference {
+                evidence: Default::default(),
                 ty: "&probe".into(),
                 root: usize::MAX,
                 fields: vec![99],

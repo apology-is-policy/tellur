@@ -285,6 +285,7 @@ mod frame_retirement {
             // Tokens copied below are observation handles, never extra owners.
             let retired_tokens = [first.clone(), second.clone()];
             let borrower = V::Reference {
+                evidence: Default::default(),
                 ty: "&probe".into(),
                 root: 0,
                 fields: vec![],

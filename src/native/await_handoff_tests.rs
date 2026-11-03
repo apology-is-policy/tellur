@@ -48,6 +48,7 @@ fn handoff(
     let mut args = vec![
         v[a.base() + 1].take().unwrap(),
         V::Reference {
+            evidence: Default::default(),
             ty: "&probe".into(),
             root: a.base(),
             fields: vec![],
@@ -853,6 +854,7 @@ fn prepared_owner_await_preserves_other_children_and_requires_every_result_join(
         let args = vec![
             make(&mut c, 2, &drops),
             V::Reference {
+                evidence: Default::default(),
                 ty: "&probe".into(),
                 root: base,
                 fields: vec![],
@@ -925,6 +927,7 @@ fn owner_cold_fault_preserves_its_chain_and_retires_completed_sibling_borrowers(
             let args = vec![
                 make(&mut c, 2, &drops),
                 V::Reference {
+                    evidence: Default::default(),
                     ty: "&probe".into(),
                     root: base,
                     fields: vec![],
@@ -967,6 +970,7 @@ fn machine_selection_preserves_pending_delivery_until_other_children_join() {
     let args = vec![
         make(&mut c, 2, &drops),
         V::Reference {
+            evidence: Default::default(),
             ty: "&probe".into(),
             root: base,
             fields: vec![],

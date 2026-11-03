@@ -28,6 +28,7 @@ mod resource_scope_tests;
 mod result_adoption_tests;
 // Embedded in generated programs. This runtime contains values and primitive
 // adapters only; region execution is generated as native Rust control flow.
+use execution::reference_evidence::ReferenceEvidence;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value as Json, json};
 use std::{
@@ -88,7 +89,7 @@ pub fn pure(name: &str, args: Vec<V>) -> R<V> {
         _ => Err("E_NATIVE: invalid pure expression contract".into()),
     }
 }
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(
     tag = "kind",
     content = "value",
@@ -103,6 +104,7 @@ pub enum V {
     Unit,
     #[serde(skip)]
     Reference {
+        evidence: ReferenceEvidence,
         ty: String,
         root: usize,
         fields: Vec<usize>,
@@ -124,6 +126,63 @@ pub enum V {
         fields: Vec<V>,
     },
 }
+// Descriptive provenance must not change value comparisons.
+impl PartialEq for V {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Bool(a), Self::Bool(b)) => a == b,
+            (Self::U32(a), Self::U32(b)) => a == b,
+            (Self::String(a), Self::String(b)) => a == b,
+            (Self::Bytes(a), Self::Bytes(b)) => a == b,
+            (Self::Unit, Self::Unit) => true,
+            (
+                Self::Reference {
+                    ty: a,
+                    root: ar,
+                    fields: af,
+                    ..
+                },
+                Self::Reference {
+                    ty: b,
+                    root: br,
+                    fields: bf,
+                    ..
+                },
+            ) => a == b && ar == br && af == bf,
+            (
+                Self::Task {
+                    binding: a,
+                    ty: at,
+                    operation: ao,
+                    arguments: aa,
+                },
+                Self::Task {
+                    binding: b,
+                    ty: bt,
+                    operation: bo,
+                    arguments: ba,
+                },
+            ) => a == b && at == bt && ao == bo && aa == ba,
+            (Self::Opaque { ty: a, token: av }, Self::Opaque { ty: b, token: bv }) => {
+                a == b && av == bv
+            }
+            (
+                Self::Construct {
+                    ty: a,
+                    name: an,
+                    fields: af,
+                },
+                Self::Construct {
+                    ty: b,
+                    name: bn,
+                    fields: bf,
+                },
+            ) => a == b && an == bn && af == bf,
+            _ => false,
+        }
+    }
+}
+impl Eq for V {}
 impl V {
     pub fn ty(&self) -> &str {
         match self {
@@ -198,15 +257,11 @@ pub fn address(
     result.extend_from_slice(fields);
     Ok((*root, result))
 }
-pub fn reference(
-    values: &[Option<V>],
-    root: usize,
-    fields: &[usize],
-    indirect: bool,
-    ty: &str,
-) -> R<V> {
+pub fn reference(values: &Frames, root: usize, fields: &[usize], indirect: bool, ty: &str) -> R<V> {
+    let evidence = ReferenceEvidence::from_place(values, root, fields, indirect);
     let (root, fields) = address(values, root, fields, indirect)?;
     Ok(V::Reference {
+        evidence,
         ty: ty.into(),
         root,
         fields,
@@ -277,7 +332,13 @@ pub fn slot(values: &[Option<V>], id: usize) -> R<&V> {
         .ok_or_else(|| format!("E_NATIVE: uninitialized slot {id}"))
 }
 pub fn borrowed_variant(values: &[Option<V>], reference: V) -> R<Outcome> {
-    let V::Reference { ty, root, fields } = reference else {
+    let V::Reference {
+        ty,
+        root,
+        fields,
+        evidence,
+    } = reference
+    else {
         return Err("E_NATIVE: invalid borrowed decision reference".into());
     };
     let mutable = ty.starts_with("&mutable ");
@@ -292,13 +353,22 @@ pub fn borrowed_variant(values: &[Option<V>], reference: V) -> R<Outcome> {
                 .iter()
                 .enumerate()
                 .map(|(i, value)| {
-                    if let V::Reference { ty, root, fields } = value {
+                    if let V::Reference {
+                        ty,
+                        root,
+                        fields,
+                        evidence: contained,
+                    } = value
+                    {
                         let (exclusive, inner) = if let Some(inner) = ty.strip_prefix("&mutable ") {
                             (mutable, inner)
                         } else {
                             (false, ty.strip_prefix('&').expect("reference type"))
                         };
+                        let mut inherited = contained.clone();
+                        inherited.origins.extend(evidence.origins.clone());
                         V::Reference {
+                            evidence: inherited,
                             ty: format!("&{}{}", if exclusive { "mutable " } else { "" }, inner),
                             root: *root,
                             fields: fields.clone(),
@@ -307,6 +377,7 @@ pub fn borrowed_variant(values: &[Option<V>], reference: V) -> R<Outcome> {
                         let mut path = fields.clone();
                         path.push(i);
                         V::Reference {
+                            evidence: evidence.projected(&[i]),
                             ty: format!("&{}{}", if mutable { "mutable " } else { "" }, value.ty()),
                             root,
                             fields: path,
@@ -1806,6 +1877,11 @@ pub fn collection_length(value: V, values: &mut [Option<V>]) -> R<V> {
 pub fn collection(name: &str, args: Vec<V>, values: &mut [Option<V>]) -> R<Outcome> {
     let mut args = args.into_iter();
     let mut first = args.next().ok_or("missing collection")?;
+    let evidence = if let V::Reference { evidence, .. } = &first {
+        evidence.clone()
+    } else {
+        ReferenceEvidence::default()
+    };
     let address = if let V::Reference { root, fields, .. } = &first {
         Some((*root, fields.clone()))
     } else {
@@ -1824,7 +1900,12 @@ pub fn collection(name: &str, args: Vec<V>, values: &mut [Option<V>]) -> R<Outco
             collection_support::Payload::Borrow(index, ty) => {
                 let (root, mut fields) = address.clone().ok_or("borrow of collection temporary")?;
                 fields.push(index);
-                Ok(V::Reference { ty, root, fields })
+                Ok(V::Reference {
+                    ty,
+                    root,
+                    fields,
+                    evidence: evidence.projected(&[index]),
+                })
             }
         })
         .collect::<R<Vec<_>>>()?;

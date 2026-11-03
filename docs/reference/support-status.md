@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.146.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.147.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -190,5 +190,14 @@ parent progress or scheduling. See
 Since 0.146, checked reference expressions retain explicit partial origin evidence,
 including carrier guards. Expansion remaps it and certificate validation rejects its
 removal or alteration. This metadata does not change source execution or native access
-permission; runtime transport and complete guarded loan evidence remain ahead. See
+permission. Native allocation binding and transport follow in 0.147; complete guarded
+loan evidence remains ahead. See
 [partial checked reference origins](../async-execution.md#partial-checked-reference-origins-e1d2d3s1).
+
+Since 0.147, native references retain formation identities and partial checked origins
+through reborrows, moves, selected sum/collection results and ordinary result delivery.
+Capture snapshots retain these origins through admission, readiness, completion and
+pending delivery. Only origin allocations are bound: symbolic fields are not read.
+Unavailable descriptions never change source execution or become an empty dependency
+set. This evidence remains incomplete and grants no access or parent progress. See
+[bound native reference origins](../async-execution.md#bound-native-reference-origins-e1d2d3s2).

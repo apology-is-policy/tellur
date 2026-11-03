@@ -121,6 +121,7 @@ fn indirect_accesses_keep_holder_reads_and_compose_paths_without_following_neste
         ),
     ] {
         values[frame.base()] = Some(V::Reference {
+            evidence: Default::default(),
             ty: ty.into(),
             root: owner.base(),
             fields: vec![0],
@@ -149,11 +150,13 @@ fn indirect_accesses_keep_holder_reads_and_compose_paths_without_following_neste
     // Reading a stored reference is not reading its referent. Dependency traversal
     // for captured reference carriers is a separate analysis.
     values[owner.base()] = Some(record(vec![V::Reference {
+        evidence: Default::default(),
         ty: "&U32".into(),
         root: owner.base() + 1,
         fields: vec![],
     }]));
     values[frame.base()] = Some(V::Reference {
+        evidence: Default::default(),
         ty: "&record".into(),
         root: owner.base(),
         fields: vec![],
@@ -184,6 +187,7 @@ fn invalid_accesses_reject_atomically_without_running_or_consuming_prior_operand
     values[owner.base()] = Some(record(vec![V::String("keep".into())]));
     values[frame.base()] = Some(V::U32(8));
     values[frame.base() + 1] = Some(V::Reference {
+        evidence: Default::default(),
         ty: "&record".into(),
         root: owner.base(),
         fields: vec![],
@@ -222,6 +226,7 @@ fn invalid_accesses_reject_atomically_without_running_or_consuming_prior_operand
     };
     for (ty, root) in [("bad", owner.base()), ("&U32", usize::MAX)] {
         values[frame.base() + 1] = Some(V::Reference {
+            evidence: Default::default(),
             ty: ty.into(),
             root,
             fields: vec![],

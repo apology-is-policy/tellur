@@ -4270,3 +4270,15 @@ origins whose symbolic paths cannot be validated as current ordinary field acces
 Selected generated native probes compare original/expanded O0/O2 and quota partitions;
 source checking, editor and cold-task/fault consumers receive fresh coverage. Native
 runtime dependencies remain descriptive, and source scheduling stays gated.
+
+## Bound native reference origins (0.147)
+
+Five new native-host cases cover guarded reborrow/copy/move propagation, shared
+attenuation, symbolic origin paths through selected sums, borrowed and copied collection
+results, stale/foreign formation identities, value equality and bounded/unavailable
+metadata. The three-route admission/readiness/retained-result case now transports a
+bound guard. The generated guarded-capture probe requires those origins at admission
+and pending delivery, retaining original/expanded O0/O2, quota-partition and immutable
+rejected-selection comparisons. Other native capture, fault, retained-resource, sum and
+collection consumers check behavior preservation. Partial origins remain descriptive;
+no completeness, source concurrency or new access permission is claimed.

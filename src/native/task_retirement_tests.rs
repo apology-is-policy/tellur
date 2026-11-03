@@ -107,6 +107,7 @@ fn graph_retirement_checks_foreign_payloads_before_mutation_and_does_not_follow_
     assert_eq!(h.tasks, before);
     v[m.stack[0].base() + 5] = Some(local.clone());
     let loan = V::Reference {
+        evidence: Default::default(),
         ty: "&pending".into(),
         root: m.stack[0].base() + 5,
         fields: vec![],
@@ -146,6 +147,7 @@ fn lexical_fault_retires_cold_borrowers_and_captures_before_handler_without_losi
             &mut h,
             a,
             V::Reference {
+                evidence: Default::default(),
                 ty: "&probe".into(),
                 root: base,
                 fields: vec![],

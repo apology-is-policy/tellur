@@ -74,6 +74,7 @@ fn resource_scope_admission_and_stale_foreign_exhausted_selection_are_atomic() {
             arguments: vec![
                 owned.clone(),
                 V::Reference {
+                    evidence: Default::default(),
                     ty: "&probe".into(),
                     root: 0,
                     fields: vec![],
@@ -120,6 +121,7 @@ fn lexical_cleanup_preserves_later_independent_allocations_and_retained_owners()
         Some(retained),
         Some(input),
         Some(V::Reference {
+            evidence: Default::default(),
             ty: "&probe".into(),
             root: 9,
             fields: vec![],

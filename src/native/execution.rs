@@ -8,6 +8,9 @@ pub mod access_resolution;
 #[cfg(test)]
 #[path = "dependencies.rs"]
 pub mod dependencies;
+#[cfg(test)]
+#[path = "reference_evidence.rs"]
+pub mod reference_evidence;
 use dependencies::Dependencies;
 
 pub type Deliver = fn(&mut Activation, &mut Frames, Completion) -> R<()>;

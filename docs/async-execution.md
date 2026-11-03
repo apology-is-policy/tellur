@@ -2079,7 +2079,7 @@ contained loans, path domains and permission families retain the required author
 `BorrowSource.guard` and contained result paths also preserve it in checked public
 result contracts. Before 0.146, local reference expressions carried only a resolved place
 and type. The partial checked evidence below now accompanies those expressions. Native `reference` resolves that place to an offset and field path;
-`V::Reference` has no corresponding guard record. Traversing the detached reference
+`V::Reference` gained a partial guard record in 0.147, described below. Traversing the detached reference
 cannot rediscover the carrier that authorized it. Adding only result-origin handling
 would still miss local aliases and nested captures.
 
@@ -2113,8 +2113,8 @@ Copied shared contents do not acquire an invented dependency on their former hol
 
 The wrapper evaluates exactly its reference operand. It does not read the described
 origins, consume extra fuel, retain storage or resources, or change contributor traces.
-Native access plans likewise describe only the actual operand accesses. Native values
-and the 0.145 runtime dependency snapshots do not yet receive this checked metadata.
+Native access plans likewise describe only the actual operand accesses. Native values and the runtime dependency snapshots receive this partial metadata
+starting in 0.147, described below.
 
 Expansion remaps origin roots independently for each inlined invocation. Its separate
 certificate validator reconstructs that remapping and rejects removed evidence, changed
@@ -2137,6 +2137,56 @@ aliases, received carrier address reads, independent expansion instances, serial
 roundtrips and tampered certificates. A structural-validation case rejects malformed
 reference operands and slot kinds. Existing carrier, sum, contract, contributor,
 editor and native comparisons check that adding metadata preserves accepted behavior.
+
+## Bound native reference origins (E1d.2d.3s.2)
+
+Compiler 0.147 binds native reference targets to allocation identities when they are
+formed. Reborrows retain the original identity and append only their actual projection;
+copying or moving a reference preserves its record. Capture traversal rejects stale or
+foreign bound identities instead of reconstructing them from reused offsets. Unbound
+host-created references still have only a current runtime graph description, never a
+certificate of their history or complete loan authority.
+
+Emission evaluates each annotated operand once, then attaches its partial checked
+origins. Direct origins bind their live allocation; indirect origins inherit the
+reference's existing identity and origins. The remaining field path stays symbolic:
+no described field or inactive sum payload is read. Guard and opaque flags remain
+separate from the runtime graph's shared/exclusive capability. Missing holders,
+unavailable identities and exhausted budgets produce unavailable metadata. They do
+not cause a source fault, consume fuel, clone owners or run dispositions. Empty
+partial evidence also remains incomplete.
+
+Reference values carry this evidence through cold task arguments, owned carriers,
+ordinary calls/results and received carrier address reads. Borrowed sum payloads
+preserve their selected payload identity and inherited partial origins; collection
+borrows project the saved target. Copying a shared reference out of a carrier or
+collection preserves that reference's evidence without adding its supplier's guard.
+Metadata is excluded from value equality, preserving the existing comparison behavior.
+
+Context descriptions are now explicitly `Partial`, combining reachable runtime
+storage with partial checked origins. These records survive admission, readiness,
+retained completion and join-to-callback delivery. Origin union is bounded; inherited
+origin entries and path components also count against the 4096 capture traversal
+budget. Liveness queries validate origin allocations, not symbolic field paths or
+current holder meaning. Descriptions contain identities, never resource owners.
+
+Five host cases exercise reborrow/copy/move propagation, shared attenuation and copying,
+symbolic selected-sum paths, collection results, allocation reuse and foreign arenas,
+value equality and metadata budgets. The admission/readiness/result lifecycle test now
+carries bound guard evidence. Generated selection probes require a guarded detached
+capture to retain its guard through pending delivery across original/expanded O0/O2
+and quota partitions, while comparing observations and rejected selections unchanged.
+
+This completes native transport of the existing partial origin subset, not a complete
+loan proof. Loan ancestry, active path domains, contained permissions, selected-tag
+certificates and invocation-local families remain unrepresented. Conservative retained
+origins may also outlive their relevance after a result narrows its origin contract;
+that can make a description unavailable without invalidating source execution. The
+next slice must establish conservative completeness for supported reference forms and
+track unavailable ancestry explicitly. Both parent-selection and retirement gates stay
+in place until complete dependency/interference checks agree with invocation/domain
+authority. No source scheduler, `spawn`/`yield`, cancellation, async adapter/disposal or
+LLVM coroutine ABI is enabled.
 
 ## Reference execution invariants
 

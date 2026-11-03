@@ -124,10 +124,11 @@ fn compare_selection(label: &str, input: &str, args: &[&str], expected: &[&str])
         let normal = format!(
             "fn entry_{entry}(host:&mut Host,args:Vec<V>)->R<Completion>{{drive(host,args,&MODEL_{entry})}}"
         );
+        let expect_guards = label == "detached-guards";
         let replacement = format!(
             r#"fn entry_{entry}(host:&mut Host,args:Vec<V>)->R<Completion>{{
             let quotas=std::env::var("TELLUR_NATIVE_MODEL_QUOTAS").unwrap().split(',').map(|s|s.parse::<usize>().unwrap()).collect::<Vec<_>>();
-            drive_selection(host,&MODEL_{entry},args,std::env::var("TELLUR_SELECTION_PROBES").unwrap()=="true",&quotas,&{expected:?})
+            drive_selection(host,&MODEL_{entry},args,std::env::var("TELLUR_SELECTION_PROBES").unwrap()=="true",&quotas,&{expected:?},{expect_guards})
         }}"#
         );
         let generated = source(&program, "main").unwrap();

@@ -26,6 +26,7 @@ pub(super) fn borrowed_counter(contexts: &Contexts<'_>, key: &ContextKey) -> V {
         {
             if matches!(value, Some(V::Opaque { ty, .. }) if ty == "counter") {
                 return V::Reference {
+                    evidence: Default::default(),
                     ty: "&counter".into(),
                     root: frame.base() + offset,
                     fields: vec![],

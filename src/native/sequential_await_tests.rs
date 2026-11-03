@@ -386,6 +386,7 @@ fn sequential_join_adopts_owners_and_keeps_original_borrow_storage() {
         fields: vec![
             capture,
             V::Reference {
+                evidence: Default::default(),
                 ty: "&bool".into(),
                 root: base,
                 fields: vec![],
@@ -573,6 +574,7 @@ fn administrative_await_and_process_retirement_do_not_fabricate_outcomes() {
                 fields: vec![
                     capture,
                     V::Reference {
+                        evidence: Default::default(),
                         ty: "&probe".into(),
                         root: base + 1,
                         fields: vec![],

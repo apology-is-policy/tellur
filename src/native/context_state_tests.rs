@@ -50,6 +50,7 @@ fn paired_context_selection_restores_handlers_and_preserves_independent_real_own
     let borrowed = make(&mut h, 2, &drops);
     let other = make(&mut h, 3, &drops);
     let loan = V::Reference {
+        evidence: Default::default(),
         ty: "&probe".into(),
         root: 0,
         fields: vec![],

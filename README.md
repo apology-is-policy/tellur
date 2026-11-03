@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.146.0** implements the v0.1 checked core and the current language
+Compiler release **0.147.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -828,3 +828,12 @@ guards, before local aliases disappear. Expansion remaps this evidence, and cert
 validation rejects its removal or alteration. Execution and editor contracts keep their
 existing behavior. Native values, complete loan evidence and parent-access permission
 remain separate integration work.
+
+## Bound native reference origins in 0.147
+
+Native reference values now retain allocation identities and partial checked origins,
+including carrier guards. Copies, moves, reborrows and result delivery preserve them;
+capture snapshots carry them through waiting and completion. Symbolic origin fields
+are never read as runtime projections. Missing or bounded-out evidence remains
+unavailable, with unchanged source behavior. Complete loan authority and access
+interference checks still gate parent progress and source scheduling.

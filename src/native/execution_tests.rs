@@ -147,6 +147,7 @@ fn shared_context_join_preserves_source_borrows_and_separates_readiness() {
             vec![
                 value,
                 V::Reference {
+                    evidence: Default::default(),
                     ty: "&probe".into(),
                     root: base,
                     fields: vec![],

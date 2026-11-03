@@ -69,7 +69,10 @@ fn resolve(
             };
             holder.require(values, AccessKind::Read)?;
             let root = values.require_storage(&holder.storage)?;
-            let Some(V::Reference { ty, root, fields }) = &values[root] else {
+            let Some(V::Reference {
+                ty, root, fields, ..
+            }) = &values[root]
+            else {
                 return Err("E_NATIVE: indirect access requires a reference holder".into());
             };
             let mutable = if ty.starts_with("&mutable ") {
