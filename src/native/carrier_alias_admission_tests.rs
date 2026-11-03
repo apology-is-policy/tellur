@@ -354,3 +354,107 @@ fn incoming_shared_leaf_blocks_broad_pointee_but_does_not_retain_copied_holder()
         }
     }
 }
+
+#[test]
+fn retained_holder_snapshot_covers_owners_outside_a_detached_leaf_graph() {
+    for complete in [true, false] {
+        for state in 0..3 {
+            let mut h = host();
+            let mut c = Contexts::new(&mut h);
+            let root = c
+                .start(&PARENT, vec![V::U32(7), V::U32(8), V::Unit, V::U32(0)])
+                .unwrap();
+            let b = c.parked[&root.id].machine.stack[0].base();
+            let leaf = |c: &Contexts<'_>, offset, complete| {
+                attach_checked(
+                    &c.values,
+                    super::super::super::reference(&c.values, b + offset, &[], false, "&U32")
+                        .unwrap(),
+                    &[origin(b + offset, &[])],
+                    complete,
+                    true,
+                )
+            };
+            let detached = leaf(&c, 0, true);
+            c.values[b + 2] = Some(record(
+                "holder",
+                vec![detached.clone(), leaf(&c, 1, complete)],
+            ));
+            let mut holder =
+                super::super::super::reference(&c.values, b + 2, &[], false, "&holder").unwrap();
+            let V::Reference { evidence, .. } = &mut holder else {
+                unreachable!()
+            };
+            evidence.origins = Origins::Complete(vec![]);
+            let before = snapshot(&c);
+            let retained = Dependencies::holder_origins(&c.values, &holder);
+            assert_eq!(retained.is_complete(), complete);
+            assert_eq!(snapshot(&c), before);
+            let mut guarded = detached;
+            let V::Reference { evidence, .. } = &mut guarded else {
+                unreachable!()
+            };
+            evidence.origins.extend(retained);
+            let child = c.start_child(&root, &CHILD, vec![guarded]).unwrap();
+            if complete {
+                let Dependencies::Complete {
+                    reachable,
+                    origins: Origins::Complete(origins),
+                } = c.dependencies(&child).unwrap()
+                else {
+                    panic!()
+                };
+                assert_eq!(reachable.len(), 1);
+                assert_eq!(
+                    c.values
+                        .require_storage(&reachable[0].place.storage)
+                        .unwrap(),
+                    b
+                );
+                assert!(
+                    origins
+                        .iter()
+                        .any(|o| c.values.require_storage(&o.place.storage).unwrap() == b + 1)
+                );
+                assert!(origins.iter().any(
+                    |o| o.guard && c.values.require_storage(&o.place.storage).unwrap() == b + 2
+                ));
+            } else {
+                assert!(matches!(
+                    c.dependencies(&child).unwrap(),
+                    Dependencies::Partial { .. }
+                ));
+            }
+            if state == 1 {
+                c.advance_retained(&child, 1).unwrap();
+                c.park_for_readiness(&child).unwrap();
+            }
+            if state == 2 {
+                c.advance_retained(&child, 2).unwrap();
+            }
+            let before = snapshot(&c);
+            let progress = c.advance_disjoint(&root, 99);
+            assert!(matches!(progress.stop, AdmissionStop::Blocked(_)));
+            assert_eq!(
+                (progress.instructions, progress.transitions),
+                if complete { (1, 1) } else { (0, 0) }
+            );
+            if complete {
+                for pc in 1..5 {
+                    c.parked.get_mut(&root.id).unwrap().machine.stack[0].pc = pc;
+                    let before = snapshot(&c);
+                    assert!(matches!(
+                        c.borrower_interference(&root),
+                        BorrowerInterference::Overlap { .. }
+                    ));
+                    assert_eq!(c.advance_disjoint(&root, 99).transitions, 0);
+                    assert_eq!(snapshot(&c), before);
+                }
+            } else {
+                assert_eq!(snapshot(&c), before);
+            }
+            c.terminate().unwrap();
+            assert!(c.values.is_empty());
+        }
+    }
+}

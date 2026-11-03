@@ -2653,6 +2653,42 @@ Those need complete broad holder ancestry in addition to leaf formation evidence
 shared-copy exception cannot discharge that obligation. Source scheduling, `spawn`/`yield`,
 cancellation, async adapters/disposal and LLVM coroutine lowering remain separate.
 
+## Bounded native holder snapshots (E1d.2d.3s.13)
+
+Compiler 0.158 ships an internal native holder-snapshot operation as a prerequisite for
+indirect guarded input proofs. A detached leaf's actual reachable graph does not include
+all other owners stored in its holder. Merely retaining the holder's symbolic allocation
+would omit those owners when incoming origin lists are empty. The new operation snapshots
+an actual incoming aggregate reference, independently of any later guard-attachment rule.
+
+The snapshot validates the original holder allocation and exact path, then traverses the
+actual aggregate and stored references with strict formation checks. Every stored reference
+must have its original target identity; missing identities are not reconstructed from reused
+slots. Inherited symbolic origin paths remain symbolic and are checked for allocation
+liveness only. The resulting metadata includes the full holder as an ordinary dependency
+and paired guard, every reachable stored owner, and all inherited origins. Access-mode flags
+are not promoted into authority; subsequent interference stays conservative.
+
+Traversal, paths and the final origin union retain the existing 4096 bounds. Partial root
+or leaf evidence stays partial. Missing, mismatched, foreign, stale or oversized evidence
+makes the snapshot unavailable without changing source values or raising a source failure.
+Repeated or cyclic storage is bounded by the existing visited-place traversal. Snapshotting
+does not move, clone or dispose source values, execute callbacks or register borrowers.
+
+Host probes attach the snapshot explicitly in test code to a detached scalar leaf. They
+start with complete empty holder origin lists, retain otherwise unreachable owners, block
+whole-holder and sibling-owner access through live/waiting/completed children, and permit
+only disjoint work. Partial stored-leaf evidence keeps admission inconclusive and unchanged.
+Generated original/expanded O0/O2 carrier models query snapshots at real invocation inputs
+and verify unchanged observations across quota partitions.
+
+The compiler does not yet emit holder snapshots or relax its exclusive-input/indirect-guard
+completeness gates. A snapshot is retained dependency evidence, not permission to attach a
+guard, select a callback or retire storage. The next checkpoint must certify the source
+holder relationship, broad ancestor coverage and exact input permissions, then preserve that
+proof through independent structural verification and expansion certificates. Source
+scheduling, cancellation, async adapters/disposal and LLVM coroutine lowering remain separate.
+
 ## Reference execution invariants
 
 A step partition must not itself become a source effect. The same selected schedule

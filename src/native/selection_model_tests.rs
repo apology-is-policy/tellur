@@ -328,6 +328,22 @@ fn compare_selection(label: &str, input: &str, args: &[&str], expected: &[&str])
         } else {
             generated
         };
+        let generated = if matches!(label, "local-carriers" | "aliased-carriers") {
+            generated.replace("let mut checked = 0;", "let mut checked = 0; let mut holder_snapshots = 0;")
+                .replace("let dependencies = c.dependencies(&selected)?;", r#"
+                let dependencies = c.dependencies(&selected)?;
+                if let Some(a)=m.stack.last() && a.control.name=="inspect" {
+                    let holder=c.values[a.base()+a.control.parameters[0]].as_ref().unwrap();
+                    let origins=Dependencies::holder_origins(&c.values,holder);
+                    let super::reference_evidence::Origins::Complete(entries)=origins else {panic!("complete holder snapshot expected")};
+                    assert!(entries.len()>=3 && entries.iter().any(|o|o.guard && o.opaque));
+                    holder_snapshots+=1;
+                }
+                "#).replace("assert!(c.host.tasks.is_empty() && c.waits.is_empty() && c.entry.is_none());",
+                    "assert!(c.host.tasks.is_empty() && c.waits.is_empty() && c.entry.is_none()); if probes {assert!(holder_snapshots>0);}")
+        } else {
+            generated
+        };
         for opt in [0, 2] {
             let binary = root.join(format!("selection-{is_expanded}-{opt}"));
             let project = program.native_project("main", &binary).unwrap();

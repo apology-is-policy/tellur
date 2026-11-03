@@ -4388,3 +4388,13 @@ pointee writes through live/waiting/completed children, including complete empty
 origin lists and partial caller fallback. Original/expanded O0/O2 models check all captures
 and pending deliveries, inject partial incoming evidence without promotion, and preserve
 source observations across quota partitions.
+
+## Bounded native holder snapshots (0.158)
+
+Native probes retain actual stored owners and symbolic ancestry without source-value
+changes; partial root/leaf evidence stays partial. Missing, mismatched, foreign, stale,
+non-aggregate and over-budget inputs are unavailable. Repeated and cyclic storage stays
+bounded. Detached-leaf host probes retain hidden owners with complete empty incoming
+origin lists, block holder/sibling writes across live/waiting/completed states, and reject
+partial admission without effects. Generated original/expanded O0/O2 carrier models query
+real holder inputs and preserve source observations. Compiler proof gates remain unchanged.

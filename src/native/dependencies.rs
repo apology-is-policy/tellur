@@ -1,7 +1,7 @@
 //! Conservative capture descriptions. Unknown metadata never changes execution.
 use super::Transition;
 use super::access_resolution::{ResolvedAccess, ResolvedPlan, StoragePlace};
-use super::reference_evidence::Origins;
+use super::reference_evidence::{BoundOrigin, Origins};
 use super::{Frames, R, V};
 
 const LIMIT: usize = 4096;
@@ -132,6 +132,13 @@ impl Dependencies {
             Err(message) => Self::Unknown(message),
         }
     }
+    /// Snapshot an actual incoming aggregate holder, including every currently
+    /// reachable stored owner and inherited symbolic origin. This is dependency
+    /// metadata, not permission to attach a guard, select work or retire storage.
+    /// Callers must establish the checked holder relationship separately.
+    pub(super) fn holder_origins(values: &Frames, holder: &V) -> Origins {
+        holder_origins(values, holder).unwrap_or_else(Origins::Unavailable)
+    }
     /// Allocation liveness only, not current holder meaning or access permission.
     pub fn require_live(&self, values: &Frames) -> R<()> {
         let (Self::Partial {
@@ -197,7 +204,65 @@ impl Dependencies {
     }
 }
 
+fn holder_origins(values: &Frames, holder: &V) -> R<Origins> {
+    let V::Reference {
+        root,
+        fields,
+        evidence,
+        ..
+    } = holder
+    else {
+        return Err("holder snapshot requires an incoming reference".into());
+    };
+    let target = evidence
+        .target
+        .as_ref()
+        .ok_or("holder formation is unavailable")?;
+    if target.fields.len() > LIMIT
+        || values.require_storage(&target.storage)? != *root
+        || target.fields != *fields
+    {
+        return Err("holder does not match its formation identity".into());
+    }
+    if !matches!(target.value(values)?, V::Construct { .. }) {
+        return Err("holder snapshot requires aggregate storage".into());
+    }
+    let (reachable, mut origins) =
+        describe_formed(values, std::slice::from_ref(holder), LIMIT, true)?;
+    origins.require_live(values)?;
+    let complete = origins.is_complete();
+    let mut retained = reachable
+        .into_iter()
+        .map(|dependency| BoundOrigin {
+            place: dependency.place,
+            guard: false,
+            opaque: false,
+        })
+        .collect::<Vec<_>>();
+    retained.push(BoundOrigin {
+        place: target.clone(),
+        guard: true,
+        opaque: true,
+    });
+    origins.extend(if complete {
+        Origins::Complete(retained)
+    } else {
+        Origins::Partial(retained)
+    });
+    origins.require_live(values)?;
+    Ok(origins)
+}
+
 fn describe(values: &Frames, captures: &[V], limit: usize) -> R<(Vec<Dependency>, Origins)> {
+    describe_formed(values, captures, limit, false)
+}
+
+fn describe_formed(
+    values: &Frames,
+    captures: &[V],
+    limit: usize,
+    strict: bool,
+) -> R<(Vec<Dependency>, Origins)> {
     if captures.len() > limit {
         return Err("capture dependency limit exceeded".into());
     }
@@ -223,6 +288,9 @@ fn describe(values: &Frames, captures: &[V], limit: usize) -> R<(Vec<Dependency>
                     .ok_or("captured checked origin limit exceeded")?;
                 origins.extend(evidence.origins.clone());
                 if evidence.target.is_none() {
+                    if strict {
+                        return Err("stored reference formation is unavailable".into());
+                    }
                     origins.extend(Origins::default());
                 }
                 let mutable = if let Some(inner) = ty.strip_prefix("&mutable ") {
@@ -287,3 +355,7 @@ fn describe(values: &Frames, captures: &[V], limit: usize) -> R<(Vec<Dependency>
 #[cfg(test)]
 #[path = "dependencies_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "holder_origins_tests.rs"]
+mod holder_origins_tests;

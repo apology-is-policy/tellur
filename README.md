@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.157.0** implements the v0.1 checked core and the current language
+Compiler release **0.158.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -913,3 +913,10 @@ reborrows, local aliases and projections. Broad pointee ancestry remains protect
 copying a shared field does not retain its record holder. Partial caller evidence and
 unsupported permission cases remain conservative. Try
 `./bin/tellurc exec playground/incoming_leaf_tasks.tellur`.
+
+## Native holder snapshots in 0.158
+
+Native runtime support now retains bounded dependency snapshots of incoming aggregate
+holders and their stored owners. Partial or invalid formation evidence cannot become
+complete. Host and generated tests establish this prerequisite; compiler admission of
+exclusive input and indirect holder guards remains gated.

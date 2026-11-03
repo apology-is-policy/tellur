@@ -765,3 +765,9 @@ complete. Full incoming pointees and caller ancestry remain dependencies; copyin
 field adds no holder guard. Exclusive/grouped/conditional/returned permissions and whole
 indirect carrier closure remain conservative. See
 [shared input leaves](../async-execution.md#complete-singleton-shared-input-leaves-e1d2d3s12).
+
+Since 0.158, native runtime support can snapshot an actual incoming aggregate holder,
+including stored owners outside a detached leaf's reachable graph. Formation identities,
+liveness and bounded traversal are checked without changing source values. This internal
+prerequisite does not relax compiler admission of exclusive input or indirect holder guards.
+See [holder snapshots](../async-execution.md#bounded-native-holder-snapshots-e1d2d3s13).
