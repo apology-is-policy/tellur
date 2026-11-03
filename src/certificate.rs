@@ -67,6 +67,21 @@ fn place(p: &Place, slots: &BTreeMap<Id, Id>) -> Place {
 fn substitute(e: &Expr, slots: &BTreeMap<Id, Id>) -> Expr {
     let sub = |e: &Expr| substitute(e, slots);
     match e {
+        Expr::WithReferenceEvidence(value, ReferenceEvidence::Partial(origins)) => {
+            Expr::WithReferenceEvidence(
+                Box::new(sub(value)),
+                ReferenceEvidence::Partial(
+                    origins
+                        .iter()
+                        .map(|origin| ReferenceOrigin {
+                            place: place(&origin.place, slots),
+                            guard: origin.guard,
+                            opaque: origin.opaque,
+                        })
+                        .collect(),
+                ),
+            )
+        }
         Expr::Value(v) => Expr::Value(v.clone()),
         Expr::Place(p) => Expr::Place(place(p, slots)),
         Expr::Move(p) => Expr::Move(place(p, slots)),

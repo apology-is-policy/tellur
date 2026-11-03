@@ -52,6 +52,22 @@ impl Verifier<'_> {
     fn expr(&self, e: &Expr) -> Result<String> {
         let m = self.program.manifest();
         Ok(match e {
+            Expr::WithReferenceEvidence(value, ReferenceEvidence::Partial(origins)) => {
+                let ty = self.expr(value)?;
+                if crate::manifest::reference_inner(&ty).is_none() {
+                    return Err(error("reference evidence requires a reference value"));
+                }
+                for origin in origins {
+                    let source = self.slot(origin.place.root)?;
+                    if origin.place.indirect && crate::manifest::reference_inner(source).is_none() {
+                        return Err(error("indirect origin evidence requires a reference slot"));
+                    }
+                    // Checked origins can name abstract sum storage. Partial
+                    // evidence has no selected-tag/path certificate and must
+                    // not be validated or evaluated as an ordinary access.
+                }
+                ty
+            }
             Expr::Length(e) => {
                 let ty = self.expr(e)?;
                 let (mutable, inner) = crate::manifest::reference_inner(&ty)
@@ -964,6 +980,47 @@ fn verify_source(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn partial_reference_evidence_requires_reference_values_and_valid_slot_kinds() {
+        let source = r#"
+control lend(ref string input) exits ready {ref string value from input} {exit ready {input};}
+control main() exits done {
+    string owner="hello";
+    delta lend(borrow owner) {ready {auto value}=>ready}
+    [ready]:emit(value);exit done;
+}
+"#;
+        let m = crate::manifest::Manifest::from_json(include_str!("../playground/manifest.json"))
+            .unwrap();
+        let original = crate::compile(source, m).unwrap();
+        original.verify().unwrap();
+        for mutation in 0..3 {
+            let mut p = original.clone();
+            let r = p.regions.get_mut("main").unwrap();
+            let (value, origins) = r
+                .code
+                .iter_mut()
+                .find_map(|i| {
+                    if let Action::Decide { args, .. } = &mut i.action {
+                        if let Some(Expr::WithReferenceEvidence(
+                            value,
+                            ReferenceEvidence::Partial(origins),
+                        )) = args.first_mut()
+                        {
+                            return Some((value, origins));
+                        }
+                    }
+                    None
+                })
+                .unwrap();
+            match mutation {
+                0 => **value = Expr::Value(Value::U32(1)),
+                1 => origins[0].place.root = usize::MAX,
+                _ => origins[0].place.indirect = true,
+            }
+            assert_eq!(p.verify().unwrap_err().code, "E_IR");
+        }
+    }
     #[test]
     fn malformed_borrowed_decisions_are_rejected() {
         let source = "control main() exits done {option<string> saved=some {\"hello\"};delta borrow saved {some {auto text}=>some,none=>none}[some]:emit(text);[entry]:drop(saved);exit done;}";

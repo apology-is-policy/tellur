@@ -91,6 +91,7 @@ impl FrameLayout {
 }
 fn expression(e: &Expr, layout: &FrameLayout) -> String {
     match e {
+        Expr::WithReferenceEvidence(value, _) => expression(value, layout),
         Expr::Length(e) => format!(
             "{{ let value={}; collection_length(value,v)? }}",
             expression(e, layout)

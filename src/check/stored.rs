@@ -363,8 +363,11 @@ impl Checker<'_> {
             }
             let target = self.reference_argument(e, mutable, domain, span)?;
             self.expect_type(&target.ty, inner, span)?;
-            let expression = Expr::Reference(target.place.clone(), expected.into());
             let origins = self.origins(&target);
+            let expression = Self::describe_reference(
+                Expr::Reference(target.place.clone(), expected.into()),
+                &origins,
+            );
             let parents = if let Some(source) = &source {
                 self.transfer_reference(source, domain, span)?;
                 source.2.parents.clone()
@@ -959,6 +962,14 @@ impl Checker<'_> {
             )
         })?;
         let (inner, leaf_ty) = (inner.to_owned(), leaf_ty.to_owned());
+        let value = Self::describe_reference(
+            Expr::Place(Place {
+                root,
+                fields: fields.to_vec(),
+                indirect,
+            }),
+            &origins,
+        );
         let key = format!("$stored_address_{}", self.fresh());
         let slot = self.define(&key, &leaf_ty, domain, span)?;
         let id = self.stash_stored_loan(
@@ -1001,14 +1012,7 @@ impl Checker<'_> {
             indirect,
         });
         let _ = name; // The holder's nominal slot retains its source name.
-        Ok((
-            slot,
-            Expr::Place(Place {
-                root,
-                fields: fields.to_vec(),
-                indirect,
-            }),
-        ))
+        Ok((slot, value))
     }
 }
 

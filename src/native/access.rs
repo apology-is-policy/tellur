@@ -58,6 +58,7 @@ impl Plan {
     }
     fn expression(&mut self, e: &Expr) {
         match e {
+            Expr::WithReferenceEvidence(value, _) => self.expression(value),
             Expr::Value(_) => {}
             Expr::Place(p) => self.place(p, Kind::Read),
             Expr::Move(p) => self.place(p, Kind::Move),

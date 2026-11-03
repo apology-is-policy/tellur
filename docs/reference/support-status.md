@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.145.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.146.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -186,3 +186,9 @@ metadata preserves existing execution and never grants access. Runtime values do
 encode every checked origin/holder guard, so these descriptions alone cannot enable
 parent progress or scheduling. See
 [retained capture descriptions](../async-execution.md#retained-native-capture-descriptions-e1d2d3r).
+
+Since 0.146, checked reference expressions retain explicit partial origin evidence,
+including carrier guards. Expansion remaps it and certificate validation rejects its
+removal or alteration. This metadata does not change source execution or native access
+permission; runtime transport and complete guarded loan evidence remain ahead. See
+[partial checked reference origins](../async-execution.md#partial-checked-reference-origins-e1d2d3s1).

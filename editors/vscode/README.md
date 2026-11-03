@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-darwin-arm64-0.145.0.vsix` using **Extensions:
+1. Install the supplied `tellur-language-darwin-arm64-0.146.0.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1309,3 +1309,11 @@ Native contexts now retain bounded descriptions of captured reference storage th
 waiting, completion and pending delivery. Carrier contents preserve shared/exclusive
 attenuation; unknown metadata leaves execution unchanged. Checked origin guards and
 access-interference checks remain necessary before enabling parent progress.
+
+## Partial checked reference origins in 0.146
+
+Checked reference expressions now preserve partial origin paths, including carrier
+guards, before local aliases disappear. Expansion remaps this evidence, and certificate
+validation rejects its removal or alteration. Execution and editor contracts keep their
+existing behavior. Native values, complete loan evidence and parent-access permission
+remain separate integration work.

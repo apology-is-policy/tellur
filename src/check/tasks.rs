@@ -147,7 +147,10 @@ impl Checker<'_> {
                 } else {
                     self.parents(&target)
                 };
-                values.push(Expr::Reference(target.place.clone(), p.ty.clone()));
+                values.push(Self::describe_reference(
+                    Expr::Reference(target.place.clone(), p.ty.clone()),
+                    &origins,
+                ));
                 let id = self.stash_stored_loan(
                     Loan {
                         contents,

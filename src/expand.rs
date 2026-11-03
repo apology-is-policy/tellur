@@ -18,6 +18,25 @@ fn guard(g: &Guard, context: &Guard, atoms: &BTreeMap<Id, Id>) -> Guard {
 }
 fn expr(e: &Expr, slots: &BTreeMap<Id, Id>) -> Expr {
     match e {
+        Expr::WithReferenceEvidence(value, ReferenceEvidence::Partial(origins)) => {
+            Expr::WithReferenceEvidence(
+                Box::new(expr(value, slots)),
+                ReferenceEvidence::Partial(
+                    origins
+                        .iter()
+                        .map(|origin| ReferenceOrigin {
+                            place: Place {
+                                root: slots[&origin.place.root],
+                                indirect: origin.place.indirect,
+                                fields: origin.place.fields.clone(),
+                            },
+                            guard: origin.guard,
+                            opaque: origin.opaque,
+                        })
+                        .collect(),
+                ),
+            )
+        }
         Expr::Reference(p, ty) => Expr::Reference(
             Place {
                 indirect: p.indirect,

@@ -673,6 +673,27 @@ impl Checker<'_> {
         }
         parents
     }
+    fn describe_reference(value: Expr, origins: &[LoanOrigin]) -> Expr {
+        Expr::WithReferenceEvidence(
+            Box::new(value),
+            ReferenceEvidence::Partial(
+                origins
+                    .iter()
+                    .map(|origin| ReferenceOrigin {
+                        place: origin.place.clone(),
+                        guard: origin.guard,
+                        opaque: origin.opaque,
+                    })
+                    .collect(),
+            ),
+        )
+    }
+    fn reference_expression(&self, target: &ResolvedPlace, ty: String) -> Expr {
+        Self::describe_reference(
+            Expr::Reference(target.place.clone(), ty),
+            &self.origins(target),
+        )
+    }
     fn check_loans(
         &mut self,
         place: &ResolvedPlace,
@@ -1000,7 +1021,7 @@ impl Checker<'_> {
                 contract.push(source);
             }
         }
-        let value = Expr::Reference(target.place.clone(), ty.clone());
+        let value = Self::describe_reference(Expr::Reference(target.place.clone(), ty.clone()), &origins);
         let parents = self.parents(&target);
         let temp = format!("$return_{}", self.fresh());
         self.add_loan(&temp, target, origins, parents, mutable, domain);
@@ -1730,7 +1751,7 @@ impl Checker<'_> {
                         let source = self.reference_source(arg, span)?.ok_or_else(|| self.error("E_MOVE", span, "move into a reference parameter requires an existing reference; use borrow to create a loan"))?;
                         self.transfer_reference(&source, domain, span)?;
                     }
-                    return Ok(Expr::Reference(target.place,p.ty.clone()));
+                    return Ok(self.reference_expression(&target, p.ty.clone()));
                 }
                 let mode = self.argument_mode(p);
                 // A named local reference already expresses borrowing at the call.
@@ -3555,7 +3576,7 @@ impl Checker<'_> {
                 span,
             )?;
             (
-                Operation::BorrowedVariant(Expr::Reference(target.place, ty)),
+                Operation::BorrowedVariant(self.reference_expression(&target, ty)),
                 vec![],
                 outcomes,
                 Some(target.ty),

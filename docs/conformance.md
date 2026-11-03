@@ -4252,3 +4252,21 @@ with and without immutable queries and rejected parent selections. Its full nati
 observation matches the reference executor. All four selection probes now compare
 across original and expanded forms with one shared baseline. No production compiler
 or editor changes are part of this audit; 0.145 release evidence remains applicable.
+
+## Partial checked reference-origin evidence (0.146)
+
+`tests/reference_evidence.rs` checks four aspects of E1d.2d.3s.1: direct and returned
+exclusive captures retain their erased carrier guards; copied shared captures retain
+their external owner without inventing a holder dependency; received carrier fields
+carry partial evidence on private address reads; and expansion remaps each invocation's
+origin slots independently. Serialized certificates roundtrip and reject missing
+wrappers/origins, retargeted roots/paths and weakened guard or opaque flags. The evidence
+schema cannot claim completeness. A verifier unit case rejects non-reference operands,
+unknown slots and indirect origins rooted in non-reference slots.
+
+Reference execution, native emission/access plans and contributor analysis treat the
+wrapper transparently. Carrier/sum and contract regressions include abstract tagged
+origins whose symbolic paths cannot be validated as current ordinary field accesses.
+Selected generated native probes compare original/expanded O0/O2 and quota partitions;
+source checking, editor and cold-task/fault consumers receive fresh coverage. Native
+runtime dependencies remain descriptive, and source scheduling stays gated.

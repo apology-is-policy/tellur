@@ -178,6 +178,7 @@ fn evaluate(expr: &Expr, values: &mut BTreeMap<Id, Value>, base: Id) -> Result<V
                 _ => Err(error("invalid pure expression contract")),
             }
         }
+        Expr::WithReferenceEvidence(value, _) => evaluate(value, values, base),
         Expr::Reference(place, ty) => Ok(Value::Reference {
             ty: ty.clone(),
             place: address(&shift(place, base), values)?,

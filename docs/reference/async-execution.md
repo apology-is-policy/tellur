@@ -680,3 +680,9 @@ Domain/process settlement invalidates affected registrations before handler/stat
 delivery, while unrelated waits survive isolated failure. The original resource logs
 and causes are preserved. Shared native integration and source handoffs remain ahead;
 no source syntax, scheduler or async adapter is added by this test-only protocol.
+
+Since 0.146, checked reference expressions retain explicit partial origin evidence,
+including carrier guards. Expansion remaps it and certificate validation rejects its
+removal or alteration. This metadata does not change source execution or native access
+permission; runtime transport and complete guarded loan evidence remain ahead. See
+[partial checked reference origins](../async-execution.md#partial-checked-reference-origins-e1d2d3s1).

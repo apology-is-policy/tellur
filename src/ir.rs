@@ -92,11 +92,28 @@ impl Place {
     }
 }
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ReferenceOrigin {
+    /// Checked symbolic path. It may name abstract tagged storage and is not
+    /// necessarily a currently projectable runtime place.
+    pub place: Place,
+    pub guard: bool,
+    pub opaque: bool,
+}
+/// Descriptive evidence only. This subset omits loan ancestry, path domains,
+/// contained permissions and invocation-local families; it grants no access.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum ReferenceEvidence {
+    Partial(Vec<ReferenceOrigin>),
+}
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Expr {
     Value(Value),
     Place(Place),
     Move(Place),
     Reference(Place, String),
+    /// Preserve checked origins before local aliases disappear. Evaluation is
+    /// exactly that of the wrapped reference; metadata is never dereferenced.
+    WithReferenceEvidence(Box<Expr>, ReferenceEvidence),
     /// Projection of a non-linear temporary. Owned record projections use Place.
     Project(Box<Expr>, usize),
     Construct(String, String, Vec<Expr>),
@@ -107,6 +124,14 @@ pub enum Expr {
     Length(Box<Expr>),
     Not(Box<Expr>),
     Binary(String, Box<Expr>, Box<Expr>),
+}
+impl Expr {
+    pub(crate) fn without_reference_evidence(&self) -> &Self {
+        match self {
+            Self::WithReferenceEvidence(value, _) => value.without_reference_evidence(),
+            value => value,
+        }
+    }
 }
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Arm {

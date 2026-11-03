@@ -2077,8 +2077,8 @@ ordinary reborrow makes it usable again after the result's last use.
 The checker already distinguishes these cases. `Loan.origins`, `Loan.parents`,
 contained loans, path domains and permission families retain the required authority.
 `BorrowSource.guard` and contained result paths also preserve it in checked public
-result contracts. However, local reference expressions carry only a resolved place
-and type. Native `reference` resolves that place to an offset and field path;
+result contracts. Before 0.146, local reference expressions carried only a resolved place
+and type. The partial checked evidence below now accompanies those expressions. Native `reference` resolves that place to an offset and field path;
 `V::Reference` has no corresponding guard record. Traversing the detached reference
 cannot rediscover the carrier that authorized it. Adding only result-origin handling
 would still miss local aliases and nested captures.
@@ -2100,6 +2100,43 @@ before/after expansion, with immutable queries and rejected parent selections at
 pause points. All four generated selection probes now compare their observations
 across expansion as well as optimization and quota partitions. This audit changes
 tests and documentation; it does not enable source scheduling or alter the compiler.
+
+## Partial checked reference origins (E1d.2d.3s.1)
+
+Compiler 0.146 preserves a descriptive subset of the checker's reference origins in
+`Expr::WithReferenceEvidence`. Its explicit `Partial` variant records symbolic slot
+identities, field paths, carrier-guard flags and opaque-origin flags. Direct call and
+task arguments, stored references, borrowed decisions, reference exits and private
+address reads for received carrier fields carry this evidence. Local aliases remain
+erased from execution, but their current checked origins are recorded before emission.
+Copied shared contents do not acquire an invented dependency on their former holder.
+
+The wrapper evaluates exactly its reference operand. It does not read the described
+origins, consume extra fuel, retain storage or resources, or change contributor traces.
+Native access plans likewise describe only the actual operand accesses. Native values
+and the 0.145 runtime dependency snapshots do not yet receive this checked metadata.
+
+Expansion remaps origin roots independently for each inlined invocation. Its separate
+certificate validator reconstructs that remapping and rejects removed evidence, changed
+roots/paths or weakened guard/opaque flags. Serialization preserves the explicit
+partial status. Structural validation requires a reference operand, existing origin
+slots and reference-typed slots for indirect origins. Symbolic paths can describe
+abstract tagged storage; validating them as current ordinary field accesses would
+reject valid stored adapters. They are never dereferenced by this checkpoint.
+
+This is deliberately incomplete evidence. It does not transport loan ancestry, active
+path domains, contained permission trees, selected sum certificates or invocation-local
+permission families. An empty partial list and an unwrapped reference both remain
+insufficient to authorize execution. Existing source checking continues to enforce
+those rules, and both native parent-selection gates stay in place. The next slice must
+represent the missing guarded/contained authority and bind usable evidence to runtime
+allocation identities before comparing it with callback accesses.
+
+Four integration cases inspect guarded versus copied-shared captures, direct erased
+aliases, received carrier address reads, independent expansion instances, serialized
+roundtrips and tampered certificates. A structural-validation case rejects malformed
+reference operands and slot kinds. Existing carrier, sum, contract, contributor,
+editor and native comparisons check that adding metadata preserves accepted behavior.
 
 ## Reference execution invariants
 

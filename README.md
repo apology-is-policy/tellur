@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.145.0** implements the v0.1 checked core and the current language
+Compiler release **0.146.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -820,3 +820,11 @@ Native contexts now retain bounded descriptions of captured reference storage th
 waiting, completion and pending delivery. Carrier contents preserve shared/exclusive
 attenuation; unknown metadata leaves execution unchanged. Checked origin guards and
 access-interference checks remain necessary before enabling parent progress.
+
+## Partial checked reference origins in 0.146
+
+Checked reference expressions now preserve partial origin paths, including carrier
+guards, before local aliases disappear. Expansion remaps this evidence, and certificate
+validation rejects its removal or alteration. Execution and editor contracts keep their
+existing behavior. Native values, complete loan evidence and parent-access permission
+remain separate integration work.

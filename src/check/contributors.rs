@@ -124,7 +124,7 @@ impl Trace<'_> {
         }
     }
     fn value(&mut self, expr: &Expr, flow: &Notes, domain: Formula, span: Span) -> ValueTrace {
-        let mut result = match expr {
+        let mut result = match expr.without_reference_evidence() {
             Expr::Place(place) | Expr::Move(place) => self.place(place),
             Expr::Project(value, index) => self
                 .value(value, flow, domain, span)
@@ -219,12 +219,15 @@ impl Trace<'_> {
         match operation {
             Operation::Defer(_) => ValueTrace::default(),
             Operation::Variant(value) => self.value(value, flow, domain, span),
-            Operation::BorrowedVariant(Expr::Reference(place, _)) => {
-                let mut value = self.place(place);
-                value.restrict(domain, self.bdd);
-                value
+            Operation::BorrowedVariant(expression) => {
+                if let Expr::Reference(place, _) = expression.without_reference_evidence() {
+                    let mut value = self.place(place);
+                    value.restrict(domain, self.bdd);
+                    value
+                } else {
+                    ValueTrace::default()
+                }
             }
-            Operation::BorrowedVariant(_) => ValueTrace::default(),
             Operation::Region(name)
             | Operation::Run(name)
             | Operation::Await(name)
