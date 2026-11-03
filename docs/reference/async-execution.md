@@ -60,8 +60,12 @@ sequential `run`/await execution. The
 [reference HTTP queue profile](../async-execution.md#reference-http-source-queue-e1f6f)
 adds trusted typed completions and readiness schedules to the existing cooperative
 queue. It checks that immediate results stay selected and pending borrowers settle
-before their owning contingency. Native concurrent HTTP polling and live HTTP/deadline
-composition remain separate. Public async-host admission is still pending.
+before their owning contingency. The
+[native HTTP queue fixture](../async-execution.md#native-http-source-queue-e1f6g)
+compares the unchanged owned parser and actual Rust connection owners with those
+reference schedules under a simulated transport and clock. Ready polls stay selected;
+actual waits preserve the deadline and yield to the queue. Live registration and
+public async-host admission remain separate.
 
 ## Owned spawned children
 

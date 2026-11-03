@@ -5105,3 +5105,25 @@ effects agree across representations after normalizing intentional fault provena
 The affected sample reference tests are rechecked. Native/parser evidence is reused
 separately: this reference profile uses trusted completion/readiness plans and does
 not implement HTTP parsing, a timer policy or public async-host admission.
+
+
+E1f.6g connects the unchanged owned HTTP parser to native source scheduling with
+actual Rust connection owners. Source opens three canonical resources; explicit
+reference identity maps supply independent typed outcomes and readiness counts.
+Initial ready polling stays selected without a synthetic wait. Actual parser waits
+park and return selection to the source queue; later eligible positive-quota polls
+resume with a fresh checked supplier borrow. Notifications and empty quotas perform
+no reads. Every wait preserves the original Instant deadline, including expiry
+before a late input event can be consumed.
+
+Original/expanded O0/O2 matrices compare all nine outcomes across immediate/delayed,
+normal/fault, early/idle-only and FIFO/reverse schedules. Representative request,
+fixed-deadline timeout and stopped-failure schedules compare every fuel cutoff and
+three quotas with complete reference events/reports. Typed request headers/body and
+diagnostic payloads match independently specified fields. State is consumed once,
+then disposed before real supplier destruction. The first owning checkpoint requires
+affected connections gone and independent work live; stopped nested handlers and
+result arms remain silent. The synchronous receive wrapper cannot be replayed.
+This uses simulated transport/clock. Live HTTP registration, completed-but-unadopted
+HTTP fault candidates and repeated operations in one source context remain separate
+identity/lifetime audits. No public adapter mode or release is introduced.

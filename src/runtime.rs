@@ -315,7 +315,10 @@ impl Completion {
 mod continuation;
 pub use continuation::{ExecutionProgress, ExecutionSession};
 #[cfg(test)]
-pub(crate) use continuation::{census_model, pending_fault_model, source_operation_model};
+pub(crate) use continuation::{
+    HttpResponse, census_model, http_source_operation_model, pending_fault_model,
+    source_operation_model,
+};
 
 #[derive(Debug)]
 pub struct Failure {

@@ -18,6 +18,17 @@ pub(in crate::runtime::continuation) struct SourceOperations {
     checked_contingencies: usize,
     http: Option<http_model::HttpOperations>,
 }
+impl SourceOperations {
+    pub(super) fn http_request(&self, token: &str) -> String {
+        self.http
+            .as_ref()
+            .unwrap()
+            .names
+            .get(token)
+            .cloned()
+            .unwrap_or_else(|| token.into())
+    }
+}
 impl Machine<'_> {
     /// Nonblocking signals append eligibility; they do not select a context.
     /// Idle pumping happens only after the source runnable queue is exhausted.
@@ -449,3 +460,5 @@ fn source_pending_operations_preserve_fuel_and_quota_behavior_after_expansion() 
 
 #[path = "http_source_operation_model.rs"]
 mod http_model;
+
+pub(crate) use http_model::{HttpResponse, http_source_operation_model};

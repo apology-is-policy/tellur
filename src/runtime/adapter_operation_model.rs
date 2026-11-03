@@ -162,7 +162,13 @@ fn prepare_operation<'a>(m: &mut Machine<'a>, trace: &Trace, expected: &str) {
     let arguments = m.arguments(args).unwrap();
     let request = match (expected, arguments.as_slice()) {
         ("sample", [_, Value::String(request)]) => request.clone(),
-        ("http_receive", [Value::Opaque { ty, token }]) if ty == "http_connection" => token.clone(),
+        ("http_receive", [Value::Opaque { ty, token }]) if ty == "http_connection" => m
+            .shared
+            .scheduler
+            .operations
+            .as_ref()
+            .unwrap()
+            .http_request(token),
         _ => panic!("unexpected private operation inputs"),
     };
     let operation = Pending {
@@ -602,3 +608,5 @@ pub(crate) use fault_model::pending_fault_model;
 mod source_model;
 pub(super) use source_model::SourceOperations;
 pub(crate) use source_model::source_operation_model;
+
+pub(crate) use source_model::{HttpResponse, http_source_operation_model};

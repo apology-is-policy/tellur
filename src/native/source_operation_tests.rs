@@ -38,6 +38,11 @@ fn pump_source(p: &CheckedProgram) -> String {
         1,
     );
     let original = include_str!("source_scheduler.rs");
+    assert_eq!(code.matches(original).count(), 1);
+    code.replacen(original, &pump_scheduler(), 1)
+}
+pub(super) fn pump_scheduler() -> String {
+    let original = include_str!("source_scheduler.rs");
     let mut scheduler = original.to_string();
     let replace = |s: &mut String, from: &str, to: &str| {
         assert_eq!(s.matches(from).count(), 1, "{from}");
@@ -81,8 +86,7 @@ fn pump_source(p: &CheckedProgram) -> String {
         "    if !contexts.parked.is_empty()",
         "    pump.finish(&mut contexts)?;\n    if !contexts.parked.is_empty()",
     );
-    assert_eq!(code.matches(original).count(), 1);
-    code.replacen(original, &scheduler, 1)
+    scheduler
 }
 fn resource_scenario(stop: bool) -> Scenario {
     let call = |operation: &str| ScriptCall {

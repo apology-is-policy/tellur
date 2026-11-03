@@ -341,3 +341,6 @@ fn http_outcomes_and_deadlines_match_retained_continuations_at_all_fuel_cuts() {
     eprintln!("HTTP continuation comparisons: {comparisons}");
     fs::remove_dir_all(root).unwrap();
 }
+
+#[path = "http_source_queue_tests.rs"]
+mod source_queue_tests;

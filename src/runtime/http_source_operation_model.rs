@@ -3,14 +3,16 @@
 use super::*;
 
 #[derive(Clone)]
-struct Response {
-    waits: usize,
-    outcome: String,
-    fields: Vec<Value>,
+pub(crate) struct HttpResponse {
+    pub waits: usize,
+    pub outcome: String,
+    pub fields: Vec<Value>,
 }
+type Response = HttpResponse;
 #[derive(Default)]
 pub(super) struct HttpOperations {
     responses: BTreeMap<String, Response>,
+    pub(super) names: BTreeMap<String, String>,
     remaining: BTreeMap<String, usize>,
 }
 impl Machine<'_> {
@@ -18,7 +20,15 @@ impl Machine<'_> {
         let op = pending(self)?;
         assert_eq!(op.operation, "http_receive");
         assert_eq!(op.arguments.len(), 1);
-        assert_eq!(op.borrowed_text(self), op.request);
+        assert_eq!(
+            self.shared
+                .scheduler
+                .operations
+                .as_ref()
+                .unwrap()
+                .http_request(&op.borrowed_text(self)),
+            op.request
+        );
         let request = op.request.clone();
         op.observe("polled");
         let model = self
@@ -208,6 +218,41 @@ fn run_http(
             .collect(),
         calls,
     };
+    http_source_operation_model(
+        p,
+        &scenario,
+        fuel,
+        quotas,
+        reverse,
+        early,
+        responses,
+        BTreeMap::new(),
+    )
+}
+/// Explicit identities and independently supplied completion/wait plans for native comparison.
+pub(crate) fn http_source_operation_model(
+    p: &CheckedProgram,
+    scenario: &Scenario,
+    fuel: usize,
+    quotas: &[usize],
+    reverse: bool,
+    early: bool,
+    responses: BTreeMap<String, HttpResponse>,
+    names: BTreeMap<String, String>,
+) -> RunResult {
+    let Value::Bool(stop) = scenario.arguments[0] else {
+        panic!("missing stop argument")
+    };
+    let instant = responses["left"].waits == 0;
+    let label = responses["left"].outcome.clone();
+    let token = |name: &str| {
+        names
+            .iter()
+            .find(|(_, label)| label.as_str() == name)
+            .map(|(token, _)| token.clone())
+            .unwrap_or_else(|| name.into())
+    };
+    assert!(quotas.iter().any(|q| *q > 0));
     let mut session = p.start_execution(&scenario, fuel);
     let m = session.machine.as_mut().unwrap();
     m.enter(&scenario).unwrap();
@@ -218,6 +263,7 @@ fn run_http(
         early,
         http: Some(HttpOperations {
             responses: responses.clone(),
+            names: names.clone(),
             ..Default::default()
         }),
         ..Default::default()
@@ -276,7 +322,7 @@ fn run_http(
             .unwrap();
         assert_eq!(messages[index + 1], "uninterrupted second");
         if instant {
-            let ready = m.shared.events.iter().position(|e| matches!(e, Event::Primitive {operation, arguments, ..} if operation == "http_receive" && arguments == &vec![Value::Opaque {ty:"http_connection".into(),token:"left".into()}])).unwrap();
+            let ready = m.shared.events.iter().position(|e| matches!(e, Event::Primitive {operation, arguments, ..} if operation == "http_receive" && arguments == &vec![Value::Opaque {ty:"http_connection".into(),token:token("left")}])).unwrap();
             let sibling = m
                 .shared
                 .events
@@ -302,7 +348,7 @@ fn run_http(
                     responses[name].waits,
                     "ready HTTP must not acquire a synthetic wait"
                 );
-                let event=m.shared.events.iter().find(|e|matches!(e,Event::Primitive{operation,arguments,..} if operation=="http_receive" && arguments==&vec![Value::Opaque{ty:"http_connection".into(),token:name.into()}])).unwrap();
+                let event=m.shared.events.iter().find(|e|matches!(e,Event::Primitive{operation,arguments,..} if operation=="http_receive" && arguments==&vec![Value::Opaque{ty:"http_connection".into(),token:token(name)}])).unwrap();
                 let Event::Primitive {
                     outcome, fields, ..
                 } = event

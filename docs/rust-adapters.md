@@ -320,8 +320,12 @@ retained execution with the existing synchronous receiver. The
 [reference HTTP queue profile](async-execution.md#reference-http-source-queue-e1f6f)
 then checks immediate/pending completion, all declared payloads and stopped borrowers
 under explicit concurrent source schedules. Its readiness counts and completions are
-trusted fixture inputs. Native concurrent parsing and live registration integration
-remain separate.
+trusted fixture inputs. The
+[native HTTP queue fixture](async-execution.md#native-http-source-queue-e1f6g)
+compares owned parsing and actual Rust connection retirement against those plans.
+Each actual parser wait returns to the source queue; ready completion stays selected.
+The original deadline survives rearms under the simulated transport/clock. Live
+physical registration and public async admission remain separate.
 The maintained transport is unchanged.
 
 

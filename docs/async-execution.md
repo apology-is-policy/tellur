@@ -4322,3 +4322,53 @@ draining the whole receive in one driver call. The original deadline, live regis
 and HTTP fault-candidate composition remain separately evidenced or pending. Public
 async-host call admission still awaits the recorded answer; compiler/LSP/VSIX stays
 at 0.189.
+
+
+## Native HTTP source queue (E1f.6g)
+
+The [native HTTP queue fixture](../src/native/http_source_queue_tests.rs) combines
+E1f.6e's unchanged owned parser and typed result delivery with the existing native
+source queue. The [checked source](../tests/fixtures/native_source_pending_http.tellur)
+opens three actual Rust connection owners before entering the same nested-boundary
+and spawned-child structure used by E1f.6f. Reference plans map canonical resource
+tokens explicitly to the left, right and independent roles. Tokens are neither
+forged nor inferred from the human-readable role names.
+
+A newly prepared operation retains its checked identity and becomes pollable while
+its source chain remains selected. Its first positive-quota poll may complete
+without any readiness registration. Parser `Again` steps drain bounded administrative
+progress; an actual `Wait` registers a logical wait and returns selection to the
+source queue. A later accepted hint makes that operation eligible. The next selected
+positive-quota poll consumes the wait, obtains a fresh checked shared connection
+borrow, and resumes the owned parser. Signals and zero quotas perform no reads.
+
+The deterministic transport supplies explicit `WouldBlock` events. These cause the
+parser's waits; the scheduler does not insert an initial wait to match the reference.
+Every rearm retains the original `Instant` deadline. A delayed timeout advances the
+fixture clock to that deadline before a late transport event can be read; an
+immediate timeout case supplies the existing transport-error alternative. Other
+cases cover all nine declared results, including HEAD requests with UTF-8 bodies,
+the headers map, protocol/size failures, EOF and diagnostic messages.
+
+Native completion uses the generated outcome encoder and existing host validator,
+then binds through the original checked arm. Synchronous-wrapper replay is trapped.
+State is consumed once on completion and disposed once on every normal or fault
+path. Real connection destruction follows state disposal. The owning-contingency
+checkpoint requires both affected connections to be destroyed while the independent
+connection remains live; stopped nested handlers and result arms remain suppressed.
+Already completed left work stays completed and the independent child joins normally.
+
+Original/expanded O0/O2 comparisons check every alternative under immediate/delayed,
+normal/fault, FIFO/reverse and early/idle-only hint schedules. Representative request,
+fixed-deadline timeout and stopped-failure schedules also compare full events and
+reports through every fuel cutoff and three quota cycles. Expected payloads and wait
+counts are independently specified by the reference plan, rather than copied from
+the pending native path. Existing sequential HTTP, broader parser and live transport
+matrices retain their separate evidence.
+
+This checkpoint uses simulated transport and clock with actual Rust owners. It does
+not yet compose HTTP parsing with live physical registration, real OS timer races or
+a fault arriving between typed completion and result adoption. Repeated operations
+within one source context also require an explicit operation-identity audit of the
+private pump's ticket bookkeeping before reuse beyond this one-operation-per-shim
+specimen. Public async-host admission remains pending; compiler/LSP/VSIX stays 0.189.
