@@ -4132,3 +4132,63 @@ registration to the existing operation ticket, quota and owning-fault lifecycle,
 with a separate audit of backend failure and transport reset behavior. The pending
 public async-host call-model question remains unanswered. Installed compiler/LSP/
 VSIX and the synchronous HTTP library remain 0.189-compatible and unchanged.
+
+
+## Live registration and source waits (E1f.6c)
+
+The [private source bridge](../src/native/live_readiness_backend_tests.rs) connects
+persistent Mio registration to the existing checked operation and runtime wait
+identities. It uses the same typed sample operation and source/reference comparison
+as E1f.3b–E1f.5, with [actual loopback resources](../src/native/live_readiness_transport.rs)
+in place of supplied byte slices. The probe owns its transport; the operation owns
+one physical registration plus a separate optional logical wait subscription. The
+transport creates its socket and poller only when the operation actually starts.
+No new public signature or manifest execution mode is introduced.
+
+Before a runtime wait is published, the [backend bridge](../src/native/live_readiness_backend_model.rs)
+reserves a new generation and rearms the existing socket registration. A generation
+is spent before the OS call so a failed attempt cannot reuse it. An unpublished or
+rolled-back logical interest is not eligible. Successful runtime preflight commits
+the runtime `Readiness` identity into that logical interest. Rejected backend
+preparation and exhausted runtime wait generations remove tentative interests while
+keeping the physical registration and operation available for another attempt.
+These are injected logical/preflight failures; actual OS call failures remain a
+separate audit.
+
+Notifications validate their backend identity and one-use generation, then feed the
+existing source queue. They do not poll the adapter, consume source fuel or alter
+host events. When selected with positive quota, the runtime removes the logical
+subscription, revalidates the original operation/host/domain/supplier identity and
+obtains a fresh shared probe reference. Only then does the adapter read its real
+socket through Mio until `WouldBlock`. The physical registration remains alive
+through reads and later waits. Zero-quota execution and notification admission both
+assert unchanged adapter read counters. Synchronous stretches and explicit source
+handoffs keep their existing behavior.
+
+A controlled fixture peer supplies `A`, an empty readiness hint, then `B`. Before
+admitting each data notification, a non-consuming test-only peek confirms the byte
+has arrived and the actual OS token was observed. This peer barrier makes exact
+reference traces reproducible; it is not a production reactor policy or adapter
+poll. The empty hint exercises `WouldBlock`. The adapter validates that its freshly
+read bytes match the selected phase, retaining the original owned state and typed
+completion. This bridge deliberately preserves the model's deadline token `57`;
+it does not combine the HTTP parser's real `Instant` deadline with source scheduling.
+
+Original/expanded O0/O2 programs compare full events, results and fault reports
+through every fuel cutoff, three host quota patterns, both readiness orders,
+early/idle-only admission and normal/faulting siblings. There is one physical
+registration/removal per started operation despite repeated wait reservations and
+rollbacks. Stopped logical waits retire before physical registration, which retires
+before stopped state and supplier release. Normal completion may consume parser
+state during its final poll; registration still retires before result adoption.
+Real socket destruction and stopped child resource release precede the owning
+contingency, and the independent outer task survives. Existing nested contingencies
+remain suppressed.
+
+This is concrete source scheduling and socket-lifetime evidence for the typed sample
+operation. The HTTP receiver and real expiry are separately validated by E1f.6a/b;
+their source composition is next, alongside real transport/reset and backend-failure
+audits. An unadopted typed result stopped by a routed fault with a concrete socket
+also needs its combined test; E1f.4b and E1f.6b establish its pieces separately.
+Public async-host call admission still awaits the recorded answer. No installed
+compiler/LSP/VSIX release is warranted by this private bridge.

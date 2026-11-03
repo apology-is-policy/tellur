@@ -5016,3 +5016,29 @@ readiness races remain separate. Failed removal would be recorded and fail the
 fixture; no public cleanup fault policy is inferred. The previous 1,599-per-build
 deterministic parser comparisons remain applicable because the parser and baseline
 are unchanged. No compiler/LSP/VSIX release or public HTTP behavior changes.
+
+
+E1f.6c overlays the existing typed source/reference matrix with real loopback resources
+and persistent Mio registrations. Each operation keeps one physical registration
+across tentative/committed logical waits. Every attempted wait injects failures
+before/after logical insertion and at runtime generation preflight; rollback removes
+the logical interest while preserving the physical owner. Copied tentative, stale,
+foreign and duplicate events cannot consume replacements. Generation allocation is
+spent before touching OS registration.
+
+Only a selected positive-quota adapter poll obtains the freshly checked shared
+resource and drains real bytes to WouldBlock. Notification admission and zero-quota
+execution assert no adapter reads. A controlled peer offers A/empty/B and a
+non-consuming test-only peek barrier confirms data arrival plus a real OS event;
+this makes the existing full reference event/report comparison deterministic. The
+model deadline remains 57, not elapsed HTTP time.
+
+Original/expanded O0/O2 matrices sweep all fuel cutoffs, three quotas, both readiness
+orders, early/idle-only signals and normal/faulting siblings. Per-operation traces
+require exactly one physical registration/removal, every logical removal before
+physical removal, and physical removal before supplier release and source result
+adoption. Stopped state retires after deregistration; real sockets and affected
+resources are gone at the first owning checkpoint. The independent outer task
+survives and nested contingencies stay suppressed. HTTP parser/deadline source
+composition, concrete routed-fault candidate disposal and actual backend/reset
+failures remain separate. The installed 0.189 release is unchanged.

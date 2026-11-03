@@ -170,3 +170,7 @@ fn backend_subscriptions_rollback_and_retire_before_owned_operations() {
     }
     fs::remove_dir_all(root).unwrap();
 }
+
+#[cfg(unix)]
+#[path = "live_readiness_backend_tests.rs"]
+mod live_backend_tests;

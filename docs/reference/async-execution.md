@@ -46,7 +46,11 @@ synchronous library under a simulated transport. It adds no public async HTTP AP
 The [concrete receive experiment](../async-execution.md#concrete-private-http-receivereadiness-e1f6b)
 uses real nonblocking loopback sockets, fixed deadlines and one-use readiness
 generations. It tests descriptor reuse and retirement on macOS, but is still private:
-no source-scheduler attachment, public async host API or new handoff is enabled.
+it supplies no public async host API or new handoff.
+The [private source bridge](../async-execution.md#live-registration-and-source-waits-e1f6c)
+then connects real socket registration to checked operation/wait identity, positive
+host quotas and owning-fault retirement using a controlled typed sample. HTTP parser
+and real deadline composition with source scheduling remain separate.
 
 ## Owned spawned children
 

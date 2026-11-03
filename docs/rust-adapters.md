@@ -305,6 +305,10 @@ synchronous wrapper using simulated reads. A
 [concrete private transport](async-execution.md#concrete-private-http-receivereadiness-e1f6b)
 adds real nonblocking loopback reads, wait generations, fixed deadlines and descriptor
 reuse checks on macOS. Its pinned Mio dependency belongs only to the test fixture.
+The [private source bridge](async-execution.md#live-registration-and-source-waits-e1f6c)
+checks persistent socket registration, transient runtime waits, positive-quota reads
+and owning-fault retirement with the typed sample operation. Its controlled peer
+barrier is test machinery; real HTTP parsing/deadline composition remains separate.
 The maintained transport is unchanged.
 
 
