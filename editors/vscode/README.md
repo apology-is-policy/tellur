@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-darwin-arm64-0.153.0.vsix` using **Extensions:
+1. Install the supplied `tellur-language-darwin-arm64-0.154.0.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1370,3 +1370,12 @@ native capture and result delivery. Whole borrowed holder ancestors remain prote
 copied shared fields gain no invented holder guard. Indirect guards, returned permission
 families and conditional/contained proof gaps remain partial. Try
 `./bin/tellurc exec playground/local_guarded_tasks.tellur`.
+
+## Local borrowed carrier coverage in 0.154
+
+Fresh borrows of local records can carry complete holder and stored-reference
+coverage when every leaf has unconditional checked provenance. Nested records and
+local field projections are supported; aliases, indirect holders, returned permission
+families and reference-to-carrier leaves remain partial. Runtime capture still requires
+complete incoming formation evidence for every reachable reference. Try
+`./bin/tellurc exec playground/local_carrier_tasks.tellur`.

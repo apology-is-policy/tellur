@@ -2494,6 +2494,49 @@ incoming runtime completeness first; retain partial status for unavailable permi
 families, conditional/tagged paths and abstract storage. Source scheduling, `spawn`/`yield`,
 cancellation, async adapters/disposal and LLVM coroutine lowering remain separate work.
 
+## Complete fresh local carriers (E1d.2d.3s.9)
+
+Compiler 0.154 extends complete dependency evidence to fresh direct borrows of locally
+owned records. Each reference leaf must point to a reference-free value and have exactly
+one unconditional active, defined stored loan. The checked origin schema enumerates every
+leaf, including fields inside nested records. The checker retains the carrier storage
+origin and includes every stored loan in the existing conservative ancestry closure.
+A direct local projection of a nested record uses that projected holder storage.
+
+The supported layout and its reference paths are bounded by 4096-node/component budgets,
+in addition to existing origin and ancestry limits. Missing or duplicate stored loans,
+conditional activity, tagged paths, abstract layouts, reference-to-carrier leaves and
+permission families remain partial. Borrowing through a carrier alias or indirect holder
+also remains partial. Existing opaque holder guards and copied-shared-field rules are
+unchanged; this checkpoint adds no new guard merely because a record is borrowed.
+
+The independent structural verifier requires fresh direct formation, a supported bounded
+record layout and an exact ordinary origin for the borrowed holder. Other origins must
+satisfy the existing scalar/guard rules. Source ownership and complete stored-loan coverage
+remain frontend obligations; independent expansion certificates reject erasing any stored
+origin, holder origin or completeness discriminator. No public origin contract changes.
+
+Native capture already visits the complete reachable runtime graph. The new static root
+annotation cannot promote a partial stored reference or hide a stale/foreign formation
+identity. Complete capture therefore requires both the checked closure and complete
+incoming evidence at every reachable leaf. Returned permission-family descriptions can
+still make result delivery partial. Such delivery stays blocked for disjoint host
+admission; it never inherits completeness merely from an earlier complete capture.
+
+The [runnable local carrier example](../playground/local_carrier_tasks.tellur) retains two
+stored references through a cold task and reuses their owners after await. Original and
+expanded O0/O2 generated executions check complete nonempty captures, retained dependencies
+through completion delivery, disjoint batch progress and unchanged source observations
+across quota partitions. Metadata cases cover nested records, projected holders,
+constructor-result and alias fallback, conditional storage and certificate mutations.
+Native evidence tests explicitly reject promotion of incomplete or foreign stored leaves.
+
+The next bounded proof is carrier reborrowing through local aliases, retaining each broad
+carrier ancestor and full stored-leaf coverage. Indirect holder guards and returned
+permission families still need separate incoming-proof work. Source scheduling,
+`spawn`/`yield`, cancellation, async adapters/disposal and LLVM coroutine lowering remain
+separate; host quotas are not source handoffs.
+
 ## Reference execution invariants
 
 A step partition must not itself become a source effect. The same selected schedule

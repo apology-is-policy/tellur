@@ -95,6 +95,24 @@ fn compiled_detached_captures_preserve_checked_guard_semantics() {
 }
 
 #[test]
+fn compiled_local_carrier_capture_retains_complete_stored_reference_closure() {
+    compare_selection(
+        "local-carriers",
+        include_str!("../../playground/local_carrier_tasks.tellur"),
+        &[],
+        &[
+            "Local",
+            "Effect",
+            "Run",
+            "Defer",
+            "AwaitTask",
+            "Return",
+            "Delivery",
+        ],
+    );
+}
+
+#[test]
 fn compiled_local_guarded_captures_remain_complete_through_result_delivery() {
     let input = include_str!("../../playground/local_guarded_tasks.tellur");
     let observed = compare_selection(
@@ -158,7 +176,7 @@ fn compare_selection(label: &str, input: &str, args: &[&str], expected: &[&str])
             "fn entry_{entry}(host:&mut Host,args:Vec<V>)->R<Completion>{{drive(host,args,&MODEL_{entry})}}"
         );
         let expect_guards = matches!(label, "detached-guards" | "local-guards");
-        let expect_complete = matches!(label, "loops" | "local-guards");
+        let expect_complete = matches!(label, "loops" | "local-guards" | "local-carriers");
         let replacement = format!(
             r#"fn entry_{entry}(host:&mut Host,args:Vec<V>)->R<Completion>{{
             let quotas=std::env::var("TELLUR_NATIVE_MODEL_QUOTAS").unwrap().split(',').map(|s|s.parse::<usize>().unwrap()).collect::<Vec<_>>();

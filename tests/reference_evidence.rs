@@ -38,6 +38,118 @@ fn capture(region: &Region) -> &[ReferenceOrigin] {
 }
 
 #[test]
+fn fresh_local_carriers_cover_holder_and_all_stored_origins() {
+    let source = include_str!("../playground/local_carrier_tasks.tellur");
+    let p = program(source);
+    let startup = p.regions().find(|r| r.name == "startup").unwrap();
+    let evidence = capture_evidence(startup);
+    assert!(evidence.is_complete(), "{evidence:?}");
+    let names: std::collections::BTreeSet<_> = evidence
+        .origins()
+        .iter()
+        .map(|o| {
+            assert!(!o.guard && !o.opaque && !o.place.indirect);
+            startup.slots[&o.place.root].name.as_str()
+        })
+        .collect();
+    assert_eq!(names, ["left", "right", "saved"].into_iter().collect());
+    let nested = source
+        .replace(
+            "struct text_pair",
+            "struct envelope['a, 'b] { text_pair['a, 'b] values; }\nstruct text_pair",
+        )
+        .replace(
+            "text_pair saved = text_pair { borrow left, borrow right };",
+            "envelope saved = envelope { text_pair { borrow left, borrow right } };",
+        )
+        .replace("borrow saved", "borrow saved.values");
+    let projected = program(&nested);
+    let projected = projected.regions().find(|r| r.name == "startup").unwrap();
+    assert!(capture_evidence(projected).is_complete());
+    assert!(
+        capture(projected)
+            .iter()
+            .any(|o| projected.slots[&o.place.root].name == "saved" && o.place.fields == [0])
+    );
+    let nested = nested
+        .replace("ref text_pair input", "ref envelope input")
+        .replace("input.left", "input.values.left")
+        .replace("input.right", "input.values.right")
+        .replace("borrow saved.values", "borrow saved");
+    let nested = program(&nested);
+    assert!(
+        capture_evidence(nested.regions().find(|r| r.name == "startup").unwrap()).is_complete()
+    );
+    let returned = source.replace("ref string right <- 'right;", "ref string right <- 'right;\n    constructor(ref string left, ref string right)[left, right] { self.left = left; self.right = right; }")
+        .replace("text_pair { borrow left, borrow right }", "text_pair(borrow left, borrow right)");
+    let returned = program(&returned);
+    assert!(
+        !capture_evidence(returned.regions().find(|r| r.name == "startup").unwrap()).is_complete()
+    );
+    let artifact = p.expansion_artifact("startup").unwrap();
+    let expanded = p.accept_expansion(&artifact).unwrap();
+    let scenario = Scenario {
+        entry: "main".into(),
+        arguments: vec![],
+        calls: vec![],
+    };
+    assert_eq!(p.run(&scenario).unwrap(), expanded.run(&scenario).unwrap());
+    // Every origin and the completeness discriminator are independently checked
+    // against the source-derived expansion, including the holder itself.
+    for kind in 0..4 {
+        let mut altered = serde_json::to_value(&artifact).unwrap();
+        fn mutate(v: &mut Json, kind: usize) -> bool {
+            if let Some(parts) = v
+                .get_mut("WithReferenceEvidence")
+                .and_then(Json::as_array_mut)
+                && parts[0]
+                    .get("Reference")
+                    .is_some_and(|r| r[1] == "&text_pair")
+                && let Some(origins) = parts[1].get_mut("Complete").and_then(Json::as_array_mut)
+            {
+                if kind < 3 {
+                    origins.remove(kind);
+                } else {
+                    let origins = origins.clone();
+                    parts[1] = serde_json::json!({"Partial": origins});
+                }
+                return true;
+            }
+            match v {
+                Json::Array(v) => v.iter_mut().any(|v| mutate(v, kind)),
+                Json::Object(v) => v.values_mut().any(|v| mutate(v, kind)),
+                _ => false,
+            }
+        }
+        assert!(mutate(&mut altered, kind));
+        assert_eq!(
+            p.accept_expansion(&serde_json::from_value(altered).unwrap())
+                .unwrap_err()
+                .code,
+            "E_EXPANSION_CERTIFICATE"
+        );
+    }
+    // Borrowing via an existing carrier alias remains outside this first class.
+    let aliased = source.replace(
+        "auto pending = defer inspect(borrow saved);",
+        "ref text_pair alias = borrow saved;\n    auto pending = defer inspect(alias);",
+    );
+    assert_ne!(aliased, source);
+    let alias = program(&aliased);
+    assert!(
+        !capture_evidence(alias.regions().find(|r| r.name == "startup").unwrap()).is_complete()
+    );
+    let conditional = source.replace("async control startup() exits done {",
+        "async control startup(bool selected) exits done {\n    delta selected { true => yes, false => no }\n    [no]: exit done;\n    [yes]:")
+        .replace("run startup()", "run startup(true)");
+    let conditional = program(&conditional);
+    assert!(
+        !capture_evidence(conditional.regions().find(|r| r.name == "startup").unwrap())
+            .is_complete()
+    );
+}
+
+#[test]
 fn captures_preserve_erased_alias_guards_without_inventing_shared_holder_dependencies() {
     let source = include_str!("../playground/guarded_task_captures.tellur");
     let direct = source.replace(

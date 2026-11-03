@@ -737,3 +737,10 @@ disjoint local work still needs a fresh census and exact invocation/domain autho
 Copied shared fields gain no holder guard. Indirect guards, permission families,
 conditional/tagged ancestry and contained proof gaps remain partial. See
 [local holder guards](../async-execution.md#complete-local-holder-guards-e1d2d3s8).
+
+Since 0.154, fresh direct borrows of local records can carry complete holder and
+stored-reference coverage, including nested records and projected local holders.
+Every reachable native reference still needs complete incoming formation evidence.
+Aliases, indirect holders, tagged/conditional contents, returned permission families
+and references to carriers remain partial. Source execution remains sequential. See
+[local borrowed carriers](../async-execution.md#complete-fresh-local-carriers-e1d2d3s9).

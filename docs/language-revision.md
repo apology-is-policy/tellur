@@ -211,8 +211,9 @@ retained await captures/results. E1d.2d.3s.6 now admits exactly one disjoint nat
 callback or delivery through fresh sealed permission, while ordinary quota drivers
 retain their gates. E1d.2d.3s.7 now composes bounded host batches with fresh admission
 per transition and explicit partial-progress/fault reporting. E1d.2d.3s.8 now certifies
-fresh local holder guards with conservative whole-ancestor coverage. Borrowed-carrier
-completeness and indirect guards remain ahead. Compiler **0.153.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
+fresh local holder guards with conservative whole-ancestor coverage. E1d.2d.3s.9 adds
+fresh local borrowed records with complete stored-leaf coverage; carrier aliases and
+indirect guards remain ahead. Compiler **0.154.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
 lifetime checkpoints of milestone 2, the array/vector/map core of milestone 3,
 and implicit entry, inline/stored adapters, owned capture, named outcome contracts
 and checked forwarding in milestone 4. A first [semantic foundation](semantic-foundation.md)
@@ -483,6 +484,7 @@ do not block this design work. E2 remains the native coroutine target.
 | E1d.2d.3s.6 | One-transition native admission | Delivered in 0.151: explicit host operation requires fresh aggregate disjointness and consumes sealed permission at the lower machine check for exactly one supported callback or normal delivery. Rejections precede evaluation; actual faults settle borrowers before owners. Ordinary quota drivers, retirement checks and source scheduling boundaries remain |
 | E1d.2d.3s.7 | Bounded native admission | Delivered in 0.152: explicit host batches recompute admission per callback/delivery, distinguish callback quotas from administrative work, preserve progress before rejection and stop on actual faults with existing settlement. Zero-quota authority and a 4096-transition ceiling bound host work. Ordinary drivers and source handoff semantics remain unchanged |
 | E1d.2d.3s.8 | Complete local holder guards | Delivered in 0.153: fresh local reborrows with unconditional ancestry preserve original field guards and whole borrowed holder dependencies through independent validation, native capture and result delivery. Complete guards allow only conservatively disjoint host work. Indirect, permission-family, conditional/tagged and contained proof gaps remain partial; source scheduling is unchanged |
+| E1d.2d.3s.9 | Complete fresh local carriers | Delivered in 0.154: direct borrows of owned local records retain holder storage and every unconditional scalar-pointee stored loan, including nested records and projected holders. Native completeness still requires complete incoming leaf formation. Aliases, indirect holders, permission families, tagged/conditional and nested-reference gaps remain partial; source scheduling is unchanged |
 | E2 | Native coroutine lowering | Preserved architectural target: direct LLVM coroutine primitives, pinned-toolchain experiment, frame lifetime rules and schedule-based differential tests; I1 must keep this route open |
 | T1 | Stronger source transformations | Hold current scope during P1–P5: extraction correspondence, continuation cuts, source-level lift and editor actions |
 | R1 | Mathematical foundations | Maintain existing evidence; defer extensions during P1–P5: preservation judgments, richer protocol abstractions, infinite/causal behavior, mechanization |

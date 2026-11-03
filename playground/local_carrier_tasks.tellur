@@ -1,0 +1,32 @@
+// A fresh local carrier borrow retains both holder storage and stored references.
+struct text_pair['left, 'right] {
+    ref string left <- 'left;
+    ref string right <- 'right;
+}
+
+async control inspect(ref text_pair input) exits done {
+    emit(input.left);
+    emit(input.right);
+    exit done;
+}
+
+async control startup() exits done {
+    mutable string left = "left";
+    mutable string right = "right";
+    text_pair saved = text_pair { borrow left, borrow right };
+    auto pending = defer inspect(borrow saved);
+    await pending;
+    drop(saved);
+    left = "released";
+    right = "released";
+    emit(borrow left);
+    exit done;
+}
+
+outcome command_result {
+    @exit 0 done
+}
+
+control main() exits command_result {
+    forward run startup();
+}

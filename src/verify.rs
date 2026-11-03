@@ -16,6 +16,35 @@ fn same(a: &str, b: &str) -> Result<()> {
         Err(error(format!("IR type mismatch: {a}, expected {b}")))
     }
 }
+// Independently bound the supported carrier layout. Reference-bearing sums,
+// collections, abstract shapes and references to other carriers are excluded.
+fn local_carrier_shape(m: &crate::manifest::Manifest, ty: &str) -> bool {
+    if !matches!(m.type_def(ty), Some(TypeDef::Record { .. })) {
+        return false;
+    }
+    let mut pending = vec![ty];
+    let mut remaining = 4096usize;
+    while let Some(ty) = pending.pop() {
+        let Some(left) = remaining.checked_sub(1) else {
+            return false;
+        };
+        remaining = left;
+        if let Some((_, inner)) = crate::manifest::reference_inner(ty) {
+            if m.contains_references(inner) {
+                return false;
+            }
+        } else if m.contains_references(ty) {
+            let Some(TypeDef::Record { fields, .. }) = m.type_def(ty) else {
+                return false;
+            };
+            if fields.len() > remaining.saturating_sub(pending.len()) {
+                return false;
+            }
+            pending.extend(fields.iter().map(|f| f.ty.as_str()));
+        }
+    }
+    true
+}
 struct Verifier<'a> {
     boundaries: usize,
     handler: bool,
@@ -60,7 +89,26 @@ impl Verifier<'_> {
                 }
                 if evidence.is_complete() {
                     let inner = crate::manifest::reference_inner(&ty).unwrap().1;
-                    if origins.is_empty() || m.contains_references(inner) {
+                    let carrier = if m.contains_references(inner) {
+                        let Expr::Reference(target, _) = value.as_ref() else {
+                            return Err(error(
+                                "complete carrier evidence requires fresh formation",
+                            ));
+                        };
+                        if target.indirect || !local_carrier_shape(m, inner) {
+                            return Err(error("unsupported complete carrier reference"));
+                        }
+                        if !origins
+                            .iter()
+                            .any(|o| !o.guard && !o.opaque && o.place == *target)
+                        {
+                            return Err(error("complete carrier evidence lacks its holder origin"));
+                        }
+                        Some(target)
+                    } else {
+                        None
+                    };
+                    if origins.is_empty() {
                         return Err(error(
                             "complete evidence requires nonempty direct dependencies",
                         ));
@@ -101,7 +149,9 @@ impl Verifier<'_> {
                                 .any(|g| g.guard && g.opaque && g.place == origin.place);
                         if !(local_guard
                             || guarded_ancestor
-                            || (!origin.guard && !origin.opaque && !contains_refs))
+                            || (!origin.guard
+                                && !origin.opaque
+                                && (!contains_refs || carrier == Some(&origin.place))))
                         {
                             return Err(error("unsupported complete reference origin"));
                         }
@@ -1029,6 +1079,62 @@ fn verify_source(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn complete_carrier_evidence_requires_fresh_holder_coverage_and_bounded_shape() {
+        use crate::ir::{Action, Expr, Operation, ReferenceEvidence};
+        let m = crate::manifest::Manifest::from_json(include_str!("../playground/manifest.json"))
+            .unwrap();
+        let original =
+            crate::compile(include_str!("../playground/local_carrier_tasks.tellur"), m).unwrap();
+        for kind in 0..3 {
+            let mut p = original.clone();
+            let r = p.regions.get_mut("startup").unwrap();
+            let (value, origins) = r
+                .code
+                .iter_mut()
+                .find_map(|i| match &mut i.action {
+                    Action::Decide {
+                        operation: Operation::Defer(_),
+                        args,
+                        ..
+                    } => match &mut args[0] {
+                        Expr::WithReferenceEvidence(v, ReferenceEvidence::Complete(o)) => {
+                            Some((v, o))
+                        }
+                        _ => None,
+                    },
+                    _ => None,
+                })
+                .unwrap();
+            let Expr::Reference(target, ty) = value.as_ref() else {
+                panic!()
+            };
+            let target = target.clone();
+            let ty = ty.clone();
+            match kind {
+                0 => origins.retain(|o| o.place != target),
+                1 => {
+                    *value = Box::new(Expr::Reference(
+                        Place {
+                            indirect: true,
+                            ..target
+                        },
+                        ty,
+                    ))
+                }
+                2 => {
+                    origins
+                        .iter_mut()
+                        .find(|o| o.place == target)
+                        .unwrap()
+                        .guard = true
+                }
+                _ => unreachable!(),
+            }
+            assert_eq!(p.verify().unwrap_err().code, "E_IR");
+        }
+        assert!(!local_carrier_shape(original.manifest(), "string"));
+    }
     #[test]
     fn complete_local_guarded_evidence_requires_pointee_and_broad_holder_coverage() {
         use crate::ir::{Action, Expr, Operation, ReferenceEvidence};

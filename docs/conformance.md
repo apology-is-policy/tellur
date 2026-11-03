@@ -4345,3 +4345,13 @@ binding, unsupported proof fallback and disjoint admission with holder/pointee/b
 ancestor exclusion across live, waiting and completed children. The local guarded example
 runs through reference/expanded and native original/expanded O0/O2 execution; generated
 probes require complete guarded capture and pending result delivery across quota partitions.
+
+## Complete fresh local carriers (0.154)
+
+Metadata tests require the holder and both stored owners, preserve nested/projected
+records and reject certificate removal of every dependency or the completeness flag.
+Alias, conditional and constructor-result cases remain partial. Structural tests require
+fresh direct holder coverage. Native tests show that complete root annotations cannot
+promote partial or foreign stored-reference evidence. Generated original/expanded O0/O2
+runs require nonempty complete captures and retained delivery through quota partitions,
+while checking disjoint host progress and identical source observations.

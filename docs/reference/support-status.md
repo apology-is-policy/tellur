@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.153.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.154.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -243,3 +243,10 @@ disjoint local work still needs a fresh census and exact invocation/domain autho
 Copied shared fields gain no holder guard. Indirect guards, permission families,
 conditional/tagged ancestry and contained proof gaps remain partial. See
 [local holder guards](../async-execution.md#complete-local-holder-guards-e1d2d3s8).
+
+Since 0.154, fresh direct borrows of local records can carry complete holder and
+stored-reference coverage, including nested records and projected local holders.
+Every reachable native reference still needs complete incoming formation evidence.
+Aliases, indirect holders, tagged/conditional contents, returned permission families
+and references to carriers remain partial. Source execution remains sequential. See
+[local borrowed carriers](../async-execution.md#complete-fresh-local-carriers-e1d2d3s9).

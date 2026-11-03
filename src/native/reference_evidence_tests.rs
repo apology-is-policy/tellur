@@ -32,6 +32,71 @@ fn origins(value: &V) -> &[BoundOrigin] {
 }
 
 #[test]
+fn complete_carrier_root_cannot_promote_partial_or_stale_stored_references() {
+    let mut values = Frames::default();
+    let frame = values.enter(2).unwrap();
+    let b = frame.base();
+    values[b] = Some(V::String("owner".into()));
+    let leaf = attach_checked(
+        &values,
+        reference(&values, b, &[], false, "&String").unwrap(),
+        &[origin(b, &[], false, false)],
+        true,
+        true,
+    );
+    values[b + 1] = Some(record("view", vec![leaf.clone()]));
+    let carrier = attach_checked(
+        &values,
+        reference(&values, b + 1, &[], false, "&view").unwrap(),
+        &[
+            origin(b + 1, &[], false, false),
+            origin(b, &[], false, false),
+        ],
+        true,
+        true,
+    );
+    let Dependencies::Complete {
+        reachable,
+        origins: Origins::Complete(origins),
+    } = Dependencies::describe(&values, &[carrier.clone()])
+    else {
+        panic!("complete local graph");
+    };
+    assert_eq!(reachable.len(), 2);
+    assert_eq!(origins.len(), 2);
+    // Even exhaustive static root origins cannot conceal an incomplete incoming
+    // formation proof at a reachable stored reference.
+    let mut partial = leaf.clone();
+    let V::Reference { evidence, .. } = &mut partial else {
+        unreachable!()
+    };
+    evidence.origins = Origins::default();
+    values[b + 1] = Some(record("view", vec![partial]));
+    assert!(matches!(
+        Dependencies::describe(&values, &[carrier.clone()]),
+        Dependencies::Partial { .. }
+    ));
+    let foreign = Frames::default();
+    let mut stale = leaf;
+    let V::Reference { evidence, .. } = &mut stale else {
+        unreachable!()
+    };
+    evidence.target = Some(StoragePlace {
+        storage: {
+            let mut foreign = foreign;
+            let f = foreign.enter(1).unwrap();
+            foreign.local_storage(&f, 0).unwrap()
+        },
+        fields: vec![],
+    });
+    values[b + 1] = Some(record("view", vec![stale]));
+    assert!(matches!(
+        Dependencies::describe(&values, &[carrier]),
+        Dependencies::Unknown(_)
+    ));
+}
+
+#[test]
 fn detached_guards_survive_local_moves_reborrows_and_shared_attenuation() {
     let mut values = Frames::default();
     let f = values.enter(4).unwrap();

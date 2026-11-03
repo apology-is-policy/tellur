@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.153.0** implements the v0.1 checked core and the current language
+Compiler release **0.154.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -881,3 +881,12 @@ native capture and result delivery. Whole borrowed holder ancestors remain prote
 copied shared fields gain no invented holder guard. Indirect guards, returned permission
 families and conditional/contained proof gaps remain partial. Try
 `./bin/tellurc exec playground/local_guarded_tasks.tellur`.
+
+## Local borrowed carrier coverage in 0.154
+
+Fresh borrows of local records can carry complete holder and stored-reference
+coverage when every leaf has unconditional checked provenance. Nested records and
+local field projections are supported; aliases, indirect holders, returned permission
+families and reference-to-carrier leaves remain partial. Runtime capture still requires
+complete incoming formation evidence for every reachable reference. Try
+`./bin/tellurc exec playground/local_carrier_tasks.tellur`.

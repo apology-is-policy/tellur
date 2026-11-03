@@ -92,7 +92,7 @@ pub fn drive_selection(
             let resolved = m.resolve_access(&c.values)?;
             let dependencies = c.dependencies(&selected)?;
             dependencies.require_live(&c.values)?;
-            complete_capture |= matches!(dependencies, Dependencies::Complete { .. });
+            complete_capture |= matches!(dependencies, Dependencies::Complete { reachable, .. } if !reachable.is_empty());
             guarded_capture |= has_checked_guard(dependencies);
             captured |= matches!(dependencies, Dependencies::Partial { reachable: entries, .. } | Dependencies::Complete { reachable: entries, .. } if !entries.is_empty());
             if let Some(Pending::Await(p)) = &m.stack.last().unwrap().pending {
