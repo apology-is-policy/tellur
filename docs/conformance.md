@@ -4235,3 +4235,20 @@ context models run freshly, alongside native production/manual targets. Unchange
 checker/reference/LSP/Node evidence is reused; a fresh isolated editor checks release
 integration. This is selected coverage, not a full-suite claim. Captured runtime graphs
 do not certify hidden checked origin/holder guards or permit source scheduling.
+
+## Checked capture guard acceptance audit (on 0.145)
+
+`tests/task_capture_guards.rs` adds three cases for detached field captures returned
+by an ordinary control. Positive paths retain reference/expanded observations;
+negative paths reject carrier retirement, owner mutation and conflicting alias use
+before await and while a borrowed result is live. Checked result contracts explicitly
+retain their storage guard. Explicit transfer consumes the old alias; reborrow permits
+its use after result delivery. A shared reborrow of an exclusive field still protects
+the carrier, while a copied shared field permits carrier retirement before defer.
+
+The runnable `playground/guarded_task_captures.tellur` also runs through a generated
+native selection probe at O0/O2, original/expanded form, with quotas 1 and 0/3/1,
+with and without immutable queries and rejected parent selections. Its full native
+observation matches the reference executor. All four selection probes now compare
+across original and expanded forms with one shared baseline. No production compiler
+or editor changes are part of this audit; 0.145 release evidence remains applicable.

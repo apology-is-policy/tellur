@@ -2062,6 +2062,45 @@ selection. Opaque calls, synchronous return delivery, independent admission from
 sequential contexts, started-task await, source `spawn`/`yield`, cancellation,
 suspending disposal, async adapters and LLVM coroutine lowering remain separate gates.
 
+## Checked capture guard transport audit (E1d.2d.3s)
+
+The acceptance audit runs on compiler 0.145; guard transport into native dependency
+metadata remains in progress. The
+[guarded capture example](../playground/guarded_task_captures.tellur) detaches an
+exclusive field through an ordinary control, then reborrows it into a moved cold task.
+Its completion still protects both the external owner and the carrier. A shared
+reborrow of that exclusive field also retains the carrier guard. A copied shared
+field has different authority: its carrier can retire before task creation while the
+external owner remains protected. Explicit transfer consumes the detached alias;
+ordinary reborrow makes it usable again after the result's last use.
+
+The checker already distinguishes these cases. `Loan.origins`, `Loan.parents`,
+contained loans, path domains and permission families retain the required authority.
+`BorrowSource.guard` and contained result paths also preserve it in checked public
+result contracts. However, local reference expressions carry only a resolved place
+and type. Native `reference` resolves that place to an offset and field path;
+`V::Reference` has no corresponding guard record. Traversing the detached reference
+cannot rediscover the carrier that authorized it. Adding only result-origin handling
+would still miss local aliases and nested captures.
+
+The next implementation must carry conservative checked dependency evidence before
+that information is erased. It must survive owned carrier and task moves, reborrows,
+ordinary/constructor result delivery, selected sum alternatives and expansion remapping.
+Unsupported or unavailable evidence must remain explicitly incomplete. Inferring a
+guard from every reference holder would incorrectly retain copied shared carriers;
+resolving every possible tagged path would read inactive alternatives. Neither an
+allocation identity nor the current graph description establishes this authority.
+Per-instruction interference and parent selection remain gated until the retained
+evidence covers these cases under exact invocation and fault-domain identities.
+
+Three source acceptance tests cover guarded capture/result lifetimes, transfer versus
+reborrow, shared attenuation and early retirement of copied shared carriers. A fourth
+generated selection probe compares the example with the reference executor at O0/O2,
+before/after expansion, with immutable queries and rejected parent selections at host
+pause points. All four generated selection probes now compare their observations
+across expansion as well as optimization and quota partitions. This audit changes
+tests and documentation; it does not enable source scheduling or alter the compiler.
+
 ## Reference execution invariants
 
 A step partition must not itself become a source effect. The same selected schedule

@@ -181,6 +181,14 @@ collections, passed through a control boundary, or returned. Direct reference
 values extracted from existing record fields can be captured even when their referent
 itself contains references; the task retains their established external dependencies.
 
+Detaching an exclusive reference from a borrowed carrier can also retain a storage
+guard for that carrier. Passing the detached reference into a task preserves this
+guard through task moves and borrowed completion delivery. A shared reborrow of the
+exclusive field still retains the guard. Copying an already shared field can instead
+release the carrier while retaining the field's external owner. The runnable
+[guarded capture example](../../playground/guarded_task_captures.tellur) demonstrates
+both cases, including a detached reference returned by an ordinary control.
+
 ## Borrowed completions
 
 A task keeps each captured parameter's dependencies through local moves. On await,

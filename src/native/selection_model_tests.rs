@@ -61,7 +61,40 @@ fn compiled_carrier_dependencies_survive_join_until_detached_result_delivery() {
     );
 }
 
-fn compare_selection(label: &str, input: &str, args: &[&str], expected: &[&str]) {
+#[test]
+fn compiled_detached_captures_preserve_checked_guard_semantics() {
+    let input = include_str!("../../playground/guarded_task_captures.tellur");
+    let observed = compare_selection(
+        "detached-guards",
+        input,
+        &[],
+        &[
+            "Local",
+            "Effect",
+            "Run",
+            "Await",
+            "Defer",
+            "AwaitTask",
+            "Return",
+            "Delivery",
+        ],
+    );
+    let reference = crate::compile(
+        input,
+        crate::manifest::Manifest::from_json(include_str!("../../playground/manifest.json"))
+            .unwrap(),
+    )
+    .unwrap()
+    .run(&crate::runtime::Scenario {
+        entry: "main".into(),
+        arguments: vec![],
+        calls: vec![],
+    })
+    .unwrap();
+    assert_eq!(observed, serde_json::to_value(reference).unwrap());
+}
+
+fn compare_selection(label: &str, input: &str, args: &[&str], expected: &[&str]) -> Json {
     let root =
         std::env::temp_dir().join(format!("tellur-selection-{label}-{}", std::process::id()));
     fs::create_dir_all(&root).unwrap();
@@ -78,6 +111,7 @@ fn compare_selection(label: &str, input: &str, args: &[&str], expected: &[&str])
         .unwrap()
         .expanded("main")
         .unwrap();
+    let mut baseline = None;
     for (is_expanded, program) in [(false, original), (true, expanded)] {
         // Expansion can inline the constructor; its explicit destination is
         // exercised by the unexpanded run, with equivalent expanded observations.
@@ -103,7 +137,6 @@ fn compare_selection(label: &str, input: &str, args: &[&str], expected: &[&str])
             &format!("{CONTEXTS}\n{}", include_str!("selection_model.rs")),
             1,
         );
-        let mut baseline = None;
         for opt in [0, 2] {
             let binary = root.join(format!("selection-{is_expanded}-{opt}"));
             let project = program.native_project("main", &binary).unwrap();
@@ -134,4 +167,5 @@ fn compare_selection(label: &str, input: &str, args: &[&str], expected: &[&str])
         }
     }
     fs::remove_dir_all(root).unwrap();
+    baseline.unwrap()
 }
