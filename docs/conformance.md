@@ -4470,3 +4470,13 @@ release every resource once before supplier cleanup. Generated original/expanded
 probes compare nested started/direct-await results with reference execution and exercise
 sibling faults across work, handler, completed and delivered phases. Harness scheduling is
 explicit; these checks do not claim source concurrency support.
+
+## Reference started-task joins (0.165)
+
+Private reference queue/claim/delivery tests preserve original/expanded owned and borrowed
+outcomes across Ready, Running, Waiting, nested-await and Completed claims. Foreign sessions
+with matching numeric IDs, wrong producer/invocation/domain, early/stale delivery, malformed
+captures and wait exhaustion reject without consuming authority or payloads. Generic result
+delivery cannot bypass the consuming join. Emergency drain retires unjoined task obligations
+after child unwind, including stopped nested boundaries and sequential descendants, before
+the owning continuation resumes. Source scheduling remains gated.

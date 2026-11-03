@@ -1,0 +1,48 @@
+async control worker(string owned, ref mutable string text, bool fail)
+    exits ready { string owned, ref mutable string value from text } faults
+{
+    emit("worker");
+    delta fail {
+        true => failed,
+        false => selected
+    }
+
+    [failed]: fault "child failed";
+    [selected]:
+        deref text = "edited";
+        exit ready { move owned, text };
+}
+
+async control leaf(string owned, ref mutable string text, bool fail)
+    exits ready { string owned, ref mutable string value from text } faults
+{
+    fault boundary {
+        emit("inside");
+        emit("leaving");
+    } contingency [] {
+        emit("stopped handler");
+        escalate;
+    }
+    forward await worker(move owned, text, fail);
+}
+
+async control start(string initial, bool fail) exits done faults {
+    mutable string text = move initial;
+    auto pending = defer leaf("payload", borrow mutable text, fail);
+    emit("queued");
+    delta await pending {
+        ready { auto owned, auto value } => received
+    }
+
+    [received]:
+        emit(borrow owned);
+        emit(value);
+        drop(value);
+        text = "released";
+        emit(borrow text);
+        exit done;
+}
+
+control main() exits done faults {
+    forward run start("initial", false);
+}

@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.164.0** implements the v0.1 checked core and the current language
+Compiler release **0.165.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -962,3 +962,9 @@ or owning fault cleanup. Source programs still use sequential direct and cold aw
 Native runtime groundwork now composes independent children with awaited invocation owners.
 Borrowed results and fault cleanup preserve the original caller chain. Source execution
 remains sequential while started-task and scheduling integration continues.
+
+## Reference started-task joins in 0.165
+
+Reference runtime groundwork now retains independent child ownership and consumes joins
+without replacing the original caller's diagnostics. Emergency cleanup retires the child
+obligation after its complete unwind. Source programs still use sequential awaits.

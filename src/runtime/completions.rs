@@ -35,6 +35,11 @@ impl<'a> Machine<'a> {
             .completed
             .get(&task)
             .ok_or_else(|| error("no retained task completion"))?;
+        if context.started.is_some() {
+            return Err(error(
+                "started completion requires its consuming join authority",
+            ));
+        }
         if context.task != Some((task, owner)) {
             return Err(error("completion belongs to another invocation"));
         }

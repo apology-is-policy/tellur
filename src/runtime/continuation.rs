@@ -29,6 +29,11 @@ mod process_tests;
 
 #[path = "completions.rs"]
 mod completions;
+// Internal started-task authority precedes source spawn/yield wiring.
+#[allow(dead_code)]
+#[path = "started.rs"]
+mod started;
+use started::StartedOrigin;
 
 type RunResult = std::result::Result<RunCompletion, Box<Failure>>;
 
@@ -62,6 +67,7 @@ impl CheckedProgram {
             machine: Some(Machine {
                 shared: SharedExecution {
                     next_base: 0,
+                    identity: std::sync::Arc::new(()),
                     program: self,
                     calls: &scenario.calls,
                     cursor: 0,
@@ -182,6 +188,7 @@ enum Continuation<'a> {
 /// must not clone values, reset address allocation, replay script inputs or refill
 /// fuel. This is single-threaded state, not a source scheduler or shared-memory API.
 struct SharedExecution<'a> {
+    identity: std::sync::Arc<()>,
     next_base: Id,
     program: &'a CheckedProgram,
     calls: &'a [ScriptCall],
@@ -203,6 +210,7 @@ struct SharedExecution<'a> {
 struct Context<'a> {
     domain: Option<DomainId>,
     task: Option<(TaskId, OwnerId)>,
+    started: Option<StartedOrigin<'a>>,
     contingencies: Vec<Diagnostic>,
     activations: crate::fault::Tracker,
     phase: crate::fault::Phase,
@@ -216,6 +224,7 @@ impl Context<'_> {
         Self {
             domain: None,
             task: None,
+            started: None,
             contingencies: vec![],
             activations,
             phase: crate::fault::Phase::EntryValidation,
@@ -340,6 +349,14 @@ impl<'a> Machine<'a> {
         Ok(())
     }
     fn prepare_call(&self, name: &str, args: Vec<Value>) -> Result<PreparedInvocation<'a>> {
+        let region = self.prepare_call_region(name, &args)?;
+        Ok(PreparedInvocation {
+            region,
+            arguments: args,
+            diagnostic_name: self.shared.program.runtime_name(name),
+        })
+    }
+    fn prepare_call_region(&self, name: &str, args: &[Value]) -> Result<&'a Region> {
         self.require_live_process()?;
         let region = self
             .shared
@@ -349,16 +366,11 @@ impl<'a> Machine<'a> {
         if args.len() != region.parameters.len() {
             return Err(error("wrong entry argument count"));
         }
-        // Validate the entire captured value graph before mutating frame storage.
-        // A later malformed argument must not leave an earlier one installed.
-        for (param, value) in region.parameters.iter().zip(&args) {
+        // Validate without moving captures; queue admission may still fail.
+        for (param, value) in region.parameters.iter().zip(args) {
             validate(value, &param.ty, self.shared.program.manifest())?;
         }
-        Ok(PreparedInvocation {
-            region,
-            arguments: args,
-            diagnostic_name: self.shared.program.runtime_name(name),
-        })
+        Ok(region)
     }
     fn start_call(&mut self, invocation: PreparedInvocation<'a>) -> Result<()> {
         self.require_live_process()?;
@@ -449,6 +461,12 @@ impl<'a> Machine<'a> {
                             assert_eq!(actual, expected)
                         }
                         _ => panic!("emergency retirement changed the retained disposition"),
+                    }
+                    // Independent work has no ResumeAwait continuation to
+                    // retire its task. Release that obligation only after its
+                    // complete emergency unwind, before resuming the owner.
+                    if self.context.started.is_some() {
+                        self.shared.tasks.abandon(self.context.task.unwrap().0);
                     }
                     let owner = self.settlements.pop().unwrap();
                     self.context = owner;

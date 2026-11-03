@@ -230,7 +230,10 @@ from queue ownership, with immutable shared-protocol join preflight. Source sche
 and broader parent-admission gates remain. E1d.2d.3w now admits independent native
 children from an awaited invocation, preserving its original parent chain and restoring
 that chain before a terminal owning boundary settles outward. Source scheduling and
-reference started-join integration remain ahead. Compiler **0.164.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
+reference started-join integration remain ahead. E1d.2d.2d now supplies private reference
+started-task queue/claim/delivery authority with immutable spawning identity, independent
+diagnostic segments and emergency obligation retirement. Bounded source scheduling
+integration remains ahead. Compiler **0.165.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
 lifetime checkpoints of milestone 2, the array/vector/map core of milestone 3,
 and implicit entry, inline/stored adapters, owned capture, named outcome contracts
 and checked forwarding in milestone 4. A first [semantic foundation](semantic-foundation.md)
@@ -512,6 +515,7 @@ do not block this design work. E2 remains the native coroutine target.
 | E1d.2d.3u | Direct-await handoffs | Delivered in 0.162: direct source await uses retained queue/dispatch/completion in both executors, with atomic invocation-owned task/wait creation and no intermediate source handle. Original argument order, fuel, borrowed results and diagnostic/resource ownership remain intact. Generated O0/O2 nested direct/cold, named/lexical fault and real-resource evidence covers the handoff. Source execution remains sequential; started-task joins and scoped spawn remain ahead |
 | E1d.2d.3v | Retained started-task joins | Delivered in 0.163: native host queue retention allocates no completion wait and runs no body. Move-only handles claim once in Ready/Running/Waiting/Completed; delivery rechecks original invocation, exact producer, session and fault domain. Captures/results block normal retirement and settle before owning contingency. Shared join preflight and reference delayed-completion evidence agree. Generated original/expanded O0/O2 probes use explicit host scheduling; source spawn/yield remains ahead |
 | E1d.2d.3w | Children of awaited invocations | Delivered in 0.164: an awaited native invocation may own independent children while not itself suspended on an await. Raw, queued and unjoined routes preserve invocation/domain ownership, retained results and borrower-before-supplier cleanup. Terminal owning-boundary unwind restores the original outer await chain. Generated original/expanded O0/O2 models cover nested direct awaits, result borrows and sibling-fault phases. Source spawn/yield remains gated |
+| E1d.2d.2d | Reference started-task joins | Delivered in 0.165: private queue-only admission retains captures without a wait or parked caller. Move-only handles claim once under the original execution, invocation, producer and spawning fault domain; normal delivery leaves the parent tracker intact. Generic completion delivery cannot bypass authority. Ready/waiting/completed and nested-await work retires before owning emergency continuation. Source spawn/yield remains gated |
 | E2 | Native coroutine lowering | Preserved architectural target: direct LLVM coroutine primitives, pinned-toolchain experiment, frame lifetime rules and schedule-based differential tests; I1 must keep this route open |
 | T1 | Stronger source transformations | Hold current scope during P1–P5: extraction correspondence, continuation cuts, source-level lift and editor actions |
 | R1 | Mathematical foundations | Maintain existing evidence; defer extensions during P1–P5: preservation judgments, richer protocol abstractions, infinite/causal behavior, mechanization |

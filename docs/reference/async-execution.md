@@ -817,3 +817,10 @@ outer callers remain parked until every child is delivered. Terminal owning-boun
 restores the original outer diagnostic chain before further settlement. This internal host
 composition keeps existing callback/loan gates. Source programs still execute sequentially,
 without `spawn`/`yield`. See [children of awaited invocations](../async-execution.md#children-of-awaited-invocations-e1d2d3w).
+
+Since 0.165, the reference runtime also has private queue-only started-task admission and
+consuming joins. Immutable spawning identity survives nested child boundaries and awaits;
+joining delivers the result without replacing the original caller diagnostic chain. Unjoined
+work remains an obligation through normal execution and retires after complete emergency
+unwind. This is internal runtime support; source `spawn`/`yield` remain unavailable. See
+[reference started-task joins](../async-execution.md#reference-started-task-joins-e1d2d2d).

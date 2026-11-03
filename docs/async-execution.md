@@ -2902,6 +2902,43 @@ join authority and captures the original spawning fault domain, then connects th
 source handoffs and required-await checking. Do not infer source interleaving from host
 quota pauses or administrative admission failures.
 
+## Reference started-task joins (E1d.2d.2d)
+
+Compiler 0.165 adds private reference queue/claim/delivery operations matching the
+accepted invocation-owned child model. Queue admission validates the original cold task,
+producer and captured argument graph before transferring values. It creates no completion
+wait, suspended caller or child execution. The parent keeps its diagnostic tracker;
+the child receives an independent segment sharing only activation identity allocation.
+
+Opaque, move-only handles retain their execution identity, original invocation, exact
+checked producer and spawning fault domain. The same immutable origin travels with the
+child through nested boundaries, readiness and sequential awaits, separately from its
+currently executing domain. Claims may occur before dispatch, during execution/readiness,
+while the child awaits another operation, or after completion. Failed claims preserve
+handles and registry state, including wait-capacity exhaustion.
+
+A separate consuming join transfers one retained normal outcome and retires its task
+obligation. It does not replace the caller's tracker with the independent child's chain.
+Early, foreign, wrong-invocation or crossed-domain delivery preserves both authority and
+payload. The older task/owner/wait delivery route rejects started work. Completed owned
+values and result borrows remain obligations until this join or emergency retirement.
+
+An independently queued child has no sequential ResumeAwait continuation to retire its
+registry obligation. Emergency drain now retires that obligation after the entire child
+chain has unwound and before restoring the owning continuation. This prevents Ready or
+Waiting started children from leaving a false outstanding obligation after their storage
+has retired. Completed-result cleanup continues through the existing retained-result path.
+Stopped nested contingencies do not run; administrative process status remains unchanged.
+
+Five focused cases exercise original/expanded checked frames, all claim phases, nested
+boundaries and direct awaits, preserved parent diagnostics, borrowed-result storage,
+foreign/stale/domain/producer/capacity rejection, and Ready/Waiting/Completed/nested-await
+emergency retirement. Existing sequential source behavior remains covered separately.
+These private operations are runtime groundwork: source spawn/yield and their scheduler
+are not enabled. The next integration must retain runnable owner continuations, route
+escaping independent faults to their owning boundary, and connect explicit handoffs and
+normal-path required-await checking in both executors together.
+
 ## Reference execution invariants
 
 A step partition must not itself become a source effect. The same selected schedule

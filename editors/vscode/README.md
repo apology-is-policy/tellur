@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-darwin-arm64-0.164.0.vsix` using **Extensions:
+1. Install the supplied `tellur-language-darwin-arm64-0.165.0.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1451,3 +1451,9 @@ or owning fault cleanup. Source programs still use sequential direct and cold aw
 Native runtime groundwork now composes independent children with awaited invocation owners.
 Borrowed results and fault cleanup preserve the original caller chain. Source execution
 remains sequential while started-task and scheduling integration continues.
+
+## Reference started-task joins in 0.165
+
+Reference runtime groundwork now retains independent child ownership and consumes joins
+without replacing the original caller's diagnostics. Emergency cleanup retires the child
+obligation after its complete unwind. Source programs still use sequential awaits.
