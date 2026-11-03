@@ -1222,6 +1222,7 @@ Those boundaries need explicit contracts before being accepted by the checker.
 | E1d.2d.3l | Independent-child cold awaits | Delivered in 0.139: an independently admitted native child can cold-await an exclusive descendant chain. Normal delivery, full child fault causes and borrower-first resource settlement agree with direct execution. Parent-with-live-children awaits and source scheduling remain gated |
 | E1d.2d.3m | Prepared owner awaits with siblings | Delivered in 0.140: an already-prepared native cold await can enter beside independent children. Sibling faults restore the original owning diagnostic segment from live/completed awaited contexts or saved nested boundary parents before resource retirement. Parent execution with live children and source scheduling remain gated |
 | E1d.2d.3n | Native retirement preflight | Delivered in 0.141: retained borrower membership is checked before runtime frame, loop or boundary retirement, and final-frame domain authority is checked before releasing storage. Parent selection remains guarded because generated callback evaluation can itself move operands |
+| E1d.2d.3o | Native invocation ownership and atomic selection | Delivered in 0.142: every child/result retains its original parent invocation; normal selection and joins validate that authority. Lower-level Machine selection rejects live child/result membership before callbacks or pending delivery can change state. Fine-grained parent progress and source scheduling remain gated |
 | E1e | Explicit cooperative cancellation and suspending cleanup; normal completion races, cleanup failures and no abandoned losers | Define cancellation observation and cleanup admission; no implicit cancellation exception |
 | E2 | Pinned native coroutine experiment, then checked lowering and schedule-based differential validation | Reference semantics and legal frame retirement must precede native destruction |
 
@@ -1871,6 +1872,40 @@ sibling, owner-await and process models exercise the same embedded production ru
 Source `spawn`/`yield`, independent admission from sequential contexts, started-task
 await, cancellation, suspending disposal, async adapters and LLVM coroutine lowering
 remain gated. No accepted source ownership or fault rule changes.
+
+## Native invocation ownership and atomic selection (E1d.2d.3o)
+
+Compiler 0.142 records the original parent invocation for each independently admitted
+child, queued task and cold await. That identity stays with a retained result after
+its executable frames retire. Normal child selection, readiness validation and join
+require the original invocation to remain live. Joining also requires that invocation
+to be the selected caller: another synchronous invocation in the same context and
+fault domain cannot adopt its result. Checks precede resource adoption, result removal
+and one-use task delivery. Emergency retirement still drains borrowers before owners
+without requiring a normal join.
+
+The lower-level native Machine now rejects selection with child/result membership
+before entering its callback loop, including zero-quota requests. Rejection does not
+move source operands, update the program counter or path facts, publish effects,
+consume fuel or take a queued delivery. It is an administrative rejection, so it does
+not start fault settlement or run a contingency. Already-pending fault settlement
+retains its existing route. The outer context-selection and runtime-retirement checks
+remain as well.
+
+This is a conservative selection rule, not a new permission to run parents with live
+children. A child's invocation identity establishes who owns it; it does not prove
+that an arbitrary instruction can access storage borrowed by that child. Selective
+parent progress still requires checked access information before callback evaluation
+and before returned results write caller slots. Source scheduler handoffs remain a
+separate gate, with host quotas never becoming implicit source switches.
+
+Four new host cases cover operand/fact/effect/fuel preservation, pending-delivery
+preservation and resumption after join, a different invocation in the same context,
+and loss/restoration of the exact nested caller for all three admission routes.
+The generated probe uses the existing loop/cold-await fixture: it inserts rejected
+selections before generated callbacks and pending delivery, then compares full normal
+observations against an unprobed run at original/expanded O0/O2 and quota partitions.
+No source syntax or accepted ownership, origin, outcome or fault semantics change.
 
 ## Reference execution invariants
 

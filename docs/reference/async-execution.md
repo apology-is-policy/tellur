@@ -495,6 +495,13 @@ blocked: generated callback evaluation still needs an earlier loan/invocation ch
 This internal prerequisite does not enable source scheduling. See
 [native retirement preflight](../async-execution.md#native-retirement-preflight-e1d2d3n).
 
+Since 0.142, every retained native child/result records its original parent
+invocation, which must remain live and be the selected caller for normal joining.
+Lower-level Machine selection now rejects live children before callbacks or pending
+delivery change operands, paths, effects or fuel. This conservative check does not
+enable parent progress or source scheduling. See
+[native invocation ownership](../async-execution.md#native-invocation-ownership-and-atomic-selection-e1d2d3o).
+
 Since 0.128, entry process termination closes normal task admission and retires all
 registered execution contexts and results before delivering the original status.
 Prepared bodies never start; parked callers unwind without normal instructions or

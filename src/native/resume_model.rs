@@ -54,3 +54,7 @@ mod mixed_await_tests;
 #[cfg(test)]
 #[path = "owner_await_model_tests.rs"]
 mod owner_await_tests;
+
+#[cfg(test)]
+#[path = "selection_model_tests.rs"]
+mod selection_tests;

@@ -166,7 +166,7 @@ impl QueuedTask {
     }
 }
 impl Activation {
-    fn require_task_host(&self, host: &Host) -> R<()> {
+    pub(super) fn require_task_host(&self, host: &Host) -> R<()> {
         if !Arc::ptr_eq(&self.registry, &host.resources.identity) {
             return Err("E_NATIVE: invocation belongs to another host".into());
         }

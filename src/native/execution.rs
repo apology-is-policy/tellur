@@ -783,6 +783,11 @@ impl Machine {
         if self.fault.is_some() {
             return Ok(Poll::Settling(self.current.clone()));
         }
+        // Selection rejection is administrative, not an execution failure. Keep it
+        // outside the step/error-unwind loop and before pending delivery, callback
+        // operand moves, path facts, effects or fuel. Fine-grained parent progress
+        // requires checked access metadata; context membership stays conservative.
+        domains.require_no_children(&self.member)?;
         let mut remaining = quota;
         while remaining > 0 {
             let delivery =

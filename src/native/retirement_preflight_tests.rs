@@ -385,14 +385,18 @@ fn runtime_retirement_failure_hands_off_settlement_before_supplier_unwind() {
         .unwrap();
     let p = c.parked.get_mut(&root.id).unwrap();
     c.host.exchange_context(&mut p.host).unwrap();
-    // Exercise the real Machine error path, deliberately below the public guard.
-    let Poll::Settling(domain) = p
+    // Exercise retirement's fallback below both selection guards, then the same
+    // error-unwind path used by callback failures. Selection itself now rejects
+    // administratively before entering this path.
+    let error = p
         .machine
-        .advance(c.host, &mut c.values, &mut c.domains, 1)
-        .unwrap()
-    else {
-        panic!("borrowers must settle before unwinding the supplier")
-    };
+        .step(c.host, &mut c.values, &mut c.domains)
+        .err()
+        .unwrap();
+    p.machine
+        .unwind_error(c.host, &mut c.values, &mut c.domains, error, true)
+        .unwrap();
+    let domain = p.machine.current.clone();
     let message = p.machine.fault.clone().unwrap();
     let report = c
         .host
@@ -411,4 +415,166 @@ fn runtime_retirement_failure_hands_off_settlement_before_supplier_unwind() {
     assert!(c.join(Some(&root), &child).is_err());
     empty(&c);
     assert_eq!(*drops.borrow(), [1, 0]);
+}
+
+fn moving(h: &mut Host, v: &mut Frames, a: &mut Activation) -> R<Step> {
+    h.tick(1, 1)?;
+    a.pc += 1;
+    a.facts[0] = true;
+    h.events.push(serde_json::json!({"kind":"selected"}));
+    Ok(Step::Complete(Completion::Outcome((
+        "done".into(),
+        vec![v[a.base()].take().unwrap()],
+    ))))
+}
+static MOVING: Control = Control {
+    atoms: 1,
+    resume: moving,
+    ..PARENT
+};
+
+#[test]
+fn machine_selection_rejects_before_operand_moves_facts_effects_or_fuel() {
+    for completed in [false, true] {
+        let mut h = Host::new(serde_json::json!({}), None, true, Some(100));
+        let drops = Rc::new(RefCell::new(vec![]));
+        let value = h
+            .resources
+            .insert("probe", Probe(0, drops.clone()))
+            .unwrap();
+        let mut c = Contexts::new(&mut h);
+        let root = c.start(&MOVING, vec![value]).unwrap();
+        let base = c.parked[&root.id].machine.stack[0].base();
+        let value = c
+            .host
+            .resources
+            .insert("probe", Probe(1, drops.clone()))
+            .unwrap();
+        let child = c
+            .start_child(
+                &root,
+                &CHILD,
+                vec![
+                    value,
+                    V::Reference {
+                        ty: "&probe".into(),
+                        root: base,
+                        fields: vec![],
+                    },
+                ],
+            )
+            .unwrap();
+        if completed {
+            c.advance_retained(&child, 2).unwrap();
+        }
+        let before = snapshot(&c, &root);
+        for quota in [1, 99, 0] {
+            let p = c.parked.get_mut(&root.id).unwrap();
+            c.host.exchange_context(&mut p.host).unwrap();
+            assert!(
+                p.machine
+                    .advance(c.host, &mut c.values, &mut c.domains, quota)
+                    .is_err()
+            );
+            assert!(!p.machine.stack[0].facts[0]);
+            c.host.exchange_context(&mut p.host).unwrap();
+            assert_eq!(snapshot(&c, &root), before);
+        }
+        assert!(drops.borrow().is_empty());
+        c.terminate().unwrap();
+        empty(&c);
+        assert_eq!(*drops.borrow(), [1, 0]);
+    }
+}
+
+#[test]
+fn completed_unbound_child_requires_its_original_invocation_to_join() {
+    let mut h = Host::new(serde_json::json!({}), None, true, Some(100));
+    let mut c = Contexts::new(&mut h);
+    let root = c.start(&PARENT, vec![V::U32(3)]).unwrap();
+    let child = c
+        .start_child(&root, &CHILD, vec![V::U32(4), V::U32(5)])
+        .unwrap();
+    c.advance_retained(&child, 2).unwrap();
+    // Deliberately enter another invocation beneath the context selection guard.
+    // The context and domain identities stay equal; the joining invocation differs.
+    pc(&mut c, &root, 22);
+    raw_step(&mut c, &root).unwrap();
+    let before = snapshot(&c, &root);
+    assert!(c.join(Some(&root), &child).is_err());
+    assert_eq!(snapshot(&c, &root), before);
+    assert!(c.completed.contains_key(&child.id));
+    c.terminate().unwrap();
+    empty(&c);
+}
+
+#[test]
+fn every_child_admission_retains_the_exact_nested_invocation_through_completion() {
+    for kind in 0..3 {
+        let mut h = Host::new(serde_json::json!({}), None, true, Some(100));
+        let mut c = Contexts::new(&mut h);
+        let root = c.start(&PARENT, vec![V::U32(3)]).unwrap();
+        pc(&mut c, &root, 22);
+        raw_step(&mut c, &root).unwrap();
+        let a = c.parked[&root.id].machine.stack.last().unwrap();
+        let original_owner = a.owner;
+        let mut args = vec![V::U32(4), V::U32(5)];
+        let child = if kind == 0 {
+            c.start_child(&root, &CHILD, args).unwrap()
+        } else {
+            let mut cold = Some(a.defer_task(c.host, &CHILD, "pending", &mut args).unwrap());
+            let mut queued = Some(a.queue_task(c.host, &CHILD, &mut cold).unwrap());
+            if kind == 1 {
+                c.start_task(&root, &mut queued).unwrap()
+            } else {
+                c.start_await(&root, &mut queued).unwrap()
+            }
+        };
+        assert_eq!(c.parked[&child.id].parent_invocation, Some(original_owner));
+        for completed in [false, true] {
+            if completed {
+                c.advance_retained(&child, 2).unwrap();
+            }
+            // Simulate losing the original activation without losing the context,
+            // domain or task registry. An enclosing invocation cannot replace it.
+            let original = c
+                .parked
+                .get_mut(&root.id)
+                .unwrap()
+                .machine
+                .stack
+                .pop()
+                .unwrap();
+            let before = snapshot(&c, &root);
+            let error = if completed {
+                c.join(Some(&root), &child).err().unwrap()
+            } else {
+                c.advance_retained(&child, 1).err().unwrap()
+            };
+            assert!(error.contains("original parent invocation has retired"));
+            assert_eq!(snapshot(&c, &root), before);
+            c.parked
+                .get_mut(&root.id)
+                .unwrap()
+                .machine
+                .stack
+                .push(original);
+        }
+        assert_eq!(
+            c.completed[&child.id].parked.parent_invocation,
+            Some(original_owner)
+        );
+        let (_, fields) = c.join(Some(&root), &child).unwrap().outcome().unwrap();
+        assert_eq!(fields, [V::U32(4), V::U32(5)]);
+        assert!(c.join(Some(&root), &child).is_err());
+        assert!(matches!(
+            c.advance_retained(&root, 99).unwrap(),
+            ContextPoll::Ready
+        ));
+        assert_eq!(
+            c.join(None, &root).unwrap().outcome().unwrap().1,
+            [V::U32(3)]
+        );
+        empty(&c);
+    }
 }

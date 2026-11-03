@@ -26,6 +26,7 @@ struct Parked {
     root: ContextRoot,
     name: &'static str,
     parent: Option<u64>,
+    parent_invocation: Option<super::super::tasks::OwnerId>,
     started: bool,
     task: Option<QueuedTask>,
     sequential: bool,
@@ -149,6 +150,7 @@ impl<'a> Contexts<'a> {
                 root,
                 name: control.name,
                 parent: None,
+                parent_invocation: None,
                 started: false,
                 task: None,
                 sequential: false,
@@ -172,8 +174,21 @@ impl<'a> Contexts<'a> {
             return Err("E_NATIVE: context is foreign or retired".into());
         }
         let parked = &self.parked[&key.id];
+        self.require_parent_invocation(parked)?;
         parked.machine.require_domain(&self.domains)?;
         self.host.require_context(&parked.host, &parked.root)
+    }
+    fn require_parent_invocation(&self, parked: &Parked) -> R<()> {
+        match (parked.parent, parked.parent_invocation) {
+            (None, None) => Ok(()),
+            (Some(parent), Some(owner)) => self
+                .parked
+                .get(&parent)
+                .and_then(|parent| parent.machine.stack.iter().find(|a| a.owner == owner))
+                .ok_or("E_NATIVE: child's original parent invocation has retired".into())
+                .and_then(|activation| activation.require_task_host(self.host)),
+            _ => Err("E_NATIVE: child has no original parent invocation".into()),
+        }
     }
     pub fn start_child(
         &mut self,
@@ -190,6 +205,13 @@ impl<'a> Contexts<'a> {
         }
         let owner = self.parked[&parent.id].machine.current.clone();
         let membership = self.parked[&parent.id].machine.member.clone();
+        let activation = self.parked[&parent.id]
+            .machine
+            .stack
+            .last()
+            .ok_or("E_NATIVE: child parent has no invocation")?;
+        activation.require_task_host(self.host)?;
+        let parent_invocation = Some(activation.owner);
         self.domains.require_open(&owner, &[])?;
         self.domains.require_member_capacity()?;
         self.host.tasks.prepare_owner()?;
@@ -231,6 +253,7 @@ impl<'a> Contexts<'a> {
                 root,
                 name: control.name,
                 parent: Some(parent.id),
+                parent_invocation,
                 started: false,
                 task: None,
                 sequential: false,
@@ -297,6 +320,7 @@ impl<'a> Contexts<'a> {
             .as_ref()
             .ok_or("E_NATIVE: queued task already admitted")?;
         let (control, arguments) = task.prepare_context(self.host, activation)?;
+        let parent_invocation = Some(activation.owner);
         if control.constructor
             || arguments.len() != control.parameters.len()
             || control.parameters.iter().any(|slot| *slot >= control.slots)
@@ -387,6 +411,7 @@ impl<'a> Contexts<'a> {
                 },
                 name: control.name,
                 parent: Some(parent.id),
+                parent_invocation,
                 started: false,
                 task: Some(task),
                 sequential,
@@ -699,6 +724,7 @@ impl<'a> Contexts<'a> {
             .get(&key.id)
             .ok_or("E_NATIVE: context has no retained completion")?;
         let parked = &completed.parked;
+        self.require_parent_invocation(parked)?;
         if !parked.machine.finished || !parked.machine.stack.is_empty() {
             return Err("E_NATIVE: completion still has executable frames".into());
         }
@@ -728,6 +754,9 @@ impl<'a> Contexts<'a> {
         if let Some(parent) = parent {
             self.require(parent)?;
             let parent = &self.parked[&parent.id];
+            if parent.machine.stack.last().map(|a| a.owner) != parked.parent_invocation {
+                return Err("E_NATIVE: completion belongs to another invocation".into());
+            }
             if !self
                 .domains
                 .same(&parent.machine.current, &parked.machine.root.key)

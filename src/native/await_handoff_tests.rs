@@ -951,3 +951,56 @@ fn owner_cold_fault_preserves_its_chain_and_retires_completed_sibling_borrowers(
         }
     }
 }
+
+#[test]
+fn machine_selection_preserves_pending_delivery_until_other_children_join() {
+    let mut h = host();
+    let drops = Rc::new(RefCell::new(vec![]));
+    let mut c = Contexts::new(&mut h);
+    let root = start(&mut c, &PARENT, &drops);
+    let base = c.parked[&root.id].machine.stack[0].base();
+    let args = vec![
+        make(&mut c, 2, &drops),
+        V::Reference {
+            ty: "&probe".into(),
+            root: base,
+            fields: vec![],
+        },
+    ];
+    let sibling = c.start_child(&root, &CHILD, args).unwrap();
+    let awaited = c.admit_await(&root).unwrap();
+    c.advance_retained(&awaited, 2).unwrap();
+    c.return_await(&root, &awaited).unwrap();
+    let slots = c.values.to_vec();
+    let tasks = c.host.tasks.clone();
+    let fuel = c.host.fuel;
+    for quota in [1, 99, 0] {
+        let p = c.parked.get_mut(&root.id).unwrap();
+        c.host.exchange_context(&mut p.host).unwrap();
+        assert!(
+            p.machine
+                .advance(c.host, &mut c.values, &mut c.domains, quota)
+                .is_err()
+        );
+        let a = p.machine.stack.last().unwrap();
+        assert!(!a.facts[0]);
+        assert!(matches!(&a.pending, Some(Pending::Await(p)) if p.result.is_some()));
+        c.host.exchange_context(&mut p.host).unwrap();
+        assert_eq!(*c.values, slots);
+        assert_eq!(c.host.tasks, tasks);
+        assert_eq!(c.host.fuel, fuel);
+    }
+    c.advance_retained(&sibling, 2).unwrap();
+    let (_, fields) = c.join(Some(&root), &sibling).unwrap().outcome().unwrap();
+    c.host
+        .release_frame(&fields.into_iter().map(Some).collect::<Vec<_>>());
+    assert!(matches!(
+        c.advance_retained(&root, 1).unwrap(),
+        ContextPoll::Ready
+    ));
+    let (_, fields) = c.join(None, &root).unwrap().outcome().unwrap();
+    c.host
+        .release_frame(&fields.into_iter().map(Some).collect::<Vec<_>>());
+    assert_eq!(*drops.borrow(), [2, 0, 1]);
+    empty(&c);
+}

@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.141.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.142.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -4167,3 +4167,20 @@ Unchanged checker, reference-executor and LSP/Node evidence is reused; these sel
 checks are not a full-suite claim. A fresh isolated editor check verifies the release.
 The earlier parent-selection guard remains essential because callbacks may move
 source operands before returning a step. No source scheduler is enabled.
+
+## Native invocation ownership and atomic selection (0.142)
+
+E1d.2d.3o preserves exact parent invocation authority across independent children,
+queued tasks, cold awaits and retained results. Four new host tests cover callback
+operand/fact/effect/fuel preservation; pending delivery and subsequent normal join;
+wrong-invocation adoption in the same context/domain; and absent nested callers in
+all three admission routes. Three regression cases fail on 0.141 before the fixes.
+The prior lower-level retirement fallback is still tested directly beneath selection.
+
+A generated probe checks rejected selection before callbacks and pending delivery in
+the existing loop/cold-await fixture. Full observations match the unprobed schedule
+at original/expanded O0/O2 and different quota partitions. Six existing generated
+cold-await, owner-await, result, sibling, lexical-recovery and process models run
+freshly, alongside cold-task/source-fault/process/manual targets. Unchanged checker,
+reference and LSP/Node evidence is reused; this is selected coverage, not a full suite.
+Release checks include a fresh isolated editor session. No source scheduler is added.
