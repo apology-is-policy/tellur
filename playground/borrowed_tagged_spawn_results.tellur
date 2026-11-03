@@ -1,0 +1,116 @@
+variant choice<t>['a, 'b] {
+    left { ref t text <- 'a },
+    right { ref t text <- 'b },
+    empty
+}
+async control first<t>(ref choice<t> input) exits ready { ref choice<t> value from input } {
+    yield;
+    exit ready { input };
+}
+control prepare<t>(ref t a, ref t b, bool choose, bool absent)
+    exits ready { choice<t>[a, b] value }
+{
+    delta absent {
+        true => absent,
+        false => present
+    }
+    [absent]: exit ready { choice<t>.empty {} };
+    [present]: delta choose {
+        true => left,
+        false => right
+    }
+    [left]: exit ready { choice<t>.left { a } };
+    [right]: exit ready { choice<t>.right { b } };
+}
+async control select(bool choose, bool absent) exits done {
+    mutable string left = "left";
+    mutable string right = "right";
+    delta prepare<string>(borrow left, borrow right, choose, absent) {
+        ready { auto saved } => prepared
+    }
+    [prepared]:
+        auto pending = spawn first<string>(borrow saved);
+        yield;
+        yield;
+        auto moved = move pending;
+        delta await moved {
+            ready { auto result } => ready
+        }
+    [ready]:
+        auto copy = move result;
+        delta copy {
+            left { auto a } => left_result,
+            right { auto b } => right_result,
+            empty => empty_result
+        }
+    [left_result]: drop(saved);
+        right = "free";
+        emit(a);
+        left = "free";
+        exit done;
+    [right_result]: drop(saved);
+        left = "free";
+        emit(b);
+        right = "free";
+        exit done;
+    [empty_result]: drop(saved);
+        left = "free";
+        right = "free";
+        emit("empty");
+        exit done;
+}
+async control lend_option(ref mutable option<ref mutable string> input)
+    exits ready { ref mutable option<ref mutable string> value from input }
+{
+    yield;
+    exit ready { input };
+}
+control maybe(ref mutable string owner, bool absent) exits ready {
+        option<ref mutable string>[owner] value
+    }
+{
+    delta absent {
+        true => absent,
+        false => present
+    }
+    [absent]: exit ready { none {} };
+    [present]: exit ready { some { owner } };
+}
+async control exclusive(bool absent) exits done {
+    mutable string owner = "before";
+    delta maybe(borrow mutable owner, absent) {
+        ready { auto input } => prepared
+    }
+    [prepared]:
+        mutable option<ref mutable string> saved = move input;
+        auto child = spawn lend_option(borrow mutable saved);
+        yield;
+        yield;
+        delta await child {
+            ready { auto value } => ready
+        }
+    [ready]: delta value {
+        some { auto text } => some,
+        none => none
+    }
+    [some]: deref text = "edited";
+        emit(text);
+    [none]: emit("none");
+    [entry]: drop(saved);
+        owner = "free";
+        exit done;
+}
+async control startup() exits done {
+    await select(true, false);
+    await select(false, false);
+    await select(true, true);
+    await exclusive(false);
+    await exclusive(true);
+    exit done;
+}
+outcome program_result {
+    @exit 0 done
+}
+control main() exits program_result {
+    forward run startup();
+}

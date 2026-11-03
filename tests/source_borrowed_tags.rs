@@ -192,17 +192,17 @@ fn borrowed_tagged_faults_settle_joined_and_unjoined_results_before_owning_handl
     }
 }
 #[test]
-fn deeper_pointees_and_whole_borrowed_tagged_results_stay_gated() {
+fn deeper_pointees_stay_gated_while_whole_borrowed_tags_are_admitted() {
     for ty in ["ref option<ref leaf>"] {
         let source = format!(
             "struct leaf['a] {{ref string text <- 'a;}} outcome reply['a] {{held {{leaf['a] value}}}} struct wrapped['a] {{reply['a] value;}} async control work({ty} input) exits done {{exit done;}} async control caller({ty} input) exits done {{auto child=spawn work(input);await child;exit done;}}"
         );
         rejects(&source, "E_ASYNC");
     }
-    rejects(
+    compile(
         "variant choice['a] {held {ref string text <- 'a},empty} async control lend(ref choice input) exits ready {ref choice value from input} {exit ready {input};} async control caller(ref choice input) exits done {auto child=spawn lend(input);delta await child {ready {auto value}=>ready} [ready]:exit done;}",
-        "E_ASYNC",
-    );
+        manifest(),
+    ).unwrap();
 }
 #[test]
 fn borrowed_tagged_generic_child_forwarding_preserves_selected_origins() {

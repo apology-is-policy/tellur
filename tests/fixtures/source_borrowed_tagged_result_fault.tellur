@@ -1,0 +1,70 @@
+variant edit_view['text] {
+    held { ref mutable string text <- 'text },
+    empty
+}
+variant read_view['text] {
+    held { ref string text <- 'text },
+    empty
+}
+async control lend(ref mutable edit_view input) exits ready {
+        ref mutable edit_view value from input
+    }
+{
+    emit("result completed");
+    exit ready { input };
+}
+async control sibling(ref read_view input) exits done {
+    delta input {
+        held { auto text } => held,
+        empty => empty
+    }
+    [held]: emit(text);
+        fault boundary {
+            yield;
+            yield;
+        } contingency [] {
+            emit("stopped nested handler");
+            escalate;
+        }
+    [entry]: emit("stopped sibling resumed");
+        exit done;
+}
+async control fail() faults {
+    yield;
+    fault "child failed";
+}
+async control startup() exits done faults {
+    mutable string text = "original";
+    string peer = "sibling started";
+    mutable edit_view editing = edit_view.held { borrow mutable text };
+    read_view reading = read_view.held { borrow peer };
+    auto result = spawn lend(borrow mutable editing);
+    auto worker = spawn sibling(borrow reading);
+    auto failure = spawn fail();
+    yield;
+    yield;
+    delta await result {
+        ready { auto value } => ready
+    }
+    [ready]: emit("stopped parent resumed");
+        delta value {
+            held { auto result_text } => held,
+            empty => empty
+        }
+    [held]: emit(result_text);
+    [entry]: await worker;
+        await failure;
+}
+async control outer() exits done faults {
+    await startup();
+    exit done;
+}
+control main() exits done {
+    fault boundary {
+        run outer();
+    } contingency [] {
+        emit("owner contingency");
+        terminate process 23;
+    }
+    exit done;
+}

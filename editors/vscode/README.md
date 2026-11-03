@@ -1550,3 +1550,9 @@ contained permissions after join. Diagnostics preserve shared Copy and exclusive
 rules, projected guards and explicit public origin bindings. A fresh editor fixture
 checks premature holder disposal, repair and native execution. Whole borrowed tagged
 results and deeper reference pointees remain gated.
+
+Release 0.182 supports whole borrowed option and variant results. Hover distinguishes
+empty holder storage from tag-specific contained permissions. Diagnostics preserve
+projected guards, shared/exclusive authority and public result origins; repairs restore
+inferred types. A fresh editor fixture runs the new example natively. Whole borrowed
+named-outcome results and deeper reference pointees remain gated.

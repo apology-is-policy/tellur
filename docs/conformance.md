@@ -4677,3 +4677,18 @@ contents, completed whole-record references, real resources in retained holders 
 awaited parents. The 55-variant reference context census also covers joined/unjoined
 faults. Existing cold carrier and result contract suites remain part of regression
 coverage. No production scheduler changes or broader whole-borrowed result admission.
+
+## Whole borrowed option/variant spawn results (0.182)
+
+`source_borrowed_tagged_results` checks active/empty whole-holder storage, selected
+contained permissions, shared Copy, exclusive moves/reborrows, projected guards,
+independent siblings, generic forwarding, nominal identity, local escapes and nested
+outcome obligations. Imported LSP contracts and a fresh editor cover holder conflicts,
+unsaved repair, inferred result types and native execution.
+
+Six `compiled_source_borrowed_tagged_results_*` models compare original/expanded O0/O2
+programs at every fuel cutoff and quota partition, including nested named outcomes,
+completed whole tagged references, resource-bearing holders, awaited parents and stopped
+siblings. The 60-variant reference context census checks retirement before and after join.
+Previously validated cold carrier semantics remain the baseline; no production scheduler
+or ownership policy changes accompany this bounded source result admission.

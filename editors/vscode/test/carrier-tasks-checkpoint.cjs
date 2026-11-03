@@ -291,6 +291,23 @@ exports.run = async function (root) {
   assert.equal(wholeRecordRun.code, 0, wholeRecordRun.stderr);
   assert.deepEqual(JSON.parse(wholeRecordRun.stdout).events.filter(e => e.kind === 'emit').map(e => e.message),
     ['left', 'right', 'after', 'available']);
+  const wholeTags = await fs.readFile(path.join(__dirname, '../../../playground/borrowed_tagged_spawn_results.tellur'), 'utf8');
+  await replace(wholeTags);
+  await waitFor(async () => diagnostics().length === 0 && (await hover('spawn first')).includes('Whole borrowed option/variant results retain active or empty holder storage'), 'whole tagged result admission');
+  assert.ok((await hover('auto result')).includes('ref choice'));
+  await replace(wholeTags.replace('auto copy = move result;', 'drop(saved);auto copy = move result;'));
+  await waitFor(() => diagnostics().some(d => code(d) === 'E_LOAN'), 'whole variant result keeps holder storage');
+  await replace(wholeTags.replace('delta value {', 'drop(saved);delta value {'));
+  await waitFor(() => diagnostics().some(d => code(d) === 'E_LOAN'), 'whole option result keeps holder through matching');
+  await replace(wholeTags);
+  await waitFor(async () => diagnostics().length === 0 && (await hover('auto result')).includes('ref choice'), 'whole tagged result repair');
+  await document.save();
+  const wholeTagRun = await vscode.commands.executeCommand('tellur.buildAndRun', {
+    arguments:['--json'], output:path.join(root, 'native output', 'borrowed-tagged-results')
+  });
+  assert.equal(wholeTagRun.code, 0, wholeTagRun.stderr);
+  assert.deepEqual(JSON.parse(wholeTagRun.stdout).events.filter(e => e.kind === 'emit').map(e => e.message),
+    ['left', 'right', 'empty', 'edited', 'none']);
   await fs.writeFile(path.join(fixture, 'passed.txt'), 'cold and started tasks, synchronous helpers, diagnostics, unsaved repair and native execution passed\n');
   console.log('TELLUR_CARRIER_TASKS_EDITOR_TESTS_PASSED: pending type hover, diagnostic repair and native run');
 };

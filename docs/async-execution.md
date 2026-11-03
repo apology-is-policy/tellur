@@ -3379,3 +3379,24 @@ Next audit: whole borrowed option and closed-variant results, preserving active/
 tag permissions, holder storage and contained origins through join and settlement.
 Whole borrowed named-outcome results, deeper reference pointees, reference-bearing
 collections and borrowed-handle wrappers remain separate evidence slices.
+
+## Whole borrowed option and variant results (E1e.17)
+
+Compiler 0.182 extends the bounded result root to options and closed variants whose
+contents meet the existing direct-leaf capture profile. Whole storage origin and
+contained tag permissions remain separate. Empty tags retain storage without inventing
+absent supplier loans. Root reference-bearing named outcomes and deeper reference
+pointees remain gated; production schedulers and conservative metadata rules are unchanged.
+
+Evidence covers queued/running/completed/joined holders, active/empty nested options,
+shared copies, exclusive result moves and reborrows, projected guards, siblings, generic
+forwarding, nominal identity, local escapes and nested named-outcome handling. Imported
+public result contracts retain explicit storage and contained origins; unsaved changes
+invalidate callers and repair restores hover. Six native original/expanded O0/O2 models
+compare all fuel cutoffs/quota partitions, including real resources in retained tagged
+holders and completed whole references. The context census covers joined/unjoined faults.
+
+Next audit: whole borrowed named-outcome results. Borrowing must retain the owning caller
+handling obligation, including empty alternatives, while preserving holder storage,
+contained origins and exclusive guards after join. Deeper reference pointees, anonymous
+contracts, reference-bearing collections and borrowed-handle wrappers remain separate.

@@ -1,6 +1,48 @@
 //! Differential source execution using the exact production emitter and scheduler.
 use super::*;
 #[test]
+fn compiled_source_borrowed_tagged_results_nested_outcomes() {
+    compare(
+        "borrowed_tagged_result_outcomes",
+        include_str!("../../tests/fixtures/source_borrowed_tagged_result_outcomes.tellur"),
+    );
+}
+#[test]
+fn compiled_source_borrowed_tagged_results_values() {
+    compare(
+        "borrowed_tagged_result_values",
+        include_str!("../../playground/borrowed_tagged_spawn_results.tellur"),
+    );
+}
+#[test]
+fn compiled_source_borrowed_tagged_results_guards() {
+    compare(
+        "borrowed_tagged_result_guards",
+        include_str!("../../tests/fixtures/source_borrowed_tagged_result_guards.tellur"),
+    );
+}
+#[test]
+fn compiled_source_borrowed_tagged_results_fault() {
+    compare(
+        "borrowed_tagged_result_fault",
+        include_str!("../../tests/fixtures/source_borrowed_tagged_result_fault.tellur"),
+    );
+}
+#[test]
+fn compiled_source_borrowed_tagged_results_joined_fault() {
+    let source = include_str!("../../tests/fixtures/source_borrowed_tagged_result_fault.tellur")
+        .replace(
+            "    yield;\n    yield;\n    delta await result",
+            "    delta await result",
+        )
+        .replace("emit(\"stopped parent resumed\");", "yield;yield;");
+    compare("borrowed_tagged_result_joined_fault", &source);
+}
+#[test]
+fn compiled_source_borrowed_tagged_results_resources() {
+    source_resources(SourceResources::BorrowedTaggedResults);
+}
+#[test]
 fn compiled_source_borrowed_record_results_nested_tags() {
     compare(
         "borrowed_record_result_tags",
@@ -648,6 +690,7 @@ enum SourceResources {
     BorrowedRecords,
     BorrowedTags,
     BorrowedOutcomes,
+    BorrowedTaggedResults,
     BorrowedRecordResults,
     BorrowedResult,
 }
@@ -666,6 +709,7 @@ fn source_resources(mode: SourceResources) {
             | SourceResources::BorrowedRecords
             | SourceResources::BorrowedTags
             | SourceResources::BorrowedOutcomes
+            | SourceResources::BorrowedTaggedResults
             | SourceResources::BorrowedRecordResults
             | SourceResources::BorrowedResult
     );
@@ -907,7 +951,9 @@ async control helper_work(ref counter local,string path) exits done {{
     };
     let source = if matches!(
         mode,
-        SourceResources::BorrowedTags | SourceResources::BorrowedOutcomes
+        SourceResources::BorrowedTags
+            | SourceResources::BorrowedOutcomes
+            | SourceResources::BorrowedTaggedResults
     ) {
         r#"
 variant worker_input['parent] {held {ref counter parent <- 'parent,counter value},empty}
@@ -968,6 +1014,21 @@ control main(string path,bool stop) exits done {
             .replace("inspect(retained);close(value);await worker;", "inspect(value.retained);inspect(borrow value.owned);close(result_holder.owned);await worker;");
         format!(
             "struct produced['parent] {{counter owned;ref counter retained <- 'parent;}}\n{source}"
+        )
+    } else {
+        source
+    };
+    let source = if matches!(mode, SourceResources::BorrowedTaggedResults) {
+        let changed=source.replace("produce(counter value,ref counter parent) exits ready {counter result,ref counter retained from parent} {exit ready {value,parent};}",
+            "produce(ref produced input) exits ready {ref produced result from input} {exit ready {input};}")
+            .replace("auto result=spawn produce(first,parent);", "produced result_holder=produced.held {first,parent};auto result=spawn produce(borrow result_holder);")
+            .replace("ready {counter value,auto retained}=>ready", "ready {auto borrowed}=>ready")
+            .replace("[ready]:inspect(retained);close(value);await worker;", "[ready]:delta borrowed {held {auto owned,auto retained}=>selected,empty=>impossible} [selected]:inspect(owned);inspect(retained);[entry]:delta result_holder {held {counter value,auto external}=>consumed,empty=>unused} [consumed]:close(value);[entry]:await worker;");
+        assert_ne!(changed, source);
+        assert!(changed.contains("spawn produce(borrow result_holder)"));
+        assert!(changed.contains("delta borrowed {held"));
+        format!(
+            "variant produced['parent] {{held {{counter owned,ref counter retained <- 'parent}},empty}}\n{changed}"
         )
     } else {
         source

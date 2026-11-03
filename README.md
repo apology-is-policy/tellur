@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.181.0** implements the v0.1 checked core and the current language
+Compiler release **0.182.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -16,6 +16,11 @@ a reference interpreter, graph expansion, native compiler, language server, and
 VS Code build/run commands. The [revision plan](docs/language-revision.md) separates
 delivered features from the remaining reference, slice, outcome-expression and async work. The language is still
 fluid; this is an experimental implementation, not a production compiler.
+
+Release 0.182 adds [whole borrowed option and variant results](playground/borrowed_tagged_spawn_results.tellur).
+Empty results retain their holder storage without inventing supplier loans; active tags
+preserve contained origins, exclusive guards and nested outcome handling. Whole borrowed
+named-outcome results remain the next bounded audit.
 
 Release 0.181 adds [whole borrowed record results](playground/borrowed_record_spawn_results.tellur).
 Joining a child preserves both holder storage authority and contained reference origins,
