@@ -28,6 +28,10 @@ progress, sibling faults and independent-task survival. The
 compares generated execution with real nested resources and full reference events
 and fault reports. Production synchronous bindings, source handoffs and
 execution-session results remain unchanged.
+The [owned Rust operation experiment](../async-execution.md#owned-typed-rust-operation-contract-e1f4a)
+checks typed polling with fresh resource borrows, owned state/results and destruction
+before supplier release. Compile-fail probes reject escaping borrows. This adds no
+public adapter mode or source call form.
 
 ## Owned spawned children
 

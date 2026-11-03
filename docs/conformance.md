@@ -4915,3 +4915,25 @@ is destroyed once at every fuel cut. An independent outside task completes and i
 joined after request settlement. The production source driver, primitive bindings
 and shared native runtime are unchanged; only the test's generated overlay enables
 this pump.
+
+
+E1f.4a replaces the source-pump experiment's hardcoded partial-input polling with an
+owned typed Rust adapter. Four original/expanded O0/O2 builds sweep every source fuel
+cutoff, three quotas, FIFO/reverse and early/idle-only readiness, with normal and
+faulting source siblings. Each poll first revalidates runtime ownership/supplier
+identity, then borrows the actual resource only for the Rust call. Typed completion
+uses existing result validation/events and compiled delivery; the synchronous sample
+wrapper is a panic trap for replay. Reference events/reports and existing source-turn,
+late-token and exact resource-destruction assertions remain in force.
+
+Adapter-state logs additionally require one preparation and destruction per admitted
+operation, a fixed deadline across partial/empty polls, state destruction before
+result adoption and supplier release, and both stopped states gone at the first
+owning contingency call. Seven compile-fail probes reject escaping preparation/poll
+borrows, borrowed results, exclusive poll signatures and wrong outcome types. A
+positive non-Send probe verifies moved allocation identity and exact destruction at
+unpolled, waiting, completed-unadopted and taken-result phases, including rejected
+premature/duplicate operations. These are private typed-contract tests; the source
+matrix covers waiting/signalled sibling faults, while completed-unadopted externally
+routed faults and registration-failure integration remain separate. Production
+adapter admission, host scheduling and the installed 0.189 release are unchanged.

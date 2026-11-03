@@ -3889,3 +3889,58 @@ step is a bounded awaited-adapter contract audit and prototype: operation owners
 readiness registration, typed completion, stop disposition and explicit source
 admission must agree before live transport integration. Cancellation and fallible
 or suspending cleanup remain separate. Compiler/LSP/VSIX stays at 0.189.
+
+
+## Owned typed Rust operation contract (E1f.4a)
+
+The [private contract](../src/native/owned_operation_contract.rs) separates one-time
+preparation from repeated typed polls and one-time result adoption. Its associated
+state and outcome types are owned and `'static`. Preparation receives owned request
+data and a short shared resource borrow. Every poll receives a fresh shared resource
+borrow and a short input slice. Neither borrow occurs in the state or outcome type.
+No `Send`, `Sync`, `Clone`, Rust future or executor requirement is introduced.
+
+The [test adapter](../src/native/owned_operation_adapter.rs) owns its request,
+partial bytes and original deadline. An incomplete poll returns a read interest
+with that deadline; the existing context machinery owns the actual one-use readiness
+registration. A completed poll retains the generated `sample_outcome` and destroys
+operation state before source result adoption. Taking a result consumes it once.
+Early takes and polls after completion/retirement fail without calling the adapter
+again. Dropping an unfinished operation destroys its state; dropping an unadopted
+completion discards its owned result.
+
+[The generated comparison](../src/native/owned_operation_tests.rs) embeds the
+contract into the earlier source-pump experiment. Before every Rust poll it checks
+the original host, invocation, domain, supplier storage and resource identity, then
+acquires the actual resource reference for that call only. Identity checks and
+readiness generations remain runtime metadata. Typed completion passes through the
+existing host argument/result validation and event recording, followed by the
+original compiled source arm. A test-only copy of that validation tail accepts the
+already computed result; the ordinary synchronous `sample` wrapper panics if called.
+There is no completion replay through synchronous dispatch.
+
+Original and expanded programs at O0/O2 sweep every fuel cutoff, three quota
+partitions, both readiness orders and early/idle-only signals, with normal and
+faulting source siblings. Complete events and fault reports match the existing
+reference model. Real Rust resources prove owned-state destruction before supplier
+release and before the owning contingency; outside operations survive. Partial and
+empty polls retain state and deadline. Operation state and result adoption each
+occur once, and all previous readiness and source-turn assertions still apply.
+
+Separate compiled probes reject resource references escaping preparation or polling,
+input slices retained across polls, borrowed resource/input results, exclusive poll
+signatures and wrong outcome types. A runnable non-`Send` probe checks that an owned
+request keeps its allocation and that stopping before polling, after waiting, or
+with an unadopted completion destroys state/results exactly once.
+
+This remains a private contract experiment with plain owned request/result data and
+shared retained-resource inputs. `'static` prevents retaining short safe Rust
+borrows; it does not prove plain-data shape, effect declarations, infallible bounded
+cleanup or resource protocol compliance. Trusted adapter code must obey those
+contracts. Resource-consuming state, resource-bearing results, exclusive foreign
+mutation, fallible/suspending cleanup and a real readiness backend need additional
+work. The next independent check combines this typed state with externally routed
+owning faults while completion is retained but unadopted, and failed readiness
+registration. Public source call admission remains pending the separate recorded
+async-host call-model decision. Existing bindings and compiler/LSP/VSIX 0.189 are
+unchanged.

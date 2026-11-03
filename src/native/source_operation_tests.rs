@@ -284,3 +284,6 @@ fn generated_source_pending_operations_preserve_turns_faults_and_resources() {
     }
     fs::remove_dir_all(root).unwrap();
 }
+
+#[path = "owned_operation_tests.rs"]
+mod owned_contract_tests;

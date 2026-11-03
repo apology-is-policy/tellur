@@ -282,3 +282,21 @@ Both re-export the same `Listener`/`Connection` types and typed functions. Its T
 facade preserves explicit consuming completion and contingent-call admission;
 application routes and supervision are separate. See the
 [bounded transport contract](../library/README.md#bounded-loopback-http).
+
+
+## Private owned-operation experiment
+
+E1f.4a tests an [owned polling contract](async-execution.md#owned-typed-rust-operation-contract-e1f4a)
+without changing this public adapter profile. The prototype stores owned `'static`
+state and typed outcomes while obtaining a fresh shared retained-resource reference
+for each poll. Safe Rust cannot retain those short references or input slices in
+operation state/results. Runtime identity checks, readiness generations and source
+fault settlement remain outside the adapter. Generated source tests retain existing
+outcome validation and dispose of state before supplier release.
+
+This is evidence for a future contract, not an `execution` value that manifests can
+use. Existing `immediate` and `blocking` bindings remain synchronous. The experiment
+covers plain owned input/results and shared resource borrows; `'static` alone does
+not establish resource protocol compliance or bounded infallible cleanup. Consuming
+resources, resource-bearing results, exclusive mutation, real I/O readiness and
+public async call admission remain separate work.
