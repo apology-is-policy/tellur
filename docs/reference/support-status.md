@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.149.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.150.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -215,3 +215,10 @@ overlap and inconclusive evidence, checking exact invocation/fault-domain and al
 identity. Normal pending delivery uses only result writes. This per-child observation
 grants no permission; both parent-selection and retirement gates remain unchanged. See
 [interference queries](../async-execution.md#immutable-native-interference-queries-e1d2d3s4).
+
+Since 0.150, an aggregate native query reconciles all registered borrower descendants
+with fault-domain membership and includes queued await captures and joined pending
+results. Missing/incomplete authority is inconclusive; complete results report coverage
+counts and conservative interference. This remains an observation: both execution gates
+and source ownership rules are unchanged. See
+[borrower coverage](../async-execution.md#aggregate-native-borrower-coverage-e1d2d3s5).

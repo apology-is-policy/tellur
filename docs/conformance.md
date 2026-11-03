@@ -4306,3 +4306,13 @@ writes only. Mode checks preserve conservative shared overlap; bounded compariso
 returns inconclusive. Generated original/expanded O0/O2 selection probes repeat queries
 at real callbacks across quota partitions and retain immutable gate rejections. This
 query does not authorize independent parent execution or source concurrency.
+
+## Aggregate native borrower coverage (0.150)
+
+Seven native-host cases cover sibling/descendant interference, readiness and completed
+children, independent membership reconciliation, queued/live await captures, joined
+pending result provenance, aggregate limits and real resource release only during fault
+settlement. Existing authority cases now reject aggregate queries under another current
+invocation or boundary. Generated original/expanded O0/O2 selection probes require both
+conclusive/inconclusive aggregate observations and complete pending-delivery coverage,
+while preserving both execution gates and source observations across quota partitions.

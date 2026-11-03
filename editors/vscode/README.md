@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-darwin-arm64-0.149.0.vsix` using **Extensions:
+1. Install the supplied `tellur-language-darwin-arm64-0.150.0.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1341,3 +1341,10 @@ Native support can compare one retained child's complete dependencies with its o
 next local callback under exact invocation and fault-domain identity. Results distinguish
 disjoint storage, conservative overlap and inconclusive evidence. Queries preserve all
 state, and both parent-selection gates remain in place. Source concurrency is unchanged.
+
+## Native borrower coverage in 0.150
+
+An immutable aggregate query now reconciles retained child contexts with fault-domain
+membership, including descendants, readiness, completed results and pending await
+captures/delivery. Missing, incomplete or mismatched evidence stays inconclusive.
+Queries report coverage counts without granting execution; both parent gates remain.

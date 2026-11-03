@@ -74,6 +74,9 @@ pub fn drive_selection(
     let mut complete_delivery = false;
     let mut guarded_capture = false;
     let mut guarded_delivery = false;
+    let mut covered = false;
+    let mut covered_delivery = false;
+    let mut uncovered = false;
     let every_point = quotas == [1];
     let mut quotas = quotas.iter().cycle();
     let result = loop {
@@ -117,8 +120,10 @@ pub fn drive_selection(
             let borrower = c.start_child(&root, &SELECTION_CHILD, vec![])?;
             let before = selection_snapshot(&c, &root);
             let interference = c.child_interference(&root, &borrower);
+            let coverage = c.borrower_interference(&root);
             for _ in 0..3 {
                 assert_eq!(c.child_interference(&root, &borrower), interference);
+                assert_eq!(c.borrower_interference(&root), coverage);
                 assert_eq!(selection_snapshot(&c, &root), before);
             }
             // A fresh empty child has complete empty dependencies. Supported
@@ -131,6 +136,18 @@ pub fn drive_selection(
                 assert_eq!(interference, dependencies::Interference::Disjoint);
             } else {
                 assert!(matches!(interference, dependencies::Interference::Inconclusive(_)));
+            }
+            match &coverage {
+                BorrowerInterference::Disjoint { contexts, handoffs, deliveries }
+                | BorrowerInterference::Overlap { contexts, handoffs, deliveries, .. } => {
+                    covered = true;
+                    covered_delivery |= *deliveries != 0;
+                    assert_eq!((*contexts, *handoffs), (1, 0));
+                    let pending = matches!(&c.parked[&root.id].machine.stack.last().unwrap().pending,
+                        Some(Pending::Await(p)) if p.result.is_some());
+                    assert_eq!(*deliveries, usize::from(pending));
+                }
+                BorrowerInterference::Inconclusive(_) => { uncovered = true; }
             }
             for quota in [1, 0, 99] {
                 let p = c.parked.get_mut(&root.id).unwrap();
@@ -165,6 +182,8 @@ pub fn drive_selection(
     };
     assert!(!probes || (checked > 5 && nested && delivery));
     if probes && every_point {
+        assert!(covered && uncovered, "fixtures must exercise complete and inconclusive aggregate queries");
+        if expect_complete { assert!(covered_delivery, "complete pending delivery must enter aggregate coverage"); }
         if expect_complete {
             assert!(
                 complete_capture && complete_delivery,

@@ -114,6 +114,10 @@ enum Pending {
     Supervise(Supervision),
 }
 struct AwaitContinuation {
+    // Query provenance stays bound to the invocation/domain where captures left
+    // the frame, including after the completed child's membership is retired.
+    owner: super::tasks::OwnerId,
+    domain: DomainKey,
     queued: Option<QueuedTask>,
     child: Option<ContextKey>,
     result: Option<R<Completion>>,
@@ -557,6 +561,8 @@ impl Machine {
                 }
                 let dependencies = task.dependencies(values);
                 frame.pending = Some(Pending::Await(AwaitContinuation {
+                    owner: frame.owner,
+                    domain: self.current.clone(),
                     queued: Some(task),
                     child: None,
                     result: None,

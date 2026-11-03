@@ -207,6 +207,33 @@ impl Domains {
         }
         Ok(())
     }
+    /// Verify a parent-before-child context census against the independent
+    /// membership registry. Missing, duplicate or reparented borrowers invalidate
+    /// the observation; this never detaches or grants execution authority.
+    pub fn require_descendants(
+        &self,
+        root: &Membership,
+        edges: &[(&Membership, &Membership)],
+    ) -> Result<()> {
+        self.member(root)?;
+        let mut seen = BTreeSet::from([root.id]);
+        for (parent, child) in edges {
+            self.member(parent)?;
+            let entry = self.member(child)?;
+            if !seen.contains(&parent.id)
+                || entry.parent != Some(parent.id)
+                || !seen.insert(child.id)
+            {
+                return Err("E_NATIVE: borrower census has a duplicate or mismatched edge".into());
+            }
+        }
+        if self.members.iter().any(|(id, entry)| {
+            entry.parent.is_some_and(|parent| seen.contains(&parent)) && !seen.contains(id)
+        }) {
+            return Err("E_NATIVE: borrower census omits a retained membership".into());
+        }
+        Ok(())
+    }
     pub fn detach(&mut self, member: &Membership) -> Result<()> {
         self.require_no_children(member)?;
         self.members.remove(&member.id);

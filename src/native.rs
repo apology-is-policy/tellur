@@ -588,6 +588,9 @@ impl CheckedProgram {
         g.code.push_str(include_str!("native/domains.rs"));
         g.code.push_str("\n}\nmod contexts {\n");
         g.code.push_str(CONTEXTS);
+        g.code.push_str("\nmod borrower_coverage {\n");
+        g.code.push_str(include_str!("native/borrower_coverage.rs"));
+        g.code.push_str("\n}\n");
         g.code.push_str("\n}\n}\n");
         g.code.push_str(SUPPORT);
         g.code

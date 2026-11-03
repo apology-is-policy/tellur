@@ -268,6 +268,10 @@ fn partial_unknown_foreign_stopped_and_wrong_invocation_queries_are_inconclusive
         .unwrap();
     c.host.exchange_context(&mut p.host).unwrap();
     inconclusive(&c, &root, &child);
+    assert!(matches!(
+        c.borrower_interference(&root),
+        BorrowerInterference::Inconclusive(_)
+    ));
     let domain = c.parked[&other.id].machine.current.clone();
     c.domains.stop(&domain).unwrap();
     inconclusive(&c, &other, &child);
@@ -302,6 +306,7 @@ fn pending_normal_delivery_compares_only_result_writes_not_consumed_arguments() 
     let mut h = Host::new(serde_json::json!({}), None, true, Some(100));
     let mut c = Contexts::new(&mut h);
     let (root, child) = setup(&mut c, false);
+    let domain = c.parked[&root.id].machine.current.clone();
     let a = c
         .parked
         .get_mut(&root.id)
@@ -311,6 +316,8 @@ fn pending_normal_delivery_compares_only_result_writes_not_consumed_arguments() 
         .last_mut()
         .unwrap();
     a.pending = Some(Pending::Await(AwaitContinuation {
+        owner: a.owner,
+        domain,
         queued: None,
         child: None,
         result: Some(Ok(Completion::Outcome(("done".into(), vec![])))),
@@ -504,5 +511,9 @@ fn current_nested_boundary_and_waiting_owner_cannot_supply_query_authority() {
     assert!(
         matches!(query(&c, &root, &child), Interference::Inconclusive(message) if message.contains("owning fault domain"))
     );
+    assert!(matches!(
+        c.borrower_interference(&root),
+        BorrowerInterference::Inconclusive(_)
+    ));
     c.terminate().unwrap();
 }

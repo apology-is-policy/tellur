@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.149.0** implements the v0.1 checked core and the current language
+Compiler release **0.150.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -852,3 +852,10 @@ Native support can compare one retained child's complete dependencies with its o
 next local callback under exact invocation and fault-domain identity. Results distinguish
 disjoint storage, conservative overlap and inconclusive evidence. Queries preserve all
 state, and both parent-selection gates remain in place. Source concurrency is unchanged.
+
+## Native borrower coverage in 0.150
+
+An immutable aggregate query now reconciles retained child contexts with fault-domain
+membership, including descendants, readiness, completed results and pending await
+captures/delivery. Missing, incomplete or mismatched evidence stays inconclusive.
+Queries report coverage counts without granting execution; both parent gates remain.

@@ -1273,3 +1273,12 @@ mod retirement_preflight_tests;
 #[cfg(test)]
 #[path = "interference_tests.rs"]
 mod interference_tests;
+
+#[cfg(test)]
+#[path = "borrower_coverage_tests.rs"]
+mod borrower_coverage_tests;
+
+#[cfg(test)]
+#[path = "borrower_coverage.rs"]
+mod borrower_coverage;
+pub use borrower_coverage::BorrowerInterference;

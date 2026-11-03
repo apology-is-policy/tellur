@@ -2285,6 +2285,58 @@ pending results and descendant relationships before any permission gate can chan
 Guarded/contained/conditional completeness, source scheduling, `spawn`/`yield`,
 cancellation, async adapters/disposal and LLVM coroutine lowering remain separate work.
 
+## Aggregate native borrower coverage (E1d.2d.3s.5)
+
+Compiler 0.150 adds an immutable census of context-managed borrowers for the current
+invocation. It walks direct children and descendants, including readiness-parked and
+completed children, and reconciles those context edges with the independent fault-domain
+membership registry. A context map cannot certify an empty borrower set while an
+unrepresented membership remains. Missing, duplicate and reparented edges are
+inconclusive. Unrelated roots' dependency descriptions do not participate.
+
+The selected invocation and domain must still match every direct child. Descendants
+retain their original parent invocation and must belong to the selected owning domain's
+subtree. Stopped domains, waiting selected owners, unsupported current callbacks and
+unavailable authority remain inconclusive. The supported callback plans and conservative
+ancestor-overlap rules from 0.149 are unchanged. A disjoint per-child result cannot
+hide an overlapping sibling or descendant; an earlier overlap cannot hide a later
+incomplete dependency description.
+
+Await captures also retain their original invocation and domain as query provenance.
+The census includes queued handoffs before child admission, live/ready sequential awaits,
+and normal results after join has retired the child's membership but before delivery.
+Queued payloads validate their task owner; admitted children validate the saved edge;
+pending deliveries require the matching owner/domain and a retired child identity.
+A host-created sequential wait without a retained compiled handoff remains inconclusive.
+Administrative/error results do not become normal delivery evidence. Query provenance
+never changes admission, source faults, resource ownership or execution behavior.
+
+Conclusive results report context, handoff and delivery counts with either disjointness
+or one conservative overlap witness. Every included description must be complete and
+live before a conclusive result is returned. The census limits the context/member scan
+and visited activations to 4096 each. Aggregate dependency validation and comparisons
+have separate 65536-component/pair budgets in addition to the existing per-description
+limits. Exhaustion returns inconclusive without changing state.
+
+Seven native-host cases exercise siblings, descendants, readiness and completed joins;
+queued/live/returned awaits; missing memberships and reparenting; wrong pending
+invocation/domain; bounded queries; and real resource preservation through fault
+settlement. Existing authority cases additionally check aggregate rejection for a later
+invocation and nested boundary. Generated original/expanded O0/O2 probes require both
+conclusive and inconclusive census observations across quota partitions, including
+complete pending delivery, while both selection layers keep rejecting live-child
+parent execution. Source observations and fault/resource dispositions remain covered.
+
+This covers registered contexts and retained await payloads, not local source aliases,
+unadmitted cold values or results already returned to an external host caller. Source
+ownership checking and both execution gates remain intact. No reusable authorization
+token is produced, and a query result must be recomputed after any state change.
+The next admission slice must bind a fresh aggregate check to each actual callback at
+both selection layers, retain rejection before operands/facts/fuel change, and preserve
+all retirement preflights. Guarded/contained/conditional completeness, source scheduling,
+`spawn`/`yield`, cancellation, async adapters/disposal and LLVM coroutine lowering remain
+separate work.
+
 ## Reference execution invariants
 
 A step partition must not itself become a source effect. The same selected schedule
