@@ -58,3 +58,7 @@ mod owner_await_tests;
 #[cfg(test)]
 #[path = "selection_model_tests.rs"]
 mod selection_tests;
+
+#[cfg(test)]
+#[path = "cold_await_model_tests.rs"]
+mod cold_await_tests;

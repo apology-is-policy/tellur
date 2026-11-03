@@ -1401,6 +1401,7 @@ pub use borrower_coverage::BorrowerInterference;
 /// Sealed internal witness, issued and consumed during one exclusive Contexts
 /// operation. It is never returned by a public query or cached between selections.
 pub(super) struct OneCallback {
+    cold_await: Option<super::task_payload::PreparedAwait>,
     owner: super::super::tasks::OwnerId,
     registry: Arc<()>,
     control: &'static Control,
@@ -1438,6 +1439,7 @@ impl OneCallback {
             || !domains.same(&machine.current, &self.domain)
             || !domains.same_membership(&machine.member, &self.member)
             || machine.resolve_interference_access(values)? != self.access
+            || machine.prepare_cold_await(host, values)? != self.cold_await
         {
             return Err(
                 "E_NATIVE: callback admission does not match the selected transition".into(),
@@ -1468,6 +1470,7 @@ impl Contexts<'_> {
             return Err("E_NATIVE: callback admission fact limit exceeded".into());
         }
         Ok(OneCallback {
+            cold_await: machine.prepare_cold_await(self.host, &self.values)?,
             owner: activation.owner,
             registry: activation.registry.clone(),
             control: activation.control,
@@ -1492,3 +1495,7 @@ mod guarded_admission_tests;
 #[cfg(test)]
 #[path = "carrier_alias_admission_tests.rs"]
 mod carrier_alias_admission_tests;
+
+#[cfg(test)]
+#[path = "cold_await_admission_tests.rs"]
+mod cold_await_admission_tests;

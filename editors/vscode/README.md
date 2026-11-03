@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-darwin-arm64-0.160.0.vsix` using **Extensions:
+1. Install the supplied `tellur-language-darwin-arm64-0.161.0.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1424,3 +1424,10 @@ Whole incoming ordinary carriers retain their full original aggregate and every 
 through direct forwarding, projected reborrows and local aliases. Partial or changed caller
 metadata stays conservative, including evidence outside the selected projection. Run
 `./bin/tellurc exec playground/incoming_carrier_tasks.tellur`.
+
+## Checked cold-await preparation in 0.161
+
+Native host support can advance checked local work to a consuming cold await while retained
+children remain live. Handle and wait-capacity validation precedes source changes; an explicit
+handoff stops preparation before the child runs. Source execution remains sequential. Run
+`./bin/tellurc exec playground/owner_await_progress.tellur` for the maintained source example.

@@ -40,6 +40,7 @@ fn resolved_inputs_and_uninitialized_destinations_preserve_storage_and_resource_
             .unwrap(),
     ]));
     let plan = AccessPlan {
+        cold_await: None,
         transition: Transition::Local,
         accesses: &[
             Access {
@@ -260,6 +261,7 @@ fn constructor_destination_and_deferred_writes_resolve_in_their_own_frames() {
     let callee = values.enter(1).unwrap();
     values[callee.base()] = Some(V::String("result".into()));
     let plan = AccessPlan {
+        cold_await: None,
         transition: Transition::Return,
         accesses: &[
             Access {

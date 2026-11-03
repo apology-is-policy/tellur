@@ -31,6 +31,7 @@ fn plan(a: &Activation) -> AccessPlan {
         }][..],
     };
     AccessPlan {
+        cold_await: None,
         transition: Transition::Local,
         accesses,
         delivery: &[],
@@ -323,6 +324,7 @@ fn pending_normal_delivery_compares_only_result_writes_not_consumed_arguments() 
         result: Some(Ok(Completion::Outcome(("done".into(), vec![])))),
         deliver,
         access: AccessPlan {
+            cold_await: None,
             transition: Transition::AwaitTask,
             accesses: &[Access {
                 slot: Some(0),
@@ -406,7 +408,6 @@ fn complete_queries_validate_all_identities_and_preserve_conservative_access_mod
         Transition::Call,
         Transition::Run,
         Transition::Await,
-        Transition::AwaitTask,
         Transition::Boundary,
         Transition::BoundaryEnd,
         Transition::Loop,

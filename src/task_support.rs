@@ -151,9 +151,9 @@ impl Registry {
         self.commit_join(id, wait);
         Ok(wait)
     }
-    /// Existing cold await atomically queues work and attaches its one-use join.
-    pub(crate) fn schedule(
-        &mut self,
+    /// Immutable cold-await preflight, including the next one-use wait identity.
+    pub(crate) fn prepare_schedule(
+        &self,
         id: TaskId,
         owner: OwnerId,
         operation: &str,
@@ -165,8 +165,16 @@ impl Registry {
         if task.join != Join::Unclaimed {
             return Err(error("task completion has already been claimed"));
         }
-        // Capacity is checked before enqueue so failure cannot leave ready work.
-        let wait = self.prepare_wait()?;
+        self.prepare_wait()
+    }
+    /// Existing cold await atomically queues work and attaches its one-use join.
+    pub(crate) fn schedule(
+        &mut self,
+        id: TaskId,
+        owner: OwnerId,
+        operation: &str,
+    ) -> Result<WaitId> {
+        let wait = self.prepare_schedule(id, owner, operation)?;
         self.enqueue(id, owner, operation)?;
         self.commit_join(id, wait);
         Ok(wait)
@@ -421,6 +429,26 @@ mod tests {
         r.retire_owner(a, false).unwrap();
         r.retire_owner(b, false).unwrap();
         assert!(r.is_empty());
+    }
+    #[test]
+    fn cold_schedule_preflight_is_immutable_and_rechecks_capacity_and_phase() {
+        let mut r = Registry::default();
+        let owner = owner(&mut r);
+        let task = r.defer(owner, "work").unwrap();
+        let before = r.clone();
+        let wait = r.prepare_schedule(task, owner, "work").unwrap();
+        assert_eq!(r.prepare_schedule(task, owner, "work").unwrap(), wait);
+        assert!(r.prepare_schedule(task, owner, "other").is_err());
+        assert_eq!(r, before);
+        assert_eq!(r.schedule(task, owner, "work").unwrap(), wait);
+        let before = r.clone();
+        assert!(r.prepare_schedule(task, owner, "work").is_err());
+        assert_eq!(r, before);
+        let next = r.defer(owner, "work").unwrap();
+        r.exhaust_wait_space();
+        let before = r.clone();
+        assert!(r.prepare_schedule(next, owner, "work").is_err());
+        assert_eq!(r, before);
     }
     #[test]
     fn exhausted_join_admission_preserves_queue_wait_and_completed_obligations() {

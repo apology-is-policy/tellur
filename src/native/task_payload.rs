@@ -204,21 +204,19 @@ impl Activation {
             arguments: std::mem::take(arguments),
         })
     }
-    /// Validate original owner/producer and queue+wait capacity before consuming
-    /// the handle. No lexical-boundary identity is captured by a cold value.
-    pub fn queue_task(
+    pub(super) fn prepare_cold_task(
         &self,
-        host: &mut Host,
+        host: &Host,
         producer: &'static Control,
-        value: &mut Option<V>,
-    ) -> R<QueuedTask> {
+        value: Option<&V>,
+    ) -> R<(TaskBinding, WaitId)> {
         self.require_task_host(host)?;
         let Some(V::Task {
             binding: Some(binding),
             operation,
             arguments,
             ..
-        }) = value.as_ref()
+        }) = value
         else {
             return Err("E_NATIVE: await requires a bound pending task".into());
         };
@@ -231,7 +229,23 @@ impl Activation {
         {
             return Err("E_NATIVE: pending task owner or producer differs".into());
         }
-        let wait = host.tasks.schedule(binding.task, self.owner, operation)?;
+        let wait = host
+            .tasks
+            .prepare_schedule(binding.task, self.owner, operation)?;
+        Ok((binding.clone(), wait))
+    }
+    /// Validate original owner/producer and queue+wait capacity before consuming
+    /// the handle. No lexical-boundary identity is captured by a cold value.
+    pub fn queue_task(
+        &self,
+        host: &mut Host,
+        producer: &'static Control,
+        value: &mut Option<V>,
+    ) -> R<QueuedTask> {
+        let (binding, _) = self.prepare_cold_task(host, producer, value.as_ref())?;
+        let wait = host
+            .tasks
+            .schedule(binding.task, self.owner, producer.name)?;
         let Some(V::Task {
             binding: Some(binding),
             arguments,
@@ -250,3 +264,39 @@ impl Activation {
 #[cfg(test)]
 #[path = "task_payload_tests.rs"]
 mod tests;
+
+#[derive(Debug, PartialEq, Eq)]
+pub(super) struct PreparedAwait {
+    descriptor: ColdAwait,
+    storage: super::super::frames::Storage,
+    binding: TaskBinding,
+    wait: WaitId,
+}
+impl Machine {
+    pub(super) fn prepare_cold_await(
+        &self,
+        host: &Host,
+        values: &Frames,
+    ) -> R<Option<PreparedAwait>> {
+        let Some(descriptor) = self.next_access().checked_cold_await()? else {
+            return Ok(None);
+        };
+        let a = self
+            .stack
+            .last()
+            .ok_or("E_NATIVE: cold await has no invocation")?;
+        if a.pending.is_some() {
+            return Err("E_NATIVE: cold await is already pending".into());
+        }
+        let storage = values.local_storage(&a.frame, descriptor.slot)?;
+        let index = values.require_storage(&storage)?;
+        let (binding, wait) =
+            a.prepare_cold_task(host, descriptor.producer, values[index].as_ref())?;
+        Ok(Some(PreparedAwait {
+            descriptor,
+            storage,
+            binding,
+            wait,
+        }))
+    }
+}

@@ -2761,6 +2761,43 @@ not a prerequisite to that audit. Ordinary driver and retirement gates remain in
 Source spawn/yield, cancellation, async adapters/disposal and direct LLVM coroutine lowering
 remain separate work under the accepted explicit-handoff semantics.
 
+## Checked cold-await admission (E1d.2d.3t)
+
+Compiler 0.161 permits explicit native host advancement through a consuming cold-task
+await while independent children remain live. The bounded form moves one whole local task
+handle. Its access plan names the exact compiled producer, records only the handle move
+as immediate access, and keeps possible result writes separate. Direct await, ordinary
+calls, effects and cold-task creation retain their existing admission gates.
+
+Before callback evaluation, the host reconciles every retained borrower and requires complete
+conservatively disjoint dependencies. Immutable task preflight validates the handle's original
+registry and invocation, exact producer identity, captured arity, cold phase, unclaimed join
+and wait capacity. The private one-transition witness retains the current storage, binding
+and prepared wait identity alongside its existing control/pc/facts/domain authority. The
+lower machine rechecks all of them before moving operands, consuming fuel or changing facts.
+A changed handle, exhausted capacity or incomplete/overlapping borrower proof rejects without
+effects. A real callback failure uses existing fault settlement instead.
+
+Successful preparation queues the cold task and returns an explicit `Await` poll immediately,
+even with unused host quota. It does not run the child. Context admission and one-use completion
+remain separate operations. Returned payload delivery receives a fresh access/census check;
+it neither reevaluates the await nor consumes source fuel. Normal parent frame, loop and
+boundary retirement still requires all retained children/results to retire.
+
+The runnable `playground/owner_await_progress.tellur` performs local work before a cold await.
+A generated harness admits a borrowed sibling after cold creation, then runs the same parent
+callbacks through preparation with live, waiting or completed siblings. Original/expanded
+O0/O2 observations match reference execution across quota partitions. Existing lexical/named
+owning-fault models now admit a sibling before preparation, then exercise failure before and
+after child admission, during nested work/contingency and around completion delivery.
+
+This completes a bounded host integration step. Production source execution remains sequential;
+ordinary quota drivers do not gain implicit parent selection or task switching. Direct await
+still shares ordinary call lowering, and broader source scheduling must distinguish that
+handoff as well as started-task joins. Host quota exhaustion and rejected proofs never become
+source handoffs. Spawn/yield, cancellation, async adapters/disposal and LLVM coroutine lowering
+remain separate work under the accepted invocation-owned, explicit-handoff policy.
+
 ## Reference execution invariants
 
 A step partition must not itself become a source effect. The same selected schedule

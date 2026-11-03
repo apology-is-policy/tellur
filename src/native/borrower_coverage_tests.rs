@@ -30,6 +30,7 @@ pub(super) fn borrow(c: &Contexts<'_>, root: usize, field: usize) -> V {
 }
 fn plan(a: &Activation) -> AccessPlan {
     AccessPlan {
+        cold_await: None,
         transition: Transition::Local,
         accesses: if a.pc == 0 {
             &[Access {
@@ -283,6 +284,7 @@ fn independent_membership_census_rejects_missing_duplicate_and_reparented_record
 
 fn await_plan(_: &Activation) -> AccessPlan {
     AccessPlan {
+        cold_await: None,
         transition: Transition::AwaitTask,
         accesses: &[Access {
             slot: Some(0),
@@ -420,6 +422,7 @@ fn four_accesses(_: &Activation) -> AccessPlan {
         kind: AccessKind::Read,
     };
     AccessPlan {
+        cold_await: None,
         transition: Transition::Local,
         accesses: &[A, A, A, A],
         delivery: &[],

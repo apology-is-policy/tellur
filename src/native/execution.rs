@@ -53,8 +53,29 @@ pub enum Transition {
     Process,
     Delivery,
 }
+#[derive(Clone, Copy)]
+pub struct ColdAwait {
+    pub slot: usize,
+    pub producer: &'static Control,
+}
+impl std::fmt::Debug for ColdAwait {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ColdAwait")
+            .field("slot", &self.slot)
+            .field("producer", &self.producer.name)
+            .finish()
+    }
+}
+impl PartialEq for ColdAwait {
+    fn eq(&self, other: &Self) -> bool {
+        self.slot == other.slot && std::ptr::eq(self.producer, other.producer)
+    }
+}
+impl Eq for ColdAwait {}
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct AccessPlan {
+    /// Exact local handle and compiled producer; not a child-body access plan.
+    pub cold_await: Option<ColdAwait>,
     pub transition: Transition,
     pub accesses: &'static [Access],
     /// Union of possible normal result writes; separate from argument evaluation.
@@ -64,22 +85,63 @@ pub struct AccessPlan {
 }
 impl AccessPlan {
     pub const UNKNOWN: Self = Self {
+        cold_await: None,
         transition: Transition::Unknown,
         accesses: &[],
         delivery: &[],
         opaque: true,
     };
     pub const SKIP: Self = Self {
+        cold_await: None,
         transition: Transition::Skip,
         accesses: &[],
         delivery: &[],
         opaque: false,
     };
+    pub fn with_cold_await(mut self, slot: usize, producer: &'static Control) -> Self {
+        self.cold_await = Some(ColdAwait { slot, producer });
+        self.opaque = false;
+        self
+    }
+    /// Only a consuming move of one whole local cold handle is supported.
+    fn checked_cold_await(self) -> R<Option<ColdAwait>> {
+        if self.transition != Transition::AwaitTask {
+            return if self.cold_await.is_none() {
+                Ok(None)
+            } else {
+                Err("E_NATIVE: cold await descriptor on another transition".into())
+            };
+        }
+        let descriptor = self
+            .cold_await
+            .ok_or("E_NATIVE: cold await has no exact handle descriptor")?;
+        if self.opaque
+            || self.accesses.len() != 1
+            || self.accesses[0]
+                != (Access {
+                    slot: Some(descriptor.slot),
+                    fields: &[],
+                    indirect: false,
+                    kind: AccessKind::Move,
+                })
+            || self.delivery.len() > 4096
+            || self.delivery.iter().any(|a| {
+                a.slot.is_none()
+                    || a.indirect
+                    || !a.fields.is_empty()
+                    || a.kind != AccessKind::Write
+            })
+        {
+            return Err("E_NATIVE: unsupported cold await access plan".into());
+        }
+        Ok(Some(descriptor))
+    }
     fn delivered(self) -> Self {
         if self.transition == Transition::Unknown {
             return self;
         }
         Self {
+            cold_await: None,
             transition: Transition::Delivery,
             accesses: self.delivery,
             delivery: &[],
@@ -913,7 +975,15 @@ impl Machine {
             Some(Pending::Await(p)) if p.result.is_some());
         let (result, instruction, faulted) = match self.step(host, values, domains) {
             Ok((instruction, Some(result))) => (Ok(Poll::Complete(result)), instruction, false),
-            Ok((instruction, None)) => (Ok(Poll::Paused), instruction, false),
+            Ok((instruction, None)) => {
+                let awaiting = matches!(&self.stack.last().unwrap().pending,
+                    Some(Pending::Await(p)) if p.queued.is_some() && p.result.is_none());
+                (
+                    Ok(if awaiting { Poll::Await } else { Poll::Paused }),
+                    instruction,
+                    false,
+                )
+            }
             Err(error) => (
                 self.unwind_error(host, values, domains, error, true)
                     .map(|()| {

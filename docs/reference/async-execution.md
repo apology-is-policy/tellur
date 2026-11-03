@@ -786,3 +786,11 @@ projection. Native field/formation checks and complete caller evidence are requi
 or changed evidence never becomes complete. Grouped, returned, conditional, tagged and
 nested-reference proof gaps stay conservative. Source execution remains sequential. See
 [incoming carriers](../async-execution.md#complete-incoming-carriers-e1d2d3s15).
+
+Since 0.161, the explicit native host admission path can prepare a supported consuming cold
+await beside retained children. It checks the exact local handle, producer, invocation and
+queue/wait capacity before operand moves, retains fresh borrower checks, and stops at an
+explicit handoff before executing the child. Normal result delivery remains separate. This
+is internal scheduling support: source execution stays sequential, and ordinary drivers,
+direct await/call/effect admission and retirement gates remain. See
+[cold-await admission](../async-execution.md#checked-cold-await-admission-e1d2d3t).

@@ -3,6 +3,7 @@ use super::*;
 
 fn plan(a: &Activation) -> AccessPlan {
     AccessPlan {
+        cold_await: None,
         transition: if a.pc < 2 {
             Transition::Local
         } else {
@@ -331,6 +332,7 @@ fn batches_preserve_partial_progress_and_recheck_each_next_callback() {
 fn batches_bound_work_without_turning_the_host_limit_into_a_source_handoff() {
     fn access(_: &Activation) -> AccessPlan {
         AccessPlan {
+            cold_await: None,
             transition: Transition::Local,
             accesses: &[],
             delivery: &[],

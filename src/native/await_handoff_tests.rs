@@ -1016,6 +1016,7 @@ fn machine_selection_preserves_pending_delivery_until_other_children_join() {
 
 fn access_parent(_: &Activation) -> AccessPlan {
     AccessPlan {
+        cold_await: None,
         transition: Transition::AwaitTask,
         accesses: &[Access {
             slot: Some(1),
@@ -1063,6 +1064,7 @@ fn access_queries_distinguish_pending_delivery_from_arguments_and_administrative
     let tasks = c.host.tasks.clone();
     let fuel = c.host.fuel;
     let expected = AccessPlan {
+        cold_await: None,
         transition: Transition::Delivery,
         accesses: access_parent(&c.parked[&root.id].machine.stack[0]).delivery,
         delivery: &[],

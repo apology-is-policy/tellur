@@ -30,6 +30,7 @@ static ACCESSES: [Access; 4] = [
 ];
 fn plan(a: &Activation) -> AccessPlan {
     AccessPlan {
+        cold_await: None,
         transition: Transition::Local,
         accesses: std::slice::from_ref(&ACCESSES[a.pc]),
         delivery: &[],

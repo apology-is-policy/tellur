@@ -1,0 +1,25 @@
+// Local work before consuming a cold task does not run its body.
+struct text_view['text] {
+    ref string text <- 'text;
+}
+async control reader(ref text_view input) exits done {
+    emit(input.text);
+    exit done;
+}
+async control startup() exits done {
+    string text = "child";
+    text_view saved = text_view { borrow text };
+    auto pending = defer reader(borrow saved);
+    mutable string status = "waiting";
+    status = "owner continued";
+    await pending;
+    emit(borrow status);
+    drop(saved);
+    exit done;
+}
+outcome command_result {
+    @exit 0 done
+}
+control main() exits command_result {
+    forward run startup();
+}

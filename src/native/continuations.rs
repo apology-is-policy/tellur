@@ -113,7 +113,7 @@ pub(super) fn source(program: &CheckedProgram) -> String {
         for (pc, point) in plan.iter().enumerate() {
             let description = match &point.kind {
                 PointKind::Instruction(i) => {
-                    super::access::instruction(i, region, &g.layout, &g.constructors)
+                    super::access::instruction(i, region, &g.layout, &g.constructors, &names)
                 }
                 PointKind::BoundaryEnd(owner) => {
                     let PointKind::Instruction(i) = &plan[*owner].kind else {

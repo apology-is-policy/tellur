@@ -137,9 +137,9 @@ pub fn drive_selection(
             if !description.opaque
                 && matches!(
                     description.transition,
-                    Transition::Skip | Transition::Local | Transition::Delivery
+                    Transition::Skip | Transition::Local | Transition::Delivery | Transition::AwaitTask
                 )
-                && description.delivery.is_empty()
+                && (description.delivery.is_empty() || description.cold_await.is_some())
             {
                 assert_eq!(interference, dependencies::Interference::Disjoint);
             } else {
@@ -187,7 +187,7 @@ pub fn drive_selection(
             assert!(progress.instructions <= quota);
             assert!(matches!(
                 progress.stop,
-                AdmissionStop::Quota | AdmissionStop::TransitionLimit | AdmissionStop::Blocked(_)
+                AdmissionStop::Quota | AdmissionStop::TransitionLimit | AdmissionStop::Blocked(_) | AdmissionStop::Poll(ContextPoll::Await)
             ));
             if quota != 0 && matches!(coverage, BorrowerInterference::Disjoint { .. }) {
                 assert!(progress.transitions > 0);
@@ -210,6 +210,9 @@ pub fn drive_selection(
             ));
             let (_, fields) = c.join(Some(&root), &borrower)?.outcome()?;
             assert!(fields.is_empty());
+            if matches!(progress.stop, AdmissionStop::Poll(ContextPoll::Await)) {
+                chain.push(c.admit_await(&root)?);
+            }
             checked += 1;
         }
         if admitted_this_turn {

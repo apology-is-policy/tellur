@@ -310,7 +310,7 @@ fn accesses(xs: &[Access], layout: &FrameLayout) -> String {
 }
 fn render(p: &Plan, layout: &FrameLayout) -> String {
     format!(
-        "AccessPlan{{transition:Transition::{},accesses:{},delivery:{},opaque:{}}}",
+        "AccessPlan{{cold_await:None,transition:Transition::{},accesses:{},delivery:{},opaque:{}}}",
         p.transition,
         accesses(&p.accesses, layout),
         accesses(&p.delivery, layout),
@@ -322,11 +322,28 @@ pub(super) fn instruction(
     region: &Region,
     layout: &FrameLayout,
     constructors: &BTreeSet<&str>,
+    names: &BTreeMap<&str, usize>,
 ) -> String {
+    let mut description = render(&plan(&i.action, region, constructors), layout);
+    if let Action::Decide {
+        operation: Operation::AwaitTask(name),
+        args,
+        ..
+    } = &i.action
+        && let [Expr::Move(place)] = args.as_slice()
+        && !place.indirect
+        && place.fields.is_empty()
+    {
+        description.push_str(&format!(
+            ".with_cold_await({},&MODEL_{})",
+            layout.slots[&place.root],
+            names[name.as_str()]
+        ));
+    }
     format!(
         "if {} {{ {} }} else {{ AccessPlan::SKIP }}",
         guard(&i.guard, layout),
-        render(&plan(&i.action, region, constructors), layout)
+        description
     )
 }
 pub(super) fn boundary_end(i: &Instruction, layout: &FrameLayout) -> String {

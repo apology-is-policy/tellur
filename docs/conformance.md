@@ -4427,3 +4427,14 @@ Nested expansion regressions cover both carrier and guarded input descriptors in
 and fault boundaries, comparing original/expanded execution and rejecting removed nested
 materialization evidence. This also retains existing generic wrapper and loop-local carrier
 behavior after descriptor verification.
+
+## Checked cold-await admission (0.161)
+
+Protocol tests prove immutable scheduling preflight and capacity/phase revalidation. Host
+cases cover local parent progress with live/waiting/completed borrowers, exact handoff and
+separate one-use delivery, partial/overlapping evidence, foreign or replaced handles, wrong
+producers, malformed access plans and exhausted wait identities. Rejections preserve values,
+facts, fuel and queues; actual callback failure settles the owning work. Generated original/
+expanded O0/O2 models match reference observations under zero/small/large quota partitions.
+Lexical/named sibling-fault models now inject the sibling before await preparation and retain
+owning diagnostic restoration through nested work, active handlers and result delivery.

@@ -9,14 +9,24 @@ pub fn drive_owner_await(
 ) -> R<Completion> {
     let mut c = Contexts::new(host);
     let root = c.start(control, args)?;
-    loop {
-        match c.advance_retained(&root, 1)? {
-            ContextPoll::Paused => {}
-            ContextPoll::Await => break,
-            _ => panic!("owner must prepare an await"),
+    let failed = loop {
+        if c.parked[&root.id]
+            .machine
+            .next_access()
+            .cold_await
+            .is_some()
+        {
+            let failed = c.start_child(&root, failing, vec![])?;
+            let progress = c.advance_disjoint(&root, 99);
+            assert_eq!((progress.instructions, progress.transitions), (1, 1));
+            assert!(matches!(
+                progress.stop,
+                AdmissionStop::Poll(ContextPoll::Await)
+            ));
+            break failed;
         }
-    }
-    let failed = c.start_child(&root, failing, vec![])?;
+        assert!(matches!(c.advance_retained(&root, 1)?, ContextPoll::Paused));
+    };
     if phase > 0 {
         let child = c.admit_await(&root)?;
         let mut chain = vec![root.clone(), child];

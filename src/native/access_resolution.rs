@@ -183,12 +183,13 @@ impl Machine {
             .ok_or("E_NATIVE: query has no live invocation")?;
         values.frame_values(&frame.frame)?;
         let plan = self.next_access();
+        let cold = plan.checked_cold_await()?.is_some();
         if plan.opaque
             || !matches!(
                 plan.transition,
-                Transition::Skip | Transition::Local | Transition::Delivery
+                Transition::Skip | Transition::Local | Transition::Delivery | Transition::AwaitTask
             )
-            || !plan.delivery.is_empty()
+            || (!cold && !plan.delivery.is_empty())
         {
             return Err("E_NATIVE: callback transition has no complete local access plan".into());
         }

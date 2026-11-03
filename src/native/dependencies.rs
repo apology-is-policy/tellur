@@ -62,7 +62,7 @@ impl Dependencies {
         if plan.opaque
             || !matches!(
                 plan.transition,
-                Transition::Skip | Transition::Local | Transition::Delivery
+                Transition::Skip | Transition::Local | Transition::Delivery | Transition::AwaitTask
             )
             || !plan.delivery.is_empty()
         {
