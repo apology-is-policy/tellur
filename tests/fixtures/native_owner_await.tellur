@@ -1,0 +1,66 @@
+control work(bool fail) exits done faults {
+    emit("nested work");
+    delta fail {
+        true => failed,
+        false => ready
+    }
+
+    [failed]: fault "nested original";
+    [ready]: exit done;
+}
+
+boundary nested(bool fail) {
+    work(fail);
+    terminate;
+}
+contingency(string reason) {
+    emit("nested handler");
+    fault "nested handler resumed";
+}
+
+async control child(bool named, bool fail) exits done faults {
+    delta named {
+        true => named,
+        false => lexical
+    }
+
+    [named]:
+        supervise nested(fail);
+        exit done;
+    [lexical]:
+        fault boundary {
+            work(fail);
+        } contingency [] {
+            emit("nested handler");
+            fault "nested handler resumed";
+        }
+        exit done;
+}
+
+async control middle(bool named, bool fail) exits done faults {
+    auto pending = defer child(named, fail);
+    await pending;
+    exit done;
+}
+
+async control owner(bool named, bool fail) exits done faults {
+    auto pending = defer middle(named, fail);
+    await pending;
+    emit("owner continued");
+    exit done;
+}
+
+control failing() faults {
+    fault "sibling fault";
+}
+
+// The compiled harness admits failing at the owner's first pending await.
+control main(bool named, bool fail) exits done faults {
+    fault boundary {
+        run owner(named, fail);
+    } contingency [] {
+        emit("owner handler");
+        escalate;
+    }
+    exit done;
+}

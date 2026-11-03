@@ -480,6 +480,14 @@ This is an internal integration slice. Parents with other live children cannot b
 a cold await, and source `spawn`/`yield` and scheduling remain gated. See
 [independent-child cold awaits](../async-execution.md#independent-child-cold-awaits-e1d2d3l).
 
+Since 0.140, an already-prepared native cold await can be admitted alongside live
+independent children. Sibling fault settlement restores the original owning diagnostic
+segment, including when awaited work is inside a nested lexical or named boundary.
+Stopped frames do not become the fault cause; original resource dispositions still
+run before the owning contingency. Parent execution stays blocked until all child
+contexts/results settle. Source scheduling remains gated. See
+[prepared owner awaits](../async-execution.md#prepared-owner-awaits-with-siblings-e1d2d3m).
+
 Since 0.128, entry process termination closes normal task admission and retires all
 registered execution contexts and results before delivering the original status.
 Prepared bodies never start; parked callers unwind without normal instructions or

@@ -783,3 +783,171 @@ fn independent_nested_cold_awaits_match_direct_children_at_every_fuel_cut() {
         }
     }
 }
+
+#[test]
+fn sibling_fault_restores_the_awaiting_owners_original_report_and_cleanup_order() {
+    for source_fault in [false, true] {
+        let mut expected = None;
+        for phase in 0..=3 {
+            let mut h = host();
+            let mut c = Contexts::new(&mut h);
+            let drops = Rc::new(RefCell::new(vec![]));
+            let parent = start(&mut c, &PARENT, &drops);
+            // Allocate the independent faulting child before cold admission so its
+            // complete cause (including identity) is comparable in every phase.
+            let failed = c
+                .start_child(&parent, &FAULT, vec![V::Unit, V::Unit])
+                .unwrap();
+            let mut wake = None;
+            let child = if phase == 1 {
+                let child = c.admit_await(&parent).unwrap();
+                c.advance_retained(&child, 1).unwrap();
+                wake = Some(c.park_for_readiness(&child).unwrap());
+                Some(child)
+            } else if phase >= 2 {
+                let child = finish_child(&mut c, &parent);
+                if phase == 3 {
+                    c.return_await(&parent, &child).unwrap();
+                }
+                Some(child)
+            } else {
+                None
+            };
+            if !source_fault {
+                c.host.fuel = Some(0);
+            }
+            c.advance_retained(&failed, 1).unwrap();
+            let ContextPoll::Failed(report) = c.advance_retained(&parent, 1).unwrap() else {
+                panic!()
+            };
+            if let Some(expected) = &expected {
+                assert_eq!(&report, expected, "phase={phase}");
+            } else {
+                expected = Some(report);
+            }
+            assert_eq!(*drops.borrow(), [1, 0], "phase={phase}");
+            if let Some(wake) = wake {
+                assert!(c.signal_readiness(&wake).is_err());
+            }
+            if let Some(child) = child {
+                assert!(c.return_await(&parent, &child).is_err());
+            }
+            empty(&c);
+        }
+    }
+}
+
+#[test]
+fn prepared_owner_await_preserves_other_children_and_requires_every_result_join() {
+    for cold_first in [false, true] {
+        let mut h = host();
+        let mut c = Contexts::new(&mut h);
+        let drops = Rc::new(RefCell::new(vec![]));
+        let parent = start(&mut c, &PARENT, &drops);
+        let base = c.parked[&parent.id].machine.stack[0].base();
+        let args = vec![
+            make(&mut c, 2, &drops),
+            V::Reference {
+                ty: "&probe".into(),
+                root: base,
+                fields: vec![],
+            },
+        ];
+        let other = c.start_child(&parent, &CHILD, args).unwrap();
+        let before = (format!("{:?}", c.host.tasks), c.host.fuel);
+        let next = c.next;
+        c.next = u64::MAX;
+        assert!(
+            c.admit_await(&parent)
+                .unwrap_err()
+                .contains("identity exhausted")
+        );
+        assert_eq!((format!("{:?}", c.host.tasks), c.host.fuel), before);
+        c.next = next;
+        let child = finish_child(&mut c, &parent);
+        assert!(matches!(
+            c.advance_retained(&other, 2).unwrap(),
+            ContextPoll::Ready
+        ));
+        if cold_first {
+            c.return_await(&parent, &child).unwrap();
+        }
+        assert!(c.advance_retained(&parent, 1).is_err());
+        let (_, fields) = c.join(Some(&parent), &other).unwrap().outcome().unwrap();
+        assert!(matches!(&fields[1], V::Reference { root, .. } if *root == base));
+        c.host
+            .release_frame(&fields.into_iter().map(Some).collect::<Vec<_>>());
+        assert_eq!(*drops.borrow(), [2]);
+        if !cold_first {
+            assert!(c.advance_retained(&parent, 1).is_err());
+            c.return_await(&parent, &child).unwrap();
+        }
+        assert!(matches!(
+            c.advance_retained(&parent, 0).unwrap(),
+            ContextPoll::Paused
+        ));
+        assert!(!c.parked[&parent.id].machine.stack[0].facts[0]);
+        assert!(matches!(
+            c.advance_retained(&parent, 1).unwrap(),
+            ContextPoll::Ready
+        ));
+        let (_, fields) = c.join(None, &parent).unwrap().outcome().unwrap();
+        c.host
+            .release_frame(&fields.into_iter().map(Some).collect::<Vec<_>>());
+        assert_eq!(*drops.borrow(), [2, 0, 1]);
+        empty(&c);
+    }
+}
+
+fn fault_owner(h: &mut Host, v: &mut Frames, a: &mut Activation) -> R<Step> {
+    h.tick(1, 1)?;
+    handoff(h, v, a, &FAULT, never_deliver)
+}
+static FAULT_OWNER: Control = Control {
+    resume: fault_owner,
+    ..PARENT
+};
+#[test]
+fn owner_cold_fault_preserves_its_chain_and_retires_completed_sibling_borrowers() {
+    for source_fault in [false, true] {
+        let mut expected = None;
+        for retained_sibling in [false, true] {
+            let mut h = host();
+            let mut c = Contexts::new(&mut h);
+            let drops = Rc::new(RefCell::new(vec![]));
+            let parent = start(&mut c, &FAULT_OWNER, &drops);
+            let base = c.parked[&parent.id].machine.stack[0].base();
+            let args = vec![
+                make(&mut c, 2, &drops),
+                V::Reference {
+                    ty: "&probe".into(),
+                    root: base,
+                    fields: vec![],
+                },
+            ];
+            let sibling = c.start_child(&parent, &CHILD, args).unwrap();
+            c.advance_retained(&sibling, 2).unwrap();
+            if !retained_sibling {
+                let (_, fields) = c.join(Some(&parent), &sibling).unwrap().outcome().unwrap();
+                c.host
+                    .release_frame(&fields.into_iter().map(Some).collect::<Vec<_>>());
+            }
+            let child = c.admit_await(&parent).unwrap();
+            if !source_fault {
+                c.host.fuel = Some(0);
+            }
+            c.advance_retained(&child, 1).unwrap();
+            let ContextPoll::Failed(report) = c.advance_retained(&parent, 1).unwrap() else {
+                panic!()
+            };
+            assert!(report.cause.is_none());
+            if let Some(expected) = &expected {
+                assert_eq!(&report, expected);
+            } else {
+                expected = Some(report);
+            }
+            assert_eq!(*drops.borrow(), [2, 1, 0]);
+            empty(&c);
+        }
+    }
+}

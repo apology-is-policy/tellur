@@ -50,3 +50,7 @@ mod result_tests;
 #[cfg(test)]
 #[path = "mixed_await_model_tests.rs"]
 mod mixed_await_tests;
+
+#[cfg(test)]
+#[path = "owner_await_model_tests.rs"]
+mod owner_await_tests;

@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-darwin-arm64-0.139.0.vsix` using **Extensions:
+1. Install the supplied `tellur-language-darwin-arm64-0.140.0.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1267,3 +1267,10 @@ Internal native children can now perform nested cold awaits while preserving the
 original fault cause, one-use result delivery and resource cleanup order. The shared
 runtime has host and compiled O0/O2 evidence. Source execution remains sequential;
 `spawn`, `yield` and parent awaits alongside live children remain gated.
+
+## Prepared native owner awaits in 0.140
+
+The internal native host admits an already-prepared cold await alongside independent
+children. Sibling faults restore the original owning diagnostic chain before retiring
+awaited work, including nested boundaries and active handlers. Normal parent execution
+with live children and source scheduling remain gated.

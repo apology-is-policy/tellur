@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.139.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.140.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -142,3 +142,9 @@ awaits, preserving the independent child as the outer fault cause and retiring r
 borrowers before suppliers. Parent awaits alongside live children and source
 concurrency remain gated; the internal readiness protocol provides no source scheduler
 or async host API. See [independent-child cold awaits](../async-execution.md#independent-child-cold-awaits-e1d2d3l).
+
+Since 0.140, an already-prepared owner await can enter beside independent native
+children. Sibling faults restore the original owning tracker from the suspended
+chain or its saved nested-boundary parent before resource retirement. Normal parent
+execution with live children remains rejected; this adds no source scheduler. See
+[prepared owner awaits](../async-execution.md#prepared-owner-awaits-with-siblings-e1d2d3m).

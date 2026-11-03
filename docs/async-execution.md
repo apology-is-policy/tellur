@@ -1220,6 +1220,7 @@ Those boundaries need explicit contracts before being accepted by the checker.
 | E1d.2d.3j | Generated retained await callbacks | Delivered in 0.137: compiled fixture lowering binds deferred captures to their invocation and emits explicit await handoffs. Sequential and independent-root probe drivers use retained children and one-use delivery; entry tracker/raw-error return preserves full reports. Production lowering promotion remains next |
 | E1d.2d.3k | Production retained native callbacks | Delivered in 0.138: normal native builds share the compiled callback emitter and sequential entry driver with retained probes. Calls, loops, boundaries and cold awaits use retained frames; diagnostics, fuel, loans and resource settlement retain parity. Source concurrency and mixed spawned-child integration remain gated |
 | E1d.2d.3l | Independent-child cold awaits | Delivered in 0.139: an independently admitted native child can cold-await an exclusive descendant chain. Normal delivery, full child fault causes and borrower-first resource settlement agree with direct execution. Parent-with-live-children awaits and source scheduling remain gated |
+| E1d.2d.3m | Prepared owner awaits with siblings | Delivered in 0.140: an already-prepared native cold await can enter beside independent children. Sibling faults restore the original owning diagnostic segment from live/completed awaited contexts or saved nested boundary parents before resource retirement. Parent execution with live children and source scheduling remain gated |
 | E1e | Explicit cooperative cancellation and suspending cleanup; normal completion races, cleanup failures and no abandoned losers | Define cancellation observation and cleanup admission; no implicit cancellation exception |
 | E2 | Pinned native coroutine experiment, then checked lowering and schedule-based differential validation | Reference semantics and legal frame retirement must precede native destruction |
 
@@ -1798,6 +1799,43 @@ Owner awaits alongside other live children require a separate tracker-restoratio
 slice. Source `spawn`/`yield`, started-task await lowering, cancellation, suspending
 disposal, async adapters and LLVM coroutine lowering remain gated. Accepted language
 ownership, origin, outcome, fault/contingency and path-label semantics are unchanged.
+
+## Prepared owner awaits with siblings (E1d.2d.3m)
+
+Compiler 0.140 allows an already-prepared native cold await to enter while independent
+children remain live. Captures and wait identities still pass admission preflight
+before transfer. Normal parent execution remains blocked until all its child contexts
+and retained results settle; this checkpoint does not make arbitrary parent/child
+selection legal. Independent admission from a sequential or already-awaiting context
+remains rejected. Source execution continues along one sequential entry chain.
+
+If an independent sibling faults, the owner's original diagnostic tracker is restored
+before awaited descendants retire. That tracker may reside in a live or completed
+cold descendant, or in the saved parent of its outermost lexical/named boundary.
+Stopped cold and synchronous frames are removed from that owning diagnostic segment;
+the independent failing child remains the cause. Stopping an active nested contingency
+does not resume it or substitute its earlier fault for the triggering sibling cause.
+When the owner's own cold chain faults, its original failure chain remains intact.
+
+Normal joins can adopt the cold result or independent sibling results in either
+order, but neither completion alone permits parent execution. Retained resources and
+borrowed storage survive until their required joins or emergency retirement. Fault,
+host-limit and process paths retire borrowers/results before suppliers, reject late
+signals and callbacks, and preserve one-use delivery without additional source fuel.
+
+Host comparisons cover exact reports with sites/identities, nested synchronous calls,
+lexical work and active handlers, owned/borrowed result order, atomic admission failure,
+shared fuel exhaustion and process stop. The
+[compiled owner-await fixture](../tests/fixtures/native_owner_await.tellur) exercises
+lexical and named boundary work/handlers, completed results and pending callback
+delivery before a sibling fault. Original/expanded O0/O2 runs preserve the complete
+owning fault report across stop phases and all observations across quota partitions.
+
+General parent execution with outstanding children requires checked invocation/domain
+quiescence before frames can retire or cross boundaries. Starting independent work
+from sequential await contexts, started-task await lowering and explicit source
+`await`/`yield` scheduling also remain separate gates. No accepted ownership, origin,
+outcome, fault/contingency or path-label rule changes in this internal slice.
 
 ## Reference execution invariants
 

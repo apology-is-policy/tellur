@@ -262,7 +262,8 @@ impl<'a> Contexts<'a> {
     }
     /// Sequential cold await carries the caller's diagnostic chain, rather than
     /// creating a distinct child fault cause. An independent child may carry its
-    /// own chain through cold awaits; each awaiting context must have no other children.
+    /// own chain through cold awaits. An already-prepared await may coexist with
+    /// independent children; normal caller selection still requires all children to settle.
     pub fn start_await(
         &mut self,
         parent: &ContextKey,
@@ -270,8 +271,8 @@ impl<'a> Contexts<'a> {
     ) -> R<ContextKey> {
         self.require(parent)?;
         let parked = &self.parked[&parent.id];
-        if parked.awaiting.is_some() || self.domains.has_children(&parked.machine.member)? {
-            return Err("E_NATIVE: sequential await requires an exclusive caller chain".into());
+        if parked.awaiting.is_some() {
+            return Err("E_NATIVE: caller already has a sequential await".into());
         }
         self.start_queued(parent, queued, true)
     }
@@ -814,6 +815,74 @@ impl<'a> Contexts<'a> {
         }
         Some(cursor)
     }
+    /// An unrelated child's fault stops the owner's awaited work without making
+    /// that stopped work part of the causal report. Its original caller tracker
+    /// may be parked in a descendant or inside a nested boundary's saved parent.
+    fn restore_stopped_await(&mut self, owner: u64) -> R<()> {
+        let Some(mut id) = self.parked[&owner].awaiting else {
+            return Ok(());
+        };
+        let mut parent = owner;
+        let mut frames = 0;
+        let mut tracker = loop {
+            let child = if let Some(child) = self.parked.get_mut(&id) {
+                child
+            } else {
+                &mut self
+                    .completed
+                    .get_mut(&id)
+                    .ok_or("E_NATIVE: suspended owner lost its awaited context")?
+                    .parked
+            };
+            if !child.sequential || child.parent != Some(parent) {
+                return Err("E_NATIVE: suspended owner has an unrelated await chain".into());
+            }
+            let mut saved = None;
+            for (index, frame) in child.machine.stack.iter_mut().enumerate() {
+                // The outermost boundary saved the inherited tracker before
+                // beginning its own work/contingency diagnostic chain.
+                for scope in &mut frame.scopes {
+                    if let Scope::Boundary(boundary) = scope {
+                        saved = Some((index + 1, &mut boundary.state.parent));
+                        break;
+                    }
+                }
+                if saved.is_none() {
+                    if let Some(Pending::Supervise(boundary)) = &mut frame.pending {
+                        saved = Some((index + 1, &mut boundary.state.parent));
+                    }
+                }
+                if saved.is_some() {
+                    break;
+                }
+            }
+            if let Some((count, saved)) = saved {
+                frames += count;
+                break std::mem::take(
+                    saved
+                        .as_mut()
+                        .ok_or("E_NATIVE: awaited boundary lost its caller tracker")?,
+                );
+            }
+            frames += child.machine.stack.len();
+            if let Some(next) = child.awaiting {
+                parent = id;
+                id = next;
+            } else {
+                break std::mem::take(&mut child.host.tracker);
+            }
+        };
+        // Completed child frames already left normally. Live cold/synchronous
+        // frames are stopped, so remove their diagnostic activations here while
+        // their resource and fault dispositions remain for ordered retirement.
+        for _ in 0..frames {
+            tracker.leave();
+        }
+        let caller = self.parked.get_mut(&owner).unwrap();
+        caller.host.tracker = tracker;
+        caller.awaiting = None;
+        Ok(())
+    }
     fn retire_completed(&mut self, id: u64) -> R<()> {
         let mut completed = self
             .completed
@@ -892,6 +961,7 @@ impl<'a> Contexts<'a> {
                 .tracker
                 .failure(child.name, fault::Phase::Execution, message);
         }
+        self.restore_stopped_await(owner)?;
         self.domains.stop(domain)?;
         self.waits.remove(&owner);
         let completed: Vec<_> = self

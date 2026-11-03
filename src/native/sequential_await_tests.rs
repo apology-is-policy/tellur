@@ -426,7 +426,7 @@ fn snapshot(c: &Contexts<'_>) -> String {
     )
 }
 #[test]
-fn sequential_admission_rejects_mixed_children_and_failed_tracker_before_transfer() {
+fn prepared_mixed_await_admits_but_failed_tracker_rejects_before_transfer() {
     let mut h = host();
     let mut c = Contexts::new(&mut h);
     let parent = c
@@ -436,13 +436,16 @@ fn sequential_admission_rejects_mixed_children_and_failed_tracker_before_transfe
         .start_child(&parent, &LEAF, vec![V::Bool(false), V::Unit])
         .unwrap();
     let mut q = queue(&mut c, &parent, &LEAF, vec![V::Bool(false), V::Unit]);
-    let before = snapshot(&c);
-    let capture = format!("{q:?}");
-    assert!(c.start_await(&parent, &mut q).is_err());
-    assert_eq!(snapshot(&c), before);
-    assert_eq!(format!("{q:?}"), capture);
+    let child = c.start_await(&parent, &mut q).unwrap();
+    assert!(q.is_none());
+    assert!(c.advance_retained(&parent, 1).is_err());
+    c.advance_retained(&child, 2).unwrap();
+    c.join(Some(&parent), &child).unwrap();
+    assert!(c.advance_retained(&parent, 1).is_err());
     c.advance_retained(&other, 2).unwrap();
     c.join(Some(&parent), &other).unwrap();
+    let mut q = queue(&mut c, &parent, &LEAF, vec![V::Bool(false), V::Unit]);
+    let capture = format!("{q:?}");
     c.parked.get_mut(&parent.id).unwrap().host.tracker.failure(
         "test",
         fault::Phase::Execution,
@@ -526,7 +529,7 @@ fn administrative_await_and_process_retirement_do_not_fabricate_outcomes() {
     assert_eq!(report.activations[0].id, 1);
     assert!(report.cause.is_none());
 
-    for independent in [false, true] {
+    for (independent, sibling) in [(false, false), (true, false), (false, true), (true, true)] {
         for completed in [false, true] {
             let drops = Rc::new(RefCell::new(0));
             let mut h = host();
@@ -545,6 +548,10 @@ fn administrative_await_and_process_retirement_do_not_fabricate_outcomes() {
                     .unwrap()
             };
             c.advance_retained(&parent, 1).unwrap();
+            if sibling {
+                c.start_child(&parent, &LEAF, vec![V::Bool(false), V::Unit])
+                    .unwrap();
+            }
             let base = c.parked[&parent.id].machine.stack[0].base();
             let capture = c
                 .host
@@ -777,4 +784,55 @@ fn independent_children_cold_awaits_preserve_full_outer_causes_and_local_boundar
         independent_faults(true, false, true, V::String(message.clone())),
         independent_faults(false, false, true, V::String(message))
     );
+}
+
+#[test]
+fn stopped_owner_await_restores_original_sites_across_nested_calls_boundaries_and_handlers() {
+    let mut expected = None;
+    for phase in 0..=4 {
+        let mut h = host();
+        let mut c = Contexts::new(&mut h);
+        let parent = c
+            .start(&PARKED_CALLER, vec![V::Bool(false), V::Unit])
+            .unwrap();
+        c.advance_retained(&parent, 1).unwrap();
+        let failed = c
+            .start_child(&parent, &LEAF, vec![V::Bool(true), V::Unit])
+            .unwrap();
+        let mut q = queue(
+            &mut c,
+            &parent,
+            &PARKED_MIDDLE,
+            vec![V::Bool(true), V::Unit],
+        );
+        if phase > 0 {
+            let middle = c.start_await(&parent, &mut q).unwrap();
+            c.advance_retained(&middle, 1).unwrap();
+            let mut nested = queue(&mut c, &middle, &BOUNDED, vec![V::Bool(true), V::Unit]);
+            let child = c.start_await(&middle, &mut nested).unwrap();
+            // Unstarted; in lexical work; within synchronous callees; or in a
+            // contingency after its own fault, before that handler can fail.
+            let quota = [0, 0, 1, 3, 5][phase];
+            assert!(matches!(
+                c.advance_retained(&child, quota).unwrap(),
+                ContextPoll::Paused
+            ));
+        }
+        c.advance_retained(&failed, 2).unwrap();
+        let report = terminal(&mut c, &parent);
+        if let Some(expected) = &expected {
+            assert_eq!(&report, expected, "phase={phase}");
+        } else {
+            expected = Some(report);
+        }
+        assert!(
+            c.host
+                .events
+                .iter()
+                .all(|event| !event.to_string().contains("handler failed"))
+        );
+        assert!(c.values.is_empty() && c.parked.is_empty() && c.completed.is_empty());
+        assert!(c.host.tasks.is_empty() && c.terminal.is_empty());
+        assert_eq!((c.domains.len(), c.domains.member_count()), (0, 0));
+    }
 }

@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.139.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.140.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -4129,3 +4129,23 @@ Independent admission is explicit in the test harness. Parents with live childre
 still cannot begin their own await, and sequential/awaiting contexts cannot admit
 independent children. This checkpoint neither adds source scheduling nor changes
 accepted ownership, origin, outcome, fault/contingency or path-label semantics.
+
+## Prepared owner-await checkpoint (0.140)
+
+E1d.2d.3m admits a prepared owner cold await beside independent children while keeping
+the parent-selection and completion-quiescence guards. Four new native-host cases
+check exact owning reports across pending, waiting, completed and delivered await
+phases; nested call/boundary/handler restoration; resource result joins in either
+order; atomic exhaustion; and source-fault/host-limit cleanup. Existing process
+retirement also covers owners awaiting alongside siblings.
+
+A generated fixture exercises lexical and named boundaries, stopped active handlers,
+completed results and pending delivery at original/expanded O0/O2. Complete owning
+reports match the pre-admission baseline, and quota partitions preserve all observed
+reports, events and fuel. Selected existing sibling/process/recovery and cold-task
+models plus production cold-task/source-fault/process/manual tests run freshly.
+Unchanged broader native-consumer and LSP/Node evidence is reused, with a fresh
+isolated editor check. This is selected coverage, not a full-suite claim.
+
+The host prepares the owner's await before admitting siblings. General parent
+execution with outstanding children and source scheduling remain unimplemented.
