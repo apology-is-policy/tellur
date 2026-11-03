@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.151.0** implements the v0.1 checked core and the current language
+Compiler release **0.152.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -866,3 +866,10 @@ The native host can explicitly admit one supported local callback or normal awai
 result delivery beside retained children, after a fresh complete borrower census
 proves disjointness. Private permission is consumed immediately and never covers the
 next callback. Ordinary quota drivers and source execution retain their existing gates.
+
+## Bounded native admission in 0.152
+
+An explicit host batch now recomputes complete borrower coverage before every supported
+callback and pending delivery. It reports progress and the reason it stopped, preserving
+successful transitions before a later rejection. Callback quotas and administrative
+delivery counts remain distinct; source scheduling and ordinary drivers are unchanged.

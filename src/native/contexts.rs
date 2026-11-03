@@ -45,6 +45,30 @@ pub enum ContextPoll {
     Complete(Completion),
     Failed(fault::Report),
 }
+/// Why a bounded host batch stopped. A blocked next transition never rolls back
+/// preceding progress. Source faults retain their settled ContextPoll separately
+/// from administrative rejection and internal host errors.
+pub enum AdmissionStop {
+    Quota,
+    TransitionLimit,
+    Blocked(String),
+    Poll(ContextPoll),
+    Fault(ContextPoll),
+    HostError(String),
+}
+pub struct AdmissionProgress {
+    /// Callback attempts, including a callback that faults; not fuel consumed.
+    pub instructions: usize,
+    /// Includes instruction-free pending delivery and faulting attempts.
+    pub transitions: usize,
+    pub stop: AdmissionStop,
+}
+#[derive(Default)]
+struct SelectionProgress {
+    instruction: Option<bool>,
+    faulted: bool,
+}
+const ADMISSION_TRANSITION_LIMIT: usize = 4096;
 pub struct Contexts<'a> {
     host: &'a mut Host,
     values: Frames,
@@ -627,16 +651,61 @@ impl<'a> Contexts<'a> {
     /// Explicit host admission of exactly one disjoint local transition. Source
     /// scheduling is unchanged; the ordinary quota driver retains its child gate.
     pub fn advance_disjoint_one(&mut self, key: &ContextKey) -> R<ContextPoll> {
-        self.advance_selected(key, 1, true)
+        self.advance_selected(key, 1, true, &mut SelectionProgress::default())
+    }
+    /// Explicit bounded host advancement. Every transition gets a new census and
+    /// a new sealed witness; source driving and legacy quota gates are unchanged.
+    pub fn advance_disjoint(&mut self, key: &ContextKey, quota: usize) -> AdmissionProgress {
+        let mut progress = AdmissionProgress {
+            instructions: 0,
+            transitions: 0,
+            stop: AdmissionStop::Quota,
+        };
+        // Zero quota still validates the selected owner, but never queries or
+        // executes its callback and never consumes a terminal report.
+        let authority = self.require(key).and_then(|()| {
+            let machine = &self.parked[&key.id].machine;
+            machine.require_runnable(&self.domains)?;
+            self.domains.require_open(&machine.current, &[])?;
+            if self.waits.contains_key(&key.id) || machine.fault.is_some() {
+                return Err("E_NATIVE: callback owner is waiting or settling".into());
+            }
+            Ok(())
+        });
+        if let Err(error) = authority {
+            progress.stop = AdmissionStop::Blocked(error);
+            return progress;
+        }
+        while progress.instructions < quota && progress.transitions < ADMISSION_TRANSITION_LIMIT {
+            let mut selected = SelectionProgress::default();
+            let result = self.advance_selected(key, 1, true, &mut selected);
+            if let Some(instruction) = selected.instruction {
+                progress.instructions += usize::from(instruction);
+                progress.transitions += 1;
+            }
+            progress.stop = match result {
+                Err(error) if selected.instruction.is_none() => AdmissionStop::Blocked(error),
+                Err(error) => AdmissionStop::HostError(error),
+                Ok(poll) if selected.faulted => AdmissionStop::Fault(poll),
+                Ok(ContextPoll::Paused) => continue,
+                Ok(poll) => AdmissionStop::Poll(poll),
+            };
+            return progress;
+        }
+        if progress.instructions < quota {
+            progress.stop = AdmissionStop::TransitionLimit;
+        }
+        progress
     }
     pub fn advance_retained(&mut self, key: &ContextKey, quota: usize) -> R<ContextPoll> {
-        self.advance_selected(key, quota, false)
+        self.advance_selected(key, quota, false, &mut SelectionProgress::default())
     }
     fn advance_selected(
         &mut self,
         key: &ContextKey,
         quota: usize,
         disjoint: bool,
+        progress: &mut SelectionProgress,
     ) -> R<ContextPoll> {
         self.require_live()?;
         if !Arc::ptr_eq(&self.identity, &key.session) {
@@ -704,7 +773,15 @@ impl<'a> Contexts<'a> {
                 &mut self.domains,
                 admission,
             ) {
-                OneCallbackPoll::Advanced(result) => result,
+                OneCallbackPoll::Advanced {
+                    result,
+                    instruction,
+                    faulted,
+                } => {
+                    progress.instruction = Some(instruction);
+                    progress.faulted = faulted;
+                    result
+                }
                 OneCallbackPoll::Rejected(error) => {
                     // A failed lower-level preflight remains administrative. Do
                     // not turn it into a source fault or retire borrower owners.

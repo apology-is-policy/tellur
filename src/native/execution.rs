@@ -318,7 +318,11 @@ pub enum Step {
 // context layer can restore selection without fault settlement on rejection.
 enum OneCallbackPoll {
     Rejected(String),
-    Advanced(R<Poll>),
+    Advanced {
+        result: R<Poll>,
+        instruction: bool,
+        faulted: bool,
+    },
 }
 pub enum Poll {
     Paused,
@@ -905,20 +909,29 @@ impl Machine {
         }
         // Exactly one transition, including instruction-free pending delivery.
         // Never feed this witness into the quota loop or a subsequent callback.
-        let result = match self.step(host, values, domains) {
-            Ok((_, Some(result))) => Ok(Poll::Complete(result)),
-            Ok((_, None)) => Ok(Poll::Paused),
-            Err(error) => self
-                .unwind_error(host, values, domains, error, true)
-                .map(|()| {
-                    if self.fault.is_some() {
-                        Poll::Settling(self.current.clone())
-                    } else {
-                        Poll::Paused
-                    }
-                }),
+        let delivery = matches!(&self.stack.last().unwrap().pending,
+            Some(Pending::Await(p)) if p.result.is_some());
+        let (result, instruction, faulted) = match self.step(host, values, domains) {
+            Ok((instruction, Some(result))) => (Ok(Poll::Complete(result)), instruction, false),
+            Ok((instruction, None)) => (Ok(Poll::Paused), instruction, false),
+            Err(error) => (
+                self.unwind_error(host, values, domains, error, true)
+                    .map(|()| {
+                        if self.fault.is_some() {
+                            Poll::Settling(self.current.clone())
+                        } else {
+                            Poll::Paused
+                        }
+                    }),
+                !delivery,
+                true,
+            ),
         };
-        OneCallbackPoll::Advanced(result)
+        OneCallbackPoll::Advanced {
+            result,
+            instruction,
+            faulted,
+        }
     }
     pub fn advance(
         &mut self,
@@ -977,6 +990,7 @@ mod contexts;
 #[cfg(test)]
 #[path = "domains.rs"]
 mod domains;
+pub use contexts::{AdmissionProgress, AdmissionStop};
 pub use contexts::{ContextKey, ContextPoll, Contexts, Readiness, run_entry};
 
 #[cfg(test)]

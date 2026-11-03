@@ -2386,6 +2386,60 @@ fault-settlement behavior without treating host quotas as source handoff points.
 Guarded/contained/conditional completeness, precise origin access modes, source scheduling,
 cancellation, async adapters/disposal and LLVM coroutine lowering remain separate work.
 
+## Bounded native admission (E1d.2d.3s.7)
+
+Compiler 0.152 adds `Contexts::advance_disjoint(key, quota)`, an explicit host batch
+built on one-transition admission. Every transition reruns the aggregate census and
+consumes a newly issued private witness at the lower machine check. Permission never
+survives between transitions, including between normal pending delivery and its next
+callback. The ordinary quota APIs and production source driver retain their child gates.
+
+The returned `AdmissionProgress` reports callback attempts (`instructions`), all admitted
+attempts including administrative delivery (`transitions`), and an `AdmissionStop`:
+
+- `Quota`: the requested callback allowance was consumed, including a zero allowance.
+- `TransitionLimit`: the defensive limit of 4096 transitions was reached first.
+- `Blocked(reason)`: the next transition lacks valid authority or complete disjoint evidence.
+- `Poll(result)`: execution reached a non-paused context result.
+- `Fault(result)`: an admitted attempt faulted; the result includes existing settlement.
+- `HostError(reason)`: an internal host operation failed after an admitted attempt.
+
+A block preserves earlier successful progress and does not imply rollback. The blocked
+callback has not evaluated operands, changed facts or consumed fuel. A zero quota validates
+the live selected owner without resolving or executing the callback; even an opaque next
+callback may therefore return zero progress. Waiting, settling, foreign and retired owners
+are blocked. Readiness registrations and terminal reports are not consumed by rejection.
+
+The machine reports its actual instruction flag on successful steps. Normal pending
+delivery counts as one transition and zero callback attempts, so it can be followed by a
+freshly admitted callback within quota one. A faulting callback counts as one attempt;
+a faulting administrative delivery counts as zero. These are host instruction allowances,
+not fuel: skipped callbacks can consume allowance without source fuel. Both an admitted
+fault and an internal host error stop the batch immediately, preserving the existing fault
+report/resource settlement rather than relabelling it as administrative rejection.
+
+The 4096-transition ceiling bounds work even for a very large requested quota. It does
+not select another context or create a source handoff. The caller receives progress and
+can choose its next explicit host operation. Overlap, partial/unknown origins, opaque
+work, unresolved await, unsupported transitions and retirement remain conservative;
+there is no automatic fallback to the unrestricted legacy driver.
+
+Five new host cases cover partial progress followed by overlap/opaque rejection, the
+transition limit and untouched siblings, delivery plus callback counting, selected-owner
+readiness/foreign/terminal authority, and the public zero-quota API. Existing admission
+cases now also check batch rejection after new borrowers or incomplete evidence and real
+borrower-before-owner release after a fault. Generated original/expanded O0/O2 fixtures
+exercise bounded batches across quota partitions and compare source observations, while
+retaining the lower legacy rejection checks and complete pending-delivery requirement.
+
+This completes bounded host composition of the supported local admission primitive.
+The next prerequisite for broader parent progress is a narrow guarded-reference closure:
+retain explicit partial status where origin modes, contained permissions, path domains
+or formation identities are unavailable, and validate any newly complete guarded evidence
+with the same conservative overlap and exact invocation/domain rules before admitting it.
+Source scheduling, `spawn`/`yield`, cancellation, async adapters/disposal and LLVM coroutine
+lowering remain separate work. Host quotas never become source handoff points.
+
 ## Reference execution invariants
 
 A step partition must not itself become a source effect. The same selected schedule

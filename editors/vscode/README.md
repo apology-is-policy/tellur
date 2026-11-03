@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-darwin-arm64-0.151.0.vsix` using **Extensions:
+1. Install the supplied `tellur-language-darwin-arm64-0.152.0.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1355,3 +1355,10 @@ The native host can explicitly admit one supported local callback or normal awai
 result delivery beside retained children, after a fresh complete borrower census
 proves disjointness. Private permission is consumed immediately and never covers the
 next callback. Ordinary quota drivers and source execution retain their existing gates.
+
+## Bounded native admission in 0.152
+
+An explicit host batch now recomputes complete borrower coverage before every supported
+callback and pending delivery. It reports progress and the reason it stopped, preserving
+successful transitions before a later rejection. Callback quotas and administrative
+delivery counts remain distinct; source scheduling and ordinary drivers are unchanged.

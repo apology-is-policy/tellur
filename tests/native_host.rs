@@ -4,6 +4,41 @@ mod host;
 use host::{Host, V};
 use serde_json::{Value as Json, json};
 #[test]
+fn bounded_admission_exposes_progress_without_evaluating_zero_quota_or_opaque_work() {
+    use host::execution::{Activation, AdmissionProgress, AdmissionStop, Contexts, Control, Step};
+    fn terminate(_: &mut Host, _: &mut host::Frames, _: &mut Activation) -> Result<Step, String> {
+        Ok(Step::Complete(host::Completion::Process(0)))
+    }
+    static OPAQUE: Control = Control {
+        name: "opaque",
+        slots: 0,
+        atoms: 0,
+        parameters: &[],
+        retained: &[],
+        constructor: false,
+        access: None,
+        resume: terminate,
+    };
+    let mut host = Host::new(json!({}), None, true, Some(0));
+    let mut contexts = Contexts::new(&mut host);
+    let key = contexts.start(&OPAQUE, vec![]).unwrap();
+    let progress: AdmissionProgress = contexts.advance_disjoint(&key, 0);
+    assert_eq!((progress.instructions, progress.transitions), (0, 0));
+    assert!(matches!(progress.stop, AdmissionStop::Quota));
+    let progress = contexts.advance_disjoint(&key, 1);
+    assert_eq!((progress.instructions, progress.transitions), (0, 0));
+    assert!(matches!(progress.stop, AdmissionStop::Blocked(_)));
+    assert!(matches!(
+        contexts.advance_retained(&key, 1).unwrap(),
+        host::execution::ContextPoll::Complete(host::Completion::Process(0))
+    ));
+    assert!(matches!(
+        contexts.advance_disjoint(&key, 0).stop,
+        AdmissionStop::Blocked(_)
+    ));
+}
+
+#[test]
 fn owned_projection_transfers_the_existing_buffer() {
     let text = "owned buffer".repeat(1024);
     let allocation = text.as_ptr();

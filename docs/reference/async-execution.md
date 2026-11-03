@@ -723,3 +723,10 @@ before exactly one local callback or normal pending delivery. Rejection is admin
 real execution faults retain existing settlement. Ordinary quota drivers retain their
 child gates, and source execution is unchanged. See
 [one-transition admission](../async-execution.md#one-transition-native-admission-e1d2d3s6).
+
+Since 0.152, an explicit native host batch composes fresh one-transition admissions and
+reports callback/administrative progress with quota, limit, rejection, result or fault
+status. A later block preserves prior progress. Zero quota performs no transition;
+normal pending delivery consumes no callback allowance. Each batch is capped at 4096
+transitions. Source scheduling and ordinary drivers are unchanged. See
+[bounded admission](../async-execution.md#bounded-native-admission-e1d2d3s7).

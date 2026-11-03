@@ -4325,3 +4325,13 @@ identity, instruction-free one-use delivery and real borrower-before-owner settl
 after fuel failure. Generated original/expanded O0/O2 selection fixtures exercise real
 admitted callbacks beside a retained child and preserve source observations across quota
 partitions. Legacy multi-instruction drivers keep rejecting children at all quotas.
+
+## Bounded native admission (0.152)
+
+Five new host tests cover partial progress before overlap/opaque rejection, zero quota,
+explicit public progress reporting, the 4096-transition ceiling with untouched siblings,
+normal delivery plus next-callback counting, readiness/foreign/terminal authority and
+report preservation. Existing admission tests additionally exercise batch freshness and
+real resource settlement after an admitted fault. Generated original/expanded O0/O2
+fixtures compare bounded batch observations across quota partitions and preserve legacy
+rejection checks, complete pending delivery and checked capture evidence.

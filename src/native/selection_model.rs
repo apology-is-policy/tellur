@@ -183,19 +183,25 @@ pub fn drive_selection(
                 c.host.exchange_context(&mut p.host)?;
                 assert_eq!(selection_snapshot(&c, &root), before);
             }
+            let progress = c.advance_disjoint(&root, quota);
+            assert!(progress.instructions <= quota);
+            assert!(matches!(
+                progress.stop,
+                AdmissionStop::Quota | AdmissionStop::TransitionLimit | AdmissionStop::Blocked(_)
+            ));
             if quota != 0 && matches!(coverage, BorrowerInterference::Disjoint { .. }) {
-                assert!(matches!(
-                    c.advance_disjoint_one(&root)?,
-                    ContextPoll::Paused
-                ));
-                admitted += 1;
+                assert!(progress.transitions > 0);
+                admitted += progress.transitions;
                 admitted_delivery |= matches!(coverage,
                     BorrowerInterference::Disjoint { deliveries, .. } if deliveries != 0);
                 admitted_this_turn = true;
             } else {
-                if !matches!(coverage, BorrowerInterference::Disjoint { .. }) {
-                    assert!(c.advance_disjoint_one(&root).is_err());
-                }
+                assert_eq!((progress.instructions, progress.transitions), (0, 0));
+                assert!(if quota == 0 {
+                    matches!(progress.stop, AdmissionStop::Quota)
+                } else {
+                    matches!(progress.stop, AdmissionStop::Blocked(_))
+                });
                 assert_eq!(selection_snapshot(&c, &root), before);
             }
             assert!(matches!(
