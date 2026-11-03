@@ -4355,3 +4355,14 @@ fresh direct holder coverage. Native tests show that complete root annotations c
 promote partial or foreign stored-reference evidence. Generated original/expanded O0/O2
 runs require nonempty complete captures and retained delivery through quota partitions,
 while checking disjoint host progress and identical source observations.
+
+## Complete local carrier aliases (0.155)
+
+Metadata cases retain both projected and whole carrier storage plus all three owners
+through moved exclusive aliases and shared reborrows. Conditional and received aliases
+stay partial. Certificates reject erasing the broad holder, its additional owner or the
+completeness flag; structural checks reject unrelated, indirect or unsupported ancestor
+origins. Native host tests block broad holder/pointee accesses even outside the actual
+projected runtime graph, across live/waiting/completed children, and preserve state on
+rejection. Original/expanded O0/O2 models require complete nonempty capture and delivery
+with equal source observations across quota partitions.

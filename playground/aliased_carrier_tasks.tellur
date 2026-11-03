@@ -1,0 +1,45 @@
+// A projected carrier keeps its broad exclusive ancestor and every stored owner.
+struct text_pair['left, 'right] {
+    ref string left <- 'left;
+    ref string right <- 'right;
+}
+
+struct envelope['left, 'right, 'other] {
+    text_pair['left, 'right] values;
+    ref string other <- 'other;
+}
+
+async control inspect(ref text_pair input) exits done {
+    emit(input.left);
+    emit(input.right);
+    exit done;
+}
+
+async control startup() exits done {
+    mutable string left = "left";
+    mutable string right = "right";
+    mutable string other = "whole ancestor";
+    mutable envelope saved = envelope {
+        text_pair { borrow left, borrow right },
+        borrow other
+    };
+    ref mutable envelope whole = borrow mutable saved;
+    ref mutable envelope moved = move whole;
+    ref text_pair selected = borrow moved.values;
+    auto pending = defer inspect(selected);
+    await pending;
+    drop(saved);
+    left = "released";
+    right = "released";
+    other = "ancestor released";
+    emit(borrow other);
+    exit done;
+}
+
+outcome command_result {
+    @exit 0 done
+}
+
+control main() exits command_result {
+    forward run startup();
+}

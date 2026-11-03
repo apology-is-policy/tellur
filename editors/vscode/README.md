@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-darwin-arm64-0.154.0.vsix` using **Extensions:
+1. Install the supplied `tellur-language-darwin-arm64-0.155.0.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1379,3 +1379,11 @@ local field projections are supported; aliases, indirect holders, returned permi
 families and reference-to-carrier leaves remain partial. Runtime capture still requires
 complete incoming formation evidence for every reachable reference. Try
 `./bin/tellurc exec playground/local_carrier_tasks.tellur`.
+
+## Local carrier aliases in 0.155
+
+Erased local carrier aliases can retain complete dependencies through moves and
+projected reborrows. Every broad borrowed ancestor and all its stored owners remain
+covered, even owners outside the projected runtime value. Conditional/received carriers,
+permission families, tagged contents and references to carriers remain partial. Try
+`./bin/tellurc exec playground/aliased_carrier_tasks.tellur`.

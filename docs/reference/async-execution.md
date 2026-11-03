@@ -744,3 +744,10 @@ Every reachable native reference still needs complete incoming formation evidenc
 Aliases, indirect holders, tagged/conditional contents, returned permission families
 and references to carriers remain partial. Source execution remains sequential. See
 [local borrowed carriers](../async-execution.md#complete-fresh-local-carriers-e1d2d3s9).
+
+Since 0.155, erased local carrier aliases can retain complete dependency coverage across
+moves and projected reborrows. Every broad borrowed ancestor and all of its stored owners
+remain included. This permits only conservatively disjoint host work under existing
+invocation/domain checks. Incoming/received indirect carriers, permission families and
+conditional/tagged/nested-reference gaps remain partial. See
+[local carrier aliases](../async-execution.md#complete-local-carrier-aliases-e1d2d3s10).

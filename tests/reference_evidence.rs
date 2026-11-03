@@ -129,16 +129,14 @@ fn fresh_local_carriers_cover_holder_and_all_stored_origins() {
             "E_EXPANSION_CERTIFICATE"
         );
     }
-    // Borrowing via an existing carrier alias remains outside this first class.
+    // An erased local alias preserves the complete stored closure.
     let aliased = source.replace(
         "auto pending = defer inspect(borrow saved);",
         "ref text_pair alias = borrow saved;\n    auto pending = defer inspect(alias);",
     );
     assert_ne!(aliased, source);
     let alias = program(&aliased);
-    assert!(
-        !capture_evidence(alias.regions().find(|r| r.name == "startup").unwrap()).is_complete()
-    );
+    assert!(capture_evidence(alias.regions().find(|r| r.name == "startup").unwrap()).is_complete());
     let conditional = source.replace("async control startup() exits done {",
         "async control startup(bool selected) exits done {\n    delta selected { true => yes, false => no }\n    [no]: exit done;\n    [yes]:")
         .replace("run startup()", "run startup(true)");
@@ -146,6 +144,111 @@ fn fresh_local_carriers_cover_holder_and_all_stored_origins() {
     assert!(
         !capture_evidence(conditional.regions().find(|r| r.name == "startup").unwrap())
             .is_complete()
+    );
+}
+
+#[test]
+fn local_carrier_aliases_retain_broad_ancestors_and_all_their_stored_owners() {
+    let source = include_str!("../playground/aliased_carrier_tasks.tellur");
+    let p = program(source);
+    let region = p.regions().find(|r| r.name == "startup").unwrap();
+    let evidence = capture_evidence(region);
+    assert!(evidence.is_complete(), "{evidence:?}");
+    let saved = region
+        .slots
+        .values()
+        .find(|s| s.name == "saved")
+        .unwrap()
+        .id;
+    let origins = evidence.origins();
+    assert!(
+        origins
+            .iter()
+            .all(|o| !o.guard && !o.opaque && !o.place.indirect)
+    );
+    assert!(
+        origins
+            .iter()
+            .any(|o| o.place.root == saved && o.place.fields == [0])
+    );
+    assert!(
+        origins
+            .iter()
+            .any(|o| o.place.root == saved && o.place.fields.is_empty())
+    );
+    for name in ["left", "right", "other"] {
+        assert!(
+            origins
+                .iter()
+                .any(|o| region.slots[&o.place.root].name == name),
+            "{origins:?}"
+        );
+    }
+    let artifact = p.expansion_artifact("startup").unwrap();
+    let expanded = p.accept_expansion(&artifact).unwrap();
+    let scenario = Scenario {
+        entry: "main".into(),
+        arguments: vec![],
+        calls: vec![],
+    };
+    assert_eq!(p.run(&scenario).unwrap(), expanded.run(&scenario).unwrap());
+    // Removing the broad origin or the owner outside the projected record must
+    // fail even though the runtime reference points only to values.
+    let broad = origins
+        .iter()
+        .position(|o| o.place.root == saved && o.place.fields.is_empty())
+        .unwrap();
+    let other = origins
+        .iter()
+        .position(|o| region.slots[&o.place.root].name == "other")
+        .unwrap();
+    for removal in [Some(broad), Some(other), None] {
+        let mut altered = serde_json::to_value(&artifact).unwrap();
+        fn mutate(v: &mut Json, removal: Option<usize>) -> bool {
+            if let Some(parts) = v
+                .get_mut("WithReferenceEvidence")
+                .and_then(Json::as_array_mut)
+                && parts[0]
+                    .get("Reference")
+                    .is_some_and(|r| r[1] == "&text_pair")
+                && let Some(origins) = parts[1].get_mut("Complete").and_then(Json::as_array_mut)
+                && origins.len() == 5
+            {
+                if let Some(index) = removal {
+                    origins.remove(index);
+                } else {
+                    let origins = origins.clone();
+                    parts[1] = serde_json::json!({"Partial":origins});
+                }
+                return true;
+            }
+            match v {
+                Json::Array(v) => v.iter_mut().any(|v| mutate(v, removal)),
+                Json::Object(v) => v.values_mut().any(|v| mutate(v, removal)),
+                _ => false,
+            }
+        }
+        assert!(mutate(&mut altered, removal));
+        assert_eq!(
+            p.accept_expansion(&serde_json::from_value(altered).unwrap())
+                .unwrap_err()
+                .code,
+            "E_EXPANSION_CERTIFICATE"
+        );
+    }
+    let conditional = source.replace("async control startup() exits done {",
+        "async control startup(bool selected_path) exits done {\n    delta selected_path { true => yes, false => no }\n    [no]: exit done;\n    [yes]:")
+        .replace("run startup()", "run startup(true)");
+    let conditional = program(&conditional);
+    assert!(
+        !capture_evidence(conditional.regions().find(|r| r.name == "startup").unwrap())
+            .is_complete()
+    );
+    let received = source.replace("async control inspect", "control relay(ref text_pair input) exits ready { ref text_pair value from input } { exit ready { input }; }\nasync control inspect")
+        .replace("auto pending = defer inspect(selected);", "delta relay(selected) { ready { auto incoming } => received }\n    [received]:\n    auto pending = defer inspect(incoming);");
+    let received = program(&received);
+    assert!(
+        !capture_evidence(received.regions().find(|r| r.name == "startup").unwrap()).is_complete()
     );
 }
 

@@ -1488,3 +1488,7 @@ mod callback_admission_tests;
 #[cfg(test)]
 #[path = "guarded_admission_tests.rs"]
 mod guarded_admission_tests;
+
+#[cfg(test)]
+#[path = "carrier_alias_admission_tests.rs"]
+mod carrier_alias_admission_tests;

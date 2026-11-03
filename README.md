@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.154.0** implements the v0.1 checked core and the current language
+Compiler release **0.155.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -890,3 +890,11 @@ local field projections are supported; aliases, indirect holders, returned permi
 families and reference-to-carrier leaves remain partial. Runtime capture still requires
 complete incoming formation evidence for every reachable reference. Try
 `./bin/tellurc exec playground/local_carrier_tasks.tellur`.
+
+## Local carrier aliases in 0.155
+
+Erased local carrier aliases can retain complete dependencies through moves and
+projected reborrows. Every broad borrowed ancestor and all its stored owners remain
+covered, even owners outside the projected runtime value. Conditional/received carriers,
+permission families, tagged contents and references to carriers remain partial. Try
+`./bin/tellurc exec playground/aliased_carrier_tasks.tellur`.

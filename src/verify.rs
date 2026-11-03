@@ -147,11 +147,17 @@ impl Verifier<'_> {
                             && origins
                                 .iter()
                                 .any(|g| g.guard && g.opaque && g.place == origin.place);
+                        let carrier_ancestor = carrier.is_some_and(|target| {
+                            !origin.place.indirect
+                                && origin.place.root == target.root
+                                && target.fields.starts_with(&origin.place.fields)
+                                && local_carrier_shape(m, &origin_ty)
+                        });
                         if !(local_guard
                             || guarded_ancestor
                             || (!origin.guard
                                 && !origin.opaque
-                                && (!contains_refs || carrier == Some(&origin.place))))
+                                && (!contains_refs || carrier_ancestor)))
                         {
                             return Err(error("unsupported complete reference origin"));
                         }
@@ -1079,6 +1085,59 @@ fn verify_source(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn complete_carrier_ancestors_must_be_direct_supported_prefixes() {
+        let m = crate::manifest::Manifest::from_json(include_str!("../playground/manifest.json"))
+            .unwrap();
+        let original = crate::compile(
+            include_str!("../playground/aliased_carrier_tasks.tellur"),
+            m,
+        )
+        .unwrap();
+        for kind in 0..3 {
+            let mut p = original.clone();
+            let region = p.regions.get_mut("startup").unwrap();
+            let saved = region
+                .slots
+                .values()
+                .find(|s| s.name == "saved")
+                .unwrap()
+                .id;
+            let unrelated = region.slots.keys().max().unwrap() + 1;
+            let mut slot = region.slots[&saved].clone();
+            slot.id = unrelated;
+            slot.name = "unrelated_carrier".into();
+            region.slots.insert(unrelated, slot);
+            p.verify().unwrap();
+            let region = p.regions.get_mut("startup").unwrap();
+            let origins = region
+                .code
+                .iter_mut()
+                .find_map(|i| match &mut i.action {
+                    Action::Decide {
+                        operation: Operation::Defer(_),
+                        args,
+                        ..
+                    } => match &mut args[0] {
+                        Expr::WithReferenceEvidence(_, ReferenceEvidence::Complete(o)) => Some(o),
+                        _ => None,
+                    },
+                    _ => None,
+                })
+                .unwrap();
+            let broad = origins
+                .iter_mut()
+                .find(|o| o.place.root == saved && o.place.fields.is_empty())
+                .unwrap();
+            match kind {
+                0 => broad.place.root = unrelated,
+                1 => broad.place.fields.push(1),
+                2 => broad.place.indirect = true,
+                _ => unreachable!(),
+            }
+            assert_eq!(p.verify().unwrap_err().code, "E_IR");
+        }
+    }
     #[test]
     fn complete_carrier_evidence_requires_fresh_holder_coverage_and_bounded_shape() {
         use crate::ir::{Action, Expr, Operation, ReferenceEvidence};

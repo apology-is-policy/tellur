@@ -681,24 +681,13 @@ impl Checker<'_> {
         value: Expr,
         origins: &[LoanOrigin],
         roots: &[Id],
+        carriers: &[Place],
         mut complete: bool,
     ) -> Expr {
         const LIMIT: usize = 4096;
         complete &= origins.len() <= LIMIT;
-        // Only reference_expression can certify this fresh owned carrier. Its
-        // stored leaf loans are included in roots, so this exception covers the
-        // carrier allocation without omitting its contained provenance.
-        let carrier = match &value {
-            Expr::Reference(place, ty)
-                if complete
-                    && !place.indirect
-                    && manifest::reference_inner(ty)
-                        .is_some_and(|(_, inner)| self.manifest.contains_references(inner)) =>
-            {
-                Some(place)
-            }
-            _ => None,
-        };
+        // reference_expression certifies every local carrier ancestor and adds
+        // all of their stored leaf loans to roots before granting this exception.
         // A local holder guard can conservatively cover its whole borrowed
         // ancestor. This never adds holder dependence to an unguarded shared copy.
         // Indirect/abstract guards and permission families remain unsupported.
@@ -736,7 +725,7 @@ impl Checker<'_> {
                     || holder
                     || (!origin.guard
                         && !origin.opaque
-                        && (!contains_refs || carrier == Some(&origin.place))));
+                        && (!contains_refs || carriers.contains(&origin.place))));
             let cost = (1 + origin.place.fields.len()).saturating_mul(1 + usize::from(holder));
             let Some(left) = remaining.checked_sub(cost) else {
                 complete = false;
@@ -802,6 +791,7 @@ impl Checker<'_> {
                 && loan.sum_leaf.is_none()
                 && loan.contents.is_empty()
                 && (!self.manifest.contains_references(&loan.target.ty)
+                    || carriers.contains(&loan.target.place)
                     || guarded_holder(&loan.target.place));
             for origin in &loan.origins {
                 include(origin);
@@ -829,9 +819,11 @@ impl Checker<'_> {
     }
     fn reference_expression(&self, target: &ResolvedPlace, ty: String) -> Expr {
         let mut roots = target.via.into_iter().collect::<Vec<_>>();
+        let mut carriers = Vec::new();
         let complete = if self.manifest.contains_references(&target.ty) {
-            if let Some(contents) = self.local_carrier_roots(target) {
+            if let Some((contents, places)) = self.local_carrier_closure(target) {
                 roots.extend(contents);
+                carriers = places;
                 true
             } else {
                 false
@@ -843,15 +835,64 @@ impl Checker<'_> {
             Expr::Reference(target.place.clone(), ty),
             &self.origins(target),
             &roots,
+            &carriers,
             complete,
         )
     }
-    /// First contained closure: a fresh borrow of local owned record storage,
-    /// with one unconditional stored loan for every reference-free leaf. Tags,
-    /// reference-to-carrier leaves and indirect/aliased holders stay partial.
-    fn local_carrier_roots(&self, target: &ResolvedPlace) -> Option<Vec<Id>> {
-        const LIMIT: usize = 4096;
-        if target.place.indirect || target.via.is_some() || !target.carriers.is_empty() {
+    /// An erased local alias is still a direct formation, but every broader
+    /// carrier ancestor and all of its stored leaves remain dependencies.
+    fn local_carrier_closure(&self, target: &ResolvedPlace) -> Option<(Vec<Id>, Vec<Place>)> {
+        if target.place.indirect || !target.carriers.is_empty() {
+            return None;
+        }
+        let mut budget = 4096usize;
+        let mut targets = vec![target];
+        let mut pending = target.via.into_iter().collect::<Vec<_>>();
+        let mut seen = BTreeSet::new();
+        let mut places = Vec::new();
+        let mut roots = Vec::new();
+        while !targets.is_empty() || !pending.is_empty() {
+            budget = budget.checked_sub(1)?;
+            if let Some(id) = pending.pop() {
+                if !seen.insert(id) {
+                    continue;
+                }
+                let loan = self
+                    .scopes
+                    .iter()
+                    .flat_map(|s| s.loans.values())
+                    .find(|l| l.id == id)?;
+                if (loan.active != TRUE && loan.active != FALSE)
+                    || loan.defined != TRUE
+                    || loan.sum_leaf.is_some()
+                    || !loan.contents.is_empty()
+                    || loan.target.place.indirect
+                    || loan.target.place.root != target.place.root
+                    || !target.place.fields.starts_with(&loan.target.place.fields)
+                {
+                    return None;
+                }
+                if pending.len() + targets.len() + loan.parents.len() + 1 > budget {
+                    return None;
+                }
+                pending.extend(loan.parents.iter().copied());
+                targets.push(&loan.target);
+                continue;
+            }
+            let ancestor = targets.pop()?;
+            if places.contains(&ancestor.place) {
+                continue;
+            }
+            budget = budget.checked_sub(ancestor.place.fields.len())?;
+            roots.extend(self.local_carrier_roots(ancestor, &mut budget)?);
+            places.push(ancestor.place.clone());
+        }
+        Some((roots, places))
+    }
+    /// One unconditional stored loan per reference-free leaf, under the shared
+    /// closure budget. Indirect holders, tags and nested references stay partial.
+    fn local_carrier_roots(&self, target: &ResolvedPlace, budget: &mut usize) -> Option<Vec<Id>> {
+        if target.place.indirect || !target.carriers.is_empty() {
             return None;
         }
         let binding = self.scopes.get(target.scope)?.values.get(&target.name)?;
@@ -865,15 +906,14 @@ impl Checker<'_> {
             return None;
         }
         let schema = self.origin_schemas.get(&target.ty)?;
-        if schema.leaves.is_empty() || schema.leaves.len() > LIMIT {
+        if schema.leaves.is_empty() || schema.leaves.len() > *budget {
             return None;
         }
         // Bound the full supported layout as well as its reference leaves. A
         // large scalar-only branch must not exceed the verifier's layout limit.
         let mut pending = vec![target.ty.as_str()];
-        let mut layout_budget = LIMIT;
         while let Some(ty) = pending.pop() {
-            layout_budget = layout_budget.checked_sub(1)?;
+            *budget = budget.checked_sub(1)?;
             if let Some((_, inner)) = manifest::reference_inner(ty) {
                 if self.manifest.contains_references(inner) {
                     return None;
@@ -883,17 +923,16 @@ impl Checker<'_> {
                 else {
                     return None;
                 };
-                if fields.len() > layout_budget.saturating_sub(pending.len()) {
+                if fields.len() > budget.saturating_sub(pending.len()) {
                     return None;
                 }
                 pending.extend(fields.iter().map(|f| f.ty.as_str()));
             }
         }
-        let mut budget = LIMIT;
         let mut roots = Vec::new();
         let mut fields = BTreeSet::new();
         for leaf in &schema.leaves {
-            budget = budget.checked_sub(1 + leaf.fields.len())?;
+            *budget = budget.checked_sub(1 + leaf.fields.len())?;
             if !leaf.through.is_empty()
                 || leaf.sum_leaf.is_some()
                 || !fields.insert(&leaf.fields)

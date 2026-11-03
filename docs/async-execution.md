@@ -2537,6 +2537,47 @@ permission families still need separate incoming-proof work. Source scheduling,
 `spawn`/`yield`, cancellation, async adapters/disposal and LLVM coroutine lowering remain
 separate; host quotas are not source handoffs.
 
+## Complete local carrier aliases (E1d.2d.3s.10)
+
+Compiler 0.155 extends the local-record proof to erased local carrier aliases. Their
+runtime reference formation is still direct local storage. The checker follows the
+retained alias ancestry, including transferred ancestors with unconditional inactive
+status, and requires every ancestor to be a direct same-root prefix of the projected
+carrier. Conditional activity/definition, tagged ancestry, indirect holders and nested
+loan contents remain partial.
+
+Each distinct retained carrier place must have a supported local owned record layout
+and complete unconditional stored-leaf coverage. The checker collects all its leaf loans,
+including owners outside the final projected record, and retains the original broad
+ancestor origins. One shared 4096 budget bounds alias visits, layouts and leaf paths;
+existing origin/ancestry closure limits still apply. A shared copy does not acquire new
+ancestry or holder guards beyond the checked loan relationships.
+
+The independent structural verifier permits ordinary reference-containing ancestors only
+when they are direct supported record prefixes of the actual local target. Exact target
+holder coverage remains mandatory. Unrelated carriers, unsupported descendants and
+indirect ancestor origins are rejected. Expansion certificates independently reject
+removing the broad holder, erasing its additional stored owner, or weakening completeness.
+This changes metadata coverage without changing source ownership or origin contracts.
+
+Native formation and graph traversal are unchanged: incoming incomplete or foreign proof
+cannot become complete. Host tests use a projected reference whose runtime graph excludes
+one ancestor-owned pointee. Complete checked ancestry still blocks that pointee, whole
+holder movement and another holder field while admitting disjoint work. The same checks
+hold for live, readiness-waiting and completed children, with rejection leaving state
+unchanged and normal retirement preserved.
+
+The [runnable alias example](../playground/aliased_carrier_tasks.tellur) moves a local
+exclusive carrier alias, takes a shared projected reborrow and passes it to a cold task.
+Original/expanded O0/O2 runs require complete nonempty capture and retained delivery,
+checked disjoint host batches and source-observation parity across quota partitions.
+Conditional aliases and references received from a call remain partial.
+
+Next, audit incoming and received carrier references before extending indirect holder
+guards. Static annotations must preserve checked result permissions while requiring
+complete incoming formation and stored-leaf evidence. No source scheduling, `spawn`/`yield`,
+cancellation, async adapters/disposal or LLVM coroutine lowering is added here.
+
 ## Reference execution invariants
 
 A step partition must not itself become a source effect. The same selected schedule
