@@ -263,6 +263,37 @@ fn compiled_guarded_input_captures_keep_complete_holders_and_partial_callers() {
     );
 }
 
+#[test]
+fn compiled_incoming_carriers_keep_full_roots_and_partial_field_copies() {
+    let input = include_str!("../../playground/incoming_carrier_tasks.tellur");
+    let transitions = &[
+        "Local",
+        "Effect",
+        "Run",
+        "Defer",
+        "AwaitTask",
+        "Return",
+        "Delivery",
+    ];
+    let observed = compare_selection("incoming-carriers", input, &[], transitions);
+    let partial = compare_selection("incoming-carriers-partial", input, &[], transitions);
+    let p = crate::compile(
+        input,
+        crate::manifest::Manifest::from_json(include_str!("../../playground/manifest.json"))
+            .unwrap(),
+    )
+    .unwrap();
+    let reference = p
+        .run(&crate::runtime::Scenario {
+            entry: "main".into(),
+            arguments: vec![],
+            calls: vec![],
+        })
+        .unwrap();
+    assert_eq!(observed, serde_json::to_value(reference).unwrap());
+    assert_eq!(observed, partial);
+}
+
 fn compare_selection(label: &str, input: &str, args: &[&str], expected: &[&str]) -> Json {
     let root =
         std::env::temp_dir().join(format!("tellur-selection-{label}-{}", std::process::id()));
@@ -293,7 +324,10 @@ fn compare_selection(label: &str, input: &str, args: &[&str], expected: &[&str])
         let normal = format!(
             "fn entry_{entry}(host:&mut Host,args:Vec<V>)->R<Completion>{{drive(host,args,&MODEL_{entry})}}"
         );
-        let expect_guards = matches!(label, "detached-guards" | "local-guards" | "guarded-input");
+        let expect_guards = matches!(
+            label,
+            "detached-guards" | "local-guards" | "guarded-input" | "incoming-carriers"
+        );
         let expect_complete = matches!(
             label,
             "loops"
@@ -302,6 +336,7 @@ fn compare_selection(label: &str, input: &str, args: &[&str], expected: &[&str])
                 | "aliased-carriers"
                 | "incoming-leaves"
                 | "guarded-input"
+                | "incoming-carriers"
         );
         let replacement = format!(
             r#"fn entry_{entry}(host:&mut Host,args:Vec<V>)->R<Completion>{{
@@ -327,7 +362,10 @@ fn compare_selection(label: &str, input: &str, args: &[&str], expected: &[&str])
         } else {
             generated
         };
-        let generated = if matches!(label, "incoming-leaves-partial" | "guarded-input-partial") {
+        let generated = if matches!(
+            label,
+            "incoming-leaves-partial" | "guarded-input-partial" | "incoming-carriers-partial"
+        ) {
             generated.replace("execution::reference_evidence::inherit_checked(v,reference_value)",r#"{
                 let mut incoming=reference_value;
                 if let V::Reference{evidence,..}=&mut incoming {
@@ -346,7 +384,10 @@ fn compare_selection(label: &str, input: &str, args: &[&str], expected: &[&str])
             &format!("{CONTEXTS}\n{}", include_str!("selection_model.rs")),
             1,
         );
-        let generated = if matches!(label, "incoming-leaves" | "guarded-input") {
+        let generated = if matches!(
+            label,
+            "incoming-leaves" | "guarded-input" | "incoming-carriers"
+        ) {
             generated.replace("let dependencies = c.dependencies(&selected)?;", r#"
                 let dependencies = c.dependencies(&selected)?;
                 assert!(matches!(dependencies, Dependencies::Complete {..}), "every incoming leaf capture must remain complete: {dependencies:?}");
@@ -357,13 +398,24 @@ fn compare_selection(label: &str, input: &str, args: &[&str], expected: &[&str])
         } else {
             generated
         };
-        let generated = if matches!(label, "incoming-leaves-partial" | "guarded-input-partial") {
+        let generated = if matches!(
+            label,
+            "incoming-leaves-partial" | "guarded-input-partial" | "incoming-carriers-partial"
+        ) {
             generated.replace("let dependencies = c.dependencies(&selected)?;",r#"
                 let dependencies = c.dependencies(&selected)?;
                 if c.parked[&selected.id].name == "leaf" {
                     assert!(matches!(dependencies,Dependencies::Partial {..}),"partial caller evidence cannot be promoted");
                 }
             "#)
+        } else {
+            generated
+        };
+        let generated = if label == "incoming-carriers-partial" {
+            generated.replace(
+                "if c.parked[&selected.id].name == \"leaf\" {",
+                "if matches!(c.parked[&selected.id].name, \"relay\" | \"inspect\") {",
+            )
         } else {
             generated
         };

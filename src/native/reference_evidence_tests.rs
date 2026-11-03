@@ -712,3 +712,137 @@ fn guarded_input_attachment_rejects_unrelated_missing_and_weakened_proofs_atomic
         assert_eq!(before, format!("{:?}", &*values));
     }
 }
+
+fn carrier_fixture() -> (Frames, super::super::Frame, V, Vec<Origin>, Vec<InputLeaf>) {
+    let mut values = Frames::default();
+    let f = values.enter(6).unwrap();
+    let b = f.base();
+    values[b] = Some(V::U32(1));
+    values[b + 1] = Some(V::U32(2));
+    let formed = |values: &Frames, root, ty| {
+        let mut v = reference(values, root, &[], false, ty).unwrap();
+        let V::Reference { evidence, .. } = &mut v else {
+            unreachable!()
+        };
+        evidence.origins = Origins::Complete(vec![]);
+        v
+    };
+    let left = formed(&values, b, "&U32");
+    let right = formed(&values, b + 1, "&U32");
+    values[b + 2] = Some(record(
+        "envelope",
+        vec![record("view", vec![left.clone()]), right.clone()],
+    ));
+    values[b + 3] = Some(formed(&values, b + 2, "&envelope"));
+    values[b + 4] = Some(left);
+    values[b + 5] = Some(right);
+    let selected = reference(&values, b + 3, &[0], true, "&view").unwrap();
+    let origins = vec![
+        origin(b + 3, &[], true, false),
+        origin(b + 3, &[0], true, false),
+        origin(b + 4, &[], true, false),
+        origin(b + 5, &[], true, false),
+    ];
+    let inputs = vec![
+        InputLeaf {
+            slot: b + 4,
+            fields: &[0, 0],
+        },
+        InputLeaf {
+            slot: b + 5,
+            fields: &[1],
+        },
+    ];
+    (values, f, selected, origins, inputs)
+}
+#[test]
+fn carrier_input_attachment_keeps_broad_owners_and_partial_caller_evidence() {
+    for partial in 0..5 {
+        let (mut values, f, mut selected, origins, inputs) = carrier_fixture();
+        let b = f.base();
+        let downgrade = |v: &mut V| {
+            let V::Reference { evidence, .. } = v else {
+                unreachable!()
+            };
+            evidence.origins = Origins::Partial(vec![]);
+        };
+        match partial {
+            1 => downgrade(&mut selected),
+            2 => downgrade(values[b + 3].as_mut().unwrap()),
+            3 => downgrade(values[b + 5].as_mut().unwrap()),
+            4 => {
+                let V::Construct { fields, .. } = values[b + 2].as_mut().unwrap() else {
+                    unreachable!()
+                };
+                downgrade(&mut fields[1]);
+            }
+            _ => {}
+        }
+        let before = format!("{:?}", &*values);
+        let value = attach_carrier_input(&values, selected, &origins, b + 3, &inputs);
+        assert_eq!(before, format!("{:?}", &*values));
+        let result = &evidence(&value).origins;
+        assert_eq!(result.is_complete(), partial == 0, "{result:?}");
+        let (Origins::Complete(entries) | Origins::Partial(entries)) = result else {
+            panic!("{result:?}")
+        };
+        assert!(
+            entries
+                .iter()
+                .any(|o| values.require_storage(&o.place.storage).unwrap() == b + 1)
+        );
+        assert!(entries.iter().any(
+            |o| values.require_storage(&o.place.storage).unwrap() == b + 2
+                && o.place.fields.is_empty()
+        ));
+    }
+}
+#[test]
+fn carrier_input_attachment_rejects_missing_changed_and_duplicate_fields_without_effects() {
+    for mutation in 0..8 {
+        let (mut values, f, mut selected, mut origins, mut inputs) = carrier_fixture();
+        let b = f.base();
+        match mutation {
+            0 => {
+                inputs.pop();
+            }
+            1 => inputs[1].fields = &[0, 0],
+            2 => inputs[1].slot = b + 4,
+            3 => {
+                let V::Construct { fields, .. } = values[b + 2].as_mut().unwrap() else {
+                    unreachable!()
+                };
+                fields[1] = V::Unit;
+            }
+            4 => {
+                let V::Reference { evidence, .. } = values[b + 5].as_mut().unwrap() else {
+                    unreachable!()
+                };
+                evidence.target = None;
+            }
+            5 => {
+                origins.remove(0);
+            }
+            6 => {
+                let V::Reference { ty, .. } = &mut selected else {
+                    unreachable!()
+                };
+                *ty = "&mutable view".into();
+            }
+            _ => {
+                let V::Reference { evidence, .. } = &mut selected else {
+                    unreachable!()
+                };
+                evidence.target = None;
+            }
+        };
+        let before = format!("{:?}", &*values);
+        let value = attach_carrier_input(&values, selected, &origins, b + 3, &inputs);
+        assert!(
+            matches!(evidence(&value).origins, Origins::Unavailable(_)),
+            "{mutation}: {:?}",
+            evidence(&value)
+        );
+        assert_eq!(before, format!("{:?}", &*values));
+    }
+}

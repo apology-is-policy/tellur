@@ -4410,3 +4410,20 @@ leaves, holders and unselected stored references cannot become complete. Host ad
 otherwise unreachable owners through live/waiting/completed children. Original/expanded O0/O2
 models exercise actual generated attachment, captures and pending delivery, and injected partial
 callers preserve the same source observations across quota partitions.
+
+## Complete incoming carriers (0.160)
+
+Metadata tests cover whole and projected incoming carriers through direct and erased aliases,
+including every original private input field and the broad original root. Grouped/returned
+permissions remain partial. Independent structural and certificate mutations reject omitted,
+changed or duplicate descriptors, missing broad origins and generic complete substitutions.
+Native probes reconcile actual fields with original materializations and preserve partial
+operand, holder, leaf and unselected sibling evidence without changing source state. Host
+admission blocks whole-holder and outside-owner access across live/waiting/completed children.
+Original/expanded O0/O2 models cover generated attachment, capture, pending delivery and
+injected partial inputs under quota partitions with unchanged reference observations.
+
+Nested expansion regressions cover both carrier and guarded input descriptors inside loops
+and fault boundaries, comparing original/expanded execution and rejecting removed nested
+materialization evidence. This also retains existing generic wrapper and loop-local carrier
+behavior after descriptor verification.

@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.159.0** implements the v0.1 checked core and the current language
+Compiler release **0.160.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -928,3 +928,10 @@ borrowed holder, including other stored owners. Direct and local aliased reborro
 an explicit checked relationship; partial or invalid runtime evidence stays conservative.
 Shared field copies remain holder-free. Try
 `./bin/tellurc exec playground/guarded_input_tasks.tellur`.
+
+## Incoming carrier dependencies in 0.160
+
+Whole incoming ordinary carriers retain their full original aggregate and every stored owner
+through direct forwarding, projected reborrows and local aliases. Partial or changed caller
+metadata stays conservative, including evidence outside the selected projection. Run
+`./bin/tellurc exec playground/incoming_carrier_tasks.tellur`.

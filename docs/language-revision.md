@@ -218,8 +218,10 @@ E1d.2d.3s.11 preserves validated incoming evidence while materializing singleton
 input leaves. E1d.2d.3s.12 closes subsequent singleton shared leaf uses with full incoming
 pointee coverage. E1d.2d.3s.13 supplies strict native holder snapshots, including actual
 stored-owner coverage. E1d.2d.3s.14 now certifies exact exclusive input leaf/holder relationships,
-including broad actual holder closure through supported local aliases. Whole incoming carrier
-and unsupported permission/ancestry cases remain conservative. Compiler **0.159.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
+including broad actual holder closure through supported local aliases. E1d.2d.3s.15 now
+closes whole incoming ordinary carriers and projected aliases, retaining the original full
+aggregate and every singleton field materialization. Unsupported permission/ancestry cases
+remain conservative; source handoff integration remains ahead. Compiler **0.160.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
 lifetime checkpoints of milestone 2, the array/vector/map core of milestone 3,
 and implicit entry, inline/stored adapters, owned capture, named outcome contracts
 and checked forwarding in milestone 4. A first [semantic foundation](semantic-foundation.md)
@@ -496,6 +498,7 @@ do not block this design work. E2 remains the native coroutine target.
 | E1d.2d.3s.12 | Complete singleton shared input leaves | Delivered in 0.157: exact registered singleton shared input permissions support reference-free reborrows, local aliases and projections while preserving the full incoming pointee and all caller origins. Complete runtime evidence is still required; partial callers are never promoted. Copied shared fields do not acquire holder guards. Exclusive/unioned/conditional/returned permissions and whole indirect carrier closure remain partial |
 | E1d.2d.3s.13 | Bounded native holder snapshots | Delivered in 0.158: strict formation-checked traversal snapshots the actual incoming aggregate, every reachable stored owner and inherited symbolic origins into bounded retained metadata. Partial inputs stay partial; missing/stale/foreign or over-budget evidence is unavailable. Host and generated probes cover hidden owners, rejection atomicity and unchanged observations. Compiler guard attachment and exclusive input admission remain gated |
 | E1d.2d.3s.14 | Checked exclusive input holders | Delivered in 0.159: an explicit guarded-input descriptor pairs exact singleton entry permissions with their original field copy. Independent structural/certificate checks preserve exact and broad holder coverage; native attachment validates actual identities and snapshots all stored owners before merging evidence. Direct/aliased/nested record probes and partial callers retain existing semantics; whole incoming carriers and unsupported ancestry stay conservative |
+| E1d.2d.3s.15 | Complete incoming carriers | Delivered in 0.160: explicit carrier-input descriptors preserve the full original ordinary aggregate and every singleton reference field through direct, projected and erased aliases. Independent verifier/certificate checks and native field reconciliation reject omitted or changed evidence; full snapshots retain owners outside projections. Partial callers stay partial. Source handoff integration and unsupported ancestry remain separate |
 | E2 | Native coroutine lowering | Preserved architectural target: direct LLVM coroutine primitives, pinned-toolchain experiment, frame lifetime rules and schedule-based differential tests; I1 must keep this route open |
 | T1 | Stronger source transformations | Hold current scope during P1–P5: extraction correspondence, continuation cuts, source-level lift and editor actions |
 | R1 | Mathematical foundations | Maintain existing evidence; defer extensions during P1–P5: preservation judgments, richer protocol abstractions, infinite/causal behavior, mechanization |

@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-darwin-arm64-0.159.0.vsix` using **Extensions:
+1. Install the supplied `tellur-language-darwin-arm64-0.160.0.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1417,3 +1417,10 @@ borrowed holder, including other stored owners. Direct and local aliased reborro
 an explicit checked relationship; partial or invalid runtime evidence stays conservative.
 Shared field copies remain holder-free. Try
 `./bin/tellurc exec playground/guarded_input_tasks.tellur`.
+
+## Incoming carrier dependencies in 0.160
+
+Whole incoming ordinary carriers retain their full original aggregate and every stored owner
+through direct forwarding, projected reborrows and local aliases. Partial or changed caller
+metadata stays conservative, including evidence outside the selected projection. Run
+`./bin/tellurc exec playground/incoming_carrier_tasks.tellur`.

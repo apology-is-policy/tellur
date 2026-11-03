@@ -78,6 +78,152 @@ impl Verifier<'_> {
             }
         }
     }
+    fn incoming_field(&self, leaf: Id, holder: &Place) -> bool {
+        // Inlining may put the original parameter copies inside a loop or
+        // boundary. Slot identities remain region-wide and must still match.
+        let mut pending = vec![self.region.code.as_slice()];
+        while let Some(code) = pending.pop() {
+            for instruction in code {
+                match &instruction.action {
+                    Action::Bind(
+                        id,
+                        Expr::WithReferenceEvidence(value, ReferenceEvidence::Incoming),
+                    ) if *id == leaf && matches!(value.as_ref(), Expr::Place(p) if p == holder) => {
+                        return true;
+                    }
+                    Action::Loop { body, .. } => pending.push(body),
+                    Action::Boundary { body, handler, .. } => {
+                        pending.push(body);
+                        pending.push(handler);
+                    }
+                    _ => {}
+                }
+            }
+        }
+        false
+    }
+    fn carrier_input(
+        &self,
+        value: &Expr,
+        holder: Id,
+        leaves: &[ReferenceInput],
+        origins: &[ReferenceOrigin],
+    ) -> Result<()> {
+        let m = self.program.manifest();
+        let Expr::Reference(target, _) = value else {
+            return Err(error("carrier input requires a reborrow"));
+        };
+        if !target.indirect || target.root != holder {
+            return Err(error("carrier input requires its original root"));
+        }
+        let (_, root_ty) = crate::manifest::reference_inner(self.slot(holder)?)
+            .ok_or_else(|| error("carrier input holder must be a reference"))?;
+        if !local_carrier_shape(m, root_ty) || leaves.is_empty() {
+            return Err(error("unsupported carrier input shape"));
+        }
+        let mut selected_ty = root_ty;
+        for index in &target.fields {
+            let Some(TypeDef::Record { fields, .. }) = m.type_def(selected_ty) else {
+                return Err(error("carrier input projection must follow records"));
+            };
+            selected_ty = &fields
+                .get(*index)
+                .ok_or_else(|| error("invalid carrier input projection"))?
+                .ty;
+        }
+        if !m.contains_references(selected_ty) || !local_carrier_shape(m, selected_ty) {
+            return Err(error("carrier input requires a reference-bearing record"));
+        }
+        let mut budget = 4096usize;
+        let mut expected = BTreeMap::new();
+        let mut pending = vec![(root_ty, vec![])];
+        while let Some((ty, path)) = pending.pop() {
+            budget = budget
+                .checked_sub(1 + path.len())
+                .ok_or_else(|| error("carrier input shape limit exceeded"))?;
+            if let Some((_, inner)) = crate::manifest::reference_inner(ty) {
+                if m.contains_references(inner) {
+                    return Err(error("carrier input excludes nested references"));
+                }
+                expected.insert(path, ty);
+            } else if m.contains_references(ty) {
+                let Some(TypeDef::Record { fields, .. }) = m.type_def(ty) else {
+                    return Err(error("carrier input excludes tagged reference fields"));
+                };
+                if fields.len() > budget.saturating_sub(pending.len()) {
+                    return Err(error("carrier input shape limit exceeded"));
+                }
+                for (i, f) in fields.iter().enumerate() {
+                    let mut p = path.clone();
+                    p.push(i);
+                    pending.push((&f.ty, p));
+                }
+            }
+        }
+        let mut ids = BTreeSet::new();
+        let mut paths = BTreeSet::new();
+        for input in leaves {
+            budget = budget
+                .checked_sub(1 + input.fields.len())
+                .ok_or_else(|| error("carrier input descriptor limit exceeded"))?;
+            if !ids.insert(input.leaf) || !paths.insert(input.fields.clone()) {
+                return Err(error("duplicate carrier input leaf"));
+            }
+            same(
+                expected
+                    .get(&input.fields)
+                    .ok_or_else(|| error("unexpected carrier input field"))?,
+                self.slot(input.leaf)?,
+            )?;
+            if !self.incoming_field(
+                input.leaf,
+                &Place {
+                    root: holder,
+                    fields: input.fields.clone(),
+                    indirect: true,
+                },
+            ) {
+                return Err(error("carrier input lacks original field materialization"));
+            }
+        }
+        if paths != expected.keys().cloned().collect() {
+            return Err(error("carrier input omits stored fields"));
+        }
+        let has = |root, fields: &[usize]| {
+            origins.iter().any(|o| {
+                o.place.root == root
+                    && o.place.indirect
+                    && o.place.fields == fields
+                    && !o.guard
+                    && !o.opaque
+            })
+        };
+        if !has(holder, &[])
+            || !has(holder, &target.fields)
+            || leaves.iter().any(|l| !has(l.leaf, &[]))
+        {
+            return Err(error("carrier input lacks full root and leaf origins"));
+        }
+        for o in origins {
+            budget = budget
+                .checked_sub(1 + o.place.fields.len())
+                .ok_or_else(|| error("carrier input origin limit exceeded"))?;
+            if o.guard || o.opaque || !o.place.indirect {
+                return Err(error("unsupported carrier input origin"));
+            }
+            let ty = self.expr(&Expr::Place(o.place.clone()))?;
+            if o.place.root == holder {
+                if !target.fields.starts_with(&o.place.fields) || !local_carrier_shape(m, &ty) {
+                    return Err(error("carrier input ancestor is not a record prefix"));
+                }
+            } else if !ids.contains(&o.place.root) || m.contains_references(&ty) {
+                return Err(error(
+                    "carrier input origin is not an original scalar-pointee leaf",
+                ));
+            }
+        }
+        Ok(())
+    }
     fn guarded_input(
         &self,
         value: &Expr,
@@ -124,11 +270,7 @@ impl Verifier<'_> {
         same(field_ty, self.slot(leaf)?)?;
         // Expansion can replace entry parameters with local slots. The original
         // Incoming materialization must still independently identify this field.
-        if !self.region.code.iter().any(|i| {
-            matches!(&i.action,
-            Action::Bind(id, Expr::WithReferenceEvidence(v, ReferenceEvidence::Incoming))
-            if *id == leaf && matches!(v.as_ref(), Expr::Place(p) if p == holder))
-        }) {
+        if !self.incoming_field(leaf, holder) {
             return Err(error(
                 "guarded input lacks its original field materialization",
             ));
@@ -180,6 +322,9 @@ impl Verifier<'_> {
                     } else {
                         None
                     };
+                if let ReferenceEvidence::CarrierInput { holder, leaves, .. } = evidence {
+                    self.carrier_input(value, *holder, leaves, origins)?;
+                }
                 if crate::manifest::reference_inner(&ty).is_none() {
                     return Err(error("reference evidence requires a reference value"));
                 }
@@ -217,7 +362,9 @@ impl Verifier<'_> {
                         ));
                     }
                 }
-                if evidence.is_complete() {
+                if evidence.is_complete()
+                    && !matches!(evidence, ReferenceEvidence::CarrierInput { .. })
+                {
                     let inner = crate::manifest::reference_inner(&ty).unwrap().1;
                     let carrier = if m.contains_references(inner) {
                         let Expr::Reference(target, _) = value.as_ref() else {
@@ -1659,6 +1806,150 @@ control main() exits done {
                 }
             }
             assert_eq!(p.verify().unwrap_err().code, "E_IR", "mutation {mutation}");
+        }
+    }
+    #[test]
+    fn carrier_input_structure_requires_every_original_field_and_broad_root() {
+        let original = crate::compile(
+            include_str!("../playground/incoming_carrier_tasks.tellur"),
+            crate::manifest::Manifest::from_json(include_str!("../playground/manifest.json"))
+                .unwrap(),
+        )
+        .unwrap();
+        for mutation in 0..7 {
+            let mut p = original.clone();
+            let r = p.regions.get_mut("relay").unwrap();
+            let evidence = r
+                .code
+                .iter_mut()
+                .find_map(|i| match &mut i.action {
+                    Action::Decide {
+                        operation: Operation::Defer(_),
+                        args,
+                        ..
+                    } => match &mut args[0] {
+                        Expr::WithReferenceEvidence(
+                            _,
+                            e @ ReferenceEvidence::CarrierInput { .. },
+                        ) => Some(e),
+                        _ => None,
+                    },
+                    _ => None,
+                })
+                .unwrap();
+            let ReferenceEvidence::CarrierInput {
+                origins,
+                holder,
+                leaves,
+            } = evidence
+            else {
+                unreachable!()
+            };
+            let leaf = leaves[0].leaf;
+            match mutation {
+                0 => {
+                    leaves.pop();
+                }
+                1 => leaves[0].fields = vec![1],
+                2 => leaves[0].leaf = *holder,
+                3 => origins.retain(|o| !(o.place.root == *holder && o.place.fields.is_empty())),
+                4 => leaves.push(leaves[0].clone()),
+                5 => *evidence = ReferenceEvidence::Complete(origins.clone()),
+                _ => {}
+            }
+            if mutation == 6 {
+                for i in &mut r.code {
+                    if let Action::Bind(id, Expr::WithReferenceEvidence(_, e)) = &mut i.action
+                        && *id == leaf
+                    {
+                        *e = ReferenceEvidence::Partial(vec![]);
+                    }
+                }
+            }
+            assert_eq!(p.verify().unwrap_err().code, "E_IR", "mutation {mutation}");
+        }
+    }
+    #[test]
+    fn input_descriptors_find_inlined_materializations_in_loops_and_boundaries() {
+        fn remove_incoming(code: &mut [Instruction]) -> usize {
+            let mut count = 0;
+            for instruction in code {
+                match &mut instruction.action {
+                    Action::Bind(_, Expr::WithReferenceEvidence(_, evidence))
+                        if matches!(evidence, ReferenceEvidence::Incoming) =>
+                    {
+                        *evidence = ReferenceEvidence::Partial(vec![]);
+                        count += 1;
+                    }
+                    Action::Loop { body, .. } => count += remove_incoming(body),
+                    Action::Boundary { body, handler, .. } => {
+                        count += remove_incoming(body) + remove_incoming(handler);
+                    }
+                    _ => {}
+                }
+            }
+            count
+        }
+        let declarations = r#"
+struct cell { string text; }
+struct view['a] { ref mutable cell values <- 'a; }
+control leaf(ref string input) exits done { emit(input); exit done; }
+control inspect(ref mutable view input) exits done {
+    leaf(borrow input.values.text); exit done;
+}
+control lend(ref mutable view input) exits ready... { exit ready {input}; }
+"#;
+        let work = r#"
+mutable cell owner=cell {"input"};
+mutable view saved=view {borrow mutable owner};
+inspect(borrow mutable saved);
+auto pending = capture lend(borrow mutable saved);
+delta pending { ready {auto result} => ready }
+[ready]: emit(borrow result.values.text);
+[entry]:
+"#;
+        for nested_loop in [false, true] {
+            for boundary in [false, true] {
+                let mut body = if nested_loop {
+                    format!(
+                        "{work} delta again {{true=>repeat,false=>finished}} [repeat]:again repeat(false); [finished]:exit done;"
+                    )
+                } else {
+                    format!("{work} exit done;")
+                };
+                if boundary {
+                    body = format!("fault boundary {{ {body} }} contingency [] {{ escalate; }}");
+                }
+                if nested_loop {
+                    body = format!("loop repeat(bool again=true) {{ {body} }}");
+                }
+                let source = format!(
+                    r#"{declarations}
+control main() exits done {{
+    {body}
+}}
+"#
+                );
+                let p = crate::compile(
+                    &source,
+                    crate::manifest::Manifest::from_json(include_str!(
+                        "../playground/manifest.json"
+                    ))
+                    .unwrap(),
+                )
+                .unwrap();
+                let encoded = serde_json::to_string(&p.regions).unwrap();
+                assert!(encoded.contains("CarrierInput") && encoded.contains("GuardedInput"));
+                let scenario = crate::runtime::Scenario {
+                    entry: "main".into(),
+                    arguments: vec![],
+                    calls: vec![],
+                };
+                let mut expanded = p.expanded("main").unwrap();
+                assert_eq!(p.run(&scenario).unwrap(), expanded.run(&scenario).unwrap());
+                assert!(remove_incoming(&mut expanded.regions.get_mut("main").unwrap().code) >= 2);
+                assert_eq!(expanded.verify().unwrap_err().code, "E_IR");
+            }
         }
     }
 }

@@ -99,13 +99,19 @@ pub struct ReferenceOrigin {
     pub guard: bool,
     pub opaque: bool,
 }
+/// One original ordinary-record input field materialization.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ReferenceInput {
+    pub leaf: Id,
+    pub fields: Vec<usize>,
+}
 /// Local dependency evidence, never execution permission. Complete coverage is
-/// bounded to direct forms and remains conditional on incoming runtime evidence.
+/// bounded to checked forms and remains conditional on incoming runtime evidence.
 /// Fresh local holder guards and owned record borrows (including erased local
 /// aliases) may retain complete closure with full ancestor/stored-leaf coverage.
 /// Singleton input leaves may close over transported evidence. Exclusive leaves
 /// additionally require an explicit checked holder relationship. Other permission
-/// families, whole indirect carriers, nested references and path gaps stay partial.
+/// families, unsupported carriers, nested references and path gaps stay partial.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ReferenceEvidence {
     Partial(Vec<ReferenceOrigin>),
@@ -124,18 +130,29 @@ pub enum ReferenceEvidence {
         leaf: Id,
         holder: Place,
     },
+    /// Complete received aggregate coverage, including its original full root
+    /// and every singleton field copy. Runtime input evidence is still required.
+    CarrierInput {
+        origins: Vec<ReferenceOrigin>,
+        holder: Id,
+        leaves: Vec<ReferenceInput>,
+    },
 }
 impl ReferenceEvidence {
     pub fn origins(&self) -> &[ReferenceOrigin] {
         match self {
             Self::Partial(origins)
             | Self::Complete(origins)
-            | Self::GuardedInput { origins, .. } => origins,
+            | Self::GuardedInput { origins, .. }
+            | Self::CarrierInput { origins, .. } => origins,
             Self::Incoming => &[],
         }
     }
     pub fn is_complete(&self) -> bool {
-        matches!(self, Self::Complete(_) | Self::GuardedInput { .. })
+        matches!(
+            self,
+            Self::Complete(_) | Self::GuardedInput { .. } | Self::CarrierInput { .. }
+        )
     }
 }
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -146,7 +163,7 @@ pub enum Expr {
     Reference(Place, String),
     /// Preserve checked origins before local aliases disappear. Evaluation is
     /// exactly that of the wrapped reference. Symbolic origins are never
-    /// dereferenced; GuardedInput separately validates its checked holder.
+    /// dereferenced; explicit input descriptors separately validate their holders.
     WithReferenceEvidence(Box<Expr>, ReferenceEvidence),
     /// Projection of a non-linear temporary. Owned record projections use Place.
     Project(Box<Expr>, usize),

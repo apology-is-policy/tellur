@@ -100,6 +100,38 @@ fn substitute(e: &Expr, slots: &BTreeMap<Id, Id>) -> Expr {
                     },
                 );
             }
+            if let ReferenceEvidence::CarrierInput {
+                origins,
+                holder,
+                leaves,
+            } = evidence
+            {
+                return Expr::WithReferenceEvidence(
+                    Box::new(sub(value)),
+                    ReferenceEvidence::CarrierInput {
+                        origins: origins
+                            .iter()
+                            .map(|o| ReferenceOrigin {
+                                place: Place {
+                                    root: slots[&o.place.root],
+                                    fields: o.place.fields.clone(),
+                                    indirect: o.place.indirect,
+                                },
+                                guard: o.guard,
+                                opaque: o.opaque,
+                            })
+                            .collect(),
+                        holder: slots[holder],
+                        leaves: leaves
+                            .iter()
+                            .map(|l| ReferenceInput {
+                                leaf: slots[&l.leaf],
+                                fields: l.fields.clone(),
+                            })
+                            .collect(),
+                    },
+                );
+            }
             let origins = evidence.origins();
             let wrap = if evidence.is_complete() {
                 ReferenceEvidence::Complete

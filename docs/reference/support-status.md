@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.159.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.160.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -284,3 +284,11 @@ leaf to its actual borrowed aggregate and retains every stored owner plus broad 
 Runtime formation checks and partial evidence remain mandatory. Shared copies remain
 holder-free; whole incoming carriers and unsupported permission/ancestry cases stay
 conservative. See [checked input holders](../async-execution.md#checked-exclusive-input-holders-e1d2d3s14).
+
+Since 0.160, supported whole incoming ordinary carriers can retain complete dependencies
+through direct uses, projected reborrows and local aliases. The original full aggregate and
+every singleton reference field remain covered, including owners outside the selected
+projection. Native field/formation checks and complete caller evidence are required; partial
+or changed evidence never becomes complete. Grouped, returned, conditional, tagged and
+nested-reference proof gaps stay conservative. Source execution remains sequential. See
+[incoming carriers](../async-execution.md#complete-incoming-carriers-e1d2d3s15).

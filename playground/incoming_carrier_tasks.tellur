@@ -1,0 +1,46 @@
+// A projected incoming carrier retains the original aggregate and every owner.
+struct text_view['left, 'right] {
+    ref string left <- 'left;
+    ref string right <- 'right;
+}
+struct envelope['left, 'right, 'other] {
+    text_view['left, 'right] selected;
+    ref string other <- 'other;
+}
+async control inspect(ref text_view input) exits done {
+    emit(input.left);
+    emit(input.right);
+    exit done;
+}
+async control relay(ref envelope input) exits done {
+    auto first = defer inspect(borrow input.selected);
+    await first;
+    ref envelope copied = input;
+    ref envelope moved = move copied;
+    auto second = defer inspect(borrow moved.selected);
+    await second;
+    exit done;
+}
+async control bounce(ref envelope input) exits done {
+    auto pending = defer relay(input);
+    await pending;
+    exit done;
+}
+async control startup() exits done {
+    mutable string left = "left";
+    mutable string right = "right";
+    mutable string other = "retained outside the projection";
+    envelope saved = envelope { text_view { borrow left, borrow right }, borrow other };
+    auto pending = defer bounce(borrow saved);
+    await pending;
+    drop(saved);
+    other = "released";
+    emit(borrow other);
+    exit done;
+}
+outcome command_result {
+    @exit 0 done
+}
+control main() exits command_result {
+    forward run startup();
+}

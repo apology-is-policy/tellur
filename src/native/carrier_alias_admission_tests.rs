@@ -488,3 +488,110 @@ fn checked_input_attachment_covers_owners_outside_a_detached_leaf_graph() {
         }
     }
 }
+
+#[test]
+fn projected_input_carrier_blocks_broad_holder_and_outside_owner_access() {
+    use super::super::reference_evidence::{InputLeaf, attach_carrier_input};
+    static INPUT_PARENT: Control = Control { slots: 7, ..PARENT };
+    for complete in [true, false] {
+        for state in 0..3 {
+            let mut h = host();
+            let mut c = Contexts::new(&mut h);
+            let root = c
+                .start(
+                    &INPUT_PARENT,
+                    vec![V::U32(7), V::U32(8), V::Unit, V::U32(0)],
+                )
+                .unwrap();
+            let b = c.parked[&root.id].machine.stack[0].base();
+            let formed = |c: &Contexts<'_>, offset, complete| {
+                attach_checked(
+                    &c.values,
+                    super::super::super::reference(&c.values, b + offset, &[], false, "&U32")
+                        .unwrap(),
+                    &[origin(b + offset, &[])],
+                    complete,
+                    true,
+                )
+            };
+            let left = formed(&c, 0, true);
+            let right = formed(&c, 1, complete);
+            c.values[b + 2] = Some(record(
+                "envelope",
+                vec![record("view", vec![left.clone()]), right.clone()],
+            ));
+            let mut aggregate =
+                super::super::super::reference(&c.values, b + 2, &[], false, "&envelope").unwrap();
+            let V::Reference { evidence, .. } = &mut aggregate else {
+                unreachable!()
+            };
+            evidence.origins = Origins::Complete(vec![]);
+            c.values[b + 4] = Some(left);
+            c.values[b + 5] = Some(aggregate);
+            c.values[b + 6] = Some(right);
+            let selected =
+                super::super::super::reference(&c.values, b + 5, &[0], true, "&view").unwrap();
+            let incoming = |root, fields| Origin {
+                root,
+                fields,
+                indirect: true,
+                guard: false,
+                opaque: false,
+            };
+            let before = snapshot(&c);
+            let selected = attach_carrier_input(
+                &c.values,
+                selected,
+                &[
+                    incoming(b + 5, &[]),
+                    incoming(b + 5, &[0]),
+                    incoming(b + 4, &[]),
+                    incoming(b + 6, &[]),
+                ],
+                b + 5,
+                &[
+                    InputLeaf {
+                        slot: b + 4,
+                        fields: &[0, 0],
+                    },
+                    InputLeaf {
+                        slot: b + 6,
+                        fields: &[1],
+                    },
+                ],
+            );
+            assert_eq!(snapshot(&c), before);
+            let child = c.start_child(&root, &CHILD, vec![selected]).unwrap();
+            if state == 1 {
+                c.advance_retained(&child, 1).unwrap();
+                c.park_for_readiness(&child).unwrap();
+            }
+            if state == 2 {
+                c.advance_retained(&child, 2).unwrap();
+            }
+            let before = snapshot(&c);
+            let progress = c.advance_disjoint(&root, 99);
+            assert!(matches!(progress.stop, AdmissionStop::Blocked(_)));
+            assert_eq!(
+                (progress.instructions, progress.transitions),
+                if complete { (1, 1) } else { (0, 0) }
+            );
+            if complete {
+                for pc in 1..5 {
+                    c.parked.get_mut(&root.id).unwrap().machine.stack[0].pc = pc;
+                    let before = snapshot(&c);
+                    assert!(matches!(
+                        c.borrower_interference(&root),
+                        BorrowerInterference::Overlap { .. }
+                    ));
+                    assert_eq!(c.advance_disjoint(&root, 99).transitions, 0);
+                    assert_eq!(snapshot(&c), before);
+                }
+            } else {
+                assert_eq!(snapshot(&c), before);
+            }
+            c.terminate().unwrap();
+            assert!(c.values.is_empty());
+        }
+    }
+}

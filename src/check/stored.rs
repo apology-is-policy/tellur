@@ -1139,6 +1139,7 @@ impl Checker<'_> {
             // Every received reference field is a distinct permission. The
             // caller has already checked construction/transfer of the record.
             let family = self.fresh();
+            let mut carrier_inputs = vec![];
             for (member, (leaf, address)) in initialized.iter().enumerate() {
                 let origins = initialized
                     .iter()
@@ -1164,6 +1165,14 @@ impl Checker<'_> {
                     .find(|l| l.target.place.root == *address)
                     .unwrap();
                 loan.origins = origins;
+                carrier_inputs.push(IncomingCarrierLeaf {
+                    loan: loan.id,
+                    permission: Permission::new(family, member),
+                    reference: ReferenceInput {
+                        leaf: *address,
+                        fields: leaf.fields.clone(),
+                    },
+                });
                 if incoming.contains(&leaf.fields)
                     && leaf.through.is_empty()
                     && leaf.sum_leaf.is_none()
@@ -1193,6 +1202,16 @@ impl Checker<'_> {
                         ),
                     );
                 }
+            }
+            if incoming.len() == schema.leaves.len()
+                && !incoming.is_empty()
+                && manifest::reference_inner(&slot.ty).is_some()
+                && matches!(
+                    self.manifest.type_def(ty),
+                    Some(manifest::TypeDef::Record { .. })
+                )
+            {
+                self.incoming_carriers.insert(slot.id, carrier_inputs);
             }
             self.refresh_public_contents(&addresses);
             self.attach_received_contents(slot.id);

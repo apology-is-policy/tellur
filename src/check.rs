@@ -176,6 +176,11 @@ struct LoopContext {
     parameters: Vec<manifest::Parameter>,
     scope: usize,
 }
+struct IncomingCarrierLeaf {
+    loan: Id,
+    permission: Permission,
+    reference: ReferenceInput,
+}
 struct Checker<'a> {
     recovery: recovery::Recovery,
     expression_guard: Guard,
@@ -194,6 +199,7 @@ struct Checker<'a> {
     incoming_shared: BTreeMap<Id, Permission>,
     /// Exclusive singleton leaves paired with their original borrowed holder field.
     incoming_exclusive: BTreeMap<Id, (Permission, Place)>,
+    incoming_carriers: BTreeMap<Id, Vec<IncomingCarrierLeaf>>,
     origin_schemas: &'a crate::origins::Schemas,
     declared_stored: Vec<StoredReturn>,
     declared_returns: crate::lifetimes::Returns,
@@ -892,6 +898,9 @@ impl Checker<'_> {
         )
     }
     fn reference_expression(&self, target: &ResolvedPlace, ty: String) -> Expr {
+        if let Some(proof) = self.incoming_carrier_reference(target, &ty) {
+            return proof;
+        }
         let mut roots = target.via.into_iter().collect::<Vec<_>>();
         let mut carriers = Vec::new();
         let complete = if self.manifest.contains_references(&target.ty) {
@@ -937,6 +946,179 @@ impl Checker<'_> {
                         && input.member == permission.member
                         && permission.fields == origin.place.fields
                 })
+    }
+    /// Reconstruct the full original carrier even when a shared alias erased its
+    /// parent IDs. Every original singleton leaf and every surviving ancestor is
+    /// checked; actual holder contents are validated separately by the runtime.
+    fn incoming_carrier_reference(&self, target: &ResolvedPlace, ty: &str) -> Option<Expr> {
+        if !target.place.indirect
+            || !target.carriers.is_empty()
+            || !self.manifest.contains_references(&target.ty)
+        {
+            return None;
+        }
+        let inputs = self.incoming_carriers.get(&target.place.root)?;
+        let root_ty = manifest::reference_inner(&self.result.slots.get(&target.place.root)?.ty)?.1;
+        if !matches!(
+            self.manifest.type_def(root_ty),
+            Some(manifest::TypeDef::Record { .. })
+        ) || !matches!(
+            self.manifest.type_def(&target.ty),
+            Some(manifest::TypeDef::Record { .. })
+        ) {
+            return None;
+        }
+        let mut budget = 4096usize;
+        let mut layout = vec![root_ty];
+        while let Some(ty) = layout.pop() {
+            budget = budget.checked_sub(1)?;
+            if let Some((_, inner)) = manifest::reference_inner(ty) {
+                if self.manifest.contains_references(inner) {
+                    return None;
+                }
+            } else if self.manifest.contains_references(ty) {
+                let Some(manifest::TypeDef::Record { fields, .. }) = self.manifest.type_def(ty)
+                else {
+                    return None;
+                };
+                if fields.len() > budget.saturating_sub(layout.len()) {
+                    return None;
+                }
+                layout.extend(fields.iter().map(|f| f.ty.as_str()));
+            }
+        }
+        let mut selected_ty = root_ty;
+        for field in &target.place.fields {
+            budget = budget.checked_sub(1)?;
+            let Some(manifest::TypeDef::Record { fields, .. }) =
+                self.manifest.type_def(selected_ty)
+            else {
+                return None;
+            };
+            selected_ty = &fields.get(*field)?.ty;
+        }
+        if selected_ty != target.ty {
+            return None;
+        }
+        for input in inputs {
+            budget = budget.checked_sub(1 + input.reference.fields.len())?;
+        }
+        let mut origins = vec![];
+        let mut include = |o: &LoanOrigin| -> Option<()> {
+            if o.guard || o.opaque || !o.place.indirect {
+                return None;
+            }
+            if o.permissions.is_empty() {
+                if o.place.root != target.place.root
+                    || !target.place.fields.starts_with(&o.place.fields)
+                {
+                    return None;
+                }
+            } else {
+                let [permission] = o.permissions.as_slice() else {
+                    return None;
+                };
+                let input = inputs.iter().find(|i| i.reference.leaf == o.place.root)?;
+                if permission.family != input.permission.family
+                    || permission.member != input.permission.member
+                    || permission.fields != o.place.fields
+                {
+                    return None;
+                }
+            }
+            budget = budget.checked_sub(1 + o.place.fields.len())?;
+            let origin = ReferenceOrigin {
+                place: o.place.clone(),
+                guard: false,
+                opaque: false,
+            };
+            if !origins.contains(&origin) {
+                origins.push(origin);
+            }
+            Some(())
+        };
+        for origin in self.origins(target) {
+            include(&origin)?;
+        }
+        include(&LoanOrigin {
+            place: Place {
+                fields: vec![],
+                ..target.place.clone()
+            },
+            permissions: vec![],
+            guard: false,
+            opaque: false,
+        })?;
+        let mut pending = target
+            .via
+            .into_iter()
+            .chain(inputs.iter().map(|i| i.loan))
+            .collect::<Vec<_>>();
+        let mut loans = vec![];
+        let mut seen = BTreeSet::new();
+        let mut steps = 0usize;
+        while !pending.is_empty() || !loans.is_empty() {
+            steps += 1;
+            if steps > 4096 {
+                return None;
+            }
+            if let Some(id) = pending.pop() {
+                if !seen.insert(id) {
+                    continue;
+                }
+                loans.push(
+                    self.scopes
+                        .iter()
+                        .flat_map(|s| s.loans.values())
+                        .find(|l| l.id == id)?,
+                );
+                continue;
+            }
+            let loan = loans.pop()?;
+            let ancestor = loan.target.place.indirect
+                && loan.target.place.root == target.place.root
+                && target.place.fields.starts_with(&loan.target.place.fields);
+            let leaf = loan.target.place.indirect
+                && !self.manifest.contains_references(&loan.target.ty)
+                && inputs
+                    .iter()
+                    .any(|i| i.reference.leaf == loan.target.place.root);
+            if (loan.active != TRUE && loan.active != FALSE)
+                || loan.defined != TRUE
+                || loan.sum_leaf.is_some()
+                || (!ancestor && (!leaf || !loan.contents.is_empty()))
+            {
+                return None;
+            }
+            for origin in &loan.origins {
+                include(origin)?;
+            }
+            if pending.len() + loans.len() + loan.parents.len() + loan.contents.len() > 4096 {
+                return None;
+            }
+            pending.extend(loan.parents.iter().copied());
+            loans.extend(loan.contents.iter().map(|(_, l)| l));
+        }
+        drop(include);
+        // Keep each original leaf explicit even when its ancestor was inactive.
+        for input in inputs {
+            let place = Place {
+                root: input.reference.leaf,
+                fields: vec![],
+                indirect: true,
+            };
+            if !origins.iter().any(|o| o.place == place) {
+                return None;
+            }
+        }
+        Some(Expr::WithReferenceEvidence(
+            Box::new(Expr::Reference(target.place.clone(), ty.into())),
+            ReferenceEvidence::CarrierInput {
+                origins,
+                holder: target.place.root,
+                leaves: inputs.iter().map(|i| i.reference.clone()).collect(),
+            },
+        ))
     }
     /// Match only the original singleton input permission, never a returned union.
     fn complete_exclusive_input_origin(&self, origin: &LoanOrigin) -> bool {
@@ -5342,6 +5524,7 @@ pub(crate) fn compile_concrete_unit(
                     contained_inputs: BTreeMap::new(),
                     incoming_shared: BTreeMap::new(),
                     incoming_exclusive: BTreeMap::new(),
+                    incoming_carriers: BTreeMap::new(),
                     origin_schemas: &origin_schemas,
                     declared_stored: signatures[&source.name].stored_returns.clone(),
                     declared_returns: signatures[&source.name].borrow_returns.clone(),

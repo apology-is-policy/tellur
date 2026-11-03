@@ -2721,6 +2721,46 @@ remain conservative. Source spawn/yield, cancellation, async adapters/disposal a
 coroutine lowering are unchanged. Run `playground/guarded_input_tasks.tellur` for direct and
 aliased leaves whose owners become available again after task completion and holder release.
 
+## Complete incoming carriers (E1d.2d.3s.15)
+
+Compiler 0.160 closes bounded references to incoming ordinary record carriers, including
+projected reborrows and erased local aliases. Every reference-bearing path must pass through
+ordinary records to a singleton input reference with a reference-free pointee. The checker
+retains the original full aggregate and all original field materializations, even fields
+outside the selected projection. Every checked ancestor must close under the same input
+permission family/member and projection; grouped, returned or conditional permissions do
+not gain completeness from an otherwise compatible type.
+
+The explicit `CarrierInput` descriptor records the original holder and each private input
+leaf with its field path. Independent structural verification reconstructs the full record
+shape, requires unique exact field coverage and matching `Incoming` materializations, and
+checks full root, selected path and leaf origins. Expansion and independent certificate
+mapping preserve each descriptor identity and path. Original field copies remain discoverable
+when inlining places them inside loops or fault boundaries, for both carrier and guarded input
+descriptors. Generic complete metadata cannot stand in for this proof. Shape, ancestry,
+descriptor and origin work remains bounded.
+
+After exactly-once operand evaluation, native attachment checks live formation identities,
+operand containment, access strength and each actual stored field against its original
+materialization. It independently reconciles every actual reference field, then merges the
+strict whole-holder snapshot with incoming evidence. This includes stored owners outside
+the selected carrier and broad caller ancestry. Partial operand, holder, original leaf or
+stored sibling evidence stays partial. Missing, changed, foreign, stale or over-budget
+evidence becomes unavailable without source effects or admission authority.
+
+The source example `playground/incoming_carrier_tasks.tellur` forwards a whole received
+carrier and projects it through direct and moved shared aliases. Owners become available
+again after completion and holder release. Original/expanded O0/O2 models inspect complete
+captures and pending delivery, inject partial field evidence and retain the same observations
+across host quota partitions. Host probes block broad holder and outside-owner access while
+allowing only freshly checked disjoint work.
+
+The next integration audit connects supported parent progress to explicit await handoffs
+with live children. Unsupported proof forms may remain conservative; expanding each one is
+not a prerequisite to that audit. Ordinary driver and retirement gates remain in force.
+Source spawn/yield, cancellation, async adapters/disposal and direct LLVM coroutine lowering
+remain separate work under the accepted explicit-handoff semantics.
+
 ## Reference execution invariants
 
 A step partition must not itself become a source effect. The same selected schedule

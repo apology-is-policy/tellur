@@ -778,3 +778,11 @@ leaf to its actual borrowed aggregate and retains every stored owner plus broad 
 Runtime formation checks and partial evidence remain mandatory. Shared copies remain
 holder-free; whole incoming carriers and unsupported permission/ancestry cases stay
 conservative. See [checked input holders](../async-execution.md#checked-exclusive-input-holders-e1d2d3s14).
+
+Since 0.160, supported whole incoming ordinary carriers can retain complete dependencies
+through direct uses, projected reborrows and local aliases. The original full aggregate and
+every singleton reference field remain covered, including owners outside the selected
+projection. Native field/formation checks and complete caller evidence are required; partial
+or changed evidence never becomes complete. Grouped, returned, conditional, tagged and
+nested-reference proof gaps stay conservative. Source execution remains sequential. See
+[incoming carriers](../async-execution.md#complete-incoming-carriers-e1d2d3s15).

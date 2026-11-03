@@ -200,6 +200,138 @@ pub fn attach_checked(
     }
     value
 }
+pub struct InputLeaf {
+    pub slot: usize,
+    pub fields: &'static [usize],
+}
+/// Retain a received carrier's original full aggregate and original field copies.
+/// This metadata operation never changes source evaluation or admits execution.
+pub fn attach_carrier_input(
+    values: &Frames,
+    mut value: V,
+    origins: &[Origin],
+    holder: usize,
+    leaves: &[InputLeaf],
+) -> V {
+    let bound =
+        carrier_input(values, &value, origins, holder, leaves).unwrap_or_else(Origins::Unavailable);
+    if let V::Reference { evidence, .. } = &mut value {
+        evidence.origins.extend(bound);
+    }
+    value
+}
+fn carrier_input(
+    values: &Frames,
+    value: &V,
+    origins: &[Origin],
+    holder: usize,
+    leaves: &[InputLeaf],
+) -> R<Origins> {
+    if leaves.is_empty() || leaves.len() > LIMIT || origins.len() > LIMIT {
+        return Err("carrier input descriptor limit exceeded".into());
+    }
+    let get = |slot| {
+        values
+            .get(slot)
+            .and_then(Option::as_ref)
+            .ok_or_else(|| "carrier input storage is unavailable".to_string())
+    };
+    let aggregate = get(holder)?;
+    let base = formed_target(values, aggregate)?;
+    let selected = formed_target(values, value)?;
+    if selected.storage != base.storage
+        || !selected.fields.starts_with(&base.fields)
+        || !matches!(selected.value(values)?, V::Construct { .. })
+        || !matches!(base.value(values)?, V::Construct { .. })
+    {
+        return Err("carrier input operand is outside its original aggregate".into());
+    }
+    if matches!(value,V::Reference{ty,..} if ty.starts_with("&mutable "))
+        && !matches!(aggregate,V::Reference{ty,..} if ty.starts_with("&mutable "))
+    {
+        return Err("carrier input cannot strengthen access".into());
+    }
+    let has = |slot, path: &[usize]| {
+        origins
+            .iter()
+            .any(|o| o.root == slot && o.indirect && o.fields == path && !o.guard && !o.opaque)
+    };
+    let suffix = &selected.fields[base.fields.len()..];
+    if !has(holder, &[])
+        || !has(holder, suffix)
+        || origins.iter().any(|o| o.guard || o.opaque || !o.indirect)
+    {
+        return Err("carrier input lacks full root and selected origins".into());
+    }
+    let mut budget = LIMIT;
+    let mut slots = vec![];
+    let mut paths = vec![];
+    for input in leaves {
+        budget = budget
+            .checked_sub(1 + input.fields.len())
+            .ok_or("carrier input descriptor limit exceeded")?;
+        if input.fields.is_empty()
+            || slots.contains(&input.slot)
+            || paths.contains(&input.fields.to_vec())
+            || !has(input.slot, &[])
+            || base.fields.len().saturating_add(input.fields.len()) > LIMIT
+        {
+            return Err("carrier input has missing or duplicate field evidence".into());
+        }
+        slots.push(input.slot);
+        paths.push(input.fields.to_vec());
+        let leaf = get(input.slot)?;
+        let target = formed_target(values, leaf)?;
+        let mut field = base.clone();
+        field.fields.extend_from_slice(input.fields);
+        let stored = field.value(values)?;
+        if !matches!((stored,leaf),(V::Reference{ty:a,..},V::Reference{ty:b,..}) if a==b)
+            || formed_target(values, stored)? != target
+        {
+            return Err("carrier input field no longer matches its materialization".into());
+        }
+    }
+    // Independently reconcile all actual aggregate fields; do not follow their
+    // pointees here. The strict dependency snapshot below handles those graphs.
+    let mut pending = vec![(base.value(values)?, vec![])];
+    let mut actual = vec![];
+    while let Some((v, path)) = pending.pop() {
+        budget = budget
+            .checked_sub(1 + path.len())
+            .ok_or("carrier input field limit exceeded")?;
+        match v {
+            V::Reference { .. } => actual.push(path),
+            V::Construct { fields, .. } => {
+                if fields.len() > budget.saturating_sub(pending.len()) {
+                    return Err("carrier input field limit exceeded".into());
+                }
+                for (i, v) in fields.iter().enumerate() {
+                    let mut p = path.clone();
+                    p.push(i);
+                    pending.push((v, p));
+                }
+            }
+            V::Task { .. } => return Err("carrier input task field is unsupported".into()),
+            _ => {}
+        }
+    }
+    actual.sort();
+    paths.sort();
+    if actual != paths {
+        return Err("carrier input omits actual stored fields".into());
+    }
+    for o in origins {
+        budget = budget
+            .checked_sub(1 + o.fields.len())
+            .ok_or("carrier input origin limit exceeded")?;
+    }
+    let mut bound = bind(values, origins, true)?;
+    bound.extend(super::dependencies::Dependencies::holder_origins(
+        values, aggregate,
+    ));
+    bound.require_live(values)?;
+    Ok(bound)
+}
 /// Attach a checked exclusive input relationship after exactly-once operand
 /// evaluation. Validate the original private leaf against the real holder field,
 /// then retain the entire holder graph. Rejections affect metadata only.

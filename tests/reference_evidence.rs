@@ -1078,3 +1078,137 @@ control main() exits done {exit done;}
             .is_complete()
     );
 }
+
+#[test]
+fn incoming_carriers_reconstruct_full_leaf_and_ancestor_coverage_after_alias_erasure() {
+    let source = include_str!("../playground/incoming_carrier_tasks.tellur");
+    let p = program(source);
+    let mut count = 0;
+    for name in ["bounce", "relay"] {
+        let r = p.regions().find(|r| r.name == name).unwrap();
+        for i in &r.code {
+            if let Action::Decide {
+                operation: Operation::Defer(_),
+                args,
+                ..
+            } = &i.action
+            {
+                let Expr::WithReferenceEvidence(
+                    _,
+                    ReferenceEvidence::CarrierInput {
+                        origins,
+                        holder,
+                        leaves,
+                    },
+                ) = &args[0]
+                else {
+                    panic!("missing carrier proof: {:?}", args[0]);
+                };
+                count += 1;
+                assert_eq!(leaves.len(), 3);
+                assert!(
+                    origins
+                        .iter()
+                        .all(|o| o.place.indirect && !o.guard && !o.opaque)
+                );
+                assert!(
+                    origins
+                        .iter()
+                        .any(|o| o.place.root == *holder && o.place.fields.is_empty())
+                );
+                for leaf in leaves {
+                    assert!(
+                        origins
+                            .iter()
+                            .any(|o| o.place.root == leaf.leaf && o.place.fields.is_empty())
+                    );
+                }
+                assert!(
+                    leaves.iter().any(|l| l.fields == [1]),
+                    "unselected stored owner must remain"
+                );
+            }
+        }
+    }
+    assert_eq!(count, 3);
+    let artifact = p.expansion_artifact("bounce").unwrap();
+    let expanded = p.accept_expansion(&artifact).unwrap();
+    let scenario = Scenario {
+        entry: "main".into(),
+        arguments: vec![],
+        calls: vec![],
+    };
+    assert_eq!(p.run(&scenario).unwrap(), expanded.run(&scenario).unwrap());
+    for kind in 0..6 {
+        let mut altered = serde_json::to_value(&artifact).unwrap();
+        fn mutate(v: &mut Json, kind: usize) -> bool {
+            if let Some(parts) = v
+                .get_mut("WithReferenceEvidence")
+                .and_then(Json::as_array_mut)
+                && let Some(proof) = parts[1].get_mut("CarrierInput")
+            {
+                match kind {
+                    0 => {
+                        proof["leaves"].as_array_mut().unwrap().pop();
+                    }
+                    1 => proof["leaves"][0]["fields"] = serde_json::json!([1]),
+                    2 => proof["leaves"][0]["leaf"] = proof["holder"].clone(),
+                    3 => {
+                        let holder = proof["holder"].clone();
+                        proof["origins"].as_array_mut().unwrap().retain(|o| {
+                            !(o["place"]["root"] == holder
+                                && o["place"]["fields"].as_array().unwrap().is_empty())
+                        });
+                    }
+                    4 => {
+                        let origins = proof["origins"].clone();
+                        parts[1] = serde_json::json!({"Complete":origins});
+                    }
+                    _ => {
+                        let outside = proof["leaves"]
+                            .as_array()
+                            .unwrap()
+                            .iter()
+                            .find(|l| l["fields"] == serde_json::json!([1]))
+                            .unwrap()["leaf"]
+                            .clone();
+                        proof["origins"]
+                            .as_array_mut()
+                            .unwrap()
+                            .retain(|o| o["place"]["root"] != outside);
+                    }
+                }
+                return true;
+            }
+            match v {
+                Json::Array(a) => a.iter_mut().any(|v| mutate(v, kind)),
+                Json::Object(o) => o.values_mut().any(|v| mutate(v, kind)),
+                _ => false,
+            }
+        }
+        assert!(mutate(&mut altered, kind));
+        assert_eq!(
+            p.accept_expansion(&serde_json::from_value(altered).unwrap())
+                .unwrap_err()
+                .code,
+            "E_EXPANSION_CERTIFICATE"
+        );
+    }
+    let grouped = program(
+        r#"
+struct view['a] {ref string left <- 'a; ref string right <- 'a;}
+async control consume(ref view input) exits done {exit done;}
+async control relay(ref view input) exits done {auto p=defer consume(input);await p;exit done;}
+control main() exits done {exit done;}
+"#,
+    );
+    assert!(
+        !capture_evidence(grouped.regions().find(|r| r.name == "relay").unwrap()).is_complete()
+    );
+    let returned=source.replace("async control bounce", "control returned(ref envelope input) exits ready {ref envelope value from input} {exit ready {input};}\nasync control bounce")
+        .replace("auto pending = defer relay(input);", "delta returned(input) {ready {auto value}=>ready}\n[ready]:\nauto pending = defer relay(value);");
+    let returned = program(&returned);
+    assert!(
+        !capture_evidence(returned.regions().find(|r| r.name == "bounce").unwrap()).is_complete()
+    );
+}
