@@ -3,8 +3,17 @@ use super::*;
 
 #[test]
 fn gated_boundary_handoffs_release_borrowers_before_inline_resource_owners() {
+    native_models(false);
+}
+
+#[test]
+fn gated_helper_spawned_borrowers_release_before_inline_resource_owners() {
+    native_models(true);
+}
+
+fn native_models(spawned: bool) {
     let root = std::env::temp_dir().join(format!(
-        "tellur-boundary-handoff-resources-{}",
+        "tellur-boundary-handoff-resources-{spawned}-{}",
         std::process::id()
     ));
     fs::create_dir_all(&root).unwrap();
@@ -15,11 +24,18 @@ fn gated_boundary_handoffs_release_borrowers_before_inline_resource_owners() {
         "let value=Counter { path:path.into(), id };value.record(\"make\");rust_api::make_outcome::made(value)"
     )).unwrap();
     for named in [false, true] {
-        for awaited in [false, true] {
-            let p =
+        for awaited in if spawned {
+            vec![true]
+        } else {
+            vec![false, true]
+        } {
+            let p = if spawned {
+                crate::boundary_handoff_model::spawned_resource_program(manifest.clone(), named)
+            } else {
                 crate::boundary_handoff_model::resource_program(manifest.clone(), named, awaited)
-                    .with_entry_exit_codes("main", BTreeMap::from([("done".into(), 0)]))
-                    .unwrap();
+            }
+            .with_entry_exit_codes("main", BTreeMap::from([("done".into(), 0)]))
+            .unwrap();
             for (expanded, p) in [(false, p.clone()), (true, p.expanded("main").unwrap())] {
                 let support = include_str!("source_scheduler.rs");
                 let entry = "drive_source(host, args, control, || usize::MAX)";
@@ -126,17 +142,33 @@ fn gated_boundary_handoffs_release_borrowers_before_inline_resource_owners() {
 
 #[test]
 fn gated_boundary_resource_models_retire_reference_storage_at_every_fuel_cut() {
+    reference_models(false);
+}
+
+#[test]
+fn gated_helper_spawned_resource_models_retire_reference_storage_at_every_fuel_cut() {
+    reference_models(true);
+}
+
+fn reference_models(spawned: bool) {
     use crate::runtime::{Event, RunCompletion, Scenario, ScriptCall};
     let root = std::env::temp_dir().join(format!(
-        "tellur-boundary-handoff-reference-resources-{}",
+        "tellur-boundary-handoff-reference-resources-{spawned}-{}",
         std::process::id()
     ));
     fs::create_dir_all(&root).unwrap();
     let manifest = resume_model::resource_tests::resource_manifest(&root);
     for named in [false, true] {
-        for awaited in [false, true] {
-            let p =
-                crate::boundary_handoff_model::resource_program(manifest.clone(), named, awaited);
+        for awaited in if spawned {
+            vec![true]
+        } else {
+            vec![false, true]
+        } {
+            let p = if spawned {
+                crate::boundary_handoff_model::spawned_resource_program(manifest.clone(), named)
+            } else {
+                crate::boundary_handoff_model::resource_program(manifest.clone(), named, awaited)
+            };
             for p in [p.clone(), p.expanded("main").unwrap()] {
                 for stop in [false, true] {
                     let mut calls: Vec<_> = [3, 4, 5]

@@ -928,7 +928,7 @@ impl<'a> Contexts<'a> {
             self.parked.insert(key.id, parked);
         }
         if let Some((domain, message, report, source_fault)) = settlement {
-            self.settle(
+            let resumed = self.settle(
                 &domain,
                 origin,
                 retired_parent,
@@ -938,6 +938,12 @@ impl<'a> Contexts<'a> {
             )?;
             if let Some(terminal) = self.terminal.remove(&key.id) {
                 result = terminal;
+            } else if self.source_checked
+                && resumed.as_ref().is_some_and(|owner| owner.id != key.id)
+            {
+                // Fault settlement returns the owning continuation immediately.
+                // Local recovery is not an implicit source scheduling handoff.
+                result = ContextPoll::Resumed(resumed.unwrap());
             } else if !self.parked.contains_key(&key.id) {
                 result = ContextPoll::Failed(report);
             }
@@ -1205,7 +1211,7 @@ impl<'a> Contexts<'a> {
         message: &str,
         mut report: fault::Report,
         source_fault: bool,
-    ) -> R<()> {
+    ) -> R<Option<ContextKey>> {
         let owner = self
             .parked
             .iter()
@@ -1376,11 +1382,16 @@ impl<'a> Contexts<'a> {
                 &message,
                 report,
                 source_fault,
-            )?;
+            )
         } else if !finished {
             result?;
+            Ok(Some(ContextKey {
+                session: self.identity.clone(),
+                id: owner,
+            }))
+        } else {
+            Ok(None)
         }
-        Ok(())
     }
 }
 

@@ -177,6 +177,14 @@ fn drive_source(
                 push(&mut runnable, parent);
             }
         }
+        // A restored owner may already have an old runnable/await queue entry.
+        // It is now the active chain, so retain no duplicate position that could
+        // turn later local recovery or a host pause into an implicit handoff.
+        if let Some(selected) = &selected {
+            runnable.retain(|r| match r {
+                Runnable::Run(key) | Runnable::Await(key) => key.id != selected.id,
+            });
+        }
         handles.retain(|id, _| contexts.host.tasks.contains(*id));
     };
     if !contexts.parked.is_empty()

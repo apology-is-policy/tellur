@@ -5,6 +5,8 @@ mod async_calls;
 pub mod bdd;
 #[cfg(test)]
 mod boundary_handoff_model;
+#[cfg(test)]
+mod boundary_recovery_model;
 pub mod certificate;
 mod check;
 mod collection_support;

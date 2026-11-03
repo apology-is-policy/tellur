@@ -1584,3 +1584,10 @@ boundaries beside live children. Hover states the remaining direct-boundary and
 handoff limits. Unsaved imported edits recompute that proof; the isolated editor
 check exercises a generic helper, local recovery, transitive-handoff rejection,
 repair and native execution. Generic named-boundary checking retains contingencies.
+
+Release 0.188 fixes native ordering after a child's locally handled fault. The
+owning contingency resumes before an unaffected sibling unless the source reaches
+another `await` or `yield`. The local-recovery editor fixture checks async hover,
+unsaved missing-await rejection and repair, then runs the example through the
+native build command and verifies its complete emission order. Source admission
+and contingency restrictions remain unchanged.

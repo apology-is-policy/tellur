@@ -1727,3 +1727,25 @@ fn compiled_gated_nested_boundary_handoff_model() {
         }
     }
 }
+
+#[test]
+fn compiled_gated_helper_local_recovery_and_children() {
+    for named in [false, true] {
+        for spawned in [false, true] {
+            for stop in [false, true] {
+                let p = crate::boundary_recovery_model::program(named, spawned, stop)
+                    .with_entry_exit_codes("main", BTreeMap::from([("done".into(), 0)]))
+                    .unwrap();
+                compare_program(&format!("helper_recovery_{named}_{spawned}_{stop}"), p);
+            }
+        }
+    }
+}
+
+#[test]
+fn compiled_local_recovery_preserves_source_turn() {
+    compare(
+        "local_recovery_source",
+        include_str!("../../playground/local_recovery_tasks.tellur"),
+    );
+}

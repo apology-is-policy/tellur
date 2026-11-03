@@ -1,0 +1,54 @@
+async control inner(bool broken) exits done faults {
+    emit("inner active");
+    yield;
+    delta broken {
+        true => failed,
+        false => ok
+    }
+    [failed]: fault "local failed";
+    [ok]: emit("inner finished");
+        exit done;
+}
+async control work(bool broken) exits done faults {
+    await inner(broken);
+    exit done;
+}
+async control outside() exits done {
+    emit("outside active");
+    yield;
+    yield;
+    yield;
+    emit("outside finished");
+    exit done;
+}
+control helper() exits done {
+    supervised loop retry(mutable bool first = true) {
+        bool broken = first;
+        first = false;
+        fault boundary {
+            run work(broken);
+            emit("helper returned");
+            exit done;
+        }
+            contingency [] {
+            emit("local recovery");
+            recover again retry;
+        }
+    }
+}
+async control delegated() exits done {
+    helper();
+    exit done;
+}
+async control startup() exits done {
+    auto child = spawn outside();
+    await delegated();
+    await child;
+    exit done;
+}
+outcome program_result {
+    @exit 0 done
+}
+control main() exits program_result {
+    forward run startup();
+}

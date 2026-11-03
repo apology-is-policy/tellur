@@ -3,7 +3,7 @@
 [Language reference](../language-reference.md) · [Design and next steps](../async-execution.md) ·
 [Execution failures](execution-failures.md)
 
-Compiler 0.184 supports `async control`, synchronous entry with `run`, direct
+Compiler 0.188 supports `async control`, synchronous entry with `run`, direct
 `await`, cold tasks with owned and borrowed captures, and a bounded cooperative
 scheduler for `spawn` tasks with owned values, direct borrows and nested owned record/option/variant/named-outcome captures/results, plus borrowed record/option/variant/named-outcome captures and whole borrowed record/option/variant/named-outcome results, plus reference chains through records. Source handoffs occur at `await` and `yield`.
 Async host I/O, cancellation and LLVM coroutine lowering remain later work.
@@ -128,7 +128,14 @@ both captured owners and every possible retained completion. An escaping child
 fault stops the owning boundary, applies resource fault dispositions to stopped
 children, and only then runs that boundary's contingency. Stopped sibling nested
 contingencies do not run. A child's own boundary can still handle its own fault.
-Faults remain separate from normal outcomes.
+Faults remain separate from normal outcomes. When that boundary handles the fault,
+its owning continuation resumes immediately. The contingency and recovered work
+keep the selected source turn until a reached `await` or `yield`; local recovery
+is not an implicit handoff to an unaffected sibling. Compiler 0.188 corrects native
+execution to follow this rule. The runnable
+[local recovery example](../../playground/local_recovery_tasks.tellur) emits
+`local recovery` before `outside finished`. Contingencies themselves cannot invoke
+async operations or hand off, including through synchronous helper calls.
 
 ## Direct borrowed captures
 

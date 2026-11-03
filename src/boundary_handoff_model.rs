@@ -164,6 +164,19 @@ fn check(build: fn(bool, bool) -> CheckedProgram, expected: &[&str]) {
 /// capture and independently moved string path are reordered; the child never observes either
 /// helper storage or the path. Resource capture admission is not bypassed.
 pub(crate) fn resource_program(manifest: Manifest, named: bool, awaited: bool) -> CheckedProgram {
+    resource_model(manifest, named, awaited, false)
+}
+
+pub(crate) fn spawned_resource_program(manifest: Manifest, named: bool) -> CheckedProgram {
+    resource_model(manifest, named, true, true)
+}
+
+fn resource_model(manifest: Manifest, named: bool, awaited: bool, spawned: bool) -> CheckedProgram {
+    let work = if spawned {
+        "auto child=spawn observe(path,parent);await child;"
+    } else {
+        "await observe(path,parent);"
+    };
     let call = if awaited {
         "run work(path,borrow local);"
     } else {
@@ -198,7 +211,7 @@ pub(crate) fn resource_program(manifest: Manifest, named: bool, awaited: bool) -
             [made]:inspect(parent);yield;yield;inspect(parent);close(local);exit done;
         }}
         async control work(string path,ref counter parent) exits done {{
-            await observe(path,parent);exit done;
+            {work}exit done;
         }}
         async control fail(bool stop) exits done faults {{
             yield;delta stop {{true=>failed,false=>ok}}

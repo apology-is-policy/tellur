@@ -3581,8 +3581,39 @@ faults still use the current boundary. Four nested-parent models verify preserva
 of the original failing child's cause, skipped inline contingencies, complete
 retirement and native/reference reports at every fuel and quota cutoff.
 
-The source gate remains closed. Next audit handoffs reached inside an inline named
-or lexical contingency, including local recovery and nested helper-owned children.
-That phase must preserve original sibling ownership, suppress stopped handler work,
-and retire retained resources before extending source admission. The installed
-compiler/LSP/VSIX stay at 0.187; these models do not require an editor reload.
+The source gate remains closed. The next audit covers local recovery and nested
+helper-owned children. Contingencies already reject async operations and transitive
+handoffs; suspending inside them is not part of this accepted language profile.
+E1e.23c records that restriction explicitly. This checkpoint itself kept the installed
+compiler/LSP/VSIX at 0.187.
+
+## Immediate local recovery and helper-owned children (E1e.23c)
+
+Compiler 0.188 fixes native source scheduling after an awaited child's locally
+handled fault. Settlement now returns the owning continuation directly, and source
+dispatch removes any stale runnable entry for that active owner. The contingency
+and recovered work continue until an explicit `await` or `yield`. Neither fault
+settlement nor a host quota silently gives an unaffected sibling a turn. Direct
+host context APIs retain their existing polling behavior.
+
+The legal [local recovery example](../playground/local_recovery_tasks.tellur)
+reproduced the defect on 0.187: native execution printed `outside finished` before
+`local recovery`, while the reference executor recovered first. The corrected
+native program agrees with the reference across original/expanded IR, O0/O2,
+every fuel cutoff through completion, and quotas `99`, `1`, and `0,3,1`.
+
+Eight gated IR models combine named/lexical helper boundaries, directly awaited or
+spawned inner children, and a healthy/faulting outside sibling. Local recovery
+preserves outer child ownership; an escaping outer fault still stops helper work
+and retains the original child cause. Private reference censuses require complete
+retirement at every fuel cutoff. Two further real-resource models prove that
+spawned observers release before helper holders and the original owning contingency;
+normal closes and fault dispositions remain distinct and every owner releases once.
+
+Async operations and `yield` remain unavailable in contingencies. Negative tests
+cover both handler forms and calls through one and two synchronous helper levels;
+no handler suspension or cleanup-mode semantics are introduced. The native fix is
+released for existing legal programs while inline boundary-bearing helper handoffs
+remain gated. The next checkpoint is the final source-admission review against the
+combined routing, recovery, required-join and resource evidence. Direct parent
+boundaries, handle crossing, async I/O readiness and cancellation remain separate.

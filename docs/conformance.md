@@ -4772,3 +4772,25 @@ while completed results and suspended siblings survive until their original owne
 joins or settles them. The reference context census now covers 90 variants.
 Production scheduler code is unchanged; admission follows the checked no-handoff
 proof, including named contingency bodies.
+
+## Local fault recovery preserves the selected source turn (0.188)
+
+`compiled_local_recovery_preserves_source_turn` compares a legal awaited-helper
+program against the reference executor at every fuel cutoff and quota partition,
+before/after expansion and at O0/O2. The 0.187 native baseline incorrectly ran an
+unaffected sibling before the local contingency. The regression requires recovery
+first; a fresh editor checks async hover, unsaved missing-await rejection/repair,
+and the exact native emission order in `playground/local_recovery_tasks.tellur`.
+
+`compiled_gated_helper_local_recovery_and_children` extends this comparison to eight
+named/lexical, direct-await/spawned-child and outside-success/fault models while
+asserting that their reordered source remains rejected. Reference census checks
+all retained stores at every cutoff. Spawned resource observers add two native
+models proving exact destruction and borrower-before-holder ordering; scripted
+reference opaque values separately check calls and storage retirement.
+
+`source_boundary_helpers` also retains direct async/yield and transitive helper
+rejection in both contingency forms. The native host regression suite guards the
+unchanged host polling protocol, and existing source task/fault/boundary and real
+resource cases cover settlement composition. This release changes native owner
+resumption and queue retirement, with no new source admission or fault semantics.

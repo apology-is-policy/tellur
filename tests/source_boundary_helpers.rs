@@ -228,3 +228,61 @@ fn invocation_owned_wrappers_survive_local_recovery_without_entering_boundary() 
         None,
     );
 }
+
+#[test]
+fn contingencies_keep_async_invocation_and_transitive_handoffs_unavailable() {
+    let prefix = "async control pause() exits done {yield;exit done;}";
+    for body in [
+        "run pause();",
+        "await pause();",
+        "auto child=defer pause();",
+        "auto child=spawn pause();",
+        "yield;",
+    ] {
+        for named in [false, true] {
+            let source = if named {
+                format!(
+                    "{prefix} boundary request() {{fault \"local\";}} contingency(string reason) {{{body}terminate;}}"
+                )
+            } else {
+                format!(
+                    "{prefix} async control work() exits done {{fault boundary {{fault \"local\";}} contingency [] {{{body}escalate;}}exit done;}}"
+                )
+            };
+            let error = compile(&source, manifest()).unwrap_err();
+            assert_eq!(error.code, "E_ASYNC", "{source}\n{error}");
+        }
+    }
+    for helper in [
+        "control helper() exits done {run pause();exit done;}",
+        "control inner() exits done {run pause();exit done;} control helper() exits done {inner();exit done;}",
+    ] {
+        for named in [false, true] {
+            let boundary = if named {
+                "boundary request() {fault \"local\";} contingency(string reason) {helper();terminate;}"
+            } else {
+                "control work() exits done {fault boundary {fault \"local\";} contingency [] {helper();escalate;}exit done;}"
+            };
+            let source = format!("{prefix}{helper}{boundary}");
+            let error = compile(&source, manifest()).unwrap_err();
+            assert_eq!(error.code, "E_CONTINGENT", "{source}\n{error}");
+        }
+    }
+}
+
+#[test]
+fn awaited_local_recovery_finishes_contingency_before_an_unrelated_sibling() {
+    observed(
+        include_str!("../playground/local_recovery_tasks.tellur"),
+        &[
+            "outside active",
+            "inner active",
+            "local recovery",
+            "outside finished",
+            "inner active",
+            "inner finished",
+            "helper returned",
+        ],
+        None,
+    );
+}
