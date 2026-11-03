@@ -54,6 +54,8 @@ struct Access {
 }
 #[derive(Clone)]
 struct Signature {
+    /// Proved from a successfully checked synchronous body and its callees.
+    uninterrupted: bool,
     entry_only: bool,
     contingent: bool,
     boundary: bool,
@@ -1859,6 +1861,7 @@ impl Checker<'_> {
                 )
             })?;
             return Ok(Some(Signature {
+                uninterrupted: true,
                 entry_only: false,
                 contingent: true,
                 boundary: false,
@@ -4120,7 +4123,7 @@ impl Checker<'_> {
                 .signature(name, args, span)
                 .map_err(|e| operand.locate(e, span))?
         {
-            if sig.region {
+            if sig.region && (operand.call_mode != syntax::CallMode::Direct || !sig.uninterrupted) {
                 self.require_no_started(domain, span)?;
             }
             if sig.boundary || sig.contingency {
@@ -5351,6 +5354,7 @@ pub(crate) fn compile_concrete_unit(
         signatures.insert(
             p.name.clone(),
             Signature {
+                uninterrupted: true,
                 entry_only: false,
                 contingent: p.contingent || p.pure,
                 boundary: false,
@@ -5430,6 +5434,7 @@ pub(crate) fn compile_concrete_unit(
         Ok((
             region.name.clone(),
             Signature {
+                uninterrupted: false,
                 entry_only: syntax::entry_only(&region.body),
                 contingent: !region.asynchronous && region.contingent_contract.unwrap_or(true),
                 boundary: region.boundary.is_some(),
@@ -5763,6 +5768,8 @@ pub(crate) fn compile_concrete_unit(
                 signatures.get_mut(&source.name).unwrap().outcomes = result.exits.clone();
                 signatures.get_mut(&source.name).unwrap().faults = result.faults;
                 signatures.get_mut(&source.name).unwrap().contingent = result.contingent;
+                let uninterrupted = tasks::uninterrupted(&result, &signatures);
+                signatures.get_mut(&source.name).unwrap().uninterrupted = uninterrupted;
                 if let Some(b) = &result.boundary {
                     signatures.get_mut(&source.name).unwrap().supervision_faults =
                         signatures[&b.handler].faults;

@@ -4492,3 +4492,14 @@ cases reject borrowed spawn, handle escape, duplicate/missing joins, cross-bound
 and parent calls before joining. Pending results and newly acquired owners retain their
 fault-disposition checks at handoffs. Formatter, LSP and editor cases cover the syntax,
 unsaved repair and native example execution.
+
+## Synchronous helpers beside started children (0.167)
+
+Source cases cover borrowed parent updates/results, constructor staging, concrete
+generic and trait calls, imported helper bodies, sealed started-handle wrappers,
+and transitive rejection of task handoffs or fault boundaries. Unsaved imported
+helper edits invalidate caller diagnostics and restore them after repair. Original/
+expanded reference/native comparisons cover helper work before/after handoffs,
+queued-child settlement on helper fault, O0/O2, zero/small/large quotas and every
+fuel cut. Real resource probes cover helper faults with suspended and completed
+siblings; all created owners retire once before the owning contingency.

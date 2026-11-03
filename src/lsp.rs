@@ -532,7 +532,7 @@ impl Server {
                         "`await operation(arguments)` invokes an async control; `await pending` consumes a cold or started task exactly once. Started completion is observed without rescheduling its body. Direct-call arguments transfer in written order; caller storage and loans remain valid through completion. Await exposes normal outcomes and propagates faults separately.",
                     ),
                     "spawn" => Some(
-                        "`auto child = spawn operation(arguments);` queues an invocation-owned child without running it. The first profile requires reference-free captures and results. Move handles locally and await every child on every normal path before entering another source control or fault boundary. Escaping faults settle the owning boundary before contingency.",
+                        "`auto child = spawn operation(arguments);` queues an invocation-owned child without running it. The first profile requires reference-free captures and results. Move handles locally and await every child on every normal path. Uninterrupted synchronous helpers may run while children are live; join children before calls that can hand off or enter a fault boundary. Escaping faults settle the owning boundary before contingency.",
                     ),
                     "yield" => Some(
                         "`yield;` explicitly lets already runnable tasks proceed, placing this async invocation behind them. It is unavailable in synchronous or contingency code. Host quotas do not cause source handoffs.",

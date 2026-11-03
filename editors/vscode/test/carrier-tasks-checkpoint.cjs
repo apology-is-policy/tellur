@@ -69,6 +69,22 @@ exports.run = async function (root) {
   assert.equal(tasks.code, 0, tasks.stderr);
   assert.deepEqual(JSON.parse(tasks.stdout).events.filter(e => e.kind === 'emit').map(e => e.message),
     ['queued', 'first', 'second', 'parent', 'first', 'second', 'joined first', 'joined second']);
-  await fs.writeFile(path.join(fixture, 'passed.txt'), 'cold and started task hover, diagnostics, unsaved repair and native execution passed\n');
+  const helpers = await fs.readFile(path.join(__dirname, '../../../playground/structured_helpers.tellur'), 'utf8');
+  await replace(helpers);
+  await waitFor(async () => diagnostics().length === 0 && (await hover('auto value')).includes('message'), 'synchronous helper admission');
+  const hiddenHandoff = helpers.replace('deref text = "updated";', 'run worker(); deref text = "updated";');
+  assert.notEqual(hiddenHandoff, helpers);
+  await replace(hiddenHandoff);
+  await waitFor(() => diagnostics().some(d => code(d) === 'E_ASYNC'), 'helper body handoff invalidates callers');
+  await replace(helpers);
+  await waitFor(async () => diagnostics().length === 0 && (await hover('auto value')).includes('message'), 'repaired helper body');
+  await document.save();
+  const helperRun = await vscode.commands.executeCommand('tellur.buildAndRun', {
+    arguments:['--json'], output:path.join(root, 'native output', 'structured-helpers')
+  });
+  assert.equal(helperRun.code, 0, helperRun.stderr);
+  assert.deepEqual(JSON.parse(helperRun.stdout).events.filter(e => e.kind === 'emit').map(e => e.message),
+    ['queued', 'constructed', 'updated', 'updated', 'child started', 'updated', 'child finished', 'updated']);
+  await fs.writeFile(path.join(fixture, 'passed.txt'), 'cold and started tasks, synchronous helpers, diagnostics, unsaved repair and native execution passed\n');
   console.log('TELLUR_CARRIER_TASKS_EDITOR_TESTS_PASSED: pending type hover, diagnostic repair and native run');
 };

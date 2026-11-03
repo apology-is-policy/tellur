@@ -1,8 +1,8 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.166.0 -->
+<!-- tellur-reference-version: 0.167.0 -->
 
-This manual describes **compiler 0.166.0**, including the current ownership model,
+This manual describes **compiler 0.167.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -15,10 +15,11 @@ as a bug to investigate, not a promise that either must remain unchanged. The
 updates at every implementation checkpoint.
 
 
-Compiler 0.166 also supports [owned spawned children](reference/async-execution.md#owned-spawned-children)
+Compiler 0.167 also supports [owned spawned children](reference/async-execution.md#owned-spawned-children)
 with explicit `await`/`yield` handoffs, required normal-path joins and owning-boundary
 fault settlement. The first profile requires reference-free captures/results and
-joins before entering another source call or fault boundary.
+joins before calls that can hand off or enter fault boundaries. Checked synchronous
+helpers without either operation may run while children remain live.
 
 ## How to use this manual
 
@@ -2817,7 +2818,7 @@ General expression-type hover remains unsupported.
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and scheduled async tasks remain planned; they are not executable features of 0.166.0.
+and borrowed spawn remain planned; they are not executable features of 0.167.0.
 ## Contingency and supervised boundaries
 
 The [contingency reference](reference/contingency.md) specifies `@contingent`,

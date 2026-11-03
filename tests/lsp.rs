@@ -6139,7 +6139,9 @@ fn source_task_hovers_and_diagnostics_describe_explicit_handoffs() {
     assert_eq!(f.diagnostics(), json!([]));
     let spawn = hover_at(&f, text, "spawn work").to_string();
     assert!(
-        spawn.contains("queues an invocation-owned child") && spawn.contains("reference-free"),
+        spawn.contains("queues an invocation-owned child")
+            && spawn.contains("reference-free")
+            && spawn.contains("Uninterrupted synchronous helpers"),
         "{spawn}"
     );
     let handoff = hover_at(&f, text, "yield;").to_string();
@@ -6152,4 +6154,32 @@ fn source_task_hovers_and_diagnostics_describe_explicit_handoffs() {
     assert!(!f.diagnostics().as_array().unwrap().is_empty());
     f.change(text, 3);
     assert_eq!(f.diagnostics(), json!([]));
+}
+
+#[test]
+fn pending_children_recheck_unsaved_helper_handoffs() {
+    let mut f = Fixture::new();
+    let path = f.root.join("helpers.tellur");
+    let uri = url::Url::from_file_path(&path).unwrap().to_string();
+    let valid = "async control work() exits done {yield;exit done;} pub control helper() exits done {emit(\"helper\");exit done;}";
+    fs::write(&path, valid).unwrap();
+    let source = "import \"helpers.tellur\" as helpers; async control work() exits done {yield;exit done;} async control startup() exits done {auto child=spawn work();helpers.helper();await child;exit done;} control main() exits done {forward run startup();}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let initial = hover_at(&f, source, "auto child");
+    assert!(!initial.is_null());
+    let broken = valid.replace("emit(\"helper\");", "run work();");
+    f.server.notification(
+        "textDocument/didOpen",
+        &json!({"textDocument":{"uri":uri,"version":1,"text":broken}}),
+    );
+    let errors = f.diagnostics();
+    assert_eq!(errors[0]["code"], "E_ASYNC", "{errors}");
+    assert!(hover_at(&f, source, "auto child").is_null());
+    f.server.notification(
+        "textDocument/didClose",
+        &json!({"textDocument":{"uri":uri}}),
+    );
+    assert_eq!(f.diagnostics(), json!([]));
+    assert_eq!(hover_at(&f, source, "auto child"), initial);
 }

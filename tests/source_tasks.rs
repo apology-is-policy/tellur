@@ -192,7 +192,6 @@ fn started_handles_require_consumption_and_do_not_erase_the_admitted_profile() {
         "auto child=spawn work();await child;await child;exit done;",
         "auto child=spawn work();delta true {true=>yes,false=>no} [yes]:await child;exit done;[no]:exit done;",
         "auto child=spawn work();fault boundary {await child;} contingency [] {escalate;}exit done;",
-        "auto child=spawn work();sync();await child;exit done;",
         "auto child=spawn work();await work();await child;exit done;",
         "auto child=spawn work();auto cold=defer work();await cold;await child;exit done;",
     ] {
@@ -248,6 +247,7 @@ fn wrapped_started_handles_keep_domain_and_handoff_fault_checks() {
 async control work() exits done {yield;exit done;}
 async control fail() faults {yield;fault "failed child";}
 control helper() exits done {emit("helper");exit done;}
+control handoff() exits done {forward run work();}
 "#;
     let suffix = r#"
     delta wrapped {some {auto inner}=>inner,none=>empty}
@@ -267,7 +267,7 @@ control helper() exits done {emit("helper");exit done;}
         expected
     );
     assert!(matches!(expected.events.last(),Some(Event::Emit{message}) if message=="helper"));
-    for statement in ["helper();", "fault boundary {} contingency [] {escalate;}"] {
+    for statement in ["handoff();", "fault boundary {} contingency [] {escalate;}"] {
         let text = format!(
             "{prefix} async control startup() exits done faults {{auto pending=spawn work();auto wrapped=some {{some {{pending}}}};{statement}{suffix}}}"
         );
@@ -288,5 +288,153 @@ control helper() exits done {emit("helper");exit done;}
         let error = compile(&text, manifest()).unwrap_err();
         assert_eq!(error.code, "E_FAULT_RESOURCE", "{error:?}");
         assert!(error.message.contains("`h`"));
+    }
+}
+
+const HELPERS: &str = include_str!("../playground/structured_helpers.tellur");
+#[test]
+fn synchronous_helpers_preserve_parent_borrows_and_explicit_handoffs() {
+    let p = compile(HELPERS, manifest()).unwrap();
+    let expected = p.run(&scenario()).unwrap();
+    let messages: Vec<_> = expected
+        .events
+        .iter()
+        .filter_map(|e| match e {
+            Event::Emit { message } => Some(message.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        messages,
+        [
+            "queued",
+            "constructed",
+            "updated",
+            "updated",
+            "child started",
+            "updated",
+            "child finished",
+            "updated"
+        ]
+    );
+    for p in [p.clone(), p.expanded("main").unwrap()] {
+        for quota in [1, 3, usize::MAX] {
+            let s = scenario();
+            let mut session = p.start_execution(&s, 1000);
+            loop {
+                assert!(matches!(session.advance(0), ExecutionProgress::Paused));
+                match session.advance(quota) {
+                    ExecutionProgress::Complete(r) => {
+                        assert_eq!(
+                            serde_json::to_value(r.unwrap()).unwrap(),
+                            serde_json::to_value(&expected).unwrap()
+                        );
+                        break;
+                    }
+                    ExecutionProgress::Paused => {}
+                    _ => panic!(),
+                }
+            }
+        }
+    }
+}
+#[test]
+fn transitive_handoffs_and_boundaries_still_require_joining_children() {
+    let prefix = "async control worker() exits done {yield;exit done;}";
+    for (helper, call) in [
+        (
+            "control helper() exits done {run worker();exit done;}",
+            "helper();",
+        ),
+        (
+            "control inner() exits done {run worker();exit done;} control helper() exits done {inner();exit done;}",
+            "helper();",
+        ),
+        (
+            "control helper<t>() exits done {run worker();exit done;}",
+            "helper<u32>();",
+        ),
+        (
+            "control helper() exits done {fault boundary {} contingency [] {escalate;} exit done;}",
+            "helper();",
+        ),
+        (
+            "control helper() exits done {delta false {true=>handoff,false=>normal} [handoff]:run worker(); [handoff|normal]:exit done;}",
+            "helper();",
+        ),
+        (
+            "struct box {string text;constructor() {run worker();self.text=\"value\";}}",
+            "auto value=box();drop(value);",
+        ),
+        (
+            "control helper() exits ready {string text} {run worker();exit ready {\"value\"};}",
+            "auto saved=capture helper();drop(saved);",
+        ),
+    ] {
+        let source = format!(
+            "{prefix} {helper} async control startup() exits done {{auto child=spawn worker();{call}await child;exit done;}}"
+        );
+        let error = compile(&source, manifest()).unwrap_err();
+        assert_eq!(error.code, "E_ASYNC", "{source}\n{error}");
+    }
+}
+#[test]
+fn resolved_imports_and_trait_calls_use_checked_helper_bodies() {
+    use std::fs;
+    let root = std::env::temp_dir().join(format!("tellur-helper-imports-{}", std::process::id()));
+    fs::create_dir_all(&root).unwrap();
+    for handoff in [false, true] {
+        let body = if handoff {
+            "run worker();"
+        } else {
+            "emit(\"helper\");"
+        };
+        fs::write(root.join("helpers.tellur"), format!("async control worker() exits done {{yield;exit done;}} pub control helper() exits done {{{body}exit done;}}")).unwrap();
+        fs::write(root.join("main.tellur"), "import \"helpers.tellur\" as helpers; async control worker() exits done {exit done;} async control startup() exits done {auto child=spawn worker();helpers.helper();await child;exit done;} control main() exits done {forward run startup();}").unwrap();
+        let result = tellur::compile_file(root.join("main.tellur"), manifest());
+        if handoff {
+            assert!(result.unwrap_err().to_string().contains("E_ASYNC"));
+        } else {
+            assert_eq!(result.unwrap().run(&scenario()).unwrap().events.len(), 1);
+        }
+        let source = format!(
+            "trait helper {{control call() exits done;}} implement helper for u32 {{control call() exits done {{{body}exit done;}}}} async control worker() exits done {{yield;exit done;}} async control startup() exits done {{auto child=spawn worker();helper<u32>.call();await child;exit done;}} control main() exits done {{forward run startup();}}"
+        );
+        let result = compile(&source, manifest());
+        if handoff {
+            assert_eq!(result.unwrap_err().code, "E_ASYNC");
+        } else {
+            assert_eq!(result.unwrap().run(&scenario()).unwrap().events.len(), 1);
+        }
+    }
+    fs::remove_dir_all(root).unwrap();
+}
+#[test]
+fn helper_faults_keep_unjoined_result_dispositions_and_stop_queued_children() {
+    let source = "async control produce() exits auto {forward open(\"path\");} control fail() faults {fault \"failed\";} async control parent() faults {auto child=spawn produce();fail();}";
+    let error = compile(source, manifest()).unwrap_err();
+    assert_eq!(error.code, "E_FAULT_RESOURCE", "{error:?}");
+    assert!(error.message.contains("`child`"));
+    let p = compile(
+        include_str!("fixtures/source_helper_fault.tellur"),
+        manifest(),
+    )
+    .unwrap();
+    for p in [p.clone(), p.expanded("main").unwrap()] {
+        let tellur::runtime::RunCompletion::Process(r) =
+            p.run_completion(&scenario(), 1000).unwrap()
+        else {
+            panic!()
+        };
+        assert_eq!(r.status, 23);
+        let messages: Vec<_> = r
+            .events
+            .iter()
+            .filter_map(|e| match e {
+                Event::Emit { message } => Some(message.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(messages, ["helper", "owner contingency"]);
     }
 }

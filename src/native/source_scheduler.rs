@@ -1,6 +1,6 @@
 //! Checked source driver. Owned child captures/results cannot borrow parent
-//! storage; source checking also prohibits another parent call/boundary until
-//! its started children are joined. Host APIs retain their stricter access gates.
+//! storage; source checking permits only uninterrupted synchronous helpers while
+//! children remain live. Host APIs retain their stricter access gates.
 use super::super::super::tasks::TaskId;
 use super::*;
 use std::collections::VecDeque;

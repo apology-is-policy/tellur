@@ -1,6 +1,51 @@
 //! Local cold tasks retain owned and borrowed captures, including carrier contents.
 //! Captures retain parameter identity so completion loans can select their origins.
 use super::*;
+
+/// Callees are checked before callers. Classify the emitted operations rather
+/// than authored syntax so imports, specialization and constructor staging all
+/// use the same proof. Unchecked/abstract signatures never grant permission.
+pub(super) fn uninterrupted(region: &Region, signatures: &BTreeMap<String, Signature>) -> bool {
+    fn code(body: &[Instruction], signatures: &BTreeMap<String, Signature>) -> bool {
+        body.iter().all(|instruction| match &instruction.action {
+            Action::Decide { operation, .. } => match operation {
+                Operation::Region(name) => signatures.get(name).is_some_and(|s| s.uninterrupted),
+                Operation::Primitive(_)
+                | Operation::Collection(_)
+                | Operation::Variant(_)
+                | Operation::BorrowedVariant(_) => true,
+                Operation::Run(_)
+                | Operation::Await(_)
+                | Operation::Defer(_)
+                | Operation::Spawn(_)
+                | Operation::AwaitTask(_)
+                | Operation::Join(_)
+                | Operation::Yield => false,
+            },
+            Action::Loop { body, .. } => code(body, signatures),
+            Action::Bind(..)
+            | Action::Assign(..)
+            | Action::Drop(..)
+            | Action::Release(..)
+            | Action::Emit(..)
+            | Action::Fault(..)
+            | Action::Exit(..)
+            | Action::Again { .. } => true,
+            Action::Boundary { .. }
+            | Action::Supervise { .. }
+            | Action::Recover { .. }
+            | Action::Terminate
+            | Action::TerminateProcess(_)
+            | Action::Escalate
+            | Action::Complete { .. } => false,
+        })
+    }
+    !region.asynchronous
+        && !region.contingency
+        && region.boundary.is_none()
+        && code(&region.code, signatures)
+}
+
 impl Checker<'_> {
     fn started_owners(&self) -> Vec<(Formula, BTreeSet<String>)> {
         let mut result = vec![];
@@ -37,7 +82,7 @@ impl Checker<'_> {
             let live = self.bdd.and(domain, owned);
             if live != FALSE {
                 return Err(self.fail_domain("E_ASYNC",span,
-                    "await started children before entering another call or fault boundary; local work, spawn, yield and started joins remain available",live));
+                    "await started children before a call that may hand off or enter a fault boundary; uninterrupted synchronous helpers, local work, spawn, yield and started joins remain available",live));
             }
         }
         Ok(())

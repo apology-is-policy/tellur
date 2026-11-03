@@ -236,7 +236,11 @@ diagnostic segments and emergency obligation retirement. E1e.1 now connects boun
 executors: invocation-owned spawn, explicit await/yield handoffs, consuming joins and
 owning-boundary settlement. Reference-free captures/results and joins before another
 source call or boundary define the first admitted profile. Borrowed spawn and broader
-parent progression remain separate follow-ups. Compiler **0.166.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
+parent progression remain separate follow-ups. E1e.2 now admits synchronous helpers proved from checked operations to contain no
+transitive handoff or fault boundary. Parent borrows and helper faults retain the
+ordinary ownership rules while started children remain live. Broader parent
+progression, borrowed spawn and application-driven library work remain ahead.
+Compiler **0.167.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
 lifetime checkpoints of milestone 2, the array/vector/map core of milestone 3,
 and implicit entry, inline/stored adapters, owned capture, named outcome contracts
 and checked forwarding in milestone 4. A first [semantic foundation](semantic-foundation.md)

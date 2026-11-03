@@ -1,0 +1,67 @@
+// Synchronous helpers keep running until the parent explicitly hands off.
+struct message {
+    string text;
+    constructor(string text) {
+        self.text = move text;
+    }
+}
+
+control identity<t>(t value) exits ready { t value } {
+    exit ready { value };
+}
+
+control update(ref mutable string text) exits done {
+    deref text = "updated";
+    emit(text);
+    exit done;
+}
+
+control helper(ref mutable string text) exits ready { ref mutable string view from text } {
+    update(text);
+    exit ready { text };
+}
+
+async control worker() exits done {
+    emit("child started");
+    yield;
+    emit("child finished");
+    exit done;
+}
+
+async control startup() exits done {
+    mutable string text = "initial";
+    auto pending = spawn worker();
+    auto wrapped = some { pending };
+    emit("queued");
+    delta identity<string>("constructed") {
+        ready { string title } => title
+    }
+
+    [title]:
+        auto value = message(title);
+        emit(move value.text);
+        delta helper(borrow mutable text) {
+            ready { auto view } => viewed
+        }
+
+    [viewed]:
+        emit(view);
+        yield;
+        update(borrow mutable text);
+        yield;
+        update(borrow mutable text);
+        delta wrapped {
+            some { auto child } => child,
+            none => empty
+        }
+
+    [child]: await child;
+    [child | empty]: exit done;
+}
+
+outcome program_result {
+    @exit 0 done
+}
+control main() exits program_result {
+    forward run startup();
+}

@@ -1,6 +1,20 @@
 //! Differential source execution using the exact production emitter and scheduler.
 use super::*;
 #[test]
+fn compiled_source_uninterrupted_helpers() {
+    compare(
+        "helpers",
+        include_str!("../../playground/structured_helpers.tellur"),
+    );
+}
+#[test]
+fn compiled_source_helper_fault() {
+    compare(
+        "helper_fault",
+        include_str!("../../tests/fixtures/source_helper_fault.tellur"),
+    );
+}
+#[test]
 fn compiled_source_normal_schedule() {
     compare(
         "normal",
@@ -140,7 +154,17 @@ fn compare(label: &str, text: &str) {
 
 #[test]
 fn compiled_source_resources_retire_queued_running_and_completed_owners() {
-    let root = std::env::temp_dir().join(format!("tellur-source-resource-{}", std::process::id()));
+    source_resources(false);
+}
+#[test]
+fn compiled_source_helper_fault_retires_suspended_and_completed_owners() {
+    source_resources(true);
+}
+fn source_resources(helper_fault: bool) {
+    let root = std::env::temp_dir().join(format!(
+        "tellur-source-resource-{helper_fault}-{}",
+        std::process::id()
+    ));
     fs::create_dir_all(&root).unwrap();
     let manifest = super::resume_model::resource_tests::resource_manifest(&root);
     let host = fs::read_to_string(root.join("host.rs")).unwrap();
@@ -177,7 +201,20 @@ control main(string path,bool stop) exits done {
     [ready]:close(owner);exit done;
 }
 "#;
-    let p = crate::compile(source, manifest)
+    let source = if helper_fault {
+        let source = source
+            .replace("spawn fail(stop)", "spawn fail(false)")
+            .replace(
+                "yield;\n    delta await result",
+                "yield; fail_helper(stop);\n    delta await result",
+            );
+        format!(
+            "{source}\ncontrol fail_helper(bool stop) exits done faults {{\n    delta stop {{true=>failed,false=>ok}}\n    [failed]:fault \"helper failed\";\n    [ok]:exit done;\n}}"
+        )
+    } else {
+        source.to_owned()
+    };
+    let p = crate::compile(&source, manifest)
         .unwrap()
         .with_entry_exit_codes("main", BTreeMap::from([("done".into(), 0)]))
         .unwrap();

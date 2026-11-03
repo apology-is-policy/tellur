@@ -2,15 +2,15 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.166.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.167.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
 
 Source `spawn`/`yield` now use explicit cooperative scheduling in the reference and
 native executors. The first profile admits owned, reference-free captures/results,
-requires normal-path joins, and joins before the parent enters another source call
-or fault boundary. Queued and completed children retain their fault obligations.
+requires normal-path joins, and joins before calls that can hand off or enter a
+fault boundary. Checked synchronous helpers without either operation remain available. Queued and completed children retain their fault obligations.
 See [owned spawned children](async-execution.md#owned-spawned-children).
 
 ## Language and data
@@ -82,7 +82,7 @@ with complete schemas for every nested reference layer.
 | Protocol analysis | Finite graph/residual queries, completed finite trace-language comparison | Forgets data and concrete feasibility; supervision graphs are rejected; budgets can make results inconclusive |
 | [Execution failures](execution-failures.md) | Source faults, transitive private inference, explicit public/trait permissions, retained-owner release dispositions; reference/native reports with invocation IDs and source/expansion sites | No fault-valued inline leaves, general deep-local fault registration, panic recovery or asynchronous fault settlement |
 | [Contingency](contingency.md) | Named owned-input boundaries, retained handover, checked contingent calls/traits, outcome-free supervision, terminal escalation and activation-local storage | Sequential source-fault isolation only; no outer borrows, recursive calls or general execution-mode flags |
-| [Async execution](async-execution.md) | `async control`, synchronous `run`, direct `await`, local `defer` with owned captures with contained references/shared or exclusive carrier borrows and consuming `await pending`, retained fault obligations, borrowed result-origin delivery and reference/native execution; owned source spawn/yield and consuming joins | No borrowed spawn payloads, source calls/boundaries with live children, nested borrowed tasks, escaping/public task types, async I/O readiness, cancellation or LLVM coroutine lowering yet |
+| [Async execution](async-execution.md) | `async control`, synchronous `run`, direct `await`, local `defer` with owned captures with contained references/shared or exclusive carrier borrows and consuming `await pending`, retained fault obligations, borrowed result-origin delivery and reference/native execution; owned source spawn/yield and consuming joins; checked uninterrupted synchronous helpers with live children | No borrowed spawn payloads, calls that hand off or enter fault boundaries with live children, nested borrowed tasks, escaping/public task types, async I/O readiness, cancellation or LLVM coroutine lowering yet |
 | Runtime polymorphism | Roadmap only | Traits currently dispatch statically |
 
 The [conformance inventory](../conformance.md) records release validation. The

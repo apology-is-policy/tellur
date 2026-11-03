@@ -15,7 +15,8 @@ transfers selected borrowed completion origins. Compiler 0.109 retains contained
 references in owned captures. Compiler 0.110 retains whole borrowed carrier storage
 and nested dependencies through cold capture and result delivery. Compiler 0.111
 separates execution-wide storage and observations from resumable context state.
-Compiler 0.166 adds bounded owned source scheduling; see [E1e.1](#owned-source-scheduling-e1e1) for current limits.
+Compiler 0.167 adds checked synchronous helper admission to owned source scheduling;
+see [the current reference](reference/async-execution.md) for current limits.
 
 ## Existing direction
 
@@ -3009,3 +3010,25 @@ children, references and resource obligations are settled before native destruct
 This is a language/runtime requirement, not a cleanup guarantee supplied by an
 intrinsic. Keep normal result delivery, cancellation and source-fault settlement as
 separate transitions in the checked representation and comparison evidence.
+
+## Uninterrupted synchronous helpers (E1e.2)
+
+Compiler 0.167 permits a parent with live started children to call a synchronous
+helper proved to contain no transitive task handoff or fault boundary. The checker
+publishes this fact only after a body succeeds, using resolved emitted operations
+and already checked callees. Imports, constructor argument staging and concrete
+generic/trait calls therefore cannot conceal `run`, await, scheduling or supervision.
+Unknown/abstract bodies and every structurally possible unsafe path remain gated.
+
+Helpers may borrow parent storage or deliver declared borrowed results. Spawned
+captures/results remain reference-free, so they cannot alias that storage. A quota
+pause retains the helper's selected chain. Before a child runs, the helper has
+returned to its original owning invocation. Ordinary helper faults still check all
+live captures and possible completed results, then settle the owning boundary before
+contingency. A fault can retire queued children without running their bodies, or
+suspended/completed siblings without running their nested handlers.
+
+This extends source call admission only. Borrowed spawn, fault-boundary crossing,
+parent cold/direct awaits with children and public task escape remain gated. Existing
+host APIs keep their stricter selection permissions. See the runnable
+[structured helpers example](../playground/structured_helpers.tellur).

@@ -1,0 +1,25 @@
+control fail() faults {
+    emit("helper");
+    fault "helper failed";
+}
+control nested() faults {
+    fail();
+}
+async control worker() exits done {
+    emit("queued child must not run");
+    exit done;
+}
+async control startup() exits done faults {
+    auto child = spawn worker();
+    nested();
+}
+control main() exits done {
+    fault boundary {
+        run startup();
+    }
+        contingency [] {
+        emit("owner contingency");
+        terminate process 23;
+    }
+    exit done;
+}

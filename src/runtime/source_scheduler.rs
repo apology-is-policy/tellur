@@ -151,9 +151,9 @@ impl<'a> Machine<'a> {
         Ok(true)
     }
     /// Escaping faults are delivered to the original owner before any sibling or
-    /// parent frame retires. The first source profile does not permit a caller to
-    /// enter another call/boundary while holding started children, so that owner
-    /// is retained either runnable or blocked on its consuming join.
+    /// parent frame retires. A caller holding started children can enter only
+    /// helpers proved to contain no handoff or boundary. At a child handoff its
+    /// owner is therefore retained runnable or blocked on its consuming join.
     pub(super) fn route_source_fault(&mut self) -> Result<bool> {
         if !self.shared.scheduler.enabled || !self.settlements.is_empty() {
             return Ok(false);
@@ -279,6 +279,8 @@ mod tests {
             include_str!("../../tests/fixtures/source_task_tree.tellur"),
             include_str!("../../tests/fixtures/source_task_fault.tellur"),
             include_str!("../../tests/fixtures/source_task_grandchild_fault.tellur"),
+            include_str!("../../playground/structured_helpers.tellur"),
+            include_str!("../../tests/fixtures/source_helper_fault.tellur"),
         ] {
             let p = crate::compile(
                 text,

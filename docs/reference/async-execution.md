@@ -3,7 +3,7 @@
 [Language reference](../language-reference.md) · [Design and next steps](../async-execution.md) ·
 [Execution failures](execution-failures.md)
 
-Compiler 0.166 supports `async control`, synchronous entry with `run`, direct
+Compiler 0.167 supports `async control`, synchronous entry with `run`, direct
 `await`, cold tasks with owned and borrowed captures, and a bounded cooperative
 scheduler for owned `spawn` tasks. Source handoffs occur at `await` and `yield`.
 Async host I/O, cancellation and LLVM coroutine lowering remain later work.
@@ -45,15 +45,22 @@ handle moves and parent work between handoffs. Every normal path must await its
 children. Handles cannot be copied, cloned, dropped, returned, or carried across a
 fault boundary. Local moves preserve the original invocation and spawning domain.
 Local inferred wrappers retain the same child obligations: unwrap and await the
-handle before a source call or boundary. Their possible producer faults still apply
+handle before a call that can hand off or enter a fault boundary. Their possible producer faults still apply
 at handoffs. There is no detach or implicit await at scope exit.
 
 The first source profile accepts captures and normal results with **no references**,
 including owned structs, sums and resources. Borrowed and reference-bearing `defer`
 tasks keep their existing sequential semantics. A spawned body may itself use such
 cold/direct awaits and may own further spawned children. Before a parent enters
-another source control or fault boundary, it must join its started children. Local
-work, primitive effects, further spawns, yields and started joins remain available.
+a control that can hand off or enter a fault boundary, it must join its started
+children. Synchronous helpers proved to contain neither operation may run while
+children are live. Their calls, including constructors and concrete generic/trait
+calls, run uninterrupted under the same borrowing and fault rules. A helper may
+borrow parent storage and return a reference with its declared origin. See
+[structured helpers](../../playground/structured_helpers.tellur). The proof is
+conservative across all structural paths and transitive calls; an abstract trait
+contract alone does not promise this behavior. Local work, primitive effects,
+further spawns, yields and started joins remain available.
 These are current admission limits, not changes to the accepted ownership model.
 
 A fault-capable child requires fault permission at spawn. At handoffs, all live
