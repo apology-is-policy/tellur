@@ -4528,3 +4528,38 @@ the maintained library nor production manifests acquire a dependency. This is
 standalone receive evidence, not source-queue reset coverage or a general portability
 guarantee. Physical registration failures, cleanup-error policy and public async-host
 admission remain separate. Compiler/LSP/VSIX stays 0.189.
+
+
+## Actual reset through the HTTP source queue (E1f.6l)
+
+The [source reset fixture](../src/native/http_reset_queue_tests.rs) composes E1f.6k's
+abortive peer close with E1f.6i's unchanged checked HTTP source driver. The left
+connection first supplies complete HEAD headers and a partial UTF-8 body, then its
+owned peer resets instead of sending the last bytes. The notification path waits for
+OS readiness but never reads the receiver. A subsequent checked positive-quota poll
+must observe an actual ConnectionReset, retain the established HEAD/byte/deadline
+state and produce the existing disconnected alternative.
+
+The existing reference plan supplies disconnected after two waits. Exact events and
+fault reports compare against that independent plan in original/expanded O0/O2
+programs. Full schedules cover FIFO/reverse and early/idle-only hints with normal
+completion. A representative schedule compares every fuel cutoff and three quota
+cycles. A cutoff after the peer resets but before a
+selected read may dispose the operation without observing its error; no notification
+is treated as an implicit completion.
+
+Repeated receives keep distinct operation identities in the same retained context.
+The subsequent supplier still works, and another receive on the reset connection
+fails as a duplicate without reading. Old tickets and wait generations cannot target
+a replacement. Fuel failure retires active operations before their suppliers; a completed reset
+result cannot be delivered again. Normal completion joins independent work. Actual
+wait removal precedes deregistration, state and socket release in both normal and
+fuel-failure paths.
+
+Partial-body reset is the representative source case. Other reset input positions,
+ordinary EOF, original real deadline expiry, sibling faults and held candidates
+retain their separate validated matrices. The older repeated-operation fault profile
+assumes an immediately completed first receive; this checkpoint does not extend it
+to a sibling fault while that first receive is still pending. This controlled macOS fixture does not define general backend
+failure or timer arbitration policy. The maintained synchronous transport and public
+async-host admission remain unchanged; compiler/LSP/VSIX stays 0.189.

@@ -346,6 +346,11 @@ requires real reset read errors before input and during partial headers/body, th
 checks the existing disconnected mapping and registration/state/socket retirement.
 Its abortive peer setup is Unix-only private test code; source-queue reset delivery
 and backend failure policy remain separate.
+The [source reset fixture](async-execution.md#actual-reset-through-the-http-source-queue-e1f6l)
+adds partial-body reset delivery through the checked queue, comparing full reference
+events/reports across fuel/quota schedules. Backend notifications
+remain read-free, including when a fuel cutoff retires a reset socket before another
+poll. Repeated-operation identity and supplier retirement remain checked.
 The maintained transport is unchanged.
 
 

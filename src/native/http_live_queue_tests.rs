@@ -332,3 +332,6 @@ fn live_http_queue_preserves_repeated_operations_waits_and_owning_faults() {
 
 #[path = "http_candidate_fault_tests.rs"]
 mod candidate_fault_tests;
+
+#[path = "http_reset_queue_tests.rs"]
+mod reset_queue_tests;

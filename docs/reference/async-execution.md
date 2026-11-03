@@ -83,6 +83,10 @@ The [actual reset probes](../async-execution.md#actual-tcp-reset-receive-evidenc
 check the existing disconnected result after real socket reset errors, including
 partial headers/body, while preserving deadline, HEAD state and cleanup order.
 They are standalone private receiver tests on macOS, not public async I/O support.
+The [source reset checks](../async-execution.md#actual-reset-through-the-http-source-queue-e1f6l)
+then compare a partial-body reset through the existing source queue, including
+fuel/quota stops, repeated operations and supplier cleanup. Notifications do
+not read or complete an operation; only selected polling observes the socket error.
 
 ## Owned spawned children
 

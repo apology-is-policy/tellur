@@ -5213,3 +5213,27 @@ recorded evidence. These are bounded standalone macOS runs, not general reset ti
 or source-queue error coverage. The private fixture adds the exact cached libc
 version from its existing lock for peer configuration; production dependencies and
 compiler/LSP/VSIX 0.189 are unchanged.
+
+
+E1f.6l supplies complete HEAD headers and a partial UTF-8 body to the left source
+operation, then abortively closes its owned peer. The unchanged source driver
+accepts readiness without reading; checked polling subsequently observes an actual
+ConnectionReset/raw OS error and the existing disconnected outcome. Full native
+events and fault reports compare with the independent two-wait reference plan.
+
+Original/expanded O0/O2 cover normal schedules with FIFO/reverse and early/idle-only
+hints. A representative schedule compares every source fuel cutoff and three quota
+partitions. A reset notification followed by fuel retirement may
+produce no read error or receive event; successful completion requires one actual
+reset read. The original deadline, established HEAD flag and partial byte count are
+preserved. Following operations retain distinct identities in the same context, and
+duplicate receive performs no read. Wait removal precedes deregistration, state and
+supplier/socket release. Fuel failure disposes pending operations before suppliers;
+normal execution joins independent work.
+
+This is the controlled partial-body source case on macOS; other reset positions,
+ordinary EOF, real deadline expiry, sibling faults and unadopted candidates keep
+separate evidence. The existing repeated-operation sibling-fault profile assumes
+an immediate first receive and is not widened here to pending-first-receive faults.
+General backend/cleanup-error policy and public async-host admission remain pending.
+The maintained transport and compiler/LSP/VSIX 0.189 are unchanged.
