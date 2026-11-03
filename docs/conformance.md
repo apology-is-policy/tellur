@@ -4993,3 +4993,26 @@ bytes and HEAD state agree. Completion and a second receive cannot replay input.
 This test uses no live sockets or wall-clock sleeps and does not claim real OS
 readiness/timer race ordering or source-scheduler integration. Public compiler and
 library behavior, and the installed 0.189 release, remain unchanged.
+
+
+E1f.6b compiles the unchanged owned receive state with private pinned Mio 1.2.4
+and actual generated HTTP outcomes. O0/O2 each pass twelve live-loopback scenarios:
+fragmented header/body/UTF-8 input, duplicate receive without reads or HEAD mutation,
+empty and partial EOF, the original two-second deadline across body progress and
+empty polls, waiting/signalled stop, and unadopted typed-candidate disposal.
+
+The concrete backend retains physical registration while draining reads and uses
+fresh one-use logical tokens for each wait. Real collected notifications and an
+injected empty hint exercise stale/duplicate/foreign rejection; separate backends
+can have colliding token numbers. Exhausted token allocation preserves the current
+registration. A new connection actually reuses the old numeric Unix descriptor,
+and the copied old notification still cannot claim its live replacement. Successful
+OS deregistration and state-wrapper/candidate disposal precede socket release;
+all subscriptions retire. Tests tolerate spurious readiness and partial TCP delivery.
+
+This is macOS transport/lifetime evidence, not a source-scheduler differential or
+cross-platform guarantee. Actual resets, OS insertion/removal failures and timer/
+readiness races remain separate. Failed removal would be recorded and fail the
+fixture; no public cleanup fault policy is inferred. The previous 1,599-per-build
+deterministic parser comparisons remain applicable because the parser and baseline
+are unchanged. No compiler/LSP/VSIX release or public HTTP behavior changes.

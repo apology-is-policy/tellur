@@ -4072,7 +4072,63 @@ consumed-byte count. Full outcomes, payloads, consumed bytes and HEAD state agre
 This establishes owned parsing and fixed-deadline behavior under the deterministic
 transport model. It does not specify ordering of simultaneous real OS readiness and
 timer notifications, prove descriptor lifetime, or integrate HTTP reads into the
-source scheduler. Those concrete transport/readiness checks are next. Existing HTTP
+source scheduler. The concrete transport/readiness checks below extend this evidence. Existing HTTP
 controls and `immediate`/`blocking` bindings remain synchronous; public async call
 admission still awaits the recorded design answer. No installed release change is
 needed for these private tests.
+
+
+## Concrete private HTTP receive/readiness (E1f.6b)
+
+The [live receive harness](../src/native/http_live_receive_tests.rs) compiles the same
+owned parser, unchanged, against the actual generated HTTP outcome types. Its
+[private transport](../tests/fixtures/http_live_receive_driver.rs) uses nonblocking
+loopback sockets and a [test-only lockfile](../tests/fixtures/http_receive_mio.lock)
+for Mio 1.2.4 with `os-poll` and `net`. No production manifest or dependency changes.
+The constants and I/O error mapping still come from the maintained library source.
+
+Each socket owns its poller and remains registered while the receiver drains reads.
+Every new wait uses `reregister` with a fresh checked token; the previous token is
+removed from the logical live-interest map. Copied notifications contain only the
+backend identity and token. Claiming a live generation works once; foreign,
+duplicate and retired generations cannot claim a replacement. Token exhaustion
+rejects before changing the OS registration or current interest. A subscription
+keeps the socket alive until its removal attempt; successful deregistration precedes
+state-wrapper disposal and socket release. A completed typed candidate can remain
+unadopted and is disposed before the connection when the session is stopped.
+
+This concrete registration shape differs from E1f.5's fake transient subscription:
+physical registration persists during reads, while logical wait generations change.
+The source integration must reconcile those lifetimes explicitly. It must not
+assume that removing a wait token deregisters the socket or disposes the parser.
+The parser may consume its owned partial fields when producing a result; the
+wrapper/candidate and supplier retirement are independently observed here.
+
+Following [Mio's portability requirements](https://docs.rs/mio/1.2.4/mio/struct.Poll.html),
+reads use its socket API and drain to `WouldBlock`. Readiness is a hint, including
+close/error indications; the actual read decides EOF or an error. Tests inject an
+empty hint and also tolerate spurious real notifications and split TCP delivery.
+The poller outlives each socket. [Registration rules](https://docs.rs/mio/1.2.4/mio/struct.Registry.html)
+keep a socket on one poller and require explicit deregistration. Already-collected
+notifications are still checked after removal and after the numeric descriptor has
+actually been reused by another connection.
+
+O0/O2 each exercise twelve live scenarios: fragmented HEAD/UTF-8 body and duplicate
+receive, empty/partial-header/partial-body EOF, a real fixed two-second deadline,
+stopping a wait or an accepted signal, dropping an unadopted completed candidate,
+empty/duplicate/stale hints, two backends with colliding token numbers, generation
+exhaustion, and actual Unix descriptor reuse. Repeated body progress and empty
+poll returns preserve the original deadline. Teardown witnesses require one
+registration and successful removal before state-wrapper/socket release; every
+backend finishes empty. The validated target is macOS, not a cross-platform proof.
+
+No real reset, OS registration/removal failure, source-scheduler attachment or
+simultaneous readiness/expiry policy is established. Removal errors are collected
+and fail the test, rather than being claimed impossible or assigned a public fault
+policy. The driver recomputes poll durations from the original deadline and applies
+the existing pre-read expiry check; it does not introduce an OS timer event or
+choose a new race ordering. Next, connect concrete wait generations and persistent
+registration to the existing operation ticket, quota and owning-fault lifecycle,
+with a separate audit of backend failure and transport reset behavior. The pending
+public async-host call-model question remains unanswered. Installed compiler/LSP/
+VSIX and the synchronous HTTP library remain 0.189-compatible and unchanged.

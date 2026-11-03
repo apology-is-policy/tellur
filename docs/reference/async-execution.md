@@ -43,6 +43,10 @@ reactor or timeout contract.
 The [private receive model](../async-execution.md#owned-http-receive-and-deadline-model-e1f6a)
 compares owned partial HTTP input and fixed-deadline behavior with the existing
 synchronous library under a simulated transport. It adds no public async HTTP API.
+The [concrete receive experiment](../async-execution.md#concrete-private-http-receivereadiness-e1f6b)
+uses real nonblocking loopback sockets, fixed deadlines and one-use readiness
+generations. It tests descriptor reuse and retirement on macOS, but is still private:
+no source-scheduler attachment, public async host API or new handoff is enabled.
 
 ## Owned spawned children
 

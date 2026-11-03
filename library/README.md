@@ -166,4 +166,7 @@ A [private owned-receive experiment](../docs/async-execution.md#owned-http-recei
 compares partial parsing, declared outcomes, HEAD state and fixed read deadlines
 against this implementation under a deterministic transport. It is preparation for
 async I/O; these public controls and Rust wrappers retain the synchronous profile
-above. No live async socket or new manifest execution mode is supplied by that test.
+above. The follow-up [live transport experiment](../docs/async-execution.md#concrete-private-http-receivereadiness-e1f6b)
+reuses that parser with private nonblocking sockets and readiness generations. It
+checks the original deadline, partial input, EOF and descriptor retirement on macOS.
+It supplies no public async HTTP control or new manifest execution mode.

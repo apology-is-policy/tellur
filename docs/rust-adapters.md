@@ -301,12 +301,16 @@ reserves and removes subscriptions around these operations; backend or runtime
 registration failures cannot leave live subscriptions attached to retired state.
 The [owned HTTP receive model](async-execution.md#owned-http-receive-and-deadline-model-e1f6a)
 compares partial parsing, typed outcomes and fixed deadlines against the current
-synchronous wrapper using simulated reads. The maintained transport is unchanged.
+synchronous wrapper using simulated reads. A
+[concrete private transport](async-execution.md#concrete-private-http-receivereadiness-e1f6b)
+adds real nonblocking loopback reads, wait generations, fixed deadlines and descriptor
+reuse checks on macOS. Its pinned Mio dependency belongs only to the test fixture.
+The maintained transport is unchanged.
 
 
 This is evidence for a future contract, not an `execution` value that manifests can
 use. Existing `immediate` and `blocking` bindings remain synchronous. The experiment
 covers plain owned input/results and shared resource borrows; `'static` alone does
 not establish resource protocol compliance or bounded infallible cleanup. Consuming
-resources, resource-bearing results, exclusive mutation, real I/O readiness and
-public async call admission remain separate work.
+resources, resource-bearing results, exclusive mutation, source integration of real
+I/O readiness, backend failure policy and public async call admission remain separate work.
