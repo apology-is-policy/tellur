@@ -168,3 +168,6 @@ fn check_state_trace(root: &Path) {
 
 #[path = "owned_operation_type_tests.rs"]
 mod type_tests;
+
+#[path = "readiness_backend_tests.rs"]
+mod backend_tests;

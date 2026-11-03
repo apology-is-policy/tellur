@@ -3973,10 +3973,58 @@ before the actual supplier resource is released. The owning contingency's first
 Rust call checks both states and any candidates already gone while its own resource
 remains live. Stopped nested contingencies and normal result arms cannot execute.
 
-All source admission and runtime scheduling remain unchanged. The next independent
-step is the readiness-backend contract: explicit interest registration and removal,
+All source admission and runtime scheduling remain unchanged. E1f.5 below adds a
+private readiness-backend contract: explicit interest registration and removal,
 one-use notifications and the original fixed deadline, including backend failure
 and stale-event handling. A live reactor or transport integration must establish
 those rules; this deterministic proof does not imply an OS subscription already
 exists. Public async-host call forms still await the recorded design decision, and
 resource-consuming/result protocols and fallible cleanup remain outside this slice.
+
+
+## Private readiness-backend lifecycle (E1f.5)
+
+The [deterministic backend](../src/native/readiness_backend_model.rs) gives the
+owned-operation source experiment an explicit subscription lifetime. Preparation
+inserts a tentative interest and returns an owning reservation. The runtime then
+publishes its checked wait; an infallible internal commit associates that token
+with the reserved interest and transfers its subscription to the operation. If
+backend preparation or runtime preflight fails, the local reservation removes any
+inserted interest before returning. No source handoff occurs during this sequence.
+
+A subscription stores resource identity metadata, the read deadline and the runtime
+readiness token. Its test witnesses track supplier liveness without retaining a
+Rust resource reference. Notifications contain only backend identity and a monotonic
+registration ID. A notification queued before commit cannot make work eligible.
+Foreign, duplicate, removed and old-generation events fail, including while a newer
+registration remains live. Notifications for other live interests stay queued until
+the existing deterministic source pump selects them; successful signals only append
+eligibility to that pump's ordinary source queue.
+
+Positive-quota polling removes the subscription before borrowing the resource and
+calling the typed adapter. An incomplete poll supplies its unchanged deadline for
+the next registration. For this fixture, the initial read interest is supplied by
+the private shim before its first poll. Fault retirement drops any subscription
+before owned adapter state and the backing supplier. Zero quotas preserve a
+signalled subscription until selection actually polls or retirement removes it.
+Queued events may outlive removal but cannot access retired state. The final census
+requires no live subscriptions and rejects every remaining queued notification.
+
+[The generated test](../src/native/readiness_backend_tests.rs) reuses the owned
+source fixture and complete reference comparison. Each registration injects failure
+before insertion, failure after insertion with an already queued event, and runtime
+generation exhaustion after backend preparation, then registers successfully.
+Rejected attempts leave fuel, effects, adapter position and runtime waits unchanged;
+all inserted interests are removed exactly once. State destructors assert that all
+of their subscriptions have already been removed. The owning contingency checks
+stopped states are gone while outside resources remain live.
+
+Original/expanded O0/O2 builds cover every source fuel cutoff, three quotas,
+FIFO/reverse and early/idle-only readiness, normal and faulting siblings, partial and
+empty polls, and progress when all operations are waiting. Existing source-turn,
+result, resource and full fault-report comparisons remain in force. This is a finite
+test backend with injected failures, not a live reactor implementation. It preserves
+the original deadline value without defining clock advancement or timeout outcomes.
+A concrete nonblocking transport and deadline-expiry audit is next; public source
+call admission still depends on the recorded async-host call-model choice. No
+public cancellation or fallible cleanup semantics are added.

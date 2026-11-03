@@ -35,7 +35,11 @@ public adapter mode or source call form.
 The [typed fault model](../async-execution.md#typed-operation-fault-and-registration-retirement-e1f4b)
 also checks disposal of unadopted typed results and rejection of exhausted runtime
 readiness registrations before owning-contingency execution. Real event backends
-remain separate.
+remain separate. The
+[private backend lifecycle model](../async-execution.md#private-readiness-backend-lifecycle-e1f5)
+checks subscription rollback/removal and queued stale notifications through the
+existing source scheduler. It preserves deadline values without adding a public
+reactor or timeout contract.
 
 ## Owned spawned children
 

@@ -296,6 +296,9 @@ outcome validation and dispose of state before supplier release. The
 [typed fault model](async-execution.md#typed-operation-fault-and-registration-retirement-e1f4b)
 also disposes of unadopted typed candidates before suppliers and the owning
 contingency, including after rejected runtime readiness registration.
+A [private backend model](async-execution.md#private-readiness-backend-lifecycle-e1f5)
+reserves and removes subscriptions around these operations; backend or runtime
+registration failures cannot leave live subscriptions attached to retired state.
 
 This is evidence for a future contract, not an `execution` value that manifests can
 use. Existing `immediate` and `blocking` bindings remain synchronous. The experiment

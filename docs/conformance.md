@@ -4955,3 +4955,22 @@ and the synchronous sample wrapper is a panic trap. Counter-exhaustion injection
 covers runtime preflight only; OS backend registration rollback/unregistration and
 live transport behavior are not claimed. Existing public compiler behavior and the
 0.189 installed release remain unchanged.
+
+
+E1f.5 overlays the typed source comparison with a deterministic subscription backend.
+Each attempted wait tests rejection before insertion, after insertion with an event
+already queued, and at runtime generation preflight after backend preparation. A
+reservation removes tentative interests on failure; a successful commit transfers
+subscription ownership to the operation. Full source/reference event/report checks
+run in original/expanded O0/O2 builds through every fuel cutoff, three quotas, both
+readiness orders, early/idle-only events and normal/faulting siblings.
+
+The backend rejects tentative and foreign notifications, duplicate signals and
+queued events from removed generations while replacement interests are live.
+Positive-quota polling removes the old subscription before invoking the typed
+adapter; incomplete polls re-register with the original deadline. Fault disposal
+removes subscriptions before state and actual suppliers, and owning-contingency
+witnesses require complete stopped-state retirement. Every inserted interest has
+one removal, all backend entries retire, and remaining queued events reject after
+completion. No OS I/O, elapsed-time/timeout behavior, public async adapter mode or
+new source handoff is claimed.
