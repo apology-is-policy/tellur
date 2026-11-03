@@ -173,17 +173,17 @@ fn borrowed_record_faults_settle_joined_and_unjoined_results_before_owning_handl
     }
 }
 #[test]
-fn deeper_references_and_whole_borrowed_record_results_stay_gated() {
+fn deeper_references_stay_gated_while_whole_borrowed_records_are_admitted() {
     for ty in ["ref indirect"] {
         let source = format!(
             "struct leaf['a] {{ref string text <- 'a;}} variant choice['a] {{yes {{leaf['a] value}}}} outcome reply['a] {{yes {{leaf['a] value}}}} struct tagged['a] {{option<leaf>['a] item;}} struct indirect['storage,'a] {{ref leaf['a] item <- 'storage;}} async control work({ty} input) exits done {{exit done;}} async control caller({ty} input) exits done {{auto child=spawn work(input);await child;exit done;}}"
         );
         rejects(&source, "E_ASYNC");
     }
-    rejects(
+    compile(
         "struct leaf['a] {ref string text <- 'a;} async control work(ref leaf input) exits ready {ref leaf value from input} {exit ready {input};} async control caller(ref leaf input) exits done {auto child=spawn work(input);delta await child {ready {auto value}=>done} [done]:exit done;}",
-        "E_ASYNC",
-    );
+        manifest(),
+    ).unwrap();
 }
 #[test]
 fn generic_borrowed_record_contracts_preserve_selected_contained_origins() {

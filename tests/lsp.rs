@@ -6632,3 +6632,33 @@ fn borrowed_outcome_spawn_origins_and_caller_handling_follow_unsaved_imports() {
     assert_eq!(f.diagnostics(), json!([]));
     assert_eq!(hover_at(&f, source, "auto result"), initial);
 }
+
+#[test]
+fn whole_borrowed_record_spawn_result_origins_follow_unsaved_imports() {
+    let mut f = Fixture::new();
+    let path = f.root.join("worker.tellur");
+    let uri = url::Url::from_file_path(&path).unwrap().to_string();
+    let valid = "pub struct view['a] {pub ref string text <- 'a;} pub async control lend(ref view a,ref view b) exits ready {ref view[a['a]] value from a} {yield;exit ready {a};}";
+    fs::write(&path, valid).unwrap();
+    let source = "import \"worker.tellur\" as worker;async control start() exits done {mutable string a=\"a\";mutable string b=\"b\";worker.view first=worker.view {borrow a};worker.view second=worker.view {borrow b};auto child=spawn worker.lend(borrow first,borrow second);delta await child {ready {auto result}=>ready} [ready]:drop(second);b=\"free\";emit(result.text);drop(first);a=\"free\";exit done;}control main() exits done {forward run start();}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let initial = hover_at(&f, source, "auto result");
+    assert!(initial.to_string().contains("ref worker.view"));
+    let broken = valid
+        .replace("value from a", "value from b")
+        .replace("a['a]", "b['a]")
+        .replace("exit ready {a}", "exit ready {b}");
+    f.server.notification(
+        "textDocument/didOpen",
+        &json!({"textDocument":{"uri":uri,"version":1,"text":broken}}),
+    );
+    assert_eq!(f.diagnostics()[0]["code"], "E_LOAN");
+    assert!(hover_at(&f, source, "auto result").is_null());
+    f.server.notification(
+        "textDocument/didClose",
+        &json!({"textDocument":{"uri":uri}}),
+    );
+    assert_eq!(f.diagnostics(), json!([]));
+    assert_eq!(hover_at(&f, source, "auto result"), initial);
+}

@@ -3354,3 +3354,28 @@ Next audit: whole borrowed record results whose contained leaves point to refere
 storage. Retain both holder storage authority and contained origin/guard metadata through
 completion, join and fault retirement; reject escapes from child-owned storage. Whole
 borrowed tagged results and deeper reference pointees require separate evidence.
+
+## Whole borrowed record results (E1e.16)
+
+Compiler 0.181 adds a distinct result predicate for a root borrow of record storage
+whose contents meet the existing direct-leaf capture profile. This preserves the
+separation between result storage authority and contained origin contracts; capture
+admission and production schedulers remain unchanged. Whole borrowed tagged results and
+deeper reference-bearing pointees remain excluded.
+
+Checks cover queued/running/completed results, consuming joins, shared copies (including
+explicit moves), exclusive moves and reborrows, projected record guards, detached leaves,
+independent siblings, nested named-outcome handling and generic forwarding. Imported
+public results explicitly bind both storage and contained origins; unsaved contract
+changes invalidate dependent callers. Child-local holder escapes remain rejected.
+
+Six native original/expanded O0/O2 models compare every fuel cutoff/quota partition,
+including nested tagged/outcome storage and real resources retained through completed
+whole-record references, awaited parents and stopped siblings. The reference census
+checks context retirement before/after join. Ordinary Copy, public-contract, fault and
+contingency rules remain intact; partial/unknown dependency metadata stays conservative.
+
+Next audit: whole borrowed option and closed-variant results, preserving active/empty
+tag permissions, holder storage and contained origins through join and settlement.
+Whole borrowed named-outcome results, deeper reference pointees, reference-bearing
+collections and borrowed-handle wrappers remain separate evidence slices.

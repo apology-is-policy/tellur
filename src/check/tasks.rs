@@ -178,12 +178,12 @@ impl Checker<'_> {
                     .outcomes
                     .iter()
                     .flat_map(|o| &o.fields)
-                    .any(|p| !self.manifest.supports_spawn_payload(&p.ty))
+                    .any(|p| !self.manifest.supports_spawn_result(&p.ty))
             {
                 return Err(self.error(
                     "E_ASYNC",
                     span,
-                    "spawn accepts reference-free values, direct borrows, owned record/option/variant/named-outcome payloads with direct borrowed leaves, and borrowed record/option/variant/named-outcome captures with nested owned contents and direct reference leaves; whole borrowed-carrier results, anonymous outcomes and reference-bearing collections remain gated",
+                    "spawn accepts reference-free values, direct borrows, owned record/option/variant/named-outcome payloads with direct borrowed leaves, and borrowed record/option/variant/named-outcome captures with nested owned contents and direct reference leaves; whole borrowed record results retain storage and contained permissions; whole borrowed tagged results, deeper reference pointees, anonymous outcomes and reference-bearing collections remain gated",
                 ));
             }
             if sig.faults {

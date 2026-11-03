@@ -1,0 +1,46 @@
+outcome reply['a] {
+    held { ref string text <- 'a },
+    empty
+}
+struct holder['a] {
+    option<reply>['a] item;
+}
+async control lend(ref holder input) exits ready { ref holder value from input } {
+    yield;
+    exit ready { input };
+}
+control consume(holder input) exits done {
+    delta input.item {
+        some { auto value } => some,
+        none => none
+    }
+    [some]: delta value {
+        held { auto text } => held,
+        empty => empty
+    }
+    [entry]: exit done;
+}
+async control startup() exits done {
+    mutable string owner = "nested";
+    holder saved = holder { some { reply.held { borrow owner } } };
+    auto child = spawn lend(borrow saved);
+    auto outcome = capture await child;
+    delta outcome {
+        ready { auto result } => ready
+    }
+    [ready]: delta borrow result.item {
+        some { auto inner } => some,
+        none => none
+    }
+    [some]: delta inner {
+        held { auto text } => held,
+        empty => empty
+    }
+    [held]: emit(text);
+    [entry]: consume(saved);
+        owner = "free";
+        exit done;
+}
+control main() exits done {
+    forward run startup();
+}

@@ -404,6 +404,10 @@ mod tests {
             include_str!("../../playground/borrowed_record_spawn.tellur"),
             include_str!("../../playground/borrowed_tagged_spawn.tellur"),
             include_str!("../../playground/borrowed_outcome_spawn.tellur"),
+            include_str!("../../playground/borrowed_record_spawn_results.tellur"),
+            include_str!("../../tests/fixtures/source_borrowed_record_result_tags.tellur"),
+            include_str!("../../tests/fixtures/source_borrowed_record_result_guards.tellur"),
+            include_str!("../../tests/fixtures/source_borrowed_record_result_fault.tellur"),
             include_str!("../../tests/fixtures/source_borrowed_outcome_guards.tellur"),
             include_str!("../../tests/fixtures/source_borrowed_outcome_fault.tellur"),
             include_str!("../../tests/fixtures/source_borrowed_tagged_guards.tellur"),
@@ -449,6 +453,9 @@ mod tests {
                     "yield;yield;auto moved = move pending;",
                 ),
         ])
+        .chain([include_str!("../../tests/fixtures/source_borrowed_record_result_fault.tellur")
+            .replace("    yield;\n    yield;\n    delta await result", "    delta await result")
+            .replace("emit(\"stopped parent resumed\");", "yield;yield;")])
         .chain([include_str!("../../tests/fixtures/source_borrowed_outcome_fault.tellur")
             .replace("    yield;\n    yield;\n    delta await result", "    delta await result")
             .replace("emit(\"stopped parent resumed\");", "yield;yield;")])

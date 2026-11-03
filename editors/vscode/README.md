@@ -1544,3 +1544,9 @@ The owning caller must still handle the outcome after joining its reader; empty
 outcomes keep this obligation. Hover describes the rule, and unsaved missing handling
 or premature consumption invalidates inferred types until repair. Whole borrowed-carrier
 results and deeper reference pointees remain gated.
+
+Release 0.181 supports whole borrowed record results. Hover describes holder storage and
+contained permissions after join. Diagnostics preserve shared Copy and exclusive move
+rules, projected guards and explicit public origin bindings. A fresh editor fixture
+checks premature holder disposal, repair and native execution. Whole borrowed tagged
+results and deeper reference pointees remain gated.

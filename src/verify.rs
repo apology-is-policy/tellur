@@ -927,12 +927,14 @@ impl Verifier<'_> {
                             if matches!(operation, Operation::Spawn(_))
                                 && (r.parameters.iter().any(|p| {
                                     !self.program.manifest().supports_spawn_capture(&p.ty)
-                                }) || r.exits.iter().flat_map(|o| &o.fields).any(|f| {
-                                    !self.program.manifest().supports_spawn_payload(&f.ty)
-                                }))
+                                }) || r
+                                    .exits
+                                    .iter()
+                                    .flat_map(|o| &o.fields)
+                                    .any(|f| !self.program.manifest().supports_spawn_result(&f.ty)))
                             {
                                 return Err(error(
-                                    "spawn capture/result is outside the direct-reference, owned record/option/variant/named-outcome payload and borrowed record/option/variant/named-outcome capture profile",
+                                    "spawn capture/result is outside the direct-reference, owned record/option/variant/named-outcome payload and borrowed record/option/variant/named-outcome capture or whole borrowed record result profile",
                                 ));
                             }
                             if matches!(operation, Operation::AwaitTask(_) | Operation::Join(_)) {

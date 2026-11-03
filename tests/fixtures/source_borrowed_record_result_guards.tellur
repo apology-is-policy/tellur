@@ -1,0 +1,32 @@
+struct leaf['text] {
+    ref mutable string text <- 'text;
+}
+struct holder['text] {
+    leaf['text] item;
+}
+async control lend(ref mutable holder input) exits ready... {
+    yield;
+    exit ready { borrow mutable input.item };
+}
+async control startup() exits done {
+    mutable string owner = "before";
+    mutable holder saved = holder { leaf { borrow mutable owner } };
+    ref mutable holder carrier = borrow mutable saved;
+    auto pending = spawn lend(carrier);
+    yield;
+    yield;
+    auto moved = move pending;
+    delta await moved {
+        ready { auto value } => ready
+    }
+    [ready]: deref value.text = "after";
+        emit(value.text);
+        deref carrier.item.text = "available after result";
+        emit(carrier.item.text);
+        drop(saved);
+        owner = "free";
+        exit done;
+}
+control main() exits done {
+    forward run startup();
+}

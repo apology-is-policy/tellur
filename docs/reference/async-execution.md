@@ -3,9 +3,9 @@
 [Language reference](../language-reference.md) · [Design and next steps](../async-execution.md) ·
 [Execution failures](execution-failures.md)
 
-Compiler 0.180 supports `async control`, synchronous entry with `run`, direct
+Compiler 0.181 supports `async control`, synchronous entry with `run`, direct
 `await`, cold tasks with owned and borrowed captures, and a bounded cooperative
-scheduler for `spawn` tasks with owned values, direct borrows and nested owned record/option/variant/named-outcome captures/results, plus borrowed record/option/variant/named-outcome captures. Source handoffs occur at `await` and `yield`.
+scheduler for `spawn` tasks with owned values, direct borrows and nested owned record/option/variant/named-outcome captures/results, plus borrowed record/option/variant/named-outcome captures and whole borrowed record results. Source handoffs occur at `await` and `yield`.
 Async host I/O, cancellation and LLVM coroutine lowering remain later work.
 
 ## Owned spawned children
@@ -55,8 +55,8 @@ The source profile accepts direct shared/exclusive borrows of existing reference
 storage, reference-free owned values, and nested owned records, options, closed variants and named outcomes whose reference leaves
 point to reference-free storage. Captures may also borrow record/option/closed-variant/named-outcome storage containing
 nested owned records/options/variants/named outcomes and direct reference leaves. Normal results use the owned/direct
-profile with their declared origins. Deeper reference pointees,
-whole borrowed-carrier results, anonymous reference-bearing outcomes and
+profile or a whole borrowed record with declared storage and contained origins. Deeper reference pointees,
+whole borrowed tagged results, anonymous reference-bearing outcomes and
 reference-bearing collection payloads remain gated. Broader reference-bearing
 `defer` tasks keep their existing semantics. A spawned body may itself use such
 cold/direct awaits and may own further spawned children. Before a parent enters a synchronous
@@ -325,7 +325,7 @@ See [tagged spawned payloads](../../playground/tagged_spawn.tellur) for generic
 variant alternatives, empty payloads, nested record capture and selected result
 origins. Named outcome payloads are also supported under their mandatory handling rules
 below; ordinary `capture await` and outcome adapters keep working.
-Whole borrowed-carrier results, reference-bearing collections
+Whole borrowed tagged results, reference-bearing collections
 and borrowed-handle wrappers remain gated.
 
 ## Named outcome payloads
@@ -414,7 +414,7 @@ while those permissions remain borrowed. See the [runnable example](../../playgr
 On an owning fault, borrowers retire before holder storage and external suppliers;
 completed unjoined results remain settlement obligations. Declared resource fault
 dispositions apply and stopped nested contingencies do not run. This admission does
-not extend to deeper reference-to-carrier chains or whole borrowed-carrier results. Cold tasks retain their
+not extend to deeper reference-to-carrier chains. Whole borrowed record results follow the rules below; whole borrowed tagged results remain gated. Cold tasks retain their
 existing broader contracts; incomplete host origin evidence remains conservative.
 
 ## Borrowed option and variant captures
@@ -453,7 +453,7 @@ through the reference. See [borrowed tagged tasks](../../playground/borrowed_tag
 
 The same fault dispositions and borrower-before-holder settlement apply to resources
 inside tagged holders. Stopped nested handlers do not run. Deeper reference-to-carrier
-leaves and whole borrowed-carrier results remain gated; their cold-task contracts are
+leaves and whole borrowed tagged results remain gated; their cold-task contracts are
 unchanged. Named outcomes also follow the handling rules below.
 
 ## Borrowed named outcome captures
@@ -495,8 +495,60 @@ wrapper remains rejected. Borrowing does not erase nominal identity or permit co
 an owned resource through a reference. See the [runnable example](../../playground/borrowed_outcome_spawn.tellur).
 On an owning fault, declared resource dispositions settle borrowed outcome storage and
 stopped children before contingency; nested stopped handlers do not run. Anonymous
-reference-bearing contracts, deeper reference pointees and whole borrowed-carrier
+reference-bearing contracts, deeper reference pointees and whole borrowed tagged
 results retain their existing limits.
+
+## Whole borrowed record results
+
+A consuming join can return a shared or exclusive reference to record storage with
+nested admitted record/option/variant/named-outcome contents and direct reference leaves.
+The result keeps two permissions: authority over its holder storage and the declared
+origins of its contained references. Completing the child does not release those loans;
+joining transfers the selected result permissions to the caller until their final use.
+
+<!-- tellur:check -->
+```tellur
+struct view['a] { ref mutable string text <- 'a; }
+async control lend(ref mutable view input)
+    exits ready { ref mutable view[input['a]] value from input }
+{
+    yield;
+    exit ready { input };
+}
+async control startup() exits done {
+    mutable string owner = "before";
+    mutable view saved = view { borrow mutable owner };
+    auto child = spawn lend(borrow mutable saved);
+    delta await child { ready { auto value } => ready }
+    [ready]:
+        deref value.text = "after";
+        emit(value.text);
+        drop(saved);
+        owner = "free";
+        exit done;
+}
+control main() exits done { forward run startup(); }
+```
+
+Public contracts explicitly bind contained origin groups in brackets and declare the
+holder's storage origin with `from`; these describe different permissions. A result
+cannot reference child-owned or child-local storage. Projected record results retain
+their enclosing storage guards and exclusive reborrow ancestry. A shared outer borrow
+does not authorize writes through exclusive fields. Returning borrowed storage that
+contains a named outcome leaves its owning caller's handling obligation intact.
+
+Shared whole-record references retain ordinary Copy behavior, including `move`.
+Exclusive result moves transfer authority. A copied shared contained leaf may outlive
+the holder after the whole-record references' final use; detached reborrows of exclusive
+contents retain their holder guards. Selected alternatives keep only their declared
+result origins, and independent sibling joins do not release another child's loans.
+See the [runnable example](../../playground/borrowed_record_spawn_results.tellur).
+
+Fault settlement retires completed whole-record borrowers before retained holder owners
+and external suppliers, applying resource dispositions before the owning contingency.
+Stopped nested handlers do not run. Whole borrowed option/variant/named-outcome results,
+deeper reference pointees, reference-bearing collections and anonymous contracts remain
+separate admission work. No source handoff or fault-boundary policy changes are implied.
 
 ## Parent awaits beside children
 

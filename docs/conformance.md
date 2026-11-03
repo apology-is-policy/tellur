@@ -4662,3 +4662,18 @@ Five `compiled_source_borrowed_outcomes_*` models compare original/expanded O0/O
 at every fuel cutoff and quota partition, including real resources in borrowed outcome
 storage and joined/unjoined faults. The source census includes these fixtures; fresh
 editor checks cover caller handling, holder conflicts, repair and native execution.
+
+## Whole borrowed record spawn results (0.181)
+
+`source_borrowed_record_results` checks holder authority and contained origins through
+completion and consuming join, shared copies and detached leaves, exclusive result
+moves/reborrows, projected guards, disjoint holders, nested named-outcome obligations,
+generic forwarding, stopped siblings and rejected local escapes. LSP and fresh-editor
+checks cover unsaved imported storage/contained-origin changes and repair.
+
+Six `compiled_source_borrowed_record_results_*` models compare original/expanded O0/O2
+programs at every fuel cutoff and quota partition. They include nested tagged/outcome
+contents, completed whole-record references, real resources in retained holders and
+awaited parents. The 55-variant reference context census also covers joined/unjoined
+faults. Existing cold carrier and result contract suites remain part of regression
+coverage. No production scheduler changes or broader whole-borrowed result admission.

@@ -993,6 +993,15 @@ impl Manifest {
         }
         reference_inner(name).is_some_and(|(_, inner)| contents(self, inner, &mut BTreeSet::new()))
     }
+    /// A whole borrowed record result retains storage and contained permissions.
+    /// Keep borrowed tagged results and deeper reference pointees separate.
+    pub(crate) fn supports_spawn_result(&self, name: &str) -> bool {
+        self.supports_spawn_payload(name)
+            || reference_inner(name).is_some_and(|(_, inner)| {
+                matches!(self.type_def(inner), Some(TypeDef::Record { .. }))
+                    && self.supports_spawn_capture(name)
+            })
+    }
     /// Owned records, options, variants and named outcomes may nest. Reference
     /// leaves still require reference-free storage; anonymous outcomes stay local.
     pub(crate) fn supports_spawn_payload(&self, name: &str) -> bool {

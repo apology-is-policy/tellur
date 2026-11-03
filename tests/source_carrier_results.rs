@@ -221,14 +221,10 @@ fn child_owned_storage_cannot_escape_in_a_result_carrier() {
     }
 }
 #[test]
-fn borrowed_result_carriers_stay_gated() {
+fn whole_borrowed_record_result_carriers_are_admitted() {
     for source in [
-        "struct view['a] {ref string text <- 'a;} async control bad(ref view input) exits ready {ref view value from input} {exit ready {input};} async control start(ref view input) exits done {auto child=spawn bad(input);await child;exit done;}",
+        "struct view['a] {ref string text <- 'a;} async control bad(ref view input) exits ready {ref view value from input} {exit ready {input};} async control start(ref view input) exits done {auto child=spawn bad(input);delta await child {ready {auto value}=>ready} [ready]:exit done;}",
     ] {
-        assert_eq!(
-            compile(source, manifest()).unwrap_err().code,
-            "E_ASYNC",
-            "{source}"
-        );
+        compile(source, manifest()).unwrap();
     }
 }

@@ -274,6 +274,23 @@ exports.run = async function (root) {
   assert.equal(borrowedOutcomeRun.code, 0, borrowedOutcomeRun.stderr);
   assert.deepEqual(JSON.parse(borrowedOutcomeRun.stdout).events.filter(e => e.kind === 'emit').map(e => e.message),
     ['left', 'right', 'empty', 'edited', 'none']);
+  const wholeRecords = await fs.readFile(path.join(__dirname, '../../../playground/borrowed_record_spawn_results.tellur'), 'utf8');
+  await replace(wholeRecords);
+  await waitFor(async () => diagnostics().length === 0 && (await hover('spawn choose')).includes('Whole borrowed record results retain holder storage'), 'whole record result admission');
+  assert.ok((await hover('auto a')).includes('ref view'));
+  await replace(wholeRecords.replace('auto copy = a;', 'drop(first);auto copy = a;'));
+  await waitFor(() => diagnostics().some(d => code(d) === 'E_LOAN'), 'joined whole record still protects holder storage');
+  await replace(wholeRecords.replace('deref value.text = "after";', 'drop(saved);deref value.text = "after";'));
+  await waitFor(() => diagnostics().some(d => code(d) === 'E_LOAN'), 'projected exclusive record keeps enclosing holder');
+  await replace(wholeRecords);
+  await waitFor(async () => diagnostics().length === 0 && (await hover('auto a')).includes('ref view'), 'whole record result repair');
+  await document.save();
+  const wholeRecordRun = await vscode.commands.executeCommand('tellur.buildAndRun', {
+    arguments:['--json'], output:path.join(root, 'native output', 'borrowed-record-results')
+  });
+  assert.equal(wholeRecordRun.code, 0, wholeRecordRun.stderr);
+  assert.deepEqual(JSON.parse(wholeRecordRun.stdout).events.filter(e => e.kind === 'emit').map(e => e.message),
+    ['left', 'right', 'after', 'available']);
   await fs.writeFile(path.join(fixture, 'passed.txt'), 'cold and started tasks, synchronous helpers, diagnostics, unsaved repair and native execution passed\n');
   console.log('TELLUR_CARRIER_TASKS_EDITOR_TESTS_PASSED: pending type hover, diagnostic repair and native run');
 };

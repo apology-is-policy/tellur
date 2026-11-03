@@ -1,0 +1,85 @@
+struct view<t>['a] {
+    ref t text <- 'a;
+}
+async control choose<t>(ref view<t> left, ref view<t> right, bool yes)
+    exits left { ref view<t> value from left },
+    right { ref view<t> value from right }
+{
+    yield;
+    delta yes {
+        true => left,
+        false => right
+    }
+    [left]: exit left { left };
+    [right]: exit right { right };
+}
+async control select(bool yes) exits done {
+    mutable string left = "left";
+    mutable string right = "right";
+    view<string> first = view<string> { borrow left };
+    view<string> second = view<string> { borrow right };
+    auto pending = spawn choose<string>(borrow first, borrow second, yes);
+    yield;
+    yield;
+    auto moved = move pending;
+    delta await moved {
+        left { auto a } => left,
+        right { auto b } => right
+    }
+    [left]:
+        drop(second);
+        right = "free";
+        auto copy = a;
+        ref string detached = copy.text;
+        drop(first);
+        emit(detached);
+        left = "free";
+        exit done;
+    [right]:
+        drop(first);
+        left = "free";
+        emit(b.text);
+        drop(second);
+        right = "free";
+        exit done;
+}
+struct edit_leaf['a] {
+    ref mutable string text <- 'a;
+}
+struct edit_holder['a] {
+    edit_leaf['a] item;
+}
+async control lend(ref mutable edit_holder input) exits ready {
+        ref mutable edit_leaf value from input
+    }
+{
+    yield;
+    exit ready { borrow mutable input.item };
+}
+async control startup() exits done {
+    await select(true);
+    await select(false);
+    mutable string owner = "before";
+    mutable edit_holder saved = edit_holder { edit_leaf { borrow mutable owner } };
+    ref mutable edit_holder carrier = borrow mutable saved;
+    auto child = spawn lend(carrier);
+    yield;
+    yield;
+    delta await child {
+        ready { auto value } => ready
+    }
+    [ready]:
+        deref value.text = "after";
+        emit(value.text);
+        deref carrier.item.text = "available";
+        emit(carrier.item.text);
+        drop(saved);
+        owner = "free";
+        exit done;
+}
+outcome program_result {
+    @exit 0 done
+}
+control main() exits program_result {
+    forward run startup();
+}
