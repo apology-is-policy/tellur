@@ -328,8 +328,8 @@ fn whole_outcome_results_preserve_nominal_identity_local_escape_and_deeper_limit
         "outcome choice['a] {held {ref string text <- 'a},empty}outcome other['a] {held {ref string text <- 'a},empty}async control lend(ref choice input) exits ready {ref choice value from input} {exit ready {input};}async control caller(ref other input) exits done {auto child=spawn lend(input);delta await child {ready {auto value}=>ready}[ready]:exit done;}",
         "E_TYPE",
     );
-    rejects(
+    compile(
         "outcome choice['a] {held {ref string text <- 'a},empty}async control lend(ref option<ref choice> input) exits ready {ref option<ref choice> value from input} {exit ready {input};}async control caller(ref option<ref choice> input) exits done {auto child=spawn lend(input);delta await child {ready {auto value}=>ready}[ready]:exit done;}",
-        "E_ASYNC",
-    );
+        manifest(),
+    ).unwrap();
 }

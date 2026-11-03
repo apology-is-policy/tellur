@@ -1572,3 +1572,9 @@ and results. Hover describes active/empty holder storage and selected supplier o
 Imported public contracts still distinguish storage and contained origins; diagnostics
 and repair retain holder guards. The tagged-chain selection example runs through the
 native editor command. Deeper reference-bearing named-outcome nodes remain gated.
+
+Release 0.186 supports named-outcome reference chains. Hover distinguishes retained
+holder/supplier permissions from the owning caller's handling obligation, including
+empty and nested outcomes. Imported origin edits invalidate dependent callers; fresh
+editor checks repair missing handling and premature holder consumption before running
+the outcome-chain example natively. Anonymous/collection and handle limits remain.

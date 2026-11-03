@@ -6782,3 +6782,33 @@ fn tagged_chain_spawn_result_origins_follow_unsaved_imports() {
     assert_eq!(f.diagnostics(), json!([]));
     assert_eq!(hover_at(&f, source, "auto result"), initial);
 }
+
+#[test]
+fn outcome_chain_spawn_result_origins_follow_unsaved_imports() {
+    let mut f = Fixture::new();
+    let path = f.root.join("worker.tellur");
+    let uri = url::Url::from_file_path(&path).unwrap().to_string();
+    let valid = "pub outcome view['a] {held {ref string text <- 'a},empty}pub struct pair['left,'a,'right,'b] {pub ref view['a] first <- 'left;pub ref view['b] second <- 'right;}pub async control lend(pair input) exits ready {ref view[input['a]] value from input['left]} {yield;exit ready {input.first};}pub control consume(view input) exits done {delta input {held {auto ignored}=>held,empty=>empty}[entry]:exit done;}";
+    fs::write(&path, valid).unwrap();
+    let source = "import \"worker.tellur\" as worker;async control start() exits done {mutable string a=\"a\";mutable string b=\"b\";worker.view first=worker.view.held {borrow a};worker.view second=worker.view.held {borrow b};worker.pair links=worker.pair {borrow first,borrow second};auto child=spawn worker.lend(links);delta await child {ready {auto result}=>ready}[ready]:worker.consume(second);b=\"free\";delta result {held {auto text}=>held,empty=>empty}[held]:emit(text);[ready]:worker.consume(first);a=\"free\";exit done;}control main() exits done {forward run start();}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let initial = hover_at(&f, source, "auto result");
+    assert!(initial.to_string().contains("ref worker.view"));
+    let broken = valid
+        .replace("input['a]", "input['b]")
+        .replace("input['left]", "input['right]")
+        .replace("exit ready {input.first}", "exit ready {input.second}");
+    f.server.notification(
+        "textDocument/didOpen",
+        &json!({"textDocument":{"uri":uri,"version":1,"text":broken}}),
+    );
+    assert_eq!(f.diagnostics()[0]["code"], "E_LOAN");
+    assert!(hover_at(&f, source, "auto result").is_null());
+    f.server.notification(
+        "textDocument/didClose",
+        &json!({"textDocument":{"uri":uri}}),
+    );
+    assert_eq!(f.diagnostics(), json!([]));
+    assert_eq!(hover_at(&f, source, "auto result"), initial);
+}

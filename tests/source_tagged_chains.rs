@@ -257,7 +257,7 @@ fn joined_and_unjoined_tagged_fault_results_settle_before_contingency() {
     }
 }
 #[test]
-fn deeper_named_outcomes_collections_and_escaping_storage_stay_gated() {
+fn deeper_named_outcomes_are_admitted_while_collections_and_local_escape_stay_gated() {
     for ty in [
         "link",
         "ref link",
@@ -268,14 +268,11 @@ fn deeper_named_outcomes_collections_and_escaping_storage_stay_gated() {
         let s = format!(
             "outcome reply['a] {{held {{ref string text <- 'a}},empty}}struct link['holder,'a] {{ref reply['a] item <- 'holder;}}async control work({ty} input) exits done {{exit done;}}async control caller({ty} input) exits done {{auto child=spawn work(input);await child;exit done;}}"
         );
-        rejects(
-            &s,
-            if ty.starts_with("vector") {
-                "E_MANIFEST"
-            } else {
-                "E_ASYNC"
-            },
-        );
+        if ty.starts_with("vector") {
+            rejects(&s, "E_MANIFEST");
+        } else {
+            compile(&s, manifest()).unwrap();
+        }
     }
     rejects(
         "variant view['a] {held {ref string text <- 'a},empty}struct chain['holder,'a] {ref view['a] item <- 'holder;}async control escape(ref string input) exits ready... {view local=view.held {input};exit ready {chain {borrow local}};}",

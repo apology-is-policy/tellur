@@ -4739,3 +4739,18 @@ at every fuel cutoff and quota partition. Their models include active/empty and 
 results, joined/unjoined faults, awaited parents and real resources in active and
 reference-free empty alternatives. The reference context census covers 80 variants.
 Production schedulers and conservative host dependency evidence are unchanged.
+
+## Named-outcome source reference chains (0.186)
+
+`source_outcome_chains` covers active/empty/nested named outcomes across shared/exclusive
+owned/borrowed roots, queued/running/completed/joined phases, selected suppliers and
+holder guards, Copy/move, repeated joins, siblings and generic forwarding. Borrowed
+inspection retains caller handling; owned outcome roots transfer obligations. Missing
+handling, drop/clone, nominal mismatches and local escapes retain negative controls.
+Public-origin edits invalidate callers and fresh editor repairs restore hover/native run.
+
+Nine `compiled_source_outcome_chains_*` tests compare ten original/expanded O0/O2 models
+at every fuel cutoff and quota partition. Real resources in active and empty outcome
+alternatives retire after borrowers, completed results and stopped siblings beside
+awaited parents. The reference context census covers 88 variants. Production scheduler
+and conservative host-dependency behavior are unchanged; cold baseline evidence is reused.

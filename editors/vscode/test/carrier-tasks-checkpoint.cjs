@@ -359,6 +359,22 @@ exports.run = async function (root) {
   });
   assert.equal(taggedChainRun.code, 0, taggedChainRun.stderr);
   assert.deepEqual(JSON.parse(taggedChainRun.stdout).events.filter(e => e.kind === 'emit').map(e => e.message), ['left', 'right']);
+  const outcomeChains = await fs.readFile(path.join(__dirname, '../../../playground/outcome_chain_spawn.tellur'), 'utf8');
+  await replace(outcomeChains);
+  await waitFor(async () => diagnostics().length === 0 && (await hover('spawn choose')).includes('Named-outcome reference chains retain every holder and selected supplier'), 'outcome reference chain admission');
+  assert.ok((await hover('auto a')).includes('ref view'));
+  await replace(outcomeChains.replace('auto moved = move pending;', 'consume<string>(first);auto moved = move pending;'));
+  await waitFor(() => diagnostics().some(d => code(d) === 'E_LOAN'), 'outcome chain keeps intermediate holder');
+  await replace(outcomeChains.replace('consume<string>(first);', '').replaceAll('left = "free";', ''));
+  await waitFor(() => diagnostics().some(d => code(d) === 'E_OUTCOME'), 'outcome chain retains caller handling');
+  await replace(outcomeChains);
+  await waitFor(async () => diagnostics().length === 0 && (await hover('auto a')).includes('ref view'), 'outcome chain repair');
+  await document.save();
+  const outcomeChainRun = await vscode.commands.executeCommand('tellur.buildAndRun', {
+    arguments:['--json'], output:path.join(root, 'native output', 'outcome-chains')
+  });
+  assert.equal(outcomeChainRun.code, 0, outcomeChainRun.stderr);
+  assert.deepEqual(JSON.parse(outcomeChainRun.stdout).events.filter(e => e.kind === 'emit').map(e => e.message), ['left', 'right']);
   await fs.writeFile(path.join(fixture, 'passed.txt'), 'cold and started tasks, synchronous helpers, diagnostics, unsaved repair and native execution passed\n');
   console.log('TELLUR_CARRIER_TASKS_EDITOR_TESTS_PASSED: pending type hover, diagnostic repair and native run');
 };

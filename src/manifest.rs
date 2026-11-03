@@ -958,8 +958,8 @@ impl Manifest {
         let inner = reference_inner(name).map_or(name, |(_, inner)| inner);
         !self.contains_references(inner)
     }
-    /// Record/option/closed-variant chains retain every intermediate holder.
-    /// Reference-bearing named outcomes, collections and anonymous contracts stay separate.
+    /// Record/option/variant/named-outcome chains retain every intermediate holder.
+    /// Named outcomes keep ordinary handling; collections and anonymous contracts stay separate.
     fn supports_spawn_reference_chain(&self, name: &str) -> bool {
         fn visit(m: &Manifest, name: &str, active: &mut BTreeSet<String>) -> bool {
             if m.supports_spawn_leaf(name) {
@@ -976,13 +976,12 @@ impl Manifest {
                     Some(TypeDef::Record { fields, .. }) => {
                         fields.iter().all(|field| visit(m, &field.ty, active))
                     }
-                    Some(TypeDef::Variant { constructors, .. })
-                        if outcome_inner(inner).is_none() =>
-                    {
-                        constructors
-                            .iter()
-                            .all(|tag| tag.fields.iter().all(|field| visit(m, &field.ty, active)))
-                    }
+                    Some(
+                        TypeDef::Variant { constructors, .. }
+                        | TypeDef::Outcome { constructors, .. },
+                    ) if outcome_inner(inner).is_none() => constructors
+                        .iter()
+                        .all(|tag| tag.fields.iter().all(|field| visit(m, &field.ty, active))),
                     _ => false,
                 }
             };
@@ -993,7 +992,7 @@ impl Manifest {
         (option_inner(inner).is_some()
             || matches!(
                 self.type_def(inner),
-                Some(TypeDef::Record { .. } | TypeDef::Variant { .. })
+                Some(TypeDef::Record { .. } | TypeDef::Variant { .. } | TypeDef::Outcome { .. })
             ))
             && outcome_inner(inner).is_none()
             && visit(self, name, &mut BTreeSet::new())
@@ -1034,7 +1033,7 @@ impl Manifest {
         reference_inner(name).is_some_and(|(_, inner)| contents(self, inner, &mut BTreeSet::new()))
     }
     /// Whole borrowed carriers retain storage and contained permissions.
-    /// Named outcomes retain caller handling; deeper named-outcome nodes and anonymous contracts stay separate.
+    /// Named outcomes retain caller handling; anonymous contracts stay separate.
     pub(crate) fn supports_spawn_result(&self, name: &str) -> bool {
         self.supports_spawn_payload(name)
             || reference_inner(name).is_some_and(|(_, inner)| {

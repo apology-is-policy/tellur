@@ -1,0 +1,79 @@
+outcome edit_leaf['text] {
+    held { ref mutable string text <- 'text },
+    empty
+}
+struct edit_view['holder, 'text] {
+    ref mutable edit_leaf['text] item <- 'holder;
+}
+outcome read_leaf['text] {
+    held { ref string text <- 'text },
+    empty
+}
+struct read_view['holder, 'text] {
+    ref read_leaf['text] item <- 'holder;
+}
+async control lend(ref mutable edit_view input)
+    exits ready... {
+    emit("result completed");
+    exit ready { input };
+}
+async control sibling(ref read_view input) exits done {
+    delta input.item {
+        held { auto text } => held,
+        empty => empty
+    }
+    [held]: emit(text);
+    [entry]:
+        fault boundary {
+            yield;
+            yield;
+        } contingency [] {
+            emit("stopped nested handler");
+            escalate;
+        }
+        emit("stopped sibling resumed");
+        exit done;
+}
+async control fail() faults {
+    yield;
+    fault "child failed";
+}
+async control startup() exits done faults {
+    mutable string text = "original";
+    string peer = "sibling started";
+    mutable edit_leaf edit_storage = edit_leaf.held { borrow mutable text };
+    mutable edit_view editing = edit_view { borrow mutable edit_storage };
+    read_leaf read_storage = read_leaf.held { borrow peer };
+    read_view reading = read_view { borrow read_storage };
+    auto result = spawn lend(borrow mutable editing);
+    auto worker = spawn sibling(borrow reading);
+    auto failure = spawn fail();
+    yield;
+    yield;
+    delta await result {
+        ready { auto value } => ready
+    }
+    [ready]:
+        emit("stopped parent resumed");
+        delta value.item {
+            held { auto joined_text } => held,
+            empty => empty
+        }
+    [held]: emit(joined_text);
+    [ready]:
+        await worker;
+        await failure;
+}
+async control outer() exits done faults {
+    await startup();
+    exit done;
+}
+control main() exits done {
+    fault boundary {
+        run outer();
+    } contingency [] {
+        emit("owner contingency");
+        terminate process 23;
+    }
+    exit done;
+}

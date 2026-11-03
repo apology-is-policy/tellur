@@ -637,7 +637,7 @@ identity and child-local storage escape checks still apply. See the
 [runnable example](../../playground/borrowed_outcome_spawn_results.tellur).
 Completed and joined borrowers retire before outcome-holder resources and their external
 suppliers on an owning fault. Declared resource dispositions run before the owning
-contingency; stopped nested handlers do not run. Reference-bearing named-outcome nodes in deeper chains, anonymous
+contingency; stopped nested handlers do not run. Anonymous
 reference-bearing contracts, reference-bearing collections and borrowed-handle wrappers
 remain separate. Source handoffs still occur only at explicit `await`/`yield`.
 
@@ -647,7 +647,7 @@ Source tasks may capture and return record values or whole record references who
 reference-bearing nodes are records. Record fields can own further records or hold
 shared/exclusive references to them. Reference-free contents remain allowed. This
 extends the previous direct-leaf profile. The following tagged-chain profile admits
-options and closed variants too; reference-bearing named outcomes remain separate.
+options, closed variants and named outcomes too, with ordinary handling obligations.
 
 <!-- tellur:check -->
 ```tellur
@@ -729,10 +729,58 @@ unselected suppliers after join and retains only the selected result dependencie
 On an owning fault, borrowers retire before backing-holder resources and external
 suppliers, including resources in alternatives with no contained references. Only the
 owning contingency runs after resource dispositions; stopped nested handlers remain
-suppressed. Reference-bearing named-outcome nodes inside deeper chains, anonymous
-contracts, collections and borrowed-handle wrappers remain separate. The existing
-profile for named outcomes with direct reference leaves is unchanged. Admission rejects
+suppressed. The named-outcome extension below retains ordinary handling obligations.
+Anonymous contracts, collections and borrowed-handle wrappers remain separate. Admission rejects
 cyclic carrier graphs; no implicit handoffs or escaping task handles are introduced.
+
+## Reference chains through named outcomes
+
+Named outcomes with complete origin groups may occur anywhere in an admitted reference
+chain, mixed with records, options and closed variants. Shared/exclusive captures and
+results retain every intermediate holder, selected supplier and mutable ancestor across
+completion and consuming join. Empty outcomes keep holder storage without inventing
+loans on absent suppliers. Cyclic carrier graphs remain rejected.
+
+Borrowed inspection, including a whole borrowed result, leaves every handling obligation
+with the owning caller. This includes empty and nested outcomes. An owned outcome root
+instead transfers its handling obligation into the child and back with an owned result;
+subsequent spawn/join transfers preserve that obligation. Dropping, cloning or hiding an
+unhandled outcome in a wrapper remains invalid.
+
+<!-- tellur:check -->
+```tellur
+outcome reply['a] { held { ref mutable string text <- 'a }, empty }
+struct link['holder, 'a] { ref mutable reply['a] item <- 'holder; }
+async control lend(ref mutable link input) exits ready... {
+    yield;
+    exit ready { borrow mutable deref input.item };
+}
+async control startup() exits done {
+    mutable string owner = "before";
+    mutable reply saved = reply.held { borrow mutable owner };
+    mutable link holder = link { borrow mutable saved };
+    auto child = spawn lend(borrow mutable holder);
+    delta await child { ready { auto value } => ready }
+    [ready]: delta value { held { auto text } => held, empty => empty }
+    [held]: deref text = "after"; emit(text);
+    [entry]: delta saved { held { auto ignored } => handled, empty => absent }
+    [entry]: owner = "free"; exit done;
+}
+control main() exits done { forward run startup(); }
+```
+
+Shared whole references remain Copy. A detached shared leaf can outlive its handled
+holder, while an exclusive reborrow keeps its holder guards until final use. Shared
+outer authority never grants mutable access through an exclusive inner field. Public
+contracts continue to distinguish holder storage from contained origins, and imported
+contract changes invalidate dependent callers. See the
+[runnable selection example](../../playground/outcome_chain_spawn.tellur).
+
+On an owning fault, completed results and stopped borrowers retire before backing
+outcome resources and external suppliers. Resource dispositions precede the owning
+contingency; stopped nested contingencies remain suppressed. Anonymous reference-bearing
+contracts, reference-bearing collections and borrowed-handle wrappers retain their
+separate limits. Scheduling and task-handle ownership are unchanged.
 
 ## Parent awaits beside children
 

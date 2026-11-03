@@ -319,7 +319,12 @@ E1e.20 admits option and closed-variant nodes in deeper reference chains. Active
 empty alternatives retain holder storage, selected origins and exclusive ancestry across
 join and fault retirement. Deeper named-outcome nodes are next; anonymous contracts,
 collections and borrowed-handle wrappers remain separate.
-Compiler **0.185.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
+E1e.21 admits named-outcome nodes in deeper reference chains, preserving owning caller
+handling for active/empty/nested borrowed outcomes and transferred handling for owned
+carriers. Holder storage, selected origins, exclusive ancestry and fault retirement
+retain their existing rules. Audit the remaining source admission gates against cold-task
+support and application needs before choosing the next extension.
+Compiler **0.186.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
 lifetime checkpoints of milestone 2, the array/vector/map core of milestone 3,
 and implicit entry, inline/stored adapters, owned capture, named outcome contracts
 and checked forwarding in milestone 4. A first [semantic foundation](semantic-foundation.md)
@@ -621,6 +626,8 @@ do not block this design work. E2 remains the native coroutine target.
 | E1e.17 | Whole borrowed option/variant spawn results | Delivered in 0.182: active/empty tagged results retain holder storage and tag-specific contained origins through join. Shared Copy, exclusive moves, projected guards, nominal identity, nested outcome obligations and borrower-before-holder resource retirement remain checked. Whole borrowed named-outcome results are next; deeper reference pointees remain gated |
 | E1e.18 | Whole borrowed named-outcome spawn results | Delivered in 0.183: active/empty whole results preserve storage and contained origins without discharging owning caller handling. Copy/move, projected guards, siblings, nominal identity, generic/imported contracts and resource retirement retain existing rules. Deeper reference pointees are the next admission audit; anonymous contracts and collections remain separate |
 | E1e.19 | Record-only reference chains | Delivered in 0.184: owned/borrowed record captures and results may contain shared/exclusive references to further reference-bearing records. Holder chains, selected origins, copies/transfers, mutable ancestry, public contracts and borrower-before-resource retirement preserve ordinary semantics. Tagged nodes in deeper chains are next; anonymous contracts and collections remain separate |
+| E1e.20 | Tagged reference chains | Delivered in 0.185: option/closed-variant nodes may mix with records in owned/borrowed captures and results. Active/empty holder storage, selected suppliers, exclusive guards and resource retirement survive joins; named-outcome nodes are the next audit |
+| E1e.21 | Named-outcome reference chains | Delivered in 0.186: complete named-outcome origins preserve every holder and selected supplier through borrowed and owned chain captures/results. Caller handling remains mandatory for borrowed active/empty/nested outcomes; owned transfers retain handling across repeated joins. Remaining anonymous/collection/handle and parent-boundary gates require separate audits against existing cold support and application needs |
 | E2 | Native coroutine lowering | Preserved architectural target: direct LLVM coroutine primitives, pinned-toolchain experiment, frame lifetime rules and schedule-based differential tests; I1 must keep this route open |
 | T1 | Stronger source transformations | Hold current scope during P1–P5: extraction correspondence, continuation cuts, source-level lift and editor actions |
 | R1 | Mathematical foundations | Maintain existing evidence; defer extensions during P1–P5: preservation judgments, richer protocol abstractions, infinite/causal behavior, mechanization |

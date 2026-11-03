@@ -3466,3 +3466,23 @@ cold and gated source baselines for caller handling, active/empty/nested outcome
 edges and selected supplier origins before changing admission. Anonymous contracts,
 collections and borrowed-handle wrappers remain separate; no new scheduling or ownership
 policy is implied.
+
+## Named-outcome reference chains (E1e.21)
+
+Compiler 0.186 extends the chain visitor to named outcomes with complete origins. The
+anonymous-outcome exclusion and cycle guard remain. Borrowed active/empty/nested outcomes
+leave handling with the owning caller; owned outcome roots transfer handling through
+capture, result delivery and repeated joins. Production schedulers are unchanged.
+
+The 32-case 0.185 cold/gated baseline is retained separately. Source evidence covers
+all child phases, selected shared origins, exclusive ancestry, copies/transfers, whole
+and owned results, nested and empty obligations, siblings, generic forwarding, imported
+contracts, nominal identity and local escapes. Native original/expanded O0/O2 fuel/quota
+comparisons include active and empty resource-bearing outcome holders, completed results,
+awaited parents and stopped siblings. Only the owning contingency runs after settlement.
+
+Next audit: inventory remaining source admission limits against existing cold-task
+support and application needs. Anonymous reference-bearing contracts, reference-bearing
+collections, borrowed-handle storage and inline parent fault-boundary crossing remain
+separate. Establish a concrete supported baseline before selecting the next bounded
+extension; this checkpoint does not change those limits or authorize new semantics.

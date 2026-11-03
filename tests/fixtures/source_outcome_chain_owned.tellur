@@ -1,0 +1,52 @@
+outcome reply['a] {
+    held { ref mutable string text <- 'a },
+    empty
+}
+outcome request['holder, 'a] {
+    held { ref mutable reply['a] item <- 'holder },
+    empty
+}
+async control relay(request input)
+    exits ready { request[input['holder], input['a]] value }
+{
+    yield;
+    exit ready { input };
+}
+control consume(reply input) exits done {
+    delta input {
+        held { auto ignored } => held,
+        empty => empty
+    }
+    [entry]: exit done;
+}
+async control startup() exits done {
+    mutable string owner = "before";
+    mutable reply saved = reply.held { borrow mutable owner };
+    request original = request.held { borrow mutable saved };
+    auto child = spawn relay(original);
+    yield;
+    yield;
+    delta await child {
+        ready { auto returned } => ready
+    }
+    [ready]: auto second = spawn relay(returned);
+        delta await second {
+            ready { auto result } => second
+        }
+    [second]: delta result {
+        held { auto borrowed } => held,
+        empty => empty
+    }
+    [held]: delta borrowed {
+        held { auto text } => text,
+        empty => absent
+    }
+    [text]: deref text = "owned";
+        emit(text);
+    [entry]: consume(saved);
+        owner = "free";
+        exit done;
+}
+control main() exits done {
+    forward run startup();
+}

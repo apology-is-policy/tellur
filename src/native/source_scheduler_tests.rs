@@ -1,6 +1,78 @@
 //! Differential source execution using the exact production emitter and scheduler.
 use super::*;
 #[test]
+fn compiled_source_outcome_chains_values() {
+    compare(
+        "outcome_chains_values",
+        include_str!("../../playground/outcome_chain_spawn.tellur"),
+    );
+}
+#[test]
+fn compiled_source_outcome_chains_guards() {
+    compare(
+        "outcome_chains_guards",
+        include_str!("../../tests/fixtures/source_outcome_chain_guards.tellur"),
+    );
+}
+#[test]
+fn compiled_source_outcome_chains_nested() {
+    compare(
+        "outcome_chains_nested",
+        include_str!("../../tests/fixtures/source_outcome_chain_nested.tellur"),
+    );
+}
+#[test]
+fn compiled_source_outcome_chains_owned() {
+    compare(
+        "outcome_chains_owned",
+        include_str!("../../tests/fixtures/source_outcome_chain_owned.tellur"),
+    );
+}
+#[test]
+fn compiled_source_outcome_chains_fault() {
+    compare(
+        "outcome_chains_fault",
+        include_str!("../../tests/fixtures/source_outcome_chain_fault.tellur"),
+    );
+}
+#[test]
+fn compiled_source_outcome_chains_empty_and_whole_results() {
+    let source = include_str!("../../tests/fixtures/source_outcome_chain_guards.tellur");
+    let empty = source
+        .replace("choice.held { borrow mutable owner }", "choice.empty {}")
+        .replace(
+            "auto moved = move child;",
+            "owner=\"available\";auto moved = move child;",
+        );
+    compare("outcome_chains_empty", &empty);
+    let whole = source
+        .replace(
+            "exit ready { borrow mutable deref input.item };",
+            "exit ready { input };",
+        )
+        .replace("delta value {", "delta value.item {");
+    compare("outcome_chains_whole", &whole);
+}
+#[test]
+fn compiled_source_outcome_chains_joined_fault() {
+    let source = include_str!("../../tests/fixtures/source_outcome_chain_fault.tellur")
+        .replace(
+            "    yield;\n    yield;\n    delta await result",
+            "    delta await result",
+        )
+        .replace("emit(\"stopped parent resumed\");", "yield;yield;");
+    compare("outcome_chains_joined_fault", &source);
+}
+#[test]
+fn compiled_source_outcome_chains_resources() {
+    source_resources(SourceResources::OutcomeChains);
+}
+#[test]
+fn compiled_source_outcome_chains_empty_resources() {
+    source_resources(SourceResources::EmptyOutcomeChains);
+}
+
+#[test]
 fn compiled_source_tagged_chains_values() {
     compare(
         "tagged_chains_values",
@@ -866,6 +938,8 @@ enum SourceResources {
     RecordChains,
     TaggedChains,
     EmptyTaggedChains,
+    OutcomeChains,
+    EmptyOutcomeChains,
     BorrowedResult,
 }
 fn source_resources(mode: SourceResources) {
@@ -886,6 +960,8 @@ fn source_resources(mode: SourceResources) {
             | SourceResources::BorrowedTaggedResults
             | SourceResources::TaggedChains
             | SourceResources::EmptyTaggedChains
+            | SourceResources::OutcomeChains
+            | SourceResources::EmptyOutcomeChains
             | SourceResources::BorrowedOutcomeResults
             | SourceResources::BorrowedRecordResults
             | SourceResources::RecordChains
@@ -1136,6 +1212,8 @@ async control helper_work(ref counter local,string path) exits done {{
             | SourceResources::BorrowedTaggedResults
             | SourceResources::TaggedChains
             | SourceResources::EmptyTaggedChains
+            | SourceResources::OutcomeChains
+            | SourceResources::EmptyOutcomeChains
             | SourceResources::BorrowedOutcomeResults
     ) {
         r#"
@@ -1210,6 +1288,8 @@ control main(string path,bool stop) exits done {
             | SourceResources::BorrowedOutcomeResults
             | SourceResources::TaggedChains
             | SourceResources::EmptyTaggedChains
+            | SourceResources::OutcomeChains
+            | SourceResources::EmptyOutcomeChains
     ) {
         let changed=source.replace("produce(counter value,ref counter parent) exits ready {counter result,ref counter retained from parent} {exit ready {value,parent};}",
             "produce(ref produced input) exits ready {ref produced result from input} {exit ready {input};}")
@@ -1257,7 +1337,10 @@ control main(string path,bool stop) exits done {
     };
     let source = if matches!(
         mode,
-        SourceResources::TaggedChains | SourceResources::EmptyTaggedChains
+        SourceResources::TaggedChains
+            | SourceResources::EmptyTaggedChains
+            | SourceResources::OutcomeChains
+            | SourceResources::EmptyOutcomeChains
     ) {
         let changed=source.replace("produce(ref produced input) exits ready {ref produced result from input} {exit ready {input};}",
             "produce(produced_link input) exits ready {ref produced[input['parent]] result from input['holder]} {exit ready {input.item};}")
@@ -1274,7 +1357,10 @@ control main(string path,bool stop) exits done {
     } else {
         source
     };
-    let source = if matches!(mode, SourceResources::EmptyTaggedChains) {
+    let source = if matches!(
+        mode,
+        SourceResources::EmptyTaggedChains | SourceResources::EmptyOutcomeChains
+    ) {
         // The empty alternative has no supplied reference, but owns a real resource.
         // Its borrowed storage must retire before that resource at every fuel cut.
         let changed=source.replace("variant produced['parent] {held {counter owned,ref counter retained <- 'parent},empty}",
@@ -1286,6 +1372,23 @@ control main(string path,bool stop) exits done {
             .replace("[consumed]:close(value);", "[consumed]:close(value);[empty_owned]:close(remaining);");
         assert_ne!(changed, source);
         assert!(changed.contains("produced.empty {first}"));
+        changed
+    } else {
+        source
+    };
+    let source = if matches!(
+        mode,
+        SourceResources::OutcomeChains | SourceResources::EmptyOutcomeChains
+    ) {
+        let changed = source
+            .replace("variant produced['parent]", "outcome produced['parent]")
+            .replace(
+                "variant worker_input['parent]",
+                "outcome worker_input['parent]",
+            );
+        assert_ne!(changed, source);
+        assert!(changed.contains("spawn produce(produced_link {borrow result_holder})"));
+        assert!(changed.contains("delta result_holder {held"));
         changed
     } else {
         source
