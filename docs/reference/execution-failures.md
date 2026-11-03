@@ -226,6 +226,13 @@ originates deep in a callee. Arguments are transferred first: a callee may compl
 a transferred resource normally before it faults, without needing a fault disposition
 for that already-completed resource. Borrowing an owner does not transfer it.
 
+A spawned producer must also permit settlement of every owner retained across its
+handoffs and transitive calls. An enclosing owner's fault can stop that producer
+without entering its own contingency; retained and protected boundary owners are
+therefore included. This admission check reports `E_ASYNC` at spawn and does not
+change the producer's escaping `faults` contract. See
+[spawned resource obligations](async-execution.md#owned-spawned-children).
+
 The first supported disposition is `"fault": "release"` on a manifest opaque,
 linear type mapped to a retained Rust owner:
 

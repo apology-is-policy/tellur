@@ -85,6 +85,14 @@ exports.run = async function (root) {
   assert.equal(helperRun.code, 0, helperRun.stderr);
   assert.deepEqual(JSON.parse(helperRun.stdout).events.filter(e => e.kind === 'emit').map(e => e.message),
     ['queued', 'constructed', 'updated', 'updated', 'child started', 'updated', 'child finished', 'updated']);
+  const settled = 'async control finish(handle h) exits done {delta close(h) {closed=>closed,failed {close_error e}=>failed} [closed|failed]:yield;exit done;} async control startup(handle h) exits done {auto child=spawn finish(h);await child;exit done;}';
+  await replace(settled);
+  await waitFor(async () => diagnostics().length === 0 && (await hover('auto child')).includes('task<finish>'), 'producer completes owner before handoff');
+  const suspendedOwner = settled.replace('delta close(h)', 'yield;delta close(h)').replace('[closed|failed]:yield;', '[closed|failed]:');
+  await replace(suspendedOwner);
+  await waitFor(() => diagnostics().some(d => code(d) === 'E_ASYNC' && d.message.includes('fault dispositions')), 'spawn refuses suspended owner without disposition');
+  await replace(settled);
+  await waitFor(async () => diagnostics().length === 0 && (await hover('spawn finish')).includes('producer owners retained across handoffs'), 'repaired producer stop obligations');
   await fs.writeFile(path.join(fixture, 'passed.txt'), 'cold and started tasks, synchronous helpers, diagnostics, unsaved repair and native execution passed\n');
   console.log('TELLUR_CARRIER_TASKS_EDITOR_TESTS_PASSED: pending type hover, diagnostic repair and native run');
 };

@@ -973,6 +973,9 @@ impl Manifest {
                 return "…".into();
             }
             *remaining -= 1;
+            if let Some(operation) = task_inner(ty) {
+                return format!("task<{}>", format(m, operation, depth + 1, remaining));
+            }
             if let Some((mutable, inner)) = reference_inner(ty) {
                 return format!(
                     "ref {}{}",

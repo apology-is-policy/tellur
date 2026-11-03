@@ -4503,3 +4503,15 @@ expanded reference/native comparisons cover helper work before/after handoffs,
 queued-child settlement on helper fault, O0/O2, zero/small/large quotas and every
 fuel cut. Real resource probes cover helper faults with suspended and completed
 siblings; all created owners retire once before the owning contingency.
+
+## Spawned producer stop obligations (0.168)
+
+Negative source cases retain resources without fault dispositions across yield,
+direct/cold awaits, ordinary helpers, named supervision and retained lexical/named
+boundaries; aggregates and transitive generic callees keep the same requirement.
+The same sequential cold producers remain checked. Positive repairs complete whole
+or projected owners before the handoff, including an ordinary callee that consumes
+its input first. Unsaved imported producer edits invalidate spawn admission and
+restore it after repair. Native original/expanded O0/O2 probes use a real Rust owner
+without a source fault disposition: every fuel cutoff and quota partition retires
+each allocation once, while normal execution closes it before yielding.

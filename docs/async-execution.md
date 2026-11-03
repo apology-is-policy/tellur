@@ -3032,3 +3032,24 @@ This extends source call admission only. Borrowed spawn, fault-boundary crossing
 parent cold/direct awaits with children and public task escape remain gated. Existing
 host APIs keep their stricter selection permissions. See the runnable
 [structured helpers example](../playground/structured_helpers.tellur).
+
+## Spawned producer stop obligations (E1e.3)
+
+Compiler 0.168 closes a source admission gap found during the parent-await audit:
+a spawned producer could acquire a resource without a fault disposition, retain it
+across `yield`, then be stopped by a sibling fault. Capture/result checks alone did
+not describe that suspended local owner. Parent await admission remains unchanged
+while its retained owning-continuation routing is audited separately.
+
+The checker records every live owning leaf at source handoffs, propagates the proof
+through resolved calls, cold/direct awaits and named supervision, and requires the
+producer proof at spawn. Partial field moves retain only remaining obligations.
+Ordinary calls transfer their inputs before checking caller storage, so a callee
+can complete an input before its first handoff. Direct/cold awaits also retain the
+queued arguments before execution begins. Unknown abstract bodies remain gated.
+
+Unlike ordinary local fault permission, this proof includes protected outer values
+and owners retained for nested contingencies: the accepted enclosing-stop policy
+does not run those handlers. The proof neither infers `faults` nor changes sequential
+cold/direct calls. It is conservative for spawn regardless of the current caller's
+sibling mix. No new disposal protocol, task type or runtime switching point is added.

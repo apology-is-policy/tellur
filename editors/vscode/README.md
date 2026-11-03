@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-darwin-arm64-0.167.0.vsix` using **Extensions:
+1. Install the supplied `tellur-language-darwin-arm64-0.168.0.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1467,3 +1467,11 @@ while owned started children remain live. Editing a helper to enter async work
 invalidates affected callers immediately. The structured helpers example exercises
 parent borrows, returned references and constructor/generic calls between explicit
 handoffs. The isolated editor check covers unsaved rejection/repair and native run.
+
+## Spawned resource settlement in 0.168
+
+Spawn diagnostics now check producer owners held across handoffs, including nested
+retained boundary owners and transitive callees. Complete resources lacking fault
+dispositions before yielding or awaiting. Unsaved imported body changes refresh
+this admission proof; source fault contracts and sequential cold calls are unchanged.
+Inferred cold and started handles display as `task<producer>` without private markers.

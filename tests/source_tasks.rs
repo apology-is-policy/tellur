@@ -438,3 +438,117 @@ fn helper_faults_keep_unjoined_result_dispositions_and_stop_queued_children() {
         assert_eq!(messages, ["helper", "owner contingency"]);
     }
 }
+
+fn stop_manifest() -> Manifest {
+    let mut m = manifest();
+    m.primitives
+        .iter_mut()
+        .find(|p| p.name == "close")
+        .unwrap()
+        .contingent = true;
+    m
+}
+const CLOSE_HANDLE: &str = r#"
+@contingent control finish(handle h) exits done {
+    delta close(h) {closed=>closed,failed {close_error e}=>failed}
+    [closed|failed]:exit done;
+}
+async control pause() exits done {yield;exit done;}
+"#;
+fn opened_body(body: &str) -> String {
+    format!(
+        r#"delta open("path") {{opened {{handle h}}=>opened,not_found=>missing,denied=>denied}}
+    [opened]:{body}
+    [opened|missing|denied]:exit done;"#
+    )
+}
+fn spawn_producer(extra: &str, body: &str, mode: &str) -> String {
+    format!(
+        "{CLOSE_HANDLE} {extra} async control producer() exits done faults {{{body}}} async control startup() exits done faults {{auto child={mode} producer();await child;exit done;}}"
+    )
+}
+#[test]
+fn spawn_rejects_unsettleable_owners_in_suspended_producers_and_callees() {
+    for (extra, body) in [
+        ("", "yield;finish(h);"),
+        (
+            "struct bundle {handle owned;string tag;}",
+            "auto value=bundle {h,\"tag\"};yield;finish(value.owned);",
+        ),
+        (
+            "boundary request() {run pause();terminate;} contingency(string reason) {terminate;}",
+            "supervise request();finish(h);",
+        ),
+        (
+            "boundary request(handle h) retains h {run pause();finish(h);terminate;} contingency(string reason) {finish(h);terminate;}",
+            "supervise request(h);",
+        ),
+        (
+            "",
+            "fault boundary {yield;finish(h);} contingency [h] {finish(h);escalate;}",
+        ),
+        ("", "await pause();finish(h);"),
+        ("", "auto pending=defer pause();await pending;finish(h);"),
+        (
+            "async control complete_first(handle h) exits done {finish(h);yield;exit done;}",
+            "await complete_first(h);",
+        ),
+        (
+            "async control complete_first(handle h) exits done {finish(h);yield;exit done;}",
+            "auto pending=defer complete_first(h);await pending;",
+        ),
+        (
+            "control helper() exits done {run pause();exit done;}",
+            "helper();finish(h);",
+        ),
+    ] {
+        let body = opened_body(body);
+        // The same sequential cold producer remains legal: no enclosing spawned
+        // owner can abandon its protected storage during a sibling fault.
+        compile(&spawn_producer(extra, &body, "defer"), stop_manifest())
+            .unwrap_or_else(|e| panic!("{extra}\n{body}\n{e}"));
+        let error = compile(&spawn_producer(extra, &body, "spawn"), stop_manifest()).unwrap_err();
+        assert_eq!(error.code, "E_ASYNC", "{extra}\n{body}\n{error}");
+        assert!(error.message.contains("fault dispositions"), "{error}");
+    }
+}
+#[test]
+fn spawn_stop_proof_follows_field_moves_and_transferred_callee_owners() {
+    for (extra, body) in [
+        ("", "finish(h);yield;"),
+        (
+            "struct bundle {handle owned;string tag;}",
+            "auto value=bundle {h,\"tag\"};finish(value.owned);yield;",
+        ),
+        (
+            "control helper(handle h) exits done {finish(h);run pause();exit done;}",
+            "helper(h);",
+        ),
+        (
+            "boundary request() {terminate;} contingency(string reason) {terminate;} control helper() exits done {supervise request();exit done;}",
+            "helper();finish(h);yield;",
+        ),
+    ] {
+        compile(
+            &spawn_producer(extra, &opened_body(body), "spawn"),
+            stop_manifest(),
+        )
+        .unwrap();
+    }
+}
+#[test]
+fn stop_proof_reaches_awaited_producers_and_generic_helpers() {
+    for body in [
+        "forward await producer();",
+        "auto cold=defer producer();await cold;exit done;",
+        "helper<u32>();exit done;",
+    ] {
+        let producer = opened_body("yield;finish(h);");
+        let source = format!(
+            "{CLOSE_HANDLE} async control producer() exits done {{{producer}}} control helper<t>() exits done {{run producer();exit done;}} async control wrapper() exits done {{{body}}} async control startup() exits done {{auto child=spawn wrapper();await child;exit done;}}"
+        );
+        let error = compile(&source, stop_manifest()).unwrap_err();
+        assert_eq!(error.code, "E_ASYNC", "{error}");
+        assert!(error.message.contains("fault dispositions"), "{error}");
+    }
+}

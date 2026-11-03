@@ -240,7 +240,11 @@ parent progression remain separate follow-ups. E1e.2 now admits synchronous help
 transitive handoff or fault boundary. Parent borrows and helper faults retain the
 ordinary ownership rules while started children remain live. Broader parent
 progression, borrowed spawn and application-driven library work remain ahead.
-Compiler **0.167.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
+E1e.3 closes spawned producer stop obligations: every owner held across a handoff
+must permit enclosing fault settlement, including transitive callees and retained
+nested boundary owners. Sequential use and escaping fault contracts stay distinct.
+The parent-await audit remains next; its owning-continuation routing gate is unchanged.
+Compiler **0.168.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
 lifetime checkpoints of milestone 2, the array/vector/map core of milestone 3,
 and implicit entry, inline/stored adapters, owned capture, named outcome contracts
 and checked forwarding in milestone 4. A first [semantic foundation](semantic-foundation.md)

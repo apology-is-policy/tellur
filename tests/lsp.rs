@@ -5836,6 +5836,7 @@ fn cold_task_auto_hover_and_unsaved_ownership_repair() {
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let h = hover_at(&f, source, "auto pending");
+    assert!(!h.to_string().contains("$task"), "{h}");
     assert!(
         h["contents"]["value"]
             .as_str()
@@ -6175,6 +6176,49 @@ fn pending_children_recheck_unsaved_helper_handoffs() {
     );
     let errors = f.diagnostics();
     assert_eq!(errors[0]["code"], "E_ASYNC", "{errors}");
+    assert!(hover_at(&f, source, "auto child").is_null());
+    f.server.notification(
+        "textDocument/didClose",
+        &json!({"textDocument":{"uri":uri}}),
+    );
+    assert_eq!(f.diagnostics(), json!([]));
+    assert_eq!(hover_at(&f, source, "auto child"), initial);
+}
+
+#[test]
+fn unsaved_producer_handoffs_recheck_spawn_settlement_obligations() {
+    let mut f = Fixture::new();
+    fs::write(
+        f.root.join("manifest.json"),
+        include_str!("../playground/manifest.json"),
+    )
+    .unwrap();
+    let path = f.root.join("worker.tellur");
+    let uri = url::Url::from_file_path(&path).unwrap().to_string();
+    let valid = "pub async control finish(handle h) exits done {delta close(h) {closed=>closed,failed {close_error e}=>failed} [closed|failed]:yield;exit done;}";
+    fs::write(&path, valid).unwrap();
+    let source = "import \"worker.tellur\" as worker; async control startup(handle h) exits done {auto child=spawn worker.finish(h);await child;exit done;}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let initial = hover_at(&f, source, "auto child");
+    let display = initial["contents"]["value"].as_str().unwrap();
+    assert!(display.contains("task<worker.finish>"), "{display}");
+    assert!(!display.contains("$started"), "{display}");
+    let broken = valid
+        .replace("delta close(h)", "yield;delta close(h)")
+        .replace("[closed|failed]:yield;", "[closed|failed]:");
+    f.server.notification(
+        "textDocument/didOpen",
+        &json!({"textDocument":{"uri":uri,"version":1,"text":broken}}),
+    );
+    let errors = f.diagnostics();
+    assert_eq!(errors[0]["code"], "E_ASYNC", "{errors}");
+    assert!(
+        errors[0]["message"]
+            .as_str()
+            .unwrap()
+            .contains("fault dispositions")
+    );
     assert!(hover_at(&f, source, "auto child").is_null());
     f.server.notification(
         "textDocument/didClose",

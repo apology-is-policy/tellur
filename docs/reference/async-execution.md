@@ -3,7 +3,7 @@
 [Language reference](../language-reference.md) · [Design and next steps](../async-execution.md) ·
 [Execution failures](execution-failures.md)
 
-Compiler 0.167 supports `async control`, synchronous entry with `run`, direct
+Compiler 0.168 supports `async control`, synchronous entry with `run`, direct
 `await`, cold tasks with owned and borrowed captures, and a bounded cooperative
 scheduler for owned `spawn` tasks. Source handoffs occur at `await` and `yield`.
 Async host I/O, cancellation and LLVM coroutine lowering remain later work.
@@ -62,6 +62,46 @@ conservative across all structural paths and transitive calls; an abstract trait
 contract alone does not promise this behavior. Local work, primitive effects,
 further spawns, yields and started joins remain available.
 These are current admission limits, not changes to the accepted ownership model.
+
+Spawn also requires every resource owner retained across a producer's handoff to
+permit fault settlement. This includes transitive callees, locally acquired owners,
+partially moved aggregates and owners retained for a nested contingency. An enclosing
+owner's fault stops that work without running its nested contingency. The check is
+conservative even when the current caller has no faulting sibling, and an unknown
+abstract callee does not establish this permission. It does not add `faults` to the
+producer's contract. Sequential cold/direct use remains legal where no spawned
+owner can stop it. Complete an owner before handing off, or use a resource type
+with a declared fault disposition.
+
+<!-- tellur:reject E_ASYNC -->
+```tellur
+async control finish(handle h) exits done {
+    yield;
+    delta close(h) { closed => closed, failed { close_error e } => failed }
+    [closed | failed]: exit done;
+}
+async control startup(handle h) exits done {
+    auto child = spawn finish(h);
+    await child;
+    exit done;
+}
+```
+
+The manifest's `handle` has no fault disposition. Moving the handoff after normal
+resource completion makes the producer admissible:
+
+<!-- tellur:check -->
+```tellur
+async control finish(handle h) exits done {
+    delta close(h) { closed => closed, failed { close_error e } => failed }
+    [closed | failed]: yield; exit done;
+}
+async control startup(handle h) exits done {
+    auto child = spawn finish(h);
+    await child;
+    exit done;
+}
+```
 
 A fault-capable child requires fault permission at spawn. At handoffs, all live
 owners must still permit the possible child fault. An unjoined handle accounts for

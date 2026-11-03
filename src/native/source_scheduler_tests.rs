@@ -296,3 +296,95 @@ control main(string path,bool stop) exits done {
     }
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn compiled_source_completes_unsettleable_capture_before_handoff() {
+    let root =
+        std::env::temp_dir().join(format!("tellur-source-stop-proof-{}", std::process::id()));
+    fs::create_dir_all(&root).unwrap();
+    let mut manifest = super::resume_model::resource_tests::resource_manifest(&root);
+    for ty in &mut manifest.types {
+        if let crate::manifest::TypeDef::Opaque { name, fault, .. } = ty {
+            if name == "counter" {
+                *fault = None;
+            }
+        }
+    }
+    let host = fs::read_to_string(root.join("host.rs")).unwrap();
+    fs::write(root.join("host.rs"), host.replace(
+        "rust_api::make_outcome::made(Counter { path: path.into(), id })",
+        "let value=Counter { path:path.into(), id };value.record(\"make\");rust_api::make_outcome::made(value)"
+    )).unwrap();
+    let source = r#"
+control finish(counter value) exits done {close(value);exit done;}
+async control worker(counter value) exits done {finish(value);yield;exit done;}
+async control startup(string path) exits done {
+    delta make(borrow path,1) {made {counter value}=>made}
+    [made]:auto child=spawn worker(value);await child;exit done;
+}
+control main(string path) exits done {forward run startup(path);}
+"#;
+    let rejected = source.replace("finish(value);yield;", "yield;finish(value);");
+    let error = crate::compile(&rejected, manifest.clone()).unwrap_err();
+    assert_eq!(error.code, "E_ASYNC");
+    assert!(error.message.contains("fault dispositions"));
+    let p = crate::compile(source, manifest)
+        .unwrap()
+        .with_entry_exit_codes("main", BTreeMap::from([("done".into(), 0)]))
+        .unwrap();
+    for (expanded, p) in [(false, p.clone()), (true, p.expanded("main").unwrap())] {
+        let support = include_str!("source_scheduler.rs");
+        let entry = "drive_source(host, args, control, || usize::MAX)";
+        assert_eq!(support.matches(entry).count(), 1);
+        let replacement = "{let values=std::env::var(\"TELLUR_TEST_QUOTAS\").unwrap();let mut quotas=values.split(',').map(|s|s.parse::<usize>().unwrap()).cycle();drive_source(host,args,control,||quotas.next().unwrap())}";
+        let generated = p.native_source("main").unwrap().replacen(
+            support,
+            &support.replacen(entry, replacement, 1),
+            1,
+        );
+        for opt in [0, 2] {
+            let binary = root.join(format!("stop-proof-{expanded}-{opt}"));
+            let project = p.native_project("main", &binary).unwrap();
+            fs::write(&project.2, &generated).unwrap();
+            p.finish_native_build(project, opt).unwrap();
+            let log = root.join("owners.log");
+            for fuel in 0..100 {
+                let run = |quotas: &str| {
+                    if log.exists() {
+                        fs::remove_file(&log).unwrap();
+                    }
+                    let out = Command::new(&binary)
+                        .args([
+                            "--json",
+                            "--fuel",
+                            &fuel.to_string(),
+                            "--",
+                            log.to_str().unwrap(),
+                        ])
+                        .env("TELLUR_TEST_QUOTAS", quotas)
+                        .output()
+                        .unwrap();
+                    (out, fs::read_to_string(&log).unwrap_or_default())
+                };
+                let (expected, owners) = run("99");
+                for quotas in ["1", "0,3,1"] {
+                    let (out, actual) = run(quotas);
+                    assert_eq!(out.status.code(), expected.status.code());
+                    assert_eq!(out.stdout, expected.stdout);
+                    assert_eq!(out.stderr, expected.stderr);
+                    assert_eq!(actual, owners, "{expanded}/{opt}/{fuel}/{quotas}");
+                }
+                let count =
+                    |kind: &str| owners.lines().filter(|l| *l == format!("{kind} 1")).count();
+                assert!(count("make") <= 1);
+                assert_eq!(count("make"), count("drop"), "{owners}");
+                if expected.status.success() {
+                    assert_eq!(owners, "make 1\nclose 1\ndrop 1\n");
+                    break;
+                }
+                assert!(fuel < 99, "{}", String::from_utf8_lossy(&expected.stderr));
+            }
+        }
+    }
+    fs::remove_dir_all(root).unwrap();
+}

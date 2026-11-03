@@ -2,6 +2,27 @@
 //! Captures retain parameter identity so completion loans can select their origins.
 use super::*;
 
+pub(super) fn handoffs(body: &[Instruction], signatures: &BTreeMap<String, Signature>) -> bool {
+    body.iter().any(|instruction| match &instruction.action {
+        Action::Decide { operation, .. } => match operation {
+            Operation::Await(_)
+            | Operation::AwaitTask(_)
+            | Operation::Join(_)
+            | Operation::Yield => true,
+            Operation::Region(name) | Operation::Run(name) => {
+                signatures.get(name).is_none_or(|s| s.handoffs)
+            }
+            _ => false,
+        },
+        Action::Supervise { boundary, .. } => signatures.get(boundary).is_none_or(|s| s.handoffs),
+        Action::Loop { body, .. } => handoffs(body, signatures),
+        Action::Boundary { body, handler, .. } => {
+            handoffs(body, signatures) || handoffs(handler, signatures)
+        }
+        _ => false,
+    })
+}
+
 /// Callees are checked before callers. Classify the emitted operations rather
 /// than authored syntax so imports, specialization and constructor staging all
 /// use the same proof. Unchecked/abstract signatures never grant permission.
@@ -47,6 +68,27 @@ pub(super) fn uninterrupted(region: &Region, signatures: &BTreeMap<String, Signa
 }
 
 impl Checker<'_> {
+    /// An enclosing owner's fault suppresses this invocation's contingencies.
+    /// Count every live owner, including protected/retained boundary storage;
+    /// ordinary fault permission's exemptions do not apply to being stopped.
+    /// This records admission metadata, not an escaping `faults` contract.
+    pub(super) fn record_stop_obligations(&mut self, domain: Formula) {
+        for scope in &self.scopes {
+            for binding in scope.values.values() {
+                for (path, owned) in &binding.owned {
+                    if self.bdd.and(domain, *owned) == FALSE {
+                        continue;
+                    }
+                    let mut ty = binding.slot.ty.as_str();
+                    for field in path {
+                        ty = &self.manifest.field_at(ty, *field).unwrap().ty;
+                    }
+                    self.stoppable &= self.manifest.permits_fault(ty);
+                }
+            }
+        }
+    }
+
     fn started_owners(&self) -> Vec<(Formula, BTreeSet<String>)> {
         let mut result = vec![];
         for scope in &self.scopes {
@@ -117,6 +159,10 @@ impl Checker<'_> {
         // callee body fault permission is checked later, when the task is awaited.
         let started = operand.call_mode == syntax::CallMode::Spawn;
         if started {
+            if !sig.stoppable {
+                return Err(self.error("E_ASYNC", span,
+                    "spawn requires fault dispositions for every owner retained across a handoff in its producer or callees; complete such owners before awaiting or yielding"));
+            }
             // The initial source scheduler admits only ownership transfers. Shared
             // backing storage needs a later checked source admission profile.
             if sig
@@ -440,6 +486,8 @@ impl Checker<'_> {
         value.call_mode = syntax::CallMode::Direct;
         let ty = self.stored_type(&value, span)?.unwrap();
         let started = manifest::is_started(&ty);
+        self.record_stop_obligations(domain);
+        self.stoppable &= sig.stoppable;
         if !started {
             self.require_no_started(domain, span)?;
         }

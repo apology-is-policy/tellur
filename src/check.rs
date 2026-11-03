@@ -56,6 +56,10 @@ struct Access {
 struct Signature {
     /// Proved from a successfully checked synchronous body and its callees.
     uninterrupted: bool,
+    /// Source handoffs reachable through this body and its callees.
+    handoffs: bool,
+    /// Every suspended owner permits emergency retirement by an enclosing owner.
+    stoppable: bool,
     entry_only: bool,
     contingent: bool,
     boundary: bool,
@@ -184,6 +188,7 @@ struct IncomingCarrierLeaf {
     reference: ReferenceInput,
 }
 struct Checker<'a> {
+    stoppable: bool,
     recovery: recovery::Recovery,
     expression_guard: Guard,
     constructing: bool,
@@ -1862,6 +1867,8 @@ impl Checker<'_> {
             })?;
             return Ok(Some(Signature {
                 uninterrupted: true,
+                handoffs: false,
+                stoppable: true,
                 entry_only: false,
                 contingent: true,
                 boundary: false,
@@ -2983,6 +2990,10 @@ impl Checker<'_> {
                         )
                     })?;
                 let args = self.arguments(args, &sig.parameters, domain, span)?;
+                if sig.handoffs {
+                    self.record_stop_obligations(domain);
+                    self.stoppable &= sig.stoppable;
+                }
                 if sig.supervision_faults {
                     self.fault_permission(domain, span)?;
                 }
@@ -3203,6 +3214,7 @@ impl Checker<'_> {
                 self.assignment(target, expression, guard, domain, span)?;
             }
             Statement::Yield => {
+                self.record_stop_obligations(domain);
                 self.started_fault_permission(domain, span)?;
                 let atom = self.fresh();
                 self.result.atoms.insert(atom, "$yield".into());
@@ -4126,6 +4138,10 @@ impl Checker<'_> {
             if sig.region && (operand.call_mode != syntax::CallMode::Direct || !sig.uninterrupted) {
                 self.require_no_started(domain, span)?;
             }
+            if sig.region && operand.call_mode == syntax::CallMode::Await {
+                self.record_stop_obligations(domain);
+                self.stoppable &= sig.stoppable;
+            }
             if sig.boundary || sig.contingency {
                 return Err(self.error(
                     "E_BOUNDARY",
@@ -4137,6 +4153,12 @@ impl Checker<'_> {
             let args = self
                 .arguments(args, &sig.parameters, domain, span)
                 .map_err(|e| operand.locate(e, span))?;
+            // Ordinary calls begin synchronously: transferred owners belong to
+            // the callee, which may complete them before its first handoff.
+            if sig.region && sig.handoffs && operand.call_mode != syntax::CallMode::Await {
+                self.record_stop_obligations(domain);
+                self.stoppable &= sig.stoppable;
+            }
             if sig.faults {
                 self.fault_permission(domain, span)
                     .map_err(|e| operand.locate(e, span))?;
@@ -5355,6 +5377,8 @@ pub(crate) fn compile_concrete_unit(
             p.name.clone(),
             Signature {
                 uninterrupted: true,
+                handoffs: false,
+                stoppable: true,
                 entry_only: false,
                 contingent: p.contingent || p.pure,
                 boundary: false,
@@ -5435,6 +5459,8 @@ pub(crate) fn compile_concrete_unit(
             region.name.clone(),
             Signature {
                 uninterrupted: false,
+                handoffs: true,
+                stoppable: false,
                 entry_only: syntax::entry_only(&region.body),
                 contingent: !region.asynchronous && region.contingent_contract.unwrap_or(true),
                 boundary: region.boundary.is_some(),
@@ -5544,6 +5570,7 @@ pub(crate) fn compile_concrete_unit(
                     crate::origins::result_type(&f.ty, &origin_schemas, &manifest, source.span)?;
                 }
                 let mut checker = Checker {
+                    stoppable: true,
                     recovery: recovery::Recovery::new(omitted.clone()),
                     expression_guard: Guard::True,
                     constructing: false,
@@ -5755,6 +5782,7 @@ pub(crate) fn compile_concrete_unit(
                 }
                 selected_histories.extend(checker.selected_histories);
                 inferred_bindings.extend(checker.inferred_bindings);
+                let stoppable = checker.stoppable;
                 let mut result = checker.result;
                 crate::origins::normalize(&mut result, &origin_schemas, &manifest, source.span)?;
                 if let Some(manifest::TypeDef::Variant { constructors, .. }) = manifest
@@ -5770,6 +5798,9 @@ pub(crate) fn compile_concrete_unit(
                 signatures.get_mut(&source.name).unwrap().contingent = result.contingent;
                 let uninterrupted = tasks::uninterrupted(&result, &signatures);
                 signatures.get_mut(&source.name).unwrap().uninterrupted = uninterrupted;
+                let handoffs = tasks::handoffs(&result.code, &signatures);
+                signatures.get_mut(&source.name).unwrap().handoffs = handoffs;
+                signatures.get_mut(&source.name).unwrap().stoppable = stoppable;
                 if let Some(b) = &result.boundary {
                     signatures.get_mut(&source.name).unwrap().supervision_faults =
                         signatures[&b.handler].faults;
