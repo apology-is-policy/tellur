@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.170.0** implements the v0.1 checked core and the current language
+Compiler release **0.171.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -997,3 +997,5 @@ execution. Every normal path must await each child. The first profile uses owned
 reference-free captures/results and joins before another source call or fault
 boundary. Child faults settle siblings before the owning contingency.
 See the structured tasks playground and the current async execution reference.
+
+Direct shared/exclusive spawned captures: `./bin/tellurc exec playground/borrowed_spawn.tellur playground/manifest.json`. Loans remain live until the consuming join.

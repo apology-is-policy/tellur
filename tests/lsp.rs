@@ -6142,7 +6142,10 @@ fn source_task_hovers_and_diagnostics_describe_explicit_handoffs() {
     assert!(
         spawn.contains("queues an invocation-owned child")
             && spawn.contains("reference-free")
-            && spawn.contains("Synchronous helpers without inline boundaries"),
+            && spawn.contains("Synchronous helpers without inline boundaries")
+            && spawn.contains(
+                "Direct borrows of reference-free storage stay live until the consuming join"
+            ),
         "{spawn}"
     );
     let handoff = hover_at(&f, text, "yield;").to_string();
@@ -6316,4 +6319,28 @@ fn helper_call_rechecks_unsaved_producer_stop_permissions() {
     );
     assert_eq!(f.diagnostics(), json!([]));
     assert_eq!(hover_at(&f, source, "auto child"), initial);
+}
+
+#[test]
+fn borrowed_spawn_unsaved_conflict_repair_restores_task_hover() {
+    let mut f = Fixture::new();
+    let text = include_str!("../playground/borrowed_spawn.tellur");
+    f.open(text);
+    assert_eq!(f.diagnostics(), json!([]));
+    assert!(
+        hover_at(&f, text, "auto right")
+            .to_string()
+            .contains("task<edit>")
+    );
+    let broken = text.replace("emit(\"parent\");", "emit(borrow values.left);");
+    f.change(&broken, 2);
+    let errors = f.diagnostics();
+    assert_eq!(errors[0]["code"], "E_LOAN", "{errors}");
+    f.change(text, 3);
+    assert_eq!(f.diagnostics(), json!([]));
+    assert!(
+        hover_at(&f, text, "auto right")
+            .to_string()
+            .contains("task<edit>")
+    );
 }

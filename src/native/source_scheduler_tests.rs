@@ -1,6 +1,24 @@
 //! Differential source execution using the exact production emitter and scheduler.
 use super::*;
 #[test]
+fn compiled_source_borrowed_captures() {
+    compare(
+        "borrowed_captures",
+        include_str!("../../playground/borrowed_spawn.tellur"),
+    );
+}
+#[test]
+fn compiled_source_borrowed_capture_fault() {
+    compare(
+        "borrowed_capture_fault",
+        include_str!("../../tests/fixtures/source_borrowed_task_fault.tellur"),
+    );
+}
+#[test]
+fn compiled_source_borrowed_capture_resources() {
+    source_resources(false, true, false, true);
+}
+#[test]
 fn compiled_source_cooperative_helpers() {
     compare(
         "cooperative_helpers",
@@ -50,7 +68,7 @@ fn inline_helper_fault(body: &str, early: bool) {
 }
 #[test]
 fn compiled_source_inline_helper_resource_retirement() {
-    source_resources(false, true, true);
+    source_resources(false, true, true, false);
 }
 #[test]
 fn compiled_source_parent_await() {
@@ -237,19 +255,24 @@ fn compare(label: &str, text: &str) {
 
 #[test]
 fn compiled_source_resources_retire_queued_running_and_completed_owners() {
-    source_resources(false, false, false);
+    source_resources(false, false, false, false);
 }
 #[test]
 fn compiled_source_helper_fault_retires_suspended_and_completed_owners() {
-    source_resources(true, false, false);
+    source_resources(true, false, false, false);
 }
 #[test]
 fn compiled_source_parent_await_retires_borrowers_before_owner_contingency() {
-    source_resources(false, true, false);
+    source_resources(false, true, false, false);
 }
-fn source_resources(helper_fault: bool, parent_await: bool, inline_helper: bool) {
+fn source_resources(
+    helper_fault: bool,
+    parent_await: bool,
+    inline_helper: bool,
+    borrowed_spawn: bool,
+) {
     let root = std::env::temp_dir().join(format!(
-        "tellur-source-resource-{helper_fault}-{parent_await}-{inline_helper}-{}",
+        "tellur-source-resource-{helper_fault}-{parent_await}-{inline_helper}-{borrowed_spawn}-{}",
         std::process::id()
     ));
     fs::create_dir_all(&root).unwrap();
@@ -346,6 +369,20 @@ async control helper_work(ref counter local,string path) exits done {{
 }}
 "#
         )
+    } else {
+        source
+    };
+    let source = if borrowed_spawn {
+        source
+            .replace(
+                "async control sibling(counter value)",
+                "async control sibling(ref counter parent,counter value)",
+            )
+            .replace(
+                "fault boundary {inspect(borrow value);",
+                "inspect(parent);fault boundary {inspect(borrow value);",
+            )
+            .replace("spawn sibling(second)", "spawn sibling(parent,second)")
     } else {
         source
     };

@@ -1490,3 +1490,8 @@ while callers own children. The checker rejects inline boundary entry and retain
 owners without fault dispositions; unsaved dependency edits refresh both proofs.
 The cooperative helpers playground demonstrates inline entry, interleaving and a
 returned parent reference. Fresh editor diagnostics, repair and native run cover it.
+
+Release 0.171 admits direct borrowed spawn captures. Hover explains capture loans
+through consuming join; unsaved conflicting parent access produces `E_LOAN`, and
+repair restores task hover and native build/run. Reference-bearing carriers and
+borrowed results remain outside this bounded profile.

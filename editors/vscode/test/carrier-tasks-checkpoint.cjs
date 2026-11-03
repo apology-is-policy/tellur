@@ -118,6 +118,22 @@ exports.run = async function (root) {
   assert.equal(handingRun.code, 0, handingRun.stderr);
   assert.deepEqual(JSON.parse(handingRun.stdout).events.filter(e => e.kind === 'emit').map(e => e.message),
     ['helper started', 'inline started', 'worker started', 'helper returned', 'edited', 'worker finished']);
+  const borrowed = await fs.readFile(path.join(__dirname, '../../../playground/borrowed_spawn.tellur'), 'utf8');
+  await replace(borrowed);
+  await waitFor(async () => diagnostics().length === 0 && (await hover('spawn edit')).includes('stay live until the consuming join'), 'direct borrowed spawn admission');
+  const conflicting = borrowed.replace('emit("parent");', 'emit(borrow values.left);');
+  assert.notEqual(conflicting, borrowed);
+  await replace(conflicting);
+  await waitFor(() => diagnostics().some(d => code(d) === 'E_LOAN'), 'parent access rejected while child owns exclusive loan');
+  await replace(borrowed);
+  await waitFor(async () => diagnostics().length === 0 && (await hover('auto right')).includes('task<edit>'), 'borrowed spawn repair');
+  await document.save();
+  const borrowedRun = await vscode.commands.executeCommand('tellur.buildAndRun', {
+    arguments:['--json'], output:path.join(root, 'native output', 'borrowed-spawn')
+  });
+  assert.equal(borrowedRun.code, 0, borrowedRun.stderr);
+  assert.deepEqual(JSON.parse(borrowedRun.stdout).events.filter(e => e.kind === 'emit').map(e => e.message),
+    ['queued', 'first', 'second', 'parent', 'shared', 'shared', 'left edited', 'right edited']);
   await fs.writeFile(path.join(fixture, 'passed.txt'), 'cold and started tasks, synchronous helpers, diagnostics, unsaved repair and native execution passed\n');
   console.log('TELLUR_CARRIER_TASKS_EDITOR_TESTS_PASSED: pending type hover, diagnostic repair and native run');
 };

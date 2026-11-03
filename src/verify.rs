@@ -925,16 +925,18 @@ impl Verifier<'_> {
                                 return Err(error("faulting call without control permission"));
                             }
                             if matches!(operation, Operation::Spawn(_))
-                                && (r
-                                    .parameters
+                                && (r.parameters.iter().any(|p| {
+                                    let inner = crate::manifest::reference_inner(&p.ty)
+                                        .map_or(p.ty.as_str(), |(_, t)| t);
+                                    self.program.manifest().contains_references(inner)
+                                }) || r
+                                    .exits
                                     .iter()
-                                    .any(|p| self.program.manifest().contains_references(&p.ty))
-                                    || r.exits.iter().flat_map(|o| &o.fields).any(|f| {
-                                        self.program.manifest().contains_references(&f.ty)
-                                    }))
+                                    .flat_map(|o| &o.fields)
+                                    .any(|f| self.program.manifest().contains_references(&f.ty)))
                             {
                                 return Err(error(
-                                    "spawn requires reference-free captures and results",
+                                    "spawn requires direct borrows of reference-free storage or reference-free owned captures, and reference-free results",
                                 ));
                             }
                             if matches!(operation, Operation::AwaitTask(_) | Operation::Join(_)) {

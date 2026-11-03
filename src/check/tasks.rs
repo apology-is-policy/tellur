@@ -168,22 +168,21 @@ impl Checker<'_> {
                 return Err(self.error("E_ASYNC", span,
                     "spawn requires fault dispositions for every owner retained across a handoff in its producer or callees; complete such owners before awaiting or yielding"));
             }
-            // The initial source scheduler admits only ownership transfers. Shared
-            // backing storage needs a later checked source admission profile.
-            if sig
-                .parameters
+            // Direct captures retain ordinary loans until consuming join. Nested
+            // reference storage and borrowed results need a later profile.
+            if sig.parameters.iter().any(|p| {
+                let inner = manifest::reference_inner(&p.ty).map_or(p.ty.as_str(), |(_, t)| t);
+                self.manifest.contains_references(inner)
+            }) || sig
+                .outcomes
                 .iter()
+                .flat_map(|o| &o.fields)
                 .any(|p| self.manifest.contains_references(&p.ty))
-                || sig
-                    .outcomes
-                    .iter()
-                    .flat_map(|o| &o.fields)
-                    .any(|p| self.manifest.contains_references(&p.ty))
             {
                 return Err(self.error(
                     "E_ASYNC",
                     span,
-                    "spawn currently requires owned captures and results without references",
+                    "spawn currently accepts direct borrows of reference-free storage and reference-free owned captures/results",
                 ));
             }
             if sig.faults {

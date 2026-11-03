@@ -1,0 +1,41 @@
+// Captured loans stay live until the handle is joined, even after completion.
+struct pair {
+    string left;
+    string right;
+}
+async control inspect_text(ref string text, string name) exits done {
+    emit(borrow name);
+    yield;
+    emit(text);
+    exit done;
+}
+async control edit(ref mutable string text, string replacement) exits done {
+    yield;
+    deref text = move replacement;
+    exit done;
+}
+async control startup() exits done {
+    string shared = "shared";
+    mutable pair values = pair { "left", "right" };
+    auto first = spawn inspect_text(borrow shared, "first");
+    auto second = spawn inspect_text(borrow shared, "second");
+    auto left = spawn edit(borrow mutable values.left, "left edited");
+    auto right = spawn edit(borrow mutable values.right, "right edited");
+    emit("queued");
+    yield;
+    emit("parent");
+    await first;
+    await second;
+    auto moved = move left;
+    await moved;
+    await right;
+    emit(borrow values.left);
+    emit(borrow values.right);
+    exit done;
+}
+outcome program_result {
+    @exit 0 done
+}
+control main() exits program_result {
+    forward run startup();
+}

@@ -3,9 +3,9 @@
 [Language reference](../language-reference.md) · [Design and next steps](../async-execution.md) ·
 [Execution failures](execution-failures.md)
 
-Compiler 0.170 supports `async control`, synchronous entry with `run`, direct
+Compiler 0.171 supports `async control`, synchronous entry with `run`, direct
 `await`, cold tasks with owned and borrowed captures, and a bounded cooperative
-scheduler for owned `spawn` tasks. Source handoffs occur at `await` and `yield`.
+scheduler for `spawn` tasks with owned or direct borrowed captures. Source handoffs occur at `await` and `yield`.
 Async host I/O, cancellation and LLVM coroutine lowering remain later work.
 
 ## Owned spawned children
@@ -49,9 +49,11 @@ handle before a synchronous call that may enter an inline fault boundary.
 Checked cold/direct awaits remain available beside wrapped children. Their possible
 producer faults still apply at handoffs. There is no detach or implicit await at scope exit.
 
-The first source profile accepts captures and normal results with **no references**,
-including owned structs, sums and resources. Borrowed and reference-bearing `defer`
-tasks keep their existing sequential semantics. A spawned body may itself use such
+The source profile accepts direct shared/exclusive borrows of existing reference-free
+storage and owned captures with **no references**, including structs, sums and resources.
+Normal results remain reference-free. Captures containing references, borrowed carriers
+with reference fields and borrowed results remain gated. Broader reference-bearing
+`defer` tasks keep their existing semantics. A spawned body may itself use such
 cold/direct awaits and may own further spawned children. Before a parent enters a synchronous
 control whose inline call chain may enter a fault boundary, it must join its started
 children. Cold/direct awaits remain available beside children when the awaited
@@ -114,12 +116,52 @@ children, and only then runs that boundary's contingency. Stopped sibling nested
 contingencies do not run. A child's own boundary can still handle its own fault.
 Faults remain separate from normal outcomes.
 
+## Direct borrowed captures
+
+A spawned child may borrow existing storage whose type contains no references.
+Shared child captures may overlap; exclusive captures require disjoint places.
+The parent can continue using other storage, but every capture loan remains live
+until its handle is consumed by `await`, including while queued, after yielding and
+after the child has completed. Joining one shared reader does not release another
+reader's loan. Local handle moves preserve these obligations. Handles with borrowed
+captures remain local bindings; storing them in wrappers is still rejected.
+
+<!-- tellur:check -->
+```tellur
+async control edit(ref mutable string text) exits done {
+    yield;
+    deref text = "edited";
+    exit done;
+}
+async control startup() exits done {
+    mutable string text = "original";
+    auto child = spawn edit(borrow mutable text);
+    emit("parent work");
+    await child;
+    emit(borrow text);
+    exit done;
+}
+control main() exits done { forward run startup(); }
+```
+
+Moving `emit(borrow text)` before the join is an `E_LOAN` error. Extra `yield`
+statements do not release the loan. Reference arguments are reborrowed unless
+explicitly moved; the same origin and authority rules apply to stored references,
+concrete generic calls and concrete trait calls. Captures must refer to existing
+storage, not a temporary constructor result. The [borrowed spawn example](../../playground/borrowed_spawn.tellur)
+combines two shared readers and two disjoint exclusive field captures.
+
+Child faults and instruction-budget exhaustion settle retained borrowers before
+supplier storage. Stopped children apply resource fault dispositions without running
+their nested contingencies. The original invocation and boundary still own the child;
+borrowing does not permit handles to escape or cross an inline boundary.
+
 ## Parent awaits beside children
 
 A parent may await a cold task or invoke an async control directly while its owned
 children remain unjoined. The awaited work may borrow parent storage. Those loans
 last through the awaited completion, and the existing ownership rules still prevent
-conflicting access. Spawned siblings retain reference-free captures/results.
+conflicting access. Spawned sibling captures retain their own checked loans until consuming join.
 
 <!-- tellur:check -->
 ```tellur

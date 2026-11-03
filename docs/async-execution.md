@@ -3094,3 +3094,30 @@ host access gates and production execution paths are unchanged.
 `run` remains inline. Only reached await/yield instructions switch source work; host
 quotas and ordinary calls add no handoff. Parent inline boundaries, borrowed spawn,
 escaping handles, asynchronous adapters and cancellation remain outside this slice.
+
+## Direct borrowed source captures (E1e.6)
+
+Compiler 0.171 admits direct shared/exclusive spawn captures of existing storage
+whose type contains no references. Reference-free owned arguments remain admitted;
+normal results and all other captures stay reference-free. Both the source checker
+and structural verifier enforce this profile. This extends the existing ownership
+rules without adding a separate spawn lifetime or access permission.
+
+The existing task argument checker attaches each loan to a hidden capture path in
+the linear handle. Local moves preserve that path; borrowed handles still cannot
+be nested in aggregate storage. Queueing, yield and
+runtime completion do not end the static loan: only consuming join removes that
+handle's captures. Shared readers retain independent loans; exclusive captures may
+use disjoint fields. Existing alias, origin, fault-permission and every-normal-path
+join checks remain in force for direct, generic and concrete trait calls.
+
+Reference and native source drivers already retain shared backing frames and settle
+borrower descendants before supplier storage. The private native source-checked
+entry relies on these static capture loans for parent and sibling access; ordinary
+host callback gates remain unchanged. Differential original/expanded O0/O2 runs,
+quota partitions, every fuel cutoff, nested sibling faults, real resource retirement
+and a final context census exercise the newly admitted storage sharing.
+
+Reference-bearing carriers, borrowed result delivery and inline boundary crossing
+remain gated. Audit their loan/authority transport and retained completion lifetimes
+before extending this profile. Async adapters and cancellation are separate work.

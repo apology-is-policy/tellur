@@ -1,5 +1,5 @@
-//! Checked source driver. Owned child captures/results cannot borrow parent
-//! storage; checked awaits and inline helpers retain parent loans and stopped-owner
+//! Checked source driver. Direct child captures retain loans until consuming join;
+//! results remain reference-free. Checked awaits and inline helpers retain stopped-owner
 //! obligations. Inline boundaries remain gated. Host APIs keep stricter gates.
 use super::super::super::tasks::TaskId;
 use super::*;

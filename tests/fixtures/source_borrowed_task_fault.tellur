@@ -1,0 +1,42 @@
+async control reader(ref string text) exits done {
+    emit(text);
+    yield;
+    emit("stopped reader resumed");
+    exit done;
+}
+async control editor(ref mutable string text) exits done {
+    fault boundary {
+        yield;
+        yield;
+    } contingency [] {
+        emit("stopped nested handler");
+        escalate;
+    }
+    deref text = "stopped editor resumed";
+    exit done;
+}
+async control fail() faults {
+    fault "child failed";
+}
+async control startup() exits done faults {
+    string shared = "reader started";
+    mutable string text = "original";
+    auto first = spawn reader(borrow shared);
+    auto second = spawn editor(borrow mutable text);
+    auto failure = spawn fail();
+    emit("queued");
+    yield;
+    emit("stopped parent resumed");
+    await first;
+    await second;
+    await failure;
+}
+control main() exits done {
+    fault boundary {
+        run startup();
+    } contingency [] {
+        emit("owner contingency");
+        terminate process 23;
+    }
+    exit done;
+}

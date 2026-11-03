@@ -395,6 +395,8 @@ mod tests {
             include_str!("../../tests/fixtures/source_helper_fault.tellur"),
             include_str!("../../playground/parent_await.tellur"),
             include_str!("../../playground/cooperative_helpers.tellur"),
+            include_str!("../../playground/borrowed_spawn.tellur"),
+            include_str!("../../tests/fixtures/source_borrowed_task_fault.tellur"),
             include_str!("../../tests/fixtures/source_inline_helper_fault.tellur"),
             include_str!("../../tests/fixtures/source_parent_await_fault.tellur"),
         ]

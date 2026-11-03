@@ -4541,3 +4541,13 @@ cuts run through completion. Real resource logs require awaited locals to retire
 before helper-owned backing storage and before the owning contingency; stopped
 nested handlers never execute. The cooperative helper example also runs in a fresh
 isolated editor. Existing host callback access rules remain unchanged.
+
+## Direct borrowed spawned captures (0.171)
+
+Direct shared/exclusive references to reference-free storage remain loans until the
+consuming join, including queued, running and completed-but-unjoined children.
+Conformance covers shared readers, disjoint fields, local handle/reference moves,
+rejected aggregate wrappers, branch joins, stored sources, generic/trait calls and conflicting parent or
+sibling accesses. Temporary captures, nested/reference-bearing captures and borrowed
+results remain rejected. Original/expanded native O0/O2, quota/fuel cuts, nested
+fault settlement and real resource lifetime checks agree with reference execution.
