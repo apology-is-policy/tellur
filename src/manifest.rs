@@ -958,6 +958,29 @@ impl Manifest {
         let inner = reference_inner(name).map_or(name, |(_, inner)| inner);
         !self.contains_references(inner)
     }
+    /// Captures may also borrow record storage containing owned records and
+    /// direct reference leaves. Keep this separate from result admission: a
+    /// whole borrowed carrier result needs its own storage/contents proof.
+    pub(crate) fn supports_spawn_capture(&self, name: &str) -> bool {
+        if self.supports_spawn_payload(name) {
+            return true;
+        }
+        fn record(m: &Manifest, name: &str, active: &mut BTreeSet<String>) -> bool {
+            let Some(TypeDef::Record { fields, .. }) = m.type_def(name) else {
+                return false;
+            };
+            if !active.insert(name.to_owned()) {
+                return false;
+            }
+            let supported = fields.iter().all(|field| {
+                m.supports_spawn_leaf(&field.ty)
+                    || (reference_inner(&field.ty).is_none() && record(m, &field.ty, active))
+            });
+            active.remove(name);
+            supported
+        }
+        reference_inner(name).is_some_and(|(_, inner)| record(self, inner, &mut BTreeSet::new()))
+    }
     /// Owned records, options, variants and named outcomes may nest. Reference
     /// leaves still require reference-free storage; anonymous outcomes stay local.
     pub(crate) fn supports_spawn_payload(&self, name: &str) -> bool {

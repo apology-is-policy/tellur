@@ -283,7 +283,12 @@ E1e.12 admits named outcome payloads with complete declared origins. Capturing a
 returning them transfers their mandatory handling obligation, including empty/shared
 payloads nested in other values. Anonymous reference-bearing contracts retain their
 existing restriction; borrowed-carrier captures/results are the next audit.
-Compiler **0.177.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
+E1e.13 admits borrowed record captures with nested owned records and direct reference
+leaves. Whole-holder shared/exclusive authority remains live through consuming join;
+selected direct results retain ordinary contained origins and detached holder guards.
+Borrowed tagged captures, deeper reference pointees and whole borrowed-carrier results
+remain gated. Borrowed tagged captures are the next bounded audit.
+Compiler **0.178.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
 lifetime checkpoints of milestone 2, the array/vector/map core of milestone 3,
 and implicit entry, inline/stored adapters, owned capture, named outcome contracts
 and checked forwarding in milestone 4. A first [semantic foundation](semantic-foundation.md)
@@ -578,6 +583,7 @@ do not block this design work. E2 remains the native coroutine target.
 | E1e.10 | Nested owned record spawn payloads | Delivered in 0.175: captures/results recursively admit owned record fields with direct reference leaves to reference-free storage. Full field paths, partial moves, independent sibling loans, selected result origins and guarded authority survive joins and fault retirement. Owned tagged payloads are next; borrowed/collection carriers remain separate |
 | E1e.11 | Owned tagged spawn payloads | Delivered in 0.176: options and closed variants may nest with owned records, preserving selected and empty tag permissions, generic/imported origins, Copy/transfer rules and detached guards. Native/reference fuel/quota checks include tagged capture/result resources. Reference-bearing outcome payloads are next; borrowed/collection carriers stay gated |
 | E1e.12 | Named outcome spawn payloads | Delivered in 0.177: named outcomes with complete origin groups nest in owned captures/results, retaining exactly-once handling, selected/empty permissions, nominal identity, guards and resource retirement. Anonymous reference-bearing contracts stay restricted even cold; borrowed carriers are the next audit |
+| E1e.13 | Borrowed record spawn captures | Delivered in 0.178: shared/exclusive record holders with nested owned records and direct reference leaves retain storage, contained origins and guarded reborrow authority through join, result adoption and fault settlement. Borrowed tagged captures are next; deeper reference pointees and whole borrowed-carrier results remain gated |
 | E2 | Native coroutine lowering | Preserved architectural target: direct LLVM coroutine primitives, pinned-toolchain experiment, frame lifetime rules and schedule-based differential tests; I1 must keep this route open |
 | T1 | Stronger source transformations | Hold current scope during P1–P5: extraction correspondence, continuation cuts, source-level lift and editor actions |
 | R1 | Mathematical foundations | Maintain existing evidence; defer extensions during P1–P5: preservation judgments, richer protocol abstractions, infinite/causal behavior, mechanization |

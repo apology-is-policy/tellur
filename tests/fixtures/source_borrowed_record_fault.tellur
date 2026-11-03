@@ -1,0 +1,65 @@
+struct edit_leaf['text] {
+    ref mutable string text <- 'text;
+}
+struct edit_view['text] {
+    edit_leaf['text] item;
+}
+struct read_leaf['text] {
+    ref string text <- 'text;
+}
+struct read_view['text] {
+    read_leaf['text] item;
+}
+async control lend(ref mutable edit_view input)
+    exits ready... {
+    emit("result completed");
+    exit ready { borrow mutable deref input.item.text };
+}
+async control sibling(ref read_view input) exits done {
+    emit(input.item.text);
+    fault boundary {
+        yield;
+        yield;
+    } contingency [] {
+        emit("stopped nested handler");
+        escalate;
+    }
+    emit("stopped sibling resumed");
+    exit done;
+}
+async control fail() faults {
+    yield;
+    fault "child failed";
+}
+async control startup() exits done faults {
+    mutable string text = "original";
+    string peer = "sibling started";
+    mutable edit_view editing = edit_view { edit_leaf { borrow mutable text } };
+    read_view reading = read_view { read_leaf { borrow peer } };
+    auto result = spawn lend(borrow mutable editing);
+    auto worker = spawn sibling(borrow reading);
+    auto failure = spawn fail();
+    yield;
+    yield;
+    delta await result {
+        ready { auto value } => ready
+    }
+    [ready]:
+        emit("stopped parent resumed");
+        emit(value);
+        await worker;
+        await failure;
+}
+async control outer() exits done faults {
+    await startup();
+    exit done;
+}
+control main() exits done {
+    fault boundary {
+        run outer();
+    } contingency [] {
+        emit("owner contingency");
+        terminate process 23;
+    }
+    exit done;
+}

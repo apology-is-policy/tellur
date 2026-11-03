@@ -1,8 +1,8 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.177.0 -->
+<!-- tellur-reference-version: 0.178.0 -->
 
-This manual describes **compiler 0.177.0**, including the current ownership model,
+This manual describes **compiler 0.178.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -15,10 +15,11 @@ as a bug to investigate, not a promise that either must remain unchanged. The
 updates at every implementation checkpoint.
 
 
-Compiler 0.177 also supports [owned spawned children](reference/async-execution.md#owned-spawned-children)
+Compiler 0.178 also supports [owned spawned children](reference/async-execution.md#owned-spawned-children)
 with explicit `await`/`yield` handoffs, required normal-path joins and owning-boundary
 fault settlement. The current profile admits reference-free values, direct borrows and nested owned record/option/variant/named-outcome
-captures/results with reference leaves to reference-free storage. Selected result origins remain
+captures/results with reference leaves to reference-free storage, plus borrowed record captures
+with nested owned records and direct leaf references. Selected result origins remain
 borrowed through field-sensitive final use. Children must be joined before synchronous calls that may enter an
 inline fault boundary. Cold/direct
 awaits and checked synchronous helpers may retain borrowed parent storage beside live
@@ -2824,7 +2825,8 @@ General expression-type hover remains unsupported.
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and borrowed-carrier spawn remain planned; they are not executable features of 0.177.0.
+and broader spawn payloads (borrowed tagged captures, deeper carrier references and whole
+borrowed-carrier results) remain planned; they are not executable features of 0.178.0.
 ## Contingency and supervised boundaries
 
 The [contingency reference](reference/contingency.md) specifies `@contingent`,

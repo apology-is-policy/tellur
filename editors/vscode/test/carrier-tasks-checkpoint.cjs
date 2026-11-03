@@ -226,6 +226,22 @@ exports.run = async function (root) {
   assert.equal(outcomeRun.code, 0, outcomeRun.stderr);
   assert.deepEqual(JSON.parse(outcomeRun.stdout).events.filter(e => e.kind === 'emit').map(e => e.message),
     ['left', 'right', 'empty', 'edited', 'none']);
+  const borrowedRecords = await fs.readFile(path.join(__dirname, '../../../playground/borrowed_record_spawn.tellur'), 'utf8');
+  await replace(borrowedRecords);
+  await waitFor(async () => diagnostics().length === 0 && (await hover('spawn first')).includes('Borrowed record captures retain whole-holder storage'), 'borrowed record admission');
+  await replace(borrowedRecords.replace('auto moved = move child;', 'drop(saved);auto moved = move child;'));
+  await waitFor(() => diagnostics().some(d => code(d) === 'E_LOAN'), 'borrowed holder retained until join');
+  await replace(borrowedRecords.replace('emit(value);', 'left = "too soon";emit(value);'));
+  await waitFor(() => diagnostics().some(d => code(d) === 'E_LOAN'), 'selected borrowed record leaf survives join');
+  await replace(borrowedRecords);
+  await waitFor(async () => diagnostics().length === 0 && (await hover('auto value')).includes('ref string'), 'borrowed record repair');
+  await document.save();
+  const borrowedRecordRun = await vscode.commands.executeCommand('tellur.buildAndRun', {
+    arguments:['--json'], output:path.join(root, 'native output', 'borrowed-record-spawn')
+  });
+  assert.equal(borrowedRecordRun.code, 0, borrowedRecordRun.stderr);
+  assert.deepEqual(JSON.parse(borrowedRecordRun.stdout).events.filter(e => e.kind === 'emit').map(e => e.message),
+    ['queued', 'reader', 'released at join', 'selected', 'edited']);
   await fs.writeFile(path.join(fixture, 'passed.txt'), 'cold and started tasks, synchronous helpers, diagnostics, unsaved repair and native execution passed\n');
   console.log('TELLUR_CARRIER_TASKS_EDITOR_TESTS_PASSED: pending type hover, diagnostic repair and native run');
 };

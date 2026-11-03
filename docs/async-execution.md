@@ -3289,3 +3289,25 @@ Borrowed carriers are next: retain the entire holder's authority and contained l
 origins across spawn, join and stopped retirement without promoting incomplete or
 unknown proof metadata. Reference-bearing collections, borrowed-handle wrappers,
 inline boundary crossing, async adapters and cancellation remain separate work.
+
+## Borrowed record captures (E1e.13)
+
+Compiler 0.178 admits shared/exclusive captures of record storage containing nested
+owned records and direct reference leaves to reference-free storage. Capture and result
+admission are separate predicates: this does not admit whole borrowed-carrier results.
+The existing task argument snapshot retains whole-holder authority, contained leaf
+origins and mutable parent guards; join adopts selected direct results under the
+ordinary cold-task contract. No production scheduler changes are required.
+
+Evidence covers queued/running/completed loans, shared siblings, disjoint exclusive
+fields, moved references and handles, selected shared/exclusive results, generic and
+unsaved imported origins, and joined/unjoined fault settlement. Native O0/O2 original
+and expanded programs exercise every fuel cutoff and quota partition, including a
+borrowed holder with a real owned counter and an awaited observer with its own resource.
+Reference context census requires empty retained storage after completion and faults.
+
+Next audit: borrowed tagged captures, preserving tag-specific contained origin and
+storage guard evidence. Deeper reference pointees, whole borrowed-carrier results,
+reference-bearing collections and borrowed-handle wrappers require distinct evidence.
+Unknown or partial host dependency metadata must remain conservative. This changes no
+ownership, source handoff, fault boundary or contingency policy.

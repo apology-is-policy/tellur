@@ -173,7 +173,7 @@ impl Checker<'_> {
             if sig
                 .parameters
                 .iter()
-                .any(|p| !self.manifest.supports_spawn_payload(&p.ty))
+                .any(|p| !self.manifest.supports_spawn_capture(&p.ty))
                 || sig
                     .outcomes
                     .iter()
@@ -183,7 +183,7 @@ impl Checker<'_> {
                 return Err(self.error(
                     "E_ASYNC",
                     span,
-                    "spawn accepts reference-free values, direct borrows of reference-free storage, and owned record/option/variant/named-outcome captures/results with direct borrowed leaves; borrowed carriers, anonymous outcomes and reference-bearing collections remain gated",
+                    "spawn accepts reference-free values, direct borrows, owned record/option/variant/named-outcome payloads with direct borrowed leaves, and borrowed record captures with owned record/direct leaf contents; borrowed tagged captures, whole borrowed-carrier results, anonymous outcomes and reference-bearing collections remain gated",
                 ));
             }
             if sig.faults {

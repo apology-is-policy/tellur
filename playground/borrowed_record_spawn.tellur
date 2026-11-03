@@ -1,0 +1,65 @@
+struct leaf['a, 'b] {
+    ref string left <- 'a;
+    ref string right <- 'b;
+}
+struct packet['a, 'b] {
+    leaf['a, 'b] contents;
+    string label;
+}
+async control select(ref packet input) exits done {
+    yield;
+    exit done;
+}
+async control first(ref packet input) exits ready { ref string value from input['a] } {
+    emit(borrow input.label);
+    yield;
+    exit ready { input.contents.left };
+}
+struct edit_leaf['a] {
+    ref mutable string text <- 'a;
+}
+struct edit_packet['a] {
+    edit_leaf['a] contents;
+}
+async control edit(ref mutable edit_packet input) exits done {
+    yield;
+    deref input.contents.text = "edited";
+    exit done;
+}
+async control startup() exits done {
+    mutable string left = "selected";
+    mutable string right = "unused";
+    packet saved = packet { leaf { borrow left, borrow right }, "reader" };
+    auto child = spawn first(borrow saved);
+    auto other = spawn select(borrow saved);
+    emit("queued");
+    yield;
+    yield;
+    auto moved = move child;
+    delta await moved {
+        ready { auto value } => ready
+    }
+    [ready]: await other;
+        drop(saved);
+        right = "released at join";
+        emit(borrow right);
+        emit(value);
+        left = "released after result";
+        mutable string text = "before";
+        mutable edit_packet holder = edit_packet { edit_leaf { borrow mutable text } };
+        ref mutable edit_packet alias = borrow mutable holder;
+        auto worker = spawn edit(alias);
+        yield;
+        yield;
+        await worker;
+        emit(alias.contents.text);
+        drop(holder);
+        text = "free";
+        exit done;
+}
+outcome program_result {
+    @exit 0 done
+}
+control main() exits program_result {
+    forward run startup();
+}

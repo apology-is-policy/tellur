@@ -1526,3 +1526,9 @@ Hover explains mandatory handling; unsaved imported origin edits refresh permiss
 checks. Try `playground/outcome_spawn.tellur`: discarding the nested outcome reports
 `E_RESOURCE`, repair restores hover, and native execution covers active/empty alternatives.
 Anonymous reference-bearing contracts and borrowed carriers retain their existing limits.
+
+Release 0.178 supports borrowed record spawn captures with nested owned records and
+direct reference leaves. Holder storage stays borrowed until consuming join; selected
+results retain supplier loans and any exclusive holder guards. Hover describes the
+bounded profile. Unsaved holder/result conflicts report `E_LOAN` and recover after
+repair. Borrowed tagged captures and whole borrowed-carrier results remain gated.

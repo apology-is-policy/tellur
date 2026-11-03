@@ -4626,3 +4626,15 @@ reference-bearing contracts retain their earlier cold-call restriction. Original
 native O0/O2 fuel/quota models and the 38-variant reference census cover guards, faults
 before/after join and real resources inside named outcome captures/results. Fresh editor
 checks cover nested handling diagnostics, repair and native execution.
+
+## Borrowed record spawn captures (0.178)
+
+`source_borrowed_records` checks holder storage and contained supplier loans through
+queueing, running, completion, handle/reference moves and consuming joins. Selected
+shared contents can release their holder; exclusive contents retain detached guards
+and reborrow ancestry. Siblings, disjoint fields, generic origins and rejected broader
+carrier shapes are covered. LSP and fresh editor probes check unsaved invalidation and
+repair. Five `compiled_source_borrowed_records_*` models cover original/expanded O0/O2
+execution, all fuel cutoffs and quota partitions, joined/unjoined faults and exact-once
+resource retirement before the owning contingency. The source census includes these
+fixtures. Existing cold semantics and conservative host evidence remain unchanged.

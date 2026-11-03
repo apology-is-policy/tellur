@@ -219,8 +219,8 @@ control main() exits done {forward run startup();}
 }
 
 #[test]
-fn borrowed_carriers_remain_outside_spawn_profile() {
-    for ty in ["ref view", "indirect"] {
+fn indirect_carriers_remain_outside_spawn_profile() {
+    for ty in ["indirect"] {
         let source = format!(
             "struct view['a] {{ref string text <- 'a;}} struct nested['a] {{view['a] value;}} struct indirect['storage,'a] {{ref view['a] value <- 'storage;}} async control work({ty} input) exits done {{exit done;}} async control caller({ty} input) exits done {{auto child=spawn work(input);await child;exit done;}}"
         );

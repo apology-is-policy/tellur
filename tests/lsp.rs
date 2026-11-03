@@ -6545,3 +6545,32 @@ fn outcome_spawned_result_permissions_follow_unsaved_imports() {
     assert_eq!(f.diagnostics(), json!([]));
     assert_eq!(hover_at(&f, source, "auto result"), initial);
 }
+
+#[test]
+fn borrowed_record_spawn_origins_follow_unsaved_imports() {
+    let mut f = Fixture::new();
+    let path = f.root.join("worker.tellur");
+    let uri = url::Url::from_file_path(&path).unwrap().to_string();
+    let valid = "pub struct pair['a,'b] {pub ref string left <- 'a;pub ref string right <- 'b;} pub async control first(ref pair input) exits ready {ref string value from input['a]} {yield;exit ready {input.left};}";
+    fs::write(&path, valid).unwrap();
+    let source = "import \"worker.tellur\" as worker;async control start() exits done {mutable string a=\"a\";mutable string b=\"b\";worker.pair saved=worker.pair {borrow a,borrow b};auto child=spawn worker.first(borrow saved);delta await child {ready {auto result}=>ready} [ready]:drop(saved);b=\"free\";emit(result);a=\"free\";exit done;}control main() exits done {forward run start();}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let initial = hover_at(&f, source, "auto result");
+    assert!(initial.to_string().contains("ref string"));
+    let broken = valid
+        .replace("input['a]", "input['b]")
+        .replace("input.left", "input.right");
+    f.server.notification(
+        "textDocument/didOpen",
+        &json!({"textDocument":{"uri":uri,"version":1,"text":broken}}),
+    );
+    assert_eq!(f.diagnostics()[0]["code"], "E_LOAN");
+    assert!(hover_at(&f, source, "auto result").is_null());
+    f.server.notification(
+        "textDocument/didClose",
+        &json!({"textDocument":{"uri":uri}}),
+    );
+    assert_eq!(f.diagnostics(), json!([]));
+    assert_eq!(hover_at(&f, source, "auto result"), initial);
+}

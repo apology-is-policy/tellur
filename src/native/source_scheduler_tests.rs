@@ -1,6 +1,41 @@
 //! Differential source execution using the exact production emitter and scheduler.
 use super::*;
 #[test]
+fn compiled_source_borrowed_records_values() {
+    compare(
+        "borrowed_record_values",
+        include_str!("../../playground/borrowed_record_spawn.tellur"),
+    );
+}
+#[test]
+fn compiled_source_borrowed_records_guards() {
+    compare(
+        "borrowed_record_guards",
+        include_str!("../../tests/fixtures/source_borrowed_record_guards.tellur"),
+    );
+}
+#[test]
+fn compiled_source_borrowed_records_fault() {
+    compare(
+        "borrowed_record_fault",
+        include_str!("../../tests/fixtures/source_borrowed_record_fault.tellur"),
+    );
+}
+#[test]
+fn compiled_source_borrowed_records_joined_fault() {
+    let source = include_str!("../../tests/fixtures/source_borrowed_record_fault.tellur")
+        .replace(
+            "    yield;\n    yield;\n    delta await result",
+            "    delta await result",
+        )
+        .replace("emit(\"stopped parent resumed\");", "yield;yield;");
+    compare("borrowed_record_joined_fault", &source);
+}
+#[test]
+fn compiled_source_borrowed_records_resources() {
+    source_resources(SourceResources::BorrowedRecords);
+}
+#[test]
 fn compiled_source_outcome_payloads_values() {
     compare(
         "outcome_values",
@@ -498,6 +533,7 @@ enum SourceResources {
     NestedRecords,
     TaggedPayloads,
     OutcomePayloads,
+    BorrowedRecords,
     BorrowedResult,
 }
 fn source_resources(mode: SourceResources) {
@@ -512,6 +548,7 @@ fn source_resources(mode: SourceResources) {
             | SourceResources::NestedRecords
             | SourceResources::TaggedPayloads
             | SourceResources::OutcomePayloads
+            | SourceResources::BorrowedRecords
             | SourceResources::BorrowedResult
     );
     let inline_helper = matches!(mode, SourceResources::InlineHelper);
@@ -732,6 +769,18 @@ async control helper_work(ref counter local,string path) exits done {{
                 "ready {auto value}=>ready,empty=>empty",
             );
         format!("outcome delivery['parent] {{ready {{produced['parent] value}},empty}}\n{source}")
+    } else {
+        source
+    };
+    let source = if matches!(mode, SourceResources::BorrowedRecords) {
+        source.replace("async control sibling(counter value) exits done {", "struct worker_leaf['parent] {ref counter parent <- 'parent;counter value;} struct worker_input['parent] {worker_leaf['parent] nested;}\nasync control sibling(ref worker_input input) exits done {")
+            .replace("fault boundary {inspect(borrow value);yield;yield;yield;yield;close(value);}", "inspect(input.nested.parent);inspect(borrow input.nested.value);fault boundary {yield;yield;yield;yield;}")
+            .replace("auto worker=spawn sibling(second);", "worker_input holder=worker_input {worker_leaf {parent,second}};auto worker=spawn sibling(borrow holder);")
+            .replace("close(value);await worker;await failure;exit done;", "close(value);await worker;close(holder.nested.value);await failure;exit done;")
+            .replace("produce(counter value) exits ready {counter result} {exit ready {value};}", "produce(counter value,ref counter parent) exits ready {counter result,ref counter retained from parent} {exit ready {value,parent};}")
+            .replace("spawn produce(first)", "spawn produce(first,parent)")
+            .replace("ready {counter value}=>ready", "ready {counter value,auto retained}=>ready")
+            .replace("close(value);await worker;", "inspect(retained);close(value);await worker;")
     } else {
         source
     };
