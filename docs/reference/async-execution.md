@@ -79,6 +79,10 @@ arms run. Actual payloads retire before suppliers and the owning contingency;
 completed parser interest remains removed. The private helper's already published
 completion event is preserved, while a held typed result has no receive event. This
 records existing internal behavior without defining a public async-host contract.
+The [actual reset probes](../async-execution.md#actual-tcp-reset-receive-evidence-e1f6k)
+check the existing disconnected result after real socket reset errors, including
+partial headers/body, while preserving deadline, HEAD state and cleanup order.
+They are standalone private receiver tests on macOS, not public async I/O support.
 
 ## Owned spawned children
 

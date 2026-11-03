@@ -4504,3 +4504,27 @@ controlled internal schedules complement the live source-queue and original-dead
 evidence; they do not demonstrate a new source-visible suspension point. Public
 async-host call admission remains pending. Actual backend/reset errors and general
 reactor/cleanup-failure policy remain separate. Compiler/LSP/VSIX remains 0.189.
+
+
+## Actual TCP reset receive evidence (E1f.6k)
+
+The [reset fixture](../tests/fixtures/http_reset_driver.rs) exercises the unchanged
+owned parser and shared synchronous `io_failure` mapping over real loopback sockets.
+An owned peer is closed with zero linger before any request bytes, after partial
+headers, or after complete HEAD headers and a partial body. A read observer requires
+an actual `ConnectionReset` with a raw OS error in each case. A readiness close flag
+or ordinary EOF alone cannot satisfy the check.
+
+All three states produce the existing `disconnected` alternative. Ordinary EOF with
+partial headers/body still has the separate malformed behavior covered by E1f.6b.
+The fixture preserves accumulated byte counts, original deadline and established HEAD
+state. Duplicate receive performs no read. Accepted readiness remains only a hint;
+old notices reject after completion, and physical deregistration precedes parser-state
+and socket destruction. O0/O2 runs validate these bounded macOS observations.
+
+The Unix-only harness uses the cached `libc` version already present in the private
+Mio lock to configure its peer. The receiver retains its safe owning socket; neither
+the maintained library nor production manifests acquire a dependency. This is
+standalone receive evidence, not source-queue reset coverage or a general portability
+guarantee. Physical registration failures, cleanup-error policy and public async-host
+admission remain separate. Compiler/LSP/VSIX stays 0.189.

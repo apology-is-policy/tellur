@@ -341,6 +341,11 @@ It distinguishes parser completion, private event publication and checked-arm
 adoption; no stopped normal arm or nested contingency runs. Completed physical
 interest remains retired and payload disposal precedes supplier release. These
 administrative holds do not add source handoffs or decide public event timing.
+The [actual reset fixture](async-execution.md#actual-tcp-reset-receive-evidence-e1f6k)
+requires real reset read errors before input and during partial headers/body, then
+checks the existing disconnected mapping and registration/state/socket retirement.
+Its abortive peer setup is Unix-only private test code; source-queue reset delivery
+and backend failure policy remain separate.
 The maintained transport is unchanged.
 
 

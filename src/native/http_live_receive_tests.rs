@@ -65,3 +65,6 @@ fn main()->std::process::ExitCode {{receive_test::run();std::process::ExitCode::
     }
     fs::remove_dir_all(root).unwrap();
 }
+
+#[path = "http_reset_tests.rs"]
+mod reset_tests;

@@ -5197,3 +5197,19 @@ event while still suppressing arm adoption. The reference explicitly distinguish
 these observations; no new public event-timing policy or source handoff is implied.
 Public async-host admission remains pending. Existing parser/source/deadline evidence
 is reused where helper bodies are unchanged; compiler/LSP/VSIX stays 0.189.
+
+
+E1f.6k adds three actual TCP reset cases at each of O0/O2: no request input,
+partial headers and complete HEAD headers with a partial body. An abortively closed
+owned loopback peer produces a read error; the observer requires ConnectionReset
+and a raw OS error, not EOF or a close readiness flag. The unchanged owned parser
+and shared synchronous error mapping return disconnected in all three cases.
+
+The probes retain the original deadline, consumed-byte count and established HEAD
+state, reject duplicate receive without reading and reject saved notices after
+completion. Physical deregistration precedes state/socket destruction. The earlier
+ordinary-EOF, full parser, live source-queue and candidate matrices remain separately
+recorded evidence. These are bounded standalone macOS runs, not general reset timing
+or source-queue error coverage. The private fixture adds the exact cached libc
+version from its existing lock for peer configuration; production dependencies and
+compiler/LSP/VSIX 0.189 are unchanged.
