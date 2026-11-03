@@ -470,10 +470,6 @@ fn transitive_inline_boundaries_still_require_joining_children() {
             "helper<u32>();",
         ),
         (
-            "control helper() exits done {fault boundary {} contingency [] {escalate;} exit done;}",
-            "helper();",
-        ),
-        (
             "control helper() exits done {delta false {true=>handoff,false=>normal} [handoff]:run worker(); [handoff|normal]:exit done;}",
             "helper();",
         ),
@@ -508,10 +504,7 @@ fn resolved_imports_and_trait_calls_use_checked_helper_bodies() {
         fs::write(root.join("helpers.tellur"), format!("async control worker() exits done {{yield;exit done;}} pub control helper() exits done{faults} {{{body}exit done;}}")).unwrap();
         fs::write(root.join("main.tellur"), "import \"helpers.tellur\" as helpers; async control worker() exits done {exit done;} async control startup() exits done {auto child=spawn worker();helpers.helper();await child;exit done;} control main() exits done {forward run startup();}").unwrap();
         let result = tellur::compile_file(root.join("main.tellur"), manifest());
-        if mode == 2 {
-            let error = result.unwrap_err();
-            assert!(error.to_string().contains("E_ASYNC"), "{error}");
-        } else {
+        {
             assert_eq!(
                 result.unwrap().run(&scenario()).unwrap().events.len(),
                 usize::from(mode == 0)
@@ -521,9 +514,7 @@ fn resolved_imports_and_trait_calls_use_checked_helper_bodies() {
             "trait helper {{control call() exits done{faults};}} implement helper for u32 {{control call() exits done{faults} {{{body}exit done;}}}} async control worker() exits done {{yield;exit done;}} async control startup() exits done {{auto child=spawn worker();helper<u32>.call();await child;exit done;}} control main() exits done {{forward run startup();}}"
         );
         let result = compile(&source, manifest());
-        if mode == 2 {
-            assert_eq!(result.unwrap_err().code, "E_ASYNC");
-        } else {
+        {
             assert_eq!(
                 result.unwrap().run(&scenario()).unwrap().events.len(),
                 usize::from(mode == 0)

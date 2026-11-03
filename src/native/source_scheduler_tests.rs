@@ -1,6 +1,30 @@
 //! Differential source execution using the exact production emitter and scheduler.
 use super::*;
 #[test]
+fn compiled_source_boundary_helpers_values() {
+    compare(
+        "boundary_helpers_values",
+        include_str!("../../playground/boundary_helpers.tellur"),
+    );
+}
+#[test]
+fn compiled_source_boundary_helpers_fault() {
+    compare(
+        "boundary_helpers_fault",
+        include_str!("../../tests/fixtures/source_boundary_helper_fault.tellur"),
+    );
+}
+#[test]
+fn compiled_source_boundary_helpers_resources() {
+    source_resources(SourceResources::BoundaryHelper);
+}
+
+#[test]
+fn compiled_source_boundary_helpers_recovery_resources() {
+    source_resources(SourceResources::RecoveringBoundaryHelper);
+}
+
+#[test]
 fn compiled_source_outcome_chains_values() {
     compare(
         "outcome_chains_values",
@@ -919,6 +943,8 @@ fn compiled_source_parent_await_retires_borrowers_before_owner_contingency() {
 }
 #[derive(Clone, Copy, Debug)]
 enum SourceResources {
+    BoundaryHelper,
+    RecoveringBoundaryHelper,
     Normal,
     HelperFault,
     ParentAwait,
@@ -943,7 +969,12 @@ enum SourceResources {
     BorrowedResult,
 }
 fn source_resources(mode: SourceResources) {
-    let helper_fault = matches!(mode, SourceResources::HelperFault);
+    let helper_fault = matches!(
+        mode,
+        SourceResources::HelperFault
+            | SourceResources::BoundaryHelper
+            | SourceResources::RecoveringBoundaryHelper
+    );
     let parent_await = matches!(
         mode,
         SourceResources::ParentAwait
@@ -1393,6 +1424,30 @@ control main(string path,bool stop) exits done {
     } else {
         source
     };
+    let source = if matches!(mode, SourceResources::BoundaryHelper) {
+        let changed = source.replace("fail_helper(stop);", "fail_helper(path,stop);")
+            .replace("control fail_helper(bool stop)", "control fail_helper(string path,bool stop)")
+            .replace("    delta stop {true=>failed,false=>ok}\n    [failed]:fault \"helper failed\";\n    [ok]:exit done;",
+                "fault boundary {delta make(borrow path,4) {made {counter local}=>made} [made]:inspect(borrow local);delta stop {true=>failed,false=>ok} [failed]:fault \"helper failed\";[ok]:close(local);exit done;} contingency [] {escalate;}");
+        assert_ne!(changed, source);
+        assert!(changed.contains("counter local"));
+        changed
+    } else {
+        source
+    };
+    let source = if matches!(mode, SourceResources::RecoveringBoundaryHelper) {
+        let changed = source.replace("fail_helper(stop);", "fail_helper(path,stop);")
+            .replace("control fail_helper(bool stop)", "control fail_helper(string path,bool stop)")
+            .replace("    delta stop {true=>failed,false=>ok}\n    [failed]:fault \"helper failed\";",
+                "delta make(borrow path,4) {made {counter local}=>made} [made]:supervise request(local);delta stop {true=>failed,false=>ok} [failed]:fault \"helper failed\";");
+        assert_ne!(changed, source);
+        assert!(changed.contains("supervise request(local)"));
+        format!(
+            "{changed}\nboundary request(counter local) retains local {{inspect(borrow local);fault \"local request\";}} contingency(string reason) {{close(local);terminate;}}"
+        )
+    } else {
+        source
+    };
     let p = crate::compile(&source, manifest)
         .unwrap_or_else(|error| panic!("{error}\n{source}"))
         .with_entry_exit_codes("main", BTreeMap::from([("done".into(), 0)]))
@@ -1447,7 +1502,13 @@ control main(string path,bool stop) exits done {
                     }
                     for id in 1..=if inline_helper {
                         5
-                    } else if parent_await {
+                    } else if parent_await
+                        || matches!(
+                            mode,
+                            SourceResources::BoundaryHelper
+                                | SourceResources::RecoveringBoundaryHelper
+                        )
+                    {
                         4
                     } else {
                         3
@@ -1486,12 +1547,44 @@ control main(string path,bool stop) exits done {
                                 assert!(!owners.contains(&format!("close {id}")), "{owners}");
                             }
                         } else if stop {
-                            assert!(
-                                owners.contains("borrow 2\ndrop 1\ndrop 2\nclose 3"),
-                                "{owners}"
-                            );
+                            if matches!(mode, SourceResources::BoundaryHelper) {
+                                assert!(
+                                    owners.find("drop 4").unwrap() < owners.find("drop 1").unwrap(),
+                                    "{owners}"
+                                );
+                                assert!(!owners.contains("close 4"), "{owners}");
+                            }
+                            if matches!(mode, SourceResources::RecoveringBoundaryHelper) {
+                                assert!(owners.contains("close 4\ndrop 4"), "{owners}");
+                                assert!(
+                                    owners.find("drop 4").unwrap() < owners.find("drop 1").unwrap(),
+                                    "{owners}"
+                                );
+                            }
+                            let tail = if matches!(
+                                mode,
+                                SourceResources::BoundaryHelper
+                                    | SourceResources::RecoveringBoundaryHelper
+                            ) {
+                                "drop 1\ndrop 2\nclose 3"
+                            } else {
+                                "borrow 2\ndrop 1\ndrop 2\nclose 3"
+                            };
+                            assert!(owners.contains(tail), "{owners}");
                             assert!(!owners.contains("close 1") && !owners.contains("close 2"));
                         } else {
+                            if matches!(
+                                mode,
+                                SourceResources::BoundaryHelper
+                                    | SourceResources::RecoveringBoundaryHelper
+                            ) {
+                                assert!(owners.contains("close 4\ndrop 4"), "{owners}");
+                                assert!(
+                                    owners.find("drop 4").unwrap()
+                                        < owners.find("close 1").unwrap(),
+                                    "{owners}"
+                                );
+                            }
                             assert!(owners.contains("close 1") && owners.contains("close 2"));
                         }
                         break;

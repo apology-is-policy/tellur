@@ -3486,3 +3486,30 @@ support and application needs. Anonymous reference-bearing contracts, reference-
 collections, borrowed-handle storage and inline parent fault-boundary crossing remain
 separate. Establish a concrete supported baseline before selecting the next bounded
 extension; this checkpoint does not change those limits or authorize new semantics.
+
+## Uninterrupted boundary helpers (E1e.22)
+
+Compiler 0.187 admits synchronous helpers whose complete checked inline call graph
+has no task handoff, even when it contains named or lexical fault boundaries. The
+existing boundary-free helper route remains unchanged. Direct parent boundary
+statements stay gated. Handoff metadata includes named contingencies; generic
+dependency closure now includes the implicit handler edge, fixing a compiler panic
+when a symbolic generic caller selected named work without its handler.
+
+Children remain with their original invocation and domain. A helper's locally
+handled fault and supervised-loop recovery leave queued, suspended and completed
+children intact. An escaping helper fault retires affected work before the original
+owning contingency, suppressing stopped sibling contingencies. No boundary operation,
+ordinary call, recovery or host quota adds a scheduling handoff. Existing boundary
+input isolation, capture/result loans and required joins remain checked.
+
+Evidence covers named/lexical recovery across child phases, borrowed parent results,
+owned handle wrappers, constructors, generic/trait/imported helpers, unsaved changes,
+conservative structural handoff rejection and retained source-fault ownership.
+Original/expanded native O0/O2 fuel/quota comparisons include local helper owners,
+completed results and stopped siblings; context census checks all retained stores.
+
+Next audit: boundary-bearing helpers that reach explicit handoffs. Establish precise
+fault routing when a sibling faults while the original parent is inside a different
+inline boundary, before changing admission. Direct parent boundaries, task-handle
+crossing, async I/O readiness and cancellation remain separate.

@@ -1,0 +1,56 @@
+control helper(bool broken) exits done faults {
+    delta broken {
+        true => failed,
+        false => exit done
+    }
+    [failed]:
+        fault boundary {
+            emit("helper work");
+            fault "helper failed";
+        } contingency [] {
+            emit("helper contingency");
+            escalate;
+        }
+}
+
+async control result(ref string text) exits ready { ref string value from text } {
+    emit("result completed");
+    exit ready { text };
+}
+
+async control sibling(ref string text) exits done {
+    emit(text);
+    fault boundary {
+        yield;
+        yield;
+    } contingency [] {
+        emit("stopped sibling contingency");
+        escalate;
+    }
+    emit("stopped sibling resumed");
+    exit done;
+}
+
+async control startup() exits done faults {
+    string text = "sibling started";
+    auto completed = spawn result(borrow text);
+    auto pending = spawn sibling(borrow text);
+    yield;
+    helper(true);
+    delta await completed {
+        ready { auto value } => ready
+    }
+    [ready]: emit(value);
+        await pending;
+        exit done;
+}
+
+control main() exits done {
+    fault boundary {
+        run startup();
+    } contingency [] {
+        emit("owner contingency");
+        terminate process 23;
+    }
+    exit done;
+}

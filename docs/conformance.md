@@ -4754,3 +4754,21 @@ at every fuel cutoff and quota partition. Real resources in active and empty out
 alternatives retire after borrowers, completed results and stopped siblings beside
 awaited parents. The reference context census covers 88 variants. Production scheduler
 and conservative host-dependency behavior are unchanged; cold baseline evidence is reused.
+
+## Uninterrupted source boundary helpers (0.187)
+
+`source_boundary_helpers` checks normal and locally recovered named/lexical work
+beside queued, suspended and completed children, borrowed parent results, child
+capture/result loans, owned handle wrappers and escaped helper faults. Direct
+boundaries and transitive boundary-bearing handoff helpers retain negative controls.
+Imported/trait helpers use checked bodies; unsaved changes invalidate and repair
+callers. Generic closure checks retain the named contingency and its dependency,
+diagnostic and recursion evidence even in unused generic definitions.
+
+Four `compiled_source_boundary_helpers_*` tests compare original/expanded O0/O2
+models at every fuel cutoff and quota partition. Real helper resources retire on
+normal and escaped-fault paths; named local recovery closes its retained resource
+while completed results and suspended siblings survive until their original owner
+joins or settles them. The reference context census now covers 90 variants.
+Production scheduler code is unchanged; admission follows the checked no-handoff
+proof, including named contingency bodies.

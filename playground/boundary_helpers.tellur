@@ -1,0 +1,79 @@
+boundary request(bool broken) {
+    delta broken {
+        true => failed,
+        false => healthy
+    }
+
+    [failed]: fault "local request failed";
+    [healthy]:
+        emit("named work");
+        terminate;
+}
+contingency(string reason) {
+    emit("named recovery");
+    terminate;
+}
+
+control local_request() exits done {
+    supervise request(true);
+    supervise request(false);
+    supervised loop retry(mutable bool first = true) {
+        bool broken = first;
+        first = false;
+        fault boundary {
+            delta broken {
+                true => failed,
+                false => healthy
+            }
+
+            [failed]: fault "retry request";
+            [healthy]:
+                emit("lexical work");
+                exit done;
+        } contingency [] {
+            emit("lexical recovery");
+            recover again retry;
+        }
+    }
+}
+
+control helper<t>(ref t input) exits ready { ref t value from input } {
+    local_request();
+    exit ready { input };
+}
+
+async control worker(ref string text) exits ready { ref string value from text } {
+    emit("child started");
+    yield;
+    emit("child completed");
+    exit ready { text };
+}
+
+async control startup() exits done {
+    string text = "child result";
+    string parent = "parent result";
+    auto child = spawn worker(borrow text);
+    delta helper<string>(borrow parent) {
+        ready { auto value } => checked
+    }
+
+    [checked]: emit(value);
+        yield;
+        local_request();
+        yield;
+        local_request();
+        auto moved = move child;
+        delta await moved {
+            ready { auto result } => joined
+        }
+
+    [joined]: emit(result);
+        exit done;
+}
+
+outcome program_result {
+    @exit 0 done
+}
+control main() exits program_result {
+    forward run startup();
+}

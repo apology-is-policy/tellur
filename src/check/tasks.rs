@@ -110,7 +110,7 @@ impl Checker<'_> {
             let live = self.bdd.and(domain, owned);
             if live != FALSE {
                 return Err(self.fail_domain("E_ASYNC",span,
-                    "await started children before a synchronous call that may enter a fault boundary; checked awaits and helpers without inline boundaries remain available",live));
+                    "await started children before a direct inline fault boundary or a boundary-bearing helper that may hand off; checked awaits and uninterrupted boundary helpers remain available",live));
             }
         }
         Ok(())

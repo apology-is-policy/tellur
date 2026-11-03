@@ -72,7 +72,7 @@ exports.run = async function (root) {
   const helpers = await fs.readFile(path.join(__dirname, '../../../playground/structured_helpers.tellur'), 'utf8');
   await replace(helpers);
   await waitFor(async () => diagnostics().length === 0 && (await hover('auto value')).includes('message'), 'synchronous helper admission');
-  const hiddenHandoff = helpers.replace('deref text = "updated";', 'fault boundary {} contingency [] {escalate;} deref text = "updated";');
+  const hiddenHandoff = helpers.replace('deref text = "updated";', 'fault boundary {run worker();} contingency [] {escalate;} deref text = "updated";');
   assert.notEqual(hiddenHandoff, helpers);
   await replace(hiddenHandoff);
   await waitFor(() => diagnostics().some(d => code(d) === 'E_ASYNC'), 'helper inline boundary invalidates callers');
@@ -375,6 +375,24 @@ exports.run = async function (root) {
   });
   assert.equal(outcomeChainRun.code, 0, outcomeChainRun.stderr);
   assert.deepEqual(JSON.parse(outcomeChainRun.stdout).events.filter(e => e.kind === 'emit').map(e => e.message), ['left', 'right']);
+  const boundaries = await fs.readFile(path.join(__dirname, '../../../playground/boundary_helpers.tellur'), 'utf8');
+  await replace(boundaries);
+  await waitFor(async () => diagnostics().length === 0 && (await hover('spawn worker')).includes('Uninterrupted synchronous helpers may enter local'), 'uninterrupted boundary helper hover');
+  await replace('async control pause() exits done {yield;exit done;}\n' + boundaries.replace('supervise request(true);', 'supervise request(true);run pause();'));
+  await waitFor(() => diagnostics().some(d => code(d) === 'E_ASYNC'), 'transitive helper handoff invalidates caller');
+  await replace(boundaries);
+  await waitFor(() => diagnostics().length === 0, 'boundary helper repair');
+  await document.save();
+  const boundaryRun = await vscode.commands.executeCommand('tellur.buildAndRun', {
+    arguments:['--json'], output:path.join(root, 'native output', 'boundary-helpers')
+  });
+  assert.equal(boundaryRun.code, 0, boundaryRun.stderr);
+  const boundaryMessages = JSON.parse(boundaryRun.stdout).events.filter(e => e.kind === 'emit').map(e => e.message);
+  assert.deepEqual(boundaryMessages, [
+    'named recovery', 'named work', 'lexical recovery', 'lexical work', 'parent result',
+    'child started', 'named recovery', 'named work', 'lexical recovery', 'lexical work',
+    'child completed', 'named recovery', 'named work', 'lexical recovery', 'lexical work', 'child result'
+  ]);
   await fs.writeFile(path.join(fixture, 'passed.txt'), 'cold and started tasks, synchronous helpers, diagnostics, unsaved repair and native execution passed\n');
   console.log('TELLUR_CARRIER_TASKS_EDITOR_TESTS_PASSED: pending type hover, diagnostic repair and native run');
 };

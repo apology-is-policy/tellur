@@ -6172,7 +6172,7 @@ fn pending_children_recheck_unsaved_helper_inline_boundaries() {
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "auto child");
     assert!(!initial.is_null());
-    let broken = valid
+    let uninterrupted = valid
         .replace(
             "emit(\"helper\");",
             "fault boundary {} contingency [] {escalate;}",
@@ -6183,7 +6183,14 @@ fn pending_children_recheck_unsaved_helper_inline_boundaries() {
         );
     f.server.notification(
         "textDocument/didOpen",
-        &json!({"textDocument":{"uri":uri,"version":1,"text":broken}}),
+        &json!({"textDocument":{"uri":uri,"version":1,"text":uninterrupted}}),
+    );
+    assert_eq!(f.diagnostics(), json!([]));
+    assert_eq!(hover_at(&f, source, "auto child"), initial);
+    let broken = uninterrupted.replace("fault boundary {}", "fault boundary {run work();}");
+    f.server.notification(
+        "textDocument/didChange",
+        &json!({"textDocument":{"uri":uri,"version":2},"contentChanges":[{"text":broken}]}),
     );
     let errors = f.diagnostics();
     assert_eq!(errors[0]["code"], "E_ASYNC", "{errors}");

@@ -1578,3 +1578,9 @@ holder/supplier permissions from the owning caller's handling obligation, includ
 empty and nested outcomes. Imported origin edits invalidate dependent callers; fresh
 editor checks repair missing handling and premature holder consumption before running
 the outcome-chain example natively. Anonymous/collection and handle limits remain.
+
+Release 0.187 admits uninterrupted synchronous helpers containing named/lexical
+boundaries beside live children. Hover states the remaining direct-boundary and
+handoff limits. Unsaved imported edits recompute that proof; the isolated editor
+check exercises a generic helper, local recovery, transitive-handoff rejection,
+repair and native execution. Generic named-boundary checking retains contingencies.

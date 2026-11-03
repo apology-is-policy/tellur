@@ -280,3 +280,42 @@ fn invalid_generic_definitions_are_reported_before_dependent_caller_arity_errors
         p.expanded("main").unwrap().run(&scenario()).unwrap()
     );
 }
+
+#[test]
+fn generic_dependency_closure_keeps_named_boundary_contingencies() {
+    let source = r#"
+    @contingent control report() exits done {emit("handled");exit done;}
+    boundary request() {fault "local";} contingency(string reason) {report();terminate;}
+    control invoke<t>(t value) exits ready {t value} {supervise request();exit ready {value};}
+    control main() exits done {delta invoke<u32>(1) {ready {u32 value}=>ready} [ready]:exit done;}
+    "#;
+    let p = compile(source, m()).unwrap();
+    assert!(p.region("request$contingency").is_some());
+    assert!(p.region("report").is_some());
+    for program in [p.clone(), p.expanded("main").unwrap()] {
+        let result = program.run(&scenario()).unwrap();
+        assert_eq!(result.outcome, "done");
+        assert!(
+            matches!(&result.events[0], tellur::runtime::Event::Fault { report } if report.boundary == "request" && report.message.contains("local"))
+        );
+        assert_eq!(
+            result.events[1],
+            tellur::runtime::Event::Emit {
+                message: "handled".into()
+            }
+        );
+    }
+    let unused = source.split("control main()").next().unwrap();
+    compile(unused, m()).unwrap();
+    let invalid = unused.replace(
+        "report();terminate;",
+        "emit(unbound_handler_value);terminate;",
+    );
+    let e = compile(&invalid, m()).unwrap_err();
+    assert_eq!(e.code, "E_NAME", "{e}");
+    let recursive = unused.replace(
+        "report();terminate;",
+        "delta invoke<u32>(1) {ready {u32 value}=>ready} [ready]:terminate;",
+    );
+    assert_eq!(compile(&recursive, m()).unwrap_err().code, "E_RECURSION");
+}

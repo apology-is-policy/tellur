@@ -387,6 +387,8 @@ mod tests {
     #[test]
     fn source_schedules_retire_every_context_at_every_fuel_cut() {
         for text in [
+            include_str!("../../playground/boundary_helpers.tellur"),
+            include_str!("../../tests/fixtures/source_boundary_helper_fault.tellur"),
             include_str!("../../playground/structured_tasks.tellur"),
             include_str!("../../tests/fixtures/source_task_tree.tellur"),
             include_str!("../../tests/fixtures/source_task_fault.tellur"),

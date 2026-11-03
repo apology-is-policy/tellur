@@ -46,8 +46,8 @@ This emits `queued`, `first`, `second`, `first`, `second`. See the runnable
 handle moves and parent work between handoffs. Every normal path must await its
 children. Handles cannot be copied, cloned, dropped, returned, or carried across a
 fault boundary. Local moves preserve the original invocation and spawning domain.
-Local inferred wrappers retain the same child obligations: unwrap and await the
-handle before a synchronous call that may enter an inline fault boundary.
+Local inferred wrappers retain the same child obligations: keep the handle in its original invocation; unwrap and await it before a direct
+inline fault boundary or a boundary-bearing helper that may hand off.
 Checked cold/direct awaits remain available beside wrapped children. Their possible
 producer faults still apply at handoffs. There is no detach or implicit await at scope exit.
 
@@ -56,23 +56,30 @@ storage, reference-free owned values, and nested owned records, options, closed 
 point to reference-free storage. Captures may also borrow record/option/closed-variant/named-outcome storage containing
 nested owned records/options/variants/named outcomes and direct reference leaves. Normal results use the owned/direct
 profile or a whole borrowed record/option/variant/named-outcome with declared storage and contained origins.
-An additional profile admits reference chains whose reference-bearing nodes are all records.
-Reference-bearing tagged nodes in deeper chains,
-anonymous reference-bearing outcomes and
-reference-bearing collection payloads remain gated. Broader reference-bearing
-`defer` tasks keep their existing semantics. A spawned body may itself use such
-cold/direct awaits and may own further spawned children. Before a parent enters a synchronous
-control whose inline call chain may enter a fault boundary, it must join its started
-children. Cold/direct awaits remain available beside children when the awaited
-producer permits fault settlement at handoffs. Synchronous helpers proved to
-avoid inline boundaries may also run while children are live. Their calls, including
-constructors and concrete generic/trait calls, retain the same borrowing and fault
-rules. A helper without a reached handoff runs uninterrupted. A helper may
-borrow parent storage and return a reference with its declared origin. See
-[structured helpers](../../playground/structured_helpers.tellur). The proof is
-conservative across all structural paths and transitive calls; an abstract trait
-contract alone does not promise this behavior. Local work, primitive effects,
-further spawns, yields and started joins remain available.
+An additional profile admits reference chains through records, options, closed variants
+and named outcomes, retaining each holder and selected supplier. Borrowed outcomes
+still require owning caller handling. Anonymous reference-bearing outcomes and
+reference-bearing collections remain gated. Broader reference-bearing `defer` tasks
+keep their existing semantics. A spawned body may itself use cold/direct awaits
+and may own further spawned children.
+
+Synchronous helpers may run beside live children when their checked inline chain
+is boundary-free or cannot reach a task handoff. Uninterrupted helpers may enter
+local named or lexical fault boundaries, handle local faults and recover their
+own supervised loops. Children remain owned by the original async invocation;
+their handles and captured loans do not enter those helper boundaries. Local
+recovery neither joins nor stops those children. An escaping helper fault still
+settles the owning boundary before its contingency.
+
+Direct inline boundaries and boundary-bearing helpers that may reach `await` or
+`yield` require joining children first. The proof follows every structural path,
+transitive call, constructor, concrete generic/trait body and named contingency.
+An abstract contract alone cannot establish permission. Helpers retain ordinary
+borrowing, result-origin and fault checks. Cold/direct awaits remain available
+when their producer permits stop settlement. Only reached `await`/`yield` sites
+switch tasks; boundary entry, recovery, `run` and host quotas do not. See
+[boundary helpers](../../playground/boundary_helpers.tellur) for queued, suspended
+and completed children beside local recovery.
 These are current admission limits, not changes to the accepted ownership model.
 
 Spawn also requires every resource owner retained across a producer's handoff to
@@ -845,8 +852,9 @@ control main() exits done { forward run startup(); }
 ```
 
 The proof follows ordinary calls, `run`, loops, constructors and concrete generic or
-trait bodies. An unknown abstract body cannot establish permission. Inline lexical
-or named boundaries remain gated even when a structural branch is unreachable.
+trait bodies. An unknown abstract body cannot establish permission. Boundary-bearing helpers that can reach a handoff remain gated even when a structural
+branch is unreachable. Uninterrupted boundary helpers have the admission described above;
+direct parent boundary statements still require joining children first.
 An awaited control has a separate retained context and may use its already-supported
 nested boundaries. See [cooperative helpers](../../playground/cooperative_helpers.tellur)
 for parent borrowing and a returned reference.

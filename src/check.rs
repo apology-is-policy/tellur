@@ -4138,6 +4138,7 @@ impl Checker<'_> {
             if sig.region
                 && operand.call_mode != syntax::CallMode::Await
                 && !sig.inline_boundary_free
+                && sig.handoffs
             {
                 self.require_no_started(domain, span)?;
             }
@@ -5806,7 +5807,12 @@ pub(crate) fn compile_concrete_unit(
                     .get_mut(&source.name)
                     .unwrap()
                     .inline_boundary_free = inline_boundary_free;
-                let handoffs = tasks::handoffs(&result.code, &signatures);
+                // Named work and its contingency both belong to the inline call.
+                // Unknown signatures cannot prove uninterrupted execution.
+                let handoffs = tasks::handoffs(&result.code, &signatures)
+                    || result.boundary.as_ref().is_some_and(|boundary| {
+                        signatures.get(&boundary.handler).is_none_or(|s| s.handoffs)
+                    });
                 signatures.get_mut(&source.name).unwrap().handoffs = handoffs;
                 signatures.get_mut(&source.name).unwrap().stoppable = stoppable;
                 if let Some(b) = &result.boundary {

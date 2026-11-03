@@ -312,6 +312,11 @@ fn item_calls(items: &[Item], v: &mut Visit<'_>) -> Result<()> {
     Ok(())
 }
 fn calls(r: &Region, v: &mut Visit<'_>) -> Result<()> {
+    // A selected boundary always needs its contingency, including in the
+    // symbolic dependency closure of an otherwise unrelated generic control.
+    if let Some(boundary) = &r.boundary {
+        v(&boundary.handler, r.span)?;
+    }
     field_calls(&r.parameters, r.span, v)?;
     for o in &r.exits {
         field_calls(&o.fields, r.span, v)?;
