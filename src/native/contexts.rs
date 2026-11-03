@@ -31,6 +31,7 @@ struct Parked {
     task: Option<QueuedTask>,
     sequential: bool,
     awaiting: Option<u64>,
+    dependencies: Dependencies,
 }
 struct Completed {
     parked: Parked,
@@ -116,6 +117,7 @@ impl<'a> Contexts<'a> {
         self.domains.prepare(None)?;
         self.domains.require_member_capacity()?;
         self.host.tasks.prepare_owner()?;
+        let dependencies = Dependencies::describe(&self.values, &arguments);
         let (mut root, mut context) = self.host.prepare_context(&arguments)?;
         if entry {
             context.tracker = std::mem::take(&mut self.host.activations);
@@ -155,6 +157,7 @@ impl<'a> Contexts<'a> {
                 task: None,
                 sequential: false,
                 awaiting: None,
+                dependencies,
             },
         );
         Ok(ContextKey {
@@ -222,6 +225,7 @@ impl<'a> Contexts<'a> {
         if control.constructor || arguments.len() != control.parameters.len() {
             return Err("E_NATIVE: invalid related context admission".into());
         }
+        let dependencies = Dependencies::describe(&self.values, &arguments);
         // Derive the child's diagnostics from the original selected parent.
         let parent_state = &mut self.parked.get_mut(&parent.id).unwrap().host;
         self.host.exchange_context(parent_state)?;
@@ -258,6 +262,7 @@ impl<'a> Contexts<'a> {
                 task: None,
                 sequential: false,
                 awaiting: None,
+                dependencies,
             },
         );
         Ok(ContextKey {
@@ -320,6 +325,7 @@ impl<'a> Contexts<'a> {
             .as_ref()
             .ok_or("E_NATIVE: queued task already admitted")?;
         let (control, arguments) = task.prepare_context(self.host, activation)?;
+        let dependencies = Dependencies::describe(&self.values, arguments);
         let parent_invocation = Some(activation.owner);
         if control.constructor
             || arguments.len() != control.parameters.len()
@@ -416,6 +422,7 @@ impl<'a> Contexts<'a> {
                 task: Some(task),
                 sequential,
                 awaiting: None,
+                dependencies,
             },
         );
         self.next = id;
@@ -554,9 +561,21 @@ impl<'a> Contexts<'a> {
         if !self.callback_child(parent.id, child) {
             return Err("E_NATIVE: completion does not match the compiled await".into());
         }
+        let dependencies = self.require_completed(child)?.parked.dependencies.clone();
         let result = self.join_inner(Some(parent), child, true)?;
-        self.await_continuation(parent)?.result = Some(Ok(result));
+        let pending = self.await_continuation(parent)?;
+        pending.dependencies.extend(dependencies);
+        pending.result = Some(Ok(result));
         Ok(())
+    }
+    /// Conservative admission/result metadata, never selection authorization.
+    pub fn dependencies(&self, key: &ContextKey) -> R<&Dependencies> {
+        if self.parked.contains_key(&key.id) {
+            self.require(key)?;
+            Ok(&self.parked[&key.id].dependencies)
+        } else {
+            Ok(&self.require_completed(key)?.parked.dependencies)
+        }
     }
     pub fn advance_retained(&mut self, key: &ContextKey, quota: usize) -> R<ContextPoll> {
         self.require_live()?;
@@ -627,6 +646,12 @@ impl<'a> Contexts<'a> {
                     ContextPoll::Paused
                 }
                 Ok(Poll::Complete(completion @ Completion::Outcome(_))) => {
+                    let Completion::Outcome((_, fields)) = &completion else {
+                        unreachable!()
+                    };
+                    parked
+                        .dependencies
+                        .extend(Dependencies::describe(&self.values, fields));
                     if let Some(task) = &parked.task {
                         task.complete(self.host)?;
                     }

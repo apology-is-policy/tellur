@@ -563,6 +563,8 @@ impl CheckedProgram {
         g.code.push_str(EXECUTION);
         g.code.push_str("\npub mod access_resolution {\n");
         g.code.push_str(include_str!("native/access_resolution.rs"));
+        g.code.push_str("\n}\npub mod dependencies {\n");
+        g.code.push_str(include_str!("native/dependencies.rs"));
         g.code.push_str("\n}\n");
         g.code.push_str("\nmod task_payload {\n");
         g.code.push_str(include_str!("native/task_payload.rs"));

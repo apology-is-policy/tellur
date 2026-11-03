@@ -195,8 +195,10 @@ pending delivery with live children. E1d.2d.3p now emits symbolic per-callback a
 plans from checked code, separating operand evaluation from normal await-delivery
 writes and marking opaque work explicitly. E1d.2d.3q now resolves those places to
 live storage identities, including indirect holder reads and caller destinations,
-without consuming values. Captured-loan analysis and independent parent progress
-remain ahead of source scheduling. Compiler **0.144.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
+without consuming values. E1d.2d.3r now retains bounded descriptions of reachable
+capture storage through admission, waiting, completion and pending delivery. Checked
+origin/holder guards and access-interference checks still gate independent parent
+progress and source scheduling. Compiler **0.145.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
 lifetime checkpoints of milestone 2, the array/vector/map core of milestone 3,
 and implicit entry, inline/stored adapters, owned capture, named outcome contracts
 and checked forwarding in milestone 4. A first [semantic foundation](semantic-foundation.md)
@@ -457,6 +459,7 @@ do not block this design work. E2 remains the native coroutine target.
 | E1d.2d.3o | Native invocation ownership and atomic selection | Delivered in 0.142: every child/result retains its original parent invocation; normal selection and joins validate that authority. Lower-level Machine selection rejects live child/result membership before callbacks or pending delivery can change state. Fine-grained parent progress and source scheduling remain gated |
 | E1d.2d.3p | Native callback access plans | Delivered in 0.143: immutable queries describe checked callback operands, field paths, borrow modes and storage retirement, with separate normal await-delivery writes and explicit opaque/unknown cases. Calls, run, direct await and cold-task await remain distinct. These symbolic plans do not grant selection permission; captured-loan resolution and source scheduling remain gated |
 | E1d.2d.3q | Native access storage resolution | Delivered in 0.144: immutable queries bind symbolic places to live arena/frame/slot identities, preserve indirect holder reads and field paths, and reject invalid places without source effects. Resolved identities reject retired allocations and reused offsets. Captured-loan analysis and parent selection permission remain separate gates |
+| E1d.2d.3r | Retained native capture descriptions | Delivered in 0.145: bounded immutable traversal records reachable carrier storage and reference permissions before admission, retaining snapshots through waiting, results and pending delivery. Unknown metadata preserves execution. Checked origin/holder guards and access-interference validation remain required before parent progress |
 | E2 | Native coroutine lowering | Preserved architectural target: direct LLVM coroutine primitives, pinned-toolchain experiment, frame lifetime rules and schedule-based differential tests; I1 must keep this route open |
 | T1 | Stronger source transformations | Hold current scope during P1–P5: extraction correspondence, continuation cuts, source-level lift and editor actions |
 | R1 | Mathematical foundations | Maintain existing evidence; defer extensions during P1–P5: preservation judgments, richer protocol abstractions, infinite/causal behavior, mechanization |

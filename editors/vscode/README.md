@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-darwin-arm64-0.144.0.vsix` using **Extensions:
+1. Install the supplied `tellur-language-darwin-arm64-0.145.0.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1302,3 +1302,10 @@ Native access queries now identify live storage and indirect reference-holder re
 without consuming values or resource owners. Resolved allocation identities reject
 retirement and offset reuse. Captured-loan checks and source scheduling remain ahead;
 parent execution with live children is still guarded.
+
+## Retained native capture descriptions in 0.145
+
+Native contexts now retain bounded descriptions of captured reference storage through
+waiting, completion and pending delivery. Carrier contents preserve shared/exclusive
+attenuation; unknown metadata leaves execution unchanged. Checked origin guards and
+access-interference checks remain necessary before enabling parent progress.

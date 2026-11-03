@@ -5,6 +5,10 @@ use domains::{DomainKey, DomainScope, Domains, Membership};
 #[cfg(test)]
 #[path = "access_resolution.rs"]
 pub mod access_resolution;
+#[cfg(test)]
+#[path = "dependencies.rs"]
+pub mod dependencies;
+use dependencies::Dependencies;
 
 pub type Deliver = fn(&mut Activation, &mut Frames, Completion) -> R<()>;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -112,6 +116,7 @@ struct AwaitContinuation {
     result: Option<R<Completion>>,
     deliver: Deliver,
     access: AccessPlan,
+    dependencies: Dependencies,
 }
 impl AwaitContinuation {
     fn retire(&mut self, host: &mut Host) -> R<()> {
@@ -547,12 +552,14 @@ impl Machine {
                 if frame.pending.is_some() {
                     return Err("E_NATIVE: duplicate compiled await continuation".into());
                 }
+                let dependencies = task.dependencies(values);
                 frame.pending = Some(Pending::Await(AwaitContinuation {
                     queued: Some(task),
                     child: None,
                     result: None,
                     deliver,
                     access,
+                    dependencies,
                 }));
             }
             Step::Boundary(control) => {

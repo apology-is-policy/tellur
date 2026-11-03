@@ -1225,6 +1225,7 @@ Those boundaries need explicit contracts before being accepted by the checker.
 | E1d.2d.3o | Native invocation ownership and atomic selection | Delivered in 0.142: every child/result retains its original parent invocation; normal selection and joins validate that authority. Lower-level Machine selection rejects live child/result membership before callbacks or pending delivery can change state. Fine-grained parent progress and source scheduling remain gated |
 | E1d.2d.3p | Native callback access plans | Delivered in 0.143: immutable queries describe checked callback operands, field paths, borrow modes and storage retirement, with separate normal await-delivery writes and explicit opaque/unknown cases. Calls, run, direct await and cold-task await remain distinct. These symbolic plans do not grant selection permission; captured-loan resolution and source scheduling remain gated |
 | E1d.2d.3q | Native access storage resolution | Delivered in 0.144: immutable queries bind symbolic places to live arena/frame/slot identities, preserve indirect holder reads and field paths, and reject invalid places without source effects. Resolved identities reject retired allocations and reused offsets. Captured-loan analysis and parent selection permission remain separate gates |
+| E1d.2d.3r | Retained native capture descriptions | Delivered in 0.145: bounded immutable traversal records reachable carrier storage and reference permissions before admission, retaining snapshots through waiting, results and pending delivery. Unknown metadata preserves execution. Checked origin/holder guards and access-interference validation remain required before parent progress |
 | E1e | Explicit cooperative cancellation and suspending cleanup; normal completion races, cleanup failures and no abandoned losers | Define cancellation observation and cleanup admission; no implicit cancellation exception |
 | E2 | Pinned native coroutine experiment, then checked lowering and schedule-based differential validation | Reference semantics and legal frame retirement must precede native destruction |
 
@@ -2002,6 +2003,64 @@ interference checks must agree with invocation/domain authority before that gate
 change. Source scheduling, independent admission from sequential contexts, started-task
 await, cancellation, suspending disposal, async adapters and LLVM coroutine lowering
 remain separate work. Accepted source ownership, origins, outcomes and faults are intact.
+
+## Retained native capture descriptions (E1d.2d.3r)
+
+Compiler 0.145 describes the storage reachable through native captured references.
+The immutable traversal follows actual record/sum payloads and owned task arguments.
+A borrowed carrier retains its own storage and its contained reference dependencies;
+an owned carrier contributes its reference leaves without inventing a loan of its
+former source slot. A shared outer reference attenuates contained exclusive authority.
+Repeated places merge conservatively, and stronger authority revisits a formerly
+shared path. Cyclic reference graphs terminate through visited-place tracking.
+
+Descriptions bind the resolved allocation identities and paths from E1d.2d.3q.
+Traversal uses an explicit work list and a budget of 4096 value visits and reference
+path components; merged descriptions are also bounded. Missing/invalid storage or an
+exceeded budget yields explicit unknown metadata. It is never treated as an empty
+loan set. This metadata is descriptive: unknown results do not reject an otherwise
+existing execution, consume source fuel, move values or run resource dispositions.
+
+Independent roots/children and queued tasks snapshot arguments before context admission
+transfers them. A compiled cold-await handoff also keeps its queued capture description.
+Readiness waits and signals preserve these snapshots. Normal completion adds the
+reachable result dependencies while conservatively retaining every input dependency;
+it does not infer a narrower result-origin contract. Returning a compiled await carries
+that combined description into the caller's pending delivery, after child membership
+and its one-use wait have retired. The record ends with delivery or emergency retirement.
+A manual host join transfers the result out of this runtime record; host result ownership
+and the source checker's existing loan rules still govern its subsequent use.
+
+Local never-started cold values retain their existing checker/task rules; this checkpoint
+does not attach allocation snapshots at `defer` creation. Its persistent metadata starts
+at handoff or context admission. Snapshots contain identities and paths, not source
+values or resource owners. Retaining or discarding metadata cannot keep an owner alive,
+settle a resource, or revive a retired allocation. Allocation-liveness checks remain
+separate from whether a holder or aggregate currently has the same contents.
+
+A resolved runtime graph is not the complete checked loan contract. In particular,
+flattened reference values do not encode every origin or storage-holder guard retained
+by the checker, including references reached through exclusive carrier fields. Those
+guards and exact invocation/domain authority must be incorporated before using these
+descriptions to authorize parent access. Both existing parent-selection gates stay in
+place. Source scheduling and the accepted ownership/origin/outcome/fault rules do not
+change.
+
+Six new host cases cover nested/owned/projected carriers, permission attenuation and
+strengthening, cycles and bounds, stale identities, preserved buffers/resources, all
+three admission routes, readiness, retained results and unknown-metadata execution.
+Admission-rejection tests now compare capture descriptions, and the pending-delivery
+case verifies that join does not lose them. Three generated probes query all selected
+contexts across original/expanded O0/O2 runs and quota partitions, including the
+[runnable carrier example](../playground/carrier_tasks.tellur). Its detached result
+still permits carrier retirement after await, with unchanged effects and outcomes.
+Existing fault/process and real-resource models cover emergency retirement.
+
+Next, combine these reachable-storage descriptions with checked origin/holder guards
+and compare complete dependency sets against callback accesses before relaxing parent
+selection. Opaque calls, synchronous return delivery, independent admission from
+sequential contexts, started-task await, source `spawn`/`yield`, cancellation,
+suspending disposal, async adapters and LLVM coroutine lowering remain separate gates.
 
 ## Reference execution invariants
 

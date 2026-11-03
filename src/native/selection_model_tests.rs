@@ -6,6 +6,7 @@ fn compiled_selection_rejects_before_callback_moves_effects_and_pending_delivery
     compare_selection(
         "loops",
         include_str!("../../tests/fixtures/native_resume_loops.tellur"),
+        &["false"],
         &[
             "Skip",
             "Local",
@@ -26,6 +27,7 @@ fn compiled_storage_resolution_covers_constructors_and_borrowed_result_delivery(
     compare_selection(
         "constructors",
         include_str!("../../tests/fixtures/native_resume.tellur"),
+        &["false"],
         &[
             "Skip",
             "Local",
@@ -41,7 +43,25 @@ fn compiled_storage_resolution_covers_constructors_and_borrowed_result_delivery(
     );
 }
 
-fn compare_selection(label: &str, input: &str, expected: &[&str]) {
+#[test]
+fn compiled_carrier_dependencies_survive_join_until_detached_result_delivery() {
+    compare_selection(
+        "carriers",
+        include_str!("../../playground/carrier_tasks.tellur"),
+        &[],
+        &[
+            "Local",
+            "Effect",
+            "Run",
+            "Defer",
+            "AwaitTask",
+            "Return",
+            "Delivery",
+        ],
+    );
+}
+
+fn compare_selection(label: &str, input: &str, args: &[&str], expected: &[&str]) {
     let root =
         std::env::temp_dir().join(format!("tellur-selection-{label}-{}", std::process::id()));
     fs::create_dir_all(&root).unwrap();
@@ -92,7 +112,8 @@ fn compare_selection(label: &str, input: &str, expected: &[&str]) {
             for probes in [false, true] {
                 for quotas in ["1", "0,3,1"] {
                     let output = Command::new(&binary)
-                        .args(["--json", "--fuel", "1000", "--", "false"])
+                        .args(["--json", "--fuel", "1000", "--"])
+                        .args(args)
                         .env("TELLUR_SELECTION_PROBES", probes.to_string())
                         .env("TELLUR_NATIVE_MODEL_QUOTAS", quotas)
                         .output()

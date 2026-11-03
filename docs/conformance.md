@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.144.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.145.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -4218,3 +4218,20 @@ result, lexical/owner-boundary and process models and production/manual targets 
 freshly. Unchanged checker, reference and LSP/Node evidence is reused. A fresh isolated
 editor checks the release. This is selected coverage, not a full-suite claim, and does
 not enable source concurrency or prove captured carrier loan permissions.
+
+## Retained native capture descriptions (0.145)
+
+E1d.2d.3r adds six host cases for nested, owned and projected carriers, shared/exclusive
+attenuation, repeated/cyclic references, bounded traversal, invalid storage, allocation
+reuse, exact resource destruction, all admission routes and readiness/result retention.
+An oversized description remains unknown while normal execution and joining succeed.
+Existing failed-admission and pending-delivery cases now inspect retained descriptions.
+
+Three generated probes query all selected contexts across original/expanded O0/O2 and
+quota partitions. They include the runnable carrier-task example, where detached
+result delivery still allows later carrier retirement. Full observations and existing
+parent-selection rejection agree. Selected real-resource, fault/process and retained
+context models run freshly, alongside native production/manual targets. Unchanged
+checker/reference/LSP/Node evidence is reused; a fresh isolated editor checks release
+integration. This is selected coverage, not a full-suite claim. Captured runtime graphs
+do not certify hidden checked origin/holder guards or permit source scheduling.

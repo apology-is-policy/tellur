@@ -24,10 +24,11 @@ fn selection_snapshot(c: &Contexts<'_>, root: &ContextKey) -> String {
                 Some(Pending::Call(_)) => "call".into(),
                 Some(Pending::Supervise(_)) => "supervise".into(),
                 Some(Pending::Await(p)) => format!(
-                    "await:{:?}:{}:{}",
+                    "await:{:?}:{}:{}:{:?}",
                     p.child,
                     p.queued.is_some(),
-                    p.result.is_some()
+                    p.result.is_some(),
+                    p.dependencies
                 ),
             };
             (a.owner, a.base(), a.pc, &a.facts, a.scopes.len(), pending)
@@ -39,6 +40,7 @@ fn selection_snapshot(c: &Contexts<'_>, root: &ContextKey) -> String {
             &*c.values,
             &c.host.tasks,
             &p.host.tracker,
+            &p.dependencies,
             frames,
             c.host.fuel,
             &c.host.events,
@@ -65,6 +67,7 @@ pub fn drive_selection(
     let mut access_kinds = std::collections::BTreeSet::new();
     let mut indirect = false;
     let mut destination = false;
+    let mut captured = false;
     let every_point = quotas == [1];
     let mut quotas = quotas.iter().cycle();
     let result = loop {
@@ -74,6 +77,12 @@ pub fn drive_selection(
             let m = &c.parked[&selected.id].machine;
             let description = m.next_access();
             let resolved = m.resolve_access(&c.values)?;
+            let dependencies = c.dependencies(&selected)?;
+            dependencies.require_live(&c.values)?;
+            captured |= matches!(dependencies, Dependencies::Known(entries) if !entries.is_empty());
+            if let Some(Pending::Await(p)) = &m.stack.last().unwrap().pending {
+                p.dependencies.require_live(&c.values)?;
+            }
             assert_ne!(description.transition, Transition::Unknown);
             assert_eq!(resolved.transition, description.transition);
             assert_eq!(resolved.opaque, description.opaque);
@@ -85,6 +94,7 @@ pub fn drive_selection(
             for _ in 0..3 {
                 assert_eq!(m.next_access(), description);
                 assert_eq!(m.resolve_access(&c.values)?, resolved);
+                assert_eq!(c.dependencies(&selected)?, dependencies);
             }
             assert_eq!(selection_snapshot(&c, &selected), snapshot);
             access_kinds.insert(format!("{:?}", description.transition));
@@ -128,6 +138,10 @@ pub fn drive_selection(
     };
     assert!(!probes || (checked > 5 && nested && delivery));
     if probes && every_point {
+        assert!(
+            captured,
+            "fixture must retain borrowed capture dependencies"
+        );
         assert!(
             indirect,
             "fixture must resolve a real indirect callback access"

@@ -89,6 +89,12 @@ pub struct QueuedTask {
     arguments: Option<Vec<V>>,
 }
 impl QueuedTask {
+    pub(super) fn dependencies(&self, values: &Frames) -> Dependencies {
+        match &self.arguments {
+            Some(arguments) => Dependencies::describe(values, arguments),
+            None => Dependencies::Unknown("queued captures have already transferred".into()),
+        }
+    }
     pub(super) fn retire(mut self, host: &mut Host) -> R<()> {
         self.abandon(host);
         if let Some(arguments) = self.arguments.take() {

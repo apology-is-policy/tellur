@@ -118,9 +118,124 @@ fn snapshot(c: &Contexts<'_>) -> serde_json::Value {
 fn reject(c: &mut Contexts<'_>, parent: &ContextKey, q: &mut Option<QueuedTask>) {
     let before = snapshot(c);
     let task = format!("{q:?}");
+    let dependencies = q.as_ref().map(|q| q.dependencies(&c.values));
     assert!(c.start_task(parent, q).is_err());
     assert_eq!(snapshot(c), before);
     assert_eq!(format!("{q:?}"), task);
+    assert_eq!(q.as_ref().map(|q| q.dependencies(&c.values)), dependencies);
+}
+
+#[test]
+fn capture_dependencies_survive_all_admission_routes_readiness_and_retained_results() {
+    for route in 0..3 {
+        let mut h = host();
+        let mut c = Contexts::new(&mut h);
+        let drops = Rc::new(RefCell::new(vec![]));
+        let own = make(&mut c, 0, &drops);
+        let parent = c.start(&OWNER, vec![own]).unwrap();
+        let base = c.parked[&parent.id].machine.stack[0].base();
+        let captured = make(&mut c, 1, &drops);
+        let args = vec![
+            captured,
+            V::Reference {
+                ty: "&probe".into(),
+                root: base,
+                fields: vec![],
+            },
+        ];
+        let expected = Dependencies::describe(&c.values, &args);
+        let child = if route == 0 {
+            c.start_child(&parent, &CHILD, args).unwrap()
+        } else {
+            let mut q = queue(&mut c, &parent, &CHILD, args);
+            assert_eq!(q.as_ref().unwrap().dependencies(&c.values), expected);
+            if route == 1 {
+                c.start_task(&parent, &mut q).unwrap()
+            } else {
+                c.start_await(&parent, &mut q).unwrap()
+            }
+        };
+        let foreign = ContextKey {
+            session: Arc::new(()),
+            id: child.id,
+        };
+        assert!(c.dependencies(&foreign).is_err());
+        assert_eq!(c.dependencies(&child).unwrap(), &expected);
+        c.advance_retained(&child, 1).unwrap();
+        let wake = c.park_for_readiness(&child).unwrap();
+        let before = snapshot(&c);
+        for _ in 0..4 {
+            c.dependencies(&child)
+                .unwrap()
+                .require_live(&c.values)
+                .unwrap();
+        }
+        assert_eq!(snapshot(&c), before);
+        assert_eq!(c.dependencies(&child).unwrap(), &expected);
+        c.signal_readiness(&wake).unwrap();
+        assert!(matches!(
+            c.advance_retained(&child, 1).unwrap(),
+            ContextPoll::Ready
+        ));
+        assert_eq!(c.dependencies(&child).unwrap(), &expected);
+        let result = fields(&mut c, Some(&parent), &child);
+        assert!(c.dependencies(&child).is_err());
+        expected.require_live(&c.values).unwrap();
+        release(&mut c, result);
+        assert_eq!(*drops.borrow(), [1]);
+        c.advance_retained(&parent, 2).unwrap();
+        let result = fields(&mut c, None, &parent);
+        release(&mut c, result);
+        assert!(expected.require_live(&c.values).is_err());
+        assert_eq!(*drops.borrow(), [1, 0]);
+        empty(&c);
+    }
+}
+
+#[test]
+fn bounded_unknown_dependency_metadata_does_not_change_execution_or_join() {
+    let mut h = host();
+    let mut c = Contexts::new(&mut h);
+    let parent = c.start(&OWNER, vec![V::U32(1)]).unwrap();
+    let large = V::Construct {
+        ty: "wide".into(),
+        name: "wide".into(),
+        fields: vec![V::U32(7); 4097],
+    };
+    let child = c.start_child(&parent, &OWNER, vec![large]).unwrap();
+    assert!(matches!(
+        c.dependencies(&child).unwrap(),
+        Dependencies::Unknown(_)
+    ));
+    assert!(
+        c.dependencies(&child)
+            .unwrap()
+            .require_live(&c.values)
+            .is_err()
+    );
+    assert!(matches!(
+        c.advance_retained(&child, 2).unwrap(),
+        ContextPoll::Ready
+    ));
+    assert!(matches!(
+        c.dependencies(&child).unwrap(),
+        Dependencies::Unknown(_)
+    ));
+    let result = fields(&mut c, Some(&parent), &child);
+    let V::Construct {
+        fields: returned, ..
+    } = &result[0]
+    else {
+        panic!()
+    };
+    assert_eq!(returned.len(), 4097);
+    release(&mut c, result);
+    c.advance_retained(&parent, 2).unwrap();
+    let result = fields(&mut c, None, &parent);
+    release(&mut c, result);
+    assert!(c.host.events.is_empty());
+    assert_eq!(c.host.fuel, Some(996));
+    empty(&c);
 }
 fn fields(c: &mut Contexts<'_>, parent: Option<&ContextKey>, key: &ContextKey) -> Vec<V> {
     let Completion::Outcome((_, fields)) = c.join(parent, key).unwrap() else {

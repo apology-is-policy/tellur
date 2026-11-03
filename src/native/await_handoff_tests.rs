@@ -1039,17 +1039,22 @@ fn access_queries_distinguish_pending_delivery_from_arguments_and_administrative
     let drops = Rc::new(RefCell::new(vec![]));
     let mut c = Contexts::new(&mut h);
     let root = start(&mut c, &ACCESS_PARENT, &drops);
+    let saved = c.await_continuation(&root).unwrap().dependencies.clone();
+    saved.require_live(&c.values).unwrap();
     assert_eq!(
         c.parked[&root.id].machine.next_access(),
         AccessPlan::UNKNOWN
     );
     let child = c.admit_await(&root).unwrap();
+    assert_eq!(c.dependencies(&child).unwrap(), &saved);
     assert_eq!(
         c.parked[&root.id].machine.next_access(),
         AccessPlan::UNKNOWN
     );
     c.advance_retained(&child, 2).unwrap();
     c.return_await(&root, &child).unwrap();
+    assert_eq!(c.await_continuation(&root).unwrap().dependencies, saved);
+    assert!(c.dependencies(&child).is_err());
     let slots = c.values.to_vec();
     let tasks = c.host.tasks.clone();
     let fuel = c.host.fuel;
@@ -1101,6 +1106,7 @@ fn access_queries_distinguish_pending_delivery_from_arguments_and_administrative
         c.advance_retained(&root, 1).unwrap(),
         ContextPoll::Ready
     ));
+    assert!(saved.require_live(&c.values).is_err());
     let (_, fields) = c.join(None, &root).unwrap().outcome().unwrap();
     c.host
         .release_frame(&fields.into_iter().map(Some).collect::<Vec<_>>());

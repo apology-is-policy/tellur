@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.144.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.145.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -178,3 +178,11 @@ Resolved identities reject retired allocations and offset reuse, while opaque/un
 work remains explicit. These current storage descriptions do not establish captured
 loan permission or enable parent progress. See
 [native storage resolution](../async-execution.md#native-access-storage-resolution-e1d2d3q).
+
+Since 0.145, native contexts retain bounded descriptions of reachable captured
+storage, including borrowed carrier contents and shared/exclusive attenuation.
+Snapshots survive readiness, retained results and join-to-callback delivery. Unknown
+metadata preserves existing execution and never grants access. Runtime values do not
+encode every checked origin/holder guard, so these descriptions alone cannot enable
+parent progress or scheduling. See
+[retained capture descriptions](../async-execution.md#retained-native-capture-descriptions-e1d2d3r).

@@ -518,6 +518,14 @@ work remains explicit. These current storage descriptions do not establish captu
 loan permission or enable parent progress. See
 [native storage resolution](../async-execution.md#native-access-storage-resolution-e1d2d3q).
 
+Since 0.145, native contexts retain bounded descriptions of reachable captured
+storage, including borrowed carrier contents and shared/exclusive attenuation.
+Snapshots survive readiness, retained results and join-to-callback delivery. Unknown
+metadata preserves existing execution and never grants access. Runtime values do not
+encode every checked origin/holder guard, so these descriptions alone cannot enable
+parent progress or scheduling. See
+[retained capture descriptions](../async-execution.md#retained-native-capture-descriptions-e1d2d3r).
+
 Since 0.128, entry process termination closes normal task admission and retires all
 registered execution contexts and results before delivering the original status.
 Prepared bodies never start; parked callers unwind without normal instructions or

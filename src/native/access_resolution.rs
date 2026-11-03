@@ -25,10 +25,14 @@ impl StoragePlace {
     /// Whole-slot writes/retirement may address uninitialized storage. Other paths
     /// must already exist, including the parent aggregate of a field write.
     fn require(&self, values: &Frames, kind: AccessKind) -> R<()> {
-        let root = values.require_storage(&self.storage)?;
+        values.require_storage(&self.storage)?;
         if self.fields.is_empty() && matches!(kind, AccessKind::Write | AccessKind::Retire) {
             return Ok(());
         }
+        self.value(values).map(|_| ())
+    }
+    pub(super) fn value<'a>(&self, values: &'a Frames) -> R<&'a V> {
+        let root = values.require_storage(&self.storage)?;
         let mut value = values[root]
             .as_ref()
             .ok_or("E_NATIVE: access requires an initialized place")?;
@@ -40,7 +44,7 @@ impl StoragePlace {
                 .get(*index)
                 .ok_or("E_NATIVE: access field is outside its aggregate")?;
         }
-        Ok(())
+        Ok(value)
     }
 }
 
