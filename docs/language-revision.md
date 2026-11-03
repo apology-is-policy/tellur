@@ -307,7 +307,11 @@ E1e.17 admits whole borrowed option and closed-variant results. Active and empty
 retain holder storage with their actual contained origins; Copy/move, projected guards,
 nominal identity and nested outcome handling preserve existing semantics. Whole borrowed
 named-outcome results are next; deeper reference pointees remain separate.
-Compiler **0.182.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
+E1e.18 admits whole borrowed named-outcome results with complete origin groups.
+The owning caller retains handling for active, empty and nested outcomes after inspection;
+whole storage authority, contained permissions and exclusive guards survive join and fault
+settlement. Deeper reference pointees are the next bounded audit.
+Compiler **0.183.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
 lifetime checkpoints of milestone 2, the array/vector/map core of milestone 3,
 and implicit entry, inline/stored adapters, owned capture, named outcome contracts
 and checked forwarding in milestone 4. A first [semantic foundation](semantic-foundation.md)
@@ -607,6 +611,7 @@ do not block this design work. E2 remains the native coroutine target.
 | E1e.15 | Borrowed named outcome spawn captures | Delivered in 0.180: named outcomes with complete origins may be borrowed directly or inside admitted carrier storage. The caller retains mandatory handling, including empty/nested outcomes; holder authority, selected origins, guards and resource settlement remain checked. Whole borrowed record results are next; deeper reference pointees remain gated |
 | E1e.16 | Whole borrowed record spawn results | Delivered in 0.181: shared/exclusive whole or projected record references retain holder storage, contained origins and guards after join. Copy/move, nested outcome obligations, public origin contracts and borrower-before-holder resource settlement remain checked. Whole borrowed option/variant results are next; named outcomes and deeper reference pointees remain separate |
 | E1e.17 | Whole borrowed option/variant spawn results | Delivered in 0.182: active/empty tagged results retain holder storage and tag-specific contained origins through join. Shared Copy, exclusive moves, projected guards, nominal identity, nested outcome obligations and borrower-before-holder resource retirement remain checked. Whole borrowed named-outcome results are next; deeper reference pointees remain gated |
+| E1e.18 | Whole borrowed named-outcome spawn results | Delivered in 0.183: active/empty whole results preserve storage and contained origins without discharging owning caller handling. Copy/move, projected guards, siblings, nominal identity, generic/imported contracts and resource retirement retain existing rules. Deeper reference pointees are the next admission audit; anonymous contracts and collections remain separate |
 | E2 | Native coroutine lowering | Preserved architectural target: direct LLVM coroutine primitives, pinned-toolchain experiment, frame lifetime rules and schedule-based differential tests; I1 must keep this route open |
 | T1 | Stronger source transformations | Hold current scope during P1–P5: extraction correspondence, continuation cuts, source-level lift and editor actions |
 | R1 | Mathematical foundations | Maintain existing evidence; defer extensions during P1–P5: preservation judgments, richer protocol abstractions, infinite/causal behavior, mechanization |

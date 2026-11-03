@@ -3400,3 +3400,25 @@ Next audit: whole borrowed named-outcome results. Borrowing must retain the owni
 handling obligation, including empty alternatives, while preserving holder storage,
 contained origins and exclusive guards after join. Deeper reference pointees, anonymous
 contracts, reference-bearing collections and borrowed-handle wrappers remain separate.
+
+## Whole borrowed named-outcome results (E1e.18)
+
+Compiler 0.183 extends the borrowed result root to named outcomes with complete origins
+and existing admitted contents. Borrowed inspection never transfers the owning caller
+handling obligation, including empty alternatives and nested outcomes. Whole storage and
+contained origins remain separate permissions through completion and consuming join.
+Production schedulers and conservative host metadata behavior are unchanged.
+
+Evidence covers shared/exclusive results, queued/running/completed/joined phases, copies,
+transfers, projected guards, detached leaves, independent siblings, selected and empty
+origins, generic forwarding, nominal identity, local escapes and caller handling failures.
+Public contracts retain explicit storage and contained bindings; unsaved edits invalidate
+callers and repairs restore hover. Six compiled original/expanded O0/O2 models compare
+fuel/quota partitions, including outcome-holder resources, completed whole references,
+awaited parents and stopped siblings. The reference context census includes every new
+fixture and joined/unjoined faults.
+
+Next audit: deeper reference pointees in source captures/results. Establish the existing
+cold-task boundary for nested carrier references, then test holder chains and all supplied
+origins before changing admission. Anonymous contracts, reference-bearing collections and
+borrowed-handle wrappers remain separate; no new scheduling or ownership policy is implied.

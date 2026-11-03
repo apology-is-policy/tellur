@@ -1,6 +1,48 @@
 //! Differential source execution using the exact production emitter and scheduler.
 use super::*;
 #[test]
+fn compiled_source_borrowed_outcome_results_nested_outcomes() {
+    compare(
+        "borrowed_outcome_result_nested",
+        include_str!("../../tests/fixtures/source_borrowed_outcome_result_nested.tellur"),
+    );
+}
+#[test]
+fn compiled_source_borrowed_outcome_results_values() {
+    compare(
+        "borrowed_outcome_result_values",
+        include_str!("../../playground/borrowed_outcome_spawn_results.tellur"),
+    );
+}
+#[test]
+fn compiled_source_borrowed_outcome_results_guards() {
+    compare(
+        "borrowed_outcome_result_guards",
+        include_str!("../../tests/fixtures/source_borrowed_outcome_result_guards.tellur"),
+    );
+}
+#[test]
+fn compiled_source_borrowed_outcome_results_fault() {
+    compare(
+        "borrowed_outcome_result_fault",
+        include_str!("../../tests/fixtures/source_borrowed_outcome_result_fault.tellur"),
+    );
+}
+#[test]
+fn compiled_source_borrowed_outcome_results_joined_fault() {
+    let source = include_str!("../../tests/fixtures/source_borrowed_outcome_result_fault.tellur")
+        .replace(
+            "    yield;\n    yield;\n    delta await result",
+            "    delta await result",
+        )
+        .replace("emit(\"stopped parent resumed\");", "yield;yield;");
+    compare("borrowed_outcome_result_joined_fault", &source);
+}
+#[test]
+fn compiled_source_borrowed_outcome_results_resources() {
+    source_resources(SourceResources::BorrowedOutcomeResults);
+}
+#[test]
 fn compiled_source_borrowed_tagged_results_nested_outcomes() {
     compare(
         "borrowed_tagged_result_outcomes",
@@ -691,6 +733,7 @@ enum SourceResources {
     BorrowedTags,
     BorrowedOutcomes,
     BorrowedTaggedResults,
+    BorrowedOutcomeResults,
     BorrowedRecordResults,
     BorrowedResult,
 }
@@ -710,6 +753,7 @@ fn source_resources(mode: SourceResources) {
             | SourceResources::BorrowedTags
             | SourceResources::BorrowedOutcomes
             | SourceResources::BorrowedTaggedResults
+            | SourceResources::BorrowedOutcomeResults
             | SourceResources::BorrowedRecordResults
             | SourceResources::BorrowedResult
     );
@@ -954,6 +998,7 @@ async control helper_work(ref counter local,string path) exits done {{
         SourceResources::BorrowedTags
             | SourceResources::BorrowedOutcomes
             | SourceResources::BorrowedTaggedResults
+            | SourceResources::BorrowedOutcomeResults
     ) {
         r#"
 variant worker_input['parent] {held {ref counter parent <- 'parent,counter value},empty}
@@ -1018,7 +1063,10 @@ control main(string path,bool stop) exits done {
     } else {
         source
     };
-    let source = if matches!(mode, SourceResources::BorrowedTaggedResults) {
+    let source = if matches!(
+        mode,
+        SourceResources::BorrowedTaggedResults | SourceResources::BorrowedOutcomeResults
+    ) {
         let changed=source.replace("produce(counter value,ref counter parent) exits ready {counter result,ref counter retained from parent} {exit ready {value,parent};}",
             "produce(ref produced input) exits ready {ref produced result from input} {exit ready {input};}")
             .replace("auto result=spawn produce(first,parent);", "produced result_holder=produced.held {first,parent};auto result=spawn produce(borrow result_holder);")
@@ -1030,6 +1078,20 @@ control main(string path,bool stop) exits done {
         format!(
             "variant produced['parent] {{held {{counter owned,ref counter retained <- 'parent}},empty}}\n{changed}"
         )
+    } else {
+        source
+    };
+    let source = if matches!(mode, SourceResources::BorrowedOutcomeResults) {
+        let changed = source
+            .replace("variant produced['parent]", "outcome produced['parent]")
+            .replace(
+                "variant worker_input['parent]",
+                "outcome worker_input['parent]",
+            );
+        assert_ne!(changed, source);
+        assert!(changed.contains("outcome produced['parent]"));
+        assert!(changed.contains("spawn produce(borrow result_holder)"));
+        changed
     } else {
         source
     };

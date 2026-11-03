@@ -271,7 +271,7 @@ fn whole_tagged_results_preserve_nominal_identity_and_escape_limits() {
         "variant choice['a] {held {ref string text <- 'a},empty}variant other['a] {held {ref string text <- 'a},empty}async control lend(ref choice input) exits ready {ref choice value from input} {exit ready {input};}async control caller(ref other input) exits done {auto child=spawn lend(input);delta await child {ready {auto value}=>ready}[ready]:exit done;}",
         "E_TYPE",
     );
-    for ty in ["reply", "option<ref choice>"] {
+    for ty in ["option<ref choice>"] {
         let source = format!(
             "variant choice['a] {{held {{ref string text <- 'a}},empty}}outcome reply['a] {{held {{ref string text <- 'a}},empty}}async control lend(ref {ty} input) exits ready {{ref {ty} value from input}} {{exit ready {{input}};}}async control caller(ref {ty} input) exits done {{auto child=spawn lend(input);delta await child {{ready {{auto value}}=>ready}}[ready]:exit done;}}"
         );

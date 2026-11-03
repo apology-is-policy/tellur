@@ -993,16 +993,21 @@ impl Manifest {
         }
         reference_inner(name).is_some_and(|(_, inner)| contents(self, inner, &mut BTreeSet::new()))
     }
-    /// Whole borrowed record/option/variant results retain storage and contained permissions.
-    /// Keep root named outcomes and deeper reference pointees separate.
+    /// Whole borrowed carriers retain storage and contained permissions.
+    /// Named outcomes retain caller handling; anonymous contracts and deeper pointees stay separate.
     pub(crate) fn supports_spawn_result(&self, name: &str) -> bool {
         self.supports_spawn_payload(name)
             || reference_inner(name).is_some_and(|(_, inner)| {
                 (option_inner(inner).is_some()
                     || matches!(
                         self.type_def(inner),
-                        Some(TypeDef::Record { .. } | TypeDef::Variant { .. })
+                        Some(
+                            TypeDef::Record { .. }
+                                | TypeDef::Variant { .. }
+                                | TypeDef::Outcome { .. }
+                        )
                     ))
+                    && outcome_inner(inner).is_none()
                     && self.supports_spawn_capture(name)
             })
     }

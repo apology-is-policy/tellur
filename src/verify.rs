@@ -934,7 +934,7 @@ impl Verifier<'_> {
                                     .any(|f| !self.program.manifest().supports_spawn_result(&f.ty)))
                             {
                                 return Err(error(
-                                    "spawn capture/result is outside the direct-reference, owned record/option/variant/named-outcome payload and borrowed record/option/variant/named-outcome capture or whole borrowed record/option/variant result profile",
+                                    "spawn capture/result is outside the direct-reference, owned record/option/variant/named-outcome payload and borrowed record/option/variant/named-outcome capture or whole borrowed record/option/variant/named-outcome result profile",
                                 ));
                             }
                             if matches!(operation, Operation::AwaitTask(_) | Operation::Join(_)) {

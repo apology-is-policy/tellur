@@ -4692,3 +4692,19 @@ completed whole tagged references, resource-bearing holders, awaited parents and
 siblings. The 60-variant reference context census checks retirement before and after join.
 Previously validated cold carrier semantics remain the baseline; no production scheduler
 or ownership policy changes accompany this bounded source result admission.
+
+## Whole borrowed named-outcome spawn results (0.183)
+
+`source_borrowed_outcome_results` checks whole holder and selected supplier loans,
+shared copies, exclusive transfers, projected/detached guards, sibling results, generic
+forwarding, nominal identity and local escape limits. Active, empty and nested outcomes
+still require owning caller handling after inspecting a borrowed result; dropping,
+cloning and unhandled wrapper escapes remain rejected. Imported LSP contracts and fresh
+editor repair/native execution cover both storage origins and handling diagnostics.
+
+Six `compiled_source_borrowed_outcome_results_*` models compare original/expanded O0/O2
+programs at every fuel cutoff and quota partition. Real resources reside in named-outcome
+holders while completed references, awaited parents and stopped siblings retire before
+the owning contingency. The 65-variant reference census checks context retirement.
+Existing cold task evidence remains baseline. No production scheduler changes accompany
+this bounded result admission.

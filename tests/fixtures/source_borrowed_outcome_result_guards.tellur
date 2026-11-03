@@ -1,0 +1,45 @@
+outcome choice['text] {
+    held { ref mutable string text <- 'text },
+    empty
+}
+struct holder['text] {
+    choice['text] item;
+}
+async control lend(ref mutable holder input) exits ready {
+        ref mutable choice value from input
+    }
+{
+    yield;
+    exit ready { borrow mutable input.item };
+}
+control consume_holder(holder input) exits done {
+    delta input.item {
+        held { auto ignored } => held,
+        empty => empty
+    }
+    [entry]: exit done;
+}
+async control startup() exits done {
+    mutable string owner = "before";
+    mutable holder saved = holder { choice.held { borrow mutable owner } };
+    ref mutable holder carrier = borrow mutable saved;
+    auto pending = spawn lend(carrier);
+    yield;
+    yield;
+    auto moved = move pending;
+    delta await moved {
+        ready { auto value } => ready
+    }
+    [ready]: delta value {
+        held { auto text } => held,
+        empty => empty
+    }
+    [held]: deref text = "after";
+        emit(text);
+    [entry]: consume_holder(saved);
+        owner = "free";
+        exit done;
+}
+control main() exits done {
+    forward run startup();
+}

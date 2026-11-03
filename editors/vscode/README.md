@@ -1556,3 +1556,8 @@ empty holder storage from tag-specific contained permissions. Diagnostics preser
 projected guards, shared/exclusive authority and public result origins; repairs restore
 inferred types. A fresh editor fixture runs the new example natively. Whole borrowed
 named-outcome results and deeper reference pointees remain gated.
+
+Release 0.183 supports whole borrowed named-outcome results. Hover explains retained
+holder storage and the owning caller handling obligation, including empty alternatives.
+Diagnostics and repairs cover loans, public origins and unhandled outcomes; a fresh
+editor fixture executes the example natively. Deeper reference pointees remain gated.

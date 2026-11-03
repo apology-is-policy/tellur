@@ -224,17 +224,16 @@ fn borrowed_outcome_faults_settle_joined_and_unjoined_storage_before_owning_hand
     }
 }
 #[test]
-fn deeper_outcome_references_and_whole_borrowed_results_remain_gated() {
+fn deeper_outcome_references_remain_gated_while_whole_results_are_admitted() {
     for ty in ["ref option<ref reply>", "indirect"] {
         let source = format!(
             "outcome reply['a] {{held {{ref string text <- 'a}},empty}} struct indirect['storage,'a] {{ref reply['a] value <- 'storage;}} async control work({ty} input) exits done {{exit done;}} async control caller({ty} input) exits done {{auto child=spawn work(input);await child;exit done;}}"
         );
         rejects(&source, "E_ASYNC");
     }
-    rejects(
-        "outcome reply['a] {held {ref string text <- 'a},empty}async control work(ref reply input) exits ready {ref reply value from input} {exit ready {input};}async control caller(ref reply input) exits done {auto child=spawn work(input);delta await child {ready {auto value}=>ready} [ready]:exit done;}",
-        "E_ASYNC",
-    );
+    compile(
+        "outcome reply['a] {held {ref string text <- 'a},empty}async control work(ref reply input) exits ready {ref reply value from input} {exit ready {input};}async control caller(ref reply input) exits done {auto child=spawn work(input);delta await child {ready {auto value}=>ready} [ready]:exit done;}", manifest(),
+    ).unwrap();
 }
 #[test]
 fn borrowed_named_outcome_generic_child_forwarding_keeps_selected_origins() {

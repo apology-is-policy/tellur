@@ -308,6 +308,25 @@ exports.run = async function (root) {
   assert.equal(wholeTagRun.code, 0, wholeTagRun.stderr);
   assert.deepEqual(JSON.parse(wholeTagRun.stdout).events.filter(e => e.kind === 'emit').map(e => e.message),
     ['left', 'right', 'empty', 'edited', 'none']);
+  const wholeOutcomes = await fs.readFile(path.join(__dirname, '../../../playground/borrowed_outcome_spawn_results.tellur'), 'utf8');
+  await replace(wholeOutcomes);
+  await waitFor(async () => diagnostics().length === 0 && (await hover('spawn first')).includes('Whole borrowed named-outcome results retain holder storage'), 'whole outcome result admission');
+  assert.ok((await hover('auto result')).includes('ref choice'));
+  await replace(wholeOutcomes.replace('auto copy = move result;', 'consume_choice<string>(saved);auto copy = move result;'));
+  await waitFor(() => diagnostics().some(d => code(d) === 'E_LOAN'), 'whole outcome result keeps holder storage');
+  await replace(wholeOutcomes.replace('delta value {', 'consume_reply(saved);delta value {'));
+  await waitFor(() => diagnostics().some(d => code(d) === 'E_LOAN'), 'whole exclusive outcome result keeps holder through matching');
+  await replace(wholeOutcomes.replaceAll('consume_choice<string>(saved);', ''));
+  await waitFor(() => diagnostics().some(d => code(d) === 'E_OUTCOME'), 'whole outcome result leaves owning caller handling');
+  await replace(wholeOutcomes);
+  await waitFor(async () => diagnostics().length === 0 && (await hover('auto result')).includes('ref choice'), 'whole outcome result repair');
+  await document.save();
+  const wholeOutcomeRun = await vscode.commands.executeCommand('tellur.buildAndRun', {
+    arguments:['--json'], output:path.join(root, 'native output', 'borrowed-outcome-results')
+  });
+  assert.equal(wholeOutcomeRun.code, 0, wholeOutcomeRun.stderr);
+  assert.deepEqual(JSON.parse(wholeOutcomeRun.stdout).events.filter(e => e.kind === 'emit').map(e => e.message),
+    ['left', 'right', 'empty', 'edited', 'none']);
   await fs.writeFile(path.join(fixture, 'passed.txt'), 'cold and started tasks, synchronous helpers, diagnostics, unsaved repair and native execution passed\n');
   console.log('TELLUR_CARRIER_TASKS_EDITOR_TESTS_PASSED: pending type hover, diagnostic repair and native run');
 };
