@@ -3752,9 +3752,49 @@ destructors continue to assert that their borrowed Rust object is alive.
 This is a private delivery model with immediate typed adapter completion after
 modeled waits. It adds no public source syntax, manifest mode, socket readiness,
 timeout policy or fallible/suspending cleanup. The ordinary compiler path does not
-select the hook. Compiler/LSP/VSIX 0.189 remains the installed release. E1f.2c must
-exercise external owning faults while generated operations are still waiting or
-signalled beneath nested boundaries, including suppressed stopped contingencies,
-before a production adapter ABI or source/manifest admission. The E1f.1/E1f.2a
-private reference/native settlement checks remain evidence, not a substitute for
-that generated-code case.
+select the hook. Compiler/LSP/VSIX 0.189 remains the installed release. E1f.2c below
+adds external owning faults during generated pending waits. Production adapter ABI
+and source/manifest admission remain separate from these private models.
+
+
+## Generated pending operation fault settlement (E1f.2c)
+
+[The fault fixture](../tests/fixtures/native_pending_fault.tellur) has two borrowed
+operations inside nested scopes. One supplier lives inside a lexical boundary;
+the other lives inside a lexical boundary beneath named supervision, whose retained
+owner must also retire. A separate owning boundary holds its own resource and
+contains the literal source fault selected by the private test schedule.
+
+The [generated comparison](../src/native/pending_operation_fault_tests.rs) parks
+both operations after evaluating their operands once. It exercises waiting,
+signalled and completed-but-undelivered states. The ordinary host gate still rejects
+advancing the parent beside retained children. The harness checks that its next
+callback is the operand-free fault statement, then explicitly admits that single
+callback. This controlled experiment changes no source handoff or production host
+admission. Completion candidates are valid retained strings; neither the typed
+sample adapter nor the normal result arm runs during emergency settlement.
+
+Actual operation lease destructors assert that their borrowed Rust suppliers remain
+alive. Resource traces require each operation to retire before its supplier and all
+stopped suppliers and named-boundary owners to retire before the owning contingency's
+first adapter call. Stopped lexical and named contingencies never run. The owning
+resource remains alive for its handler. Every resource is destroyed exactly once,
+including when source fuel runs out before the fault or within the contingency.
+Late readiness and operation tickets cannot revive retired work.
+
+A separate reference schedule drives the same checked source, retains the actual
+supplier addresses and discards pending operands/candidates before unwinding their
+frames. Original and expanded programs at native O0/O2 compare complete events,
+normal outcomes and fault reports at every remaining-fuel cutoff from owner fault
+to completion, with three host quota partitions. Setup uses a separate bounded fuel
+allowance; this sweep targets settlement and the handler. Successful runs also keep
+an independent waiting root alive across settlement and resume it afterwards.
+Only the existing native/reference fuel-message wording is normalized.
+
+These are private generated-operation tests on 0.189. Together with E1f.2b's normal
+delivery comparisons, they close the generated lifetime/settlement gate. The next
+bounded step is to connect modeled readiness to the cooperative source scheduler,
+including no-runnable waiting, wake eligibility, retained partial operations and
+external child faults at explicit handoffs. Public adapter signatures, manifest
+admission and live transport integration still require their own implementation and
+checks. Cancellation and fallible or suspending cleanup remain separate design work.

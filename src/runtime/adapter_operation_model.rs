@@ -42,6 +42,7 @@ pub(super) struct Pending<'a> {
     arguments: Vec<Value>,
     supplier: Place,
     partial: String,
+    candidate: Option<Vec<Value>>,
     trace: Trace,
     request: String,
 }
@@ -54,17 +55,22 @@ impl Pending<'_> {
     }
 
     fn borrowed_text(&self, m: &Machine<'_>) -> String {
-        let Value::String(text) = m.shared.values.get(&self.supplier.root).unwrap() else {
-            panic!("borrowed supplier retired before the pending operation")
-        };
-        text.clone()
+        match m.shared.values.get(&self.supplier.root).unwrap() {
+            Value::String(text) => text.clone(),
+            Value::Opaque { token, .. } => token.clone(),
+            _ => panic!("borrowed supplier retired or changed before the pending operation"),
+        }
     }
 
     pub(super) fn retire(self, m: &mut Machine<'_>) -> Result<()> {
         // Settlement must visit the operation before unwinding its supplier.
         assert!(!self.borrowed_text(m).is_empty());
         self.observe("retired");
-        for value in self.arguments {
+        for value in self
+            .arguments
+            .into_iter()
+            .chain(self.candidate.into_iter().flatten())
+        {
             retire_value(&mut m.shared.tasks, value, true)?;
         }
         Ok(())
@@ -159,6 +165,7 @@ fn prepare<'a>(m: &mut Machine<'a>, trace: &Trace) {
         arguments,
         supplier,
         partial: String::new(),
+        candidate: None,
         trace: trace.clone(),
     };
     operation.observe("prepared");
@@ -579,3 +586,7 @@ control main() exits done {
         }
     }
 }
+
+#[path = "pending_fault_model.rs"]
+mod fault_model;
+pub(crate) use fault_model::pending_fault_model;

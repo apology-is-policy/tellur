@@ -7,6 +7,8 @@ use super::*;
 #[path = "adapter_operation_model.rs"]
 mod adapter_operation_model;
 #[cfg(test)]
+pub(crate) use adapter_operation_model::pending_fault_model;
+#[cfg(test)]
 #[path = "completion_model.rs"]
 mod completion_model;
 #[cfg(test)]

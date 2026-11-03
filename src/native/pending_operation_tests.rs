@@ -300,3 +300,6 @@ control nested(bool stop) exits done faults {
     text.replace_range(start..end, "nested(stop);\n        ");
     compare("nested", &text, true);
 }
+
+#[path = "pending_operation_fault_tests.rs"]
+mod fault_tests;

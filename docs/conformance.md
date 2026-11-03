@@ -4860,6 +4860,19 @@ delivery and destruction each occur once. Nested suppliers retire correctly on
 post-delivery faults. A zero-quota pause after result completion cannot poll or
 complete that operation again.
 
-These generated cases do not yet inject an external owning fault while a nested
-operation is pending. That E1f.2c settlement case remains required before production
-adapter integration; existing private callback settlement tests are reused.
+The E1f.2c generated fault comparison parks two operations beneath lexical and named
+boundaries, then explicitly selects the checked owner's operand-free fault callback.
+It asserts that ordinary parent admission remains closed. Waiting, signalled and
+completed-but-undelivered states compare reference/native complete events, outcomes
+and reports in original/expanded O0/O2 builds across three quota partitions and every
+remaining-fuel cutoff from fault through handler completion. Setup fuel is separate.
+Successful schedules additionally park an independent root and resume it after
+owning-domain settlement. Fuel-report wording is the only normalization.
+
+Real Rust lease destructors check live suppliers. The owning contingency's first
+adapter call requires both operations and all three stopped resource owners already
+retired, while the owning handler's own resource remains live. Per-resource traces
+prove exact destruction and borrower-before-supplier order without imposing an
+order between independent siblings. Stopped nested contingencies, normal operation
+arms and late readiness/operation tickets cannot run. Shared production scheduling
+and adapter admission remain unchanged; source-scheduler readiness is the next gate.

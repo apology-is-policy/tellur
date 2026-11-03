@@ -1,0 +1,92 @@
+async control leaf(ref probe resource, string request)
+    exits ready { ref probe value from resource } {
+    delta sample(resource, move request) {
+        ready { string response } => received
+    }
+
+    [received]:
+        emit(borrow response);
+        exit ready { resource };
+}
+
+async control worker(ref probe resource, string request) exits done {
+    auto pending = defer leaf(resource, move request);
+    emit("captured");
+    delta await pending {
+        ready { auto value } => received
+    }
+
+    [received]:
+        inspect(value);
+        exit done;
+}
+
+control lexical(string request) exits done faults {
+    fault boundary {
+        delta make() {
+            made { probe inner } => made
+        }
+
+        [made]:
+            run worker(borrow inner, move request);
+            close(inner);
+    } contingency [] {
+        emit("forbidden lexical contingency");
+        escalate;
+    }
+    exit done;
+}
+
+boundary nested_request(probe retained, string request) retains retained {
+    lexical(move request);
+    close(retained);
+    terminate;
+}
+contingency(string reason) {
+    emit("forbidden named contingency");
+    close(retained);
+    terminate;
+}
+
+control named(string request) exits done {
+    delta make() {
+        made { probe retained } => made
+    }
+
+    [made]:
+        supervise nested_request(retained, move request);
+        exit done;
+}
+
+boundary owner_request(probe retained) retains retained {
+    emit("owner ready");
+    fault "owning failure";
+}
+contingency(string reason) {
+    checkpoint();
+    emit("owning contingency");
+    close(retained);
+    terminate;
+}
+
+async control independent_leaf() exits done {
+    emit("independent ready");
+    emit("independent survived");
+    exit done;
+}
+
+async control independent() exits done {
+    auto pending = defer independent_leaf();
+    await pending;
+    exit done;
+}
+
+control main() exits done {
+    delta make() {
+        made { probe owner } => made
+    }
+
+    [made]:
+        supervise owner_request(owner);
+        exit done;
+}
