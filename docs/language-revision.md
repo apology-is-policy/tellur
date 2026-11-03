@@ -271,7 +271,11 @@ E1e.9 admits owned flat result records with direct reference fields and ordinary
 contained-origin contracts. Selected result leaves preserve backing loans and guards;
 owned fields remain completion retirement obligations. Nested/borrowed/tagged carriers
 and borrowed-handle storage stay gated; nested owned record payloads are the next audit.
-Compiler **0.174.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
+E1e.10 admits nested owned record captures/results, retaining full field paths through
+partial moves, generic selected results and guarded references. References still point
+to reference-free storage. Borrowed/tagged/collection carriers remain gated; owned
+tagged payloads are the next audit under existing tag-specific origin semantics.
+Compiler **0.175.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
 lifetime checkpoints of milestone 2, the array/vector/map core of milestone 3,
 and implicit entry, inline/stored adapters, owned capture, named outcome contracts
 and checked forwarding in milestone 4. A first [semantic foundation](semantic-foundation.md)
@@ -563,6 +567,7 @@ do not block this design work. E2 remains the native coroutine target.
 | E1e.7 | Direct borrowed spawn results | Delivered in 0.172: consuming joins adopt selected direct result origins once, preserving capture/result loans, outcome alternatives, exclusive ancestry and completed-result emergency retirement. Reference-bearing carriers remain the next admission audit |
 | E1e.8 | Flat record spawn captures | Delivered in 0.173: owned records carry direct shared/exclusive reference fields and reference-free other fields through queued, running, completed and joined phases. Per-leaf loans, selected direct result origins, Copy/transfer rules and detached guards are preserved; nested/borrowed capture carriers and reference-bearing result carriers remain separate audits |
 | E1e.9 | Flat record spawn results | Delivered in 0.174: owned flat result records combine direct reference leaves and reference-free fields. Selected contained origins, field-sensitive final use, Copy/transfer behavior, guarded authority and completed-result retirement preserve ordinary ownership. Nested owned records are the next bounded payload audit; borrowed/tagged/collection carriers stay gated |
+| E1e.10 | Nested owned record spawn payloads | Delivered in 0.175: captures/results recursively admit owned record fields with direct reference leaves to reference-free storage. Full field paths, partial moves, independent sibling loans, selected result origins and guarded authority survive joins and fault retirement. Owned tagged payloads are next; borrowed/collection carriers remain separate |
 | E2 | Native coroutine lowering | Preserved architectural target: direct LLVM coroutine primitives, pinned-toolchain experiment, frame lifetime rules and schedule-based differential tests; I1 must keep this route open |
 | T1 | Stronger source transformations | Hold current scope during P1–P5: extraction correspondence, continuation cuts, source-level lift and editor actions |
 | R1 | Mathematical foundations | Maintain existing evidence; defer extensions during P1–P5: preservation judgments, richer protocol abstractions, infinite/causal behavior, mechanization |

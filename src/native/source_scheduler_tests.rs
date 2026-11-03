@@ -1,6 +1,41 @@
 //! Differential source execution using the exact production emitter and scheduler.
 use super::*;
 #[test]
+fn compiled_source_nested_records_values() {
+    compare(
+        "nested_values",
+        include_str!("../../playground/nested_spawn.tellur"),
+    );
+}
+#[test]
+fn compiled_source_nested_records_guards() {
+    compare(
+        "nested_guards",
+        include_str!("../../tests/fixtures/source_nested_guards.tellur"),
+    );
+}
+#[test]
+fn compiled_source_nested_records_fault() {
+    compare(
+        "nested_fault",
+        include_str!("../../tests/fixtures/source_nested_fault.tellur"),
+    );
+}
+#[test]
+fn compiled_source_nested_records_joined_fault() {
+    let source = include_str!("../../tests/fixtures/source_nested_fault.tellur")
+        .replace(
+            "    yield;\n    yield;\n    delta await result",
+            "    delta await result",
+        )
+        .replace("emit(\"stopped parent resumed\");", "yield;yield;");
+    compare("nested_joined_fault", &source);
+}
+#[test]
+fn compiled_source_nested_records_resources() {
+    source_resources(SourceResources::NestedRecords);
+}
+#[test]
 fn compiled_source_flat_result_values() {
     compare(
         "flat_result_values",
@@ -390,6 +425,7 @@ enum SourceResources {
     BorrowedCapture,
     CarrierCapture,
     CarrierResult,
+    NestedRecords,
     BorrowedResult,
 }
 fn source_resources(mode: SourceResources) {
@@ -401,12 +437,15 @@ fn source_resources(mode: SourceResources) {
             | SourceResources::BorrowedCapture
             | SourceResources::CarrierCapture
             | SourceResources::CarrierResult
+            | SourceResources::NestedRecords
             | SourceResources::BorrowedResult
     );
     let inline_helper = matches!(mode, SourceResources::InlineHelper);
     let borrowed_spawn = matches!(
         mode,
-        SourceResources::BorrowedCapture | SourceResources::CarrierCapture
+        SourceResources::BorrowedCapture
+            | SourceResources::CarrierCapture
+            | SourceResources::NestedRecords
     );
     let root = std::env::temp_dir().join(format!(
         "tellur-source-resource-{mode:?}-{}",
@@ -523,7 +562,10 @@ async control helper_work(ref counter local,string path) exits done {{
     } else {
         source
     };
-    let source = if matches!(mode, SourceResources::CarrierCapture) {
+    let source = if matches!(
+        mode,
+        SourceResources::CarrierCapture | SourceResources::NestedRecords
+    ) {
         let (before, after) = source.split_once("async control fail").unwrap();
         let before = before
             .replace(
@@ -548,7 +590,10 @@ async control helper_work(ref counter local,string path) exits done {{
     } else {
         source
     };
-    let source = if matches!(mode, SourceResources::CarrierResult) {
+    let source = if matches!(
+        mode,
+        SourceResources::CarrierResult | SourceResources::NestedRecords
+    ) {
         let source=source.replace("produce(counter value) exits ready {counter result} {exit ready {value};}",
             "produce(counter value,ref counter parent) exits ready {produced[parent] result} {exit ready {produced {value,parent}};}")
             .replace("spawn produce(first)", "spawn produce(first,parent)")
@@ -557,6 +602,20 @@ async control helper_work(ref counter local,string path) exits done {{
         format!(
             "struct produced['parent] {{counter owned;ref counter retained <- 'parent;}}\n{source}"
         )
+    } else {
+        source
+    };
+    let source = if matches!(mode, SourceResources::NestedRecords) {
+        source.replace("struct worker_input['parent] {ref counter parent <- 'parent;counter value;}",
+            "struct worker_leaf['parent] {ref counter parent <- 'parent;counter value;}struct worker_input['parent] {worker_leaf['parent] nested;}")
+            .replace("input.parent", "input.nested.parent")
+            .replace("input.value", "input.nested.value")
+            .replace("worker_input {parent,second}", "worker_input {worker_leaf {parent,second}}")
+            .replace("struct produced['parent] {counter owned;ref counter retained <- 'parent;}",
+                "struct result_leaf['parent] {counter owned;ref counter retained <- 'parent;}struct produced['parent] {result_leaf['parent] nested;}")
+            .replace("produced {value,parent}", "produced {result_leaf {value,parent}}")
+            .replace("value.owned", "value.nested.owned")
+            .replace("value.retained", "value.nested.retained")
     } else {
         source
     };

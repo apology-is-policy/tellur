@@ -4591,3 +4591,15 @@ Original/expanded O0/O2 models exercise normal execution, guards, faults before/
 join, awaited owners and real resources returned beside borrowed fields. Quota partitions,
 every fuel cutoff and the 26-variant reference census verify settlement before the
 owning contingency. Fresh editor checks include result-loan conflict repair and native run.
+
+## Nested owned record spawned payloads (0.175)
+
+Capture/result field paths survive recursive owned records, partial field/subrecord
+moves, shared copies, disjoint exclusive siblings and selected generic result origins.
+Detached guards remain live through completion/adoption; imported unsaved origin swaps
+invalidate conflicting callers and repair restores hover. Borrowed/tagged carriers stay
+rejected, and collection-contained origin signatures retain their earlier restriction.
+Original/expanded O0/O2 quota/fuel comparisons and the 30-variant reference census cover
+normal schedules, awaited-owner faults before/after join, nested guarded results and
+nested resources beside borrowed suppliers. Existing isolation and stop dispositions
+remain required. Fresh editor checks exercise partial-move loan repair and native run.

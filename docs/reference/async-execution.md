@@ -3,9 +3,9 @@
 [Language reference](../language-reference.md) · [Design and next steps](../async-execution.md) ·
 [Execution failures](execution-failures.md)
 
-Compiler 0.174 supports `async control`, synchronous entry with `run`, direct
+Compiler 0.175 supports `async control`, synchronous entry with `run`, direct
 `await`, cold tasks with owned and borrowed captures, and a bounded cooperative
-scheduler for `spawn` tasks with owned, direct borrowed or flat record captures/results. Source handoffs occur at `await` and `yield`.
+scheduler for `spawn` tasks with owned values, direct borrows and nested owned record captures/results. Source handoffs occur at `await` and `yield`.
 Async host I/O, cancellation and LLVM coroutine lowering remain later work.
 
 ## Owned spawned children
@@ -52,10 +52,10 @@ Checked cold/direct awaits remain available beside wrapped children. Their possi
 producer faults still apply at handoffs. There is no detach or implicit await at scope exit.
 
 The source profile accepts direct shared/exclusive borrows of existing reference-free
-storage, reference-free owned values, and owned flat records whose fields are
-reference-free values or direct borrows of reference-free storage. Normal result
-fields may also be direct references or flat owned records with their declared
-origins. Nested reference-bearing fields and references to carriers remain gated. Broader reference-bearing
+storage, reference-free owned values, and nested owned records whose reference leaves
+point to reference-free storage. Normal results use the same profile with their
+declared origins. References to reference-bearing carriers and reference-bearing
+tagged/collection payloads remain gated. Broader reference-bearing
 `defer` tasks keep their existing semantics. A spawned body may itself use such
 cold/direct awaits and may own further spawned children. Before a parent enters a synchronous
 control whose inline call chain may enter a fault boundary, it must join its started
@@ -198,16 +198,17 @@ these relationships. A result cannot borrow a child's owned input or local stora
 See [borrowed spawned results](../../playground/borrowed_spawn_results.tellur).
 
 Completed but unjoined results remain retirement obligations. Sibling faults settle
-them before supplier storage and the owning contingency. Flat owned result records
-may contain direct reference fields as described below. Aggregate storage of borrowed
+them before supplier storage and the owning contingency. Owned result records
+may contain nested record fields and direct reference leaves as described below. Aggregate storage of borrowed
 task handles remains outside this profile.
 
-## Flat record captures and results
+## Owned record captures and results
 
-An owned record may capture or return shared/exclusive references directly in its fields.
-Other fields may hold reference-free values, including resources whose existing
-fault dispositions permit stop settlement. A nested record, sum or collection with
-reference contents is outside this bounded profile, as is a reference to a carrier.
+Owned record fields may nest through other owned records, with shared/exclusive
+reference leaves pointing to reference-free storage. Other fields may hold
+reference-free values, including resources whose existing fault dispositions permit
+stop settlement. References to carriers and reference-bearing sum/collection fields
+remain outside this profile.
 
 <!-- tellur:check -->
 ```tellur
@@ -247,10 +248,41 @@ Field-sensitive final use releases each leaf loan independently. A shared refere
 a result record cannot mutate an exclusive field through shared authority.
 
 See [flat record captures](../../playground/carrier_spawn.tellur) and
-[flat record results](../../playground/carrier_spawn_results.tellur). Nested or borrowed
-carriers, reference-bearing tagged/collection payloads and aggregate wrappers of borrowed
+[flat record results](../../playground/carrier_spawn_results.tellur), and
+[nested record payloads](../../playground/nested_spawn.tellur). Borrowed carriers,
+reference-bearing tagged/collection payloads and aggregate wrappers of borrowed
 handles remain gated. Completed unjoined result records remain obligations and settle
 before supplying storage on an owning fault, including owned resource fields.
+
+Nested records preserve the full field path of each capture and result loan. Moving
+a subrecord or an individual exclusive field transfers that path's permission;
+unmoved siblings retain their own loans. Shared nested records retain ordinary Copy
+behavior. A selected result may project one nested leaf and release unrelated captures
+at join, including through generic forwarding and imported contracts. Moving an owned
+resource out of a carrier before entering an isolated boundary still follows the
+ordinary boundary rules; nesting does not grant access to outer references.
+
+<!-- tellur:check -->
+```tellur
+struct cell['a] { ref mutable string text <- 'a; }
+struct request['a] { cell['a] item; }
+async control relay(request input) exits ready { request[input['a]] result } {
+    yield;
+    exit ready { input };
+}
+async control startup() exits done {
+    mutable string text = "before";
+    auto child = spawn relay(request { cell { borrow mutable text } });
+    delta await child { ready { auto result } => ready }
+    [ready]:
+        auto item = move result.item;
+        deref item.text = "after";
+        emit(item.text);
+        text = "released";
+        exit done;
+}
+control main() exits done { forward run startup(); }
+```
 
 ## Parent awaits beside children
 

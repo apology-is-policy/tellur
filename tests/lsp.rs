@@ -6427,12 +6427,12 @@ fn flat_spawn_capture_unsaved_conflict_and_repair_preserve_hover() {
     assert!(
         hover_at(&f, text, "spawn first")
             .to_string()
-            .contains("Flat record captures")
+            .contains("Owned record captures")
     );
 }
 
 #[test]
-fn spawned_carrier_results_follow_unsaved_origins_and_reject_nested_shapes() {
+fn spawned_carrier_results_follow_unsaved_origins_and_reject_tagged_shapes() {
     let mut f = Fixture::new();
     let path = f.root.join("worker.tellur");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
@@ -6451,12 +6451,41 @@ fn spawned_carrier_results_follow_unsaved_origins_and_reject_nested_shapes() {
         &json!({"textDocument":{"uri":uri,"version":1,"text":broken}}),
     );
     assert_eq!(f.diagnostics()[0]["code"], "E_LOAN");
-    let nested = "pub struct leaf['a] {pub ref string text <- 'a;}pub struct view['a] {pub leaf['a] text;}pub async control lend(ref string a,ref string b) exits ready {view[a] value} {yield;exit ready {view {leaf {a}}};}";
+    let tagged = "pub async control lend(ref string a,ref string b) exits ready {option<ref string>[a] value} {yield;exit ready {some {a}};}";
     f.server.notification(
         "textDocument/didChange",
-        &json!({"textDocument":{"uri":uri,"version":2},"contentChanges":[{"text":nested}]}),
+        &json!({"textDocument":{"uri":uri,"version":2},"contentChanges":[{"text":tagged}]}),
     );
     assert_eq!(f.diagnostics()[0]["code"], "E_ASYNC");
+    f.server.notification(
+        "textDocument/didClose",
+        &json!({"textDocument":{"uri":uri}}),
+    );
+    assert_eq!(f.diagnostics(), json!([]));
+    assert_eq!(hover_at(&f, source, "auto result"), initial);
+}
+
+#[test]
+fn nested_spawned_result_origins_follow_unsaved_imports() {
+    let mut f = Fixture::new();
+    let path = f.root.join("worker.tellur");
+    let uri = url::Url::from_file_path(&path).unwrap().to_string();
+    let valid = "pub struct leaf['a] {pub ref string text <- 'a;}pub struct view['a,'b] {pub leaf['a] left;pub leaf['b] right;}pub async control lend(ref string a,ref string b) exits ready {view[a,b] value} {yield;exit ready {view {leaf {a},leaf {b}}};}";
+    fs::write(&path, valid).unwrap();
+    let source = "import \"worker.tellur\" as worker;async control startup() exits done {mutable string a=\"a\";mutable string b=\"b\";auto task=spawn worker.lend(borrow a,borrow b);delta await task {ready {auto result}=>ready} [ready]:b=\"free\";emit(result.left.text);exit done;}control main() exits done {forward run startup();}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let initial = hover_at(&f, source, "auto result");
+    assert!(initial.to_string().contains("view"));
+    let broken = valid
+        .replace("view[a,b] value", "view[b,a] value")
+        .replace("view {leaf {a},leaf {b}}", "view {leaf {b},leaf {a}}");
+    f.server.notification(
+        "textDocument/didOpen",
+        &json!({"textDocument":{"uri":uri,"version":1,"text":broken}}),
+    );
+    assert_eq!(f.diagnostics()[0]["code"], "E_LOAN");
+    assert!(hover_at(&f, source, "auto result").is_null());
     f.server.notification(
         "textDocument/didClose",
         &json!({"textDocument":{"uri":uri}}),

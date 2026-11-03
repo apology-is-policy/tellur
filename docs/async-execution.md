@@ -3208,3 +3208,30 @@ Nested owned record payloads are the next bounded audit. Trace their full leaf p
 and selected result adoption before relaxing the flat predicate. References to carriers,
 tagged/collection payloads, borrowed-handle wrappers, inline boundary crossing, async
 adapters and cancellation remain separate proof cases.
+
+## Nested owned record source payloads (E1e.10)
+
+Compiler 0.175 extends the shared capture/result predicate through owned record fields.
+Reference leaves stop that recursion and still require reference-free pointees. Active
+record paths guard against cycles; ordinary recursive layouts remain unsupported.
+Reference-bearing variants, outcomes and collections remain separate admission cases.
+No origin, authority or runtime machinery changes.
+
+Existing task capture paths include every owned field index. Join snapshots those
+paths before consumption, then ordinary result checking selects declared contained
+origins. Partial moves preserve subrecord/leaf permission and retain unmoved siblings;
+shared nested records follow ordinary Copy rules. Detached references keep carrier
+storage guards and exclusive ancestry even when rewrapped in nested owned records.
+
+Tests cover independent shared/exclusive siblings, queued/completed/result loans,
+partial result moves, generic outcome alternatives, unsaved imported origins and
+continued borrowed/tagged/collection rejection. Original/expanded native O0/O2 models
+and the 30-variant context census cover normal execution, guarded nested results,
+awaited owners and faults before/after join. A resource model nests both the captured
+borrowed/owned inputs and the completed borrowed/owned result, requiring exactly-once
+retirement before the owning contingency at every fuel cutoff and quota partition.
+
+Owned tagged payloads are the next audit: preserve active-tag paths, alternative origin
+permissions and retained result obligations before admitting reference-bearing closed
+variants/options. Borrowed carriers, collections, borrowed-handle wrappers, inline
+boundary crossing, async adapters and cancellation remain separate work.

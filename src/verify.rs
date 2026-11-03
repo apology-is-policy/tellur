@@ -932,7 +932,7 @@ impl Verifier<'_> {
                                 }))
                             {
                                 return Err(error(
-                                    "spawn capture/result is outside the direct-reference and flat-record payload profile",
+                                    "spawn capture/result is outside the direct-reference and owned-record payload profile",
                                 ));
                             }
                             if matches!(operation, Operation::AwaitTask(_) | Operation::Join(_)) {

@@ -1509,3 +1509,8 @@ Release 0.174 supports flat record spawn results with declared contained origins
 Hover describes selected result leaf loans, and unsaved origin/shape edits refresh
 caller diagnostics. Try `playground/carrier_spawn_results.tellur`; conflicting access
 before a returned field's final use reports `E_LOAN`. Nested/borrowed carriers stay gated.
+
+Release 0.175 supports nested owned record spawn captures/results. Hover explains the
+reference-leaf boundary; unsaved imported origin edits and conflicts after partial
+moves refresh diagnostics. Try `playground/nested_spawn.tellur`. Borrowed carriers and
+reference-bearing tagged/collection payloads remain gated.

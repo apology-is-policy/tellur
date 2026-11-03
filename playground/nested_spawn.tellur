@@ -1,0 +1,67 @@
+struct cell['text] {
+    ref mutable string text <- 'text;
+}
+struct branch['left, 'right] {
+    cell['left] left;
+    cell['right] right;
+}
+struct request['left, 'right] {
+    branch['left, 'right] values;
+    string label;
+}
+struct shared_cell['text] {
+    ref string text <- 'text;
+}
+struct shared_request['text] {
+    shared_cell['text] value;
+}
+async control edit(request input)
+    exits ready { request[input['left], input['right]] result }
+{
+    emit(borrow input.label);
+    yield;
+    deref input.values.left.text = "left edited";
+    deref input.values.right.text = "right edited";
+    exit ready { input };
+}
+async control inspect(shared_request input) exits done {
+    yield;
+    emit(input.value.text);
+    exit done;
+}
+async control startup() exits done {
+    mutable string left = "left";
+    mutable string right = "right";
+    string shared = "shared";
+    shared_request observer = shared_request { shared_cell { borrow shared } };
+    auto child = spawn edit(request {
+            branch { cell { borrow mutable left }, cell { borrow mutable right } },
+            "worker"
+        });
+    auto reader = spawn inspect(observer);
+    emit(observer.value.text);
+    emit("queued");
+    yield;
+    yield;
+    auto moved = move child;
+    delta await moved {
+        ready { auto result } => ready
+    }
+    [ready]:
+        string label = move result.label;
+        emit(borrow label);
+        auto fields = move result.values;
+        auto selected = move fields.left;
+        emit(selected.text);
+        left = "left released";
+        emit(fields.right.text);
+        right = "right released";
+        await reader;
+        exit done;
+}
+outcome program_result {
+    @exit 0 done
+}
+control main() exits program_result {
+    forward run startup();
+}

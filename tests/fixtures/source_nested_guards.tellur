@@ -1,0 +1,86 @@
+struct exclusive_leaf['text] {
+    ref mutable string text <- 'text;
+}
+struct exclusive_view['text] {
+    exclusive_leaf['text] item;
+}
+
+struct shared_leaf['text] {
+    ref string text <- 'text;
+}
+struct shared_view['text] {
+    shared_leaf['text] item;
+}
+
+async control lend(exclusive_view input)
+    exits ready { exclusive_view[input['text]] value }
+{
+    exit ready { input };
+}
+
+async control inspect(shared_view input) exits ready { shared_view[input['text]] value } {
+    exit ready { input };
+}
+
+control detach(ref mutable exclusive_view input) exits ready... {
+    exit ready { borrow mutable deref input.item.text };
+}
+
+async control exclusive() exits done {
+    mutable string owner = "before";
+    mutable exclusive_view saved = exclusive_view { exclusive_leaf { borrow mutable owner } };
+    ref mutable exclusive_view carrier = borrow mutable saved;
+    delta detach(carrier) {
+        ready { auto detached } => borrowed
+    }
+
+    [borrowed]:
+        auto pending = spawn lend(
+            exclusive_view { exclusive_leaf { borrow mutable deref detached } }
+        );
+        yield;
+        yield;
+        auto moved = move pending;
+        delta await moved {
+            ready { auto value } => ready
+        }
+
+    [ready]:
+        deref value.item.text = "after";
+        emit(value.item.text);
+        deref detached = "available after result";
+        emit(detached);
+        drop(saved);
+        owner = "free";
+        exit done;
+}
+
+async control shared() exits done {
+    mutable string owner = "shared";
+    shared_view saved = shared_view { shared_leaf { borrow owner } };
+    ref shared_view carrier = borrow saved;
+    ref string detached = carrier.item.text;
+    drop(saved);
+    auto pending = spawn inspect(shared_view { shared_leaf { detached } });
+    yield;
+    yield;
+    auto moved = move pending;
+    delta await moved {
+        ready { auto value } => ready
+    }
+
+    [ready]:
+        emit(value.item.text);
+        owner = "free";
+        exit done;
+}
+
+async control startup() exits done {
+    await exclusive();
+    await shared();
+    exit done;
+}
+
+control main() exits done {
+    forward run startup();
+}

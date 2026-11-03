@@ -152,7 +152,7 @@ exports.run = async function (root) {
     ['queued', 'released at join', 'edited through result', 'released after result', 'right']);
   const carrierSource = await fs.readFile(path.join(__dirname, '../../../playground/carrier_spawn.tellur'), 'utf8');
   await replace(carrierSource);
-  await waitFor(async () => diagnostics().length === 0 && (await hover('spawn first')).includes('Flat record captures'), 'flat carrier admission');
+  await waitFor(async () => diagnostics().length === 0 && (await hover('spawn first')).includes('Owned record captures'), 'flat carrier admission');
   const carrierConflict = carrierSource.replace('auto moved = move selected;', 'right = "too soon";auto moved = move selected;');
   assert.notEqual(carrierConflict, carrierSource);
   await replace(carrierConflict);
@@ -182,6 +182,22 @@ exports.run = async function (root) {
   assert.equal(flatResultRun.code, 0, flatResultRun.stderr);
   assert.deepEqual(JSON.parse(flatResultRun.stdout).events.filter(e => e.kind === 'emit').map(e => e.message),
     ['queued', 'left', 'right', 'owned result', 'edited in child', 'released after result']);
+  const nestedSource = await fs.readFile(path.join(__dirname, '../../../playground/nested_spawn.tellur'), 'utf8');
+  await replace(nestedSource);
+  await waitFor(async () => diagnostics().length === 0 && (await hover('spawn edit')).includes('captures and results may nest'), 'nested record admission');
+  const nestedConflict = nestedSource.replace('emit(fields.right.text);', 'right = "too soon";emit(fields.right.text);');
+  assert.notEqual(nestedConflict, nestedSource);
+  await replace(nestedConflict);
+  await waitFor(() => diagnostics().some(d => code(d) === 'E_LOAN'), 'partially moved nested result retains sibling loan');
+  await replace(nestedSource);
+  await waitFor(async () => diagnostics().length === 0 && (await hover('auto selected')).includes('cell'), 'nested result repair');
+  await document.save();
+  const nestedRun = await vscode.commands.executeCommand('tellur.buildAndRun', {
+    arguments:['--json'], output:path.join(root, 'native output', 'nested-spawn')
+  });
+  assert.equal(nestedRun.code, 0, nestedRun.stderr);
+  assert.deepEqual(JSON.parse(nestedRun.stdout).events.filter(e => e.kind === 'emit').map(e => e.message),
+    ['shared', 'queued', 'worker', 'shared', 'worker', 'left edited', 'right edited']);
   await fs.writeFile(path.join(fixture, 'passed.txt'), 'cold and started tasks, synchronous helpers, diagnostics, unsaved repair and native execution passed\n');
   console.log('TELLUR_CARRIER_TASKS_EDITOR_TESTS_PASSED: pending type hover, diagnostic repair and native run');
 };

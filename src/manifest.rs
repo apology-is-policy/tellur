@@ -958,12 +958,22 @@ impl Manifest {
         let inner = reference_inner(name).map_or(name, |(_, inner)| inner);
         !self.contains_references(inner)
     }
-    /// Captures and result fields admit flat owned records with direct borrowed
-    /// leaves. Recurse only through reference-free storage, never another carrier.
+    /// Owned record fields may nest, but a reference leaf must still point to
+    /// reference-free storage. Tagged/collection carriers remain separate cases.
     pub(crate) fn supports_spawn_payload(&self, name: &str) -> bool {
-        self.supports_spawn_leaf(name)
-            || matches!(self.type_def(name), Some(TypeDef::Record { fields, .. })
-                if fields.iter().all(|field| self.supports_spawn_leaf(&field.ty)))
+        fn visit(m: &Manifest, name: &str, active: &mut BTreeSet<String>) -> bool {
+            if m.supports_spawn_leaf(name) {
+                return true;
+            }
+            if reference_inner(name).is_some() || !active.insert(name.to_owned()) {
+                return false;
+            }
+            let supported = matches!(m.type_def(name), Some(TypeDef::Record { fields, .. })
+                if fields.iter().all(|field| visit(m, &field.ty, active)));
+            active.remove(name);
+            supported
+        }
+        visit(self, name, &mut BTreeSet::new())
     }
     pub fn check_type(&self, name: &str) -> Result<()> {
         if self.contains_references(name) {
