@@ -5146,3 +5146,29 @@ real suppliers and owning contingency, stopped nested-handler suppression and ou
 child survival. The full previous HTTP queue matrix and affected reference preparation
 cases are rechecked. Transport remains simulated; live registration and unadopted
 HTTP candidates are distinct follow-ups, and public admission remains pending.
+
+
+E1f.6i composes the unchanged owned HTTP parser with actual nonblocking loopback
+sockets and the native source queue. Initial ready polling needs no physical
+registration. Actual `WouldBlock` registers a wait and persistent readable interest;
+rearms use fresh backend tokens and runtime wait generations. Old/foreign/duplicate
+notices reject while replacements are live. Notifications and zero quotas perform
+no reads. Controlled peer writes, bounded non-consuming barriers and deliberately
+empty hints produce real partial-header/body/UTF-8 reads and repeated `WouldBlock`.
+
+Original/expanded O0/O2 matrices compare full events/reports through every source
+fuel cutoff in representative normal/fault schedules and three quota partitions,
+plus FIFO/reverse, early/idle-only and immediate-first schedules. Repeated receives
+use one retained context; the duplicate fails without reading. Runtime wait-removal
+instrumentation requires logical retirement before physical deregistration, state
+disposal and supplier/socket destruction. Owning faults preserve completed state,
+suppress nested handlers and retain independent work through the checkpoint.
+
+A separate eight-run real-deadline matrix uses partial input followed by no bytes,
+ready outside connections, original/expanded O0/O2 and two quota cycles. It compares
+the actual two-second expiry and full events with reference plans, preserving one
+original Instant through both waits. This deliberately does not multiply real waits
+across every fuel cutoff or define multi-timer arbitration. Existing standalone live
+receive/parser and simulated-transport matrices are reused where inputs are unchanged.
+OS deregistration failures fail the fixture; public error policy, unadopted HTTP fault
+candidates and async-host source admission remain separate.

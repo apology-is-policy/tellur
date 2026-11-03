@@ -316,3 +316,7 @@ fn native_http_repeated_context_rejects_previous_operations_and_waits() {
     }
     fs::remove_dir_all(root).unwrap();
 }
+
+#[cfg(unix)]
+#[path = "http_live_queue_tests.rs"]
+mod live_queue_tests;

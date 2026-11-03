@@ -329,7 +329,12 @@ physical registration and public async admission remain separate. The
 [repeated-context fixture](async-execution.md#repeated-http-source-context-operations-e1f6h)
 checks a fresh operation identity for each receive in the same invocation, including
 an immediate duplicate failure with no read. Old tickets and wait generations reject
-while a later operation waits; fault retirement preserves supplier order.
+while a later operation waits; fault retirement preserves supplier order. The
+[live HTTP source fixture](async-execution.md#live-http-source-queue-e1f6i)
+adds actual nonblocking socket reads and lazy physical interest after `WouldBlock`.
+It checks logical wait removal before deregistration/state/supplier retirement and
+uses a separate small original-deadline matrix. Controlled peer ordering, backend
+cleanup failures and general timer arbitration do not define a public adapter policy.
 The maintained transport is unchanged.
 
 

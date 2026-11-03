@@ -68,8 +68,11 @@ actual waits preserve the deadline and yield to the queue. The
 [repeated-context checks](../async-execution.md#repeated-http-source-context-operations-e1f6h)
 then distinguish successive operation identities within one invocation. Saved tickets
 and readiness cannot target a replacement; duplicate receive fails without reading,
-and owning faults retire the active replacement before suppliers. Live registration
-and public async-host admission remain separate.
+and owning faults retire the active replacement before suppliers. The
+[live HTTP queue checks](../async-execution.md#live-http-source-queue-e1f6i)
+compose those rules with nonblocking loopback reads, physical registration and a
+separate original-deadline matrix. Peer input remains controlled test machinery;
+public async-host admission and general reactor policy remain separate.
 
 ## Owned spawned children
 

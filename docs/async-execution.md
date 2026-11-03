@@ -4412,3 +4412,53 @@ HTTP fault candidates are the next composition checks; the public async-host cal
 model still awaits its recorded decision. The sample operation's private pump is
 unchanged, and this checkpoint does not claim repeated-operation coverage for it.
 Compiler/LSP/VSIX remains 0.189.
+
+
+## Live HTTP source queue (E1f.6i)
+
+The [live queue fixture](../src/native/http_live_queue_tests.rs) runs the unchanged
+owned HTTP parser over nonblocking loopback TCP sockets through the checked source
+queue. It reuses E1f.6h's consecutive-receive source: two distinct suppliers and a
+no-read duplicate receive in one retained context, plus a sibling fault and an
+independent child. The private test manifest uses the existing pinned Mio lock;
+public manifests and the maintained HTTP library are unchanged.
+
+A positive-quota initial poll can finish without registering socket interest. Only
+an actual `WouldBlock` causes a logical wait and lazy physical registration. Physical
+readable interest remains attached across subsequent waits; each rearm receives a
+fresh backend token and runtime wait generation. Copied old and foreign notices
+cannot consume the new interest. Accepted notices only make source work eligible;
+they do not read or parse. A deliberately empty hint exercises another real
+`WouldBlock`. Zero quotas likewise leave read counters and parser state unchanged.
+
+Peer writes are controlled test inputs. Bounded non-consuming visibility barriers
+make each chosen chunk observable before its notification is admitted, allowing
+complete reference/native event and report comparisons through every fuel cutoff
+in representative normal/fault schedules and three quota cycles. Header fragments
+and split UTF-8 body bytes pass through actual reads; source turns remain governed
+by the existing scheduler. Original/expanded O0/O2 runs also cover immediate first
+completion, FIFO/reverse and early/idle-only hints, repeated context reuse and
+one-use duplicate rejection. This does not claim uncontrolled network scheduling.
+
+A separate small deadline matrix supplies a partial request, then no further bytes,
+and waits on the original real `Instant`. Other connections are ready immediately
+in this matrix, so it does not prescribe a global reactor's timer arbitration.
+Original/expanded O0/O2 and two quota cycles compare the timed-out result and full
+events with independent reference plans. Rearming retains the original deadline;
+there is no virtual clock advance. The broader standalone parser/deadline corpus
+keeps its separate evidence and is not multiplied into the fuel matrix.
+
+The generated test overlay observes actual runtime wait removal. Physical
+registration destruction requires that its current logical wait is already gone;
+state disposal follows deregistration and precedes real supplier/socket destruction.
+The same ordering is checked under source fuel failure and a sibling fault while the
+second receive waits. The completed first receive remains disposed, nested stopped
+handlers stay silent, and the independent child remains live through the owning
+checkpoint. Retained stale notices contain identity/token data, not connection or
+adapter references.
+
+The fixture fails on an OS deregistration error; that is test behavior, not an
+accepted cleanup-failure policy. Public async-host call admission still awaits the
+recorded decision. HTTP completion held without adoption across an owning fault is
+the next composition checkpoint; actual reset/error policy and general timer/reactor
+arbitration remain separate. Compiler/LSP/VSIX stays 0.189.
