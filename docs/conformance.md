@@ -5084,3 +5084,24 @@ payload; unchanged E1f.6a parser cases provide broader protocol/deadline evidenc
 This is a sequential retained chain, not concurrent HTTP scheduling or a public
 async-host release. Live source/parser/deadline and HTTP routed-fault composition
 remain separate.
+
+
+E1f.6f adds a private reference HTTP profile on the existing cooperative source queue.
+All nine typed outcomes cover immediate/delayed left completion, normal and sibling-
+fault paths, FIFO/reverse readiness, early/idle-only hints and three quota cycles.
+The specimen retains three independent connection owners through nested named
+boundaries. Ready left completion must precede the sibling's first queued effect and
+must have zero actual readiness registrations. Delayed operations acquire exactly
+their declared fixture wait counts; empty host quotas preserve state and event order.
+
+Invalid labels, arity, scalar fields and nested-map payloads preserve pending
+operations, original suppliers, values, fuel, events and script position. Normal
+results bind once. Fault settlement retires pending operations before suppliers and
+the owning contingency, suppresses nested handlers, preserves completed work and
+allows the independent child to join. Every saved readiness generation is stale
+at completion. Representative request/timeout/failed cases compare exact events and
+reports through every fuel cutoff and quota partition before/after expansion; final
+effects agree across representations after normalizing intentional fault provenance.
+The affected sample reference tests are rechecked. Native/parser evidence is reused
+separately: this reference profile uses trusted completion/readiness plans and does
+not implement HTTP parsing, a timer policy or public async-host admission.

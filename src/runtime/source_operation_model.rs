@@ -16,6 +16,7 @@ pub(in crate::runtime::continuation) struct SourceOperations {
     idle_pumps: usize,
     peak_waiting: usize,
     checked_contingencies: usize,
+    http: Option<http_model::HttpOperations>,
 }
 impl Machine<'_> {
     /// Nonblocking signals append eligibility; they do not select a context.
@@ -87,6 +88,17 @@ impl Machine<'_> {
         Ok(signalled)
     }
     fn park_source_operation(&mut self) -> Result<()> {
+        if self
+            .shared
+            .scheduler
+            .operations
+            .as_ref()
+            .unwrap()
+            .http
+            .is_some()
+        {
+            pending(self)?.observe("waiting");
+        }
         let task = self.context.task.unwrap().0;
         let token = self.park_for_readiness()?;
         let model = self.shared.scheduler.operations.as_mut().unwrap();
@@ -100,7 +112,23 @@ impl Machine<'_> {
             return self.drive(0);
         }
         for _ in 0..2000 {
-            if self.context.flow.is_none() && at_sample(self) && self.shared.steps_left > 0 {
+            let operation = if self
+                .shared
+                .scheduler
+                .operations
+                .as_ref()
+                .unwrap()
+                .http
+                .is_some()
+            {
+                "http_receive"
+            } else {
+                "sample"
+            };
+            if self.context.flow.is_none()
+                && at_operation(self, operation)
+                && self.shared.steps_left > 0
+            {
                 assert!(
                     self.context.task.is_some(),
                     "adapter shim must have an admitted async invocation"
@@ -113,9 +141,20 @@ impl Machine<'_> {
                     .unwrap()
                     .trace
                     .clone();
-                prepare(self, &trace);
+                prepare_operation(self, &trace, operation);
                 quota -= 1;
-                if let Err(diagnostic) = self.park_source_operation() {
+                // HTTP attempts its first poll while still selected. Only an actual
+                // pending result may hand off to readiness; host quota is not a wait.
+                if operation == "sample"
+                    && let Err(diagnostic) = self.park_source_operation()
+                {
+                    self.context.flow = Some(Err(diagnostic));
+                }
+            } else if self.context.flow.is_none()
+                && pending(self).is_ok()
+                && operation == "http_receive"
+            {
+                if let Err(diagnostic) = self.poll_http_source_operation() {
                     self.context.flow = Some(Err(diagnostic));
                 }
             } else if self.context.flow.is_none() && pending(self).is_ok() {
@@ -156,6 +195,19 @@ impl Machine<'_> {
                     let model = self.shared.scheduler.operations.as_mut().unwrap();
                     let trace = model.trace.borrow();
                     for request in ["left", "right"] {
+                        if model.http.is_some() {
+                            let settled = trace
+                                .iter()
+                                .filter(|(name, kind)| {
+                                    name == request && (kind == "retired" || kind == "completed")
+                                })
+                                .count();
+                            assert_eq!(
+                                settled, 1,
+                                "HTTP operation must settle before its owning handler"
+                            );
+                            continue;
+                        }
                         assert_eq!(
                             trace
                                 .iter()
@@ -394,3 +446,6 @@ fn source_pending_operations_preserve_fuel_and_quota_behavior_after_expansion() 
         }
     }
 }
+
+#[path = "http_source_operation_model.rs"]
+mod http_model;

@@ -114,17 +114,23 @@ fn pending<'m, 'a>(m: &'m Machine<'a>) -> Result<&'m Pending<'a>> {
 }
 
 fn at_sample(m: &Machine<'_>) -> bool {
+    at_operation(m, "sample")
+}
+fn at_operation(m: &Machine<'_>, expected: &str) -> bool {
     matches!(m.context.stack.last(), Some(Continuation::Block {code,next})
         if code.get(*next).is_some_and(|i| matches!(&i.action,
-            Action::Decide {operation: Operation::Primitive(name), ..} if name == "sample")))
+            Action::Decide {operation: Operation::Primitive(name), ..} if name == expected)))
 }
 
 /// Intercept only the checked sample instruction in this private harness. This
 /// consumes the same instruction fuel and moves operands once, then retains the
 /// decision separately from its not-yet-produced normal result.
 fn prepare<'a>(m: &mut Machine<'a>, trace: &Trace) {
+    prepare_operation(m, trace, "sample");
+}
+fn prepare_operation<'a>(m: &mut Machine<'a>, trace: &Trace, expected: &str) {
     for _ in 0..200 {
-        if at_sample(m) {
+        if at_operation(m, expected) {
             break;
         }
         assert!(!m.drive(1), "sample was not reached");
@@ -141,7 +147,7 @@ fn prepare<'a>(m: &mut Machine<'a>, trace: &Trace) {
     else {
         panic!("sample instruction missing")
     };
-    assert_eq!(name, "sample");
+    assert_eq!(name, expected);
     assert!(instruction.guard.evaluate(&m.context.frame.facts));
     assert!(m.context.flow.is_none() && m.shared.steps_left > 0);
     m.context.activations.at(instruction.id);
@@ -154,13 +160,15 @@ fn prepare<'a>(m: &mut Machine<'a>, trace: &Trace) {
     let supplier = address(&shift(place, m.context.frame.base), &m.shared.values).unwrap();
     assert!(supplier.fields.is_empty());
     let arguments = m.arguments(args).unwrap();
-    let Value::String(request) = &arguments[1] else {
-        panic!()
+    let request = match (expected, arguments.as_slice()) {
+        ("sample", [_, Value::String(request)]) => request.clone(),
+        ("http_receive", [Value::Opaque { ty, token }]) if ty == "http_connection" => token.clone(),
+        _ => panic!("unexpected private operation inputs"),
     };
     let operation = Pending {
         operation: name,
         arms,
-        request: request.clone(),
+        request,
         arguments,
         supplier,
         partial: String::new(),

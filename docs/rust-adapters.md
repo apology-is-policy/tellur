@@ -316,8 +316,12 @@ the supplier and owning contingency. The
 uses the actual shared connection input and all nine generated outcome encoders,
 including the headers map. The owned parser preserves its original deadline through
 controlled waits and rejects duplicate starts without reading. It compares sequential
-retained execution with the existing synchronous receiver; it does not yet combine
-HTTP parsing with the concurrent source queue or live registration.
+retained execution with the existing synchronous receiver. The
+[reference HTTP queue profile](async-execution.md#reference-http-source-queue-e1f6f)
+then checks immediate/pending completion, all declared payloads and stopped borrowers
+under explicit concurrent source schedules. Its readiness counts and completions are
+trusted fixture inputs. Native concurrent parsing and live registration integration
+remain separate.
 The maintained transport is unchanged.
 
 

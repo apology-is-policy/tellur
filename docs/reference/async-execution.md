@@ -56,7 +56,11 @@ fault settles it before the supplier and contingency. The
 [HTTP continuation experiment](../async-execution.md#http-outcomes-through-retained-continuations-e1f6e)
 then passes the actual shared-connection signature and all nine typed results through
 checked retained arms, with a fixed deadline and deterministic input. It compares
-sequential `run`/await execution; concurrent HTTP source queues and live HTTP/deadline
+sequential `run`/await execution. The
+[reference HTTP queue profile](../async-execution.md#reference-http-source-queue-e1f6f)
+adds trusted typed completions and readiness schedules to the existing cooperative
+queue. It checks that immediate results stay selected and pending borrowers settle
+before their owning contingency. Native concurrent HTTP polling and live HTTP/deadline
 composition remain separate. Public async-host admission is still pending.
 
 ## Owned spawned children

@@ -4271,3 +4271,54 @@ transport. Concurrent HTTP source-queue scheduling, live parser/socket/deadline
 composition and routed-fault HTTP candidate disposal remain next work. E1f.6c/d's
 live sample and fault evidence is retained separately. Public async-host call
 admission still awaits the recorded design choice; compiler/LSP/VSIX remains 0.189.
+
+
+## Reference HTTP source queue (E1f.6f)
+
+The [private reference HTTP profile](../src/runtime/http_source_operation_model.rs)
+passes the actual single shared connection and all nine declared alternatives
+through the existing cooperative source queue. Its completion payloads and readiness
+counts are trusted fixture inputs, as primitive results are in the reference
+interpreter. This profile does not parse HTTP or model a clock. It supplies an
+independent scheduling oracle for the native/parser composition that follows E1f.6e.
+
+Preparation retains the resolved supplier, evaluated arguments and checked result
+arms while charging the original instruction once. A selected HTTP operation first
+polls without acquiring a readiness registration. An immediately ready result binds
+and continues in the selected chain; it cannot introduce a synthetic source handoff.
+A pending result registers one wait and yields to existing runnable work. Accepted
+notifications append eligibility through the existing queue. Empty host quotas do
+not poll, move the call cursor, emit events or retire state.
+
+The [source specimen](../tests/fixtures/source_pending_http.tellur) overlaps three
+connection owners, with nested named boundaries and an independent outer child.
+The left operation is either immediately ready or delayed. The right operation
+requires four readiness waits, keeping it pending when the faulting sibling wins;
+the independent operation remains resumable after owning-boundary recovery. Immediate
+left completion is explicitly ordered before the sibling's first queued effect.
+Two adjacent source effects remain adjacent across every host quota partition.
+
+Normal delivery checks all result fields, including the headers map and diagnostic
+messages. Unknown labels, wrong arity, wrong scalar types and an invalid nested map
+reject without losing pending state or changing values, fuel, events or script
+position. Completed results bind once. Waiting operations retire before supplier
+storage and the first owning-contingency effect; stopped nested contingencies and
+result arms remain silent. Already completed left work stays completed, and the
+independent child joins normally. Saved readiness generations are all stale after
+settlement.
+
+The reference tests cover all nine outcomes under immediate/delayed and normal/fault
+schedules, FIFO/reverse hints, early/idle-only hints and three host quota cycles.
+Representative request, timeout and failed outcomes also compare complete events and
+reports at every fuel cutoff before and after expansion. Expansion intentionally
+changes instruction boundaries and report provenance; full reports compare across
+quotas within each representation, while final effects and dispositions agree across
+representations. The earlier sample profile retains its existing behavior and is
+rechecked after sharing the private operation preparation helper.
+
+Native concurrent HTTP polling is next. Its first poll must stay selected when ready,
+and each actual parser `Wait` must return control to the source queue rather than
+draining the whole receive in one driver call. The original deadline, live registration
+and HTTP fault-candidate composition remain separately evidenced or pending. Public
+async-host call admission still awaits the recorded answer; compiler/LSP/VSIX stays
+at 0.189.
