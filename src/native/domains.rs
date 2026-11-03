@@ -208,10 +208,7 @@ impl Domains {
         Ok(())
     }
     pub fn detach(&mut self, member: &Membership) -> Result<()> {
-        self.member(member)?;
-        if self.has_children(member)? {
-            return Err("E_NATIVE: context still has retained borrower children".into());
-        }
+        self.require_no_children(member)?;
         self.members.remove(&member.id);
         Ok(())
     }
@@ -222,6 +219,12 @@ impl Domains {
             .values()
             .any(|entry| entry.parent == Some(member.id)))
     }
+    pub fn require_no_children(&self, member: &Membership) -> Result<()> {
+        if self.has_children(member)? {
+            return Err("E_NATIVE: context still has retained borrower children".into());
+        }
+        Ok(())
+    }
     pub fn require_finish_root(
         &self,
         scope: &DomainScope,
@@ -230,10 +233,7 @@ impl Domains {
     ) -> Result<()> {
         self.require_membership(member, &scope.key)?;
         self.require_quiescent_except(scope, current, Some(member))?;
-        if self.has_children(member)? {
-            return Err("E_NATIVE: context still has retained borrower children".into());
-        }
-        Ok(())
+        self.require_no_children(member)
     }
     pub fn finish_root(
         &mut self,

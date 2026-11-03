@@ -488,6 +488,13 @@ run before the owning contingency. Parent execution stays blocked until all chil
 contexts/results settle. Source scheduling remains gated. See
 [prepared owner awaits](../async-execution.md#prepared-owner-awaits-with-siblings-e1d2d3m).
 
+Since 0.141, the retained native runtime checks child/result membership before
+applying frame, loop and lexical-boundary retirement. Final-frame domain authority
+is checked before releasing its storage. Parent execution with live children remains
+blocked: generated callback evaluation still needs an earlier loan/invocation check.
+This internal prerequisite does not enable source scheduling. See
+[native retirement preflight](../async-execution.md#native-retirement-preflight-e1d2d3n).
+
 Since 0.128, entry process termination closes normal task admission and retires all
 registered execution contexts and results before delivering the original status.
 Prepared bodies never start; parked callers unwind without normal instructions or

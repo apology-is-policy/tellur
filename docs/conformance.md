@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.140.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.141.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -4149,3 +4149,21 @@ isolated editor check. This is selected coverage, not a full-suite claim.
 
 The host prepares the owner's await before admitting siblings. General parent
 execution with outstanding children and source scheduling remain unimplemented.
+
+## Native retirement preflight (0.141)
+
+E1d.2d.3n checks retained child/result membership before runtime frame, constructor,
+loop and lexical-boundary retirement. Four new host tests include a 30-scenario
+transition/borrower-phase matrix, retained/immediate final-domain preflight, last-join
+success and real Machine error settlement. The tests bypass the public parent guard
+intentionally and verify that runtime retirement leaves storage, scopes, diagnostics
+and obligations intact before borrowers settle. The initial regressions failed on
+0.140's lower-level retirement path, then passed with the new preflight.
+
+Selected generated call/constructor, loop, named/lexical boundary, result, sibling,
+owner-await and process models run freshly with the embedded runtime, alongside
+production cold-task, source-fault, process, native-frame and reference-manual targets.
+Unchanged checker, reference-executor and LSP/Node evidence is reused; these selected
+checks are not a full-suite claim. A fresh isolated editor check verifies the release.
+The earlier parent-selection guard remains essential because callbacks may move
+source operands before returning a step. No source scheduler is enabled.

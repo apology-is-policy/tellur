@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.140.0** implements the v0.1 checked core and the current language
+Compiler release **0.141.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -785,3 +785,10 @@ The internal native host admits an already-prepared cold await alongside indepen
 children. Sibling faults restore the original owning diagnostic chain before retiring
 awaited work, including nested boundaries and active handlers. Normal parent execution
 with live children and source scheduling remain gated.
+
+## Native retirement checks in 0.141
+
+Retained native frames, loops and lexical boundaries now check child/result
+membership before runtime storage retirement. Final-frame domain checks also precede
+frame release. Parent execution with live children remains gated pending checks
+before generated callbacks move operands; source scheduling is not enabled.

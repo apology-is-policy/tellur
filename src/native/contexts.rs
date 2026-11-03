@@ -1164,3 +1164,7 @@ mod await_handoff_tests;
 #[cfg(test)]
 #[path = "entry_context_tests.rs"]
 mod entry_context_tests;
+
+#[cfg(test)]
+#[path = "retirement_preflight_tests.rs"]
+mod retirement_preflight_tests;

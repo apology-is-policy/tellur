@@ -424,6 +424,26 @@ impl Machine {
         } else {
             (true, (frame.control.resume)(host, values, frame)?)
         };
+        // Context membership includes unbound host children and completed results,
+        // which invocation task obligations alone cannot see. Check before any
+        // runtime transition clears scopes, resets loop storage or retires frames.
+        // This is deliberately conservative across synchronous frames. It does not
+        // authorize running the callback above with live children: evaluating its
+        // operands can already move values, so the parent-selection guard remains.
+        if matches!(
+            &step,
+            Step::Loop { .. }
+                | Step::BoundaryEnd(_)
+                | Step::Complete(
+                    Completion::Outcome(_)
+                        | Completion::Constructed
+                        | Completion::Again(..)
+                        | Completion::Recover(..)
+                        | Completion::Complete(_)
+                )
+        ) {
+            domains.require_no_children(&self.member)?;
+        }
         match step {
             Step::Continue => {}
             Step::Await { task, deliver } => {
@@ -570,7 +590,13 @@ impl Machine {
                 // boundary state remain available for emergency retirement.
                 host.tasks.require_retire_owner(frame.owner, abrupt)?;
                 frame.close_scopes(host, values, domains, &mut self.current, 0, abrupt)?;
-                host.tasks.retire_owner(frame.owner, abrupt)?;
+                let owner = frame.owner;
+                // Root/domain authority must also be checked before releasing the
+                // final activation, including when its result will retain membership.
+                if self.stack.len() == 1 {
+                    self.require_finish_root(domains)?;
+                }
+                host.tasks.retire_owner(owner, abrupt)?;
                 let completed = self.stack.pop().unwrap();
                 values.retire(&completed.frame)?;
                 host.leave();

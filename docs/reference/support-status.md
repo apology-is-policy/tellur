@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.140.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.141.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -148,3 +148,10 @@ children. Sibling faults restore the original owning tracker from the suspended
 chain or its saved nested-boundary parent before resource retirement. Normal parent
 execution with live children remains rejected; this adds no source scheduler. See
 [prepared owner awaits](../async-execution.md#prepared-owner-awaits-with-siblings-e1d2d3m).
+
+Since 0.141, the retained native runtime checks child/result membership before
+applying frame, loop and lexical-boundary retirement. Final-frame domain authority
+is checked before releasing its storage. Parent execution with live children remains
+blocked: generated callback evaluation still needs an earlier loan/invocation check.
+This internal prerequisite does not enable source scheduling. See
+[native retirement preflight](../async-execution.md#native-retirement-preflight-e1d2d3n).

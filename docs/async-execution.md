@@ -1221,6 +1221,7 @@ Those boundaries need explicit contracts before being accepted by the checker.
 | E1d.2d.3k | Production retained native callbacks | Delivered in 0.138: normal native builds share the compiled callback emitter and sequential entry driver with retained probes. Calls, loops, boundaries and cold awaits use retained frames; diagnostics, fuel, loans and resource settlement retain parity. Source concurrency and mixed spawned-child integration remain gated |
 | E1d.2d.3l | Independent-child cold awaits | Delivered in 0.139: an independently admitted native child can cold-await an exclusive descendant chain. Normal delivery, full child fault causes and borrower-first resource settlement agree with direct execution. Parent-with-live-children awaits and source scheduling remain gated |
 | E1d.2d.3m | Prepared owner awaits with siblings | Delivered in 0.140: an already-prepared native cold await can enter beside independent children. Sibling faults restore the original owning diagnostic segment from live/completed awaited contexts or saved nested boundary parents before resource retirement. Parent execution with live children and source scheduling remain gated |
+| E1d.2d.3n | Native retirement preflight | Delivered in 0.141: retained borrower membership is checked before runtime frame, loop or boundary retirement, and final-frame domain authority is checked before releasing storage. Parent selection remains guarded because generated callback evaluation can itself move operands |
 | E1e | Explicit cooperative cancellation and suspending cleanup; normal completion races, cleanup failures and no abandoned losers | Define cancellation observation and cleanup admission; no implicit cancellation exception |
 | E2 | Pinned native coroutine experiment, then checked lowering and schedule-based differential validation | Reference semantics and legal frame retirement must precede native destruction |
 
@@ -1836,6 +1837,40 @@ quiescence before frames can retire or cross boundaries. Starting independent wo
 from sequential await contexts, started-task await lowering and explicit source
 `await`/`yield` scheduling also remain separate gates. No accepted ownership, origin,
 outcome, fault/contingency or path-label rule changes in this internal slice.
+
+## Native retirement preflight (E1d.2d.3n)
+
+Compiler 0.141 checks context child membership before the runtime applies a normal
+return, constructor return, loop entry/restart/recovery/exit or lexical boundary end.
+The check includes children admitted through the host without a task handle and
+completed results that still retain borrower membership. Invocation task obligations
+alone cannot detect those lifetimes. Final-frame domain authority is also checked
+before retiring its invocation, values or diagnostic activation, including when a
+normal result will retain the context membership until join.
+
+This is a conservative runtime check: a child prevents retirement of any synchronous
+frame in its parent context, even if a future invocation-aware analysis could prove
+a particular frame independent. A rejected transition preserves the original scopes,
+loop storage, invocation obligations and frame identities for settlement. The ordinary
+Machine error path suspends supplier unwind until retained borrowers settle, and
+administrative rejection does not create a source fault or run a contingency.
+
+The parent-selection guard remains. A generated callback evaluates and moves its
+operands before returning a runtime step; checking that returned step cannot undo
+those source effects. This checkpoint only protects the runtime's subsequent storage
+transitions. Before allowing parent progress, callback evaluation needs its own
+invocation/loan preflight, including returned payload moves and direct-await handoffs.
+Process termination retains its existing whole-session settlement route.
+
+Four host regressions deliberately exercise the Machine beneath its earlier selection
+guard. They cover ten transitions with live, waiting and completed borrowers; exact
+state preservation; resource destruction order; a domain without a member; retained
+and immediate root completion; normal last-result join; and error settlement before
+supplier unwind. Existing generated call/constructor, loop, boundary/recovery, result,
+sibling, owner-await and process models exercise the same embedded production runtime.
+Source `spawn`/`yield`, independent admission from sequential contexts, started-task
+await, cancellation, suspending disposal, async adapters and LLVM coroutine lowering
+remain gated. No accepted source ownership or fault rule changes.
 
 ## Reference execution invariants
 
