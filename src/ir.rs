@@ -99,11 +99,26 @@ pub struct ReferenceOrigin {
     pub guard: bool,
     pub opaque: bool,
 }
-/// Descriptive evidence only. This subset omits loan ancestry, path domains,
-/// contained permissions and invocation-local families; it grants no access.
+/// Local dependency evidence, never execution permission. Complete coverage is
+/// bounded to direct forms and remains conditional on incoming runtime evidence.
+/// Guarded, contained and path-dependent forms retain explicit partial coverage.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ReferenceEvidence {
     Partial(Vec<ReferenceOrigin>),
+    /// Complete conservative local dependency closure for the bounded direct
+    /// reference forms checked by the compiler. Incoming runtime evidence must
+    /// also be complete; this annotation alone never grants execution permission.
+    Complete(Vec<ReferenceOrigin>),
+}
+impl ReferenceEvidence {
+    pub fn origins(&self) -> &[ReferenceOrigin] {
+        match self {
+            Self::Partial(origins) | Self::Complete(origins) => origins,
+        }
+    }
+    pub fn is_complete(&self) -> bool {
+        matches!(self, Self::Complete(_))
+    }
 }
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Expr {

@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-darwin-arm64-0.147.0.vsix` using **Extensions:
+1. Install the supplied `tellur-language-darwin-arm64-0.148.0.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1326,3 +1326,11 @@ capture snapshots carry them through waiting and completion. Symbolic origin fie
 are never read as runtime projections. Missing or bounded-out evidence remains
 unavailable, with unchanged source behavior. Complete loan authority and access
 interference checks still gate parent progress and source scheduling.
+
+## Conservative direct reference completeness in 0.148
+
+Checked reference evidence now retains ancestor origins. A bounded set of direct,
+unguarded references can carry complete dependency coverage; guarded, contained and
+conditional cases remain partial. Native reborrows require complete incoming evidence,
+and partial dependencies stay partial through result merging. Expansion certificates
+protect the coverage status. Parent execution and source scheduling remain gated.

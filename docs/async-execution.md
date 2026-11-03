@@ -2188,6 +2188,58 @@ in place until complete dependency/interference checks agree with invocation/dom
 authority. No source scheduler, `spawn`/`yield`, cancellation, async adapter/disposal or
 LLVM coroutine ABI is enabled.
 
+## Conservative direct reference completeness (E1d.2d.3s.3)
+
+Compiler 0.148 collects existing checked loan origins through ancestry before local
+aliases disappear. Ancestor origins retain their own projection rather than being
+narrowed to the descendant's field. Contained origins are also collected conservatively.
+The walk is bounded by 4096 loan/ancestry visits and 4096 origin/path components;
+missing ancestry or an exhausted budget leaves partial evidence. It changes no loan
+lifetime, source identity, contributor trace or accepted ownership rule. Supplier
+storage is included only through existing checked guard origins, never simply because
+a shared reference was copied from that supplier.
+
+A new `Complete` annotation certifies a narrow local dependency closure: the referent
+contains no references, every included origin has an ordinary valid path and no guard,
+opaque flag or invocation-local permission, and all visited loans are unconditionally defined and either active or fully
+consumed, with no contained references or selected-sum evidence. A transferred ancestor
+can be inactive while its descendant still depends on those origins. Direct
+owner borrows can qualify on an executed branch; aliases under conditional checker
+domains stay partial, including domains introduced by an earlier constructor result.
+Guarded, contained, tagged, abstract, missing and bounded-out cases remain partial.
+This is conservative dependency coverage, not exact result-permission disjointness.
+
+Both expansion and its separate certificate validator preserve coverage status and
+remap origin roots. Promoting partial evidence, weakening complete status or changing
+origins breaks source correspondence. Structural verification also rejects empty or
+guarded/opaque complete descriptions, invalid complete paths and referents containing
+references. It does not turn a structurally plausible artifact into source authority.
+
+Native direct formation can install complete checked origins; reborrows and received
+values must merge their incoming evidence. A complete callee annotation cannot promote
+an incomplete caller. Allocation binding, symbolic partial paths and metadata-independent
+value equality retain the 0.147 behavior. Capture descriptions become `Complete` only
+when every reachable reference has a matching saved target identity and complete origins.
+Owned values with no references have an empty complete dependency set; an unannotated
+reference has partial evidence. Result merging preserves completeness only if every
+input is complete. Unavailable identities, budget failures and partial inputs remain
+conservative, with no change to execution or source faults.
+
+The direct-capture generated probe checks complete descriptions at admission and pending
+delivery; the guarded-capture probe continues to require partial guards. Both retain
+original/expanded O0/O2 and quota-partition comparisons with immutable rejected parent
+selections. New checker cases cover unprojected ancestors, complete scalar aliases,
+conditional fallback and status tampering. Native host cases exercise incoming-proof
+requirements, shared attenuation and complete/partial/unknown result unions.
+
+No gate is relaxed by this checkpoint. Complete coverage still needs callback
+interference checks under exact invocation and fault-domain authority. The next bounded
+slice is an immutable interference query for complete direct descriptions, with an
+explicit inconclusive result for partial/unknown evidence and opaque callbacks. Guarded
+and contained completeness remains separate work; both parent-selection and retirement
+gates, source scheduling, `spawn`/`yield`, cancellation, async adapter/disposal and LLVM
+coroutine lowering remain unchanged.
+
 ## Reference execution invariants
 
 A step partition must not itself become a source effect. The same selected schedule

@@ -58,6 +58,7 @@ pub fn drive_selection(
     quotas: &[usize],
     expected: &[&str],
     expect_guards: bool,
+    expect_complete: bool,
 ) -> R<Completion> {
     let mut c = Contexts::new(host);
     let root = c.start_entry(control, args)?;
@@ -69,6 +70,8 @@ pub fn drive_selection(
     let mut indirect = false;
     let mut destination = false;
     let mut captured = false;
+    let mut complete_capture = false;
+    let mut complete_delivery = false;
     let mut guarded_capture = false;
     let mut guarded_delivery = false;
     let every_point = quotas == [1];
@@ -82,10 +85,13 @@ pub fn drive_selection(
             let resolved = m.resolve_access(&c.values)?;
             let dependencies = c.dependencies(&selected)?;
             dependencies.require_live(&c.values)?;
+            complete_capture |= matches!(dependencies, Dependencies::Complete { .. });
             guarded_capture |= has_checked_guard(dependencies);
-            captured |= matches!(dependencies, Dependencies::Partial { reachable: entries, .. } if !entries.is_empty());
+            captured |= matches!(dependencies, Dependencies::Partial { reachable: entries, .. } | Dependencies::Complete { reachable: entries, .. } if !entries.is_empty());
             if let Some(Pending::Await(p)) = &m.stack.last().unwrap().pending {
                 p.dependencies.require_live(&c.values)?;
+                complete_delivery |=
+                    p.result.is_some() && matches!(p.dependencies, Dependencies::Complete { .. });
                 guarded_delivery |= p.result.is_some() && has_checked_guard(&p.dependencies);
             }
             assert_ne!(description.transition, Transition::Unknown);
@@ -143,6 +149,12 @@ pub fn drive_selection(
     };
     assert!(!probes || (checked > 5 && nested && delivery));
     if probes && every_point {
+        if expect_complete {
+            assert!(
+                complete_capture && complete_delivery,
+                "complete direct dependencies must survive capture and pending delivery"
+            );
+        }
         if expect_guards {
             assert!(
                 guarded_capture && guarded_delivery,

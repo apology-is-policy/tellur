@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.147.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.148.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -201,3 +201,10 @@ pending delivery. Only origin allocations are bound: symbolic fields are not rea
 Unavailable descriptions never change source execution or become an empty dependency
 set. This evidence remains incomplete and grants no access or parent progress. See
 [bound native reference origins](../async-execution.md#bound-native-reference-origins-e1d2d3s2).
+
+Since 0.148, reference evidence collects ancestor origins and can certify a bounded
+set of direct, unguarded dependencies. Conditional aliases and guarded/contained/tagged
+forms remain partial. Native completeness requires complete incoming evidence and is
+lost when merged with partial dependencies. This coverage grants no execution permission;
+callback interference and invocation/domain authority still gate parent progress. See
+[direct reference completeness](../async-execution.md#conservative-direct-reference-completeness-e1d2d3s3).

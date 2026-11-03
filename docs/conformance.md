@@ -4282,3 +4282,15 @@ and pending delivery, retaining original/expanded O0/O2, quota-partition and imm
 rejected-selection comparisons. Other native capture, fault, retained-resource, sum and
 collection consumers check behavior preservation. Partial origins remain descriptive;
 no completeness, source concurrency or new access permission is claimed.
+
+## Conservative direct reference completeness (0.148)
+
+The reference-evidence suite now checks broad ancestor origins, complete scalar aliases,
+conditional/guarded fallback and certificate rejection of promoted or weakened coverage.
+Structural validation rejects empty and guarded complete descriptions. Two native-host
+cases verify that local annotations cannot promote partial incoming references and
+that result merging preserves completeness only across complete inputs. The generated
+direct-capture probe requires complete admission and pending-delivery descriptions;
+guarded probes retain partial origin checks. Native consumers, checker/contract/LSP
+regressions and source/reference observations remain covered. No parent-selection or
+retirement gate is relaxed, and complete coverage alone grants no access permission.

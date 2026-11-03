@@ -52,10 +52,25 @@ impl Verifier<'_> {
     fn expr(&self, e: &Expr) -> Result<String> {
         let m = self.program.manifest();
         Ok(match e {
-            Expr::WithReferenceEvidence(value, ReferenceEvidence::Partial(origins)) => {
+            Expr::WithReferenceEvidence(value, evidence) => {
+                let origins = evidence.origins();
                 let ty = self.expr(value)?;
                 if crate::manifest::reference_inner(&ty).is_none() {
                     return Err(error("reference evidence requires a reference value"));
+                }
+                if evidence.is_complete() {
+                    let inner = crate::manifest::reference_inner(&ty).unwrap().1;
+                    if origins.is_empty() || m.contains_references(inner) {
+                        return Err(error(
+                            "complete evidence requires nonempty direct dependencies",
+                        ));
+                    }
+                    for origin in origins {
+                        let origin_ty = self.expr(&Expr::Place(origin.place.clone()))?;
+                        if origin.guard || origin.opaque || m.contains_references(&origin_ty) {
+                            return Err(error("unsupported complete reference origin"));
+                        }
+                    }
                 }
                 for origin in origins {
                     let source = self.slot(origin.place.root)?;
@@ -994,7 +1009,7 @@ control main() exits done {
             .unwrap();
         let original = crate::compile(source, m).unwrap();
         original.verify().unwrap();
-        for mutation in 0..3 {
+        for mutation in 0..5 {
             let mut p = original.clone();
             let r = p.regions.get_mut("main").unwrap();
             let (value, origins) = r
@@ -1004,7 +1019,8 @@ control main() exits done {
                     if let Action::Decide { args, .. } = &mut i.action {
                         if let Some(Expr::WithReferenceEvidence(
                             value,
-                            ReferenceEvidence::Partial(origins),
+                            ReferenceEvidence::Partial(origins)
+                            | ReferenceEvidence::Complete(origins),
                         )) = args.first_mut()
                         {
                             return Some((value, origins));
@@ -1016,7 +1032,9 @@ control main() exits done {
             match mutation {
                 0 => **value = Expr::Value(Value::U32(1)),
                 1 => origins[0].place.root = usize::MAX,
-                _ => origins[0].place.indirect = true,
+                2 => origins[0].place.indirect = true,
+                3 => origins[0].guard = true,
+                _ => origins.clear(),
             }
             assert_eq!(p.verify().unwrap_err().code, "E_IR");
         }

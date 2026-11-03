@@ -18,21 +18,38 @@ pub enum Dependencies {
         reachable: Vec<Dependency>,
         origins: Origins,
     },
+    /// Complete conservative dependency coverage for the supported checked forms,
+    /// still requiring invocation/domain authority and access interference checks.
+    Complete {
+        reachable: Vec<Dependency>,
+        origins: Origins,
+    },
     Unknown(String),
 }
 impl Dependencies {
+    fn resolved(reachable: Vec<Dependency>, origins: Origins) -> Self {
+        if origins.is_complete() {
+            Self::Complete { reachable, origins }
+        } else {
+            Self::Partial { reachable, origins }
+        }
+    }
     pub fn describe(values: &Frames, captures: &[V]) -> Self {
         match describe(values, captures, LIMIT) {
-            Ok((reachable, origins)) => Self::Partial { reachable, origins },
+            Ok((reachable, origins)) => Self::resolved(reachable, origins),
             Err(message) => Self::Unknown(message),
         }
     }
     /// Allocation liveness only, not current holder meaning or access permission.
     pub fn require_live(&self, values: &Frames) -> R<()> {
-        let Self::Partial {
+        let (Self::Partial {
             reachable: dependencies,
             origins,
-        } = self
+        }
+        | Self::Complete {
+            reachable: dependencies,
+            origins,
+        }) = self
         else {
             return Err("E_NATIVE: capture dependencies are unresolved".into());
         };
@@ -44,43 +61,47 @@ impl Dependencies {
     /// Retain every input dependency through result ownership. Do not infer a
     /// narrower result-origin contract from dynamic values alone.
     pub(super) fn extend(&mut self, other: Self) {
-        match (self, other) {
-            (Self::Unknown(_), _) => {}
-            (this, Self::Unknown(message)) => *this = Self::Unknown(message),
+        let old = std::mem::replace(self, Self::Unknown("dependency merge in progress".into()));
+        *self = match (old, other) {
+            (Self::Unknown(message), _) | (_, Self::Unknown(message)) => Self::Unknown(message),
             (
-                this @ Self::Partial { .. },
                 Self::Partial {
+                    reachable: mut entries,
+                    mut origins,
+                }
+                | Self::Complete {
+                    reachable: mut entries,
+                    mut origins,
+                },
+                Self::Partial {
+                    reachable: other,
+                    origins: other_origins,
+                }
+                | Self::Complete {
                     reachable: other,
                     origins: other_origins,
                 },
             ) => {
-                let Self::Partial {
-                    reachable: entries,
-                    origins,
-                } = this
-                else {
-                    unreachable!()
-                };
                 origins.extend(other_origins);
                 for dependency in other {
                     if let Some(old) = entries.iter_mut().find(|d| d.place == dependency.place) {
                         old.mutable |= dependency.mutable;
-                    } else if entries
-                        .iter()
-                        .map(|d| 1 + d.place.fields.len())
-                        .sum::<usize>()
-                        + 1
-                        + dependency.place.fields.len()
-                        > LIMIT
-                    {
-                        *this = Self::Unknown("capture dependency limit exceeded".into());
-                        return;
                     } else {
                         entries.push(dependency);
                     }
                 }
+                if entries
+                    .iter()
+                    .map(|d| 1 + d.place.fields.len())
+                    .sum::<usize>()
+                    > LIMIT
+                {
+                    Self::Unknown("capture dependency limit exceeded".into())
+                } else {
+                    Self::resolved(entries, origins)
+                }
             }
-        }
+        };
     }
 }
 
@@ -93,7 +114,7 @@ fn describe(values: &Frames, captures: &[V], limit: usize) -> R<(Vec<Dependency>
     let mut work: Vec<_> = captures.iter().rev().map(|v| (v, true)).collect();
     let mut entries: Vec<Dependency> = Vec::new();
     let mut remaining = limit;
-    let mut origins = Origins::default();
+    let mut origins = Origins::Complete(vec![]);
     while let Some((value, authority)) = work.pop() {
         remaining = remaining
             .checked_sub(1)
@@ -109,6 +130,9 @@ fn describe(values: &Frames, captures: &[V], limit: usize) -> R<(Vec<Dependency>
                     .checked_sub(evidence.origins.cost())
                     .ok_or("captured checked origin limit exceeded")?;
                 origins.extend(evidence.origins.clone());
+                if evidence.target.is_none() {
+                    origins.extend(Origins::default());
+                }
                 let mutable = if let Some(inner) = ty.strip_prefix("&mutable ") {
                     if inner.is_empty() {
                         return Err("invalid captured reference type".into());

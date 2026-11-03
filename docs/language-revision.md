@@ -202,7 +202,9 @@ progress and source scheduling. E1d.2d.3s.1 now preserves partial checked refere
 origins through alias erasure, expansion remapping and certificate validation; runtime
 transport now follows in E1d.2d.3s.2, binding native allocation identities and partial
 checked origins through captures/results. Complete loan authority and interference
-validation remain ahead. Compiler **0.147.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
+validation remain ahead. E1d.2d.3s.3 now retains ancestor origins and certifies bounded
+direct reference coverage, with incoming-proof requirements in native captures/results.
+Guarded/contained completeness and callback interference remain ahead. Compiler **0.148.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
 lifetime checkpoints of milestone 2, the array/vector/map core of milestone 3,
 and implicit entry, inline/stored adapters, owned capture, named outcome contracts
 and checked forwarding in milestone 4. A first [semantic foundation](semantic-foundation.md)
@@ -467,6 +469,7 @@ do not block this design work. E2 remains the native coroutine target.
 | E1d.2d.3s | Checked capture guard transport | In progress: acceptance cases on 0.145 distinguish detached exclusive/shared reborrows from copied shared carrier fields. Partial checked origins now survive alias erasure and expansion in 0.146. Native transport follows in 0.147. Complete guarded/contained authority and interference validation remain ahead |
 | E1d.2d.3s.1 | Partial checked reference origins | Delivered in 0.146: reference expressions and received carrier address reads retain symbolic origin paths and guard/opaque flags with explicit partial status. Independent expansion/certificate remapping protects this evidence; execution is unchanged. Ancestry, path domains, contained permissions and runtime binding are not yet certified |
 | E1d.2d.3s.2 | Bound native reference origins | Delivered in 0.147: native references retain formation allocation identities and partial checked origins through copies, moves, reborrows, selected payloads and result delivery. Bounded capture descriptions include those origins through readiness, completion and pending delivery. Symbolic fields are not evaluated, unavailable metadata leaves execution unchanged, and both parent-selection gates remain |
+| E1d.2d.3s.3 | Conservative direct reference completeness | Delivered in 0.148: bounded ancestry collection retains broad ancestor origins and certifies supported unguarded direct closures. Independent expansion/certificate mapping protects coverage status; native reborrows require complete incoming evidence and result unions preserve partial/unknown status. Guarded/contained/conditional cases and both parent gates remain conservative |
 | E2 | Native coroutine lowering | Preserved architectural target: direct LLVM coroutine primitives, pinned-toolchain experiment, frame lifetime rules and schedule-based differential tests; I1 must keep this route open |
 | T1 | Stronger source transformations | Hold current scope during P1–P5: extraction correspondence, continuation cuts, source-level lift and editor actions |
 | R1 | Mathematical foundations | Maintain existing evidence; defer extensions during P1–P5: preservation judgments, richer protocol abstractions, infinite/causal behavior, mechanization |

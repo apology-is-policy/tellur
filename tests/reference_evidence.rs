@@ -26,9 +26,10 @@ fn capture(region: &Region) -> &[ReferenceOrigin] {
                 args,
                 ..
             } => match &args[0] {
-                Expr::WithReferenceEvidence(_, ReferenceEvidence::Partial(origins)) => {
-                    Some(origins.as_slice())
-                }
+                Expr::WithReferenceEvidence(
+                    _,
+                    ReferenceEvidence::Partial(origins) | ReferenceEvidence::Complete(origins),
+                ) => Some(origins.as_slice()),
                 other => panic!("missing explicit partial evidence: {other:?}"),
             },
             _ => None,
@@ -141,7 +142,9 @@ fn mutate_guarded(value: &mut Json, mutation: usize, other_root: usize) -> bool 
         .get_mut("WithReferenceEvidence")
         .and_then(Json::as_array_mut)
     {
-        let origins = parts[1]["Partial"].as_array_mut().unwrap();
+        let Some(origins) = parts[1].get_mut("Partial").and_then(Json::as_array_mut) else {
+            return false;
+        };
         if let Some(index) = origins.iter().position(|o| o["guard"] == true) {
             match mutation {
                 0 => origins.clear(),
@@ -189,8 +192,28 @@ fn certificates_reject_missing_retargeted_or_weakened_origin_evidence() {
             "E_EXPANSION_CERTIFICATE"
         );
     }
-    assert!(
-        serde_json::from_value::<ReferenceEvidence>(serde_json::json!({"Complete": []})).is_err()
+    let mut forged = serde_json::to_value(&artifact).unwrap();
+    fn promote(value: &mut Json) -> bool {
+        if let Some(parts) = value
+            .get_mut("WithReferenceEvidence")
+            .and_then(Json::as_array_mut)
+        {
+            if let Some(origins) = parts[1].get("Partial").cloned() {
+                parts[1] = serde_json::json!({"Complete": origins});
+                return true;
+            }
+        }
+        match value {
+            Json::Array(values) => values.iter_mut().any(promote),
+            Json::Object(values) => values.values_mut().any(promote),
+            _ => false,
+        }
+    }
+    assert!(promote(&mut forged));
+    let candidate = serde_json::from_value(forged).unwrap();
+    assert_eq!(
+        p.accept_expansion(&candidate).unwrap_err().code,
+        "E_EXPANSION_CERTIFICATE"
     );
 }
 
@@ -223,5 +246,123 @@ control main() exits done {
     assert!(
         found,
         "received reference fields must retain their checked evidence"
+    );
+}
+
+#[test]
+fn direct_capture_closes_unprojected_ancestry_and_preserves_status_in_expansion() {
+    let p = program(
+        r#"
+struct pair { string left; string right; }
+async control child(ref mutable string input) exits done { deref input="changed";exit done; }
+async control startup() exits done {
+    mutable pair owner=pair {"left","right"};
+    ref mutable pair whole=borrow mutable owner;
+    ref mutable string leaf=borrow mutable whole.left;
+    auto pending=defer child(leaf);
+    await pending;
+    emit(borrow owner.right);exit done;
+}
+control main() exits done {forward run startup();}
+"#,
+    );
+    let startup = p.regions().find(|r| r.name == "startup").unwrap();
+    let mut found = false;
+    for i in &startup.code {
+        if let Action::Decide {
+            operation: Operation::Defer(_),
+            args,
+            ..
+        } = &i.action
+        {
+            let Expr::WithReferenceEvidence(_, evidence) = &args[0] else {
+                panic!("{:?}", args[0])
+            };
+            let origins = evidence.origins();
+            assert!(origins.iter().any(|o| o.place.fields == [0]));
+            assert!(
+                origins.iter().any(|o| o.place.fields.is_empty()),
+                "parent dependency is not narrowed to the child's field"
+            );
+            assert!(origins.iter().all(|o| !o.guard && !o.opaque));
+            found = true;
+        }
+    }
+    assert!(found);
+    let scalar = program(
+        r#"
+async control child(ref mutable string input) exits done {deref input="changed";exit done;}
+async control startup() exits done {
+    mutable string owner="text";
+    ref mutable string first=borrow mutable owner;
+    ref mutable string second=borrow mutable deref first;
+    auto pending=defer child(second);await pending;exit done;
+}
+control main() exits done {forward run startup();}
+"#,
+    );
+    let region = scalar.regions().find(|r| r.name == "startup").unwrap();
+    assert!(region.code.iter().any(|i|matches!(&i.action,Action::Decide {operation:Operation::Defer(_),args,..} if matches!(&args[0],Expr::WithReferenceEvidence(_,ReferenceEvidence::Complete(_))))));
+
+    let artifact = p.expansion_artifact("startup").unwrap();
+    let expanded = p.accept_expansion(&artifact).unwrap();
+    let scenario = Scenario {
+        entry: "main".into(),
+        arguments: vec![],
+        calls: vec![],
+    };
+    assert_eq!(p.run(&scenario).unwrap(), expanded.run(&scenario).unwrap());
+    fn weaken(value: &mut Json) -> bool {
+        if let Some(parts) = value
+            .get_mut("WithReferenceEvidence")
+            .and_then(Json::as_array_mut)
+        {
+            if let Some(origins) = parts[1].get("Complete").cloned() {
+                parts[1] = serde_json::json!({"Partial":origins});
+                return true;
+            }
+        }
+        match value {
+            Json::Array(v) => v.iter_mut().any(weaken),
+            Json::Object(v) => v.values_mut().any(weaken),
+            _ => false,
+        }
+    }
+    let mut forged = serde_json::to_value(artifact).unwrap();
+    assert!(weaken(&mut forged));
+    assert_eq!(
+        p.accept_expansion(&serde_json::from_value(forged).unwrap())
+            .unwrap_err()
+            .code,
+        "E_EXPANSION_CERTIFICATE"
+    );
+}
+
+#[test]
+fn path_dependent_aliases_and_guarded_captures_stay_partial() {
+    let p = program(
+        r#"
+async control child(ref mutable string input) exits done {emit(input);exit done;}
+async control startup(bool selected) exits done {
+    mutable string owner="text";
+    delta selected {true=>yes,false=>no}
+    [yes]:
+        ref mutable string local=borrow mutable owner;
+        auto pending=defer child(local);await pending;exit done;
+    [no]:exit done;
+}
+control main() exits done {forward run startup(true);}
+"#,
+    );
+    let startup = p.regions().find(|r| r.name == "startup").unwrap();
+    assert!(startup.code.iter().any(|i|matches!(&i.action,Action::Decide {operation:Operation::Defer(_),args,..} if matches!(&args[0],Expr::WithReferenceEvidence(_,ReferenceEvidence::Partial(_))))));
+    let guarded = program(include_str!("../playground/guarded_task_captures.tellur"));
+    let exclusive = guarded.regions().find(|r| r.name == "exclusive").unwrap();
+    assert!(exclusive.code.iter().any(|i|matches!(&i.action,Action::Decide {operation:Operation::Defer(_),args,..} if matches!(&args[0],Expr::WithReferenceEvidence(_,ReferenceEvidence::Partial(_))))));
+    let shared = guarded.regions().find(|r| r.name == "shared").unwrap();
+    assert!(
+        capture(shared)
+            .iter()
+            .all(|o| !o.guard && shared.slots[&o.place.root].name == "owner")
     );
 }

@@ -1,4 +1,4 @@
-//! Bound partial checked origins. These records never grant execution permission.
+//! Bound checked origins. Even complete coverage grants no execution permission.
 use super::access_resolution::StoragePlace;
 use super::{Frames, R, V};
 
@@ -15,6 +15,7 @@ pub struct BoundOrigin {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Origins {
     Partial(Vec<BoundOrigin>),
+    Complete(Vec<BoundOrigin>),
     Unavailable(String),
 }
 impl Default for Origins {
@@ -23,22 +24,36 @@ impl Default for Origins {
     }
 }
 impl Origins {
+    pub fn is_complete(&self) -> bool {
+        matches!(self, Self::Complete(_))
+    }
     pub(crate) fn extend(&mut self, other: Self) {
-        match (&mut *self, other) {
-            (Self::Unavailable(_), _) => {}
-            (this, Self::Unavailable(message)) => *this = Self::Unavailable(message),
-            (Self::Partial(entries), Self::Partial(other)) => {
+        let complete = self.is_complete() && other.is_complete();
+        let old = std::mem::take(self);
+        *self = match (old, other) {
+            (Self::Unavailable(message), _) | (_, Self::Unavailable(message)) => {
+                Self::Unavailable(message)
+            }
+            (
+                Self::Partial(mut entries) | Self::Complete(mut entries),
+                Self::Partial(other) | Self::Complete(other),
+            ) => {
                 for origin in other {
                     if !entries.contains(&origin) {
                         entries.push(origin);
                     }
                 }
+                if complete {
+                    Self::Complete(entries)
+                } else {
+                    Self::Partial(entries)
+                }
             }
-        }
+        };
         self.bound();
     }
     fn bound(&mut self) {
-        if let Self::Partial(entries) = self {
+        if let Self::Partial(entries) | Self::Complete(entries) = self {
             if entries
                 .iter()
                 .try_fold(0usize, |n, o| n.checked_add(1 + o.place.fields.len()))
@@ -50,14 +65,16 @@ impl Origins {
     }
     pub(super) fn cost(&self) -> usize {
         match self {
-            Self::Partial(entries) => entries.iter().fold(0usize, |n, o| {
-                n.saturating_add(1).saturating_add(o.place.fields.len())
-            }),
+            Self::Partial(entries) | Self::Complete(entries) => {
+                entries.iter().fold(0usize, |n, o| {
+                    n.saturating_add(1).saturating_add(o.place.fields.len())
+                })
+            }
             Self::Unavailable(_) => 1,
         }
     }
     pub(super) fn require_live(&self, values: &Frames) -> R<()> {
-        let Self::Partial(entries) = self else {
+        let (Self::Partial(entries) | Self::Complete(entries)) = self else {
             return Err("E_NATIVE: checked origins are unavailable".into());
         };
         for origin in entries {
@@ -134,17 +151,35 @@ pub struct Origin {
 }
 /// Attach metadata after evaluating the reference operand exactly once. Failures
 /// affect descriptions only; no source error, value clone or disposition occurs.
-pub fn attach(values: &Frames, mut value: V, origins: &[Origin]) -> V {
+pub fn attach(values: &Frames, value: V, origins: &[Origin]) -> V {
+    attach_checked(values, value, origins, false, false)
+}
+/// `fresh` is emitted only for a direct reference operand, whose local dependencies
+/// are fully described by its annotation. Reborrows and received values must merge
+/// their incoming evidence, so a callee annotation cannot promote a partial caller.
+pub fn attach_checked(
+    values: &Frames,
+    mut value: V,
+    origins: &[Origin],
+    complete: bool,
+    fresh: bool,
+) -> V {
     if let V::Reference { evidence, .. } = &mut value {
-        let bound = bind(values, origins);
-        evidence
-            .origins
-            .extend(bound.unwrap_or_else(Origins::Unavailable));
+        let bound = bind(values, origins, complete).unwrap_or_else(Origins::Unavailable);
+        if complete && fresh {
+            evidence.origins = bound;
+        } else {
+            evidence.origins.extend(bound);
+        }
     }
     value
 }
-fn bind(values: &Frames, origins: &[Origin]) -> R<Origins> {
-    let mut result = Origins::default();
+fn bind(values: &Frames, origins: &[Origin], complete: bool) -> R<Origins> {
+    let mut result = if complete {
+        Origins::Complete(vec![])
+    } else {
+        Origins::default()
+    };
     let mut remaining = LIMIT;
     for origin in origins {
         remaining = remaining
@@ -160,8 +195,15 @@ fn bind(values: &Frames, origins: &[Origin]) -> R<Origins> {
         remaining = remaining
             .checked_sub(evidence.origins.cost())
             .ok_or("inherited checked origin limit exceeded")?;
-        result.extend(evidence.origins);
-        result.extend(Origins::Partial(vec![BoundOrigin {
+        if origin.indirect {
+            result.extend(evidence.origins);
+        }
+        let wrap = if complete {
+            Origins::Complete
+        } else {
+            Origins::Partial
+        };
+        result.extend(wrap(vec![BoundOrigin {
             place: target,
             guard: origin.guard,
             opaque: origin.opaque,

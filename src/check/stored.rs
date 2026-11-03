@@ -364,10 +364,7 @@ impl Checker<'_> {
             let target = self.reference_argument(e, mutable, domain, span)?;
             self.expect_type(&target.ty, inner, span)?;
             let origins = self.origins(&target);
-            let expression = Self::describe_reference(
-                Expr::Reference(target.place.clone(), expected.into()),
-                &origins,
-            );
+            let expression = self.reference_expression(&target, expected.into());
             let parents = if let Some(source) = &source {
                 self.transfer_reference(source, domain, span)?;
                 source.2.parents.clone()
@@ -962,13 +959,15 @@ impl Checker<'_> {
             )
         })?;
         let (inner, leaf_ty) = (inner.to_owned(), leaf_ty.to_owned());
-        let value = Self::describe_reference(
+        let value = self.describe_reference(
             Expr::Place(Place {
                 root,
                 fields: fields.to_vec(),
                 indirect,
             }),
             &origins,
+            &parents,
+            false,
         );
         let key = format!("$stored_address_{}", self.fresh());
         let slot = self.define(&key, &leaf_ty, domain, span)?;

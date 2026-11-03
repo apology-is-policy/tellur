@@ -134,6 +134,7 @@ impl Checker<'_> {
                 self.expect_type(&target.ty, inner, span)?;
                 let origins = self.origins(&target);
                 let contents = self.snapshot_carrier_contents(&target, domain);
+                let expression = self.reference_expression(&target, p.ty.clone());
                 let parents = if transfer {
                     let source = source.as_ref().ok_or_else(|| {
                         self.error(
@@ -147,10 +148,7 @@ impl Checker<'_> {
                 } else {
                     self.parents(&target)
                 };
-                values.push(Self::describe_reference(
-                    Expr::Reference(target.place.clone(), p.ty.clone()),
-                    &origins,
-                ));
+                values.push(expression);
                 let id = self.stash_stored_loan(
                     Loan {
                         contents,

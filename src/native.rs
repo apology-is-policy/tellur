@@ -91,13 +91,16 @@ impl FrameLayout {
 }
 fn expression(e: &Expr, layout: &FrameLayout) -> String {
     match e {
-        Expr::WithReferenceEvidence(value, ReferenceEvidence::Partial(origins)) => {
+        Expr::WithReferenceEvidence(value, evidence) => {
+            let origins = evidence.origins();
+            let complete = evidence.is_complete();
+            let fresh = matches!(value.as_ref(), Expr::Reference(p, _) if !p.indirect);
             let origins = origins.iter().map(|o| format!(
                 "execution::reference_evidence::Origin{{root:base+{},fields:&{:?},indirect:{},guard:{},opaque:{}}}",
                 layout.slots[&o.place.root], o.place.fields, o.place.indirect, o.guard, o.opaque
             )).collect::<Vec<_>>().join(",");
             format!(
-                "{{let reference_value={}; execution::reference_evidence::attach(v,reference_value,&[{origins}])}}",
+                "{{let reference_value={}; execution::reference_evidence::attach_checked(v,reference_value,&[{origins}],{complete},{fresh})}}",
                 expression(value, layout)
             )
         }

@@ -673,25 +673,112 @@ impl Checker<'_> {
         }
         parents
     }
-    fn describe_reference(value: Expr, origins: &[LoanOrigin]) -> Expr {
+    /// A bounded overapproximation: ancestor origins are retained without their
+    /// descendant's projection. Holder storage is added only by checked guard
+    /// origins, never merely because a shared reference was copied from it.
+    fn describe_reference(
+        &self,
+        value: Expr,
+        origins: &[LoanOrigin],
+        roots: &[Id],
+        mut complete: bool,
+    ) -> Expr {
+        const LIMIT: usize = 4096;
+        let mut descriptions = Vec::new();
+        let mut remaining = LIMIT;
+        let mut include = |origin: &LoanOrigin| {
+            complete &= origin.permissions.is_empty() && !origin.guard && !origin.opaque;
+            let mut ty = self
+                .result
+                .slots
+                .get(&origin.place.root)
+                .map(|s| s.ty.as_str());
+            if origin.place.indirect {
+                ty = ty.and_then(|t| manifest::reference_inner(t).map(|(_, t)| t));
+            }
+            for field in &origin.place.fields {
+                ty = ty.and_then(|t| self.manifest.field_at(t, *field).map(|f| f.ty.as_str()));
+            }
+            complete &= ty.is_some_and(|t| !self.manifest.contains_references(t));
+            let Some(left) = remaining.checked_sub(1 + origin.place.fields.len()) else {
+                complete = false;
+                return;
+            };
+            remaining = left;
+            let description = ReferenceOrigin {
+                place: origin.place.clone(),
+                guard: origin.guard,
+                opaque: origin.opaque,
+            };
+            if !descriptions.contains(&description) {
+                descriptions.push(description);
+            }
+        };
+        for origin in origins {
+            include(origin);
+        }
+        let mut loans = Vec::new();
+        let mut seen = BTreeSet::new();
+        let mut pending = roots.to_vec();
+        let mut visited = 0;
+        let mut closed = true;
+        while !pending.is_empty() || !loans.is_empty() {
+            if visited >= LIMIT {
+                closed = false;
+                break;
+            }
+            visited += 1;
+            if let Some(id) = pending.pop() {
+                if !seen.insert(id) {
+                    continue;
+                }
+                if let Some(loan) = self
+                    .scopes
+                    .iter()
+                    .flat_map(|s| s.loans.values())
+                    .find(|l| l.id == id)
+                {
+                    loans.push(loan);
+                } else {
+                    closed = false;
+                }
+                continue;
+            }
+            let loan = loans.pop().unwrap();
+            // A transferred ancestor can be inactive while its descendant still
+            // depends on the same origins. Conditional activity stays partial.
+            closed &= (loan.active == TRUE || loan.active == FALSE)
+                && loan.defined == TRUE
+                && loan.sum_leaf.is_none()
+                && loan.contents.is_empty()
+                && !self.manifest.contains_references(&loan.target.ty);
+            for origin in &loan.origins {
+                include(origin);
+            }
+            if pending.len() + loan.parents.len() + loans.len() + loan.contents.len() > LIMIT {
+                closed = false;
+                break;
+            }
+            pending.extend(loan.parents.iter().copied());
+            loans.extend(loan.contents.iter().map(|(_, loan)| loan));
+        }
+        drop(include);
+        complete &= closed && !descriptions.is_empty();
         Expr::WithReferenceEvidence(
             Box::new(value),
-            ReferenceEvidence::Partial(
-                origins
-                    .iter()
-                    .map(|origin| ReferenceOrigin {
-                        place: origin.place.clone(),
-                        guard: origin.guard,
-                        opaque: origin.opaque,
-                    })
-                    .collect(),
-            ),
+            if complete {
+                ReferenceEvidence::Complete(descriptions)
+            } else {
+                ReferenceEvidence::Partial(descriptions)
+            },
         )
     }
     fn reference_expression(&self, target: &ResolvedPlace, ty: String) -> Expr {
-        Self::describe_reference(
+        self.describe_reference(
             Expr::Reference(target.place.clone(), ty),
             &self.origins(target),
+            &target.via.into_iter().collect::<Vec<_>>(),
+            target.carriers.is_empty() && !self.manifest.contains_references(&target.ty),
         )
     }
     fn check_loans(
@@ -1021,7 +1108,7 @@ impl Checker<'_> {
                 contract.push(source);
             }
         }
-        let value = Self::describe_reference(Expr::Reference(target.place.clone(), ty.clone()), &origins);
+        let value = self.reference_expression(&target, ty.clone());
         let parents = self.parents(&target);
         let temp = format!("$return_{}", self.fresh());
         self.add_loan(&temp, target, origins, parents, mutable, domain);
