@@ -174,7 +174,7 @@ impl AccessPlan {
     }
 }
 impl Machine {
-    /// Fresh query-only resolution; legacy host references without a formation
+    /// Fresh strict resolution; legacy host references without a formation
     /// identity cannot prove disjointness after slot reuse.
     pub(super) fn resolve_interference_access(&self, values: &Frames) -> R<ResolvedPlan> {
         let frame = self

@@ -624,12 +624,28 @@ impl<'a> Contexts<'a> {
         };
         query().unwrap_or_else(dependencies::Interference::Inconclusive)
     }
+    /// Explicit host admission of exactly one disjoint local transition. Source
+    /// scheduling is unchanged; the ordinary quota driver retains its child gate.
+    pub fn advance_disjoint_one(&mut self, key: &ContextKey) -> R<ContextPoll> {
+        self.advance_selected(key, 1, true)
+    }
     pub fn advance_retained(&mut self, key: &ContextKey, quota: usize) -> R<ContextPoll> {
+        self.advance_selected(key, quota, false)
+    }
+    fn advance_selected(
+        &mut self,
+        key: &ContextKey,
+        quota: usize,
+        disjoint: bool,
+    ) -> R<ContextPoll> {
         self.require_live()?;
         if !Arc::ptr_eq(&self.identity, &key.session) {
             return Err("E_NATIVE: context belongs to another session".into());
         }
         if self.terminal.contains_key(&key.id) {
+            if disjoint {
+                return Err("E_NATIVE: callback admission requires a live continuation".into());
+            }
             return Ok(if quota == 0 {
                 ContextPoll::Paused
             } else {
@@ -647,14 +663,19 @@ impl<'a> Contexts<'a> {
         self.parked[&key.id]
             .machine
             .require_runnable(&self.domains)?;
-        // This bounded runtime only resumes a parent after its children settle.
-        // General source scheduling/await handoffs are a separate integration gate.
-        if self
-            .domains
-            .has_children(&self.parked[&key.id].machine.member)?
-        {
-            return Err("E_NATIVE: parent still awaits retained child contexts".into());
-        }
+        // Issue and consume private admission within this exclusive operation.
+        // No callback, signal, admission or join can interleave with the census.
+        let admission = if disjoint {
+            Some(self.admit_one_callback(key)?)
+        } else {
+            if self
+                .domains
+                .has_children(&self.parked[&key.id].machine.member)?
+            {
+                return Err("E_NATIVE: parent still awaits retained child contexts".into());
+            }
+            None
+        };
         if quota == 0 {
             return Ok(ContextPoll::Paused);
         }
@@ -671,76 +692,93 @@ impl<'a> Contexts<'a> {
         }
         self.waits.remove(&key.id);
         let mut parked = self.parked.remove(&key.id).unwrap();
+        let was_started = parked.started;
         parked.started = true;
         self.host.exchange_context(&mut parked.host)?;
         let mut settlement = None;
         let mut completed = None;
-        let mut result =
-            match parked
+        let poll = if let Some(admission) = admission {
+            match parked.machine.advance_admitted_one(
+                self.host,
+                &mut self.values,
+                &mut self.domains,
+                admission,
+            ) {
+                OneCallbackPoll::Advanced(result) => result,
+                OneCallbackPoll::Rejected(error) => {
+                    // A failed lower-level preflight remains administrative. Do
+                    // not turn it into a source fault or retire borrower owners.
+                    parked.started = was_started;
+                    self.host.exchange_context(&mut parked.host)?;
+                    self.parked.insert(key.id, parked);
+                    return Err(error);
+                }
+            }
+        } else {
+            parked
                 .machine
                 .advance(self.host, &mut self.values, &mut self.domains, quota)
-            {
-                Ok(Poll::Paused) => ContextPoll::Paused,
-                Ok(Poll::Await) => ContextPoll::Await,
-                Ok(Poll::Settling(domain)) => {
-                    let message = parked.machine.fault.as_ref().unwrap().clone();
-                    let report = self.host.activations.failure(
-                        parked.name,
-                        fault::Phase::Execution,
-                        &message,
-                    );
-                    settlement = Some((domain, message, report, self.host.source_faulted()));
-                    ContextPoll::Paused
+        };
+        let mut result = match poll {
+            Ok(Poll::Paused) => ContextPoll::Paused,
+            Ok(Poll::Await) => ContextPoll::Await,
+            Ok(Poll::Settling(domain)) => {
+                let message = parked.machine.fault.as_ref().unwrap().clone();
+                let report =
+                    self.host
+                        .activations
+                        .failure(parked.name, fault::Phase::Execution, &message);
+                settlement = Some((domain, message, report, self.host.source_faulted()));
+                ContextPoll::Paused
+            }
+            Ok(Poll::Complete(completion @ Completion::Outcome(_))) => {
+                let Completion::Outcome((_, fields)) = &completion else {
+                    unreachable!()
+                };
+                parked
+                    .dependencies
+                    .extend(Dependencies::describe(&self.values, fields));
+                if let Some(task) = &parked.task {
+                    task.complete(self.host)?;
                 }
-                Ok(Poll::Complete(completion @ Completion::Outcome(_))) => {
-                    let Completion::Outcome((_, fields)) = &completion else {
-                        unreachable!()
-                    };
-                    parked
-                        .dependencies
-                        .extend(Dependencies::describe(&self.values, fields));
-                    if let Some(task) = &parked.task {
-                        task.complete(self.host)?;
-                    }
-                    completed = Some(completion);
-                    ContextPoll::Ready
+                completed = Some(completion);
+                ContextPoll::Ready
+            }
+            Ok(Poll::Complete(completion)) => {
+                // Outgoing owners survive normal completion; failed roots below
+                // release stranded temporary owners as well as retired frames.
+                if let Some(task) = &parked.task {
+                    task.abandon(self.host);
                 }
-                Ok(Poll::Complete(completion)) => {
-                    // Outgoing owners survive normal completion; failed roots below
-                    // release stranded temporary owners as well as retired frames.
-                    if let Some(task) = &parked.task {
-                        task.abandon(self.host);
-                    }
-                    self.host.finish_context(
-                        &mut parked.root,
-                        matches!(completion, Completion::Process(_)),
-                    )?;
-                    ContextPoll::Complete(completion)
+                self.host.finish_context(
+                    &mut parked.root,
+                    matches!(completion, Completion::Process(_)),
+                )?;
+                ContextPoll::Complete(completion)
+            }
+            Err(message) => {
+                if self.entry == Some(key.id) {
+                    self.entry_error = Some(message.clone());
                 }
-                Err(message) => {
-                    if self.entry == Some(key.id) {
-                        self.entry_error = Some(message.clone());
-                    }
-                    let report = self.host.activations.failure(
-                        parked.name,
-                        fault::Phase::Execution,
-                        &message,
-                    );
-                    if let Some(task) = &parked.task {
-                        task.abandon(self.host);
-                    }
-                    self.host.finish_context(&mut parked.root, true)?;
-                    if parked.parent.is_some() {
-                        settlement = Some((
-                            parked.machine.root.key.clone(),
-                            message,
-                            report.clone(),
-                            self.host.source_faulted(),
-                        ));
-                    }
-                    ContextPoll::Failed(report)
+                let report =
+                    self.host
+                        .activations
+                        .failure(parked.name, fault::Phase::Execution, &message);
+                if let Some(task) = &parked.task {
+                    task.abandon(self.host);
                 }
-            };
+                self.host.finish_context(&mut parked.root, true)?;
+                if parked.parent.is_some() {
+                    settlement = Some((
+                        parked.machine.root.key.clone(),
+                        message,
+                        report.clone(),
+                        self.host.source_faulted(),
+                    ));
+                }
+                ContextPoll::Failed(report)
+            }
+        };
         self.host.exchange_context(&mut parked.host)?;
         if matches!(result, ContextPoll::Complete(_) | ContextPoll::Failed(_)) {
             self.restore_entry(key.id, &mut parked.host.tracker);
@@ -1282,3 +1320,90 @@ mod borrower_coverage_tests;
 #[path = "borrower_coverage.rs"]
 mod borrower_coverage;
 pub use borrower_coverage::BorrowerInterference;
+
+/// Sealed internal witness, issued and consumed during one exclusive Contexts
+/// operation. It is never returned by a public query or cached between selections.
+pub(super) struct OneCallback {
+    owner: super::super::tasks::OwnerId,
+    registry: Arc<()>,
+    control: &'static Control,
+    pc: usize,
+    facts: Vec<bool>,
+    domain: DomainKey,
+    member: Membership,
+    destination: Option<usize>,
+    access: super::access_resolution::ResolvedPlan,
+}
+impl OneCallback {
+    pub(super) fn check(
+        self,
+        machine: &Machine,
+        host: &Host,
+        values: &Frames,
+        domains: &Domains,
+    ) -> R<()> {
+        machine.require_runnable(domains)?;
+        domains.require_open(&machine.current, &[])?;
+        if machine.fault.is_some() {
+            return Err("E_NATIVE: callback admission cannot resume settlement".into());
+        }
+        let activation = machine
+            .stack
+            .last()
+            .ok_or("E_NATIVE: admitted invocation has retired")?;
+        activation.require_task_host(host)?;
+        if activation.owner != self.owner
+            || !Arc::ptr_eq(&activation.registry, &self.registry)
+            || !std::ptr::eq(activation.control, self.control)
+            || activation.pc != self.pc
+            || activation.facts != self.facts
+            || activation.destination != self.destination
+            || !domains.same(&machine.current, &self.domain)
+            || !domains.same_membership(&machine.member, &self.member)
+            || machine.resolve_interference_access(values)? != self.access
+        {
+            return Err(
+                "E_NATIVE: callback admission does not match the selected transition".into(),
+            );
+        }
+        Ok(())
+    }
+}
+impl Contexts<'_> {
+    fn admit_one_callback(&self, key: &ContextKey) -> R<OneCallback> {
+        match self.borrower_interference(key) {
+            BorrowerInterference::Disjoint { .. } => {}
+            BorrowerInterference::Overlap { .. } => {
+                return Err("E_NATIVE: callback overlaps a retained borrower".into());
+            }
+            BorrowerInterference::Inconclusive(message) => {
+                return Err(format!(
+                    "E_NATIVE: callback admission is inconclusive: {message}"
+                ));
+            }
+        }
+        let machine = &self.parked[&key.id].machine;
+        if machine.fault.is_some() {
+            return Err("E_NATIVE: callback admission cannot resume settlement".into());
+        }
+        let activation = machine.stack.last().unwrap();
+        if activation.facts.len() > 4096 {
+            return Err("E_NATIVE: callback admission fact limit exceeded".into());
+        }
+        Ok(OneCallback {
+            owner: activation.owner,
+            registry: activation.registry.clone(),
+            control: activation.control,
+            pc: activation.pc,
+            facts: activation.facts.clone(),
+            domain: machine.current.clone(),
+            member: machine.member.clone(),
+            destination: activation.destination,
+            access: machine.resolve_interference_access(&self.values)?,
+        })
+    }
+}
+
+#[cfg(test)]
+#[path = "callback_admission_tests.rs"]
+mod callback_admission_tests;

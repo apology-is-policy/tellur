@@ -314,6 +314,12 @@ pub enum Step {
         deliver: Deliver,
     },
 }
+// Preflight rejection is kept separate from an admitted source failure, so the
+// context layer can restore selection without fault settlement on rejection.
+enum OneCallbackPoll {
+    Rejected(String),
+    Advanced(R<Poll>),
+}
 pub enum Poll {
     Paused,
     Await,
@@ -538,7 +544,8 @@ impl Machine {
         // runtime transition clears scopes, resets loop storage or retires frames.
         // This is deliberately conservative across synchronous frames. It does not
         // authorize running the callback above with live children: evaluating its
-        // operands can already move values, so the parent-selection guard remains.
+        // operands can already move values. Ordinary advancement keeps its child
+        // gate; explicit one-transition advancement requires fresh sealed admission.
         if matches!(
             &step,
             Step::Loop { .. }
@@ -885,6 +892,33 @@ impl Machine {
         host.activations.source_fault();
         let result = self.unwind_error(host, values, domains, message.into(), false);
         if self.finished { Ok(()) } else { result }
+    }
+    fn advance_admitted_one(
+        &mut self,
+        host: &mut Host,
+        values: &mut Frames,
+        domains: &mut Domains,
+        admission: contexts::OneCallback,
+    ) -> OneCallbackPoll {
+        if let Err(error) = admission.check(self, host, values, domains) {
+            return OneCallbackPoll::Rejected(error);
+        }
+        // Exactly one transition, including instruction-free pending delivery.
+        // Never feed this witness into the quota loop or a subsequent callback.
+        let result = match self.step(host, values, domains) {
+            Ok((_, Some(result))) => Ok(Poll::Complete(result)),
+            Ok((_, None)) => Ok(Poll::Paused),
+            Err(error) => self
+                .unwind_error(host, values, domains, error, true)
+                .map(|()| {
+                    if self.fault.is_some() {
+                        Poll::Settling(self.current.clone())
+                    } else {
+                        Poll::Paused
+                    }
+                }),
+        };
+        OneCallbackPoll::Advanced(result)
     }
     pub fn advance(
         &mut self,

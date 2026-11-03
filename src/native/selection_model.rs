@@ -77,10 +77,14 @@ pub fn drive_selection(
     let mut covered = false;
     let mut covered_delivery = false;
     let mut uncovered = false;
+    let mut admitted = 0;
+    let mut admitted_delivery = false;
     let every_point = quotas == [1];
     let mut quotas = quotas.iter().cycle();
     let result = loop {
         let selected = chain.last().unwrap().clone();
+        let quota = *quotas.next().unwrap();
+        let mut admitted_this_turn = false;
         if probes {
             let snapshot = selection_snapshot(&c, &selected);
             let m = &c.parked[&selected.id].machine;
@@ -127,19 +131,35 @@ pub fn drive_selection(
                 assert_eq!(selection_snapshot(&c, &root), before);
             }
             // A fresh empty child has complete empty dependencies. Supported
-            // local callbacks can be disjoint without permitting parent progress.
+            // local callbacks can be disjoint. Queries alone grant no progress;
+            // only the explicit one-transition path below performs admission.
             let description = c.parked[&root.id].machine.next_access();
-            if !description.opaque && matches!(description.transition,
-                Transition::Skip | Transition::Local | Transition::Delivery)
+            if !description.opaque
+                && matches!(
+                    description.transition,
+                    Transition::Skip | Transition::Local | Transition::Delivery
+                )
                 && description.delivery.is_empty()
             {
                 assert_eq!(interference, dependencies::Interference::Disjoint);
             } else {
-                assert!(matches!(interference, dependencies::Interference::Inconclusive(_)));
+                assert!(matches!(
+                    interference,
+                    dependencies::Interference::Inconclusive(_)
+                ));
             }
             match &coverage {
-                BorrowerInterference::Disjoint { contexts, handoffs, deliveries }
-                | BorrowerInterference::Overlap { contexts, handoffs, deliveries, .. } => {
+                BorrowerInterference::Disjoint {
+                    contexts,
+                    handoffs,
+                    deliveries,
+                }
+                | BorrowerInterference::Overlap {
+                    contexts,
+                    handoffs,
+                    deliveries,
+                    ..
+                } => {
                     covered = true;
                     covered_delivery |= *deliveries != 0;
                     assert_eq!((*contexts, *handoffs), (1, 0));
@@ -147,7 +167,9 @@ pub fn drive_selection(
                         Some(Pending::Await(p)) if p.result.is_some());
                     assert_eq!(*deliveries, usize::from(pending));
                 }
-                BorrowerInterference::Inconclusive(_) => { uncovered = true; }
+                BorrowerInterference::Inconclusive(_) => {
+                    uncovered = true;
+                }
             }
             for quota in [1, 0, 99] {
                 let p = c.parked.get_mut(&root.id).unwrap();
@@ -161,6 +183,21 @@ pub fn drive_selection(
                 c.host.exchange_context(&mut p.host)?;
                 assert_eq!(selection_snapshot(&c, &root), before);
             }
+            if quota != 0 && matches!(coverage, BorrowerInterference::Disjoint { .. }) {
+                assert!(matches!(
+                    c.advance_disjoint_one(&root)?,
+                    ContextPoll::Paused
+                ));
+                admitted += 1;
+                admitted_delivery |= matches!(coverage,
+                    BorrowerInterference::Disjoint { deliveries, .. } if deliveries != 0);
+                admitted_this_turn = true;
+            } else {
+                if !matches!(coverage, BorrowerInterference::Disjoint { .. }) {
+                    assert!(c.advance_disjoint_one(&root).is_err());
+                }
+                assert_eq!(selection_snapshot(&c, &root), before);
+            }
             assert!(matches!(
                 c.advance_retained(&borrower, 1)?,
                 ContextPoll::Ready
@@ -169,7 +206,10 @@ pub fn drive_selection(
             assert!(fields.is_empty());
             checked += 1;
         }
-        match c.advance_retained(&selected, *quotas.next().unwrap())? {
+        if admitted_this_turn {
+            continue;
+        }
+        match c.advance_retained(&selected, quota)? {
             ContextPoll::Paused => {}
             ContextPoll::Await => chain.push(c.admit_await(&selected)?),
             ContextPoll::Ready if selected.id == root.id => break c.join(None, &root)?,
@@ -182,8 +222,26 @@ pub fn drive_selection(
     };
     assert!(!probes || (checked > 5 && nested && delivery));
     if probes && every_point {
-        assert!(covered && uncovered, "fixtures must exercise complete and inconclusive aggregate queries");
-        if expect_complete { assert!(covered_delivery, "complete pending delivery must enter aggregate coverage"); }
+        assert!(
+            admitted > 0,
+            "real compiled callbacks must advance beside a retained child"
+        );
+        if expect_complete {
+            assert!(
+                admitted_delivery,
+                "complete pending delivery must advance exactly once"
+            );
+        }
+        assert!(
+            covered && uncovered,
+            "fixtures must exercise complete and inconclusive aggregate queries"
+        );
+        if expect_complete {
+            assert!(
+                covered_delivery,
+                "complete pending delivery must enter aggregate coverage"
+            );
+        }
         if expect_complete {
             assert!(
                 complete_capture && complete_delivery,

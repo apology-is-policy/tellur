@@ -4316,3 +4316,12 @@ settlement. Existing authority cases now reject aggregate queries under another 
 invocation or boundary. Generated original/expanded O0/O2 selection probes require both
 conclusive/inconclusive aggregate observations and complete pending-delivery coverage,
 while preserving both execution gates and source observations across quota partitions.
+
+## One-transition native admission (0.151)
+
+Five native-host cases verify fresh disjoint admission beside live/waiting/completed
+children, changing borrower/evidence rejection, exact lower invocation/fact/callback
+identity, instruction-free one-use delivery and real borrower-before-owner settlement
+after fuel failure. Generated original/expanded O0/O2 selection fixtures exercise real
+admitted callbacks beside a retained child and preserve source observations across quota
+partitions. Legacy multi-instruction drivers keep rejecting children at all quotas.

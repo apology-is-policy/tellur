@@ -131,6 +131,9 @@ impl Domains {
     pub fn same(&self, left: &DomainKey, right: &DomainKey) -> bool {
         Arc::ptr_eq(&left.registry, &right.registry) && left.id == right.id
     }
+    pub fn same_membership(&self, left: &Membership, right: &Membership) -> bool {
+        Arc::ptr_eq(&left.registry, &right.registry) && left.id == right.id
+    }
     pub fn scope(&self, key: &DomainKey) -> Result<DomainScope> {
         self.require(key)?;
         Ok(DomainScope {

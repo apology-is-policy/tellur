@@ -716,3 +716,10 @@ results. Missing/incomplete authority is inconclusive; complete results report c
 counts and conservative interference. This remains an observation: both execution gates
 and source ownership rules are unchanged. See
 [borrower coverage](../async-execution.md#aggregate-native-borrower-coverage-e1d2d3s5).
+
+Since 0.151, the native host has an explicit one-transition admission operation. It
+requires a fresh complete disjoint borrower census and consumes private permission
+before exactly one local callback or normal pending delivery. Rejection is administrative;
+real execution faults retain existing settlement. Ordinary quota drivers retain their
+child gates, and source execution is unchanged. See
+[one-transition admission](../async-execution.md#one-transition-native-admission-e1d2d3s6).

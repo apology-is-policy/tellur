@@ -1,4 +1,4 @@
-//! Diagnostic-only census of context-managed borrowers, not source permission.
+//! Immutable census of context-managed borrowers, not source permission.
 use super::super::access_resolution::{ResolvedAccess, StoragePlace};
 use super::super::dependencies::Interference;
 use super::*;
@@ -27,7 +27,8 @@ impl Contexts<'_> {
     /// comparing one freshly resolved callback. Neither a single child nor an
     /// empty context map can certify coverage without membership reconciliation.
     /// Local source aliases/cold values and externally joined results are outside
-    /// this context-managed census; source checking and both gates remain intact.
+    /// this context-managed census; source checking remains intact. Query results
+    /// grant no execution authority; one-transition admission reruns this census.
     pub fn borrower_interference(&self, parent: &ContextKey) -> BorrowerInterference {
         self.borrower_query(parent)
             .unwrap_or_else(BorrowerInterference::Inconclusive)

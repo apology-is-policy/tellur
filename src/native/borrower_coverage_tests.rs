@@ -2,17 +2,17 @@ use super::super::dependencies::Interference;
 use super::super::reference_evidence::{Origin, attach_checked};
 use super::*;
 
-fn host() -> Host {
+pub(super) fn host() -> Host {
     Host::new(serde_json::json!({}), None, true, Some(1000))
 }
-fn pair() -> V {
+pub(super) fn pair() -> V {
     V::Construct {
         ty: "pair".into(),
         name: "pair".into(),
         fields: vec![V::U32(7), V::U32(9)],
     }
 }
-fn borrow(c: &Contexts<'_>, root: usize, field: usize) -> V {
+pub(super) fn borrow(c: &Contexts<'_>, root: usize, field: usize) -> V {
     let value = super::super::super::reference(&c.values, root, &[field], false, "&U32").unwrap();
     attach_checked(
         &c.values,
@@ -83,7 +83,7 @@ fn start(c: &mut Contexts<'_>) -> (ContextKey, usize) {
     let base = c.parked[&root.id].machine.stack[0].base();
     (root, base)
 }
-fn snapshot(c: &Contexts<'_>) -> String {
+pub(super) fn snapshot(c: &Contexts<'_>) -> String {
     let contexts: Vec<_> = c
         .parked
         .iter()
@@ -334,7 +334,7 @@ static AWAITING: Control = Control {
     resume: awaiting,
     ..ROOT
 };
-fn prepare_await(c: &mut Contexts<'_>) -> ContextKey {
+pub(super) fn prepare_await(c: &mut Contexts<'_>) -> ContextKey {
     let root = c.start(&AWAITING, vec![pair()]).unwrap();
     assert!(matches!(
         c.advance_retained(&root, 1).unwrap(),

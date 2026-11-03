@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-darwin-arm64-0.150.0.vsix` using **Extensions:
+1. Install the supplied `tellur-language-darwin-arm64-0.151.0.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1348,3 +1348,10 @@ An immutable aggregate query now reconciles retained child contexts with fault-d
 membership, including descendants, readiness, completed results and pending await
 captures/delivery. Missing, incomplete or mismatched evidence stays inconclusive.
 Queries report coverage counts without granting execution; both parent gates remain.
+
+## One-transition native admission in 0.151
+
+The native host can explicitly admit one supported local callback or normal await
+result delivery beside retained children, after a fresh complete borrower census
+proves disjointness. Private permission is consumed immediately and never covers the
+next callback. Ordinary quota drivers and source execution retain their existing gates.

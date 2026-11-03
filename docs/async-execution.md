@@ -2337,6 +2337,55 @@ all retirement preflights. Guarded/contained/conditional completeness, source sc
 `spawn`/`yield`, cancellation, async adapters/disposal and LLVM coroutine lowering remain
 separate work.
 
+## One-transition native admission (E1d.2d.3s.6)
+
+Compiler 0.151 adds `Contexts::advance_disjoint_one` for explicit host admission of
+one supported transition beside retained children. It performs a fresh aggregate census
+and requires complete disjoint dependencies under the current invocation and open fault
+domain. Partial, unknown, overlapping, opaque, unsupported or exhausted evidence rejects
+before source operands, path facts, fuel or resource owners change. A waiting selected
+context and a context already settling a fault cannot use this entry point.
+
+Admission creates a private, non-cloneable witness inside the exclusive context operation;
+no public query returns it and no caller can cache or replay it. Before stepping, the
+machine rechecks the exact activation owner, task registry, control function, program
+counter, path facts, constructor destination, domain, membership and resolved storage
+plan. No callback, readiness signal, child admission or join can interleave between the
+census and this lower check. The copied fact set is bounded at 4096 entries. The witness
+is consumed by this check, and rejection remains administrative rather than becoming a
+source fault or triggering settlement.
+
+A successful admission executes exactly one `Skip`, `Local` or normal `Delivery`
+transition. In particular, an instruction-free pending delivery returns before the next
+callback; it cannot carry permission into a quota loop. The next call always performs a
+new census. Actual admitted execution faults use the existing owning-boundary settlement
+path, retiring borrowers and pending results before supplier owners and contingency.
+Frame, scope, loop and final-frame retirement checks are unchanged.
+
+The ordinary `Contexts::advance_retained` and `Machine::advance` quota drivers retain
+their child gates at every quota, including zero. Production source driving still uses
+those paths. This explicit host primitive does not introduce source interleaving, `spawn`
+or `yield`. It is an integration seam for the accepted scheduling model, not a source
+scheduler. Context-managed coverage still excludes local source aliases, unadmitted cold
+values and results already transferred to an external host caller; source ownership
+checking remains required. Host callbacks must obey their declared access plans.
+
+Five host cases cover disjoint field writes beside live, waiting and completed borrowers;
+fresh rejection after adding a borrower or losing complete evidence; wrong invocation,
+changed facts and callback rejection at the lower layer; one-use pending delivery without
+fuel; and real resource release order after an admitted fuel fault. Generated
+original/expanded O0/O2 fixtures admit real supported callbacks beside a retained child,
+reject unsupported/overlapping/incomplete selections, preserve legacy quota rejection,
+and compare source observations across quota partitions. Complete result delivery is
+required to exercise the new admission path.
+
+The next integration step is bounded multi-transition host advancement with fresh
+admission for every callback and administrative delivery. It must stop at unresolved
+handoffs, reject each next transition before evaluation, and preserve quota/fuel and
+fault-settlement behavior without treating host quotas as source handoff points.
+Guarded/contained/conditional completeness, precise origin access modes, source scheduling,
+cancellation, async adapters/disposal and LLVM coroutine lowering remain separate work.
+
 ## Reference execution invariants
 
 A step partition must not itself become a source effect. The same selected schedule
