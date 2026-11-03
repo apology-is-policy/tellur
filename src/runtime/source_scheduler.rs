@@ -407,6 +407,10 @@ mod tests {
             include_str!("../../playground/borrowed_record_spawn_results.tellur"),
             include_str!("../../playground/borrowed_tagged_spawn_results.tellur"),
             include_str!("../../playground/borrowed_outcome_spawn_results.tellur"),
+            include_str!("../../playground/record_chain_spawn.tellur"),
+            include_str!("../../tests/fixtures/source_record_chain_guards.tellur"),
+            include_str!("../../tests/fixtures/source_record_chain_results.tellur"),
+            include_str!("../../tests/fixtures/source_record_chain_fault.tellur"),
             include_str!("../../tests/fixtures/source_borrowed_outcome_result_guards.tellur"),
             include_str!("../../tests/fixtures/source_borrowed_outcome_result_fault.tellur"),
             include_str!("../../tests/fixtures/source_borrowed_outcome_result_nested.tellur"),
@@ -461,6 +465,12 @@ mod tests {
                     "yield;yield;auto moved = move pending;",
                 ),
         ])
+        .chain([include_str!("../../tests/fixtures/source_record_chain_fault.tellur")
+            .replace("    yield;\n    yield;\n    delta await result", "    delta await result")
+            .replace("emit(\"stopped parent resumed\");", "yield;yield;")])
+        .chain([include_str!("../../tests/fixtures/source_record_chain_guards.tellur")
+            .replace("exit ready { borrow mutable deref input.inner.item };", "exit ready { input };")
+            .replace("borrow mutable deref value.text", "borrow mutable deref value.inner.item.text")])
         .chain([include_str!("../../tests/fixtures/source_borrowed_outcome_result_fault.tellur")
             .replace("    yield;\n    yield;\n    delta await result", "    delta await result")
             .replace("emit(\"stopped parent resumed\");", "yield;yield;")])

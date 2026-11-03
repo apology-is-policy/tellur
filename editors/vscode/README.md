@@ -1561,3 +1561,8 @@ Release 0.183 supports whole borrowed named-outcome results. Hover explains reta
 holder storage and the owning caller handling obligation, including empty alternatives.
 Diagnostics and repairs cover loans, public origins and unhandled outcomes; a fresh
 editor fixture executes the example natively. Deeper reference pointees remain gated.
+
+Release 0.184 supports record-only reference chains in spawned captures/results. Hover
+explains intermediate holders and supplier origins. Diagnostics catch premature holder
+and supplier reuse; imported contract changes invalidate callers. A fresh editor repairs
+both conflicts and runs the example natively. Deeper tagged nodes remain gated.

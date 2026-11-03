@@ -1,0 +1,39 @@
+struct view['a] {
+    ref mutable string text <- 'a;
+}
+struct link['holder, 'a] {
+    ref mutable view['a] item <- 'holder;
+}
+async control relay(link input) exits ready... {
+    yield;
+    exit ready { input };
+}
+async control lend(ref mutable link input) exits ready... {
+    yield;
+    exit ready { borrow mutable deref input.item };
+}
+async control startup() exits done {
+    mutable string owner = "before";
+    mutable view saved = view { borrow mutable owner };
+    link original = link { borrow mutable saved };
+    auto pending = spawn relay(move original);
+    yield;
+    yield;
+    delta await pending {
+        ready { auto received } => ready
+    }
+    [ready]: mutable link returned = move received;
+        auto child = spawn lend(borrow mutable returned);
+        delta await child {
+            ready { auto value } => delivered
+        }
+    [delivered]: deref value.text = "returned";
+        emit(value.text);
+        drop(returned);
+        drop(saved);
+        owner = "free";
+        exit done;
+}
+control main() exits done {
+    forward run startup();
+}

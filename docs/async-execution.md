@@ -3422,3 +3422,25 @@ Next audit: deeper reference pointees in source captures/results. Establish the 
 cold-task boundary for nested carrier references, then test holder chains and all supplied
 origins before changing admission. Anonymous contracts, reference-bearing collections and
 borrowed-handle wrappers remain separate; no new scheduling or ownership policy is implied.
+
+## Reference chains through records (E1e.19)
+
+Compiler 0.184 adds a separate bounded admission visitor for record-only reference
+chains. Its reference-bearing nodes must be records; existing direct-leaf aggregate
+profiles are unchanged. Shared/exclusive references and owned nested records can repeat,
+while active-type tracking rejects cycles. Reference-bearing tagged nodes, collections,
+anonymous contracts and task-handle wrappers are not admitted by this extension.
+
+Cold baseline evidence already established intermediate holder/supplier loans. Source
+checks now cover queued/running/completed/joined chains, selected shared origins and
+detached copies, exclusive moves and three-level ancestry, shared-outer restrictions,
+owned and whole borrowed results, repeated spawn/join, siblings, generic forwarding,
+public origin changes and local escape limits. Seven compiled original/expanded O0/O2
+models compare all fuel/quota cuts; real resources reside in backing records behind
+both owned and borrowed pointer carriers. Completed results, awaited parents and stopped
+siblings retire before the owning contingency. Production schedulers are unchanged.
+
+Next audit: reference-bearing option/closed-variant nodes in deeper reference chains.
+Establish cold and gated source baselines for active/empty alternatives and every holder
+edge, then prove selected origins, exclusive guards and resource retirement. Named-outcome
+nodes, anonymous contracts, collections and borrowed-handle wrappers remain separate.

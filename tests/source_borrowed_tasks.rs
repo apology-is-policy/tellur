@@ -159,13 +159,10 @@ fn reference_reborrows_moves_and_path_joins_preserve_authority() {
     );
 }
 #[test]
-fn borrowed_spawn_does_not_admit_temporary_carrier_or_result_references() {
-    for s in [
-        "struct view['a] {ref string text <- 'a;} struct nested['storage,'a] {ref view['a] value <- 'storage;} async control work(nested value) exits done {exit done;} async control caller(nested value) exits done {auto task=spawn work(value);await task;exit done;}",
-        "struct message {string text;constructor(string text){self.text=move text;}} async control work(ref message value) exits done {exit done;} async control caller() exits done {auto task=spawn work(borrow message(\"temporary\"));await task;exit done;}",
-    ] {
-        assert_eq!(compile(s, manifest()).unwrap_err().code, "E_ASYNC", "{s}");
-    }
+fn record_chains_are_admitted_but_temporary_captures_remain_gated() {
+    compile("struct view['a] {ref string text <- 'a;} struct nested['storage,'a] {ref view['a] value <- 'storage;} async control work(nested value) exits done {exit done;} async control caller(nested value) exits done {auto task=spawn work(value);await task;exit done;}", manifest()).unwrap();
+    let temporary = "struct message {string text;constructor(string text){self.text=move text;}} async control work(ref message value) exits done {exit done;} async control caller() exits done {auto task=spawn work(borrow message(\"temporary\"));await task;exit done;}";
+    assert_eq!(compile(temporary, manifest()).unwrap_err().code, "E_ASYNC");
 }
 #[test]
 fn sibling_fault_settles_direct_borrowers_without_nested_handlers() {

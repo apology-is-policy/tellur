@@ -283,15 +283,15 @@ fn whole_borrowed_record_fault_results_settle_before_owning_contingency() {
     }
 }
 #[test]
-fn whole_borrowed_results_keep_deeper_reference_limits() {
+fn whole_borrowed_record_chains_are_admitted_without_local_escape() {
     rejects(
         "struct view['a] {ref string text <- 'a;} async control escape(ref string input) exits ready... {view local=view {input};exit ready {borrow local};}",
         "E_LIFETIME",
     );
     for ty in ["indirect"] {
         let source = format!(
-            "struct view['a] {{ref string text <- 'a;}}variant choice['a] {{held {{ref string text <- 'a}},empty}}outcome reply['a] {{held {{ref string text <- 'a}},empty}}struct indirect['holder,'a] {{ref view['a] item <- 'holder;}}async control lend(ref {ty} input) exits ready {{ref {ty} value from input}} {{exit ready {{input}};}}async control caller(ref {ty} input) exits done {{auto child=spawn lend(input);await child;exit done;}}"
+            "struct view['a] {{ref string text <- 'a;}}variant choice['a] {{held {{ref string text <- 'a}},empty}}outcome reply['a] {{held {{ref string text <- 'a}},empty}}struct indirect['holder,'a] {{ref view['a] item <- 'holder;}}async control lend(ref {ty} input) exits ready {{ref {ty} value from input}} {{exit ready {{input}};}}async control caller(ref {ty} input) exits done {{auto child=spawn lend(input);delta await child {{ready {{auto value}}=>ready}}[ready]:exit done;}}"
         );
-        rejects(&source, "E_ASYNC");
+        compile(&source, manifest()).unwrap();
     }
 }

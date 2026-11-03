@@ -3,9 +3,9 @@
 [Language reference](../language-reference.md) · [Design and next steps](../async-execution.md) ·
 [Execution failures](execution-failures.md)
 
-Compiler 0.183 supports `async control`, synchronous entry with `run`, direct
+Compiler 0.184 supports `async control`, synchronous entry with `run`, direct
 `await`, cold tasks with owned and borrowed captures, and a bounded cooperative
-scheduler for `spawn` tasks with owned values, direct borrows and nested owned record/option/variant/named-outcome captures/results, plus borrowed record/option/variant/named-outcome captures and whole borrowed record/option/variant/named-outcome results. Source handoffs occur at `await` and `yield`.
+scheduler for `spawn` tasks with owned values, direct borrows and nested owned record/option/variant/named-outcome captures/results, plus borrowed record/option/variant/named-outcome captures and whole borrowed record/option/variant/named-outcome results, plus reference chains through records. Source handoffs occur at `await` and `yield`.
 Async host I/O, cancellation and LLVM coroutine lowering remain later work.
 
 ## Owned spawned children
@@ -55,7 +55,9 @@ The source profile accepts direct shared/exclusive borrows of existing reference
 storage, reference-free owned values, and nested owned records, options, closed variants and named outcomes whose reference leaves
 point to reference-free storage. Captures may also borrow record/option/closed-variant/named-outcome storage containing
 nested owned records/options/variants/named outcomes and direct reference leaves. Normal results use the owned/direct
-profile or a whole borrowed record/option/variant/named-outcome with declared storage and contained origins. Deeper reference pointees,
+profile or a whole borrowed record/option/variant/named-outcome with declared storage and contained origins.
+An additional profile admits reference chains whose reference-bearing nodes are all records.
+Reference-bearing tagged nodes in deeper chains,
 anonymous reference-bearing outcomes and
 reference-bearing collection payloads remain gated. Broader reference-bearing
 `defer` tasks keep their existing semantics. A spawned body may itself use such
@@ -414,7 +416,7 @@ while those permissions remain borrowed. See the [runnable example](../../playgr
 On an owning fault, borrowers retire before holder storage and external suppliers;
 completed unjoined results remain settlement obligations. Declared resource fault
 dispositions apply and stopped nested contingencies do not run. This admission does
-not extend to deeper reference-to-carrier chains. Whole borrowed results follow the rules below. Cold tasks retain their
+not extend to deeper reference chains containing reference-bearing tagged nodes. Whole borrowed results follow the rules below. Cold tasks retain their
 existing broader contracts; incomplete host origin evidence remains conservative.
 
 ## Borrowed option and variant captures
@@ -452,8 +454,8 @@ use an explicit shared/exclusive field borrow for the delta, rather than moving 
 through the reference. See [borrowed tagged tasks](../../playground/borrowed_tagged_spawn.tellur).
 
 The same fault dispositions and borrower-before-holder settlement apply to resources
-inside tagged holders. Stopped nested handlers do not run. Deeper reference-to-carrier
-leaves remain gated; their cold-task contracts are
+inside tagged holders. Stopped nested handlers do not run. Deeper reference chains through reference-bearing tagged
+nodes remain gated; their cold-task contracts are
 unchanged. Named outcomes also follow the handling rules below.
 
 ## Borrowed named outcome captures
@@ -495,7 +497,7 @@ wrapper remains rejected. Borrowing does not erase nominal identity or permit co
 an owned resource through a reference. See the [runnable example](../../playground/borrowed_outcome_spawn.tellur).
 On an owning fault, declared resource dispositions settle borrowed outcome storage and
 stopped children before contingency; nested stopped handlers do not run. Anonymous
-reference-bearing contracts and deeper reference pointees retain their existing limits.
+reference-bearing contracts and reference-bearing tagged nodes in deeper chains retain their existing limits.
 
 ## Whole borrowed record results
 
@@ -545,7 +547,7 @@ See the [runnable example](../../playground/borrowed_record_spawn_results.tellur
 
 Fault settlement retires completed whole-record borrowers before retained holder owners
 and external suppliers, applying resource dispositions before the owning contingency.
-Stopped nested handlers do not run. Deeper reference pointees, reference-bearing collections and anonymous contracts remain
+Stopped nested handlers do not run. Reference-bearing tagged nodes in deeper chains, reference-bearing collections and anonymous contracts remain
 separate admission work. No source handoff or fault-boundary policy changes are implied.
 
 ## Whole borrowed option and variant results
@@ -590,7 +592,7 @@ escapes remain invalid. See the [runnable example](../../playground/borrowed_tag
 
 Completed/unjoined whole tagged references and stopped children retire before holder
 resources and external suppliers. Declared resource dispositions run before the owning
-contingency; stopped nested handlers do not run. Deeper reference pointees, reference-bearing collections and borrowed-handle
+contingency; stopped nested handlers do not run. Reference-bearing tagged nodes in deeper chains, reference-bearing collections and borrowed-handle
 wrappers remain separate. Source handoffs still occur only at explicit `await`/`yield`.
 
 ## Whole borrowed named-outcome results
@@ -635,9 +637,56 @@ identity and child-local storage escape checks still apply. See the
 [runnable example](../../playground/borrowed_outcome_spawn_results.tellur).
 Completed and joined borrowers retire before outcome-holder resources and their external
 suppliers on an owning fault. Declared resource dispositions run before the owning
-contingency; stopped nested handlers do not run. Deeper reference pointees, anonymous
+contingency; stopped nested handlers do not run. Reference-bearing tagged nodes in deeper chains, anonymous
 reference-bearing contracts, reference-bearing collections and borrowed-handle wrappers
 remain separate. Source handoffs still occur only at explicit `await`/`yield`.
+
+## Reference chains through records
+
+Source tasks may capture and return record values or whole record references whose
+reference-bearing nodes are records. Record fields can own further records or hold
+shared/exclusive references to them. Reference-free contents remain allowed. This
+extends the previous direct-leaf profile; reference-bearing options, variants and
+outcomes inside these deeper chains remain a separate admission boundary.
+
+<!-- tellur:check -->
+```tellur
+struct view['a] { ref mutable string text <- 'a; }
+struct link['holder, 'a] { ref mutable view['a] item <- 'holder; }
+async control lend(ref mutable link input)
+    exits ready { ref mutable view[input['a]] value from input['holder] }
+{
+    yield;
+    exit ready { borrow mutable deref input.item };
+}
+async control startup() exits done {
+    mutable string owner = "before";
+    mutable view saved = view { borrow mutable owner };
+    mutable link middle = link { borrow mutable saved };
+    auto child = spawn lend(borrow mutable middle);
+    delta await child { ready { auto value } => ready }
+    [ready]: deref value.text = "after"; emit(value.text);
+        drop(middle); drop(saved); owner = "free"; exit done;
+}
+control main() exits done { forward run startup(); }
+```
+
+The task retains each intermediate holder and its supplied origins while queued,
+running or completed but unjoined. Joining adopts the selected result dependencies;
+unused suppliers may be released under ordinary final-use rules. A detached shared
+Copy leaf can outlive its former holder. An exclusive detached reborrow keeps its
+holder guards and every mutable ancestor until final use. Returning a record that
+contains references does not erase those dependencies, even through another spawn/join.
+Shared outer authority never grants writes through exclusive inner fields.
+
+Public result contracts distinguish holder-storage groups from contained supplier
+groups. Generic forwarding, nominal types and child-local escape checks remain unchanged.
+See the [runnable example](../../playground/record_chain_spawn.tellur).
+On an owning fault, completed result borrows and stopped work retire before resources
+in their backing records. Only the owning contingency runs after declared resource
+dispositions; stopped nested handlers remain suppressed. Anonymous reference-bearing
+contracts, reference-bearing collections and borrowed-handle wrappers remain gated.
+There are still no implicit source handoffs or escaping task handles.
 
 ## Parent awaits beside children
 

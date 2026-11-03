@@ -4708,3 +4708,19 @@ holders while completed references, awaited parents and stopped siblings retire 
 the owning contingency. The 65-variant reference census checks context retirement.
 Existing cold task evidence remains baseline. No production scheduler changes accompany
 this bounded result admission.
+
+## Record-only source reference chains (0.184)
+
+`source_record_chains` exercises shared/exclusive references through records, every
+intermediate holder and supplier loan, queued/running/completed phases, selected result
+origins, Copy/move and detached guards, whole and owned results, repeated spawn/join,
+siblings, generic forwarding, local escapes and the still-gated tagged-node boundary.
+Imported public origins and fresh editor repair/native execution retain both storage
+and contained permissions. Superseded record-pointee gates now assert admission.
+
+Seven `compiled_source_record_chains_*` models compare original/expanded O0/O2 executions
+at every fuel cutoff and quota partition. Real resources in backing records exercise
+owned and borrowed chain captures, completed references, awaited owners and stopped
+siblings. The reference context census covers 71 variants, including whole-chain results
+and joined/unjoined faults. Production scheduler behavior and conservative host evidence
+rules are unchanged; cold carrier/result evidence remains the baseline.

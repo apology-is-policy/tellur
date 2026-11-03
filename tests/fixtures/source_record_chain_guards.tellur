@@ -1,0 +1,40 @@
+struct view['a] {
+    ref mutable string text <- 'a;
+}
+struct link['holder, 'a] {
+    ref mutable view['a] item <- 'holder;
+}
+struct root['link, 'holder, 'a] {
+    ref mutable link['holder, 'a] inner <- 'link;
+}
+async control lend(ref mutable root input) exits ready... {
+    yield;
+    exit ready { borrow mutable deref input.inner.item };
+}
+async control startup() exits done {
+    mutable string owner = "before";
+    mutable view saved = view { borrow mutable owner };
+    mutable link middle = link { borrow mutable saved };
+    mutable root outer = root { borrow mutable middle };
+    ref mutable root carrier = borrow mutable outer;
+    auto pending = spawn lend(carrier);
+    yield;
+    yield;
+    auto moved = move pending;
+    delta await moved {
+        ready { auto value } => ready
+    }
+    [ready]:
+        ref mutable string detached = borrow mutable deref value.text;
+        deref detached = "after";
+        emit(detached);
+        drop(outer);
+        drop(middle);
+        drop(saved);
+        owner = "available";
+        emit(borrow owner);
+        exit done;
+}
+control main() exits done {
+    forward run startup();
+}

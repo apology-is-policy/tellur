@@ -1,0 +1,59 @@
+struct view<t>['a] {
+    ref t text <- 'a;
+}
+struct pair<t>['left_holder, 'a, 'right_holder, 'b] {
+    ref view<t>['a] left <- 'left_holder;
+    ref view<t>['b] right <- 'right_holder;
+}
+async control choose<t>(pair<t> input, bool left)
+    exits left { ref view<t>[input['a]] value from input['left_holder] },
+    right { ref view<t>[input['b]] value from input['right_holder] }
+{
+    yield;
+    delta left {
+        true => left,
+        false => right
+    }
+    [left]: exit left { input.left };
+    [right]: exit right { input.right };
+}
+async control select(bool left_choice) exits done {
+    mutable string left = "left";
+    mutable string right = "right";
+    view<string> first = view<string> { borrow left };
+    view<string> second = view<string> { borrow right };
+    pair<string> links = pair<string> { borrow first, borrow second };
+    auto pending = spawn choose<string>(links, left_choice);
+    yield;
+    yield;
+    auto moved = move pending;
+    delta await moved {
+        left { auto a } => left_result,
+        right { auto b } => right_result
+    }
+    [left_result]: drop(second);
+        right = "free";
+        auto copy = move a;
+        ref string detached = copy.text;
+        drop(first);
+        emit(detached);
+        left = "free";
+        exit done;
+    [right_result]: drop(first);
+        left = "free";
+        emit(b.text);
+        drop(second);
+        right = "free";
+        exit done;
+}
+async control startup() exits done {
+    await select(true);
+    await select(false);
+    exit done;
+}
+outcome program_result {
+    @exit 0 done
+}
+control main() exits program_result {
+    forward run startup();
+}

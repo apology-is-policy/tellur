@@ -1,6 +1,61 @@
 //! Differential source execution using the exact production emitter and scheduler.
 use super::*;
 #[test]
+fn compiled_source_record_chains_values() {
+    compare(
+        "record_chains_values",
+        include_str!("../../playground/record_chain_spawn.tellur"),
+    );
+}
+#[test]
+fn compiled_source_record_chains_guards() {
+    compare(
+        "record_chains_guards",
+        include_str!("../../tests/fixtures/source_record_chain_guards.tellur"),
+    );
+}
+#[test]
+fn compiled_source_record_chains_owned_results() {
+    compare(
+        "record_chains_owned_results",
+        include_str!("../../tests/fixtures/source_record_chain_results.tellur"),
+    );
+}
+#[test]
+fn compiled_source_record_chains_fault() {
+    compare(
+        "record_chains_fault",
+        include_str!("../../tests/fixtures/source_record_chain_fault.tellur"),
+    );
+}
+#[test]
+fn compiled_source_record_chains_whole_results() {
+    let source = include_str!("../../tests/fixtures/source_record_chain_guards.tellur")
+        .replace(
+            "exit ready { borrow mutable deref input.inner.item };",
+            "exit ready { input };",
+        )
+        .replace(
+            "borrow mutable deref value.text",
+            "borrow mutable deref value.inner.item.text",
+        );
+    compare("record_chains_whole_results", &source);
+}
+#[test]
+fn compiled_source_record_chains_joined_fault() {
+    let source = include_str!("../../tests/fixtures/source_record_chain_fault.tellur")
+        .replace(
+            "    yield;\n    yield;\n    delta await result",
+            "    delta await result",
+        )
+        .replace("emit(\"stopped parent resumed\");", "yield;yield;");
+    compare("record_chains_joined_fault", &source);
+}
+#[test]
+fn compiled_source_record_chains_resources() {
+    source_resources(SourceResources::RecordChains);
+}
+#[test]
 fn compiled_source_borrowed_outcome_results_nested_outcomes() {
     compare(
         "borrowed_outcome_result_nested",
@@ -735,6 +790,7 @@ enum SourceResources {
     BorrowedTaggedResults,
     BorrowedOutcomeResults,
     BorrowedRecordResults,
+    RecordChains,
     BorrowedResult,
 }
 fn source_resources(mode: SourceResources) {
@@ -755,6 +811,7 @@ fn source_resources(mode: SourceResources) {
             | SourceResources::BorrowedTaggedResults
             | SourceResources::BorrowedOutcomeResults
             | SourceResources::BorrowedRecordResults
+            | SourceResources::RecordChains
             | SourceResources::BorrowedResult
     );
     let inline_helper = matches!(mode, SourceResources::InlineHelper);
@@ -980,7 +1037,9 @@ async control helper_work(ref counter local,string path) exits done {{
     };
     let source = if matches!(
         mode,
-        SourceResources::BorrowedRecords | SourceResources::BorrowedRecordResults
+        SourceResources::BorrowedRecords
+            | SourceResources::BorrowedRecordResults
+            | SourceResources::RecordChains
     ) {
         source.replace("async control sibling(counter value) exits done {", "struct worker_leaf['parent] {ref counter parent <- 'parent;counter value;} struct worker_input['parent] {worker_leaf['parent] nested;}\nasync control sibling(ref worker_input input) exits done {")
             .replace("fault boundary {inspect(borrow value);yield;yield;yield;yield;close(value);}", "inspect(input.nested.parent);inspect(borrow input.nested.value);fault boundary {yield;yield;yield;yield;}")
@@ -1051,7 +1110,10 @@ control main(string path,bool stop) exits done {
     } else {
         source
     };
-    let source = if matches!(mode, SourceResources::BorrowedRecordResults) {
+    let source = if matches!(
+        mode,
+        SourceResources::BorrowedRecordResults | SourceResources::RecordChains
+    ) {
         let source=source.replace("produce(counter value,ref counter parent) exits ready {counter result,ref counter retained from parent} {exit ready {value,parent};}",
             "produce(ref produced input) exits ready {ref produced result from input} {exit ready {input};}")
             .replace("auto result=spawn produce(first,parent);", "produced result_holder=produced {first,parent};auto result=spawn produce(borrow result_holder);")
@@ -1092,6 +1154,22 @@ control main(string path,bool stop) exits done {
         assert!(changed.contains("outcome produced['parent]"));
         assert!(changed.contains("spawn produce(borrow result_holder)"));
         changed
+    } else {
+        source
+    };
+    let source = if matches!(mode, SourceResources::RecordChains) {
+        let changed=source.replace("produce(ref produced input) exits ready {ref produced result from input} {exit ready {input};}",
+            "produce(produced_link input) exits ready {ref produced[input['parent]] result from input['holder]} {exit ready {input.item};}")
+            .replace("spawn produce(borrow result_holder)", "spawn produce(produced_link {borrow result_holder})")
+            .replace("struct worker_input['parent] {worker_leaf['parent] nested;}", "struct worker_input['holder,'parent] {ref worker_leaf['parent] nested <- 'holder;}")
+            .replace("worker_input holder=worker_input {worker_leaf {parent,second}};", "worker_leaf worker_backing=worker_leaf {parent,second};worker_input holder=worker_input {borrow worker_backing};")
+            .replace("close(holder.nested.value);", "close(worker_backing.value);");
+        assert_ne!(changed, source);
+        assert!(changed.contains("spawn produce(produced_link {borrow result_holder})"));
+        assert!(changed.contains("ref worker_leaf['parent] nested"));
+        format!(
+            "struct produced_link['holder,'parent] {{ref produced['parent] item <- 'holder;}}\n{changed}"
+        )
     } else {
         source
     };

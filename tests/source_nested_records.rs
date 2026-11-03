@@ -215,7 +215,7 @@ control main() exits done {forward run startup();}
     assert_eq!(compile(&bad, manifest()).unwrap_err().code, "E_MOVED");
 }
 #[test]
-fn recursion_does_not_admit_borrowed_or_collection_carriers() {
+fn record_reference_recursion_is_admitted_while_collections_keep_origin_limits() {
     for ty in ["ref leaf", "vector<ref string>"] {
         let source = format!(
             "struct leaf['a] {{ref string text <- 'a;}}struct inner['a] {{{ty} value;}}struct outer['a] {{inner['a] value;}}async control work(outer input) exits done {{exit done;}}async control start(outer input) exits done {{auto child=spawn work(input);await child;exit done;}}"
@@ -235,7 +235,8 @@ fn recursion_does_not_admit_borrowed_or_collection_carriers() {
             "E_ORIGIN"
         } else {
             compile(&source.replace("spawn ", "defer "), manifest()).unwrap();
-            "E_ASYNC"
+            compile(&source, manifest()).unwrap();
+            continue;
         };
         assert_eq!(
             compile(&source, manifest()).unwrap_err().code,

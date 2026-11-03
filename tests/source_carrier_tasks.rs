@@ -219,16 +219,12 @@ control main() exits done {forward run startup();}
 }
 
 #[test]
-fn indirect_carriers_remain_outside_spawn_profile() {
+fn record_reference_chains_are_admitted_but_borrowed_handle_wrappers_stay_gated() {
     for ty in ["indirect"] {
         let source = format!(
             "struct view['a] {{ref string text <- 'a;}} struct nested['a] {{view['a] value;}} struct indirect['storage,'a] {{ref view['a] value <- 'storage;}} async control work({ty} input) exits done {{exit done;}} async control caller({ty} input) exits done {{auto child=spawn work(input);await child;exit done;}}"
         );
-        assert_eq!(
-            compile(&source, manifest()).unwrap_err().code,
-            "E_ASYNC",
-            "{ty}"
-        );
+        compile(&source, manifest()).unwrap();
     }
     let wrapped=SOURCE.replace("auto moved = move selected;","auto wrapped=some {selected};delta wrapped {some {auto moved}=>ready,none=>empty} [empty]:exit done;[ready]:");
     assert_eq!(
