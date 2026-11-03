@@ -561,3 +561,154 @@ fn incoming_transport_never_repairs_missing_foreign_or_mismatched_metadata() {
     let stale = inherit_checked(&values, complete);
     assert!(matches!(evidence(&stale).origins, Origins::Unavailable(_)));
 }
+
+fn guarded_fixture() -> (Frames, super::super::Frame, V, Vec<Origin>) {
+    let mut values = Frames::default();
+    let frame = values.enter(5).unwrap();
+    let b = frame.base();
+    values[b] = Some(record("pair", vec![V::U32(1), V::U32(2)]));
+    values[b + 1] = Some(V::U32(3));
+    let formed = |values: &Frames, root, ty| {
+        let mut v = reference(values, root, &[], false, ty).unwrap();
+        let V::Reference { evidence, .. } = &mut v else {
+            unreachable!()
+        };
+        evidence.origins = Origins::Complete(vec![]);
+        v
+    };
+    let leaf = formed(&values, b, "&mutable pair");
+    let sibling = formed(&values, b + 1, "&U32");
+    values[b + 2] = Some(record("view", vec![leaf.clone(), sibling]));
+    values[b + 3] = Some(formed(&values, b + 2, "&mutable view"));
+    values[b + 4] = Some(leaf);
+    let selected = reference(&values, b + 4, &[0], true, "&U32").unwrap();
+    let origins = vec![
+        origin(b + 4, &[], true, false),
+        origin(b + 3, &[0], true, true),
+        origin(b + 3, &[], true, false),
+        origin(b + 3, &[], true, true),
+    ];
+    (values, frame, selected, origins)
+}
+#[test]
+fn guarded_input_attachment_retains_hidden_owners_and_never_promotes_partial_evidence() {
+    for partial in 0..5 {
+        let (mut values, frame, mut selected, origins) = guarded_fixture();
+        let b = frame.base();
+        let downgrade = |v: &mut V| {
+            let V::Reference { evidence, .. } = v else {
+                unreachable!()
+            };
+            evidence.origins = Origins::Partial(vec![]);
+        };
+        match partial {
+            1 => downgrade(&mut selected),
+            2 => downgrade(values[b + 4].as_mut().unwrap()),
+            3 => downgrade(values[b + 3].as_mut().unwrap()),
+            4 => {
+                let V::Construct { fields, .. } = values[b + 2].as_mut().unwrap() else {
+                    unreachable!()
+                };
+                downgrade(&mut fields[1]);
+            }
+            _ => {}
+        }
+        let before = format!("{:?}", &*values);
+        let attached = attach_guarded_input(&values, selected, &origins, b + 4, b + 3, &[0]);
+        assert_eq!(before, format!("{:?}", &*values));
+        let result = &evidence(&attached).origins;
+        assert_eq!(result.is_complete(), partial == 0, "{result:?}");
+        let (Origins::Complete(entries) | Origins::Partial(entries)) = result else {
+            panic!("{result:?}")
+        };
+        assert!(
+            entries
+                .iter()
+                .any(|o| values.require_storage(&o.place.storage).unwrap() == b + 1)
+        );
+        assert!(entries.iter().any(
+            |o| values.require_storage(&o.place.storage).unwrap() == b + 2
+                && o.guard
+                && o.opaque
+                && o.place.fields.is_empty()
+        ));
+    }
+}
+#[test]
+fn guarded_input_attachment_rejects_unrelated_missing_and_weakened_proofs_atomically() {
+    for mutation in 0..11 {
+        let (mut values, frame, mut selected, mut origins) = guarded_fixture();
+        let b = frame.base();
+        let mut path = &[0][..];
+        match mutation {
+            0 => {
+                let V::Reference { evidence, .. } = values[b + 4].as_mut().unwrap() else {
+                    unreachable!()
+                };
+                evidence.target = None;
+            }
+            1 => {
+                let V::Reference { evidence, .. } = values[b + 3].as_mut().unwrap() else {
+                    unreachable!()
+                };
+                evidence.target = None;
+            }
+            2 => selected = reference(&values, b + 1, &[], false, "&U32").unwrap(),
+            3 => {
+                let V::Construct { fields, .. } = values[b + 2].as_mut().unwrap() else {
+                    unreachable!()
+                };
+                fields.swap(0, 1);
+            }
+            4 => path = &[1],
+            5 => {
+                origins.pop();
+            }
+            6 => origins[1].opaque = false,
+            8 => {
+                let mut foreign = Frames::default();
+                let f = foreign.enter(1).unwrap();
+                let V::Reference { evidence, .. } = &mut selected else {
+                    unreachable!()
+                };
+                evidence.origins = Origins::Complete(vec![BoundOrigin {
+                    place: StoragePlace {
+                        storage: foreign.storage_at(f.base()).unwrap(),
+                        fields: vec![],
+                    },
+                    guard: false,
+                    opaque: false,
+                }]);
+            }
+            9 => {
+                let V::Reference { evidence, .. } = &mut selected else {
+                    unreachable!()
+                };
+                evidence.target = None;
+            }
+            10 => {
+                let V::Construct { fields, .. } = values[b + 2].as_mut().unwrap() else {
+                    unreachable!()
+                };
+                let V::Reference { ty, .. } = &mut fields[0] else {
+                    unreachable!()
+                };
+                *ty = "&pair".into();
+            }
+            _ => {
+                let V::Reference { ty, .. } = values[b + 3].as_mut().unwrap() else {
+                    unreachable!()
+                };
+                *ty = "&view".into();
+            }
+        }
+        let before = format!("{:?}", &*values);
+        let attached = attach_guarded_input(&values, selected, &origins, b + 4, b + 3, path);
+        assert!(
+            matches!(evidence(&attached).origins, Origins::Unavailable(_)),
+            "{mutation}: {:?}",
+            evidence(&attached)
+        );
+        assert_eq!(before, format!("{:?}", &*values));
+    }
+}

@@ -78,12 +78,108 @@ impl Verifier<'_> {
             }
         }
     }
+    fn guarded_input(
+        &self,
+        value: &Expr,
+        leaf: Id,
+        holder: &Place,
+        origins: &[ReferenceOrigin],
+    ) -> Result<()> {
+        let m = self.program.manifest();
+        let Expr::Reference(target, _) = value else {
+            return Err(error("guarded input requires a reborrow"));
+        };
+        if !target.indirect
+            || target.root != leaf
+            || !holder.indirect
+            || holder.fields.is_empty()
+            || holder.fields.len() > 4096
+        {
+            return Err(error("invalid guarded input relationship"));
+        }
+        let Some((true, inner)) = crate::manifest::reference_inner(self.slot(leaf)?) else {
+            return Err(error("guarded input requires an exclusive original leaf"));
+        };
+        if m.contains_references(inner) {
+            return Err(error("guarded input excludes nested reference contents"));
+        }
+        let Some((true, mut field_ty)) = crate::manifest::reference_inner(self.slot(holder.root)?)
+        else {
+            return Err(error(
+                "guarded input requires an exclusive aggregate holder",
+            ));
+        };
+        if !local_carrier_shape(m, field_ty) {
+            return Err(error("unsupported guarded input holder shape"));
+        }
+        for index in &holder.fields {
+            let Some(TypeDef::Record { fields, .. }) = m.type_def(field_ty) else {
+                return Err(error("guarded input requires an ordinary record path"));
+            };
+            field_ty = &fields
+                .get(*index)
+                .ok_or_else(|| error("invalid guarded input field"))?
+                .ty;
+        }
+        same(field_ty, self.slot(leaf)?)?;
+        // Expansion can replace entry parameters with local slots. The original
+        // Incoming materialization must still independently identify this field.
+        if !self.region.code.iter().any(|i| {
+            matches!(&i.action,
+            Action::Bind(id, Expr::WithReferenceEvidence(v, ReferenceEvidence::Incoming))
+            if *id == leaf && matches!(v.as_ref(), Expr::Place(p) if p == holder))
+        }) {
+            return Err(error(
+                "guarded input lacks its original field materialization",
+            ));
+        }
+        let broad = Place {
+            fields: vec![],
+            ..holder.clone()
+        };
+        let original = Place {
+            root: leaf,
+            fields: vec![],
+            indirect: true,
+        };
+        let has = |place: &Place, guard| {
+            origins
+                .iter()
+                .any(|o| o.place == *place && o.guard == guard && o.opaque == guard)
+        };
+        if !has(&original, false)
+            || !has(holder, true)
+            || !has(&broad, false)
+            || !has(&broad, true)
+            || origins
+                .iter()
+                .any(|o| o.guard && o.place != *holder && o.place != broad)
+        {
+            return Err(error(
+                "guarded input lacks exact field and broad holder coverage",
+            ));
+        }
+        let cost = origins.iter().try_fold(1 + holder.fields.len(), |n, o| {
+            n.checked_add(1 + o.place.fields.len())
+        });
+        if cost.is_none_or(|n| n > 4096) {
+            return Err(error("guarded input evidence limit exceeded"));
+        }
+        Ok(())
+    }
     fn expr(&self, e: &Expr) -> Result<String> {
         let m = self.program.manifest();
         Ok(match e {
             Expr::WithReferenceEvidence(value, evidence) => {
                 let origins = evidence.origins();
                 let ty = self.expr(value)?;
+                let input_holder =
+                    if let ReferenceEvidence::GuardedInput { leaf, holder, .. } = evidence {
+                        self.guarded_input(value, *leaf, holder, origins)?;
+                        Some(holder)
+                    } else {
+                        None
+                    };
                 if crate::manifest::reference_inner(&ty).is_none() {
                     return Err(error("reference evidence requires a reference value"));
                 }
@@ -153,14 +249,15 @@ impl Verifier<'_> {
                                 "complete guarded evidence requires a fresh local reference",
                             ));
                         };
-                        if target.indirect
-                            || !origins.iter().any(|o| {
-                                !o.guard
-                                    && !o.opaque
-                                    && !o.place.indirect
-                                    && o.place.root == target.root
-                                    && target.fields.starts_with(&o.place.fields)
-                            })
+                        if input_holder.is_none()
+                            && (target.indirect
+                                || !origins.iter().any(|o| {
+                                    !o.guard
+                                        && !o.opaque
+                                        && !o.place.indirect
+                                        && o.place.root == target.root
+                                        && target.fields.starts_with(&o.place.fields)
+                                }))
                         {
                             return Err(error(
                                 "complete guarded evidence lacks its local pointee origin",
@@ -172,11 +269,22 @@ impl Verifier<'_> {
                         let contains_refs = m.contains_references(&origin_ty);
                         let local_guard = origin.guard
                             && origin.opaque
-                            && !origin.place.indirect
+                            && (!origin.place.indirect
+                                || input_holder.is_some_and(|h| {
+                                    origin.place == *h
+                                        || (origin.place.root == h.root
+                                            && origin.place.indirect
+                                            && origin.place.fields.is_empty())
+                                }))
                             && contains_refs;
                         let guarded_ancestor = !origin.guard
                             && !origin.opaque
-                            && !origin.place.indirect
+                            && (!origin.place.indirect
+                                || input_holder.is_some_and(|h| {
+                                    origin.place.root == h.root
+                                        && origin.place.indirect
+                                        && origin.place.fields.is_empty()
+                                }))
                             && contains_refs
                             && origins
                                 .iter()
@@ -1486,5 +1594,71 @@ control main() exits done {
         let mut p = crate::compile("region main() exits Done { [Entry]: exit Done; }", m).unwrap();
         p.regions.get_mut("main").unwrap().code[0].guard = Guard::Atom(999);
         assert_eq!(p.verify().unwrap_err().code, "E_IR");
+    }
+    #[test]
+    fn guarded_input_structure_requires_original_materialization_and_whole_holder() {
+        let original = crate::compile(
+            include_str!("../playground/guarded_input_tasks.tellur"),
+            crate::manifest::Manifest::from_json(include_str!("../playground/manifest.json"))
+                .unwrap(),
+        )
+        .unwrap();
+        for mutation in 0..7 {
+            let mut p = original.clone();
+            let region = p.regions.get_mut("inspect").unwrap();
+            let (value, evidence) = region
+                .code
+                .iter_mut()
+                .find_map(|i| match &mut i.action {
+                    Action::Decide {
+                        operation: Operation::Defer(_),
+                        args,
+                        ..
+                    } => match &mut args[0] {
+                        Expr::WithReferenceEvidence(
+                            v,
+                            e @ ReferenceEvidence::GuardedInput { .. },
+                        ) => Some((v, e)),
+                        _ => None,
+                    },
+                    _ => None,
+                })
+                .unwrap();
+            let ReferenceEvidence::GuardedInput {
+                origins,
+                leaf,
+                holder,
+            } = evidence
+            else {
+                unreachable!()
+            };
+            let original_leaf = *leaf;
+            match mutation {
+                0 => holder.fields[0] = 1,
+                1 => *leaf = holder.root,
+                2 => origins.retain(|o| !(o.guard && o.place.fields.is_empty())),
+                3 => *evidence = ReferenceEvidence::Complete(origins.clone()),
+                4 => {
+                    **value = Expr::Place(Place {
+                        root: *leaf,
+                        fields: vec![],
+                        indirect: false,
+                    })
+                }
+                5 => holder.fields = vec![0; 4097],
+                _ => {}
+            }
+            if mutation == 6 {
+                for i in &mut region.code {
+                    if let Action::Bind(id, Expr::WithReferenceEvidence(_, e)) = &mut i.action
+                        && *id == original_leaf
+                        && matches!(e, ReferenceEvidence::Incoming)
+                    {
+                        *e = ReferenceEvidence::Partial(vec![]);
+                    }
+                }
+            }
+            assert_eq!(p.verify().unwrap_err().code, "E_IR", "mutation {mutation}");
+        }
     }
 }

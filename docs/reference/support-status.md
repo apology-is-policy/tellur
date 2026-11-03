@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.158.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.159.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -277,3 +277,10 @@ including stored owners outside a detached leaf's reachable graph. Formation ide
 liveness and bounded traversal are checked without changing source values. This internal
 prerequisite does not relax compiler admission of exclusive input or indirect holder guards.
 See [holder snapshots](../async-execution.md#bounded-native-holder-snapshots-e1d2d3s13).
+
+Since 0.159, supported singleton exclusive input leaves can retain complete dependencies
+through direct and local aliased reborrows. The proof explicitly relates the original input
+leaf to its actual borrowed aggregate and retains every stored owner plus broad holder guards.
+Runtime formation checks and partial evidence remain mandatory. Shared copies remain
+holder-free; whole incoming carriers and unsupported permission/ancestry cases stay
+conservative. See [checked input holders](../async-execution.md#checked-exclusive-input-holders-e1d2d3s14).

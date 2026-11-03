@@ -1,0 +1,46 @@
+// Exclusive input leaves retain the actual holder and all its stored owners.
+struct text_pair {
+    string left;
+    string right;
+}
+struct text_view['values, 'other] {
+    ref mutable text_pair values <- 'values;
+    ref string other <- 'other;
+}
+async control leaf(ref string input) exits ready { ref string text from input } {
+    exit ready { input };
+}
+async control inspect(ref mutable text_view input) exits done {
+    auto first = defer leaf(borrow input.values.left);
+    delta await first {
+        ready { auto left } => first_ready
+    }
+    [first_ready]: emit(left);
+    [entry]:
+        ref mutable text_pair alias = borrow mutable deref input.values;
+        auto second = defer leaf(borrow alias.right);
+        delta await second {
+            ready { auto right } => second_ready
+        }
+    [second_ready]: emit(right);
+    [entry]: exit done;
+}
+async control startup() exits done {
+    mutable text_pair owner = text_pair { "left", "right" };
+    mutable string other = "retained owner";
+    mutable text_view saved = text_view { borrow mutable owner, borrow other };
+    auto pending = defer inspect(borrow mutable saved);
+    await pending;
+    drop(saved);
+    owner.right = "released";
+    other = "also released";
+    emit(borrow owner.right);
+    emit(borrow other);
+    exit done;
+}
+outcome command_result {
+    @exit 0 done
+}
+control main() exits command_result {
+    forward run startup();
+}

@@ -356,20 +356,30 @@ fn incoming_shared_leaf_blocks_broad_pointee_but_does_not_retain_copied_holder()
 }
 
 #[test]
-fn retained_holder_snapshot_covers_owners_outside_a_detached_leaf_graph() {
+fn checked_input_attachment_covers_owners_outside_a_detached_leaf_graph() {
+    static INPUT_PARENT: Control = Control { slots: 6, ..PARENT };
     for complete in [true, false] {
         for state in 0..3 {
             let mut h = host();
             let mut c = Contexts::new(&mut h);
             let root = c
-                .start(&PARENT, vec![V::U32(7), V::U32(8), V::Unit, V::U32(0)])
+                .start(
+                    &INPUT_PARENT,
+                    vec![V::U32(7), V::U32(8), V::Unit, V::U32(0)],
+                )
                 .unwrap();
             let b = c.parked[&root.id].machine.stack[0].base();
             let leaf = |c: &Contexts<'_>, offset, complete| {
                 attach_checked(
                     &c.values,
-                    super::super::super::reference(&c.values, b + offset, &[], false, "&U32")
-                        .unwrap(),
+                    super::super::super::reference(
+                        &c.values,
+                        b + offset,
+                        &[],
+                        false,
+                        "&mutable U32",
+                    )
+                    .unwrap(),
                     &[origin(b + offset, &[])],
                     complete,
                     true,
@@ -381,7 +391,8 @@ fn retained_holder_snapshot_covers_owners_outside_a_detached_leaf_graph() {
                 vec![detached.clone(), leaf(&c, 1, complete)],
             ));
             let mut holder =
-                super::super::super::reference(&c.values, b + 2, &[], false, "&holder").unwrap();
+                super::super::super::reference(&c.values, b + 2, &[], false, "&mutable holder")
+                    .unwrap();
             let V::Reference { evidence, .. } = &mut holder else {
                 unreachable!()
             };
@@ -390,11 +401,30 @@ fn retained_holder_snapshot_covers_owners_outside_a_detached_leaf_graph() {
             let retained = Dependencies::holder_origins(&c.values, &holder);
             assert_eq!(retained.is_complete(), complete);
             assert_eq!(snapshot(&c), before);
-            let mut guarded = detached;
-            let V::Reference { evidence, .. } = &mut guarded else {
-                unreachable!()
+            c.values[b + 4] = Some(detached.clone());
+            c.values[b + 5] = Some(holder);
+            let incoming_origin = |root, fields, guard| Origin {
+                root,
+                fields,
+                indirect: true,
+                guard,
+                opaque: guard,
             };
-            evidence.origins.extend(retained);
+            let before = snapshot(&c);
+            let guarded = super::super::reference_evidence::attach_guarded_input(
+                &c.values,
+                detached,
+                &[
+                    incoming_origin(b + 4, &[], false),
+                    incoming_origin(b + 5, &[0], true),
+                    incoming_origin(b + 5, &[], false),
+                    incoming_origin(b + 5, &[], true),
+                ],
+                b + 4,
+                b + 5,
+                &[0],
+            );
+            assert_eq!(snapshot(&c), before);
             let child = c.start_child(&root, &CHILD, vec![guarded]).unwrap();
             if complete {
                 let Dependencies::Complete {

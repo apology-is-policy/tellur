@@ -229,6 +229,40 @@ fn compiled_incoming_shared_leaves_preserve_complete_capture_and_delivery() {
     );
 }
 
+#[test]
+fn compiled_guarded_input_captures_keep_complete_holders_and_partial_callers() {
+    let input = include_str!("../../playground/guarded_input_tasks.tellur");
+    let transitions = &[
+        "Local",
+        "Effect",
+        "Run",
+        "Defer",
+        "AwaitTask",
+        "Return",
+        "Delivery",
+    ];
+    let observed = compare_selection("guarded-input", input, &[], transitions);
+    let partial = compare_selection("guarded-input-partial", input, &[], transitions);
+    let p = crate::compile(
+        input,
+        crate::manifest::Manifest::from_json(include_str!("../../playground/manifest.json"))
+            .unwrap(),
+    )
+    .unwrap();
+    let reference = p
+        .run(&crate::runtime::Scenario {
+            entry: "main".into(),
+            arguments: vec![],
+            calls: vec![],
+        })
+        .unwrap();
+    assert_eq!(observed, serde_json::to_value(reference).unwrap());
+    assert_eq!(
+        observed, partial,
+        "partial evidence must not change source observations"
+    );
+}
+
 fn compare_selection(label: &str, input: &str, args: &[&str], expected: &[&str]) -> Json {
     let root =
         std::env::temp_dir().join(format!("tellur-selection-{label}-{}", std::process::id()));
@@ -259,10 +293,15 @@ fn compare_selection(label: &str, input: &str, args: &[&str], expected: &[&str])
         let normal = format!(
             "fn entry_{entry}(host:&mut Host,args:Vec<V>)->R<Completion>{{drive(host,args,&MODEL_{entry})}}"
         );
-        let expect_guards = matches!(label, "detached-guards" | "local-guards");
+        let expect_guards = matches!(label, "detached-guards" | "local-guards" | "guarded-input");
         let expect_complete = matches!(
             label,
-            "loops" | "local-guards" | "local-carriers" | "aliased-carriers" | "incoming-leaves"
+            "loops"
+                | "local-guards"
+                | "local-carriers"
+                | "aliased-carriers"
+                | "incoming-leaves"
+                | "guarded-input"
         );
         let replacement = format!(
             r#"fn entry_{entry}(host:&mut Host,args:Vec<V>)->R<Completion>{{
@@ -288,7 +327,7 @@ fn compare_selection(label: &str, input: &str, args: &[&str], expected: &[&str])
         } else {
             generated
         };
-        let generated = if label == "incoming-leaves-partial" {
+        let generated = if matches!(label, "incoming-leaves-partial" | "guarded-input-partial") {
             generated.replace("execution::reference_evidence::inherit_checked(v,reference_value)",r#"{
                 let mut incoming=reference_value;
                 if let V::Reference{evidence,..}=&mut incoming {
@@ -307,7 +346,7 @@ fn compare_selection(label: &str, input: &str, args: &[&str], expected: &[&str])
             &format!("{CONTEXTS}\n{}", include_str!("selection_model.rs")),
             1,
         );
-        let generated = if label == "incoming-leaves" {
+        let generated = if matches!(label, "incoming-leaves" | "guarded-input") {
             generated.replace("let dependencies = c.dependencies(&selected)?;", r#"
                 let dependencies = c.dependencies(&selected)?;
                 assert!(matches!(dependencies, Dependencies::Complete {..}), "every incoming leaf capture must remain complete: {dependencies:?}");
@@ -318,7 +357,7 @@ fn compare_selection(label: &str, input: &str, args: &[&str], expected: &[&str])
         } else {
             generated
         };
-        let generated = if label == "incoming-leaves-partial" {
+        let generated = if matches!(label, "incoming-leaves-partial" | "guarded-input-partial") {
             generated.replace("let dependencies = c.dependencies(&selected)?;",r#"
                 let dependencies = c.dependencies(&selected)?;
                 if c.parked[&selected.id].name == "leaf" {

@@ -103,8 +103,9 @@ pub struct ReferenceOrigin {
 /// bounded to direct forms and remains conditional on incoming runtime evidence.
 /// Fresh local holder guards and owned record borrows (including erased local
 /// aliases) may retain complete closure with full ancestor/stored-leaf coverage.
-/// Singleton shared input leaves may close over transported incoming evidence;
-/// other permission-family, indirect carrier, nested-reference and path gaps stay partial.
+/// Singleton input leaves may close over transported evidence. Exclusive leaves
+/// additionally require an explicit checked holder relationship. Other permission
+/// families, whole indirect carriers, nested references and path gaps stay partial.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ReferenceEvidence {
     Partial(Vec<ReferenceOrigin>),
@@ -115,16 +116,26 @@ pub enum ReferenceEvidence {
     /// reference forms checked by the compiler. Incoming runtime evidence must
     /// also be complete; this annotation alone never grants execution permission.
     Complete(Vec<ReferenceOrigin>),
+    /// An exact singleton exclusive input leaf and its original field copy.
+    /// The runtime must validate that relationship and snapshot the full holder;
+    /// the ordinary symbolic origins alone do not prove its stored-owner closure.
+    GuardedInput {
+        origins: Vec<ReferenceOrigin>,
+        leaf: Id,
+        holder: Place,
+    },
 }
 impl ReferenceEvidence {
     pub fn origins(&self) -> &[ReferenceOrigin] {
         match self {
-            Self::Partial(origins) | Self::Complete(origins) => origins,
+            Self::Partial(origins)
+            | Self::Complete(origins)
+            | Self::GuardedInput { origins, .. } => origins,
             Self::Incoming => &[],
         }
     }
     pub fn is_complete(&self) -> bool {
-        matches!(self, Self::Complete(_))
+        matches!(self, Self::Complete(_) | Self::GuardedInput { .. })
     }
 }
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -134,7 +145,8 @@ pub enum Expr {
     Move(Place),
     Reference(Place, String),
     /// Preserve checked origins before local aliases disappear. Evaluation is
-    /// exactly that of the wrapped reference; metadata is never dereferenced.
+    /// exactly that of the wrapped reference. Symbolic origins are never
+    /// dereferenced; GuardedInput separately validates its checked holder.
     WithReferenceEvidence(Box<Expr>, ReferenceEvidence),
     /// Projection of a non-linear temporary. Owned record projections use Place.
     Project(Box<Expr>, usize),

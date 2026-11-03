@@ -200,11 +200,141 @@ pub fn attach_checked(
     }
     value
 }
+/// Attach a checked exclusive input relationship after exactly-once operand
+/// evaluation. Validate the original private leaf against the real holder field,
+/// then retain the entire holder graph. Rejections affect metadata only.
+pub fn attach_guarded_input(
+    values: &Frames,
+    mut value: V,
+    origins: &[Origin],
+    leaf: usize,
+    holder: usize,
+    fields: &[usize],
+) -> V {
+    let bound = guarded_input(values, &value, origins, leaf, holder, fields)
+        .unwrap_or_else(Origins::Unavailable);
+    if let V::Reference { evidence, .. } = &mut value {
+        evidence.origins.extend(bound);
+    }
+    value
+}
+fn formed_target<'a>(values: &Frames, value: &'a V) -> R<&'a StoragePlace> {
+    let V::Reference {
+        root,
+        fields,
+        evidence,
+        ..
+    } = value
+    else {
+        return Err("guarded input requires a reference".into());
+    };
+    if evidence.origins.cost() > LIMIT {
+        return Err("guarded input origin limit exceeded".into());
+    }
+    evidence.origins.require_live(values)?;
+    let target = evidence
+        .target
+        .as_ref()
+        .ok_or("guarded input formation is unavailable")?;
+    if fields.len() > LIMIT
+        || target.fields != *fields
+        || values.require_storage(&target.storage)? != *root
+    {
+        return Err("guarded input does not match its formation identity".into());
+    }
+    Ok(target)
+}
+fn guarded_input(
+    values: &Frames,
+    value: &V,
+    origins: &[Origin],
+    leaf: usize,
+    holder: usize,
+    fields: &[usize],
+) -> R<Origins> {
+    if fields.is_empty() || fields.len() > LIMIT || origins.len() > LIMIT {
+        return Err("unsupported guarded input path".into());
+    }
+    let get = |slot| {
+        values
+            .get(slot)
+            .and_then(Option::as_ref)
+            .ok_or_else(|| "guarded input storage is unavailable".to_string())
+    };
+    let incoming = get(leaf)?;
+    let aggregate = get(holder)?;
+    if !matches!(incoming, V::Reference {ty, ..} if ty.starts_with("&mutable "))
+        || !matches!(aggregate, V::Reference {ty, ..} if ty.starts_with("&mutable "))
+    {
+        return Err("guarded input requires exclusive leaf and holder".into());
+    }
+    let original = formed_target(values, incoming)?;
+    let base = formed_target(values, aggregate)?;
+    if base.fields.len().saturating_add(fields.len()) > LIMIT {
+        return Err("guarded input path limit exceeded".into());
+    }
+    let mut field = base.clone();
+    field.fields.extend_from_slice(fields);
+    let stored = field.value(values)?;
+    if !matches!((stored,incoming), (V::Reference{ty:a,..},V::Reference{ty:b,..}) if a==b)
+        || formed_target(values, stored)? != original
+    {
+        return Err("guarded input field no longer matches its original leaf".into());
+    }
+    let selected = formed_target(values, value)?;
+    if selected.storage != original.storage || !selected.fields.starts_with(&original.fields) {
+        return Err("guarded input operand is outside its original leaf".into());
+    }
+    // The descriptor is separate from symbolic origins. Both the exact field
+    // guard and whole aggregate coverage must remain explicit in the annotation.
+    let has = |slot, path: &[usize], guard| {
+        origins.iter().any(|o| {
+            o.root == slot
+                && o.indirect
+                && o.fields == path
+                && o.guard == guard
+                && o.opaque == guard
+        })
+    };
+    if !has(leaf, &[], false)
+        || !has(holder, fields, true)
+        || !has(holder, &[], false)
+        || !has(holder, &[], true)
+        || origins.iter().any(|o| {
+            o.guard
+                && !(o.indirect && o.root == holder && (o.fields.is_empty() || o.fields == fields))
+        })
+    {
+        return Err("guarded input lacks exact field and broad holder coverage".into());
+    }
+    let mut bound = bind_origins(values, origins, true, Some((holder, fields)))?;
+    bound.extend(super::dependencies::Dependencies::holder_origins(
+        values, aggregate,
+    ));
+    if let V::Reference { evidence, .. } = incoming {
+        bound.extend(evidence.origins.clone());
+    }
+    bound.require_live(values)?;
+    Ok(bound)
+}
 fn bind(values: &Frames, origins: &[Origin], complete: bool) -> R<Origins> {
+    bind_origins(values, origins, complete, None)
+}
+fn bind_origins(
+    values: &Frames,
+    origins: &[Origin],
+    complete: bool,
+    holder: Option<(usize, &[usize])>,
+) -> R<Origins> {
     if complete
-        && origins
-            .iter()
-            .any(|o| o.guard != o.opaque || (o.guard && o.indirect))
+        && origins.iter().any(|o| {
+            o.guard != o.opaque
+                || (o.guard
+                    && o.indirect
+                    && !holder.is_some_and(|(root, fields)| {
+                        o.root == root && (o.fields.is_empty() || o.fields == fields)
+                    }))
+        })
     {
         return Err("unsupported complete guarded origin".into());
     }

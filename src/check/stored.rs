@@ -1172,6 +1172,27 @@ impl Checker<'_> {
                     self.incoming_shared
                         .insert(*address, Permission::new(family, member));
                 }
+                if loan.mutable
+                    && incoming.contains(&leaf.fields)
+                    && incoming.len() == schema.leaves.len()
+                    && matches!(
+                        self.manifest.type_def(ty),
+                        Some(manifest::TypeDef::Record { .. })
+                    )
+                    && manifest::reference_inner(&slot.ty).is_some_and(|(mutable, _)| mutable)
+                {
+                    self.incoming_exclusive.insert(
+                        *address,
+                        (
+                            Permission::new(family, member),
+                            Place {
+                                root: slot.id,
+                                fields: leaf.fields.clone(),
+                                indirect: true,
+                            },
+                        ),
+                    );
+                }
             }
             self.refresh_public_contents(&addresses);
             self.attach_received_contents(slot.id);

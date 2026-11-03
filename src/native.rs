@@ -105,6 +105,15 @@ fn expression(e: &Expr, layout: &FrameLayout) -> String {
                 "execution::reference_evidence::Origin{{root:base+{},fields:&{:?},indirect:{},guard:{},opaque:{}}}",
                 layout.slots[&o.place.root], o.place.fields, o.place.indirect, o.guard, o.opaque
             )).collect::<Vec<_>>().join(",");
+            if let ReferenceEvidence::GuardedInput { leaf, holder, .. } = evidence {
+                return format!(
+                    "{{let reference_value={}; execution::reference_evidence::attach_guarded_input(v,reference_value,&[{origins}],base+{},base+{},&{:?})}}",
+                    expression(value, layout),
+                    layout.slots[leaf],
+                    layout.slots[&holder.root],
+                    holder.fields
+                );
+            }
             format!(
                 "{{let reference_value={}; execution::reference_evidence::attach_checked(v,reference_value,&[{origins}],{complete},{fresh})}}",
                 expression(value, layout)

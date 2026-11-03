@@ -192,6 +192,8 @@ struct Checker<'a> {
     contained_inputs: BTreeMap<Id, (usize, ContainedOrigin)>,
     /// Shared singleton input leaves whose runtime formation proof is transported.
     incoming_shared: BTreeMap<Id, Permission>,
+    /// Exclusive singleton leaves paired with their original borrowed holder field.
+    incoming_exclusive: BTreeMap<Id, (Permission, Place)>,
     origin_schemas: &'a crate::origins::Schemas,
     declared_stored: Vec<StoredReturn>,
     declared_returns: crate::lifetimes::Returns,
@@ -688,21 +690,44 @@ impl Checker<'_> {
     ) -> Expr {
         const LIMIT: usize = 4096;
         complete &= origins.len() <= LIMIT;
+        let input = if let Expr::Reference(target, _) = &value {
+            self.incoming_exclusive
+                .get(&target.root)
+                .filter(|(_, holder)| {
+                    target.indirect
+                        && carriers.is_empty()
+                        && origins
+                            .iter()
+                            .any(|o| o.guard && o.opaque && o.place == *holder)
+                        && origins.iter().any(|o| {
+                            self.complete_exclusive_input_origin(o) && o.place.root == target.root
+                        })
+                })
+                .map(|(_, holder)| (target.root, holder))
+        } else {
+            None
+        };
+        let input_ancestor = |place: &Place| {
+            input.is_some_and(|(_, h)| {
+                place.indirect && place.root == h.root && (place.fields.is_empty() || place == h)
+            })
+        };
         // reference_expression certifies every local carrier ancestor and adds
         // all of their stored leaf loans to roots before granting this exception.
         // A local holder guard can conservatively cover its whole borrowed
         // ancestor. This never adds holder dependence to an unguarded shared copy.
-        // Indirect/abstract guards remain unsupported. Only registered singleton
-        // shared input permissions can rely on transported incoming evidence.
+        // Indirect guards require the separately checked singleton input field
+        // relationship. Symbolic paths do not imply a traversable holder.
         let guarded_holder = |place: &Place| {
-            !place.indirect
-                && origins.iter().take(LIMIT).any(|o| {
-                    o.guard
-                        && o.opaque
-                        && !o.place.indirect
-                        && o.place.root == place.root
-                        && o.place.fields.starts_with(&place.fields)
-                })
+            input_ancestor(place)
+                || (!place.indirect
+                    && origins.iter().take(LIMIT).any(|o| {
+                        o.guard
+                            && o.opaque
+                            && !o.place.indirect
+                            && o.place.root == place.root
+                            && o.place.fields.starts_with(&place.fields)
+                    }))
         };
         let mut descriptions = Vec::new();
         let mut remaining = LIMIT;
@@ -721,8 +746,14 @@ impl Checker<'_> {
             let contains_refs = ty.is_some_and(|t| self.manifest.contains_references(t));
             let holder =
                 contains_refs && !origin.guard && !origin.opaque && guarded_holder(&origin.place);
-            let guard = contains_refs && origin.guard && origin.opaque && !origin.place.indirect;
-            let incoming = carriers.is_empty() && self.complete_shared_input_origin(origin);
+            let guard = contains_refs
+                && origin.guard
+                && origin.opaque
+                && (!origin.place.indirect || input_ancestor(&origin.place));
+            let incoming = carriers.is_empty()
+                && (self.complete_shared_input_origin(origin)
+                    || (input.is_some_and(|(leaf, _)| leaf == origin.place.root)
+                        && self.complete_exclusive_input_origin(origin)));
             complete &= (origin.permissions.is_empty() || incoming)
                 && ty.is_some()
                 && (guard
@@ -812,7 +843,7 @@ impl Checker<'_> {
             closed &= (loan.active == TRUE || loan.active == FALSE)
                 && loan.defined == TRUE
                 && loan.sum_leaf.is_none()
-                && loan.contents.is_empty()
+                && (loan.contents.is_empty() || input_ancestor(&loan.target.place))
                 && (!self.manifest.contains_references(&loan.target.ty)
                     || carriers.contains(&loan.target.place)
                     || guarded_holder(&loan.target.place));
@@ -826,14 +857,34 @@ impl Checker<'_> {
             pending.extend(loan.parents.iter().copied());
             loans.extend(loan.contents.iter().map(|(_, loan)| loan));
         }
+        if let Some((_, holder)) = input {
+            include(&LoanOrigin {
+                permissions: vec![],
+                guard: false,
+                opaque: false,
+                place: Place {
+                    fields: vec![],
+                    ..holder.clone()
+                },
+            });
+        }
         drop(include);
+        if let Some((_, holder)) = input {
+            complete &= remaining >= 1 + holder.fields.len();
+        }
         complete &= closed && !descriptions.is_empty();
         if descriptions.iter().any(|o| o.guard) {
-            complete &= matches!(&value, Expr::Reference(p, _) if !p.indirect);
+            complete &= input.is_some() || matches!(&value, Expr::Reference(p, _) if !p.indirect);
         }
         Expr::WithReferenceEvidence(
             Box::new(value),
-            if complete {
+            if complete && let Some((leaf, holder)) = input {
+                ReferenceEvidence::GuardedInput {
+                    origins: descriptions,
+                    leaf,
+                    holder: holder.clone(),
+                }
+            } else if complete {
                 ReferenceEvidence::Complete(descriptions)
             } else {
                 ReferenceEvidence::Partial(descriptions)
@@ -853,6 +904,9 @@ impl Checker<'_> {
             }
         } else {
             target.carriers.is_empty()
+                || (target.place.indirect
+                    && target.via.is_some()
+                    && self.incoming_exclusive.contains_key(&target.place.root))
                 || (target.place.indirect
                     && self.incoming_shared.contains_key(&target.place.root)
                     && target.via.is_some_and(|id| !self.loan(id).mutable))
@@ -879,6 +933,23 @@ impl Checker<'_> {
                 .incoming_shared
                 .get(&origin.place.root)
                 .is_some_and(|input| {
+                    input.family == permission.family
+                        && input.member == permission.member
+                        && permission.fields == origin.place.fields
+                })
+    }
+    /// Match only the original singleton input permission, never a returned union.
+    fn complete_exclusive_input_origin(&self, origin: &LoanOrigin) -> bool {
+        let [permission] = origin.permissions.as_slice() else {
+            return false;
+        };
+        !origin.guard
+            && !origin.opaque
+            && origin.place.indirect
+            && self
+                .incoming_exclusive
+                .get(&origin.place.root)
+                .is_some_and(|(input, _)| {
                     input.family == permission.family
                         && input.member == permission.member
                         && permission.fields == origin.place.fields
@@ -5270,6 +5341,7 @@ pub(crate) fn compile_concrete_unit(
                     inferred_bindings: vec![],
                     contained_inputs: BTreeMap::new(),
                     incoming_shared: BTreeMap::new(),
+                    incoming_exclusive: BTreeMap::new(),
                     origin_schemas: &origin_schemas,
                     declared_stored: signatures[&source.name].stored_returns.clone(),
                     declared_returns: signatures[&source.name].borrow_returns.clone(),

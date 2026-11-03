@@ -4398,3 +4398,15 @@ bounded. Detached-leaf host probes retain hidden owners with complete empty inco
 origin lists, block holder/sibling writes across live/waiting/completed states, and reject
 partial admission without effects. Generated original/expanded O0/O2 carrier models query
 real holder inputs and preserve source observations. Compiler proof gates remain unchanged.
+
+## Checked exclusive input holders (0.159)
+
+Metadata tests cover direct and aliased singleton exclusive leaves, nested record fields,
+full pointee and holder guards, exact entry materialization and grouped-permission fallback.
+Independent verifier and certificate mutations reject missing/retargeted/weakened descriptors
+and generic complete substitutions. Native attachment probes reject foreign/missing identities,
+changed holder fields or reference types and weakened guards without effects; partial operands,
+leaves, holders and unselected stored references cannot become complete. Host admission retains
+otherwise unreachable owners through live/waiting/completed children. Original/expanded O0/O2
+models exercise actual generated attachment, captures and pending delivery, and injected partial
+callers preserve the same source observations across quota partitions.

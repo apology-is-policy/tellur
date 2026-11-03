@@ -25,6 +25,36 @@ fn expr(e: &Expr, slots: &BTreeMap<Id, Id>) -> Expr {
                     ReferenceEvidence::Incoming,
                 );
             }
+            if let ReferenceEvidence::GuardedInput {
+                origins,
+                leaf,
+                holder,
+            } = evidence
+            {
+                return Expr::WithReferenceEvidence(
+                    Box::new(expr(value, slots)),
+                    ReferenceEvidence::GuardedInput {
+                        origins: origins
+                            .iter()
+                            .map(|origin| ReferenceOrigin {
+                                place: Place {
+                                    root: slots[&origin.place.root],
+                                    indirect: origin.place.indirect,
+                                    fields: origin.place.fields.clone(),
+                                },
+                                guard: origin.guard,
+                                opaque: origin.opaque,
+                            })
+                            .collect(),
+                        leaf: slots[leaf],
+                        holder: Place {
+                            root: slots[&holder.root],
+                            indirect: holder.indirect,
+                            fields: holder.fields.clone(),
+                        },
+                    },
+                );
+            }
             let origins = evidence.origins();
             let wrap = if evidence.is_complete() {
                 ReferenceEvidence::Complete

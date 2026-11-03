@@ -359,7 +359,7 @@ fn walk(value: &Json, f: &mut impl FnMut(&Json)) {
 }
 
 #[test]
-fn expansion_remaps_partial_origin_slots_for_each_invocation_and_roundtrips() {
+fn expansion_remaps_guarded_origin_slots_for_each_invocation_and_roundtrips() {
     let p = program(REPEATED);
     let project = p.regions().find(|r| r.name == "project").unwrap();
     let input = project.parameters[0].id;
@@ -375,7 +375,11 @@ fn expansion_remaps_partial_origin_slots_for_each_invocation_and_roundtrips() {
     let encoded = serde_json::to_value(&artifact).unwrap();
     let mut guards = Vec::new();
     walk(&encoded, &mut |v| {
-        if let Some(origins) = v.get("Partial").and_then(Json::as_array) {
+        if let Some(origins) = v
+            .get("Partial")
+            .or_else(|| v.get("GuardedInput").and_then(|p| p.get("origins")))
+            .and_then(Json::as_array)
+        {
             for origin in origins {
                 if origin["guard"] == true {
                     guards.push(origin["place"]["root"].as_u64().unwrap() as usize);
@@ -402,7 +406,14 @@ fn mutate_guarded(value: &mut Json, mutation: usize, other_root: usize) -> bool 
         .get_mut("WithReferenceEvidence")
         .and_then(Json::as_array_mut)
     {
-        let Some(origins) = parts[1].get_mut("Partial").and_then(Json::as_array_mut) else {
+        let origins = if parts[1].get("GuardedInput").is_some() {
+            parts[1]
+                .get_mut("GuardedInput")
+                .and_then(|p| p.get_mut("origins"))
+        } else {
+            parts[1].get_mut("Partial")
+        };
+        let Some(origins) = origins.and_then(Json::as_array_mut) else {
             return false;
         };
         if let Some(index) = origins.iter().position(|o| o["guard"] == true) {
@@ -458,7 +469,11 @@ fn certificates_reject_missing_retargeted_or_weakened_origin_evidence() {
             .get_mut("WithReferenceEvidence")
             .and_then(Json::as_array_mut)
         {
-            if let Some(origins) = parts[1].get("Partial").cloned() {
+            if let Some(origins) = parts[1]
+                .get("Partial")
+                .or_else(|| parts[1].get("GuardedInput").and_then(|p| p.get("origins")))
+                .cloned()
+            {
                 parts[1] = serde_json::json!({"Complete": origins});
                 return true;
             }
@@ -894,13 +909,24 @@ async control conditional(shared input,bool choose) exits done {
 control main() exits done {exit done;}
 "#,
     );
-    for name in ["exclusive", "conditional"] {
-        assert!(
-            !capture_evidence(unsupported.regions().find(|r| r.name == name).unwrap())
-                .is_complete(),
-            "{name}"
-        );
-    }
+    assert!(matches!(
+        capture_evidence(
+            unsupported
+                .regions()
+                .find(|r| r.name == "exclusive")
+                .unwrap()
+        ),
+        ReferenceEvidence::GuardedInput { .. }
+    ));
+    assert!(
+        !capture_evidence(
+            unsupported
+                .regions()
+                .find(|r| r.name == "conditional")
+                .unwrap()
+        )
+        .is_complete()
+    );
     // A second leaf in the same public group is not a singleton proof.
     let grouped = source
         .replace(
@@ -937,4 +963,118 @@ control main() exits done {exit done;}
     let whole = program(&whole);
     let r = whole.regions().find(|r| r.name == "owned").unwrap();
     assert!(r.code.iter().any(|i|matches!(&i.action,Action::Decide {operation:Operation::Defer(n),args,..} if n=="whole" && matches!(&args[0],Expr::WithReferenceEvidence(_,ReferenceEvidence::Partial(_))))));
+}
+
+#[test]
+fn exclusive_input_proofs_preserve_exact_field_and_broad_holder_through_expansion() {
+    let source = include_str!("../playground/guarded_input_tasks.tellur");
+    let p = program(source);
+    let inspect = p.regions().find(|r| r.name == "inspect").unwrap();
+    let mut count = 0;
+    for i in &inspect.code {
+        if let Action::Decide {
+            operation: Operation::Defer(_),
+            args,
+            ..
+        } = &i.action
+        {
+            let Expr::WithReferenceEvidence(
+                _,
+                ReferenceEvidence::GuardedInput {
+                    origins,
+                    leaf,
+                    holder,
+                },
+            ) = &args[0]
+            else {
+                panic!("missing checked input proof: {:?}", args[0]);
+            };
+            count += 1;
+            assert!(holder.indirect && holder.fields == [0]);
+            assert!(
+                origins
+                    .iter()
+                    .any(|o| o.guard && o.opaque && o.place == *holder)
+            );
+            for guard in [false, true] {
+                assert!(origins.iter().any(|o| o.place.root == holder.root
+                    && o.place.fields.is_empty()
+                    && o.place.indirect
+                    && o.guard == guard
+                    && o.opaque == guard));
+            }
+            assert!(origins.iter().any(|o| o.place.root == *leaf
+                && o.place.indirect
+                && o.place.fields.is_empty()
+                && !o.guard));
+        }
+    }
+    assert_eq!(count, 2);
+    let nested = source.replace("struct text_view", "struct envelope['values, 'other] { text_view['values, 'other] view; }\nstruct text_view")
+        .replace("ref mutable text_view input", "ref mutable envelope input")
+        .replace("input.values", "input.view.values")
+        .replace("mutable text_view saved = text_view { borrow mutable owner, borrow other };", "mutable envelope saved = envelope { text_view { borrow mutable owner, borrow other } };");
+    let nested = program(&nested);
+    assert!(
+        matches!(capture_evidence(nested.regions().find(|r|r.name == "inspect").unwrap()),ReferenceEvidence::GuardedInput{holder,..} if holder.fields == [0,0])
+    );
+    let artifact = p.expansion_artifact("inspect").unwrap();
+    let expanded = p.accept_expansion(&artifact).unwrap();
+    let scenario = Scenario {
+        entry: "main".into(),
+        arguments: vec![],
+        calls: vec![],
+    };
+    assert_eq!(p.run(&scenario).unwrap(), expanded.run(&scenario).unwrap());
+    for kind in 0..5 {
+        let mut altered = serde_json::to_value(&artifact).unwrap();
+        fn mutate(v: &mut Json, kind: usize) -> bool {
+            if let Some(parts) = v
+                .get_mut("WithReferenceEvidence")
+                .and_then(Json::as_array_mut)
+                && let Some(proof) = parts[1].get_mut("GuardedInput")
+            {
+                match kind {
+                    0 => proof["holder"]["fields"] = serde_json::json!([1]),
+                    1 => proof["leaf"] = proof["holder"]["root"].clone(),
+                    2 => {
+                        proof["origins"].as_array_mut().unwrap().retain(|o| {
+                            !(o["guard"] == true
+                                && o["place"]["fields"].as_array().unwrap().is_empty())
+                        });
+                    }
+                    3 => {
+                        let origins = proof["origins"].clone();
+                        parts[1] = serde_json::json!({"Complete":origins});
+                    }
+                    _ => proof["holder"]["indirect"] = serde_json::json!(false),
+                }
+                return true;
+            }
+            match v {
+                Json::Array(a) => a.iter_mut().any(|v| mutate(v, kind)),
+                Json::Object(o) => o.values_mut().any(|v| mutate(v, kind)),
+                _ => false,
+            }
+        }
+        assert!(mutate(&mut altered, kind));
+        assert_eq!(
+            p.accept_expansion(&serde_json::from_value(altered).unwrap())
+                .unwrap_err()
+                .code,
+            "E_EXPANSION_CERTIFICATE"
+        );
+    }
+    let unsupported = program(
+        r#"
+struct grouped['a] { ref mutable string left <- 'a; ref mutable string right <- 'a; }
+async control leaf(ref string input) exits done { exit done; }
+async control inspect(ref mutable grouped input) exits done { auto pending=defer leaf(input.left); await pending; exit done; }
+control main() exits done {exit done;}
+"#,
+    );
+    assert!(
+        !capture_evidence(unsupported.regions().find(|r| r.name == "inspect").unwrap())
+            .is_complete()
+    );
 }

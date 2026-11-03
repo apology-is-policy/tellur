@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-darwin-arm64-0.158.0.vsix` using **Extensions:
+1. Install the supplied `tellur-language-darwin-arm64-0.159.0.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1409,3 +1409,11 @@ Native runtime support now retains bounded dependency snapshots of incoming aggr
 holders and their stored owners. Partial or invalid formation evidence cannot become
 complete. Host and generated tests establish this prerequisite; compiler admission of
 exclusive input and indirect holder guards remains gated.
+
+## Exclusive incoming leaf dependencies in 0.159
+
+Supported singleton exclusive input leaves retain their original pointee and the actual
+borrowed holder, including other stored owners. Direct and local aliased reborrows carry
+an explicit checked relationship; partial or invalid runtime evidence stays conservative.
+Shared field copies remain holder-free. Try
+`./bin/tellurc exec playground/guarded_input_tasks.tellur`.

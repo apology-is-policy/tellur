@@ -2689,6 +2689,38 @@ holder relationship, broad ancestor coverage and exact input permissions, then p
 proof through independent structural verification and expansion certificates. Source
 scheduling, cancellation, async adapters/disposal and LLVM coroutine lowering remain separate.
 
+## Checked exclusive input holders (E1d.2d.3s.14)
+
+Compiler 0.159 certifies a bounded exclusive input leaf together with its actual borrowed
+holder. Eligible inputs are singleton reference fields along ordinary record paths in an
+exclusive aggregate reference; their pointees contain no further references. The checker
+matches the original entry permission family/member and projection, retains the exact field
+guard, and adds the full incoming aggregate as both an ordinary dependency and a paired guard.
+Unconditional local reborrow aliases can retain this proof when every ancestor and stored
+leaf also closes. An unselected stored owner remains protected by the whole holder.
+
+The checked IR uses a distinct `GuardedInput` descriptor naming the private original leaf
+and its incoming field copy. Independent verification checks the ordinary record shape,
+exclusive leaf/holder types, matching `Incoming` materialization, original pointee coverage
+and exact field plus broad holder guards. Expansion and its independent certificate mapping
+preserve the descriptor and all origins. A generic complete annotation cannot replace it.
+
+After evaluating the reference operand once, native attachment validates the original leaf,
+actual stored field and holder formation identities, reference types and operand containment.
+It then snapshots the entire aggregate with the strict bounded traversal introduced in 0.158.
+Every retained origin and stored owner is merged with incoming operand evidence; partial
+operand, leaf, holder or sibling evidence stays partial. Missing, stale, foreign, mismatched,
+weakened or oversized evidence becomes unavailable without changing source observations.
+Symbolic origins remain symbolic; only the separately checked holder is traversed.
+
+This is dependency metadata, not callback admission or a source scheduling point. Existing
+fresh borrower census, conservative overlap, exact invocation/domain authority and retirement
+preflights still apply. Shared copied fields remain holder-free. Whole incoming carrier
+closure, grouped/returned/conditional/tagged/nested-reference and other unsupported ancestry
+remain conservative. Source spawn/yield, cancellation, async adapters/disposal and direct LLVM
+coroutine lowering are unchanged. Run `playground/guarded_input_tasks.tellur` for direct and
+aliased leaves whose owners become available again after task completion and holder release.
+
 ## Reference execution invariants
 
 A step partition must not itself become a source effect. The same selected schedule
