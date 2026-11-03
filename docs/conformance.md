@@ -4843,6 +4843,23 @@ assert that borrowed resources remain alive, and traces check exact destruction
 counts, no replay, no source fuel on polls/delivery and no late wake revival.
 
 These are private callback models, separate from generated checked-source native
-comparisons. E1f.2b must add original/expanded O0/O2, nested-boundary, report and
-resource-trace differential evidence before production adapter integration. The
+comparisons. E1f.2b below adds delivery, nested-supplier, report and resource-trace
+differential evidence; pending external-fault settlement remains a separate gate. The
 current model adds no source handoff, manifest mode, live I/O or cleanup policy.
+
+
+The E1f.2b generated pending-operation cases use the same activation record with a
+real Rust resource type and a private fixture-only lowering hook. Two source shapes
+compare ordinary/pending native builds at O0/O2, before/after expansion, with normal
+and handled-fault input and three quota partitions at every fuel cutoff through
+completion. They compare exact native output/reports and resource traces, then
+compare the ordinary native result with scripted reference execution (normalizing
+only established fuel-message wording). Readiness cycles preserve fuel/effects,
+partial input and fixed model deadline; operation creation, real adapter call,
+delivery and destruction each occur once. Nested suppliers retire correctly on
+post-delivery faults. A zero-quota pause after result completion cannot poll or
+complete that operation again.
+
+These generated cases do not yet inject an external owning fault while a nested
+operation is pending. That E1f.2c settlement case remains required before production
+adapter integration; existing private callback settlement tests are reused.

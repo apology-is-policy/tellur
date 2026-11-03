@@ -58,6 +58,15 @@ fn points<'a>(code: &'a [Instruction], result: &mut Vec<Point<'a>>) {
 }
 
 pub(super) fn source(program: &CheckedProgram) -> String {
+    generate(program, false)
+}
+
+#[cfg(test)]
+pub(super) fn pending_operation_source(program: &CheckedProgram) -> String {
+    generate(program, true)
+}
+
+fn generate(program: &CheckedProgram, _pending_operation: bool) -> String {
     let names: BTreeMap<_, _> = program
         .regions()
         .enumerate()
@@ -146,6 +155,55 @@ pub(super) fn source(program: &CheckedProgram) -> String {
                 }
             };
             let _ = writeln!(g.code, "{pc}=>{{state.pc={};", point.next);
+            #[cfg(test)]
+            if _pending_operation
+                && let Action::Decide {
+                    operation: Operation::Primitive(name),
+                    args,
+                    arms,
+                } = &instruction.action
+                && name == "sample"
+            {
+                let Expr::Place(place) = &args[0] else {
+                    panic!("pending fixture requires a borrowed supplier place")
+                };
+                let supplier =
+                    expression(&Expr::Reference(place.clone(), "&probe".into()), &g.layout);
+                let p = &instruction.provenance;
+                let _ = writeln!(
+                    g.code,
+                    "host.at({});host.tick({}, {})?;if {} {{let supplier={supplier};let mut arguments={};arguments[0]=supplier;return Ok(Step::Adapter{{arguments,deliver:adapter_{id}_{pc}}});}}Ok(Step::Continue)}},",
+                    instruction.id,
+                    p.span.line,
+                    p.span.column,
+                    guard(&instruction.guard, &g.layout),
+                    expressions(args, &g.layout)
+                );
+                let _ = writeln!(
+                    deliveries,
+                    "fn adapter_{id}_{pc}(state:&mut Activation,v:&mut Frames,result:Completion)->R<()>{{let base=state.base();let a=&mut state.facts;let (outcome,fields)=result.outcome()?;match outcome.as_str(){{"
+                );
+                for arm in arms {
+                    let _ = writeln!(
+                        deliveries,
+                        "{}=>{{a[{}]=true;let mut fields=fields.into_iter();",
+                        string(&arm.outcome),
+                        g.layout.atoms[&arm.atom]
+                    );
+                    for slot in &arm.slots {
+                        let _ = writeln!(
+                            deliveries,
+                            "v[base+{}]=fields.next();",
+                            g.layout.slots[slot]
+                        );
+                    }
+                    deliveries.push_str("},\n");
+                }
+                deliveries.push_str(
+                    "_=>return Err(\"E_NATIVE: unmatched pending outcome\".into()),}Ok(())}\n",
+                );
+                continue;
+            }
             if let Action::Supervise { boundary, args } = &instruction.action {
                 let work = program.region(boundary).unwrap();
                 let handler = &work.boundary.as_ref().unwrap().handler;

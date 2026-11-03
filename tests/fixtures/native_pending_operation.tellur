@@ -1,0 +1,47 @@
+async control leaf(ref probe resource, string request)
+    exits ready { ref probe value from resource } {
+    delta sample(resource, move request) {
+        ready { string response } => received
+    }
+
+    [received]:
+        emit(borrow response);
+        exit ready { resource };
+}
+
+async control worker(ref probe resource, string request, bool stop) exits done faults {
+    auto pending = defer leaf(resource, move request);
+    emit("captured");
+    delta await pending {
+        ready { auto value } => received
+    }
+
+    [received]:
+        inspect(value);
+        delta stop {
+            true => failed,
+            false => finished
+        }
+
+    [failed]: fault "after operation";
+    [finished]: exit done;
+}
+
+control main(bool stop) exits done {
+    delta make() {
+        made { probe resource } => made
+    }
+
+    [made]:
+        fault boundary {
+            run worker(borrow resource, "request", stop);
+        } contingency [resource] {
+            emit("owning contingency");
+            close(resource);
+            terminate process 23;
+        }
+
+    [made]:
+        close(resource);
+        exit done;
+}

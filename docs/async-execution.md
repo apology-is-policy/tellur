@@ -3714,8 +3714,47 @@ checks include failure before creation, after administrative delivery and in the
 parent after consuming the result, across three host quotas.
 
 This checkpoint uses private native callbacks and no live I/O. All added execution
-branches are `cfg(test)`; the installed compiler/LSP/VSIX remains 0.189. E1f.2b must
-connect the model to generated checked source and compare reference/native,
-original/expanded O0/O2 execution, nested boundary settlement, diagnostics and
-resource traces before a production adapter ABI or source/manifest admission.
+branches are `cfg(test)`; the installed compiler/LSP/VSIX remains 0.189. E1f.2b below
+connects delivery to generated checked source and compares reference/native,
+original/expanded O0/O2 execution, diagnostics and resource traces. External owning
+faults during generated pending waits remain a separate settlement gate before
+a production adapter ABI or source/manifest admission.
 The broader E1 cancellation and cleanup acceptance specimen remains open.
+
+
+## Generated pending operation delivery model (E1f.2b)
+
+[The generated fixture](../tests/fixtures/native_pending_operation.tellur) calls a
+real Rust adapter through checked source. A private compiler-test hook changes only
+its `sample` decision into operation creation plus later declared-arm delivery.
+The ordinary emitter still handles its argument expressions, guards, program
+counter, result slots and path facts. The borrowed primitive operand normally
+produces a value snapshot; the hook also retains its resolved supplier reference.
+It never treats a copied opaque token as proof that borrowed storage remains live.
+
+The [native comparison](../src/native/pending_operation_tests.rs) embeds the E1f.2a
+operation record with the fixture's actual Rust resource type. Three readiness
+cycles include an empty poll, zero quota and duplicate/stale signals. They preserve
+partial input, a fixed model deadline, resource and invocation identity, source
+fuel and script/effect position. The real adapter executes once after polling;
+result adoption then uses the compiled declared arm without replaying operands.
+Its borrowed result flows through a cold task and is used by the awaiting caller.
+
+Ordinary and pending native builds at O0/O2 agree on complete output, diagnostics
+and resource-disposition traces before and after expansion, at every fuel cutoff
+through success and handled source fault. Scripted reference execution supplies
+an independent outcome/event/report comparison; only existing native/reference
+fuel-message wording is normalized. A second fixture owns its supplier inside a
+nested lexical boundary. Normal resource closure and faults after delivery preserve
+nested and owning contingency behavior and fault causes. Actual operation lease
+destructors continue to assert that their borrowed Rust object is alive.
+
+This is a private delivery model with immediate typed adapter completion after
+modeled waits. It adds no public source syntax, manifest mode, socket readiness,
+timeout policy or fallible/suspending cleanup. The ordinary compiler path does not
+select the hook. Compiler/LSP/VSIX 0.189 remains the installed release. E1f.2c must
+exercise external owning faults while generated operations are still waiting or
+signalled beneath nested boundaries, including suppressed stopped contingencies,
+before a production adapter ABI or source/manifest admission. The E1f.1/E1f.2a
+private reference/native settlement checks remain evidence, not a substitute for
+that generated-code case.

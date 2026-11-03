@@ -22,6 +22,9 @@ mod boundary_handoff_resource_tests;
 #[path = "native/continuations.rs"]
 mod continuations;
 #[cfg(test)]
+#[path = "native/pending_operation_tests.rs"]
+mod pending_operation_tests;
+#[cfg(test)]
 #[path = "native/resume_model.rs"]
 mod resume_model;
 #[cfg(test)]

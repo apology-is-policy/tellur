@@ -15,7 +15,9 @@ They add no source syntax or manifest mode:
 existing `immediate` and `blocking` Rust bindings still complete synchronously.
 See the [operation model](../async-execution.md#pending-adapter-operation-reference-model-e1f1)
 and [native resource model](../async-execution.md#native-pending-operation-resource-lifetime-model-e1f2a)
-for their evidence; generated adapter integration and differential checks remain open.
+for their evidence. The [generated delivery model](../async-execution.md#generated-pending-operation-delivery-model-e1f2b)
+compares checked source and real resources across native/reference execution;
+external owning faults during generated pending waits remain a separate gate.
 
 ## Owned spawned children
 
