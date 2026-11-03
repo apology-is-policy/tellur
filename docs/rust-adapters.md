@@ -311,7 +311,13 @@ and owning-fault retirement with the typed sample operation. Its controlled peer
 barrier is test machinery; real HTTP parsing/deadline composition remains separate.
 The [live candidate fault composition](async-execution.md#live-socket-candidate-fault-settlement-e1f6d)
 retains physical registration through an unadopted result and checks disposal before
-the supplier and owning contingency.
+the supplier and owning contingency. The
+[HTTP continuation model](async-execution.md#http-outcomes-through-retained-continuations-e1f6e)
+uses the actual shared connection input and all nine generated outcome encoders,
+including the headers map. The owned parser preserves its original deadline through
+controlled waits and rejects duplicate starts without reading. It compares sequential
+retained execution with the existing synchronous receiver; it does not yet combine
+HTTP parsing with the concurrent source queue or live registration.
 The maintained transport is unchanged.
 
 

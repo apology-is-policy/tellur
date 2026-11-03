@@ -5062,3 +5062,25 @@ checkpoint requires actual socket destruction; stopped nested handlers and resul
 arms remain silent. Existing source and HTTP/parser matrices are unchanged and
 reused. Real HTTP deadline/source composition and actual OS/reset failure handling
 remain separate; no public release changes.
+
+
+E1f.6e compares the exact HTTP receive signature and all nine generated alternatives
+through retained checked continuations. Twelve deterministic transport cases cover
+immediate/delayed input, split UTF-8, HEAD state, protocol failures, EOF, repeated
+empty waits and original header/body deadline expiry. Each source invocation takes
+only its declared shared connection. Generated encoders and the host validator
+preserve complete request fields, including the headers map; malformed result
+shapes reject without recording an event. The second invocation returns the existing
+duplicate-start failure without reading more input.
+
+Original/expanded O0/O2 builds compare full ordinary-native output with scripted
+reference events/reports at every source fuel cutoff, then compare retained native
+execution under three host quota cycles. Notification/zero-quota probes preserve
+input position, read count and clock. State is consumed once; repeated poll/completion
+reject, and state plus the loan witness retire before actual supplier destruction.
+A trap prevents synchronous-wrapper replay. Reference scripts use the baseline
+synchronous results, with separately asserted alternative labels and duplicate-start
+payload; unchanged E1f.6a parser cases provide broader protocol/deadline evidence.
+This is a sequential retained chain, not concurrent HTTP scheduling or a public
+async-host release. Live source/parser/deadline and HTTP routed-fault composition
+remain separate.

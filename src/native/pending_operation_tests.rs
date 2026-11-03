@@ -306,3 +306,6 @@ mod fault_tests;
 
 #[path = "source_operation_tests.rs"]
 mod source_tests;
+
+#[path = "http_continuation_tests.rs"]
+mod http_tests;

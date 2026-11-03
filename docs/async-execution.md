@@ -4228,3 +4228,46 @@ model still uses deadline token `57`; HTTP parsing and real expiry must next be
 composed with source waits. Actual OS insertion/removal errors, resets and timer
 race policy are not assigned new semantics here. The public async-host call-model
 question remains pending; compiler/LSP/VSIX stays at 0.189.
+
+
+## HTTP outcomes through retained continuations (E1f.6e)
+
+The [private HTTP continuation fixture](../src/native/http_continuation_tests.rs)
+uses the maintained `http_receive(ref http_connection)` signature verbatim. Its
+single shared connection argument enters the existing checked operation identity
+and supplier-storage checks. There is no additional source request argument. A
+private lowering selector emits the original checked result arms for this primitive;
+production lowering and synchronous manifest bindings retain their existing behavior.
+
+The operation owns the unchanged E1f.6a `ReceiveState`. Preparation and each poll
+use fresh checked shared borrows. The parser captures its original `Instant`
+deadline at operation start. Partial headers, body bytes and the deadline survive
+logical waits; accepted readiness and zero host quotas consume no input. The
+controlled transport advances time to the next input or the original deadline.
+This establishes fixed-deadline expiry through retained continuations without
+assigning a new policy to simultaneous real OS notifications and timers.
+
+All nine generated Rust alternatives flow through their generated encoders and the
+existing host result validator. The successful result retains method, target,
+headers map and body; malformed and failed retain their diagnostic payloads.
+Invalid result shapes reject before recording an event. Completion consumes parser
+state once, rejects further polls and duplicate completion, and delivers through
+the checked arm. A trap rejects replay through the synchronous receive wrapper.
+State and its loan witness retire before the actual connection resource.
+
+The [Tellur specimen](../tests/fixtures/native_pending_http.tellur) runs a receiving
+async control twice with an effect between calls. The second receive reports the
+existing duplicate-start failure without further input. Twelve deterministic cases
+cover all alternatives, delayed split UTF-8 and HEAD/body input, incomplete EOF,
+repeated empty waits and body-deadline expiry. Original/expanded O0/O2 builds compare
+full ordinary-native results, primitive payloads, reference events, fault reports,
+HEAD/consumed-byte resource traces, every source fuel cutoff and three quota cycles.
+The reference call script comes from the ordinary synchronous receiver; outcome
+labels and the duplicate-start result are independently asserted. The earlier
+parser corpus supplies the broader independent protocol/deadline evidence.
+
+This checkpoint uses a sequential retained `run`/await chain and a deterministic
+transport. Concurrent HTTP source-queue scheduling, live parser/socket/deadline
+composition and routed-fault HTTP candidate disposal remain next work. E1f.6c/d's
+live sample and fault evidence is retained separately. Public async-host call
+admission still awaits the recorded design choice; compiler/LSP/VSIX remains 0.189.

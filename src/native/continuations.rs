@@ -58,15 +58,20 @@ fn points<'a>(code: &'a [Instruction], result: &mut Vec<Point<'a>>) {
 }
 
 pub(super) fn source(program: &CheckedProgram) -> String {
-    generate(program, false)
+    generate(program, None)
 }
 
 #[cfg(test)]
 pub(super) fn pending_operation_source(program: &CheckedProgram) -> String {
-    generate(program, true)
+    generate(program, Some(("sample", "&probe")))
 }
 
-fn generate(program: &CheckedProgram, _pending_operation: bool) -> String {
+#[cfg(test)]
+pub(super) fn pending_receive_source(program: &CheckedProgram) -> String {
+    generate(program, Some(("http_receive", "&http_connection")))
+}
+
+fn generate(program: &CheckedProgram, _pending_operation: Option<(&str, &str)>) -> String {
     let names: BTreeMap<_, _> = program
         .regions()
         .enumerate()
@@ -156,19 +161,21 @@ fn generate(program: &CheckedProgram, _pending_operation: bool) -> String {
             };
             let _ = writeln!(g.code, "{pc}=>{{state.pc={};", point.next);
             #[cfg(test)]
-            if _pending_operation
+            if let Some((primitive, reference_type)) = _pending_operation
                 && let Action::Decide {
                     operation: Operation::Primitive(name),
                     args,
                     arms,
                 } = &instruction.action
-                && name == "sample"
+                && name == primitive
             {
                 let Expr::Place(place) = &args[0] else {
                     panic!("pending fixture requires a borrowed supplier place")
                 };
-                let supplier =
-                    expression(&Expr::Reference(place.clone(), "&probe".into()), &g.layout);
+                let supplier = expression(
+                    &Expr::Reference(place.clone(), reference_type.into()),
+                    &g.layout,
+                );
                 let p = &instruction.provenance;
                 let _ = writeln!(
                     g.code,

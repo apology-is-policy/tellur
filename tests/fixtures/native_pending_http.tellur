@@ -1,0 +1,53 @@
+// Private test lowering suspends this ordinary synchronous primitive call.
+async control receive(ref http_connection connection) exits done {
+    delta http_receive(connection) {
+        request {
+            string method,
+            string target,
+            map<string, string> headers,
+            string body
+        } => request,
+        malformed { string message } => malformed,
+        headers_too_large => headers_large,
+        body_too_large => body_large,
+        unsupported_transfer => transfer,
+        unsupported_expectation => expectation,
+        timed_out => timeout,
+        disconnected => disconnected,
+        failed { string message } => failed
+    }
+
+    [request]:
+        emit(borrow method);
+        emit(borrow target);
+        emit(borrow body);
+        exit done;
+    [malformed]: emit(borrow message);
+        exit done;
+    [headers_large]: emit("headers_too_large");
+        exit done;
+    [body_large]: emit("body_too_large");
+        exit done;
+    [transfer]: emit("unsupported_transfer");
+        exit done;
+    [expectation]: emit("unsupported_expectation");
+        exit done;
+    [timeout]: emit("timed_out");
+        exit done;
+    [disconnected]: emit("disconnected");
+        exit done;
+    [failed]: emit(borrow message);
+        exit done;
+}
+
+control main(string name) exits done {
+    delta open_case(move name) {
+        opened { http_connection connection } => opened
+    }
+    [opened]:
+        run receive(borrow connection);
+        emit("between");
+        run receive(borrow connection);
+        close_test(connection);
+        exit done;
+}

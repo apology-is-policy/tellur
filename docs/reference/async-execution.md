@@ -52,8 +52,12 @@ then connects real socket registration to checked operation/wait identity, posit
 host quotas and owning-fault retirement using a controlled typed sample. The
 [combined candidate fault model](../async-execution.md#live-socket-candidate-fault-settlement-e1f6d)
 also keeps a real registration attached to an unadopted typed result until its owning
-fault settles it before the supplier and contingency. HTTP parser and real deadline
-composition with source scheduling remain separate.
+fault settles it before the supplier and contingency. The
+[HTTP continuation experiment](../async-execution.md#http-outcomes-through-retained-continuations-e1f6e)
+then passes the actual shared-connection signature and all nine typed results through
+checked retained arms, with a fixed deadline and deterministic input. It compares
+sequential `run`/await execution; concurrent HTTP source queues and live HTTP/deadline
+composition remain separate. Public async-host admission is still pending.
 
 ## Owned spawned children
 
