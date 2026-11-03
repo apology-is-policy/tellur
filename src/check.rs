@@ -190,6 +190,8 @@ struct Checker<'a> {
     forwarding: Option<BTreeMap<String, Vec<Contributor>>>,
     inferred_bindings: Vec<InferredBinding>,
     contained_inputs: BTreeMap<Id, (usize, ContainedOrigin)>,
+    /// Shared singleton input leaves whose runtime formation proof is transported.
+    incoming_shared: BTreeMap<Id, Permission>,
     origin_schemas: &'a crate::origins::Schemas,
     declared_stored: Vec<StoredReturn>,
     declared_returns: crate::lifetimes::Returns,
@@ -690,7 +692,8 @@ impl Checker<'_> {
         // all of their stored leaf loans to roots before granting this exception.
         // A local holder guard can conservatively cover its whole borrowed
         // ancestor. This never adds holder dependence to an unguarded shared copy.
-        // Indirect/abstract guards and permission families remain unsupported.
+        // Indirect/abstract guards remain unsupported. Only registered singleton
+        // shared input permissions can rely on transported incoming evidence.
         let guarded_holder = |place: &Place| {
             !place.indirect
                 && origins.iter().take(LIMIT).any(|o| {
@@ -719,14 +722,18 @@ impl Checker<'_> {
             let holder =
                 contains_refs && !origin.guard && !origin.opaque && guarded_holder(&origin.place);
             let guard = contains_refs && origin.guard && origin.opaque && !origin.place.indirect;
-            complete &= origin.permissions.is_empty()
+            let incoming = carriers.is_empty() && self.complete_shared_input_origin(origin);
+            complete &= (origin.permissions.is_empty() || incoming)
                 && ty.is_some()
                 && (guard
                     || holder
                     || (!origin.guard
                         && !origin.opaque
                         && (!contains_refs || carriers.contains(&origin.place))));
-            let cost = (1 + origin.place.fields.len()).saturating_mul(1 + usize::from(holder));
+            let broad_input = incoming && !origin.place.fields.is_empty();
+            let cost = (1 + origin.place.fields.len())
+                .saturating_mul(1 + usize::from(holder))
+                .saturating_add(usize::from(broad_input));
             let Some(left) = remaining.checked_sub(cost) else {
                 complete = false;
                 return;
@@ -739,6 +746,22 @@ impl Checker<'_> {
             };
             if !descriptions.contains(&description) {
                 descriptions.push(description.clone());
+            }
+            if broad_input {
+                // Shared local aliases can erase their parent loan IDs. Keep
+                // the full incoming pointee as well as every selected path;
+                // caller evidence may carry still broader dependencies.
+                let broad = ReferenceOrigin {
+                    place: Place {
+                        fields: vec![],
+                        ..origin.place.clone()
+                    },
+                    guard: false,
+                    opaque: false,
+                };
+                if !descriptions.contains(&broad) {
+                    descriptions.push(broad);
+                }
             }
             if holder {
                 // Retain the original broad ancestor and an explicit guard for
@@ -830,6 +853,9 @@ impl Checker<'_> {
             }
         } else {
             target.carriers.is_empty()
+                || (target.place.indirect
+                    && self.incoming_shared.contains_key(&target.place.root)
+                    && target.via.is_some_and(|id| !self.loan(id).mutable))
         };
         self.describe_reference(
             Expr::Reference(target.place.clone(), ty),
@@ -838,6 +864,25 @@ impl Checker<'_> {
             &carriers,
             complete,
         )
+    }
+    /// A public permission is not itself a runtime dependency proof. Only the
+    /// exact singleton shared input member registered at entry can use its
+    /// transported formation evidence, with matching ordinary projections.
+    fn complete_shared_input_origin(&self, origin: &LoanOrigin) -> bool {
+        let [permission] = origin.permissions.as_slice() else {
+            return false;
+        };
+        !origin.guard
+            && !origin.opaque
+            && origin.place.indirect
+            && self
+                .incoming_shared
+                .get(&origin.place.root)
+                .is_some_and(|input| {
+                    input.family == permission.family
+                        && input.member == permission.member
+                        && permission.fields == origin.place.fields
+                })
     }
     /// An erased local alias is still a direct formation, but every broader
     /// carrier ancestor and all of its stored leaves remain dependencies.
@@ -5224,6 +5269,7 @@ pub(crate) fn compile_concrete_unit(
                     forwarding: None,
                     inferred_bindings: vec![],
                     contained_inputs: BTreeMap::new(),
+                    incoming_shared: BTreeMap::new(),
                     origin_schemas: &origin_schemas,
                     declared_stored: signatures[&source.name].stored_returns.clone(),
                     declared_returns: signatures[&source.name].borrow_returns.clone(),

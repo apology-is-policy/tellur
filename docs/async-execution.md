@@ -2614,6 +2614,45 @@ while retaining broad holder/storage dependencies and conservative public group 
 Source scheduling, `spawn`/`yield`, cancellation, async adapters/disposal and LLVM coroutine
 lowering remain separate.
 
+## Complete singleton shared input leaves (E1d.2d.3s.12)
+
+Compiler 0.157 certifies subsequent uses of the shared singleton input leaves whose
+formation evidence is transported by E1d.2d.3s.11. Entry checking records each eligible
+private address and its exact permission family/member. An origin qualifies only when
+it uses that original indirect address, has exactly that one permission, matches its
+ordinary projection path, and has neither guard nor opaque flags. The exception applies
+to reference-free pointees; it does not certify whole carrier closure. Exclusive leaves,
+unioned groups, new returned permissions and conditional alias ancestry remain partial.
+
+Shared field access through a borrowed record can use this evidence without retaining
+the record merely as the source of the copy. Local copies, moves and projections retain
+the full incoming pointee origin explicitly, even when erased shared aliases no longer
+retain parent loan IDs. The existing 4096 origin/path budget charges this broad origin.
+Checked ancestor closure still requires unconditional defined ancestry without tagged
+or nested reference contents. Public ownership and permission checks are unchanged.
+
+Native binding requires the original incoming allocation identity and complete evidence;
+it merges every caller origin as well as the full incoming target and projected paths.
+A complete annotation cannot promote a partial caller. No new runtime admission or
+retirement rule is introduced. Host probes start with complete empty incoming origin
+lists to prove that the explicit full target blocks sibling-field writes independently
+of caller annotations. A copied shared reference permits holder release, while broad
+pointee writes stay blocked across live, waiting and completed children. Partial inputs
+keep admission inconclusive and unchanged.
+
+The [incoming leaf example](../playground/incoming_leaf_tasks.tellur) uses borrowed and
+owned input records, direct projections, moved shared aliases and borrowed task results.
+The owned holder is dropped before the child is awaited. Original/expanded O0/O2 models
+require complete captures and pending deliveries for this program, then inject partial
+caller evidence and verify that it stays partial with identical source observations.
+Certificates reject removal of broad origins and weakening of completeness. Negative
+cases retain exclusive, grouped, conditional, returned and whole-carrier proof gaps.
+
+Next, audit exclusive singleton input descendants and their indirect holder guards.
+Those need complete broad holder ancestry in addition to leaf formation evidence; this
+shared-copy exception cannot discharge that obligation. Source scheduling, `spawn`/`yield`,
+cancellation, async adapters/disposal and LLVM coroutine lowering remain separate.
+
 ## Reference execution invariants
 
 A step partition must not itself become a source effect. The same selected schedule

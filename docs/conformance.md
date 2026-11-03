@@ -4377,3 +4377,14 @@ origins exactly, reject missing/foreign/stale/mismatched/over-budget metadata an
 source equality. Original/expanded O0/O2 local-carrier models assert nonempty complete
 incoming copies across quota partitions alongside existing capture/delivery/admission
 checks. Received aliases and family-derived uses remain conservative.
+
+## Complete singleton shared input leaves (0.157)
+
+Metadata cases require full incoming pointee and projected origins for borrowed/owned
+record inputs, copies and moved aliases. Certificates reject broad-origin removal and
+weakened status. Exclusive, grouped, conditional, returned-permission and whole-carrier
+cases remain partial. Native host probes permit shared-holder release and reject broad
+pointee writes through live/waiting/completed children, including complete empty caller
+origin lists and partial caller fallback. Original/expanded O0/O2 models check all captures
+and pending deliveries, inject partial incoming evidence without promotion, and preserve
+source observations across quota partitions.

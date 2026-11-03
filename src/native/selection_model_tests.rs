@@ -178,6 +178,57 @@ fn compiled_local_guarded_captures_remain_complete_through_result_delivery() {
     assert_eq!(observed, serde_json::to_value(reference).unwrap());
 }
 
+#[test]
+fn compiled_incoming_shared_leaves_preserve_complete_capture_and_delivery() {
+    let input = include_str!("../../playground/incoming_leaf_tasks.tellur");
+    let observed = compare_selection(
+        "incoming-leaves",
+        input,
+        &[],
+        &[
+            "Local",
+            "Effect",
+            "Run",
+            "Defer",
+            "AwaitTask",
+            "Return",
+            "Delivery",
+        ],
+    );
+    let p = crate::compile(
+        input,
+        crate::manifest::Manifest::from_json(include_str!("../../playground/manifest.json"))
+            .unwrap(),
+    )
+    .unwrap();
+    let reference = p
+        .run(&crate::runtime::Scenario {
+            entry: "main".into(),
+            arguments: vec![],
+            calls: vec![],
+        })
+        .unwrap();
+    assert_eq!(observed, serde_json::to_value(reference).unwrap());
+    let partial = compare_selection(
+        "incoming-leaves-partial",
+        input,
+        &[],
+        &[
+            "Local",
+            "Effect",
+            "Run",
+            "Defer",
+            "AwaitTask",
+            "Return",
+            "Delivery",
+        ],
+    );
+    assert_eq!(
+        observed, partial,
+        "metadata coverage cannot change source observations"
+    );
+}
+
 fn compare_selection(label: &str, input: &str, args: &[&str], expected: &[&str]) -> Json {
     let root =
         std::env::temp_dir().join(format!("tellur-selection-{label}-{}", std::process::id()));
@@ -211,7 +262,7 @@ fn compare_selection(label: &str, input: &str, args: &[&str], expected: &[&str])
         let expect_guards = matches!(label, "detached-guards" | "local-guards");
         let expect_complete = matches!(
             label,
-            "loops" | "local-guards" | "local-carriers" | "aliased-carriers"
+            "loops" | "local-guards" | "local-carriers" | "aliased-carriers" | "incoming-leaves"
         );
         let replacement = format!(
             r#"fn entry_{entry}(host:&mut Host,args:Vec<V>)->R<Completion>{{
@@ -237,12 +288,46 @@ fn compare_selection(label: &str, input: &str, args: &[&str], expected: &[&str])
         } else {
             generated
         };
+        let generated = if label == "incoming-leaves-partial" {
+            generated.replace("execution::reference_evidence::inherit_checked(v,reference_value)",r#"{
+                let mut incoming=reference_value;
+                if let V::Reference{evidence,..}=&mut incoming {
+                    if let execution::reference_evidence::Origins::Complete(origins)=&evidence.origins {
+                        evidence.origins=execution::reference_evidence::Origins::Partial(origins.clone());
+                    }
+                }
+                execution::reference_evidence::inherit_checked(v,incoming)
+            }"#)
+        } else {
+            generated
+        };
         assert_eq!(generated.matches(&normal).count(), 1);
         let generated = generated.replacen(&normal, &replacement, 1).replacen(
             CONTEXTS,
             &format!("{CONTEXTS}\n{}", include_str!("selection_model.rs")),
             1,
         );
+        let generated = if label == "incoming-leaves" {
+            generated.replace("let dependencies = c.dependencies(&selected)?;", r#"
+                let dependencies = c.dependencies(&selected)?;
+                assert!(matches!(dependencies, Dependencies::Complete {..}), "every incoming leaf capture must remain complete: {dependencies:?}");
+            "#).replace("p.dependencies.require_live(&c.values)?;", r#"
+                p.dependencies.require_live(&c.values)?;
+                assert!(matches!(p.dependencies, Dependencies::Complete {..}), "incoming leaf pending delivery must remain complete");
+            "#)
+        } else {
+            generated
+        };
+        let generated = if label == "incoming-leaves-partial" {
+            generated.replace("let dependencies = c.dependencies(&selected)?;",r#"
+                let dependencies = c.dependencies(&selected)?;
+                if c.parked[&selected.id].name == "leaf" {
+                    assert!(matches!(dependencies,Dependencies::Partial {..}),"partial caller evidence cannot be promoted");
+                }
+            "#)
+        } else {
+            generated
+        };
         for opt in [0, 2] {
             let binary = root.join(format!("selection-{is_expanded}-{opt}"));
             let project = program.native_project("main", &binary).unwrap();

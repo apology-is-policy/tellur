@@ -1,0 +1,60 @@
+// Singleton shared input leaves keep their incoming dependency evidence.
+struct text_pair {
+    string left;
+    string right;
+}
+
+struct text_view['a] {
+    ref text_pair values <- 'a;
+}
+
+async control leaf(ref string input) exits ready { ref string text from input } {
+    exit ready { input };
+}
+
+async control inspect(ref text_view input) exits done {
+    auto first = defer leaf(borrow input.values.left);
+    delta await first {
+        ready { auto left } => first_ready
+    }
+    [first_ready]: emit(left);
+    [entry]:
+        ref text_pair copied = input.values;
+        ref text_pair moved = move copied;
+        ref string selected = borrow moved.right;
+        auto second = defer leaf(selected);
+        delta await second {
+            ready { auto right } => second_ready
+        }
+    [second_ready]: emit(right);
+    [entry]: exit done;
+}
+
+async control owned(text_view input) exits done {
+    auto pending = defer leaf(borrow input.values.left);
+    drop(input);
+    delta await pending {
+        ready { auto text } => ready
+    }
+    [ready]: emit(text);
+    [entry]: exit done;
+}
+
+async control startup() exits done {
+    mutable text_pair owner = text_pair { "left", "right" };
+    text_view saved = text_view { borrow owner };
+    auto first = defer inspect(borrow saved);
+    await first;
+    auto second = defer owned(move saved);
+    await second;
+    owner.right = "released";
+    emit(borrow owner.right);
+    exit done;
+}
+
+outcome command_result {
+    @exit 0 done
+}
+control main() exits command_result {
+    forward run startup();
+}

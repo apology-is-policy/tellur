@@ -794,3 +794,147 @@ control main() exits done {
         );
     }
 }
+
+#[test]
+fn singleton_shared_input_leaves_close_direct_and_aliased_projection_ancestry() {
+    let source = include_str!("../playground/incoming_leaf_tasks.tellur");
+    let p = program(source);
+    for name in ["inspect", "owned"] {
+        let r = p.regions().find(|r| r.name == name).unwrap();
+        let captures = r
+            .code
+            .iter()
+            .filter_map(|i| match &i.action {
+                Action::Decide {
+                    operation: Operation::Defer(_),
+                    args,
+                    ..
+                } => Some(&args[0]),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(captures.len(), if name == "inspect" { 2 } else { 1 });
+        for value in captures {
+            let Expr::WithReferenceEvidence(_, ReferenceEvidence::Complete(origins)) = value else {
+                panic!("{name}: {value:?}")
+            };
+            assert!(
+                origins
+                    .iter()
+                    .all(|o| o.place.indirect && !o.guard && !o.opaque)
+            );
+            assert!(
+                origins.iter().any(|o| o.place.fields.is_empty()),
+                "unprojected input pointee retained"
+            );
+            assert!(origins.iter().any(|o| !o.place.fields.is_empty()));
+            assert!(
+                origins
+                    .iter()
+                    .all(|o| r.slots[&o.place.root].name.starts_with("$stored_address_"))
+            );
+        }
+    }
+    let artifact = p.expansion_artifact("startup").unwrap();
+    let expanded = p.accept_expansion(&artifact).unwrap();
+    let scenario = Scenario {
+        entry: "main".into(),
+        arguments: vec![],
+        calls: vec![],
+    };
+    assert_eq!(p.run(&scenario).unwrap(), expanded.run(&scenario).unwrap());
+    let artifact = p.expansion_artifact("inspect").unwrap();
+    fn weaken(value: &mut Json, partial: bool) -> bool {
+        if let Some(parts) = value
+            .get_mut("WithReferenceEvidence")
+            .and_then(Json::as_array_mut)
+            && let Some(origins) = parts[1].get_mut("Complete").and_then(Json::as_array_mut)
+            && origins.iter().any(|o| {
+                o["place"]["indirect"] == true
+                    && o["place"]["fields"]
+                        .as_array()
+                        .is_some_and(|f| !f.is_empty())
+            })
+        {
+            if partial {
+                parts[1] = serde_json::json!({"Partial":origins});
+            } else {
+                origins.retain(|o| !o["place"]["fields"].as_array().is_some_and(Vec::is_empty));
+            }
+            return true;
+        }
+        match value {
+            Json::Array(v) => v.iter_mut().any(|v| weaken(v, partial)),
+            Json::Object(v) => v.values_mut().any(|v| weaken(v, partial)),
+            _ => false,
+        }
+    }
+    for partial in [false, true] {
+        let mut candidate = serde_json::to_value(&artifact).unwrap();
+        assert!(weaken(&mut candidate, partial));
+        let candidate: ExpansionArtifact = serde_json::from_value(candidate).unwrap();
+        assert_eq!(
+            p.accept_expansion(&candidate).unwrap_err().code,
+            "E_EXPANSION_CERTIFICATE"
+        );
+    }
+    let unsupported = program(
+        r#"
+struct view['a] {ref mutable string text <- 'a;}
+async control reader(ref string input) exits done {exit done;}
+async control exclusive(ref mutable view input) exits done {
+    auto pending=defer reader(input.text);await pending;exit done;
+}
+struct shared['a] {ref string text <- 'a;}
+async control conditional(shared input,bool choose) exits done {
+    delta choose {true=>yes,false=>no}
+    [yes]: ref string selected=input.text;auto pending=defer reader(selected);await pending;
+    [entry]: drop(input);exit done;
+}
+control main() exits done {exit done;}
+"#,
+    );
+    for name in ["exclusive", "conditional"] {
+        assert!(
+            !capture_evidence(unsupported.regions().find(|r| r.name == name).unwrap())
+                .is_complete(),
+            "{name}"
+        );
+    }
+    // A second leaf in the same public group is not a singleton proof.
+    let grouped = source
+        .replace(
+            "ref text_pair values <- 'a;",
+            "ref text_pair values <- 'a; ref text_pair other <- 'a;",
+        )
+        .replace(
+            "text_view { borrow owner }",
+            "text_view { borrow owner, borrow owner }",
+        );
+    let grouped = program(&grouped);
+    assert!(
+        !capture_evidence(grouped.regions().find(|r| r.name == "inspect").unwrap()).is_complete()
+    );
+    assert!(
+        !capture_evidence(grouped.regions().find(|r| r.name == "owned").unwrap()).is_complete()
+    );
+    // Extra permissions introduced by a returned-reference contract remain partial.
+    let received=source.replace("async control leaf", "control relay(ref text_pair input) exits ready {ref text_pair value from input} {exit ready {input};}\nasync control leaf")
+        .replace("ref text_pair copied = input.values;", "delta relay(input.values) {ready {auto received} => relayed}\n[relayed]:\nref text_pair copied = received;");
+    let received = program(&received);
+    let r = received.regions().find(|r| r.name == "inspect").unwrap();
+    assert!(r.code.iter().any(|i|matches!(&i.action,Action::Decide {operation:Operation::Defer(_),args,..} if matches!(&args[0],Expr::WithReferenceEvidence(_,ReferenceEvidence::Partial(_))))));
+    // This exception must not certify a whole incoming carrier closure.
+    let whole = source
+        .replace(
+            "async control owned",
+            "async control whole(ref text_view input) exits done {exit done;}\nasync control owned",
+        )
+        .replace(
+            "drop(input);",
+            "auto carrier = defer whole(borrow input); await carrier; drop(input);",
+        );
+    let whole = program(&whole);
+    let r = whole.regions().find(|r| r.name == "owned").unwrap();
+    assert!(r.code.iter().any(|i|matches!(&i.action,Action::Decide {operation:Operation::Defer(n),args,..} if n=="whole" && matches!(&args[0],Expr::WithReferenceEvidence(_,ReferenceEvidence::Partial(_))))));
+}

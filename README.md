@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.156.0** implements the v0.1 checked core and the current language
+Compiler release **0.157.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -905,3 +905,11 @@ Supported singleton record input fields retain already-bound reference evidence 
 private access-slot materialization. Exact allocation/path checks preserve complete
 caller evidence without promoting partial or invalid metadata. Public permissions,
 source execution and scheduling remain unchanged; indirect holder closure is still queued.
+
+## Shared incoming leaf dependencies in 0.157
+
+Singleton shared input leaves preserve complete incoming dependency coverage through
+reborrows, local aliases and projections. Broad pointee ancestry remains protected, while
+copying a shared field does not retain its record holder. Partial caller evidence and
+unsupported permission cases remain conservative. Try
+`./bin/tellurc exec playground/incoming_leaf_tasks.tellur`.

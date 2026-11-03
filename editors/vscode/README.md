@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-darwin-arm64-0.156.0.vsix` using **Extensions:
+1. Install the supplied `tellur-language-darwin-arm64-0.157.0.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1394,3 +1394,11 @@ Supported singleton record input fields retain already-bound reference evidence 
 private access-slot materialization. Exact allocation/path checks preserve complete
 caller evidence without promoting partial or invalid metadata. Public permissions,
 source execution and scheduling remain unchanged; indirect holder closure is still queued.
+
+## Shared incoming leaf dependencies in 0.157
+
+Singleton shared input leaves preserve complete incoming dependency coverage through
+reborrows, local aliases and projections. Broad pointee ancestry remains protected, while
+copying a shared field does not retain its record holder. Partial caller evidence and
+unsupported permission cases remain conservative. Try
+`./bin/tellurc exec playground/incoming_leaf_tasks.tellur`.

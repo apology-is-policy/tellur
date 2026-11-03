@@ -1164,6 +1164,14 @@ impl Checker<'_> {
                     .find(|l| l.target.place.root == *address)
                     .unwrap();
                 loan.origins = origins;
+                if incoming.contains(&leaf.fields)
+                    && leaf.through.is_empty()
+                    && leaf.sum_leaf.is_none()
+                    && !loan.mutable
+                {
+                    self.incoming_shared
+                        .insert(*address, Permission::new(family, member));
+                }
             }
             self.refresh_public_contents(&addresses);
             self.attach_received_contents(slot.id);

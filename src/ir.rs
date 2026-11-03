@@ -103,7 +103,8 @@ pub struct ReferenceOrigin {
 /// bounded to direct forms and remains conditional on incoming runtime evidence.
 /// Fresh local holder guards and owned record borrows (including erased local
 /// aliases) may retain complete closure with full ancestor/stored-leaf coverage.
-/// Indirect, permission-family, nested-reference and path-dependent gaps stay partial.
+/// Singleton shared input leaves may close over transported incoming evidence;
+/// other permission-family, indirect carrier, nested-reference and path gaps stay partial.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ReferenceEvidence {
     Partial(Vec<ReferenceOrigin>),

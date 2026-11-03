@@ -758,3 +758,10 @@ and nested record fields with reference-free pointees. It supplies no new comple
 partial, missing or invalid metadata is never promoted. Unioned/tagged/nested-reference
 and returned-value evidence remain conservative; indirect holder closure is still queued.
 See [incoming evidence transport](../async-execution.md#incoming-record-leaf-evidence-transport-e1d2d3s11).
+
+Since 0.157, supported singleton shared input leaves retain complete dependency coverage
+through direct uses, local aliases and projections when incoming runtime evidence is
+complete. Full incoming pointees and caller ancestry remain dependencies; copying a shared
+field adds no holder guard. Exclusive/grouped/conditional/returned permissions and whole
+indirect carrier closure remain conservative. See
+[shared input leaves](../async-execution.md#complete-singleton-shared-input-leaves-e1d2d3s12).
