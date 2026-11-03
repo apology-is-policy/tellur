@@ -290,7 +290,7 @@ fn completed_and_joined_record_chain_fault_results_settle_before_contingency() {
     }
 }
 #[test]
-fn record_chain_admission_keeps_tagged_nodes_and_local_escape_gated() {
+fn record_chain_admission_includes_tagged_nodes_but_keeps_local_escape_gated() {
     let defs = "struct view['a] {ref string text <- 'a;}struct chain['holder,'a] {ref view['a] item <- 'holder;}variant tag['a] {held {ref string text <- 'a},empty}struct indirect['holder,'a] {ref tag['a] item <- 'holder;}struct mixed['holder,'a] {chain['holder,'a] item;option<ref string>['a] tagged;}";
     for ty in [
         "option<chain>",
@@ -303,7 +303,7 @@ fn record_chain_admission_keeps_tagged_nodes_and_local_escape_gated() {
         let source = format!(
             "{defs} async control work({ty} input) exits done {{exit done;}}async control caller({ty} input) exits done {{auto child=spawn work(input);await child;exit done;}}"
         );
-        rejects(&source, "E_ASYNC");
+        compile(&source, manifest()).unwrap();
     }
     rejects(
         "struct view['a] {ref string text <- 'a;}struct link['holder,'a] {ref view['a] item <- 'holder;}async control escape(ref string input) exits ready... {view local=view {input};link result=link {borrow local};exit ready {result};}",

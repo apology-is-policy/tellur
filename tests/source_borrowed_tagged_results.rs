@@ -275,6 +275,6 @@ fn whole_tagged_results_preserve_nominal_identity_and_escape_limits() {
         let source = format!(
             "variant choice['a] {{held {{ref string text <- 'a}},empty}}outcome reply['a] {{held {{ref string text <- 'a}},empty}}async control lend(ref {ty} input) exits ready {{ref {ty} value from input}} {{exit ready {{input}};}}async control caller(ref {ty} input) exits done {{auto child=spawn lend(input);delta await child {{ready {{auto value}}=>ready}}[ready]:exit done;}}"
         );
-        rejects(&source, "E_ASYNC");
+        compile(&source, manifest()).unwrap();
     }
 }

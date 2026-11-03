@@ -1,0 +1,31 @@
+struct chain['holder, 'a] {
+    ref mutable option<ref mutable string>['a] item <- 'holder;
+}
+async control lend(ref mutable chain input) exits ready... {
+    yield;
+    exit ready { borrow mutable deref input.item };
+}
+async control startup() exits done {
+    mutable string owner = "before";
+    mutable option<ref mutable string> saved = some { borrow mutable owner };
+    mutable chain link = chain { borrow mutable saved };
+    auto child = spawn lend(borrow mutable link);
+    yield;
+    yield;
+    auto moved = move child;
+    delta await moved {
+        ready { auto value } => ready
+    }
+    [ready]: delta value {
+        some { auto text } => held,
+        none => empty
+    }
+    [held]: deref text = "after";
+        emit(text);
+    [entry]: drop(saved);
+        owner = "free";
+        exit done;
+}
+control main() exits done {
+    forward run startup();
+}

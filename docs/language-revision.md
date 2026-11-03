@@ -315,7 +315,11 @@ E1e.19 admits record-only reference chains in owned/borrowed captures and result
 Every intermediate holder, selected supplier origin and exclusive ancestor survives
 completion, join and fault retirement. Reference-bearing tagged nodes in deeper chains
 are the next bounded audit; anonymous contracts and collections remain separate.
-Compiler **0.184.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
+E1e.20 admits option and closed-variant nodes in deeper reference chains. Active and
+empty alternatives retain holder storage, selected origins and exclusive ancestry across
+join and fault retirement. Deeper named-outcome nodes are next; anonymous contracts,
+collections and borrowed-handle wrappers remain separate.
+Compiler **0.185.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
 lifetime checkpoints of milestone 2, the array/vector/map core of milestone 3,
 and implicit entry, inline/stored adapters, owned capture, named outcome contracts
 and checked forwarding in milestone 4. A first [semantic foundation](semantic-foundation.md)

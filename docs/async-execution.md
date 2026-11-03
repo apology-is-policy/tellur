@@ -3444,3 +3444,25 @@ Next audit: reference-bearing option/closed-variant nodes in deeper reference ch
 Establish cold and gated source baselines for active/empty alternatives and every holder
 edge, then prove selected origins, exclusive guards and resource retirement. Named-outcome
 nodes, anonymous contracts, collections and borrowed-handle wrappers remain separate.
+
+## Tagged reference chains (E1e.20)
+
+Compiler 0.185 extends the additional chain visitor to options and closed variants.
+Owned and borrowed roots may mix these nodes with records. Active-type tracking rejects
+cycles; named-outcome nodes with references remain outside this extension. Existing
+direct-leaf profiles and production scheduler behavior are unchanged.
+
+The 48-case cold/gated baseline from 0.184 remains recorded separately. Source checks
+cover active/empty tags, shared/exclusive and owned/borrowed roots, every child phase,
+selected suppliers, copies, transfers, projected guards, whole and owned repeated joins,
+siblings, generic forwarding, imported public origins and local escapes. Native
+original/expanded O0/O2 comparisons cover fuel/quota cuts, completed whole results,
+awaited parents and stopped siblings. Real resources in active and reference-free empty
+alternatives retire after borrowers and before the owning contingency. The reference
+context census includes active/empty/whole results and joined/unjoined faults.
+
+Next audit: reference-bearing named-outcome nodes in deeper reference chains. Establish
+cold and gated source baselines for caller handling, active/empty/nested outcomes, holder
+edges and selected supplier origins before changing admission. Anonymous contracts,
+collections and borrowed-handle wrappers remain separate; no new scheduling or ownership
+policy is implied.

@@ -408,6 +408,11 @@ mod tests {
             include_str!("../../playground/borrowed_tagged_spawn_results.tellur"),
             include_str!("../../playground/borrowed_outcome_spawn_results.tellur"),
             include_str!("../../playground/record_chain_spawn.tellur"),
+            include_str!("../../playground/tagged_chain_spawn.tellur"),
+            include_str!("../../tests/fixtures/source_tagged_chain_option.tellur"),
+            include_str!("../../tests/fixtures/source_tagged_chain_variant.tellur"),
+            include_str!("../../tests/fixtures/source_tagged_chain_fault.tellur"),
+
             include_str!("../../tests/fixtures/source_record_chain_guards.tellur"),
             include_str!("../../tests/fixtures/source_record_chain_results.tellur"),
             include_str!("../../tests/fixtures/source_record_chain_fault.tellur"),
@@ -468,6 +473,8 @@ mod tests {
         .chain([include_str!("../../tests/fixtures/source_record_chain_fault.tellur")
             .replace("    yield;\n    yield;\n    delta await result", "    delta await result")
             .replace("emit(\"stopped parent resumed\");", "yield;yield;")])
+        .chain([include_str!("../../tests/fixtures/source_tagged_chain_option.tellur"),include_str!("../../tests/fixtures/source_tagged_chain_variant.tellur")].into_iter().flat_map(|s| [s.replace("some { borrow mutable owner }", "none {}").replace("choice.held { borrow mutable owner }", "choice.empty {}").replace("auto moved = move child;", "owner=\"available\";auto moved = move child;"),s.replace("exit ready { borrow mutable deref input.item };", "exit ready { input };").replace("delta value {", "delta value.item {")]))
+        .chain([include_str!("../../tests/fixtures/source_tagged_chain_fault.tellur").replace("    yield;\n    yield;\n    delta await result", "    delta await result").replace("emit(\"stopped parent resumed\");", "yield;yield;")])
         .chain([include_str!("../../tests/fixtures/source_record_chain_guards.tellur")
             .replace("exit ready { borrow mutable deref input.inner.item };", "exit ready { input };")
             .replace("borrow mutable deref value.text", "borrow mutable deref value.inner.item.text")])

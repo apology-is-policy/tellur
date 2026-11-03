@@ -958,9 +958,9 @@ impl Manifest {
         let inner = reference_inner(name).map_or(name, |(_, inner)| inner);
         !self.contains_references(inner)
     }
-    /// Record-only reference chains retain every intermediate holder. Keep reference-bearing
-    /// tagged nodes, collections and anonymous contracts outside this additional profile.
-    fn supports_spawn_record_chain(&self, name: &str) -> bool {
+    /// Record/option/closed-variant chains retain every intermediate holder.
+    /// Reference-bearing named outcomes, collections and anonymous contracts stay separate.
+    fn supports_spawn_reference_chain(&self, name: &str) -> bool {
         fn visit(m: &Manifest, name: &str, active: &mut BTreeSet<String>) -> bool {
             if m.supports_spawn_leaf(name) {
                 return true;
@@ -969,24 +969,40 @@ impl Manifest {
             if !active.insert(inner.to_owned()) {
                 return false;
             }
-            let supported = match m.type_def(inner) {
-                Some(TypeDef::Record { fields, .. }) => {
-                    fields.iter().all(|field| visit(m, &field.ty, active))
+            let supported = if let Some(payload) = option_inner(inner) {
+                visit(m, payload, active)
+            } else {
+                match m.type_def(inner) {
+                    Some(TypeDef::Record { fields, .. }) => {
+                        fields.iter().all(|field| visit(m, &field.ty, active))
+                    }
+                    Some(TypeDef::Variant { constructors, .. })
+                        if outcome_inner(inner).is_none() =>
+                    {
+                        constructors
+                            .iter()
+                            .all(|tag| tag.fields.iter().all(|field| visit(m, &field.ty, active)))
+                    }
+                    _ => false,
                 }
-                _ => false,
             };
             active.remove(inner);
             supported
         }
         let inner = reference_inner(name).map_or(name, |(_, inner)| inner);
-        matches!(self.type_def(inner), Some(TypeDef::Record { .. }))
+        (option_inner(inner).is_some()
+            || matches!(
+                self.type_def(inner),
+                Some(TypeDef::Record { .. } | TypeDef::Variant { .. })
+            ))
+            && outcome_inner(inner).is_none()
             && visit(self, name, &mut BTreeSet::new())
     }
     /// Borrowed captures retain record/option/variant/named-outcome storage and its direct
     /// reference leaves. Keep this separate from whole borrowed-carrier results
     /// and anonymous outcome contracts, which require distinct evidence.
     pub(crate) fn supports_spawn_capture(&self, name: &str) -> bool {
-        if self.supports_spawn_payload(name) || self.supports_spawn_record_chain(name) {
+        if self.supports_spawn_payload(name) || self.supports_spawn_reference_chain(name) {
             return true;
         }
         fn contents(m: &Manifest, name: &str, active: &mut BTreeSet<String>) -> bool {
@@ -1018,7 +1034,7 @@ impl Manifest {
         reference_inner(name).is_some_and(|(_, inner)| contents(self, inner, &mut BTreeSet::new()))
     }
     /// Whole borrowed carriers retain storage and contained permissions.
-    /// Named outcomes retain caller handling; deeper tagged pointees and anonymous contracts stay separate.
+    /// Named outcomes retain caller handling; deeper named-outcome nodes and anonymous contracts stay separate.
     pub(crate) fn supports_spawn_result(&self, name: &str) -> bool {
         self.supports_spawn_payload(name)
             || reference_inner(name).is_some_and(|(_, inner)| {
@@ -1065,7 +1081,7 @@ impl Manifest {
             supported
         }
         visit(self, name, &mut BTreeSet::new())
-            || (reference_inner(name).is_none() && self.supports_spawn_record_chain(name))
+            || (reference_inner(name).is_none() && self.supports_spawn_reference_chain(name))
     }
     pub fn check_type(&self, name: &str) -> Result<()> {
         if self.contains_references(name) {

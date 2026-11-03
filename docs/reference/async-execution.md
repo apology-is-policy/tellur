@@ -637,7 +637,7 @@ identity and child-local storage escape checks still apply. See the
 [runnable example](../../playground/borrowed_outcome_spawn_results.tellur).
 Completed and joined borrowers retire before outcome-holder resources and their external
 suppliers on an owning fault. Declared resource dispositions run before the owning
-contingency; stopped nested handlers do not run. Reference-bearing tagged nodes in deeper chains, anonymous
+contingency; stopped nested handlers do not run. Reference-bearing named-outcome nodes in deeper chains, anonymous
 reference-bearing contracts, reference-bearing collections and borrowed-handle wrappers
 remain separate. Source handoffs still occur only at explicit `await`/`yield`.
 
@@ -646,8 +646,8 @@ remain separate. Source handoffs still occur only at explicit `await`/`yield`.
 Source tasks may capture and return record values or whole record references whose
 reference-bearing nodes are records. Record fields can own further records or hold
 shared/exclusive references to them. Reference-free contents remain allowed. This
-extends the previous direct-leaf profile; reference-bearing options, variants and
-outcomes inside these deeper chains remain a separate admission boundary.
+extends the previous direct-leaf profile. The following tagged-chain profile admits
+options and closed variants too; reference-bearing named outcomes remain separate.
 
 <!-- tellur:check -->
 ```tellur
@@ -687,6 +687,52 @@ in their backing records. Only the owning contingency runs after declared resour
 dispositions; stopped nested handlers remain suppressed. Anonymous reference-bearing
 contracts, reference-bearing collections and borrowed-handle wrappers remain gated.
 There are still no implicit source handoffs or escaping task handles.
+
+## Reference chains through options and closed variants
+
+Source captures and results can also contain shared/exclusive references through options
+and closed variants. These nodes may mix with records, including owned aggregate roots
+and whole borrowed roots. Every traversed holder remains live while its child is queued,
+running or completed but unjoined. Joining adopts the selected result dependencies.
+An empty tag keeps its holder storage without creating a loan on an absent supplier.
+
+<!-- tellur:check -->
+```tellur
+struct link['holder, 'a] {
+    ref mutable option<ref mutable string>['a] item <- 'holder;
+}
+async control lend(ref mutable link input) exits ready... {
+    yield;
+    exit ready { borrow mutable deref input.item };
+}
+async control startup() exits done {
+    mutable string owner = "before";
+    mutable option<ref mutable string> saved = some { borrow mutable owner };
+    mutable link holder = link { borrow mutable saved };
+    auto child = spawn lend(borrow mutable holder);
+    delta await child { ready { auto value } => ready }
+    [ready]: delta value { some { auto text } => held, none => empty }
+    [held]: deref text = "after"; emit(text);
+    [entry]: drop(saved); owner = "free"; exit done;
+}
+control main() exits done { forward run startup(); }
+```
+
+Tag selection preserves contained permissions and exclusive ancestry. A shared outer
+reference cannot grant mutable access to an exclusive field. Shared copies can detach
+leaves under ordinary final-use rules; exclusive projected leaves retain their holder
+guards. Whole and owned results preserve these dependencies through another spawn/join.
+Public contracts still name holder storage separately from contained supplier origins.
+The [runnable selection example](../../playground/tagged_chain_spawn.tellur) releases
+unselected suppliers after join and retains only the selected result dependencies.
+
+On an owning fault, borrowers retire before backing-holder resources and external
+suppliers, including resources in alternatives with no contained references. Only the
+owning contingency runs after resource dispositions; stopped nested handlers remain
+suppressed. Reference-bearing named-outcome nodes inside deeper chains, anonymous
+contracts, collections and borrowed-handle wrappers remain separate. The existing
+profile for named outcomes with direct reference leaves is unchanged. Admission rejects
+cyclic carrier graphs; no implicit handoffs or escaping task handles are introduced.
 
 ## Parent awaits beside children
 

@@ -1,6 +1,79 @@
 //! Differential source execution using the exact production emitter and scheduler.
 use super::*;
 #[test]
+fn compiled_source_tagged_chains_values() {
+    compare(
+        "tagged_chains_values",
+        include_str!("../../playground/tagged_chain_spawn.tellur"),
+    );
+}
+#[test]
+fn compiled_source_tagged_chains_option() {
+    compare(
+        "tagged_chains_option",
+        include_str!("../../tests/fixtures/source_tagged_chain_option.tellur"),
+    );
+}
+#[test]
+fn compiled_source_tagged_chains_variant() {
+    compare(
+        "tagged_chains_variant",
+        include_str!("../../tests/fixtures/source_tagged_chain_variant.tellur"),
+    );
+}
+#[test]
+fn compiled_source_tagged_chains_fault() {
+    compare(
+        "tagged_chains_fault",
+        include_str!("../../tests/fixtures/source_tagged_chain_fault.tellur"),
+    );
+}
+#[test]
+fn compiled_source_tagged_chains_empty_and_whole_results() {
+    for (i, source) in [
+        include_str!("../../tests/fixtures/source_tagged_chain_option.tellur"),
+        include_str!("../../tests/fixtures/source_tagged_chain_variant.tellur"),
+    ]
+    .iter()
+    .enumerate()
+    {
+        let empty = source
+            .replace("some { borrow mutable owner }", "none {}")
+            .replace("choice.held { borrow mutable owner }", "choice.empty {}")
+            .replace(
+                "auto moved = move child;",
+                "owner=\"available\";auto moved = move child;",
+            );
+        compare(&format!("tagged_chains_empty_{i}"), &empty);
+        let whole = source
+            .replace(
+                "exit ready { borrow mutable deref input.item };",
+                "exit ready { input };",
+            )
+            .replace("delta value {", "delta value.item {");
+        compare(&format!("tagged_chains_whole_{i}"), &whole);
+    }
+}
+#[test]
+fn compiled_source_tagged_chains_joined_fault() {
+    let source = include_str!("../../tests/fixtures/source_tagged_chain_fault.tellur")
+        .replace(
+            "    yield;\n    yield;\n    delta await result",
+            "    delta await result",
+        )
+        .replace("emit(\"stopped parent resumed\");", "yield;yield;");
+    compare("tagged_chains_joined_fault", &source);
+}
+#[test]
+fn compiled_source_tagged_chains_resources() {
+    source_resources(SourceResources::TaggedChains);
+}
+#[test]
+fn compiled_source_tagged_chains_empty_resources() {
+    source_resources(SourceResources::EmptyTaggedChains);
+}
+
+#[test]
 fn compiled_source_record_chains_values() {
     compare(
         "record_chains_values",
@@ -791,6 +864,8 @@ enum SourceResources {
     BorrowedOutcomeResults,
     BorrowedRecordResults,
     RecordChains,
+    TaggedChains,
+    EmptyTaggedChains,
     BorrowedResult,
 }
 fn source_resources(mode: SourceResources) {
@@ -809,6 +884,8 @@ fn source_resources(mode: SourceResources) {
             | SourceResources::BorrowedTags
             | SourceResources::BorrowedOutcomes
             | SourceResources::BorrowedTaggedResults
+            | SourceResources::TaggedChains
+            | SourceResources::EmptyTaggedChains
             | SourceResources::BorrowedOutcomeResults
             | SourceResources::BorrowedRecordResults
             | SourceResources::RecordChains
@@ -1057,6 +1134,8 @@ async control helper_work(ref counter local,string path) exits done {{
         SourceResources::BorrowedTags
             | SourceResources::BorrowedOutcomes
             | SourceResources::BorrowedTaggedResults
+            | SourceResources::TaggedChains
+            | SourceResources::EmptyTaggedChains
             | SourceResources::BorrowedOutcomeResults
     ) {
         r#"
@@ -1127,7 +1206,10 @@ control main(string path,bool stop) exits done {
     };
     let source = if matches!(
         mode,
-        SourceResources::BorrowedTaggedResults | SourceResources::BorrowedOutcomeResults
+        SourceResources::BorrowedTaggedResults
+            | SourceResources::BorrowedOutcomeResults
+            | SourceResources::TaggedChains
+            | SourceResources::EmptyTaggedChains
     ) {
         let changed=source.replace("produce(counter value,ref counter parent) exits ready {counter result,ref counter retained from parent} {exit ready {value,parent};}",
             "produce(ref produced input) exits ready {ref produced result from input} {exit ready {input};}")
@@ -1173,8 +1255,43 @@ control main(string path,bool stop) exits done {
     } else {
         source
     };
+    let source = if matches!(
+        mode,
+        SourceResources::TaggedChains | SourceResources::EmptyTaggedChains
+    ) {
+        let changed=source.replace("produce(ref produced input) exits ready {ref produced result from input} {exit ready {input};}",
+            "produce(produced_link input) exits ready {ref produced[input['parent]] result from input['holder]} {exit ready {input.item};}")
+            .replace("spawn produce(borrow result_holder)", "spawn produce(produced_link {borrow result_holder})")
+            .replace("sibling(ref worker_input input)", "sibling(ref worker_link input)")
+            .replace("delta input {held", "delta input.item {held")
+            .replace("auto worker=spawn sibling(borrow holder);", "worker_link linked=worker_link {borrow holder};auto worker=spawn sibling(borrow linked);");
+        assert_ne!(changed, source);
+        assert!(changed.contains("spawn produce(produced_link {borrow result_holder})"));
+        assert!(changed.contains("delta input.item {held"));
+        format!(
+            "struct produced_link['holder,'parent] {{ref produced['parent] item <- 'holder;}}struct worker_link['holder,'parent] {{ref worker_input['parent] item <- 'holder;}}\n{changed}"
+        )
+    } else {
+        source
+    };
+    let source = if matches!(mode, SourceResources::EmptyTaggedChains) {
+        // The empty alternative has no supplied reference, but owns a real resource.
+        // Its borrowed storage must retire before that resource at every fuel cut.
+        let changed=source.replace("variant produced['parent] {held {counter owned,ref counter retained <- 'parent},empty}",
+            "variant produced['parent] {held {counter owned,ref counter retained <- 'parent},empty {counter spare}}")
+            .replace("produced.held {first,parent}", "produced.empty {first}")
+            .replace("empty=>impossible", "empty {auto spare}=>empty_result")
+            .replace("[selected]:inspect(owned);inspect(retained);", "[selected]:inspect(owned);inspect(retained);[empty_result]:inspect(spare);")
+            .replace("empty=>unused", "empty {counter remaining}=>empty_owned")
+            .replace("[consumed]:close(value);", "[consumed]:close(value);[empty_owned]:close(remaining);");
+        assert_ne!(changed, source);
+        assert!(changed.contains("produced.empty {first}"));
+        changed
+    } else {
+        source
+    };
     let p = crate::compile(&source, manifest)
-        .unwrap()
+        .unwrap_or_else(|error| panic!("{error}\n{source}"))
         .with_entry_exit_codes("main", BTreeMap::from([("done".into(), 0)]))
         .unwrap();
     for (expanded, p) in [(false, p.clone()), (true, p.expanded("main").unwrap())] {

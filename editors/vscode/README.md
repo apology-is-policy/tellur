@@ -1566,3 +1566,9 @@ Release 0.184 supports record-only reference chains in spawned captures/results.
 explains intermediate holders and supplier origins. Diagnostics catch premature holder
 and supplier reuse; imported contract changes invalidate callers. A fresh editor repairs
 both conflicts and runs the example natively. Deeper tagged nodes remain gated.
+
+Release 0.185 supports option and closed-variant reference chains in spawned captures
+and results. Hover describes active/empty holder storage and selected supplier origins.
+Imported public contracts still distinguish storage and contained origins; diagnostics
+and repair retain holder guards. The tagged-chain selection example runs through the
+native editor command. Deeper reference-bearing named-outcome nodes remain gated.

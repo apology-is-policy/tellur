@@ -174,17 +174,13 @@ control main() exits done {forward run startup();}"#;
     same(one);
 }
 #[test]
-fn borrowed_carriers_and_reference_pointees_stay_gated() {
+fn tagged_carriers_admit_deeper_record_pointees() {
     for source in [
         "struct view['a] {ref string text <- 'a;}async control work(option<ref view> input) exits done {exit done;}async control start(option<ref view> input) exits done {auto child=spawn work(input);await child;exit done;}",
         "variant carrier['storage,'a] {held {ref view['a] value <- 'storage}}struct view['a] {ref string text <- 'a;}async control work(carrier input) exits done {exit done;}async control start(carrier input) exits done {auto child=spawn work(input);await child;exit done;}",
     ] {
         compile(&source.replace("spawn ", "defer "), manifest()).unwrap();
-        assert_eq!(
-            compile(source, manifest()).unwrap_err().code,
-            "E_ASYNC",
-            "{source}"
-        );
+        compile(source, manifest()).unwrap();
     }
 }
 #[test]

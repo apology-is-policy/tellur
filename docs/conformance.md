@@ -4724,3 +4724,18 @@ owned and borrowed chain captures, completed references, awaited owners and stop
 siblings. The reference context census covers 71 variants, including whole-chain results
 and joined/unjoined faults. Production scheduler behavior and conservative host evidence
 rules are unchanged; cold carrier/result evidence remains the baseline.
+
+## Tagged source reference chains (0.185)
+
+`source_tagged_chains` covers active/empty option and closed-variant targets, all child
+phases, shared/exclusive owned/borrowed roots, selected origins and holder guards,
+Copy/move, whole/owned repeated joins, sibling isolation, forwarding and local escapes.
+Public contract edits invalidate imported callers; fresh editor repair restores hover
+and native execution. Previous option/variant chain admission gates now assert success;
+reference-bearing named-outcome nodes and collections retain negative controls.
+
+Eight `compiled_source_tagged_chains_*` tests compare original/expanded O0/O2 executions
+at every fuel cutoff and quota partition. Their models include active/empty and whole
+results, joined/unjoined faults, awaited parents and real resources in active and
+reference-free empty alternatives. The reference context census covers 80 variants.
+Production schedulers and conservative host dependency evidence are unchanged.
