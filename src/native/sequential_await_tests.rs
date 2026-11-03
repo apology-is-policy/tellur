@@ -476,7 +476,7 @@ fn prepared_mixed_await_admits_but_failed_tracker_rejects_before_transfer() {
         .unwrap();
     let mut q = queue(&mut c, &parent, &LEAF, vec![V::Bool(false), V::Unit]);
     let child = c.start_await(&parent, &mut q).unwrap();
-    for key in [&parent, &child] {
+    for key in [&parent] {
         let before = snapshot(&c);
         assert!(
             c.start_child(key, &LEAF, vec![V::Bool(false), V::Unit])
@@ -485,6 +485,14 @@ fn prepared_mixed_await_admits_but_failed_tracker_rejects_before_transfer() {
         assert!(c.start_task(key, &mut None).is_err());
         assert_eq!(snapshot(&c), before);
     }
+    // Being awaited does not suspend this invocation itself. Its own children
+    // remain members of its current fault domain and must join before return.
+    let nested = c
+        .start_child(&child, &LEAF, vec![V::Bool(false), V::Unit])
+        .unwrap();
+    assert!(c.advance_retained(&child, 1).is_err());
+    c.advance_retained(&nested, 2).unwrap();
+    c.join(Some(&child), &nested).unwrap();
     c.terminate().unwrap();
     assert!(c.host.tasks.is_empty() && c.values.is_empty());
 }

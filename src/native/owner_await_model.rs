@@ -5,19 +5,31 @@ pub fn drive_owner_await(
     failing: &'static Control,
     args: Vec<V>,
     phase: usize,
+    under_await: bool,
     quotas: &[usize],
 ) -> R<Completion> {
     let mut c = Contexts::new(host);
     let root = c.start(control, args)?;
+    let owner = if under_await {
+        loop {
+            match c.advance_retained(&root, 1)? {
+                ContextPoll::Paused => (),
+                ContextPoll::Await => break c.admit_await(&root)?,
+                _ => panic!("expected outer await"),
+            }
+        }
+    } else {
+        root.clone()
+    };
     let failed = loop {
-        if c.parked[&root.id]
+        if c.parked[&owner.id]
             .machine
             .next_access()
             .cold_await
             .is_some()
         {
-            let failed = c.start_child(&root, failing, vec![])?;
-            let progress = c.advance_disjoint(&root, 99);
+            let failed = c.start_child(&owner, failing, vec![])?;
+            let progress = c.advance_disjoint(&owner, 99);
             assert_eq!((progress.instructions, progress.transitions), (1, 1));
             assert!(matches!(
                 progress.stop,
@@ -25,11 +37,14 @@ pub fn drive_owner_await(
             ));
             break failed;
         }
-        assert!(matches!(c.advance_retained(&root, 1)?, ContextPoll::Paused));
+        assert!(matches!(
+            c.advance_retained(&owner, 1)?,
+            ContextPoll::Paused
+        ));
     };
     if phase > 0 {
-        let child = c.admit_await(&root)?;
-        let mut chain = vec![root.clone(), child];
+        let child = c.admit_await(&owner)?;
+        let mut chain = vec![owner.clone(), child];
         let marker = if phase == 2 {
             "nested handler"
         } else {
@@ -45,7 +60,7 @@ pub fn drive_owner_await(
                     if chain.len() == 1 {
                         assert!(phase >= 3);
                         if phase == 4 {
-                            c.return_await(&root, &selected)?;
+                            c.return_await(&owner, &selected)?;
                         }
                         break;
                     }

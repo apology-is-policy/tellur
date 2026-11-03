@@ -70,3 +70,7 @@ mod direct_await_tests;
 #[cfg(test)]
 #[path = "started_join_model_tests.rs"]
 mod started_join_tests;
+
+#[cfg(test)]
+#[path = "nested_started_model_tests.rs"]
+mod nested_started_tests;

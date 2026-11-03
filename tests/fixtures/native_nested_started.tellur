@@ -1,0 +1,50 @@
+async control leaf(ref mutable string text)
+    exits ready { ref mutable string text from text }
+{
+    emit("leaf");
+    deref text = "edited";
+    exit ready { text };
+}
+
+async control child(string owned, ref mutable string text)
+    exits ready { string owned, ref mutable string text from text }
+{
+    emit("child");
+    delta await leaf(text) {
+        ready { auto selected } => received
+    }
+
+    [received]: exit ready { move owned, selected };
+}
+
+async control middle(string owned, ref mutable string text)
+    exits ready { string owned, ref mutable string text from text }
+{
+    auto pending = defer child(move owned, text);
+    delta await pending {
+        ready { auto result, auto selected } => received
+    }
+
+    [received]: exit ready { move result, selected };
+}
+
+async control outer(string owned, ref mutable string text)
+    exits ready { string owned, ref mutable string text from text }
+{
+    forward await middle(move owned, text);
+}
+
+control main() exits done {
+    mutable string text = "initial";
+    delta run outer("payload", borrow mutable text) {
+        ready { auto owned, auto view } => received
+    }
+
+    [received]:
+        emit(borrow owned);
+        emit(view);
+        drop(view);
+        text = "released";
+        emit(borrow text);
+        exit done;
+}

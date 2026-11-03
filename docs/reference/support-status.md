@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.163.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.164.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -316,3 +316,10 @@ result. Unjoined captures and results remain retirement obligations, including d
 settlement. Shared protocol preflight and reference delayed-completion tests cover the same
 lifetime requirements. Source `spawn`/`yield` and scheduling remain unavailable. See
 [retained started-task joins](../async-execution.md#retained-started-task-joins-e1d2d3v).
+
+Since 0.164, an awaited invocation may own independent native children when it is not itself
+waiting on an await. Captures and results retain their original invocation/domain obligations;
+outer callers remain parked until every child is delivered. Terminal owning-boundary unwind
+restores the original outer diagnostic chain before further settlement. This internal host
+composition keeps existing callback/loan gates. Source programs still execute sequentially,
+without `spawn`/`yield`. See [children of awaited invocations](../async-execution.md#children-of-awaited-invocations-e1d2d3w).

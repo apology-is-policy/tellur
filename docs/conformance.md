@@ -4460,3 +4460,13 @@ process exit retire them before supplier cleanup and contingency, skipping stopp
 handlers. Generated original/expanded O0/O2 probes explicitly substitute host queueing at
 an existing cold-await site and compare normal owned/borrowed results with the reference
 executor under quota partitions. This is host integration evidence, not source concurrency.
+
+## Children of awaited invocations (0.164)
+
+Native host coverage composes raw, paired and unjoined children with awaited invocation
+owners. Retained borrowed results, early/late claims, stale ancestor authority, readiness,
+source-fault recovery, fuel exhaustion and process retirement preserve original chains and
+release every resource once before supplier cleanup. Generated original/expanded O0/O2
+probes compare nested started/direct-await results with reference execution and exercise
+sibling faults across work, handler, completed and delivered phases. Harness scheduling is
+explicit; these checks do not claim source concurrency support.

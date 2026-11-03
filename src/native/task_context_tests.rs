@@ -635,3 +635,6 @@ fn owning_contingency_resumes_only_after_bound_task_resources_and_waits_retire()
 
 #[path = "started_task_tests.rs"]
 mod started;
+
+#[path = "awaited_owner_tests.rs"]
+mod awaited_owner;

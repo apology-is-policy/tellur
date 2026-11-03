@@ -2871,6 +2871,37 @@ integration is bounded source spawn/yield and required-await checking using invo
 and fault-domain ownership. Broader native callback admission remains conservative.
 Cancellation, async adapters/disposal and LLVM coroutine lowering remain separate.
 
+## Children of awaited invocations (E1d.2d.3w)
+
+Compiler 0.164 allows an invocation that is itself awaited to admit independent native
+children. Being awaited does not suspend the child invocation: only its own outstanding
+await prevents admission. Raw child admission, queued paired tasks and unjoined started
+tasks share this rule. Their existing session, exact producer, original invocation and
+fault-domain checks remain in force. Normal selection and retirement still wait for
+children and retained results; this change grants no additional parent callback access.
+
+Independent children keep separate diagnostic segments. The awaited invocation retains
+its original caller chain, including when one child performs further direct or cold awaits.
+If an owning boundary in that invocation terminates, settlement returns the original chain
+to its parked caller before continuing outward. This fixes a missing-chain error exposed
+by an independent child's fuel failure inside an awaited owning boundary. Diagnostic
+activation identities, failed boundary causes and source sites are retained.
+
+Host cases cover raw, paired and unjoined children, claims before/after completion,
+readiness, borrowed supplier chains and real Rust owner destruction. Fault and process
+cases include Ready, Waiting, Completed and nested-boundary children. Resource dispositions
+finish before the owning contingency; stopped sibling contingencies remain suppressed.
+A generated fixture combines an awaited parent, a started child and that child's own
+direct await. Explicit harness claims in four phases match reference owned/borrowed output
+under original/expanded O0/O2 builds and multiple quota partitions. Extended sibling-fault
+probes cover awaited owners and work/handler/completion/delivery stop points.
+
+These are internal native host capabilities. Source execution remains sequential and
+`spawn`/`yield` remain unavailable. The next bounded integration closes reference started
+join authority and captures the original spawning fault domain, then connects the accepted
+source handoffs and required-await checking. Do not infer source interleaving from host
+quota pauses or administrative admission failures.
+
 ## Reference execution invariants
 
 A step partition must not itself become a source effect. The same selected schedule

@@ -307,8 +307,10 @@ impl<'a> Contexts<'a> {
     }
     fn require_independent_children(&self, parent: &ContextKey) -> R<()> {
         let parked = &self.parked[&parent.id];
-        if parked.sequential || parked.awaiting.is_some() {
-            return Err("E_NATIVE: sequential await cannot mix independent child contexts".into());
+        if parked.awaiting.is_some() {
+            return Err(
+                "E_NATIVE: suspended await caller cannot admit independent children".into(),
+            );
         }
         Ok(())
     }
@@ -1299,14 +1301,22 @@ impl<'a> Contexts<'a> {
         }
         self.host.exchange_context(&mut parked.host)?;
         let finished = parked.machine.finished;
+        let mut next_origin = owner;
         if finished {
             self.restore_entry(owner, &mut parked.host.tracker);
+            if parked.sequential {
+                // An awaited invocation can own the boundary being settled.
+                // Its terminal unwind must return the original chain before
+                // recursive outer settlement tries to recover a parked caller.
+                next_origin = parked.parent.unwrap();
+                self.restore_await(next_origin, owner, &mut parked.host.tracker);
+            }
         }
         if !parked.machine.finished {
             self.parked.insert(owner, parked);
         }
         if let Some((domain, message, report, source_fault)) = next {
-            self.settle(&domain, owner, &message, report, source_fault)?;
+            self.settle(&domain, next_origin, &message, report, source_fault)?;
         } else if !finished {
             result?;
         }
