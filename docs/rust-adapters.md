@@ -299,6 +299,10 @@ contingency, including after rejected runtime readiness registration.
 A [private backend model](async-execution.md#private-readiness-backend-lifecycle-e1f5)
 reserves and removes subscriptions around these operations; backend or runtime
 registration failures cannot leave live subscriptions attached to retired state.
+The [owned HTTP receive model](async-execution.md#owned-http-receive-and-deadline-model-e1f6a)
+compares partial parsing, typed outcomes and fixed deadlines against the current
+synchronous wrapper using simulated reads. The maintained transport is unchanged.
+
 
 This is evidence for a future contract, not an `execution` value that manifests can
 use. Existing `immediate` and `blocking` bindings remain synchronous. The experiment

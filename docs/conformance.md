@@ -4974,3 +4974,22 @@ witnesses require complete stopped-state retirement. Every inserted interest has
 one removal, all backend entries retire, and remaining queued events reject after
 completion. No OS I/O, elapsed-time/timeout behavior, public async adapter mode or
 new source handoff is claimed.
+
+
+E1f.6a compiles an owned HTTP receive/parser state against the independent example's
+actual generated Rust outcomes and pinned parser dependency. The synchronous
+reference is extracted from the current library source, including error mapping,
+bounds and timeout constants; only stream and clock access are substituted. A
+deterministic blocking stream and a nonblocking stream consume the same scripted
+bytes/errors, with blocking waits represented as readiness pauses in the latter.
+
+O0/O2 builds each pass 1,599 comparisons: every split of the small request corpus,
+immediate/delayed data, Interrupted/WouldBlock, framing/header/target/UTF-8 outcomes,
+HEAD state, partial EOF and I/O failures, exact/overflow header and count bounds,
+and maximum body size. Repeated waits/body progress do not reset the fixed deadline.
+Already-read complete data is parsed before checking whether another read may start;
+incomplete data expires before a new read. Full typed outcomes/payloads, consumed
+bytes and HEAD state agree. Completion and a second receive cannot replay input.
+This test uses no live sockets or wall-clock sleeps and does not claim real OS
+readiness/timer race ordering or source-scheduler integration. Public compiler and
+library behavior, and the installed 0.189 release, remain unchanged.

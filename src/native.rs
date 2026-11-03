@@ -853,3 +853,7 @@ impl CheckedProgram {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "native/http_receive_tests.rs"]
+mod http_receive_tests;

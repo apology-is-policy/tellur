@@ -160,3 +160,10 @@ it creates no stable Rust binary ABI, future/executor contract or coroutine rest
 contingency admission, independent live routes, Unicode/HEAD behavior, idle shutdown,
 invalid configuration and fault recovery. The full maintained settings HTTP regression
 also runs through these shared controls and transport mechanisms.
+
+
+A [private owned-receive experiment](../docs/async-execution.md#owned-http-receive-and-deadline-model-e1f6a)
+compares partial parsing, declared outcomes, HEAD state and fixed read deadlines
+against this implementation under a deterministic transport. It is preparation for
+async I/O; these public controls and Rust wrappers retain the synchronous profile
+above. No live async socket or new manifest execution mode is supplied by that test.

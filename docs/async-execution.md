@@ -4025,6 +4025,54 @@ empty polls, and progress when all operations are waiting. Existing source-turn,
 result, resource and full fault-report comparisons remain in force. This is a finite
 test backend with injected failures, not a live reactor implementation. It preserves
 the original deadline value without defining clock advancement or timeout outcomes.
-A concrete nonblocking transport and deadline-expiry audit is next; public source
-call admission still depends on the recorded async-host call-model choice. No
+E1f.6a below begins the nonblocking receive and deadline audit with an owned parser
+and deterministic transport comparison; public source call admission still depends
+on the recorded async-host call-model choice. No
 public cancellation or fallible cleanup semantics are added.
+
+
+## Owned HTTP receive and deadline model (E1f.6a)
+
+The [private receive state](../tests/fixtures/http_receive_operation.rs) owns its
+partial header bytes, parsed metadata and partial body. Each step performs bounded
+parsing or at most one read attempt through a fresh shared connection reference.
+Progress without waiting is an internal test-driver step, not a Tellur source
+handoff. `WouldBlock` retains the state and requests readiness with its original
+deadline; `Interrupted` permits another step without resetting that deadline.
+Completion produces the actual generated `http_receive_outcome` and consumes the
+operation once. Parsed strings/maps and bodies never borrow parser or input storage.
+
+The receive guard and deadline are established at actual operation start. A second
+receive fails without reading or changing the first request's HEAD state. As in the
+current `read_before` helper, expiry is checked when another read is required.
+Already-read data can complete parsing even if the clock has since passed the
+deadline; an incomplete buffer cannot initiate another read after expiry. EOF before
+any header byte is `disconnected`, while partial headers or body produce their
+existing distinct malformed diagnostics. Reset/abort, timeout and other I/O errors
+retain the existing outcome mapping.
+
+[The comparison harness](../src/native/http_receive_tests.rs) extracts the current
+library's receive body, error mapping, bounds and timeout constant. It substitutes
+only the stream and clock for the synchronous reference. Its blocking simulated
+stream waits for a scripted readable event or deadline; the nonblocking stream
+returns `WouldBlock` and resumes at the next scripted notification. Neither opens
+sockets, sleeps nor changes the maintained transport. The actual parser dependency
+and generated Rust outcome types come from the independent HTTP example's manifest
+and lockfile.
+
+O0 and O2 native builds each run 1,599 comparisons. Every split of the small request
+corpus runs with immediate/delayed data, interrupted reads and empty readiness.
+Cases cover protocol/framing/UTF-8 outcomes, HEAD state, partial EOF, reset/abort and
+other I/O failures, exact/overflow header bounds, header count and the maximum body.
+Deadline cases include repeated waits/retries, body progress that cannot extend the
+budget, a read that returns a complete buffer after expiry, and an incomplete
+buffer that needs another read. Completion cannot replay; duplicate receive preserves
+consumed-byte count. Full outcomes, payloads, consumed bytes and HEAD state agree.
+
+This establishes owned parsing and fixed-deadline behavior under the deterministic
+transport model. It does not specify ordering of simultaneous real OS readiness and
+timer notifications, prove descriptor lifetime, or integrate HTTP reads into the
+source scheduler. Those concrete transport/readiness checks are next. Existing HTTP
+controls and `immediate`/`blocking` bindings remain synchronous; public async call
+admission still awaits the recorded design answer. No installed release change is
+needed for these private tests.

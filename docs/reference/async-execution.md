@@ -40,6 +40,9 @@ remain separate. The
 checks subscription rollback/removal and queued stale notifications through the
 existing source scheduler. It preserves deadline values without adding a public
 reactor or timeout contract.
+The [private receive model](../async-execution.md#owned-http-receive-and-deadline-model-e1f6a)
+compares owned partial HTTP input and fixed-deadline behavior with the existing
+synchronous library under a simulated transport. It adds no public async HTTP API.
 
 ## Owned spawned children
 
