@@ -6142,7 +6142,7 @@ fn source_task_hovers_and_diagnostics_describe_explicit_handoffs() {
     assert!(
         spawn.contains("queues an invocation-owned child")
             && spawn.contains("reference-free")
-            && spawn.contains("Uninterrupted synchronous helpers"),
+            && spawn.contains("Synchronous helpers without inline boundaries"),
         "{spawn}"
     );
     let handoff = hover_at(&f, text, "yield;").to_string();
@@ -6158,7 +6158,7 @@ fn source_task_hovers_and_diagnostics_describe_explicit_handoffs() {
 }
 
 #[test]
-fn pending_children_recheck_unsaved_helper_handoffs() {
+fn pending_children_recheck_unsaved_helper_inline_boundaries() {
     let mut f = Fixture::new();
     let path = f.root.join("helpers.tellur");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
@@ -6169,7 +6169,15 @@ fn pending_children_recheck_unsaved_helper_handoffs() {
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "auto child");
     assert!(!initial.is_null());
-    let broken = valid.replace("emit(\"helper\");", "run work();");
+    let broken = valid
+        .replace(
+            "emit(\"helper\");",
+            "fault boundary {} contingency [] {escalate;}",
+        )
+        .replace(
+            "pub control helper() exits done",
+            "pub control helper() exits done faults",
+        );
     f.server.notification(
         "textDocument/didOpen",
         &json!({"textDocument":{"uri":uri,"version":1,"text":broken}}),
@@ -6259,6 +6267,47 @@ fn parent_await_rechecks_unsaved_producer_stop_permissions() {
             .as_str()
             .unwrap()
             .contains("await beside started children")
+    );
+    assert!(hover_at(&f, source, "auto child").is_null());
+    f.server.notification(
+        "textDocument/didClose",
+        &json!({"textDocument":{"uri":uri}}),
+    );
+    assert_eq!(f.diagnostics(), json!([]));
+    assert_eq!(hover_at(&f, source, "auto child"), initial);
+}
+
+#[test]
+fn helper_call_rechecks_unsaved_producer_stop_permissions() {
+    let mut f = Fixture::new();
+    fs::write(
+        f.root.join("manifest.json"),
+        include_str!("../playground/manifest.json"),
+    )
+    .unwrap();
+    let path = f.root.join("worker.tellur");
+    let uri = url::Url::from_file_path(&path).unwrap().to_string();
+    let valid = "pub control helper(handle h) exits done {forward run finish(h);} pub async control finish(handle h) exits done {delta close(h) {closed=>closed,failed {close_error e}=>failed} [closed|failed]:yield;exit done;}";
+    fs::write(&path, valid).unwrap();
+    let source = "import \"worker.tellur\" as worker; async control work() exits done {yield;exit done;} async control startup(handle h) exits done {auto child=spawn work();worker.helper(h);await child;exit done;}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let initial = hover_at(&f, source, "auto child");
+    assert!(!initial.is_null());
+    let broken = valid
+        .replace("delta close(h)", "yield;delta close(h)")
+        .replace("[closed|failed]:yield;", "[closed|failed]:");
+    f.server.notification(
+        "textDocument/didOpen",
+        &json!({"textDocument":{"uri":uri,"version":1,"text":broken}}),
+    );
+    let errors = f.diagnostics();
+    assert_eq!(errors[0]["code"], "E_ASYNC", "{errors}");
+    assert!(
+        errors[0]["message"]
+            .as_str()
+            .unwrap()
+            .contains("call beside started children")
     );
     assert!(hover_at(&f, source, "auto child").is_null());
     f.server.notification(

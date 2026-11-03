@@ -1,0 +1,52 @@
+async control fail() faults {
+    yield;
+    fault "sibling failed";
+}
+async control leaf(ref mutable string text) exits done {
+    fault boundary {
+        emit("borrower started");
+        yield;
+        yield;
+    } contingency [] {
+        emit("must not handle stopped borrower");
+        escalate;
+    }
+    deref text = "must not resume";
+    exit done;
+}
+async control idle() exits done {
+    yield;
+    yield;
+    exit done;
+}
+async control work(ref mutable string text) exits done {
+    emit("inline started");
+    yield;
+    yield;
+    deref text = "must not resume";
+    exit done;
+}
+control helper(ref mutable string text) exits done {
+    run work(text);
+    emit("must not return helper");
+    exit done;
+}
+control outer(ref mutable string text) exits done {
+    forward helper(text);
+}
+async control startup() exits done faults {
+    mutable string text = "parent storage";
+    auto child = spawn fail();
+    outer(borrow mutable text);
+    emit("must not return parent");
+    await child;
+}
+control main() exits done {
+    fault boundary {
+        run startup();
+    } contingency [] {
+        emit("owner contingency");
+        terminate process 23;
+    }
+    exit done;
+}

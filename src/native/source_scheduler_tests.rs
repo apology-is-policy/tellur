@@ -1,6 +1,58 @@
 //! Differential source execution using the exact production emitter and scheduler.
 use super::*;
 #[test]
+fn compiled_source_cooperative_helpers() {
+    compare(
+        "cooperative_helpers",
+        include_str!("../../playground/cooperative_helpers.tellur"),
+    );
+}
+#[test]
+fn compiled_source_inline_helper_yield_fault() {
+    inline_helper_fault("yield;yield;", false);
+}
+#[test]
+fn compiled_source_inline_helper_join_fault() {
+    inline_helper_fault("auto nested=spawn idle();await nested;", false);
+}
+#[test]
+fn compiled_source_inline_helper_await_fault() {
+    inline_helper_fault("await leaf(text);", false);
+}
+#[test]
+fn compiled_source_inline_helper_queued_await_fault() {
+    inline_helper_fault("await leaf(text);", true);
+}
+fn inline_helper_fault(body: &str, early: bool) {
+    let source = include_str!("../../tests/fixtures/source_inline_helper_fault.tellur");
+    let source = source.replace(
+        "emit(\"inline started\");\n    yield;\n    yield;",
+        &format!("emit(\"inline started\");{body}"),
+    );
+    let source = if early {
+        source.replacen("yield;", "", 1)
+    } else {
+        source
+    };
+    compare(
+        &format!(
+            "inline-helper-{}-{early}",
+            if body.starts_with("yield") {
+                "yield"
+            } else if body.starts_with("auto") {
+                "join"
+            } else {
+                "await"
+            }
+        ),
+        &source,
+    );
+}
+#[test]
+fn compiled_source_inline_helper_resource_retirement() {
+    source_resources(false, true, true);
+}
+#[test]
 fn compiled_source_parent_await() {
     compare(
         "parent_await",
@@ -185,19 +237,19 @@ fn compare(label: &str, text: &str) {
 
 #[test]
 fn compiled_source_resources_retire_queued_running_and_completed_owners() {
-    source_resources(false, false);
+    source_resources(false, false, false);
 }
 #[test]
 fn compiled_source_helper_fault_retires_suspended_and_completed_owners() {
-    source_resources(true, false);
+    source_resources(true, false, false);
 }
 #[test]
 fn compiled_source_parent_await_retires_borrowers_before_owner_contingency() {
-    source_resources(false, true);
+    source_resources(false, true, false);
 }
-fn source_resources(helper_fault: bool, parent_await: bool) {
+fn source_resources(helper_fault: bool, parent_await: bool, inline_helper: bool) {
     let root = std::env::temp_dir().join(format!(
-        "tellur-source-resource-{helper_fault}-{parent_await}-{}",
+        "tellur-source-resource-{helper_fault}-{parent_await}-{inline_helper}-{}",
         std::process::id()
     ));
     fs::create_dir_all(&root).unwrap();
@@ -278,6 +330,25 @@ async control observe(ref counter parent,string path) exits done {{
     } else {
         source.to_owned()
     };
+    let source = if inline_helper {
+        let source = source
+            .replace("await observe(parent,path);", "helper(parent,path);")
+            .replace("make(borrow path,4)", "make(borrow path,5)");
+        format!(
+            r#"{source}
+control helper(ref counter parent,string path) exits done {{
+    inspect(parent);
+    delta make(borrow path,4) {{made {{counter local}}=>made}}
+    [made]:run helper_work(borrow local,path);close(local);exit done;
+}}
+async control helper_work(ref counter local,string path) exits done {{
+    await observe(local,path);exit done;
+}}
+"#
+        )
+    } else {
+        source
+    };
     let p = crate::compile(&source, manifest)
         .unwrap()
         .with_entry_exit_codes("main", BTreeMap::from([("done".into(), 0)]))
@@ -330,7 +401,13 @@ async control observe(ref counter parent,string path) exits done {{
                         assert_eq!(out.stderr, expected.stderr);
                         assert_eq!(actual, owners);
                     }
-                    for id in 1..=if parent_await { 4 } else { 3 } {
+                    for id in 1..=if inline_helper {
+                        5
+                    } else if parent_await {
+                        4
+                    } else {
+                        3
+                    } {
                         let count = |kind: &str| {
                             owners
                                 .lines()
@@ -348,6 +425,14 @@ async control observe(ref counter parent,string path) exits done {{
                                     .contains("must not handle stopped observer")
                             );
                             assert!(owners.contains("borrow 3"), "{owners}");
+                            if inline_helper {
+                                assert!(owners.contains("borrow 4"), "{owners}");
+                                assert!(
+                                    owners.find("drop 5").unwrap() < owners.find("drop 4").unwrap(),
+                                    "{owners}"
+                                );
+                                assert!(!owners.contains("close 5"), "{owners}");
+                            }
                             for id in [1, 2, 4] {
                                 assert!(
                                     owners.find(&format!("drop {id}")).unwrap()

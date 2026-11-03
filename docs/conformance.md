@@ -4526,3 +4526,18 @@ and normal interleaving. Real Rust resource logs check suspended borrowers, nest
 local owners and completed sibling resources retire before the owning contingency.
 Unsaved imported producer edits recheck the required stop permissions. Inferred
 parent borrows and fault-capable sibling obligations remain enforced.
+
+## Inline helper handoffs beside children (0.170)
+
+Source regressions cover inline entry order, returned parent borrows, transitive,
+constructor, generic and concrete trait calls, imports, wrapped handles, transferred
+inputs completed before handoff, and rejection of inline boundaries or unsafe stop
+obligations. Unsaved imported helper changes refresh both boundary and stop proofs.
+
+Reference retirement census and original/expanded native models exercise sibling
+faults while the original owner is below helper/run frames at yield, started join,
+queued await and nested cold/direct await. Quota partitions include zero, and fuel
+cuts run through completion. Real resource logs require awaited locals to retire
+before helper-owned backing storage and before the owning contingency; stopped
+nested handlers never execute. The cooperative helper example also runs in a fresh
+isolated editor. Existing host callback access rules remain unchanged.

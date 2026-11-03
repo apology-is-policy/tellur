@@ -14,6 +14,13 @@ pub(super) struct Scheduler<'a> {
     handles: BTreeMap<TaskId, started::StartedTask<'a>>,
     joins: BTreeMap<TaskId, (Context<'a>, started::StartedJoin<'a>, &'a [Arm])>,
 }
+fn contains_owner(context: &Context<'_>, owner: OwnerId) -> bool {
+    context.frame.owner == Some(owner)
+        || context
+            .stack
+            .iter()
+            .any(|c| matches!(c, Continuation::Call { caller, .. } if caller.owner == Some(owner)))
+}
 impl<'a> Machine<'a> {
     fn retained_source_context(&mut self, task: TaskId) -> Result<&mut Context<'a>> {
         if let Some(call) = self.shared.ready.get_mut(&task) {
@@ -55,7 +62,7 @@ impl<'a> Machine<'a> {
             .calls
             .iter()
             .find_map(|(id, call)| {
-                (call.context.frame.owner == Some(owner)).then_some((*id, call.task, call.wait))
+                contains_owner(&call.context, owner).then_some((*id, call.task, call.wait))
             })
             .ok_or_else(|| error("started fault lost its owning source continuation"))?;
         let completed = self.shared.completed.contains_key(&task);
@@ -276,7 +283,7 @@ impl<'a> Machine<'a> {
             .scheduler
             .runnable
             .iter()
-            .position(|r| matches!(r, Runnable::Context(c) if c.frame.owner == Some(owner)))
+            .position(|r| matches!(r, Runnable::Context(c) if contains_owner(c, owner)))
         {
             let Runnable::Context(c) = self.shared.scheduler.runnable.remove(index).unwrap() else {
                 unreachable!()
@@ -288,7 +295,7 @@ impl<'a> Machine<'a> {
                 .scheduler
                 .joins
                 .iter()
-                .find_map(|(task, (c, _, _))| (c.frame.owner == Some(owner)).then_some(*task));
+                .find_map(|(task, (c, _, _))| contains_owner(c, owner).then_some(*task));
             if let Some(task) = task {
                 self.shared.scheduler.joins.remove(&task).unwrap().0
             } else {
@@ -319,6 +326,7 @@ impl<'a> Machine<'a> {
             self.context.activations.source_fault();
         }
         self.context.flow = Some(Err(diagnostic));
+        self.context.stack.push(Continuation::SourceStop);
         Ok(true)
     }
     pub(super) fn source_retained(&self, domain: DomainId) -> bool {
@@ -386,10 +394,27 @@ mod tests {
             include_str!("../../playground/structured_helpers.tellur"),
             include_str!("../../tests/fixtures/source_helper_fault.tellur"),
             include_str!("../../playground/parent_await.tellur"),
+            include_str!("../../playground/cooperative_helpers.tellur"),
+            include_str!("../../tests/fixtures/source_inline_helper_fault.tellur"),
             include_str!("../../tests/fixtures/source_parent_await_fault.tellur"),
-        ] {
+        ]
+        .into_iter()
+        .map(str::to_owned)
+        .chain(
+            [
+                "auto nested=spawn idle();await nested;",
+                "await leaf(text);",
+                "auto cold=defer leaf(text);await cold;",
+            ]
+            .map(|body| {
+                include_str!("../../tests/fixtures/source_inline_helper_fault.tellur").replace(
+                    "emit(\"inline started\");\n    yield;\n    yield;",
+                    &format!("emit(\"inline started\");{body}"),
+                )
+            }),
+        ) {
             let p = crate::compile(
-                text,
+                &text,
                 Manifest::from_json(include_str!("../../playground/manifest.json")).unwrap(),
             )
             .unwrap();

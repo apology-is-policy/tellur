@@ -72,10 +72,10 @@ exports.run = async function (root) {
   const helpers = await fs.readFile(path.join(__dirname, '../../../playground/structured_helpers.tellur'), 'utf8');
   await replace(helpers);
   await waitFor(async () => diagnostics().length === 0 && (await hover('auto value')).includes('message'), 'synchronous helper admission');
-  const hiddenHandoff = helpers.replace('deref text = "updated";', 'run worker(); deref text = "updated";');
+  const hiddenHandoff = helpers.replace('deref text = "updated";', 'fault boundary {} contingency [] {escalate;} deref text = "updated";');
   assert.notEqual(hiddenHandoff, helpers);
   await replace(hiddenHandoff);
-  await waitFor(() => diagnostics().some(d => code(d) === 'E_ASYNC'), 'helper body handoff invalidates callers');
+  await waitFor(() => diagnostics().some(d => code(d) === 'E_ASYNC'), 'helper inline boundary invalidates callers');
   await replace(helpers);
   await waitFor(async () => diagnostics().length === 0 && (await hover('auto value')).includes('message'), 'repaired helper body');
   await document.save();
@@ -108,6 +108,16 @@ exports.run = async function (root) {
   assert.equal(parentRun.code, 0, parentRun.stderr);
   assert.deepEqual(JSON.parse(parentRun.stdout).events.filter(e => e.kind === 'emit').map(e => e.message),
     ['worker started', 'editor started', 'worker done', 'edited', 'editor started']);
+  const handing = await fs.readFile(path.join(__dirname, '../../../playground/cooperative_helpers.tellur'), 'utf8');
+  await replace(handing);
+  await waitFor(async () => diagnostics().length === 0 && (await hover('spawn worker')).includes('inline boundaries'), 'handing helper admission and hover');
+  await document.save();
+  const handingRun = await vscode.commands.executeCommand('tellur.buildAndRun', {
+    arguments:['--json'], output:path.join(root, 'native output', 'cooperative-helpers')
+  });
+  assert.equal(handingRun.code, 0, handingRun.stderr);
+  assert.deepEqual(JSON.parse(handingRun.stdout).events.filter(e => e.kind === 'emit').map(e => e.message),
+    ['helper started', 'inline started', 'worker started', 'helper returned', 'edited', 'worker finished']);
   await fs.writeFile(path.join(fixture, 'passed.txt'), 'cold and started tasks, synchronous helpers, diagnostics, unsaved repair and native execution passed\n');
   console.log('TELLUR_CARRIER_TASKS_EDITOR_TESTS_PASSED: pending type hover, diagnostic repair and native run');
 };

@@ -1482,3 +1482,11 @@ Cold/direct awaits may borrow parent storage while owned spawned children remain
 live. Producer stop permissions and sibling fault obligations remain checked;
 unsaved imported edits refresh admission. The parent await example demonstrates
 normal interleaving and completion joins, with fresh editor build/run coverage.
+
+## Cooperative synchronous helpers in 0.170
+
+Synchronous helpers can reach explicit await/yield handoffs through inline `run`
+while callers own children. The checker rejects inline boundary entry and retained
+owners without fault dispositions; unsaved dependency edits refresh both proofs.
+The cooperative helpers playground demonstrates inline entry, interleaving and a
+returned parent reference. Fresh editor diagnostics, repair and native run cover it.

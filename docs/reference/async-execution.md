@@ -3,7 +3,7 @@
 [Language reference](../language-reference.md) · [Design and next steps](../async-execution.md) ·
 [Execution failures](execution-failures.md)
 
-Compiler 0.169 supports `async control`, synchronous entry with `run`, direct
+Compiler 0.170 supports `async control`, synchronous entry with `run`, direct
 `await`, cold tasks with owned and borrowed captures, and a bounded cooperative
 scheduler for owned `spawn` tasks. Source handoffs occur at `await` and `yield`.
 Async host I/O, cancellation and LLVM coroutine lowering remain later work.
@@ -45,7 +45,7 @@ handle moves and parent work between handoffs. Every normal path must await its
 children. Handles cannot be copied, cloned, dropped, returned, or carried across a
 fault boundary. Local moves preserve the original invocation and spawning domain.
 Local inferred wrappers retain the same child obligations: unwrap and await the
-handle before a synchronous call that can hand off or enter a fault boundary.
+handle before a synchronous call that may enter an inline fault boundary.
 Checked cold/direct awaits remain available beside wrapped children. Their possible
 producer faults still apply at handoffs. There is no detach or implicit await at scope exit.
 
@@ -53,11 +53,12 @@ The first source profile accepts captures and normal results with **no reference
 including owned structs, sums and resources. Borrowed and reference-bearing `defer`
 tasks keep their existing sequential semantics. A spawned body may itself use such
 cold/direct awaits and may own further spawned children. Before a parent enters a synchronous
-control that can hand off or enter a fault boundary, it must join its started
+control whose inline call chain may enter a fault boundary, it must join its started
 children. Cold/direct awaits remain available beside children when the awaited
 producer permits fault settlement at handoffs. Synchronous helpers proved to
-contain neither handoffs nor boundaries may also run while children are live. Their calls, including constructors and concrete generic/trait
-calls, run uninterrupted under the same borrowing and fault rules. A helper may
+avoid inline boundaries may also run while children are live. Their calls, including
+constructors and concrete generic/trait calls, retain the same borrowing and fault
+rules. A helper without a reached handoff runs uninterrupted. A helper may
 borrow parent storage and return a reference with its declared origin. See
 [structured helpers](../../playground/structured_helpers.tellur). The proof is
 conservative across all structural paths and transitive calls; an abstract trait
@@ -152,9 +153,47 @@ The awaited producer must permit enclosing stop settlement for its owners across
 handoffs, even if the currently known siblings do not fault. This is the same
 conservative producer proof used by spawn. Join the started children first when a
 sequential producer cannot satisfy it. Fault-capable siblings also require fault
-permission for the parent's owners and queued await captures. Synchronous helpers
-that hand off, parent fault-boundary crossing, borrowed spawn and escaping handles
-remain outside this profile.
+permission for the parent's owners and queued await captures. Parent inline fault-boundary crossing, borrowed spawn and escaping handles remain
+outside this profile.
+
+## Helpers that reach handoffs
+
+A synchronous helper may use `run` to enter async work while its caller owns started
+children. `run` stays in the same execution context and does not itself switch tasks.
+A reached `await` or `yield` inside that work is still an explicit handoff. The caller
+waits for the helper's normal result, including declared borrowed results.
+
+<!-- tellur:check -->
+```tellur
+async control pause() exits done { yield; exit done; }
+control helper() exits done { forward run pause(); }
+async control startup() exits done {
+    auto child = spawn pause();
+    helper();
+    await child;
+    exit done;
+}
+control main() exits done { forward run startup(); }
+```
+
+The proof follows ordinary calls, `run`, loops, constructors and concrete generic or
+trait bodies. An unknown abstract body cannot establish permission. Inline lexical
+or named boundaries remain gated even when a structural branch is unreachable.
+An awaited control has a separate retained context and may use its already-supported
+nested boundaries. See [cooperative helpers](../../playground/cooperative_helpers.tellur)
+for parent borrowing and a returned reference.
+
+Every owner retained through the helper's handoffs must permit enclosing stop
+settlement. Inputs move synchronously into the helper: it may complete a resource
+before its first handoff. Parent owners and possible sibling faults still require
+ordinary fault permission. Joining the children first preserves sequential use of
+a helper whose retained resources cannot be stopped.
+
+An unrelated child fault restores the context containing the original spawning
+invocation, even below several inline helper frames. Those active inline frames
+remain in its diagnostic chain; separately awaited work is excluded from that chain.
+Affected retained borrowers retire before any inline helper frame releases storage.
+Stopped work cannot resume normally or run a nested contingency.
 
 ## Calling and entering
 

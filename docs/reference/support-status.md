@@ -2,15 +2,15 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.169.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.170.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
 
 Source `spawn`/`yield` now use explicit cooperative scheduling in the reference and
 native executors. The first profile admits owned, reference-free captures/results,
-requires normal-path joins, and joins before synchronous calls that hand off or
-enter a fault boundary. Cold/direct awaits may borrow parent storage beside live
+requires normal-path joins, and joins before synchronous calls that may enter an
+inline fault boundary. Checked helpers may reach explicit handoffs through `run`. Cold/direct awaits may borrow parent storage beside live
 children. Queued and completed children retain their fault obligations. Spawn requires a
 checked producer whose suspended owners, including nested boundary owners and
 transitive callees, permit enclosing fault settlement.

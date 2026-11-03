@@ -3074,3 +3074,23 @@ semantics are unchanged. Next audit synchronous handing-off helpers with live
 children: their original owner can be below the currently selected call frame.
 Keep that source gate until ownership routing and borrower-first settlement are
 proved. Parent boundary crossing and borrowed spawn remain separate work.
+
+## Inline helpers with reached handoffs (E1e.5)
+
+Compiler 0.170 replaces the conservative no-handoff helper gate with checked absence
+of inline boundaries. The proof follows Region/Run calls and loops; Await/Spawn keep
+separate contexts and retain their existing admission. Handoff and stopped-owner
+metadata remain distinct. Inline argument transfer precedes parent permission checks,
+so a callee may complete an input before its first handoff.
+
+Reference owner lookup includes original caller frames inside runnable, joining and
+suspended contexts. A source-stop continuation drains affected retained work before
+unwinding any helper frame, including frames without their own started children.
+Only then can helper-owned storage retire. Inline frames remain diagnostic context;
+0.169 restoration still removes separately awaited stopped segments. Native retained
+contexts already settle separate descendants before unwinding inline frames; their
+host access gates and production execution paths are unchanged.
+
+`run` remains inline. Only reached await/yield instructions switch source work; host
+quotas and ordinary calls add no handoff. Parent inline boundaries, borrowed spawn,
+escaping handles, asynchronous adapters and cancellation remain outside this slice.

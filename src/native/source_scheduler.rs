@@ -1,6 +1,6 @@
 //! Checked source driver. Owned child captures/results cannot borrow parent
-//! storage; checked cold/direct awaits retain parent loans, and synchronous helpers
-//! must be uninterrupted while children remain live. Host APIs keep stricter gates.
+//! storage; checked awaits and inline helpers retain parent loans and stopped-owner
+//! obligations. Inline boundaries remain gated. Host APIs keep stricter gates.
 use super::super::super::tasks::TaskId;
 use super::*;
 use std::collections::VecDeque;

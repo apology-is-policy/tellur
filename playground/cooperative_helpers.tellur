@@ -1,0 +1,35 @@
+// run enters inline; only the reached await/yield hands off to sibling work.
+async control worker() exits done {
+    emit("worker started");
+    yield;
+    emit("worker finished");
+    exit done;
+}
+async control edit(ref mutable string text) exits done {
+    emit("inline started");
+    yield;
+    deref text = "edited";
+    exit done;
+}
+control helper(ref mutable string text) exits ready { ref mutable string view from text } {
+    emit("helper started");
+    run edit(text);
+    emit("helper returned");
+    exit ready { text };
+}
+async control startup() exits done {
+    mutable string text = "original";
+    auto child = spawn worker();
+    delta helper(borrow mutable text) {
+        ready { auto view } => ready
+    }
+    [ready]: emit(view);
+        await child;
+        exit done;
+}
+outcome program_result {
+    @exit 0 done
+}
+control main() exits program_result {
+    forward run startup();
+}

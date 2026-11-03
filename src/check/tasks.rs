@@ -26,32 +26,20 @@ pub(super) fn handoffs(body: &[Instruction], signatures: &BTreeMap<String, Signa
 /// Callees are checked before callers. Classify the emitted operations rather
 /// than authored syntax so imports, specialization and constructor staging all
 /// use the same proof. Unchecked/abstract signatures never grant permission.
-pub(super) fn uninterrupted(region: &Region, signatures: &BTreeMap<String, Signature>) -> bool {
+pub(super) fn inline_boundary_free(
+    region: &Region,
+    signatures: &BTreeMap<String, Signature>,
+) -> bool {
     fn code(body: &[Instruction], signatures: &BTreeMap<String, Signature>) -> bool {
         body.iter().all(|instruction| match &instruction.action {
-            Action::Decide { operation, .. } => match operation {
-                Operation::Region(name) => signatures.get(name).is_some_and(|s| s.uninterrupted),
-                Operation::Primitive(_)
-                | Operation::Collection(_)
-                | Operation::Variant(_)
-                | Operation::BorrowedVariant(_) => true,
-                Operation::Run(_)
-                | Operation::Await(_)
-                | Operation::Defer(_)
-                | Operation::Spawn(_)
-                | Operation::AwaitTask(_)
-                | Operation::Join(_)
-                | Operation::Yield => false,
-            },
+            Action::Decide {
+                operation: Operation::Region(name) | Operation::Run(name),
+                ..
+            } => signatures.get(name).is_some_and(|s| s.inline_boundary_free),
+            // Awaited/spawned invocations have their own retained context. Their
+            // boundaries do not cross the current invocation's child handles.
+            Action::Decide { .. } => true,
             Action::Loop { body, .. } => code(body, signatures),
-            Action::Bind(..)
-            | Action::Assign(..)
-            | Action::Drop(..)
-            | Action::Release(..)
-            | Action::Emit(..)
-            | Action::Fault(..)
-            | Action::Exit(..)
-            | Action::Again { .. } => true,
             Action::Boundary { .. }
             | Action::Supervise { .. }
             | Action::Recover { .. }
@@ -59,12 +47,10 @@ pub(super) fn uninterrupted(region: &Region, signatures: &BTreeMap<String, Signa
             | Action::TerminateProcess(_)
             | Action::Escalate
             | Action::Complete { .. } => false,
+            _ => true,
         })
     }
-    !region.asynchronous
-        && !region.contingency
-        && region.boundary.is_none()
-        && code(&region.code, signatures)
+    !region.contingency && region.boundary.is_none() && code(&region.code, signatures)
 }
 
 impl Checker<'_> {
@@ -124,15 +110,16 @@ impl Checker<'_> {
             let live = self.bdd.and(domain, owned);
             if live != FALSE {
                 return Err(self.fail_domain("E_ASYNC",span,
-                    "await started children before a synchronous call that may hand off or enter a fault boundary; checked cold/direct awaits, uninterrupted helpers, local work, spawn, yield and started joins remain available",live));
+                    "await started children before a synchronous call that may enter a fault boundary; checked awaits and helpers without inline boundaries remain available",live));
             }
         }
         Ok(())
     }
 
-    pub(super) fn await_beside_started(
+    pub(super) fn handoff_beside_started(
         &mut self,
         stoppable: bool,
+        kind: &str,
         domain: Formula,
         span: Span,
     ) -> Result<()> {
@@ -141,7 +128,7 @@ impl Checker<'_> {
                 let live = self.bdd.and(domain, owned);
                 if live != FALSE {
                     return Err(self.fail_domain("E_ASYNC", span,
-                        "await beside started children requires fault dispositions for producer owners retained across handoffs; join the children first or complete those owners before handing off", live));
+                        &format!("{kind} beside started children requires fault dispositions for producer owners retained across handoffs; join the children first or complete those owners before handing off"), live));
                 }
             }
         }
@@ -507,7 +494,7 @@ impl Checker<'_> {
         self.record_stop_obligations(domain);
         self.stoppable &= sig.stoppable;
         if !started {
-            self.await_beside_started(sig.stoppable, domain, span)?;
+            self.handoff_beside_started(sig.stoppable, "await", domain, span)?;
         }
         self.started_fault_permission(domain, span)?;
         let stored = self.stored_value(&value, &ty, domain, span, true)?;

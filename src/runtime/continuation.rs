@@ -1,5 +1,4 @@
-//! Host stepping of sequential checked execution, including local cold tasks.
-//! No source scheduler or independently progressing work.
+//! Host stepping and explicit cooperative source scheduling over retained contexts.
 use super::domains::{DomainId, Domains, Scope as DomainScope};
 use super::tasks::{OwnerId, Readiness, Registry, TaskId, WaitId, retire_value};
 use super::*;
@@ -166,6 +165,8 @@ enum Continuation<'a> {
     /// The owning source continuation was recovered after an unrelated child
     /// fault. Retire this await without returning to that caller a second time.
     StoppedAwait(TaskId),
+    /// Drain retained borrowers before unwinding any inline helper frame.
+    SourceStop,
     Loop(&'a Action),
     SupervisedWork {
         name: &'a str,
@@ -581,7 +582,8 @@ impl<'a> Machine<'a> {
                 }
                 root_domain.is_some() || region.boundary.is_some()
             }
-            Continuation::SupervisedWork { .. }
+            Continuation::SourceStop
+            | Continuation::SupervisedWork { .. }
             | Continuation::SupervisedHandler { .. }
             | Continuation::BoundaryWork { .. }
             | Continuation::BoundaryHandler { .. } => true,
@@ -880,6 +882,10 @@ impl<'a> Machine<'a> {
                 caller.handover = std::mem::take(&mut self.context.handover);
                 caller.flow = Some(result);
                 self.context = caller;
+            }
+            Continuation::SourceStop => {
+                assert!(matches!(flow, Err(_)));
+                self.context.flow = Some(flow);
             }
             Continuation::StoppedAwait(task) => {
                 assert!(!self.settlements.is_empty());

@@ -54,8 +54,8 @@ struct Access {
 }
 #[derive(Clone)]
 struct Signature {
-    /// Proved from a successfully checked synchronous body and its callees.
-    uninterrupted: bool,
+    /// No boundary is entered along this invocation's inline call chain.
+    inline_boundary_free: bool,
     /// Source handoffs reachable through this body and its callees.
     handoffs: bool,
     /// Every suspended owner permits emergency retirement by an enclosing owner.
@@ -1866,7 +1866,7 @@ impl Checker<'_> {
                 )
             })?;
             return Ok(Some(Signature {
-                uninterrupted: true,
+                inline_boundary_free: true,
                 handoffs: false,
                 stoppable: true,
                 entry_only: false,
@@ -4137,12 +4137,12 @@ impl Checker<'_> {
         {
             if sig.region
                 && operand.call_mode != syntax::CallMode::Await
-                && (operand.call_mode != syntax::CallMode::Direct || !sig.uninterrupted)
+                && !sig.inline_boundary_free
             {
                 self.require_no_started(domain, span)?;
             }
             if sig.region && operand.call_mode == syntax::CallMode::Await {
-                self.await_beside_started(sig.stoppable, domain, span)?;
+                self.handoff_beside_started(sig.stoppable, "await", domain, span)?;
                 self.record_stop_obligations(domain);
                 self.stoppable &= sig.stoppable;
             }
@@ -4160,6 +4160,7 @@ impl Checker<'_> {
             // Ordinary calls begin synchronously: transferred owners belong to
             // the callee, which may complete them before its first handoff.
             if sig.region && sig.handoffs && operand.call_mode != syntax::CallMode::Await {
+                self.handoff_beside_started(sig.stoppable, "call", domain, span)?;
                 self.record_stop_obligations(domain);
                 self.stoppable &= sig.stoppable;
             }
@@ -5380,7 +5381,7 @@ pub(crate) fn compile_concrete_unit(
         signatures.insert(
             p.name.clone(),
             Signature {
-                uninterrupted: true,
+                inline_boundary_free: true,
                 handoffs: false,
                 stoppable: true,
                 entry_only: false,
@@ -5462,7 +5463,7 @@ pub(crate) fn compile_concrete_unit(
         Ok((
             region.name.clone(),
             Signature {
-                uninterrupted: false,
+                inline_boundary_free: false,
                 handoffs: true,
                 stoppable: false,
                 entry_only: syntax::entry_only(&region.body),
@@ -5800,8 +5801,11 @@ pub(crate) fn compile_concrete_unit(
                 signatures.get_mut(&source.name).unwrap().outcomes = result.exits.clone();
                 signatures.get_mut(&source.name).unwrap().faults = result.faults;
                 signatures.get_mut(&source.name).unwrap().contingent = result.contingent;
-                let uninterrupted = tasks::uninterrupted(&result, &signatures);
-                signatures.get_mut(&source.name).unwrap().uninterrupted = uninterrupted;
+                let inline_boundary_free = tasks::inline_boundary_free(&result, &signatures);
+                signatures
+                    .get_mut(&source.name)
+                    .unwrap()
+                    .inline_boundary_free = inline_boundary_free;
                 let handoffs = tasks::handoffs(&result.code, &signatures);
                 signatures.get_mut(&source.name).unwrap().handoffs = handoffs;
                 signatures.get_mut(&source.name).unwrap().stoppable = stoppable;

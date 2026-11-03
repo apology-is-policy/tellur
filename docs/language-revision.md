@@ -248,7 +248,12 @@ stop obligations, parent capture/result permissions and loans remain checked. Si
 faults restore original suspended owners and settle borrowers before contingency.
 Synchronous helpers that hand off and parent boundary crossing remain gated; audit
 the next bounded parent progression slice before widening them.
-Compiler **0.169.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
+E1e.5 now admits checked synchronous helper chains that reach handoffs through inline
+`run`. Their inline call graph must avoid boundaries and retained owners must permit
+stop settlement. Exact original-invocation lookup and a reference cleanup barrier
+preserve borrower-before-storage retirement below helper frames. No handoff is added
+at `run` itself; borrowed spawn and inline boundary crossing remain gated.
+Compiler **0.170.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
 lifetime checkpoints of milestone 2, the array/vector/map core of milestone 3,
 and implicit entry, inline/stored adapters, owned capture, named outcome contracts
 and checked forwarding in milestone 4. A first [semantic foundation](semantic-foundation.md)
@@ -532,6 +537,10 @@ do not block this design work. E2 remains the native coroutine target.
 | E1d.2d.3w | Children of awaited invocations | Delivered in 0.164: an awaited native invocation may own independent children while not itself suspended on an await. Raw, queued and unjoined routes preserve invocation/domain ownership, retained results and borrower-before-supplier cleanup. Terminal owning-boundary unwind restores the original outer await chain. Generated original/expanded O0/O2 models cover nested direct awaits, result borrows and sibling-fault phases. Source spawn/yield remains gated |
 | E1d.2d.2d | Reference started-task joins | Delivered in 0.165: private queue-only admission retains captures without a wait or parked caller. Move-only handles claim once under the original execution, invocation, producer and spawning fault domain; normal delivery leaves the parent tracker intact. Generic completion delivery cannot bypass authority. Ready/waiting/completed and nested-await work retires before owning emergency continuation. Source spawn/yield remains gated |
 | E1e.1 | Owned source scheduling | Delivered in 0.166: reference/native FIFO source spawn/await/yield with invocation ownership, every-normal-path joins, local moves and reference-free captures/results. Host quotas never switch tasks; stopped siblings settle before the owning contingency. Join children before another source call/boundary. Borrowed spawn, broader parent progression, async I/O and cancellation remain ahead |
+| E1e.2 | Uninterrupted helpers | Delivered in 0.167: checked synchronous helpers preserve ordinary parent borrowing while children remain live |
+| E1e.3 | Spawned stop obligations | Delivered in 0.168: owners retained across handoffs, including transitive and nested boundary storage, require enclosing fault settlement permission |
+| E1e.4 | Parent cold/direct awaits | Delivered in 0.169: retained parent borrows, original suspended-owner restoration and borrower-before-owner settlement beside live children |
+| E1e.5 | Inline helper handoffs | Delivered in 0.170: boundary-free inline Region/Run chains can reach explicit await/yield with stopped-owner proof; exact owner lookup and pre-unwind borrower settlement preserve original invocation ownership. Borrowed spawn remains the next source-capture audit; inline boundary crossing stays gated |
 | E2 | Native coroutine lowering | Preserved architectural target: direct LLVM coroutine primitives, pinned-toolchain experiment, frame lifetime rules and schedule-based differential tests; I1 must keep this route open |
 | T1 | Stronger source transformations | Hold current scope during P1–P5: extraction correspondence, continuation cuts, source-level lift and editor actions |
 | R1 | Mathematical foundations | Maintain existing evidence; defer extensions during P1–P5: preservation judgments, richer protocol abstractions, infinite/causal behavior, mechanization |

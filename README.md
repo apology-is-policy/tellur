@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.169.0** implements the v0.1 checked core and the current language
+Compiler release **0.170.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -16,6 +16,11 @@ a reference interpreter, graph expansion, native compiler, language server, and
 VS Code build/run commands. The [revision plan](docs/language-revision.md) separates
 delivered features from the remaining reference, slice, outcome-expression and async work. The language is still
 fluid; this is an experimental implementation, not a production compiler.
+
+Release 0.170 admits synchronous helpers that reach explicit handoffs through `run`,
+provided their inline call chain stays outside fault boundaries and suspended owners
+permit fault settlement. `run` enters inline; only a reached `await` or `yield`
+switches siblings. See [cooperative helpers](playground/cooperative_helpers.tellur).
 
 Release 0.169 admits cold/direct awaits while owned spawned children remain live.
 Awaited work may borrow parent storage; sibling faults restore the owning continuation
