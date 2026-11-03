@@ -3550,3 +3550,39 @@ before relaxing the source gate. Direct parent boundary statements, task-handle
 crossing, async I/O readiness and cancellation remain separate. No compiler/LSP/VSIX
 release is needed for this still-gated model; the installed 0.187 artifacts remain
 unchanged.
+
+## Inline boundary resource and nested-parent models (E1e.23b)
+
+The gated audit now includes real Rust resources in both named and lexical inline
+boundaries. Each helper owns a counter; its inline or separately awaited observer
+borrows that counter and owns another. A sibling either completes or faults while
+those values remain live. The test-only relocation moves an independently owned
+string path into the helper and copies a separate boolean into the child; the child
+has no access to the helper's storage. Public source still rejects this ordering.
+The original borrowed-path fixture was rejected by ordinary boundary isolation and
+was corrected without changing that rule.
+
+Across original/expanded IR, O0/O2, every fuel cutoff and host quota partitions,
+every created native counter releases exactly once. Normal execution closes the
+observer and helper owners before the outer owner. Child-fault settlement drops the
+observer before the helper owner and both before the original owning contingency;
+it does not invoke their normal close operations. Named retained owners are released
+without entering the skipped handler. There is exactly one fault event. A matching
+scripted reference census verifies the same close calls, normal/process dispositions,
+quota-independent observations, and empty retained storage/tasks/domains at every
+fuel cutoff. Opaque reference values are simulations; native logs establish actual
+Rust destruction order.
+
+An additional spawned parent exposed a reference forwarding loop: with the parent
+inside an intervening inline boundary, settlement could select its own retained
+ancestor. An already routed fault now continues through any source parent whose
+owning domain matches its explicit target before settlement begins. Ordinary local
+faults still use the current boundary. Four nested-parent models verify preservation
+of the original failing child's cause, skipped inline contingencies, complete
+retirement and native/reference reports at every fuel and quota cutoff.
+
+The source gate remains closed. Next audit handoffs reached inside an inline named
+or lexical contingency, including local recovery and nested helper-owned children.
+That phase must preserve original sibling ownership, suppress stopped handler work,
+and retire retained resources before extending source admission. The installed
+compiler/LSP/VSIX stay at 0.187; these models do not require an editor reload.

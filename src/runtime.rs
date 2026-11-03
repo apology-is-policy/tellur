@@ -313,6 +313,8 @@ impl Completion {
 }
 
 mod continuation;
+#[cfg(test)]
+pub(crate) use continuation::census_model;
 pub use continuation::{ExecutionProgress, ExecutionSession};
 
 #[derive(Debug)]

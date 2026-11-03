@@ -875,9 +875,12 @@ An internal gated model now also preserves the original child-owning domain when
 that parent is inside a different inline boundary. The child fault skips that
 intervening boundary's contingency and retained-parameter handover. After the owning
 contingency begins, the routing target is cleared so a later fault uses its own
-boundary. This is implementation evidence only: source calls combining a boundary
-and a handoff beside live children remain rejected pending resource and nested-owner
-settlement proof. See [the routing audit](../async-execution.md#owning-domain-routing-model-e1e23a).
+boundary. Real-resource and nested-source-parent models also verify retirement and
+original-cause forwarding before settlement. This is implementation evidence only:
+source calls combining a boundary and a handoff beside live children remain rejected
+pending contingency-phase and helper-owned-child evidence. See
+[the routing audit](../async-execution.md#owning-domain-routing-model-e1e23a) and
+[resource/parent models](../async-execution.md#inline-boundary-resource-and-nested-parent-models-e1e23b).
 
 ## Calling and entering
 

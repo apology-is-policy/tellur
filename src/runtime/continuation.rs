@@ -36,6 +36,8 @@ use started::StartedOrigin;
 #[path = "source_scheduler.rs"]
 mod source_scheduler;
 use source_scheduler::Scheduler;
+#[cfg(test)]
+pub(crate) use source_scheduler::census_model;
 
 type RunResult = std::result::Result<RunCompletion, Box<Failure>>;
 

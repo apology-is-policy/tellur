@@ -16,6 +16,9 @@ const CARGO: &str = include_str!("native/Cargo.template");
 const LOCK: &str = include_str!("native/Cargo.lock");
 #[path = "native/access.rs"]
 mod access;
+#[cfg(test)]
+#[path = "native/boundary_handoff_resource_tests.rs"]
+mod boundary_handoff_resource_tests;
 #[path = "native/continuations.rs"]
 mod continuations;
 #[cfg(test)]

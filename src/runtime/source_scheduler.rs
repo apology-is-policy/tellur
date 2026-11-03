@@ -269,7 +269,12 @@ impl<'a> Machine<'a> {
         let Some(origin) = self.context.started.as_ref() else {
             return Ok(false);
         };
-        if self.context.domain != Some(origin.domain) {
+        // A child fault already routed to this invocation's owning domain must
+        // keep forwarding, even while this parent is inside an inline boundary.
+        // Settling here would include its own retained ancestor in the subtree.
+        if self.context.domain != Some(origin.domain)
+            && self.context.source_fault_target != Some(origin.domain)
+        {
             return Ok(false);
         }
         let Some(Err(diagnostic)) = &self.context.flow else {
@@ -382,6 +387,50 @@ impl<'a> Machine<'a> {
         self.select_settlement(context);
         true
     }
+}
+
+/// Test-only census for adapter-contract models with explicit scripted effects.
+#[cfg(test)]
+pub(crate) fn census_model(p: &CheckedProgram, scenario: &Scenario) -> RunCompletion {
+    for fuel in 0..256 {
+        let mut expected = None;
+        let mut completed = None;
+        for quota in [1, 3, usize::MAX] {
+            let mut session = p.start_execution(scenario, fuel);
+            let mut m = session.machine.take().unwrap();
+            m.enter(scenario).unwrap();
+            let mut polls = 0;
+            while !m.drive(quota) {
+                polls += 1;
+                assert!(polls < 1000, "fuel={fuel}, quota={quota}");
+            }
+            m.prune_source();
+            super::settlement_tests::retired(&m);
+            assert!(m.shared.scheduler.runnable.is_empty());
+            assert!(m.shared.scheduler.joins.is_empty());
+            assert!(m.shared.scheduler.handles.is_empty());
+            let observation = match m.finish(&scenario.entry) {
+                Ok(result) => {
+                    let value = serde_json::to_value(&result).unwrap();
+                    completed = Some(result);
+                    value
+                }
+                Err(failure) => {
+                    assert_eq!(failure.diagnostic.code, "E_FUEL", "{failure:?}");
+                    serde_json::json!({"report":failure.report,"events":failure.events})
+                }
+            };
+            if let Some(expected) = &expected {
+                assert_eq!(&observation, expected, "fuel={fuel}, quota={quota}");
+            } else {
+                expected = Some(observation);
+            }
+        }
+        if let Some(result) = completed {
+            return result;
+        }
+    }
+    panic!("resource model did not complete");
 }
 
 #[cfg(test)]

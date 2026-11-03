@@ -1715,3 +1715,15 @@ fn compiled_gated_recovered_boundary_handoff_model() {
         }
     }
 }
+
+#[test]
+fn compiled_gated_nested_boundary_handoff_model() {
+    for named in [false, true] {
+        for awaited in [false, true] {
+            let p = crate::boundary_handoff_model::nested_program(named, awaited)
+                .with_entry_exit_codes("main", BTreeMap::from([("done".into(), 0)]))
+                .unwrap();
+            compare_program(&format!("nested_boundary_handoff_{named}_{awaited}"), p);
+        }
+    }
+}
