@@ -125,7 +125,7 @@ impl Contexts<'_> {
                 self.domains.require_open(&pending.domain, &[])?;
                 match (&pending.queued, &pending.child, &pending.result) {
                     (Some(queued), None, None) if parked.awaiting.is_none() => {
-                        queued.prepare_context(self.host, frame)?;
+                        queued.prepare_context(self.host, frame, false)?;
                         handoffs += 1;
                     }
                     (None, Some(child), None) if parked.awaiting == Some(child.id) => {

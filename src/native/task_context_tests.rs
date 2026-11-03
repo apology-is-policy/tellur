@@ -632,3 +632,6 @@ fn owning_contingency_resumes_only_after_bound_task_resources_and_waits_retire()
     assert_eq!(*drops.borrow(), [1, 2, 0, 9]);
     empty(&c);
 }
+
+#[path = "started_task_tests.rs"]
+mod started;

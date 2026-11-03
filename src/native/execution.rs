@@ -1061,7 +1061,9 @@ mod contexts;
 #[path = "domains.rs"]
 mod domains;
 pub use contexts::{AdmissionProgress, AdmissionStop};
-pub use contexts::{ContextKey, ContextPoll, Contexts, Readiness, run_entry};
+pub use contexts::{
+    ContextKey, ContextPoll, Contexts, Readiness, StartedTask, TaskJoin, run_entry,
+};
 
 #[cfg(test)]
 #[path = "invocation_tests.rs"]

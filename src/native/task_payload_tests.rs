@@ -57,6 +57,13 @@ fn reject(a: &Activation, h: &mut Host, p: &'static Control, v: &mut Option<V>) 
     assert_eq!(h.tasks, before);
     assert_eq!(*v, value);
 }
+fn reject_started(a: &Activation, h: &mut Host, p: &'static Control, v: &mut Option<V>) {
+    let before = h.tasks.clone();
+    let value = v.clone();
+    assert!(a.queue_started(h, p, v).is_err());
+    assert_eq!(h.tasks, before);
+    assert_eq!(*v, value);
+}
 #[test]
 fn bound_captures_reject_foreign_hosts_owners_producers_and_unbound_awaits() {
     let mut h = host();
@@ -87,28 +94,35 @@ fn bound_captures_reject_foreign_hosts_owners_producers_and_unbound_awaits() {
         super::super::super::await_arguments(vec![payload.clone().unwrap()], "producer").is_err()
     );
     reject(&n.stack[0], &mut h, &PRODUCER, &mut payload);
+    reject_started(&n.stack[0], &mut h, &PRODUCER, &mut payload);
     reject(&om.stack[0], &mut other, &PRODUCER, &mut payload);
+    reject_started(&om.stack[0], &mut other, &PRODUCER, &mut payload);
     reject(&m.stack[0], &mut h, &IMPOSTOR, &mut payload);
+    reject_started(&m.stack[0], &mut h, &IMPOSTOR, &mut payload);
     let valid = payload.clone();
     if let Some(V::Task { operation, .. }) = &mut payload {
         *operation = "different".into();
     }
     reject(&m.stack[0], &mut h, &PRODUCER, &mut payload);
+    reject_started(&m.stack[0], &mut h, &PRODUCER, &mut payload);
     payload = valid.clone();
     if let Some(V::Task { arguments, .. }) = &mut payload {
         arguments.pop();
     }
     reject(&m.stack[0], &mut h, &PRODUCER, &mut payload);
+    reject_started(&m.stack[0], &mut h, &PRODUCER, &mut payload);
     payload = valid.clone();
     if let Some(V::Task { binding, .. }) = &mut payload {
         *binding = None;
     }
     reject(&m.stack[0], &mut h, &PRODUCER, &mut payload);
+    reject_started(&m.stack[0], &mut h, &PRODUCER, &mut payload);
     let mut queued = m.stack[0]
         .queue_task(&mut h, &PRODUCER, &mut valid.clone())
         .unwrap();
     let mut stale = valid;
     reject(&m.stack[0], &mut h, &PRODUCER, &mut stale);
+    reject_started(&m.stack[0], &mut h, &PRODUCER, &mut stale);
     let state = other.tasks.clone();
     assert!(queued.dispatch(&mut other).is_err());
     assert_eq!(other.tasks, state);
@@ -197,13 +211,13 @@ fn queued_payloads_move_buffers_and_owned_captures_once_in_fifo_order() {
         assert_eq!(h.tasks, before);
         assert!(
             h.tasks
-                .deliver(qa.binding.task, qa.binding.owner, qa.wait)
+                .deliver(qa.binding.task, qa.binding.owner, qa.wait.unwrap())
                 .is_err()
         );
         assert_eq!(h.tasks, before);
         h.tasks.complete(qa.binding.task, qa.binding.owner).unwrap();
         h.tasks
-            .deliver(qa.binding.task, qa.binding.owner, qa.wait)
+            .deliver(qa.binding.task, qa.binding.owner, qa.wait.unwrap())
             .unwrap();
         h.tasks.consume(qa.binding.task, qa.binding.owner).unwrap();
         h.release_frame(&captured.drain(..).map(Some).collect::<Vec<_>>());
@@ -211,7 +225,7 @@ fn queued_payloads_move_buffers_and_owned_captures_once_in_fifo_order() {
         qb.dispatch(&mut h).unwrap();
         h.tasks.complete(qb.binding.task, qb.binding.owner).unwrap();
         h.tasks
-            .deliver(qb.binding.task, qb.binding.owner, qb.wait)
+            .deliver(qb.binding.task, qb.binding.owner, qb.wait.unwrap())
             .unwrap();
         h.tasks.consume(qb.binding.task, qb.binding.owner).unwrap();
     }
@@ -343,7 +357,7 @@ fn cold_payload_moves_into_a_lexical_boundary_without_reparenting() {
     assert_eq!(captured, [V::String("outer capture".into()), V::Unit]);
     h.tasks.complete(queued.binding.task, owner).unwrap();
     h.tasks
-        .deliver(queued.binding.task, owner, queued.wait)
+        .deliver(queued.binding.task, owner, queued.wait.unwrap())
         .unwrap();
     h.tasks.consume(queued.binding.task, owner).unwrap();
     h.finish_boundary(&mut boundary, &Ok(())).unwrap();

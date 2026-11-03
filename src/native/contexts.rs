@@ -303,7 +303,7 @@ impl<'a> Contexts<'a> {
     ) -> R<ContextKey> {
         self.require(parent)?;
         self.require_independent_children(parent)?;
-        self.start_queued(parent, queued, false)
+        self.start_queued(parent, queued, false, false)
     }
     fn require_independent_children(&self, parent: &ContextKey) -> R<()> {
         let parked = &self.parked[&parent.id];
@@ -326,13 +326,14 @@ impl<'a> Contexts<'a> {
         if parked.awaiting.is_some() {
             return Err("E_NATIVE: caller already has a sequential await".into());
         }
-        self.start_queued(parent, queued, true)
+        self.start_queued(parent, queued, true, false)
     }
     fn start_queued(
         &mut self,
         parent: &ContextKey,
         queued: &mut Option<QueuedTask>,
         sequential: bool,
+        retained: bool,
     ) -> R<ContextKey> {
         self.require(parent)?;
         if self.waits.contains_key(&parent.id) {
@@ -348,7 +349,7 @@ impl<'a> Contexts<'a> {
         let task = queued
             .as_ref()
             .ok_or("E_NATIVE: queued task already admitted")?;
-        let (control, arguments) = task.prepare_context(self.host, activation)?;
+        let (control, arguments) = task.prepare_context(self.host, activation, retained)?;
         let dependencies = Dependencies::describe(&self.values, arguments);
         let parent_invocation = Some(activation.owner);
         if control.constructor
@@ -391,7 +392,11 @@ impl<'a> Contexts<'a> {
         // All recoverable checks precede dispatch and capture/resource transfer.
         // Exclusive context access prevents an intervening admission.
         let mut task = queued.take().unwrap();
-        let (_, arguments) = task.dispatch(self.host).expect("prevalidated ready task");
+        let arguments = if retained {
+            task.take_arguments()
+        } else {
+            task.dispatch(self.host).expect("prevalidated ready task").1
+        };
         let frame = self.values.commit(frame).expect("prevalidated child frame");
         self.host.tasks.commit_owner(owner);
         let resource_scope = self.host.resources.register_scope(scope);
@@ -586,7 +591,7 @@ impl<'a> Contexts<'a> {
             return Err("E_NATIVE: completion does not match the compiled await".into());
         }
         let dependencies = self.require_completed(child)?.parked.dependencies.clone();
-        let result = self.join_inner(Some(parent), child, true)?;
+        let result = self.join_inner(Some(parent), child, true, None)?;
         let pending = self.await_continuation(parent)?;
         pending.dependencies.extend(dependencies);
         pending.result = Some(Ok(result));
@@ -747,6 +752,11 @@ impl<'a> Contexts<'a> {
         };
         if quota == 0 {
             return Ok(ContextPoll::Paused);
+        }
+        if let Some(task) = self.parked.get_mut(&key.id).unwrap().task.as_mut() {
+            // Explicit selection of this context, never a quota-driven sibling
+            // handoff. A queued child has not consumed a callback or source fuel.
+            task.select(self.host)?;
         }
         if self
             .waits
@@ -921,15 +931,21 @@ impl<'a> Contexts<'a> {
     }
     /// Consume a completed result once; early wait registration is separate.
     pub fn join(&mut self, parent: Option<&ContextKey>, key: &ContextKey) -> R<Completion> {
-        self.join_inner(parent, key, false)
+        self.join_inner(parent, key, false, None)
     }
     fn join_inner(
         &mut self,
         parent: Option<&ContextKey>,
         key: &ContextKey,
         callback: bool,
+        started: Option<&TaskJoin>,
     ) -> R<Completion> {
         let completed = self.require_completed(key)?;
+        if let Some(join) = started {
+            if join.key.id != key.id || !Arc::ptr_eq(&join.key.session, &self.identity) {
+                return Err("E_NATIVE: started join belongs to another context".into());
+            }
+        }
         let parked = &completed.parked;
         self.domains.require_open(&parked.machine.root.key, &[])?;
         if parent.map(|p| p.id) != parked.parent {
@@ -952,6 +968,7 @@ impl<'a> Contexts<'a> {
             }
         }
         if let Some(task) = &parked.task {
+            task.require_join(started.map(|join| join.wait))?;
             let parent = parent.ok_or("E_NATIVE: task completion requires its parent")?;
             let activation = self.parked[&parent.id]
                 .machine
@@ -1364,6 +1381,11 @@ fn drive_sequential(
 #[cfg(test)]
 #[path = "execution_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "started_tasks.rs"]
+mod started_tasks;
+pub use started_tasks::{StartedTask, TaskJoin};
 
 #[cfg(test)]
 #[path = "task_context_tests.rs"]

@@ -4449,3 +4449,14 @@ Generated original/expanded O0/O2 probes verify direct/cold handoff counts, stab
 pending polls and one-use borrowed completion. Named/lexical fault comparisons preserve
 reports at every fuel cutoff; real-resource probes compare releases and retained owners.
 Source scheduling remains gated.
+
+## Retained started-task joins (0.163)
+
+Shared join preflight preserves registry state. Native host tests retain unjoined work in
+Ready/Running/Waiting/Completed phases, reject foreign/stale/crossed-domain/wrong-producer
+claims and capacity failure atomically, and require the consuming join for delivery.
+Completed payloads retain owned resources and borrowed supplier storage; owning faults and
+process exit retire them before supplier cleanup and contingency, skipping stopped nested
+handlers. Generated original/expanded O0/O2 probes explicitly substitute host queueing at
+an existing cold-await site and compare normal owned/borrowed results with the reference
+executor under quota partitions. This is host integration evidence, not source concurrency.

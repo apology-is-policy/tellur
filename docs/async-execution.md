@@ -2833,6 +2833,44 @@ argument preparation. Started-task joins, source spawn/yield and scheduler selec
 next integration work. Host quota exhaustion never becomes a source handoff. Cancellation,
 async adapters/disposal and LLVM coroutine lowering remain separate checkpoints.
 
+## Retained started-task joins (E1d.2d.3v)
+
+Compiler 0.163 separates native queued ownership from completion-wait authority.
+`Activation::queue_started` transfers a checked cold task's captures into queued work
+without allocating a wait or running its producer. `Contexts::retain_task` preflights
+capture storage, resource scopes and domain membership, then retains that work in its
+original invocation and current fault domain. Admission failures preserve the queued
+captures. This transit protocol is an internal host API, not source `spawn` syntax.
+
+A retained child stays Ready until explicit host selection in FIFO order. Zero quota,
+queue retention and completion claims never select a sibling or consume source fuel.
+An opaque, move-only `StartedTask` owns the right to claim completion. `claim_task`
+checks the original session, parent invocation, exact compiled producer, owning fault
+domain and wait capacity before consuming that handle. It may claim Ready, Running,
+Waiting or Completed work; claiming never queues or runs the producer again. The shared
+registry provides immutable join preflight for both executors.
+
+The resulting move-only `TaskJoin` authorizes one result transfer. Early, crossed-domain,
+foreign or stale delivery preserves the handle and payload. Ordinary context-key joins
+cannot bypass this authority. Captured loans, result dependencies and owned resources
+stay retained until delivery or emergency retirement. An unjoined completed child still
+blocks normal parent retirement. Owning faults and process settlement retire unjoined
+Ready, Running, Waiting and Completed children before supplier storage and owning
+contingency; stopped siblings' nested contingencies do not run.
+
+Host tests exercise every lifecycle phase, exact producer identity despite equal names,
+invocation/domain/session rejection, capacity failure, FIFO readiness and real Rust
+resource destruction. Generated original/expanded O0/O2 probes substitute queue-only
+admission at one checked cold-await site and explicitly claim at each phase; unchanged
+producer/delivery callbacks preserve reference owned/borrowed results and quota traces.
+This probe substitution is test-only. Reference delayed-completion tests continue to use
+production retained results and emergency retirement independently of parked callers.
+
+Source execution remains sequential, with existing cold/direct-await behavior. The next
+integration is bounded source spawn/yield and required-await checking using invocation
+and fault-domain ownership. Broader native callback admission remains conservative.
+Cancellation, async adapters/disposal and LLVM coroutine lowering remain separate.
+
 ## Reference execution invariants
 
 A step partition must not itself become a source effect. The same selected schedule

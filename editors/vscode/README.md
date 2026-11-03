@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-darwin-arm64-0.162.0.vsix` using **Extensions:
+1. Install the supplied `tellur-language-darwin-arm64-0.163.0.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1438,3 +1438,10 @@ Direct await now retains its caller and hands off explicitly through the existin
 completion machinery. Nested direct and cold awaits preserve borrowed storage and owning
 fault cleanup. Source execution remains sequential. Run
 `./bin/tellurc exec playground/direct_await.tellur` for the maintained source example.
+
+## Retained started-task joins in 0.163
+
+Native runtime groundwork now retains unjoined child work and separates consuming join
+handles from queued captures. Owned resources and borrowed results survive until delivery
+or owning fault cleanup. Source programs still use sequential direct and cold awaits;
+`spawn` and `yield` remain planned.

@@ -80,12 +80,14 @@ pub(super) fn retire_tasks<'a>(
     Ok(())
 }
 
-/// Captures queued by a consuming await. Dropping this does not settle the task:
-/// the owner's outstanding obligation remains until completion or emergency unwind.
+/// Captures queued by an await or explicit host start. Dropping this does not
+/// settle the task: the owner's obligation survives until delivery or unwind.
 #[derive(Debug)]
 pub struct QueuedTask {
     binding: TaskBinding,
-    wait: WaitId,
+    wait: Option<WaitId>,
+    started_handle: bool,
+    dispatched: bool,
     arguments: Option<Vec<V>>,
 }
 impl QueuedTask {
@@ -107,6 +109,7 @@ impl QueuedTask {
         &'a self,
         host: &Host,
         parent: &Activation,
+        retained: bool,
     ) -> R<(&'static Control, &'a [V])> {
         parent.require_task_host(host)?;
         if !Arc::ptr_eq(&self.binding.registry, &parent.registry)
@@ -118,7 +121,18 @@ impl QueuedTask {
             .arguments
             .as_deref()
             .ok_or("E_NATIVE: queued captures already dispatched")?;
-        host.tasks.require_dispatch(self.binding.task)?;
+        if retained {
+            if !self.started_handle || self.wait.is_some() {
+                return Err("E_NATIVE: retained start requires unclaimed work".into());
+            }
+            host.tasks
+                .require_queued(self.binding.task, self.binding.owner)?;
+        } else {
+            if self.started_handle || self.wait.is_none() {
+                return Err("E_NATIVE: await admission requires its original wait".into());
+            }
+            host.tasks.require_dispatch(self.binding.task)?;
+        }
         Ok((self.binding.producer, args))
     }
     pub(super) fn complete(&self, host: &mut Host) -> R<()> {
@@ -131,12 +145,16 @@ impl QueuedTask {
         {
             return Err("E_NATIVE: task completion belongs to another invocation".into());
         }
-        host.tasks
-            .require_delivery(self.binding.task, self.binding.owner, self.wait)
+        host.tasks.require_delivery(
+            self.binding.task,
+            self.binding.owner,
+            self.wait
+                .ok_or("E_NATIVE: started completion has not been claimed")?,
+        )
     }
     pub(super) fn deliver(&self, host: &mut Host) {
         host.tasks
-            .deliver(self.binding.task, self.binding.owner, self.wait)
+            .deliver(self.binding.task, self.binding.owner, self.wait.unwrap())
             .expect("prevalidated completion wait");
         host.tasks
             .consume(self.binding.task, self.binding.owner)
@@ -167,8 +185,51 @@ impl QueuedTask {
         {
             return Err("E_NATIVE: queued task is foreign or already dispatched".into());
         }
-        host.tasks.dispatch(self.binding.task)?;
-        Ok((self.binding.producer, self.arguments.take().unwrap()))
+        self.select(host)?;
+        Ok((self.binding.producer, self.take_arguments()))
+    }
+}
+impl QueuedTask {
+    pub(super) fn take_arguments(&mut self) -> Vec<V> {
+        self.arguments.take().expect("prevalidated captures")
+    }
+    pub(super) fn dispatch_retained(&mut self, host: &mut Host) -> R<()> {
+        if !self.started_handle || self.dispatched {
+            return Err("E_NATIVE: task is not an unselected retained start".into());
+        }
+        self.select(host)
+    }
+    pub(super) fn select(&mut self, host: &mut Host) -> R<()> {
+        if !self.dispatched {
+            host.tasks.dispatch(self.binding.task)?;
+            self.dispatched = true;
+        }
+        Ok(())
+    }
+    pub(super) fn prepare_join(&self, host: &Host, producer: &'static Control) -> R<WaitId> {
+        if !self.started_handle
+            || self.wait.is_some()
+            || !std::ptr::eq(self.binding.producer, producer)
+            || !Arc::ptr_eq(&self.binding.registry, &host.resources.identity)
+        {
+            return Err("E_NATIVE: started task producer or join authority differs".into());
+        }
+        host.tasks
+            .prepare_join(self.binding.task, self.binding.owner, producer.name)
+    }
+    pub(super) fn claim(&mut self, host: &mut Host, producer: &'static Control) -> R<WaitId> {
+        self.prepare_join(host, producer)?;
+        let wait = host
+            .tasks
+            .join(self.binding.task, self.binding.owner, producer.name)?;
+        self.wait = Some(wait);
+        Ok(wait)
+    }
+    pub(super) fn require_join(&self, wait: Option<WaitId>) -> R<()> {
+        if self.started_handle != wait.is_some() || (self.started_handle && self.wait != wait) {
+            return Err("E_NATIVE: completion requires its consuming started-task join".into());
+        }
+        Ok(())
     }
 }
 impl Activation {
@@ -224,16 +285,18 @@ impl Activation {
                 task,
                 producer,
             },
-            wait,
+            wait: Some(wait),
+            started_handle: false,
+            dispatched: false,
             arguments: Some(std::mem::take(arguments)),
         })
     }
-    pub(super) fn prepare_cold_task(
+    fn cold_binding(
         &self,
         host: &Host,
         producer: &'static Control,
         value: Option<&V>,
-    ) -> R<(TaskBinding, WaitId)> {
+    ) -> R<TaskBinding> {
         self.require_task_host(host)?;
         let Some(V::Task {
             binding: Some(binding),
@@ -253,10 +316,41 @@ impl Activation {
         {
             return Err("E_NATIVE: pending task owner or producer differs".into());
         }
+        Ok(binding.clone())
+    }
+    pub(super) fn prepare_cold_task(
+        &self,
+        host: &Host,
+        producer: &'static Control,
+        value: Option<&V>,
+    ) -> R<(TaskBinding, WaitId)> {
+        let binding = self.cold_binding(host, producer, value)?;
         let wait = host
             .tasks
-            .prepare_schedule(binding.task, self.owner, operation)?;
-        Ok((binding.clone(), wait))
+            .prepare_schedule(binding.task, self.owner, producer.name)?;
+        Ok((binding, wait))
+    }
+    /// Queue a cold task without allocating a completion wait or running code.
+    /// The executor must retain these captures before selecting any context.
+    pub fn queue_started(
+        &self,
+        host: &mut Host,
+        producer: &'static Control,
+        value: &mut Option<V>,
+    ) -> R<QueuedTask> {
+        let binding = self.cold_binding(host, producer, value.as_ref())?;
+        host.tasks
+            .enqueue(binding.task, self.owner, producer.name)?;
+        let Some(V::Task { arguments, .. }) = value.take() else {
+            unreachable!()
+        };
+        Ok(QueuedTask {
+            binding,
+            wait: None,
+            started_handle: true,
+            dispatched: false,
+            arguments: Some(arguments),
+        })
     }
     /// Validate original owner/producer and queue+wait capacity before consuming
     /// the handle. No lexical-boundary identity is captured by a cold value.
@@ -280,7 +374,9 @@ impl Activation {
         };
         Ok(QueuedTask {
             binding,
-            wait,
+            wait: Some(wait),
+            started_handle: false,
+            dispatched: false,
             arguments: Some(arguments),
         })
     }

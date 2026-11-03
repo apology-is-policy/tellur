@@ -802,3 +802,11 @@ and result delivery does not reevaluate the call or consume additional source fu
 Synchronous calls and `run` retain their call behavior. Source execution remains sequential;
 started-task joins, spawn/yield and broader parent admission remain gated. See
 [direct-await handoffs](../async-execution.md#direct-await-handoffs-e1d2d3u).
+
+Since 0.163, internal native host APIs can retain unjoined started work without a wait or
+producer execution. A consuming handle claims completion in any started phase; a separate
+one-use join rechecks its original invocation, session and fault domain before adopting the
+result. Unjoined captures and results remain retirement obligations, including during fault
+settlement. Shared protocol preflight and reference delayed-completion tests cover the same
+lifetime requirements. Source `spawn`/`yield` and scheduling remain unavailable. See
+[retained started-task joins](../async-execution.md#retained-started-task-joins-e1d2d3v).

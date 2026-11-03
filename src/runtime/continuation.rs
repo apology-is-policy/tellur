@@ -644,6 +644,11 @@ impl<'a> Machine<'a> {
                 .domain
                 .ok_or_else(|| error("ready context has no fault domain"))?,
         )?;
+        let (_, owner) = context
+            .task
+            .filter(|(id, _)| *id == task)
+            .ok_or_else(|| error("ready context has lost its original task"))?;
+        self.shared.tasks.require_queued(task, owner)?;
         // Validate queue state before taking the prepared context. Installation
         // failure unwinds its already-retained caller through ResumeAwait.
         self.shared.tasks.dispatch(task)?;

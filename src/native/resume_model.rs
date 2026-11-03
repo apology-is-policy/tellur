@@ -19,11 +19,11 @@ fn source(program: &CheckedProgram, entry: &str) -> Result<String> {
         ),
         1,
     );
-    source = source.replacen(
-        "pub use contexts::{ContextKey, ContextPoll, Contexts, Readiness, run_entry};",
-        "pub use contexts::*;",
-        1,
-    );
+    // Use the stable host-progress export to expose probe drivers, independent
+    // of formatting or additions to the ordinary context-key export list.
+    let export = "pub use contexts::{AdmissionProgress, AdmissionStop};";
+    assert_eq!(source.matches(export).count(), 1);
+    source = source.replacen(export, "pub use contexts::*;", 1);
     Ok(source)
 }
 
@@ -66,3 +66,7 @@ mod cold_await_tests;
 #[cfg(test)]
 #[path = "direct_await_model_tests.rs"]
 mod direct_await_tests;
+
+#[cfg(test)]
+#[path = "started_join_model_tests.rs"]
+mod started_join_tests;

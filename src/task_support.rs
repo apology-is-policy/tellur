@@ -157,6 +157,18 @@ impl Registry {
     /// dispatch, during a readiness wait, or after completion; it never queues work.
     #[allow(dead_code)]
     pub(crate) fn join(&mut self, id: TaskId, owner: OwnerId, operation: &str) -> Result<WaitId> {
+        let wait = self.prepare_join(id, owner, operation)?;
+        self.commit_join(id, wait);
+        Ok(wait)
+    }
+    /// Validate the original owner/producer and wait capacity without claiming
+    /// completion. Executors check their domain/handle authority before commit.
+    pub(crate) fn prepare_join(
+        &self,
+        id: TaskId,
+        owner: OwnerId,
+        operation: &str,
+    ) -> Result<WaitId> {
         let task = self.require_owner(id, owner)?;
         if task.operation != operation {
             return Err(error("pending task producer differs"));
@@ -166,9 +178,10 @@ impl Registry {
                 "task is cold or its completion has already been claimed",
             ));
         }
-        let wait = self.prepare_wait()?;
-        self.commit_join(id, wait);
-        Ok(wait)
+        self.prepare_wait()
+    }
+    pub(crate) fn require_queued(&self, id: TaskId, owner: OwnerId) -> Result<()> {
+        self.require(id, owner, Phase::Ready).map(|_| ())
     }
     /// Immutable cold-await preflight, including the next one-use wait identity.
     pub(crate) fn prepare_schedule(
@@ -393,7 +406,13 @@ mod tests {
             }
             let queue = r.ready.clone();
             let before_phase = r.tasks[&task].phase;
+            let before = r.clone();
+            let prepared = r.prepare_join(task, a, "work").unwrap();
+            assert_eq!(r.prepare_join(task, a, "work").unwrap(), prepared);
+            assert!(r.prepare_join(task, a, "wrong").is_err());
+            assert_eq!(r, before);
             let wait = r.join(task, a, "work").unwrap();
+            assert_eq!(prepared, wait);
             assert_eq!(r.ready, queue);
             assert_eq!(r.tasks[&task].phase, before_phase);
             let joined = r.clone();

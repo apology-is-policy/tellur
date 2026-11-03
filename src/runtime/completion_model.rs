@@ -154,7 +154,11 @@ fn delayed_joins_retain_owned_and_exclusive_borrowed_payloads_after_child_frames
                     let mut joins = BTreeMap::new();
                     if join_early {
                         for (task, owner) in [left, right].into_iter().zip(owners) {
-                            joins.insert(task, m.shared.tasks.join(task, owner, "leaf").unwrap());
+                            let before = m.shared.tasks.clone();
+                            let wait = m.shared.tasks.prepare_join(task, owner, "leaf").unwrap();
+                            assert_eq!(m.shared.tasks, before);
+                            assert_eq!(m.shared.tasks.join(task, owner, "leaf").unwrap(), wait);
+                            joins.insert(task, wait);
                         }
                     }
                     let before_keys: Vec<_> = m.shared.values.keys().copied().collect();
@@ -214,7 +218,11 @@ fn delayed_joins_retain_owned_and_exclusive_borrowed_payloads_after_child_frames
                     assert_ne!(roots[0], roots[1]);
                     if !join_early {
                         for (task, owner) in [left, right].into_iter().zip(owners) {
-                            joins.insert(task, m.shared.tasks.join(task, owner, "leaf").unwrap());
+                            let before = m.shared.tasks.clone();
+                            let wait = m.shared.tasks.prepare_join(task, owner, "leaf").unwrap();
+                            assert_eq!(m.shared.tasks, before);
+                            assert_eq!(m.shared.tasks.join(task, owner, "leaf").unwrap(), wait);
+                            joins.insert(task, wait);
                         }
                     }
                     for owner in owners {
