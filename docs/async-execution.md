@@ -4462,3 +4462,45 @@ accepted cleanup-failure policy. Public async-host call admission still awaits t
 recorded decision. HTTP completion held without adoption across an owning fault is
 the next composition checkpoint; actual reset/error policy and general timer/reactor
 arbitration remain separate. Compiler/LSP/VSIX stays 0.189.
+
+
+## HTTP candidate owning-fault settlement (E1f.6j)
+
+The [candidate fixture](../tests/fixtures/native_http_candidate_fault.tellur) combines
+real loopback reads and the unchanged owned HTTP parser with the controlled
+original-owner fault schedule. Two borrowed operations lie beneath lexical and named
+boundaries. Four explicit internal states distinguish a partial read with an
+unaccepted notification, an accepted notification without another parser poll, a
+held typed HTTP result, and an encoded completion whose checked source arm has not
+run. Request and malformed results cover owned method/target/header-map/body data
+and diagnostic strings. The stop probes inspect the actual held payload during
+destruction, while its original connection is still alive.
+
+This uses the existing private retained-context fault driver. The final context hold
+is an administrative test device, not an extra source handoff. The original owner's
+checked literal fault initiates settlement; child normal arms and stopped nested
+contingencies cannot execute. Accepted notifications, rejected attempts to advance
+unsignalled waits and zero quotas consume no socket input. Saved operation tickets
+and readiness generations reject after settlement. An independent root can resume
+and complete after the owning boundary finishes.
+
+Pending receives retain physical interest until their runtime wait is removed.
+Deregistration precedes state and supplier destruction. Completed receives already
+removed that interest and consumed their parser state; retaining a typed or encoded
+candidate does not recreate a physical subscription. The candidate retires before
+its supplier and the owning contingency. One-use encoding moves the generated
+payload into the completion rather than copying it into a separate lifetime witness.
+
+Event publication and arm adoption are distinct in the existing private helper.
+A held typed result has emitted no receive event. Encoding through
+`finish_http_model` validates and publishes one primitive event before the completion
+is adopted. Fault settlement retains that already published event, disposes the
+completion and never enters its normal arm. Reference comparisons preserve both
+observations without choosing a future public event-publication rule.
+
+Original/expanded O0/O2 comparisons check complete events and reports across every
+settlement fuel cutoff, three quota partitions and independent-root survival. These
+controlled internal schedules complement the live source-queue and original-deadline
+evidence; they do not demonstrate a new source-visible suspension point. Public
+async-host call admission remains pending. Actual backend/reset errors and general
+reactor/cleanup-failure policy remain separate. Compiler/LSP/VSIX remains 0.189.

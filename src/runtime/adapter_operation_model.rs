@@ -625,5 +625,6 @@ pub(super) use source_model::SourceOperations;
 pub(crate) use source_model::source_operation_model;
 
 pub(crate) use source_model::{
-    HttpResponse, http_source_operation_model, http_source_operation_sequence_model,
+    HttpResponse, http_candidate_fault_model, http_source_operation_model,
+    http_source_operation_sequence_model,
 };

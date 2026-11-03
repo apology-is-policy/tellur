@@ -8,8 +8,8 @@ use super::*;
 mod adapter_operation_model;
 #[cfg(test)]
 pub(crate) use adapter_operation_model::{
-    HttpResponse, http_source_operation_model, http_source_operation_sequence_model,
-    pending_fault_model, source_operation_model,
+    HttpResponse, http_candidate_fault_model, http_source_operation_model,
+    http_source_operation_sequence_model, pending_fault_model, source_operation_model,
 };
 #[cfg(test)]
 #[path = "completion_model.rs"]

@@ -72,7 +72,13 @@ and owning faults retire the active replacement before suppliers. The
 [live HTTP queue checks](../async-execution.md#live-http-source-queue-e1f6i)
 compose those rules with nonblocking loopback reads, physical registration and a
 separate original-deadline matrix. Peer input remains controlled test machinery;
-public async-host admission and general reactor policy remain separate.
+public async-host admission and general reactor policy remain separate. The
+[HTTP candidate settlement checks](../async-execution.md#http-candidate-owning-fault-settlement-e1f6j)
+stop nested borrowers while waiting or holding typed/encoded results, before source
+arms run. Actual payloads retire before suppliers and the owning contingency;
+completed parser interest remains removed. The private helper's already published
+completion event is preserved, while a held typed result has no receive event. This
+records existing internal behavior without defining a public async-host contract.
 
 ## Owned spawned children
 

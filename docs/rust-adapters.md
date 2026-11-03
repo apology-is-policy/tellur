@@ -335,6 +335,12 @@ adds actual nonblocking socket reads and lazy physical interest after `WouldBloc
 It checks logical wait removal before deregistration/state/supplier retirement and
 uses a separate small original-deadline matrix. Controlled peer ordering, backend
 cleanup failures and general timer arbitration do not define a public adapter policy.
+The [HTTP candidate settlement fixture](async-execution.md#http-candidate-owning-fault-settlement-e1f6j)
+also retains actual typed and encoded HTTP payloads across a controlled owning fault.
+It distinguishes parser completion, private event publication and checked-arm
+adoption; no stopped normal arm or nested contingency runs. Completed physical
+interest remains retired and payload disposal precedes supplier release. These
+administrative holds do not add source handoffs or decide public event timing.
 The maintained transport is unchanged.
 
 

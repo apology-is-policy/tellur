@@ -5172,3 +5172,28 @@ across every fuel cutoff or define multi-timer arbitration. Existing standalone 
 receive/parser and simulated-transport matrices are reused where inputs are unchanged.
 OS deregistration failures fail the fixture; public error policy, unadopted HTTP fault
 candidates and async-host source admission remain separate.
+
+
+E1f.6j combines the live HTTP host/parser with the checked original-owner fault
+fixture. Four internal states cover partial waiting, accepted notification before
+another poll, a held typed result, and an encoded completion before checked-arm
+adoption. Both a complete request (including headers and split UTF-8 body) and a
+malformed diagnostic retain their actual generated payload. Destruction inspects
+that payload while the original supplying connection remains live; encoding is
+one-use and does not create a substitute payload merely to witness cleanup.
+
+Original/expanded O0/O2 comparisons check exact events/reports at every settlement
+fuel cutoff and three quota cycles, plus independent-root survival. Waiting logical
+registrations retire before physical interest, parser state and suppliers. Completed
+receives already removed physical interest; administrative candidate holds never
+recreate it. Candidate disposal precedes supplier destruction and the owning
+contingency. Stopped normal arms/nested handlers stay silent, and old tickets and
+readiness reject. Unsignalled waits reject advancement even at zero quota; accepted
+notifications and zero quotas never read input.
+
+Held typed results have no receive event. The existing private completion helper
+publishes an event when validating an encoded result, so those cases preserve that
+event while still suppressing arm adoption. The reference explicitly distinguishes
+these observations; no new public event-timing policy or source handoff is implied.
+Public async-host admission remains pending. Existing parser/source/deadline evidence
+is reused where helper bodies are unchanged; compiler/LSP/VSIX stays 0.189.

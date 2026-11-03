@@ -476,5 +476,6 @@ fn source_pending_operations_preserve_fuel_and_quota_behavior_after_expansion() 
 mod http_model;
 
 pub(crate) use http_model::{
-    HttpResponse, http_source_operation_model, http_source_operation_sequence_model,
+    HttpResponse, http_candidate_fault_model, http_source_operation_model,
+    http_source_operation_sequence_model,
 };

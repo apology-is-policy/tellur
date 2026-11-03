@@ -556,3 +556,7 @@ fn http_source_queue_preserves_fuel_faults_and_quota_turns_after_expansion() {
     }
     eprintln!("HTTP source reference comparisons: {comparisons}");
 }
+
+#[path = "http_candidate_fault_model.rs"]
+mod candidate_fault;
+pub(crate) use candidate_fault::http_candidate_fault_model;

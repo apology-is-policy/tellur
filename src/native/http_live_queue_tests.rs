@@ -329,3 +329,6 @@ fn live_http_queue_preserves_repeated_operations_waits_and_owning_faults() {
     }
     fs::remove_dir_all(root).unwrap();
 }
+
+#[path = "http_candidate_fault_tests.rs"]
+mod candidate_fault_tests;
