@@ -220,6 +220,23 @@ fn compare_selection(label: &str, input: &str, args: &[&str], expected: &[&str])
         }}"#
         );
         let generated = source(&program, "main").unwrap();
+        let generated = if matches!(label, "local-carriers" | "aliased-carriers") {
+            let call = "execution::reference_evidence::inherit_checked(v,reference_value)";
+            assert!(
+                generated.contains(call),
+                "input field transport must be exercised"
+            );
+            generated.replace(call, r#"{
+                let before=reference_value.clone();
+                let copied=execution::reference_evidence::inherit_checked(v,reference_value);
+                assert_eq!(before,copied);
+                let V::Reference{evidence,..}=&copied else {panic!("reference expected")};
+                assert!(matches!(&evidence.origins,execution::reference_evidence::Origins::Complete(o) if !o.is_empty()), "incoming complete leaf was downgraded");
+                copied
+            }"#)
+        } else {
+            generated
+        };
         assert_eq!(generated.matches(&normal).count(), 1);
         let generated = generated.replacen(&normal, &replacement, 1).replacen(
             CONTEXTS,

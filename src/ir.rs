@@ -107,6 +107,9 @@ pub struct ReferenceOrigin {
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ReferenceEvidence {
     Partial(Vec<ReferenceOrigin>),
+    /// Transport existing formation evidence from a supported input field copy.
+    /// This supplies no new origins and never promotes partial runtime evidence.
+    Incoming,
     /// Complete conservative local dependency closure for the bounded direct
     /// reference forms checked by the compiler. Incoming runtime evidence must
     /// also be complete; this annotation alone never grants execution permission.
@@ -116,6 +119,7 @@ impl ReferenceEvidence {
     pub fn origins(&self) -> &[ReferenceOrigin] {
         match self {
             Self::Partial(origins) | Self::Complete(origins) => origins,
+            Self::Incoming => &[],
         }
     }
     pub fn is_complete(&self) -> bool {

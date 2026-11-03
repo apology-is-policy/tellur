@@ -436,3 +436,128 @@ fn guarded_completeness_requires_fresh_local_paired_annotations() {
     }
     values.retire(&f).unwrap();
 }
+
+#[test]
+fn incoming_field_transport_preserves_complete_and_partial_evidence_exactly() {
+    let mut values = Frames::default();
+    let frame = values.enter(4).unwrap();
+    let b = frame.base();
+    values[b] = Some(V::String("owner".into()));
+    values[b + 1] = Some(V::Unit);
+    let leaf = attach_checked(
+        &values,
+        reference(&values, b, &[], false, "&String").unwrap(),
+        &[
+            origin(b, &[], false, false),
+            origin(b + 1, &[], false, true),
+        ],
+        true,
+        true,
+    );
+    for complete in [true, false] {
+        let mut incoming = leaf.clone();
+        if !complete {
+            let V::Reference { evidence, .. } = &mut incoming else {
+                unreachable!()
+            };
+            let Origins::Complete(entries) = &evidence.origins else {
+                unreachable!()
+            };
+            evidence.origins = Origins::Partial(entries.clone());
+        }
+        values[b + 2] = Some(record("view", vec![incoming.clone()]));
+        values[b + 3] = Some(reference(&values, b + 2, &[], false, "&view").unwrap());
+        let before = format!("{:?}", &*values);
+        for (root, indirect) in [(b + 2, false), (b + 3, true)] {
+            let copied = read_place(&values, root, &[0], indirect).unwrap();
+            let transported = inherit_checked(&values, copied.clone());
+            assert_eq!(copied, transported);
+            assert_eq!(evidence(&transported), evidence(&incoming));
+            assert_eq!(evidence(&transported).origins.is_complete(), complete);
+        }
+        assert_eq!(format!("{:?}", &*values), before);
+    }
+}
+
+#[test]
+fn incoming_transport_never_repairs_missing_foreign_or_mismatched_metadata() {
+    let mut values = Frames::default();
+    let frame = values.enter(2).unwrap();
+    values[frame.base()] = Some(V::String("owner".into()));
+    let complete = attach_checked(
+        &values,
+        reference(&values, frame.base(), &[], false, "&String").unwrap(),
+        &[origin(frame.base(), &[], false, false)],
+        true,
+        true,
+    );
+    let mut foreign = Frames::default();
+    let other = foreign.enter(1).unwrap();
+    let foreign_storage = foreign.local_storage(&other, 0).unwrap();
+    for mutation in 0..7 {
+        let mut incoming = complete.clone();
+        let V::Reference {
+            evidence: proof,
+            root,
+            ..
+        } = &mut incoming
+        else {
+            unreachable!()
+        };
+        match mutation {
+            0 => proof.target = None,
+            1 => proof.target.as_mut().unwrap().storage = foreign_storage.clone(),
+            2 => proof.target.as_mut().unwrap().fields.push(0),
+            3 => *root += 1,
+            4 => {
+                let Origins::Complete(entries) = &mut proof.origins else {
+                    unreachable!()
+                };
+                entries[0].place.storage = foreign_storage.clone();
+            }
+            5 => proof.origins = Origins::Unavailable("absent proof".into()),
+            _ => {
+                let Origins::Complete(entries) = &mut proof.origins else {
+                    unreachable!()
+                };
+                entries[0].place.fields = vec![0; LIMIT];
+            }
+        }
+        let transported = inherit_checked(&values, incoming.clone());
+        assert_eq!(
+            incoming, transported,
+            "metadata cannot change source equality"
+        );
+        assert!(matches!(
+            evidence(&transported).origins,
+            Origins::Unavailable(_)
+        ));
+    }
+    let unannotated = reference(&values, frame.base(), &[], false, "&String").unwrap();
+    assert!(matches!(
+        evidence(&inherit_checked(&values, unannotated)).origins,
+        Origins::Partial(_)
+    ));
+    let retired = values.enter(1).unwrap();
+    let mut stale_origin = complete.clone();
+    let V::Reference {
+        evidence: proof, ..
+    } = &mut stale_origin
+    else {
+        unreachable!()
+    };
+    let Origins::Complete(entries) = &mut proof.origins else {
+        unreachable!()
+    };
+    entries[0].place.storage = values.local_storage(&retired, 0).unwrap();
+    values.retire(&retired).unwrap();
+    assert!(matches!(
+        evidence(&inherit_checked(&values, stale_origin)).origins,
+        Origins::Unavailable(_)
+    ));
+    values.retire(&frame).unwrap();
+    let replacement = values.enter(2).unwrap();
+    assert_eq!(replacement.base(), frame.base());
+    let stale = inherit_checked(&values, complete);
+    assert!(matches!(evidence(&stale).origins, Origins::Unavailable(_)));
+}

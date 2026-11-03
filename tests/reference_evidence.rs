@@ -696,3 +696,101 @@ fn local_guarded_closure_survives_expansion_and_rejects_weakened_certificates() 
     let p = program(&conditional);
     assert!(!capture_evidence(p.regions().find(|r| r.name == "startup").unwrap()).is_complete());
 }
+
+#[test]
+fn incoming_singleton_record_fields_preserve_transport_markers_across_expansion() {
+    let source = r#"
+struct view['a] { ref string text <- 'a; }
+struct envelope['a] { view['a] nested; }
+struct grouped['a] { ref string left <- 'a; ref string right <- 'a; }
+control owned(view input) exits done {emit(input.text);drop(input);exit done;}
+control borrowed(ref view input) exits done {emit(input.text);exit done;}
+control nested(ref envelope input) exits done {emit(input.nested.text);exit done;}
+control unioned(ref grouped input) exits done {emit(input.left);emit(input.right);exit done;}
+control main() exits done {
+    string owner="hello";
+    view saved=view {borrow owner};
+    borrowed(borrow saved);
+    owned(move saved);
+    envelope wrapped=envelope {view {borrow owner}};
+    nested(borrow wrapped);
+    drop(wrapped);
+    grouped pair=grouped {borrow owner, borrow owner};
+    unioned(borrow pair);
+    drop(pair);
+    exit done;
+}
+"#;
+    let p = program(source);
+    for (name, expected) in [("owned", 1), ("borrowed", 1), ("nested", 1), ("unioned", 0)] {
+        let r = p.regions().find(|r| r.name == name).unwrap();
+        let count = r
+            .code
+            .iter()
+            .filter(|i| {
+                matches!(
+                    &i.action,
+                    Action::Bind(
+                        _,
+                        Expr::WithReferenceEvidence(_, ReferenceEvidence::Incoming)
+                    )
+                )
+            })
+            .count();
+        assert_eq!(count, expected, "{name}");
+    }
+    for input in [
+        include_str!("../playground/public_carriers.tellur"),
+        include_str!("../playground/public_variants.tellur"),
+    ] {
+        let unsupported = program(input);
+        let relay = unsupported.regions().find(|r| r.name == "relay").unwrap();
+        walk(&serde_json::to_value(relay).unwrap(), &mut |v| {
+            if let Some(parts) = v.get("WithReferenceEvidence").and_then(Json::as_array) {
+                assert_ne!(parts[1], "Incoming", "nested-reference or tagged transport");
+            }
+        });
+    }
+    let artifact = p.expansion_artifact("main").unwrap();
+    let expanded = p.accept_expansion(&artifact).unwrap();
+    let scenario = Scenario {
+        entry: "main".into(),
+        arguments: vec![],
+        calls: vec![],
+    };
+    assert_eq!(p.run(&scenario).unwrap(), expanded.run(&scenario).unwrap());
+    let original = serde_json::to_value(&artifact).unwrap();
+    fn mutate(value: &mut Json, kind: usize) -> bool {
+        if let Some(parts) = value
+            .get_mut("WithReferenceEvidence")
+            .and_then(Json::as_array_mut)
+            && parts[1] == "Incoming"
+        {
+            match kind {
+                0 => parts[1] = serde_json::json!({"Partial": []}),
+                1 => parts[1] = serde_json::json!({"Complete": []}),
+                2 => {
+                    parts[0]["Place"]["fields"] = serde_json::json!([]);
+                }
+                _ => {
+                    *value = parts[0].clone();
+                }
+            }
+            return true;
+        }
+        match value {
+            Json::Array(values) => values.iter_mut().any(|v| mutate(v, kind)),
+            Json::Object(values) => values.values_mut().any(|v| mutate(v, kind)),
+            _ => false,
+        }
+    }
+    for kind in 0..4 {
+        let mut candidate = original.clone();
+        assert!(mutate(&mut candidate, kind));
+        let candidate: ExpansionArtifact = serde_json::from_value(candidate).unwrap();
+        assert_eq!(
+            p.accept_expansion(&candidate).unwrap_err().code,
+            "E_EXPANSION_CERTIFICATE"
+        );
+    }
+}

@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-darwin-arm64-0.155.0.vsix` using **Extensions:
+1. Install the supplied `tellur-language-darwin-arm64-0.156.0.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1387,3 +1387,10 @@ projected reborrows. Every broad borrowed ancestor and all its stored owners rem
 covered, even owners outside the projected runtime value. Conditional/received carriers,
 permission families, tagged contents and references to carriers remain partial. Try
 `./bin/tellurc exec playground/aliased_carrier_tasks.tellur`.
+
+## Incoming record-leaf evidence in 0.156
+
+Supported singleton record input fields retain already-bound reference evidence during
+private access-slot materialization. Exact allocation/path checks preserve complete
+caller evidence without promoting partial or invalid metadata. Public permissions,
+source execution and scheduling remain unchanged; indirect holder closure is still queued.

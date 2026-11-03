@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.155.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.156.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -257,3 +257,10 @@ remain included. This permits only conservatively disjoint host work under exist
 invocation/domain checks. Incoming/received indirect carriers, permission families and
 conditional/tagged/nested-reference gaps remain partial. See
 [local carrier aliases](../async-execution.md#complete-local-carrier-aliases-e1d2d3s10).
+
+Since 0.156, singleton ordinary record input leaves preserve validated incoming reference
+evidence when copied into private access slots. This applies to owned/borrowed holders
+and nested record fields with reference-free pointees. It supplies no new complete proof:
+partial, missing or invalid metadata is never promoted. Unioned/tagged/nested-reference
+and returned-value evidence remain conservative; indirect holder closure is still queued.
+See [incoming evidence transport](../async-execution.md#incoming-record-leaf-evidence-transport-e1d2d3s11).

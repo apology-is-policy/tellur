@@ -68,6 +68,12 @@ fn substitute(e: &Expr, slots: &BTreeMap<Id, Id>) -> Expr {
     let sub = |e: &Expr| substitute(e, slots);
     match e {
         Expr::WithReferenceEvidence(value, evidence) => {
+            if matches!(evidence, ReferenceEvidence::Incoming) {
+                return Expr::WithReferenceEvidence(
+                    Box::new(sub(value)),
+                    ReferenceEvidence::Incoming,
+                );
+            }
             let origins = evidence.origins();
             let wrap = if evidence.is_complete() {
                 ReferenceEvidence::Complete

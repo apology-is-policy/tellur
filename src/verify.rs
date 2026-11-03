@@ -87,6 +87,40 @@ impl Verifier<'_> {
                 if crate::manifest::reference_inner(&ty).is_none() {
                     return Err(error("reference evidence requires a reference value"));
                 }
+                if matches!(evidence, ReferenceEvidence::Incoming) {
+                    // Expansion replaces callee parameters with local slots.
+                    // Certificates preserve the checked entry site; structural
+                    // validation independently limits the transport operation.
+                    let Expr::Place(p) = value.as_ref() else {
+                        return Err(error("incoming evidence requires a field copy"));
+                    };
+                    if p.fields.is_empty() || p.fields.len() > 4096 {
+                        return Err(error("unsupported incoming reference path"));
+                    }
+                    let mut holder = self.slot(p.root)?;
+                    if let Some((_, inner)) = crate::manifest::reference_inner(holder) {
+                        if !p.indirect {
+                            return Err(error("incoming reference holder requires indirection"));
+                        }
+                        holder = inner;
+                    }
+                    for field in &p.fields {
+                        let Some(TypeDef::Record { fields, .. }) = m.type_def(holder) else {
+                            return Err(error(
+                                "incoming evidence requires an ordinary record path",
+                            ));
+                        };
+                        holder = &fields
+                            .get(*field)
+                            .ok_or_else(|| error("invalid incoming field"))?
+                            .ty;
+                    }
+                    if m.contains_references(crate::manifest::reference_inner(&ty).unwrap().1) {
+                        return Err(error(
+                            "incoming evidence excludes nested reference contents",
+                        ));
+                    }
+                }
                 if evidence.is_complete() {
                     let inner = crate::manifest::reference_inner(&ty).unwrap().1;
                     let carrier = if m.contains_references(inner) {
@@ -1085,6 +1119,47 @@ fn verify_source(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn incoming_evidence_requires_an_existing_ordinary_reference_field_copy() {
+        let m = crate::manifest::Manifest::from_json(include_str!("../playground/manifest.json"))
+            .unwrap();
+        let original =
+            crate::compile(include_str!("../playground/local_carrier_tasks.tellur"), m).unwrap();
+        original.verify().unwrap();
+        original.expanded("startup").unwrap().verify().unwrap();
+        for kind in 0..4 {
+            let mut p = original.clone();
+            let r = p.regions.get_mut("inspect").unwrap();
+            let value = r
+                .code
+                .iter_mut()
+                .find_map(|i| match &mut i.action {
+                    Action::Bind(
+                        _,
+                        Expr::WithReferenceEvidence(v, ReferenceEvidence::Incoming),
+                    ) => Some(v),
+                    _ => None,
+                })
+                .unwrap();
+            let Expr::Place(place) = value.as_ref() else {
+                unreachable!()
+            };
+            let mut place = place.clone();
+            match kind {
+                0 => **value = Expr::Move(place),
+                1 => {
+                    place.indirect = false;
+                    **value = Expr::Place(place);
+                }
+                2 => {
+                    place.fields.clear();
+                    **value = Expr::Place(place);
+                }
+                _ => **value = Expr::Reference(place, "&String".into()),
+            }
+            assert_eq!(p.verify().unwrap_err().code, "E_IR");
+        }
+    }
     #[test]
     fn complete_carrier_ancestors_must_be_direct_supported_prefixes() {
         let m = crate::manifest::Manifest::from_json(include_str!("../playground/manifest.json"))

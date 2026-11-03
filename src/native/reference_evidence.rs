@@ -154,6 +154,29 @@ pub struct Origin {
 pub fn attach(values: &Frames, value: V, origins: &[Origin]) -> V {
     attach_checked(values, value, origins, false, false)
 }
+/// Preserve, but never manufacture, the evidence carried by a copied input leaf.
+/// Invalid metadata makes descriptions unavailable without changing evaluation.
+pub fn inherit_checked(values: &Frames, mut value: V) -> V {
+    if let V::Reference {
+        root,
+        fields,
+        evidence,
+        ..
+    } = &mut value
+    {
+        let valid = evidence.target.as_ref().is_some_and(|target| {
+            target.fields.len() <= LIMIT
+                && target.fields == *fields
+                && values.require_storage(&target.storage).ok() == Some(*root)
+        });
+        evidence.origins.bound();
+        if !valid || evidence.origins.require_live(values).is_err() {
+            evidence.origins =
+                Origins::Unavailable("incoming reference evidence is unavailable".into());
+        }
+    }
+    value
+}
 /// `fresh` is emitted only for a direct reference operand, whose local dependencies
 /// are fully described by its annotation. Reborrows and received values must merge
 /// their incoming evidence, so a callee annotation cannot promote a partial caller.

@@ -19,6 +19,12 @@ fn guard(g: &Guard, context: &Guard, atoms: &BTreeMap<Id, Id>) -> Guard {
 fn expr(e: &Expr, slots: &BTreeMap<Id, Id>) -> Expr {
     match e {
         Expr::WithReferenceEvidence(value, evidence) => {
+            if matches!(evidence, ReferenceEvidence::Incoming) {
+                return Expr::WithReferenceEvidence(
+                    Box::new(expr(value, slots)),
+                    ReferenceEvidence::Incoming,
+                );
+            }
             let origins = evidence.origins();
             let wrap = if evidence.is_complete() {
                 ReferenceEvidence::Complete

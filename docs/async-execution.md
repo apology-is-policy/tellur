@@ -2578,6 +2578,42 @@ guards. Static annotations must preserve checked result permissions while requir
 complete incoming formation and stored-leaf evidence. No source scheduling, `spawn`/`yield`,
 cancellation, async adapters/disposal or LLVM coroutine lowering is added here.
 
+## Incoming record-leaf evidence transport (E1d.2d.3s.11)
+
+Compiler 0.156 distinguishes copying an incoming reference's evidence from asserting a
+new complete local dependency closure. The `Incoming` checked-IR marker supplies no
+origins and is not statically complete. It replaces empty partial annotations only when
+materializing invocation-input leaves with singleton public origin groups, ordinary
+record field paths and reference-free pointees. Owned and borrowed record inputs and
+nested ordinary record fields qualify. A shared 4096 leaf/path budget bounds selection.
+Unioned groups, tagged paths, nested reference layers and returned-value materialization
+keep their partial annotations. All public permission families and source contracts
+remain unchanged; later family-derived uses do not become complete in this checkpoint.
+
+Native transport evaluates the field copy once, retains its exact formation target and
+origins, and validates the original allocation identity, target path and origin liveness.
+Complete evidence survives only when it was already complete. Partial evidence stays
+partial; absent, stale, foreign, mismatched or over-budget metadata becomes unavailable.
+Transport never rebinds an identity, adds a holder guard, changes value equality or raises
+a source failure. Subsequent graph/census/admission checks remain mandatory.
+
+Expansion remaps the copied place and preserves the marker exactly. Its independent
+certificate checker rejects removal, retargeting and changes to partial/complete status.
+Structural verification separately requires an ordinary record field copy with a
+reference-free pointee. Expanded callee parameters are local slots, so the certificate,
+not a post-expansion parameter-name test, anchors transport to its checked entry site.
+
+Tests cover owned/borrowed/nested inputs, singleton/unioned groups, tagged and nested
+reference exclusions, metadata identity failures and unchanged observations. Generated
+original/expanded O0/O2 local-carrier models assert that actual input-field copies retain
+nonempty complete evidence across quota partitions. Existing received aliases and
+conditional/family-derived captures remain partial.
+
+Next, close bounded indirect carrier and holder ancestry using the transported evidence,
+while retaining broad holder/storage dependencies and conservative public group rules.
+Source scheduling, `spawn`/`yield`, cancellation, async adapters/disposal and LLVM coroutine
+lowering remain separate.
+
 ## Reference execution invariants
 
 A step partition must not itself become a source effect. The same selected schedule

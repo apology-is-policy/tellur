@@ -4366,3 +4366,14 @@ origins. Native host tests block broad holder/pointee accesses even outside the 
 projected runtime graph, across live/waiting/completed children, and preserve state on
 rejection. Original/expanded O0/O2 models require complete nonempty capture and delivery
 with equal source observations across quota partitions.
+
+## Incoming record-leaf evidence transport (0.156)
+
+Metadata cases cover owned/borrowed input records, nested record fields, singleton versus
+unioned groups, tagged/nested-reference exclusions and unchanged expanded observations.
+Certificates reject altered/removed transport markers and retargeted copies; structural
+checks reject moved/fresh/non-field operands. Native tests preserve complete and partial
+origins exactly, reject missing/foreign/stale/mismatched/over-budget metadata and retain
+source equality. Original/expanded O0/O2 local-carrier models assert nonempty complete
+incoming copies across quota partitions alongside existing capture/delivery/admission
+checks. Received aliases and family-derived uses remain conservative.

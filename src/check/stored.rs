@@ -1061,7 +1061,57 @@ impl Checker<'_> {
                 .collect::<Vec<_>>();
             let (bindings, addresses) =
                 self.receive_public_contents(slot.id, ty, &entries, TRUE, span)?;
-            for (id, expr) in bindings {
+            // Transport only singleton, ordinary record leaves at invocation
+            // entry. Public permission families below still govern all uses.
+            // Returned values, unions, tagged and nested-reference layers retain
+            // their existing partial annotations.
+            let mut groups = BTreeMap::new();
+            let mut budget = 4096usize;
+            let bounded = schema.leaves.iter().all(|leaf| {
+                let Some(left) = budget.checked_sub(1 + leaf.fields.len()) else {
+                    return false;
+                };
+                budget = left;
+                *groups.entry(leaf.group).or_insert(0usize) += 1;
+                true
+            });
+            let incoming = schema
+                .leaves
+                .iter()
+                .filter(|leaf| {
+                    if !bounded
+                        || leaf.group.is_none()
+                        || groups[&leaf.group] != 1
+                        || !leaf.through.is_empty()
+                        || leaf.sum_leaf.is_some()
+                        || leaf.fields.is_empty()
+                    {
+                        return false;
+                    }
+                    let mut current = ty;
+                    for field in &leaf.fields {
+                        let Some(manifest::TypeDef::Record { fields, .. }) =
+                            self.manifest.type_def(current)
+                        else {
+                            return false;
+                        };
+                        let Some(field) = fields.get(*field) else {
+                            return false;
+                        };
+                        current = &field.ty;
+                    }
+                    manifest::reference_inner(current)
+                        .is_some_and(|(_, inner)| !self.manifest.contains_references(inner))
+                })
+                .map(|leaf| leaf.fields.clone())
+                .collect::<BTreeSet<_>>();
+            for (id, mut expr) in bindings {
+                if let Expr::WithReferenceEvidence(value, evidence) = &mut expr
+                    && matches!(evidence, ReferenceEvidence::Partial(origins) if origins.is_empty())
+                    && matches!(value.as_ref(), Expr::Place(p) if p.root == slot.id && incoming.contains(&p.fields))
+                {
+                    *evidence = ReferenceEvidence::Incoming;
+                }
                 self.emit(Guard::True, Action::Bind(id, expr), span);
             }
             let mut initialized = vec![];

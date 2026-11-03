@@ -92,6 +92,12 @@ impl FrameLayout {
 fn expression(e: &Expr, layout: &FrameLayout) -> String {
     match e {
         Expr::WithReferenceEvidence(value, evidence) => {
+            if matches!(evidence, ReferenceEvidence::Incoming) {
+                return format!(
+                    "{{let reference_value={}; execution::reference_evidence::inherit_checked(v,reference_value)}}",
+                    expression(value, layout)
+                );
+            }
             let origins = evidence.origins();
             let complete = evidence.is_complete();
             let fresh = matches!(value.as_ref(), Expr::Reference(p, _) if !p.indirect);
