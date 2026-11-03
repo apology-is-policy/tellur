@@ -215,15 +215,14 @@ control main() exits done {forward run startup();}
     assert_eq!(compile(&bad, manifest()).unwrap_err().code, "E_MOVED");
 }
 #[test]
-fn recursion_does_not_admit_borrowed_tagged_or_collection_carriers() {
-    for ty in ["ref leaf", "option<ref string>", "vector<ref string>"] {
+fn recursion_does_not_admit_borrowed_or_collection_carriers() {
+    for ty in ["ref leaf", "vector<ref string>"] {
         let source = format!(
             "struct leaf['a] {{ref string text <- 'a;}}struct inner['a] {{{ty} value;}}struct outer['a] {{inner['a] value;}}async control work(outer input) exits done {{exit done;}}async control start(outer input) exits done {{auto child=spawn work(input);await child;exit done;}}"
         );
         // Every reference-bearing field needs its existing declared group mapping.
         let source = source
             .replace("ref leaf value;", "ref leaf['a] value <- 'a;")
-            .replace("option<ref string> value;", "option<ref string>['a] value;")
             .replace("vector<ref string> value;", "vector<ref string>['a] value;");
         let expected = if ty.starts_with("vector") {
             // Collection-contained origin signatures are not admitted even cold.

@@ -958,8 +958,8 @@ impl Manifest {
         let inner = reference_inner(name).map_or(name, |(_, inner)| inner);
         !self.contains_references(inner)
     }
-    /// Owned record fields may nest, but a reference leaf must still point to
-    /// reference-free storage. Tagged/collection carriers remain separate cases.
+    /// Owned records, options and closed variants may nest. Reference leaves
+    /// still point to reference-free storage; outcomes/collections stay separate.
     pub(crate) fn supports_spawn_payload(&self, name: &str) -> bool {
         fn visit(m: &Manifest, name: &str, active: &mut BTreeSet<String>) -> bool {
             if m.supports_spawn_leaf(name) {
@@ -968,8 +968,19 @@ impl Manifest {
             if reference_inner(name).is_some() || !active.insert(name.to_owned()) {
                 return false;
             }
-            let supported = matches!(m.type_def(name), Some(TypeDef::Record { fields, .. })
-                if fields.iter().all(|field| visit(m, &field.ty, active)));
+            let supported = if let Some(inner) = option_inner(name) {
+                visit(m, inner, active)
+            } else {
+                match m.type_def(name) {
+                    Some(TypeDef::Record { fields, .. }) => {
+                        fields.iter().all(|field| visit(m, &field.ty, active))
+                    }
+                    Some(TypeDef::Variant { constructors, .. }) => constructors
+                        .iter()
+                        .all(|tag| tag.fields.iter().all(|field| visit(m, &field.ty, active))),
+                    _ => false,
+                }
+            };
             active.remove(name);
             supported
         }

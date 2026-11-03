@@ -163,7 +163,6 @@ fn borrowed_spawn_does_not_admit_temporary_carrier_or_result_references() {
     for s in [
         "struct view['a] {ref string text <- 'a;} async control work(ref view value) exits done {exit done;} async control caller(ref view value) exits done {auto task=spawn work(value);await task;exit done;}",
         "struct view['a] {ref string text <- 'a;} struct nested['storage,'a] {ref view['a] value <- 'storage;} async control work(nested value) exits done {exit done;} async control caller(nested value) exits done {auto task=spawn work(value);await task;exit done;}",
-        "async control work(ref string text) exits ready {option<ref string>[text] value} {exit ready {some {text}};} async control parent(ref string text) exits done {auto child=spawn work(text);await child;exit done;}",
         "struct message {string text;constructor(string text){self.text=move text;}} async control work(ref message value) exits done {exit done;} async control caller() exits done {auto task=spawn work(borrow message(\"temporary\"));await task;exit done;}",
     ] {
         assert_eq!(compile(s, manifest()).unwrap_err().code, "E_ASYNC", "{s}");

@@ -399,6 +399,9 @@ mod tests {
             include_str!("../../playground/carrier_spawn.tellur"),
             include_str!("../../playground/carrier_spawn_results.tellur"),
             include_str!("../../playground/nested_spawn.tellur"),
+            include_str!("../../playground/tagged_spawn.tellur"),
+            include_str!("../../tests/fixtures/source_tagged_guards.tellur"),
+            include_str!("../../tests/fixtures/source_tagged_fault.tellur"),
             include_str!("../../tests/fixtures/source_nested_guards.tellur"),
             include_str!("../../tests/fixtures/source_nested_fault.tellur"),
             include_str!("../../tests/fixtures/source_carrier_result_guards.tellur"),
@@ -434,6 +437,9 @@ mod tests {
                     "yield;yield;auto moved = move pending;",
                 ),
         ])
+        .chain([include_str!("../../tests/fixtures/source_tagged_fault.tellur")
+            .replace("    yield;\n    yield;\n    delta await result", "    delta await result")
+            .replace("emit(\"stopped parent resumed\");", "yield;yield;")])
         .chain([include_str!("../../tests/fixtures/source_nested_fault.tellur")
             .replace("    yield;\n    yield;\n    delta await result", "    delta await result")
             .replace("emit(\"stopped parent resumed\");", "yield;yield;")])
@@ -449,7 +455,7 @@ mod tests {
             )
             .unwrap();
             for p in [p.clone(), p.expanded("main").unwrap()] {
-                for fuel in 0..100 {
+                for fuel in 0..256 {
                     let mut finished = false;
                     for quota in [1, 3, usize::MAX] {
                         let scenario = Scenario {
@@ -495,7 +501,7 @@ mod tests {
                     if finished {
                         break;
                     }
-                    assert!(fuel < 99);
+                    assert!(fuel < 255);
                 }
             }
         }

@@ -3235,3 +3235,30 @@ Owned tagged payloads are the next audit: preserve active-tag paths, alternative
 permissions and retained result obligations before admitting reference-bearing closed
 variants/options. Borrowed carriers, collections, borrowed-handle wrappers, inline
 boundary crossing, async adapters and cancellation remain separate work.
+
+## Owned tagged source payloads (E1e.11)
+
+Compiler 0.176 extends the shared capture/result predicate through owned options and
+closed variants, alongside records. Each constructor payload must fit the same profile;
+references still stop recursion at reference-free storage. The predicate does not treat
+named/completed outcomes, task obligations or collections as interchangeable variants.
+No origin, authority, fault or runtime machinery changes.
+
+Existing stored-value capture preserves tag-indexed loan metadata beneath each input
+prefix. Join snapshots those leaves before consuming the handle, selecting their declared
+contained origin paths and retaining mutable parents and carrier guards. Ordinary delta
+selection exposes only the selected tag's payload permissions; merged origin contracts
+remain conservative. Empty alternatives carry no reference leaves. Shared Copy and
+exclusive transfer behavior is unchanged, including explicitly moved shared variants.
+
+The tagged example covers both active variants, empty variants and present/empty options.
+Tests add generic forwarding, independent exclusive siblings, constructor preparation,
+unsaved imported origin changes, detached guards and awaited-owner faults before/after
+join. Original/expanded native O0/O2 models, quota partitions and the 34-variant context
+census cover every fuel cutoff through completion. Real resources are retained in a
+variant capture and option result and retire exactly once before owning contingency.
+
+Reference-bearing named/completed outcome payloads are the next audit. Their mandatory
+handling obligations must remain distinct from optional/variant storage. Borrowed
+carriers, collections, borrowed-handle wrappers, inline fault-boundary crossing, async
+adapters and cancellation remain separate work.

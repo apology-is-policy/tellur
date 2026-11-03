@@ -4603,3 +4603,15 @@ Original/expanded O0/O2 quota/fuel comparisons and the 30-variant reference cens
 normal schedules, awaited-owner faults before/after join, nested guarded results and
 nested resources beside borrowed suppliers. Existing isolation and stop dispositions
 remain required. Fresh editor checks exercise partial-move loan repair and native run.
+
+## Owned tagged spawned payloads (0.176)
+
+Options and closed variants retain selected/empty payload permissions through spawn,
+completion and consuming join, including nested records, generic forwarding, constructor
+preparation and independent shared/exclusive siblings. Detached guards remain live;
+unsaved imported tag-origin swaps invalidate callers and repair restores hover.
+Reference-bearing outcome payloads, borrowed carriers and reference-bearing pointees
+stay rejected. Original/expanded native O0/O2 quota/fuel comparisons and the 34-variant
+reference census cover tagged values, guards, faults before/after join and real resources
+in variant captures/option results. Fresh editor checks exercise tag-specific loan repair
+and native execution. Existing fault dispositions and handling obligations are unchanged.

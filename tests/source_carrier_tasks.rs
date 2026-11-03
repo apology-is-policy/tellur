@@ -219,8 +219,8 @@ control main() exits done {forward run startup();}
 }
 
 #[test]
-fn borrowed_and_tagged_carriers_remain_outside_spawn_profile() {
-    for ty in ["ref view", "indirect", "option<ref string>"] {
+fn borrowed_carriers_remain_outside_spawn_profile() {
+    for ty in ["ref view", "indirect"] {
         let source = format!(
             "struct view['a] {{ref string text <- 'a;}} struct nested['a] {{view['a] value;}} struct indirect['storage,'a] {{ref view['a] value <- 'storage;}} async control work({ty} input) exits done {{exit done;}} async control caller({ty} input) exits done {{auto child=spawn work(input);await child;exit done;}}"
         );
@@ -230,8 +230,6 @@ fn borrowed_and_tagged_carriers_remain_outside_spawn_profile() {
             "{ty}"
         );
     }
-    let result = "struct view['a] {ref string text <- 'a;} async control work(view input) exits ready {option<ref string>[input['a]] value} {exit ready {some {input.text}};} async control caller(view input) exits done {auto child=spawn work(input);await child;exit done;}";
-    assert_eq!(compile(result, manifest()).unwrap_err().code, "E_ASYNC");
     let wrapped=SOURCE.replace("auto moved = move selected;","auto wrapped=some {selected};delta wrapped {some {auto moved}=>ready,none=>empty} [empty]:exit done;[ready]:");
     assert_eq!(
         compile(&wrapped, manifest()).unwrap_err().code,

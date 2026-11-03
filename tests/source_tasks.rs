@@ -202,7 +202,6 @@ fn started_handles_require_consumption_and_do_not_erase_the_admitted_profile() {
         "async control work() {terminate process 23;} async control parent() exits done {auto child=spawn work();await child;exit done;}",
         "async control work() exits done {exit done;} control main() exits done {auto child=spawn work();await child;exit done;}",
         "async control work() exits done {exit done;} async control factory() exits auto {auto child=spawn work();exit ready {child};}",
-        "async control work(ref string text) exits ready {option<ref string>[text] value} {exit ready {some {text}};} async control parent(ref string text) exits done {auto child=spawn work(text);await child;exit done;}",
     ] {
         assert!(compile(text, manifest()).is_err(), "{text}");
     }

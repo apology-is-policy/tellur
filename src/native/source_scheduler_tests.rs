@@ -1,6 +1,41 @@
 //! Differential source execution using the exact production emitter and scheduler.
 use super::*;
 #[test]
+fn compiled_source_tagged_payloads_values() {
+    compare(
+        "tagged_values",
+        include_str!("../../playground/tagged_spawn.tellur"),
+    );
+}
+#[test]
+fn compiled_source_tagged_payloads_guards() {
+    compare(
+        "tagged_guards",
+        include_str!("../../tests/fixtures/source_tagged_guards.tellur"),
+    );
+}
+#[test]
+fn compiled_source_tagged_payloads_fault() {
+    compare(
+        "tagged_fault",
+        include_str!("../../tests/fixtures/source_tagged_fault.tellur"),
+    );
+}
+#[test]
+fn compiled_source_tagged_payloads_joined_fault() {
+    let source = include_str!("../../tests/fixtures/source_tagged_fault.tellur")
+        .replace(
+            "    yield;\n    yield;\n    delta await result",
+            "    delta await result",
+        )
+        .replace("emit(\"stopped parent resumed\");", "yield;yield;");
+    compare("tagged_joined_fault", &source);
+}
+#[test]
+fn compiled_source_tagged_payloads_resources() {
+    source_resources(SourceResources::TaggedPayloads);
+}
+#[test]
 fn compiled_source_nested_records_values() {
     compare(
         "nested_values",
@@ -319,7 +354,7 @@ fn compare(label: &str, text: &str) {
             let project = program.native_project("main", &binary).unwrap();
             fs::write(&project.2, &generated).unwrap();
             program.finish_native_build(project, opt).unwrap();
-            for fuel in 0..100 {
+            for fuel in 0..256 {
                 let scenario = crate::runtime::Scenario {
                     entry: "main".into(),
                     arguments: vec![],
@@ -397,7 +432,7 @@ fn compare(label: &str, text: &str) {
                 if expected.is_ok() {
                     break;
                 }
-                assert!(fuel < 99, "source fixture did not finish");
+                assert!(fuel < 255, "source fixture did not finish");
             }
         }
     }
@@ -426,6 +461,7 @@ enum SourceResources {
     CarrierCapture,
     CarrierResult,
     NestedRecords,
+    TaggedPayloads,
     BorrowedResult,
 }
 fn source_resources(mode: SourceResources) {
@@ -438,6 +474,7 @@ fn source_resources(mode: SourceResources) {
             | SourceResources::CarrierCapture
             | SourceResources::CarrierResult
             | SourceResources::NestedRecords
+            | SourceResources::TaggedPayloads
             | SourceResources::BorrowedResult
     );
     let inline_helper = matches!(mode, SourceResources::InlineHelper);
@@ -446,6 +483,7 @@ fn source_resources(mode: SourceResources) {
         SourceResources::BorrowedCapture
             | SourceResources::CarrierCapture
             | SourceResources::NestedRecords
+            | SourceResources::TaggedPayloads
     );
     let root = std::env::temp_dir().join(format!(
         "tellur-source-resource-{mode:?}-{}",
@@ -564,7 +602,9 @@ async control helper_work(ref counter local,string path) exits done {{
     };
     let source = if matches!(
         mode,
-        SourceResources::CarrierCapture | SourceResources::NestedRecords
+        SourceResources::CarrierCapture
+            | SourceResources::NestedRecords
+            | SourceResources::TaggedPayloads
     ) {
         let (before, after) = source.split_once("async control fail").unwrap();
         let before = before
@@ -592,7 +632,9 @@ async control helper_work(ref counter local,string path) exits done {{
     };
     let source = if matches!(
         mode,
-        SourceResources::CarrierResult | SourceResources::NestedRecords
+        SourceResources::CarrierResult
+            | SourceResources::NestedRecords
+            | SourceResources::TaggedPayloads
     ) {
         let source=source.replace("produce(counter value) exits ready {counter result} {exit ready {value};}",
             "produce(counter value,ref counter parent) exits ready {produced[parent] result} {exit ready {produced {value,parent}};}")
@@ -616,6 +658,18 @@ async control helper_work(ref counter local,string path) exits done {{
             .replace("produced {value,parent}", "produced {result_leaf {value,parent}}")
             .replace("value.owned", "value.nested.owned")
             .replace("value.retained", "value.nested.retained")
+    } else {
+        source
+    };
+    let source = if matches!(mode, SourceResources::TaggedPayloads) {
+        source.replace("struct worker_input['parent] {ref counter parent <- 'parent;counter value;}",
+            "variant worker_input['parent] {held {ref counter parent <- 'parent,counter value}}")
+            .replace("inspect(input.parent);counter value=move input.value;", "delta input {held {auto retained,counter value}=>held} [held]:inspect(retained);")
+            .replace("worker_input {parent,second}", "worker_input.held {parent,second}")
+            .replace("exits ready {produced[parent] result}", "exits ready {option<produced>[parent] result}")
+            .replace("exit ready {produced {value,parent}}", "exit ready {some {produced {value,parent}}}")
+            .replace("ready {auto value}=>ready", "ready {auto tagged}=>tagged")
+            .replace("[ready]:close(value.owned)", "[tagged]:delta tagged {some {auto value}=>ready,none=>empty} [empty]:await worker;await failure;exit done;[ready]:close(value.owned)")
     } else {
         source
     };

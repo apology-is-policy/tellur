@@ -3,9 +3,9 @@
 [Language reference](../language-reference.md) · [Design and next steps](../async-execution.md) ·
 [Execution failures](execution-failures.md)
 
-Compiler 0.175 supports `async control`, synchronous entry with `run`, direct
+Compiler 0.176 supports `async control`, synchronous entry with `run`, direct
 `await`, cold tasks with owned and borrowed captures, and a bounded cooperative
-scheduler for `spawn` tasks with owned values, direct borrows and nested owned record captures/results. Source handoffs occur at `await` and `yield`.
+scheduler for `spawn` tasks with owned values, direct borrows and nested owned record/option/variant captures/results. Source handoffs occur at `await` and `yield`.
 Async host I/O, cancellation and LLVM coroutine lowering remain later work.
 
 ## Owned spawned children
@@ -52,10 +52,10 @@ Checked cold/direct awaits remain available beside wrapped children. Their possi
 producer faults still apply at handoffs. There is no detach or implicit await at scope exit.
 
 The source profile accepts direct shared/exclusive borrows of existing reference-free
-storage, reference-free owned values, and nested owned records whose reference leaves
+storage, reference-free owned values, and nested owned records, options and closed variants whose reference leaves
 point to reference-free storage. Normal results use the same profile with their
 declared origins. References to reference-bearing carriers and reference-bearing
-tagged/collection payloads remain gated. Broader reference-bearing
+outcome/collection payloads remain gated. Broader reference-bearing
 `defer` tasks keep their existing semantics. A spawned body may itself use such
 cold/direct awaits and may own further spawned children. Before a parent enters a synchronous
 control whose inline call chain may enter a fault boundary, it must join its started
@@ -204,10 +204,10 @@ task handles remains outside this profile.
 
 ## Owned record captures and results
 
-Owned record fields may nest through other owned records, with shared/exclusive
+Owned record fields may nest through owned records, options and closed variants, with shared/exclusive
 reference leaves pointing to reference-free storage. Other fields may hold
 reference-free values, including resources whose existing fault dispositions permit
-stop settlement. References to carriers and reference-bearing sum/collection fields
+stop settlement. References to carriers and reference-bearing outcome/collection fields
 remain outside this profile.
 
 <!-- tellur:check -->
@@ -250,7 +250,7 @@ a result record cannot mutate an exclusive field through shared authority.
 See [flat record captures](../../playground/carrier_spawn.tellur) and
 [flat record results](../../playground/carrier_spawn_results.tellur), and
 [nested record payloads](../../playground/nested_spawn.tellur). Borrowed carriers,
-reference-bearing tagged/collection payloads and aggregate wrappers of borrowed
+reference-bearing outcome/collection payloads and aggregate wrappers of borrowed
 handles remain gated. Completed unjoined result records remain obligations and settle
 before supplying storage on an owning fault, including owned resource fields.
 
@@ -283,6 +283,47 @@ async control startup() exits done {
 }
 control main() exits done { forward run startup(); }
 ```
+
+## Owned option and variant payloads
+
+`spawn` can capture and return owned options and closed variants, including inside
+records and other admitted tagged values. Each reference leaf still points to
+reference-free storage. Capture retains each selected tag's loans through queueing,
+execution and unjoined completion. Join adopts the declared result origin groups;
+a later `delta` selects their tag-specific permissions. Empty alternatives carry no
+reference leaves. Distinct origin groups remain independent; a contract that merges
+suppliers into one group remains conservative.
+
+Shared payloads follow ordinary Copy rules. Exclusive payloads transfer their loans;
+local handle moves and payload extraction do not create another authority. Detached
+exclusive references keep their parent and carrier-storage guards after being wrapped
+in an option or variant. Owned resources in completed tagged results remain retirement
+obligations and settle before the owning contingency on a sibling fault.
+
+<!-- tellur:check -->
+```tellur
+async control relay(option<ref mutable string> input)
+    exits ready { option<ref mutable string>[input['source]] result }
+{
+    yield;
+    exit ready { input };
+}
+async control startup() exits done {
+    mutable string owner = "before";
+    auto child = spawn relay(some { borrow mutable owner });
+    delta await child { ready { auto result } => ready }
+    [ready]: delta result { some { auto text } => present, none => absent }
+    [present]: deref text = "after"; emit(text);
+    [present | absent]: owner = "free"; exit done;
+}
+control main() exits done { forward run startup(); }
+```
+
+See [tagged spawned payloads](../../playground/tagged_spawn.tellur) for generic
+variant alternatives, empty payloads, nested record capture and selected result
+origins. Reference-bearing named/completed outcomes as task payloads remain a
+separate audit; ordinary `capture await` and outcome adapters keep working.
+Borrowed carriers, reference-bearing collections and borrowed-handle wrappers remain gated.
 
 ## Parent awaits beside children
 

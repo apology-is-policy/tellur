@@ -221,10 +221,9 @@ fn child_owned_storage_cannot_escape_in_a_result_carrier() {
     }
 }
 #[test]
-fn borrowed_and_tagged_result_carriers_stay_gated() {
+fn borrowed_result_carriers_stay_gated() {
     for source in [
         "struct view['a] {ref string text <- 'a;} async control bad(ref view input) exits ready {ref view value from input} {exit ready {input};} async control start(ref view input) exits done {auto child=spawn bad(input);await child;exit done;}",
-        "async control bad(ref string input) exits ready {option<ref string>[input] value} {exit ready {some {input}};} async control start(ref string input) exits done {auto child=spawn bad(input);await child;exit done;}",
     ] {
         assert_eq!(
             compile(source, manifest()).unwrap_err().code,

@@ -1514,3 +1514,9 @@ Release 0.175 supports nested owned record spawn captures/results. Hover explain
 reference-leaf boundary; unsaved imported origin edits and conflicts after partial
 moves refresh diagnostics. Try `playground/nested_spawn.tellur`. Borrowed carriers and
 reference-bearing tagged/collection payloads remain gated.
+
+Release 0.176 supports owned option/closed-variant spawn captures/results, including
+nested records. Hover describes the reference-leaf boundary; unsaved imported tag-origin
+changes and selected payload conflicts refresh diagnostics. Try `playground/tagged_spawn.tellur`.
+The editor checks repair and native execution for both present and empty alternatives.
+Reference-bearing outcome payloads, borrowed carriers and collections remain gated.

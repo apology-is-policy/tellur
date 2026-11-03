@@ -168,7 +168,7 @@ impl Checker<'_> {
                 return Err(self.error("E_ASYNC", span,
                     "spawn requires fault dispositions for every owner retained across a handoff in its producer or callees; complete such owners before awaiting or yielding"));
             }
-            // Owned records preserve their leaf loans and guards until join;
+            // Owned carriers preserve their leaf loans and guards until join;
             // selected result leaves retain their declared captured origins.
             if sig
                 .parameters
@@ -183,7 +183,7 @@ impl Checker<'_> {
                 return Err(self.error(
                     "E_ASYNC",
                     span,
-                    "spawn accepts reference-free values, direct borrows of reference-free storage, and nested owned record captures/results with direct borrowed leaves; borrowed and tagged/collection carriers remain gated",
+                    "spawn accepts reference-free values, direct borrows of reference-free storage, and owned record/option/variant captures/results with direct borrowed leaves; borrowed and outcome/collection carriers remain gated",
                 ));
             }
             if sig.faults {
