@@ -316,8 +316,8 @@ mod continuation;
 pub use continuation::{ExecutionProgress, ExecutionSession};
 #[cfg(test)]
 pub(crate) use continuation::{
-    HttpResponse, census_model, http_source_operation_model, pending_fault_model,
-    source_operation_model,
+    HttpResponse, census_model, http_source_operation_model, http_source_operation_sequence_model,
+    pending_fault_model, source_operation_model,
 };
 
 #[derive(Debug)]

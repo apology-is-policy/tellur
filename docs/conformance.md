@@ -5125,5 +5125,24 @@ then disposed before real supplier destruction. The first owning checkpoint requ
 affected connections gone and independent work live; stopped nested handlers and
 result arms remain silent. The synchronous receive wrapper cannot be replayed.
 This uses simulated transport/clock. Live HTTP registration, completed-but-unadopted
-HTTP fault candidates and repeated operations in one source context remain separate
-identity/lifetime audits. No public adapter mode or release is introduced.
+HTTP fault candidates remain separate lifetime audits. Repeated operation identity
+is checked below. No public adapter mode or release is introduced.
+
+
+E1f.6h reproduces the private HTTP pump's retained completed-ticket stall with a
+bounded driver, then checks three consecutive receives in one retained context.
+The active ticket map is rebound for every operation. Saved tickets reject against
+the replacement; stale readiness rejects while its new wait is live without changing
+wait state, host accounting or input. Reference completion/wait plans are consumed
+per operation and progress is owned by the pending continuation. Duplicate receive
+must report the existing failure message without another read, input advance or
+clock change.
+
+Original/expanded O0/O2 matrices compare complete events/reports for request/timeout,
+immediate/delayed first receives, FIFO/reverse and early/idle-only hints, all fuel
+cutoffs in representative schedules and three quota cycles. A fault while the second
+receive waits checks completed-state preservation, replacement disposal before both
+real suppliers and owning contingency, stopped nested-handler suppression and outside
+child survival. The full previous HTTP queue matrix and affected reference preparation
+cases are rechecked. Transport remains simulated; live registration and unadopted
+HTTP candidates are distinct follow-ups, and public admission remains pending.

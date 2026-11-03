@@ -64,8 +64,12 @@ before their owning contingency. The
 [native HTTP queue fixture](../async-execution.md#native-http-source-queue-e1f6g)
 compares the unchanged owned parser and actual Rust connection owners with those
 reference schedules under a simulated transport and clock. Ready polls stay selected;
-actual waits preserve the deadline and yield to the queue. Live registration and
-public async-host admission remain separate.
+actual waits preserve the deadline and yield to the queue. The
+[repeated-context checks](../async-execution.md#repeated-http-source-context-operations-e1f6h)
+then distinguish successive operation identities within one invocation. Saved tickets
+and readiness cannot target a replacement; duplicate receive fails without reading,
+and owning faults retire the active replacement before suppliers. Live registration
+and public async-host admission remain separate.
 
 ## Owned spawned children
 

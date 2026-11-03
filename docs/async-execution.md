@@ -4369,6 +4369,46 @@ matrices retain their separate evidence.
 This checkpoint uses simulated transport and clock with actual Rust owners. It does
 not yet compose HTTP parsing with live physical registration, real OS timer races or
 a fault arriving between typed completion and result adoption. Repeated operations
-within one source context also require an explicit operation-identity audit of the
-private pump's ticket bookkeeping before reuse beyond this one-operation-per-shim
-specimen. Public async-host admission remains pending; compiler/LSP/VSIX stays 0.189.
+within one source context are covered by E1f.6h below. Public async-host admission
+remains pending; compiler/LSP/VSIX stays 0.189.
+
+
+## Repeated HTTP source-context operations (E1f.6h)
+
+The [repeated-operation fixture](../tests/fixtures/native_source_repeated_http.tellur)
+calls one synchronous receive helper three times within the same async invocation:
+once on the left connection, once on the right, and again on the left. A native
+trace verifies that all three operations use the same retained context. This exposed
+a private pump defect: a completed ticket remained in the context-keyed active map,
+so the next operation never acquired initial polling eligibility. A bounded driver
+reproduced the stall without relying on a process timeout.
+
+The HTTP pump now removes completed tickets from its active map and keeps them for
+rejection probes. Completion itself does not invalidate a ticket before its result
+is adopted. Once a replacement exists, saved tickets must fail the existing operation
+identity check. While the replacement has a live wait, old readiness generations
+must reject without changing that wait, fuel, events, script position or read count.
+The new operation keeps its own original deadline and checked supplier. No context
+or resource identity is substituted for operation identity.
+
+Reference preparation consumes a separate trusted plan for each invocation, retaining
+its completion fields and remaining waits in the pending continuation. Adoption or
+fault retirement drops that progress with the operation. The repeated left receive
+has the existing immediate `failed("request reception already started")` result; a
+native assertion checks that it performs no read or clock/input movement. It cannot
+inherit the earlier request result. Source operands and result arms remain one-use.
+
+Original/expanded O0/O2 comparisons exercise immediate/delayed first receives,
+request and timeout results, FIFO/reverse and early/idle-only readiness, every source
+fuel cutoff in representative schedules, and zero/positive quota partitions. A sibling
+fault while the second receive waits leaves the completed first operation disposed,
+retires the replacement before both suppliers and the owning contingency, suppresses
+the nested handler and preserves independent work. Complete events and fault reports
+match the independently specified reference plans. The earlier single-operation HTTP
+queue and affected private reference cases are rechecked after the shared changes.
+
+Transport and clock remain simulated. Live HTTP physical registration and unadopted
+HTTP fault candidates are the next composition checks; the public async-host call
+model still awaits its recorded decision. The sample operation's private pump is
+unchanged, and this checkpoint does not claim repeated-operation coverage for it.
+Compiler/LSP/VSIX remains 0.189.

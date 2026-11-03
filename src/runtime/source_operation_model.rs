@@ -19,6 +19,16 @@ pub(in crate::runtime::continuation) struct SourceOperations {
     http: Option<http_model::HttpOperations>,
 }
 impl SourceOperations {
+    pub(super) fn prepare_http(&mut self, request: &str) -> HttpResponse {
+        self.http
+            .as_mut()
+            .unwrap()
+            .responses
+            .get_mut(request)
+            .unwrap()
+            .pop_front()
+            .expect("missing per-operation HTTP plan")
+    }
     pub(super) fn http_request(&self, token: &str) -> String {
         self.http
             .as_ref()
@@ -214,7 +224,11 @@ impl Machine<'_> {
                                 })
                                 .count();
                             assert_eq!(
-                                settled, 1,
+                                settled,
+                                trace
+                                    .iter()
+                                    .filter(|(name, kind)| name == request && kind == "prepared")
+                                    .count(),
                                 "HTTP operation must settle before its owning handler"
                             );
                             continue;
@@ -461,4 +475,6 @@ fn source_pending_operations_preserve_fuel_and_quota_behavior_after_expansion() 
 #[path = "http_source_operation_model.rs"]
 mod http_model;
 
-pub(crate) use http_model::{HttpResponse, http_source_operation_model};
+pub(crate) use http_model::{
+    HttpResponse, http_source_operation_model, http_source_operation_sequence_model,
+};

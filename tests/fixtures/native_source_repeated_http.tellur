@@ -1,0 +1,146 @@
+// Private test lowering suspends this ordinary synchronous primitive call.
+control receive_once(ref http_connection connection) exits done {
+    delta http_receive(connection) {
+        request {
+            string method,
+            string target,
+            map<string, string> headers,
+            string body
+        } => request,
+        malformed { string message } => malformed,
+        headers_too_large => headers_large,
+        body_too_large => body_large,
+        unsupported_transfer => transfer,
+        unsupported_expectation => expectation,
+        timed_out => timeout,
+        disconnected => disconnected,
+        failed { string message } => failed
+    }
+
+    [request]:
+        emit(borrow method);
+        emit(borrow target);
+        emit(borrow body);
+        exit done;
+    [malformed]: emit(borrow message);
+        exit done;
+    [headers_large]: emit("headers_too_large");
+        exit done;
+    [body_large]: emit("body_too_large");
+        exit done;
+    [transfer]: emit("unsupported_transfer");
+        exit done;
+    [expectation]: emit("unsupported_expectation");
+        exit done;
+    [timeout]: emit("timed_out");
+        exit done;
+    [disconnected]: emit("disconnected");
+        exit done;
+    [failed]: emit(borrow message);
+        exit done;
+}
+
+async control receive(ref http_connection connection) exits done {
+    receive_once(connection);
+    exit done;
+}
+async control receive_pair(ref http_connection left, ref http_connection right) exits done {
+    receive_once(left);
+    emit("first completed");
+    receive_once(right);
+    emit("second completed");
+    receive_once(left);
+    emit("duplicate completed");
+    exit done;
+}
+boundary pair_scope(http_connection left, http_connection right) retains left, right {
+    run receive_pair(borrow left, borrow right);
+    close_test(left);
+    close_test(right);
+    terminate;
+}
+contingency(string reason) {
+    emit("nested contingency must not run");
+    close_test(left);
+    close_test(right);
+    terminate;
+}
+async control pair(http_connection left, http_connection right) exits done {
+    supervise pair_scope(left, right);
+    exit done;
+}
+boundary receive_scope(http_connection connection) retains connection {
+    run receive(borrow connection);
+    close_test(connection);
+    terminate;
+}
+contingency(string reason) {
+    emit("nested contingency must not run");
+    close_test(connection);
+    terminate;
+}
+async control branch(http_connection connection) exits done {
+    supervise receive_scope(connection);
+    exit done;
+}
+async control failure(bool stop) exits done faults {
+    emit("fault child queued");
+    yield;
+    delta stop {
+        true => failed,
+        false => finished
+    }
+    [failed]: fault "sibling failed";
+    [finished]: emit("fault child finished");
+        exit done;
+}
+async control startup(bool stop, http_connection left_connection, http_connection right_connection)
+    exits done faults {
+    auto left = spawn pair(left_connection, right_connection);
+    auto failed = spawn failure(stop);
+    emit("all queued");
+    emit("uninterrupted first");
+    emit("uninterrupted second");
+    await left;
+    emit("left joined");
+    await failed;
+    emit("all joined");
+    exit done;
+}
+boundary request(bool stop, http_connection left, http_connection right) {
+    run startup(stop, left, right);
+    terminate;
+}
+contingency(string reason) {
+    checkpoint();
+    emit("owning contingency");
+    terminate;
+}
+control request_helper(bool stop, http_connection left, http_connection right) exits done {
+    supervise request(stop, left, right);
+    exit done;
+}
+async control outer(bool stop, http_connection other, http_connection left, http_connection right)
+    exits done {
+    auto independent = spawn branch(other);
+    yield;
+    request_helper(stop, left, right);
+    emit("owner returned");
+    await independent;
+    emit("independent joined");
+    exit done;
+}
+control main(bool stop) exits done {
+    delta open_case("other") {
+        opened { http_connection other } => other_ready
+    }
+    [other_ready]:
+        delta open_case("left") {
+            opened { http_connection left } => left_ready
+        }
+    [left_ready]:
+        delta open_case("right") {
+            opened { http_connection right } => right_ready
+        }
+    [right_ready]: forward run outer(stop, other, left, right);
+}

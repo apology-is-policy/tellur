@@ -73,17 +73,55 @@ fn queue_source(p: &CheckedProgram) -> String {
     replace(
         &mut pump,
         "pub struct SourcePump {",
-        "pub struct SourcePump {\ndeadlines: BTreeMap<u64,std::time::Instant>,",
+        "pub struct SourcePump {\ndeadlines: BTreeMap<u64,std::time::Instant>,\nretired_tickets: Vec<Ticket>,",
     );
     replace(
         &mut pump,
         "            tickets: BTreeMap::new(),",
-        "            deadlines: BTreeMap::new(),\n            tickets: BTreeMap::new(),",
+        "            deadlines: BTreeMap::new(),\n            retired_tickets: vec![],\n            tickets: BTreeMap::new(),",
     );
     replace(
         &mut pump,
         "        self.park(c, key)?;\n        Ok(true)",
         "        assert!(self.eligible.insert(key.id));\n        Ok(false)",
+    );
+    // Completed tickets stay valid until adoption; remove only the active-map
+    // entry, retaining their identities for rejection checks on replacements.
+    replace(
+        &mut pump,
+        "        self.tickets.insert(key.id, ticket(c, key));",
+        r#"
+        let next=ticket(c,key);
+        let replacements=self.retired_tickets.iter().filter(|old|old.context.id==key.id).count();
+        for old in &self.retired_tickets {
+            if old.context.id==key.id {assert!(operation(c,old).is_err());}
+        }
+        if replacements>0 {
+            let op=operation(c,&next)?;
+            op.lease.trace.borrow_mut().push(format!("replacement {} {}",key.id,op.lease.request));
+        }
+        assert!(self.tickets.insert(key.id,next).is_none());"#,
+    );
+    replace(
+        &mut pump,
+        "        self.peak_waiting = self.peak_waiting.max(c.waits.len());",
+        r#"
+        let before=(c.waits.clone(),c.host.fuel,c.host.events.clone(),c.host.cursor,crate::rust_host::read_count());
+        for old in &self.old { assert!(c.signal_readiness(old).is_err()); }
+        for old in &self.retired_tickets {assert!(operation(c,old).is_err());}
+        assert_eq!(before,(c.waits.clone(),c.host.fuel,c.host.events.clone(),c.host.cursor,crate::rust_host::read_count()));
+        if self.retired_tickets.iter().any(|old|old.context.id==key.id) {
+            let t=self.tickets[&key.id].clone();
+            let op=operation(c,&t)?;
+            let stale=self.old.iter().filter(|w|w.context==key.id).count();
+            op.lease.trace.borrow_mut().push(format!("replacement wait {} {} stale={stale}",key.id,op.lease.request));
+        }
+        self.peak_waiting = self.peak_waiting.max(c.waits.len());"#,
+    );
+    replace(
+        &mut pump,
+        "        for t in self.tickets.values() {",
+        "        for t in self.tickets.values().chain(self.retired_tickets.iter()) {",
     );
     let start = pump.find("    pub fn poll_ready(").unwrap();
     let end = pump[start..].find("    pub fn finish(").unwrap() + start;
@@ -96,7 +134,7 @@ fn queue_source(p: &CheckedProgram) -> String {
     replace(
         &mut pump,
         "        self.tickets.clear();",
-        "        self.deadlines.clear();\n        self.tickets.clear();",
+        "        self.deadlines.clear();\n        self.retired_tickets.clear();\n        self.tickets.clear();",
     );
     replace(
         &mut code,
@@ -400,3 +438,6 @@ fn native_http_queue_matches_reference_outcomes_waits_and_owning_faults() {
     }
     fs::remove_dir_all(root).unwrap();
 }
+
+#[path = "http_source_repeat_tests.rs"]
+mod repeat_tests;

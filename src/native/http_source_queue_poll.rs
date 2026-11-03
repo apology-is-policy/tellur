@@ -36,6 +36,8 @@ pub fn poll_ready(&mut self, c: &mut Contexts<'_>, key: &ContextKey) -> R<bool> 
                 operation(c, &t)?.complete(&label, fields)?;
                 assert!(operation(c, &t)?.complete("failed", vec![]).is_err());
                 assert!(poll_http(c, &t).is_err());
+                self.retired_tickets
+                    .push(self.tickets.remove(&key.id).unwrap());
                 return Ok(false);
             }
         }

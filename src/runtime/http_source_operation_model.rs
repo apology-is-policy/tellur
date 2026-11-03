@@ -11,9 +11,8 @@ pub(crate) struct HttpResponse {
 type Response = HttpResponse;
 #[derive(Default)]
 pub(super) struct HttpOperations {
-    responses: BTreeMap<String, Response>,
+    pub(super) responses: BTreeMap<String, VecDeque<Response>>,
     pub(super) names: BTreeMap<String, String>,
-    remaining: BTreeMap<String, usize>,
 }
 impl Machine<'_> {
     pub(super) fn poll_http_source_operation(&mut self) -> Result<()> {
@@ -29,23 +28,16 @@ impl Machine<'_> {
                 .http_request(&op.borrowed_text(self)),
             op.request
         );
-        let request = op.request.clone();
         op.observe("polled");
-        let model = self
-            .shared
-            .scheduler
-            .operations
-            .as_mut()
-            .unwrap()
-            .http
-            .as_mut()
-            .unwrap();
-        let response = model.responses[&request].clone();
-        let left = model.remaining.entry(request).or_insert(response.waits);
+        let Some(Continuation::AdapterOperation(op)) = self.context.stack.last_mut() else {
+            unreachable!()
+        };
+        let (response, left) = op.http.as_mut().unwrap();
         if *left > 0 {
             *left -= 1;
             return self.park_source_operation();
         }
+        let response = response.clone();
         // Validation must keep the selected operation and its supplier alive on
         // every rejection. Include malformed nested collection payloads.
         let before = (
@@ -240,6 +232,37 @@ pub(crate) fn http_source_operation_model(
     responses: BTreeMap<String, HttpResponse>,
     names: BTreeMap<String, String>,
 ) -> RunResult {
+    http_source_operation_sequence_model(
+        p,
+        scenario,
+        fuel,
+        quotas,
+        reverse,
+        early,
+        responses
+            .into_iter()
+            .map(|(name, response)| (name, vec![response]))
+            .collect(),
+        names,
+    )
+}
+/// The plan queue belongs to each supplier; active progress belongs to the
+/// prepared continuation, so a later operation cannot inherit an old countdown.
+pub(crate) fn http_source_operation_sequence_model(
+    p: &CheckedProgram,
+    scenario: &Scenario,
+    fuel: usize,
+    quotas: &[usize],
+    reverse: bool,
+    early: bool,
+    plans: BTreeMap<String, Vec<HttpResponse>>,
+    names: BTreeMap<String, String>,
+) -> RunResult {
+    let repeated = plans.values().any(|responses| responses.len() > 1);
+    let responses = plans
+        .iter()
+        .map(|(name, responses)| (name.clone(), responses[0].clone()))
+        .collect::<BTreeMap<_, _>>();
     let Value::Bool(stop) = scenario.arguments[0] else {
         panic!("missing stop argument")
     };
@@ -262,7 +285,11 @@ pub(crate) fn http_source_operation_model(
         reverse,
         early,
         http: Some(HttpOperations {
-            responses: responses.clone(),
+            responses: plans
+                .clone()
+                .into_iter()
+                .map(|(n, p)| (n, p.into()))
+                .collect(),
             names: names.clone(),
             ..Default::default()
         }),
@@ -304,7 +331,7 @@ pub(crate) fn http_source_operation_model(
     }
     settlement_tests::retired(m);
     m.assert_source_retired();
-    if fuel == 1000 {
+    if fuel == 1000 && !repeated {
         assert!(model.peak_waiting >= 2);
         assert!(model.idle_pumps > 0);
         assert_eq!(model.checked_contingencies, usize::from(stop));
@@ -357,6 +384,71 @@ pub(crate) fn http_source_operation_model(
                 };
                 assert_eq!(outcome, &responses[name].outcome);
                 assert_eq!(fields, &responses[name].fields);
+            }
+        }
+    }
+    if fuel == 1000 && repeated {
+        let messages = settlement_tests::messages(m);
+        assert!(messages.iter().any(|s| s == "independent joined"));
+        assert!(!messages.iter().any(|s| s.contains("nested contingency")));
+        assert_eq!(model.checked_contingencies, usize::from(stop));
+        let t = trace.borrow();
+        let count =
+            |name: &str, kind: &str| t.iter().filter(|(n, k)| n == name && k == kind).count();
+        assert_eq!(count("left", "prepared"), if stop { 1 } else { 2 });
+        assert_eq!(count("left", "completed"), if stop { 1 } else { 2 });
+        assert_eq!(count("left", "waiting"), responses["left"].waits);
+        assert_eq!(
+            count("left", "polled"),
+            responses["left"].waits + if stop { 1 } else { 2 }
+        );
+        assert_eq!(count("right", "prepared"), 1);
+        assert_eq!(count("right", "retired"), usize::from(stop));
+        assert_eq!(count("right", "completed"), usize::from(!stop));
+        assert_eq!(count("other", "completed"), 1);
+        assert_eq!(count("other", "retired"), 0);
+        assert_eq!(
+            messages
+                .iter()
+                .filter(|s| s.as_str() == "first completed")
+                .count(),
+            1
+        );
+        assert_eq!(
+            messages
+                .iter()
+                .filter(|s| s.as_str() == "duplicate completed")
+                .count(),
+            usize::from(!stop)
+        );
+        if !stop {
+            let received = m
+                .shared
+                .events
+                .iter()
+                .filter_map(|e| match e {
+                    Event::Primitive {
+                        operation,
+                        arguments,
+                        outcome,
+                        fields,
+                        ..
+                    } if operation == "http_receive"
+                        && arguments
+                            == &vec![Value::Opaque {
+                                ty: "http_connection".into(),
+                                token: token("left"),
+                            }] =>
+                    {
+                        Some((outcome, fields))
+                    }
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(received.len(), 2);
+            for (i, (label, fields)) in received.into_iter().enumerate() {
+                assert_eq!(label, &plans["left"][i].outcome);
+                assert_eq!(fields, &plans["left"][i].fields);
             }
         }
     }

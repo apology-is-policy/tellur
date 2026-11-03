@@ -45,6 +45,7 @@ pub(super) struct Pending<'a> {
     candidate: Option<Vec<Value>>,
     trace: Trace,
     request: String,
+    http: Option<(HttpResponse, usize)>,
 }
 
 impl Pending<'_> {
@@ -171,7 +172,21 @@ fn prepare_operation<'a>(m: &mut Machine<'a>, trace: &Trace, expected: &str) {
             .http_request(token),
         _ => panic!("unexpected private operation inputs"),
     };
+    let http = if expected == "http_receive" {
+        let response = m
+            .shared
+            .scheduler
+            .operations
+            .as_mut()
+            .unwrap()
+            .prepare_http(&request);
+        let waits = response.waits;
+        Some((response, waits))
+    } else {
+        None
+    };
     let operation = Pending {
+        http,
         operation: name,
         arms,
         request,
@@ -609,4 +624,6 @@ mod source_model;
 pub(super) use source_model::SourceOperations;
 pub(crate) use source_model::source_operation_model;
 
-pub(crate) use source_model::{HttpResponse, http_source_operation_model};
+pub(crate) use source_model::{
+    HttpResponse, http_source_operation_model, http_source_operation_sequence_model,
+};

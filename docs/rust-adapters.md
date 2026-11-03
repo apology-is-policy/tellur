@@ -325,7 +325,11 @@ trusted fixture inputs. The
 compares owned parsing and actual Rust connection retirement against those plans.
 Each actual parser wait returns to the source queue; ready completion stays selected.
 The original deadline survives rearms under the simulated transport/clock. Live
-physical registration and public async admission remain separate.
+physical registration and public async admission remain separate. The
+[repeated-context fixture](async-execution.md#repeated-http-source-context-operations-e1f6h)
+checks a fresh operation identity for each receive in the same invocation, including
+an immediate duplicate failure with no read. Old tickets and wait generations reject
+while a later operation waits; fault retirement preserves supplier order.
 The maintained transport is unchanged.
 
 
