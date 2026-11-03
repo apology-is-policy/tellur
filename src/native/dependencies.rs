@@ -82,9 +82,11 @@ impl Dependencies {
             }
             values.require_storage(&place.storage)?;
         }
-        if origins.iter().any(|o| o.guard || o.opaque) {
-            return Err("E_NATIVE: guarded or opaque complete origins are unsupported".into());
+        if origins.iter().any(|o| o.guard != o.opaque) {
+            return Err("E_NATIVE: unsupported opaque or unpaired guard origin".into());
         }
+        // Complete paired holder guards denote conservative storage dependencies,
+        // not permission to inspect a holder or bypass a broad ancestor overlap.
         for access in &plan.accesses {
             cost = cost
                 .saturating_add(1)

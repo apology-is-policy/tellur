@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.152.0** implements the v0.1 checked core and the current language
+Compiler release **0.153.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -873,3 +873,11 @@ An explicit host batch now recomputes complete borrower coverage before every su
 callback and pending delivery. It reports progress and the reason it stopped, preserving
 successful transitions before a later rejection. Callback quotas and administrative
 delivery counts remain distinct; source scheduling and ordinary drivers are unchanged.
+
+## Local guarded reference coverage in 0.153
+
+Fresh local reborrows can now carry complete conservative holder dependencies through
+native capture and result delivery. Whole borrowed holder ancestors remain protected;
+copied shared fields gain no invented holder guard. Indirect guards, returned permission
+families and conditional/contained proof gaps remain partial. Try
+`./bin/tellurc exec playground/local_guarded_tasks.tellur`.

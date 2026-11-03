@@ -1,0 +1,37 @@
+struct exclusive_view['text] {
+    ref mutable string text <- 'text;
+}
+
+async control lend(ref mutable string input)
+    exits ready { ref mutable string value from input }
+{
+    exit ready { input };
+}
+
+async control startup() exits done {
+    mutable string owner = "before";
+    mutable exclusive_view saved = exclusive_view { borrow mutable owner };
+    ref mutable exclusive_view carrier = borrow mutable saved;
+    ref mutable string detached = borrow mutable deref carrier.text;
+    auto pending = defer lend(detached);
+    delta await pending {
+        ready { auto value } => ready
+    }
+
+    [ready]:
+        deref value = "after";
+        emit(value);
+        deref detached = "available after result";
+        emit(detached);
+        drop(saved);
+        owner = "free";
+        exit done;
+}
+
+outcome command_result {
+    @exit 0 done
+}
+
+control main() exits command_result {
+    forward run startup();
+}

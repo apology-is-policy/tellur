@@ -94,6 +94,39 @@ fn compiled_detached_captures_preserve_checked_guard_semantics() {
     assert_eq!(observed, serde_json::to_value(reference).unwrap());
 }
 
+#[test]
+fn compiled_local_guarded_captures_remain_complete_through_result_delivery() {
+    let input = include_str!("../../playground/local_guarded_tasks.tellur");
+    let observed = compare_selection(
+        "local-guards",
+        input,
+        &[],
+        &[
+            "Local",
+            "Effect",
+            "Run",
+            "Defer",
+            "AwaitTask",
+            "Return",
+            "Delivery",
+        ],
+    );
+    let p = crate::compile(
+        input,
+        crate::manifest::Manifest::from_json(include_str!("../../playground/manifest.json"))
+            .unwrap(),
+    )
+    .unwrap();
+    let reference = p
+        .run(&crate::runtime::Scenario {
+            entry: "main".into(),
+            arguments: vec![],
+            calls: vec![],
+        })
+        .unwrap();
+    assert_eq!(observed, serde_json::to_value(reference).unwrap());
+}
+
 fn compare_selection(label: &str, input: &str, args: &[&str], expected: &[&str]) -> Json {
     let root =
         std::env::temp_dir().join(format!("tellur-selection-{label}-{}", std::process::id()));
@@ -124,8 +157,8 @@ fn compare_selection(label: &str, input: &str, args: &[&str], expected: &[&str])
         let normal = format!(
             "fn entry_{entry}(host:&mut Host,args:Vec<V>)->R<Completion>{{drive(host,args,&MODEL_{entry})}}"
         );
-        let expect_guards = label == "detached-guards";
-        let expect_complete = label == "loops";
+        let expect_guards = matches!(label, "detached-guards" | "local-guards");
+        let expect_complete = matches!(label, "loops" | "local-guards");
         let replacement = format!(
             r#"fn entry_{entry}(host:&mut Host,args:Vec<V>)->R<Completion>{{
             let quotas=std::env::var("TELLUR_NATIVE_MODEL_QUOTAS").unwrap().split(',').map(|s|s.parse::<usize>().unwrap()).collect::<Vec<_>>();

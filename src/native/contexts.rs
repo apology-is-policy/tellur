@@ -1484,3 +1484,7 @@ impl Contexts<'_> {
 #[cfg(test)]
 #[path = "callback_admission_tests.rs"]
 mod callback_admission_tests;
+
+#[cfg(test)]
+#[path = "guarded_admission_tests.rs"]
+mod guarded_admission_tests;

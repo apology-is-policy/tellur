@@ -165,6 +165,9 @@ pub fn attach_checked(
     fresh: bool,
 ) -> V {
     if let V::Reference { evidence, .. } = &mut value {
+        // The supported static guarded closure is a fresh local formation. An
+        // incoming value must not be promoted by a guarded callee annotation.
+        let complete = complete && (fresh || !origins.iter().any(|o| o.guard));
         let bound = bind(values, origins, complete).unwrap_or_else(Origins::Unavailable);
         if complete && fresh {
             evidence.origins = bound;
@@ -175,6 +178,13 @@ pub fn attach_checked(
     value
 }
 fn bind(values: &Frames, origins: &[Origin], complete: bool) -> R<Origins> {
+    if complete
+        && origins
+            .iter()
+            .any(|o| o.guard != o.opaque || (o.guard && o.indirect))
+    {
+        return Err("unsupported complete guarded origin".into());
+    }
     let mut result = if complete {
         Origins::Complete(vec![])
     } else {

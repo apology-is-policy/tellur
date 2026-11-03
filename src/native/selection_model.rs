@@ -288,5 +288,8 @@ pub fn drive_selection(
 }
 
 fn has_checked_guard(dependencies: &Dependencies) -> bool {
-    matches!(dependencies, Dependencies::Partial { origins: super::reference_evidence::Origins::Partial(origins), .. } if origins.iter().any(|o| o.guard))
+    matches!(dependencies,
+        Dependencies::Partial { origins: super::reference_evidence::Origins::Partial(origins), .. }
+        | Dependencies::Complete { origins: super::reference_evidence::Origins::Complete(origins), .. }
+        if origins.iter().any(|o| o.guard))
 }

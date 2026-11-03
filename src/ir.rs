@@ -101,7 +101,8 @@ pub struct ReferenceOrigin {
 }
 /// Local dependency evidence, never execution permission. Complete coverage is
 /// bounded to direct forms and remains conditional on incoming runtime evidence.
-/// Guarded, contained and path-dependent forms retain explicit partial coverage.
+/// Fresh local holder guards may retain a complete conservative closure; indirect,
+/// permission-family, contained and path-dependent forms remain partial.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ReferenceEvidence {
     Partial(Vec<ReferenceOrigin>),

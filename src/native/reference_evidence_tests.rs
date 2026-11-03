@@ -325,3 +325,49 @@ fn completion_union_preserves_completeness_only_when_every_input_is_complete() {
     combined.extend(Dependencies::Unknown("missing".into()));
     assert!(matches!(combined, Dependencies::Unknown(_)));
 }
+
+#[test]
+fn guarded_completeness_requires_fresh_local_paired_annotations() {
+    let mut values = Frames::default();
+    let f = values.enter(3).unwrap();
+    let b = f.base();
+    values[b] = Some(V::U32(7));
+    let raw = reference(&values, b, &[], false, "&mutable U32").unwrap();
+    values[b + 1] = Some(record("view", vec![raw.clone()]));
+    values[b + 2] = Some(reference(&values, b + 1, &[], false, "&mutable view").unwrap());
+    let valid = [
+        origin(b, &[], false, false),
+        origin(b + 1, &[], false, true),
+    ];
+    let local = attach_checked(&values, raw.clone(), &valid, true, true);
+    assert!(matches!(evidence(&local).origins, Origins::Complete(_)));
+    assert!(matches!(
+        Dependencies::describe(&values, &[local]),
+        Dependencies::Complete { .. }
+    ));
+    let received = attach_checked(&values, raw.clone(), &valid, true, false);
+    assert!(matches!(evidence(&received).origins, Origins::Partial(_)));
+    for kind in 0..3 {
+        let mut bad = origin(b + 1, &[], false, true);
+        if kind == 0 {
+            bad.opaque = false;
+        }
+        if kind == 1 {
+            bad.guard = false;
+        }
+        if kind == 2 {
+            bad.root = b + 2;
+            bad.indirect = true;
+        }
+        let value = attach_checked(&values, raw.clone(), &[bad], true, true);
+        assert!(matches!(evidence(&value).origins, Origins::Unavailable(_)));
+        assert!(matches!(
+            Dependencies::describe(&values, &[value]),
+            Dependencies::Partial {
+                origins: Origins::Unavailable(_),
+                ..
+            }
+        ));
+    }
+    values.retire(&f).unwrap();
+}

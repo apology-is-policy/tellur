@@ -2440,6 +2440,60 @@ with the same conservative overlap and exact invocation/domain rules before admi
 Source scheduling, `spawn`/`yield`, cancellation, async adapters/disposal and LLVM coroutine
 lowering remain separate work. Host quotas never become source handoff points.
 
+## Complete local holder guards (E1d.2d.3s.8)
+
+Compiler 0.153 certifies a narrow guarded-reference closure without changing accepted
+ownership or origin semantics. The supported value is a fresh direct local reference to
+a referent containing no references. Its existing checked guard must name valid local
+holder storage containing references, with the paired guard/opaque flags that prevent
+projection from narrowing that dependency. Permission families, indirect guards, abstract
+paths, conditional ancestry, selected tags, nested loan contents and missing evidence
+remain partial.
+
+A borrowed holder ancestor can be wider than its original field guard. The checker keeps
+that original guard, retains the ordinary unprojected ancestor origin, and adds an
+explicit conservative guard for the entire ancestor storage. It does this only where an
+existing checked local guard lies within that ancestor. A copied shared reference with
+no holder guard never acquires one. Both exclusive and shared local reborrows preserve
+the guard when obtained through an exclusive holder. The existing 4096 ancestry and
+origin/path-component budgets include the additional guard; the guard search is bounded.
+
+The independent structural verifier requires fresh direct formation and a local pointee
+origin for a complete guarded annotation. Each guard must be paired, local and name a
+valid reference-containing holder; every ordinary reference-containing ancestor must
+have an exact whole-storage guard. Existing separate expansion/certificate substitution
+preserves the complete discriminator, paths and flags. Tests reject missing, narrowed,
+retargeted, weakened or unpaired guard proofs and incomplete pointee coverage.
+
+Native binding permits complete guarded annotations only on fresh local formation.
+A guarded annotation on an incoming value stays partial. Indirect, unpaired or unsupported
+opaque complete annotations produce unavailable metadata, never new execution authority.
+Received values and reborrows still require complete incoming evidence; captured and
+returned payload unions cannot promote partial inputs. Allocation/formation identities
+remain required, and metadata changes neither value equality nor source evaluation.
+
+Complete paired guards participate in the existing conservative interference comparison.
+All overlaps, including reads, remain blocked; a whole-holder ancestor is never narrowed
+to the actual pointee or one guarded field. The fresh per-transition census and exact
+invocation/domain checks remain mandatory. Host tests admit a disjoint local slot while
+rejecting holder movement, pointee writes and writes to another field of the broadly
+guarded holder, with live, waiting and completed children. No ordinary driver or
+retirement check is relaxed.
+
+The [runnable local example](../playground/local_guarded_tasks.tellur) exercises direct
+local detachment, a cold task, borrowed result delivery and later owner reuse. Generated
+original/expanded O0/O2 probes require complete guarded capture and pending delivery,
+nonvacuous disjoint batch admission and equal source observations across quota partitions.
+The earlier returned-family example deliberately remains partial. Checker tests also
+cover shared attenuation, copied shared fields, conditional fallback, certificate
+mutations and structural rejection; native binding tests cover invalid proof fallback.
+
+The next prerequisite is bounded borrowed-carrier completeness, needed before extending
+this proof to indirect holder guards. Establish full local stored-reference coverage and
+incoming runtime completeness first; retain partial status for unavailable permission
+families, conditional/tagged paths and abstract storage. Source scheduling, `spawn`/`yield`,
+cancellation, async adapters/disposal and LLVM coroutine lowering remain separate work.
+
 ## Reference execution invariants
 
 A step partition must not itself become a source effect. The same selected schedule

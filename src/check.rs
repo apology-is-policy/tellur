@@ -684,10 +684,23 @@ impl Checker<'_> {
         mut complete: bool,
     ) -> Expr {
         const LIMIT: usize = 4096;
+        complete &= origins.len() <= LIMIT;
+        // A local holder guard can conservatively cover its whole borrowed
+        // ancestor. This never adds holder dependence to an unguarded shared copy.
+        // Indirect/abstract guards and permission families remain unsupported.
+        let guarded_holder = |place: &Place| {
+            !place.indirect
+                && origins.iter().take(LIMIT).any(|o| {
+                    o.guard
+                        && o.opaque
+                        && !o.place.indirect
+                        && o.place.root == place.root
+                        && o.place.fields.starts_with(&place.fields)
+                })
+        };
         let mut descriptions = Vec::new();
         let mut remaining = LIMIT;
         let mut include = |origin: &LoanOrigin| {
-            complete &= origin.permissions.is_empty() && !origin.guard && !origin.opaque;
             let mut ty = self
                 .result
                 .slots
@@ -699,8 +712,15 @@ impl Checker<'_> {
             for field in &origin.place.fields {
                 ty = ty.and_then(|t| self.manifest.field_at(t, *field).map(|f| f.ty.as_str()));
             }
-            complete &= ty.is_some_and(|t| !self.manifest.contains_references(t));
-            let Some(left) = remaining.checked_sub(1 + origin.place.fields.len()) else {
+            let contains_refs = ty.is_some_and(|t| self.manifest.contains_references(t));
+            let holder =
+                contains_refs && !origin.guard && !origin.opaque && guarded_holder(&origin.place);
+            let guard = contains_refs && origin.guard && origin.opaque && !origin.place.indirect;
+            complete &= origin.permissions.is_empty()
+                && ty.is_some()
+                && (guard || holder || (!contains_refs && !origin.guard && !origin.opaque));
+            let cost = (1 + origin.place.fields.len()).saturating_mul(1 + usize::from(holder));
+            let Some(left) = remaining.checked_sub(cost) else {
                 complete = false;
                 return;
             };
@@ -711,7 +731,19 @@ impl Checker<'_> {
                 opaque: origin.opaque,
             };
             if !descriptions.contains(&description) {
-                descriptions.push(description);
+                descriptions.push(description.clone());
+            }
+            if holder {
+                // Retain the original broad ancestor and an explicit guard for
+                // that entire storage. A descendant guard never narrows ancestry.
+                let guard = ReferenceOrigin {
+                    guard: true,
+                    opaque: true,
+                    ..description
+                };
+                if !descriptions.contains(&guard) {
+                    descriptions.push(guard);
+                }
             }
         };
         for origin in origins {
@@ -751,7 +783,8 @@ impl Checker<'_> {
                 && loan.defined == TRUE
                 && loan.sum_leaf.is_none()
                 && loan.contents.is_empty()
-                && !self.manifest.contains_references(&loan.target.ty);
+                && (!self.manifest.contains_references(&loan.target.ty)
+                    || guarded_holder(&loan.target.place));
             for origin in &loan.origins {
                 include(origin);
             }
@@ -764,6 +797,9 @@ impl Checker<'_> {
         }
         drop(include);
         complete &= closed && !descriptions.is_empty();
+        if descriptions.iter().any(|o| o.guard) {
+            complete &= matches!(&value, Expr::Reference(p, _) if !p.indirect);
+        }
         Expr::WithReferenceEvidence(
             Box::new(value),
             if complete {

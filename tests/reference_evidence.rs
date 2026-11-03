@@ -16,7 +16,7 @@ fn program(source: &str) -> CheckedProgram {
     .unwrap()
 }
 
-fn capture(region: &Region) -> &[ReferenceOrigin] {
+fn capture_evidence(region: &Region) -> &ReferenceEvidence {
     region
         .code
         .iter()
@@ -26,15 +26,15 @@ fn capture(region: &Region) -> &[ReferenceOrigin] {
                 args,
                 ..
             } => match &args[0] {
-                Expr::WithReferenceEvidence(
-                    _,
-                    ReferenceEvidence::Partial(origins) | ReferenceEvidence::Complete(origins),
-                ) => Some(origins.as_slice()),
+                Expr::WithReferenceEvidence(_, evidence) => Some(evidence),
                 other => panic!("missing explicit partial evidence: {other:?}"),
             },
             _ => None,
         })
         .unwrap()
+}
+fn capture(region: &Region) -> &[ReferenceOrigin] {
+    capture_evidence(region).origins()
 }
 
 #[test]
@@ -45,10 +45,55 @@ fn captures_preserve_erased_alias_guards_without_inventing_shared_holder_depende
         "    ref mutable string detached = borrow mutable deref carrier.text;",
     );
     assert_ne!(source, direct);
-    for source in [source, direct.as_str()] {
+    let shared_direct = direct
+        .replace(
+            "ref mutable string detached = borrow mutable deref carrier.text;",
+            "ref string detached = borrow deref carrier.text;",
+        )
+        .replace("defer lend(detached)", "defer inspect(detached)")
+        .replace(
+            "deref value = \"after\";",
+            "// Shared results preserve the holder guard.",
+        )
+        .replace(
+            "deref detached = \"available after result\";",
+            "// The detached shared view still guards its holder.",
+        );
+    assert_ne!(shared_direct, direct);
+    for (source, complete) in [
+        (source, false),
+        (direct.as_str(), true),
+        (shared_direct.as_str(), true),
+    ] {
         let p = program(source);
         let exclusive = p.regions().find(|r| r.name == "exclusive").unwrap();
         let origins = capture(exclusive);
+        assert_eq!(
+            capture_evidence(exclusive).is_complete(),
+            complete,
+            "{origins:?}"
+        );
+        if complete {
+            let saved = exclusive
+                .slots
+                .values()
+                .find(|s| s.name == "saved")
+                .unwrap()
+                .id;
+            assert!(origins.iter().any(|o| o.place.root == saved
+                && o.place.fields.is_empty()
+                && o.guard
+                && o.opaque));
+            assert!(origins.iter().any(|o| o.place.root == saved
+                && o.place.fields.is_empty()
+                && !o.guard
+                && !o.opaque));
+            assert!(
+                origins
+                    .iter()
+                    .any(|o| o.place.root == saved && o.place.fields == [0] && o.guard && o.opaque)
+            );
+        }
         assert!(
             origins
                 .iter()
@@ -365,4 +410,74 @@ control main() exits done {forward run startup(true);}
             .iter()
             .all(|o| !o.guard && shared.slots[&o.place.root].name == "owner")
     );
+}
+
+#[test]
+fn local_guarded_closure_survives_expansion_and_rejects_weakened_certificates() {
+    let p = program(include_str!("../playground/local_guarded_tasks.tellur"));
+    let startup = p.regions().find(|r| r.name == "startup").unwrap();
+    assert!(capture_evidence(startup).is_complete());
+    let artifact = p.expansion_artifact("startup").unwrap();
+    let encoded = serde_json::to_value(&artifact).unwrap();
+    let decoded = serde_json::from_value(encoded.clone()).unwrap();
+    let expanded = p.accept_expansion(&decoded).unwrap();
+    let scenario = Scenario {
+        entry: "main".into(),
+        arguments: vec![],
+        calls: vec![],
+    };
+    assert_eq!(p.run(&scenario).unwrap(), expanded.run(&scenario).unwrap());
+    fn mutate(v: &mut Json, kind: usize) -> bool {
+        if let Some(parts) = v
+            .get_mut("WithReferenceEvidence")
+            .and_then(Json::as_array_mut)
+        {
+            if let Some(origins) = parts[1].get_mut("Complete").and_then(Json::as_array_mut) {
+                if let Some(i) = origins.iter().position(|o| {
+                    o["guard"] == true && o["place"]["fields"].as_array().unwrap().is_empty()
+                }) {
+                    match kind {
+                        0 => {
+                            origins.remove(i);
+                        }
+                        1 => origins[i]["guard"] = false.into(),
+                        2 => origins[i]["opaque"] = false.into(),
+                        3 => origins[i]["place"]["fields"]
+                            .as_array_mut()
+                            .unwrap()
+                            .push(0.into()),
+                        4 => {
+                            let origins = Json::Array(origins.clone());
+                            parts[1] = serde_json::json!({"Partial": origins});
+                        }
+                        5 => origins[i]["place"]["indirect"] = true.into(),
+                        _ => unreachable!(),
+                    }
+                    return true;
+                }
+            }
+        }
+        match v {
+            Json::Array(v) => v.iter_mut().any(|v| mutate(v, kind)),
+            Json::Object(v) => v.values_mut().any(|v| mutate(v, kind)),
+            _ => false,
+        }
+    }
+    for kind in 0..6 {
+        let mut forged = encoded.clone();
+        assert!(mutate(&mut forged, kind));
+        assert_eq!(
+            p.accept_expansion(&serde_json::from_value(forged).unwrap())
+                .unwrap_err()
+                .code,
+            "E_EXPANSION_CERTIFICATE"
+        );
+    }
+    // Conditional guard ancestry and returned permission families stay partial.
+    let conditional = include_str!("../playground/local_guarded_tasks.tellur")
+        .replace("async control startup()", "async control startup(bool selected)")
+        .replace("    mutable string owner", "    delta selected { true => yes, false => no }\n    [no]: exit done;\n    [yes]:\n    mutable string owner")
+        .replace("run startup()", "run startup(true)");
+    let p = program(&conditional);
+    assert!(!capture_evidence(p.regions().find(|r| r.name == "startup").unwrap()).is_complete());
 }

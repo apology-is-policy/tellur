@@ -730,3 +730,10 @@ status. A later block preserves prior progress. Zero quota performs no transitio
 normal pending delivery consumes no callback allowance. Each batch is capped at 4096
 transitions. Source scheduling and ordinary drivers are unchanged. See
 [bounded admission](../async-execution.md#bounded-native-admission-e1d2d3s7).
+
+Since 0.153, fresh local reborrows with unconditional ancestry can carry complete holder
+guards into native captures and results. Whole borrowed holder ancestors remain guarded;
+disjoint local work still needs a fresh census and exact invocation/domain authority.
+Copied shared fields gain no holder guard. Indirect guards, permission families,
+conditional/tagged ancestry and contained proof gaps remain partial. See
+[local holder guards](../async-execution.md#complete-local-holder-guards-e1d2d3s8).

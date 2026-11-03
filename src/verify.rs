@@ -65,9 +65,44 @@ impl Verifier<'_> {
                             "complete evidence requires nonempty direct dependencies",
                         ));
                     }
+                    if origins.iter().any(|o| o.guard) {
+                        let Expr::Reference(target, _) = value.as_ref() else {
+                            return Err(error(
+                                "complete guarded evidence requires a fresh local reference",
+                            ));
+                        };
+                        if target.indirect
+                            || !origins.iter().any(|o| {
+                                !o.guard
+                                    && !o.opaque
+                                    && !o.place.indirect
+                                    && o.place.root == target.root
+                                    && target.fields.starts_with(&o.place.fields)
+                            })
+                        {
+                            return Err(error(
+                                "complete guarded evidence lacks its local pointee origin",
+                            ));
+                        }
+                    }
                     for origin in origins {
                         let origin_ty = self.expr(&Expr::Place(origin.place.clone()))?;
-                        if origin.guard || origin.opaque || m.contains_references(&origin_ty) {
+                        let contains_refs = m.contains_references(&origin_ty);
+                        let local_guard = origin.guard
+                            && origin.opaque
+                            && !origin.place.indirect
+                            && contains_refs;
+                        let guarded_ancestor = !origin.guard
+                            && !origin.opaque
+                            && !origin.place.indirect
+                            && contains_refs
+                            && origins
+                                .iter()
+                                .any(|g| g.guard && g.opaque && g.place == origin.place);
+                        if !(local_guard
+                            || guarded_ancestor
+                            || (!origin.guard && !origin.opaque && !contains_refs))
+                        {
                             return Err(error("unsupported complete reference origin"));
                         }
                     }
@@ -994,6 +1029,56 @@ fn verify_source(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn complete_local_guarded_evidence_requires_pointee_and_broad_holder_coverage() {
+        use crate::ir::{Action, Expr, Operation, ReferenceEvidence};
+        let m = crate::manifest::Manifest::from_json(include_str!("../playground/manifest.json"))
+            .unwrap();
+        let original =
+            crate::compile(include_str!("../playground/local_guarded_tasks.tellur"), m).unwrap();
+        for kind in 0..6 {
+            let mut p = original.clone();
+            let r = p.regions.get_mut("startup").unwrap();
+            let (value, origins) = r
+                .code
+                .iter_mut()
+                .find_map(|i| match &mut i.action {
+                    Action::Decide {
+                        operation: Operation::Defer(_),
+                        args,
+                        ..
+                    } => match &mut args[0] {
+                        Expr::WithReferenceEvidence(v, ReferenceEvidence::Complete(o)) => {
+                            Some((v, o))
+                        }
+                        _ => None,
+                    },
+                    _ => None,
+                })
+                .unwrap();
+            let guard = origins
+                .iter()
+                .position(|o| o.guard && o.place.fields.is_empty())
+                .unwrap();
+            match kind {
+                0 => origins[guard].opaque = false,
+                1 => origins.retain(|o| o.guard),
+                2 => {
+                    let Expr::Reference(p, _) = value.as_mut() else {
+                        panic!()
+                    };
+                    p.indirect = true;
+                }
+                3 => {
+                    origins.remove(guard);
+                }
+                4 => origins[guard].place.fields.push(999),
+                5 => origins[guard].place.indirect = true,
+                _ => unreachable!(),
+            }
+            assert_eq!(p.verify().unwrap_err().code, "E_IR");
+        }
+    }
     use super::*;
     #[test]
     fn partial_reference_evidence_requires_reference_values_and_valid_slot_kinds() {

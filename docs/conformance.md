@@ -4335,3 +4335,13 @@ report preservation. Existing admission tests additionally exercise batch freshn
 real resource settlement after an admitted fault. Generated original/expanded O0/O2
 fixtures compare bounded batch observations across quota partitions and preserve legacy
 rejection checks, complete pending delivery and checked capture evidence.
+
+## Complete local holder guards (0.153)
+
+Checker cases distinguish complete local exclusive/shared reborrows from copied shared
+fields and partial returned-family/conditional cases. Six certificate mutations and six
+structural mutations reject weakened guarded evidence. Native tests cover fresh-only
+binding, unsupported proof fallback and disjoint admission with holder/pointee/broad
+ancestor exclusion across live, waiting and completed children. The local guarded example
+runs through reference/expanded and native original/expanded O0/O2 execution; generated
+probes require complete guarded capture and pending result delivery across quota partitions.

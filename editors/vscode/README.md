@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-darwin-arm64-0.152.0.vsix` using **Extensions:
+1. Install the supplied `tellur-language-darwin-arm64-0.153.0.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1362,3 +1362,11 @@ An explicit host batch now recomputes complete borrower coverage before every su
 callback and pending delivery. It reports progress and the reason it stopped, preserving
 successful transitions before a later rejection. Callback quotas and administrative
 delivery counts remain distinct; source scheduling and ordinary drivers are unchanged.
+
+## Local guarded reference coverage in 0.153
+
+Fresh local reborrows can now carry complete conservative holder dependencies through
+native capture and result delivery. Whole borrowed holder ancestors remain protected;
+copied shared fields gain no invented holder guard. Indirect guards, returned permission
+families and conditional/contained proof gaps remain partial. Try
+`./bin/tellurc exec playground/local_guarded_tasks.tellur`.

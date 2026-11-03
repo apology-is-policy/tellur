@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.152.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.153.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -236,3 +236,10 @@ status. A later block preserves prior progress. Zero quota performs no transitio
 normal pending delivery consumes no callback allowance. Each batch is capped at 4096
 transitions. Source scheduling and ordinary drivers are unchanged. See
 [bounded admission](../async-execution.md#bounded-native-admission-e1d2d3s7).
+
+Since 0.153, fresh local reborrows with unconditional ancestry can carry complete holder
+guards into native captures and results. Whole borrowed holder ancestors remain guarded;
+disjoint local work still needs a fresh census and exact invocation/domain authority.
+Copied shared fields gain no holder guard. Indirect guards, permission families,
+conditional/tagged ancestry and contained proof gaps remain partial. See
+[local holder guards](../async-execution.md#complete-local-holder-guards-e1d2d3s8).
