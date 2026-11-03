@@ -3646,3 +3646,43 @@ This completes the helper boundary-handoff admission audit. Further E1/P5 work
 should use concrete async adapter needs from the maintained applications and shared
 libraries. The remaining direct-boundary and handle restrictions are intentional;
 this checkpoint does not authorize a broader ownership or cancellation policy.
+
+## Pending adapter operation reference model (E1f.1)
+
+The maintained loopback HTTP transport needs to preserve partial input and a fixed
+deadline while waiting for more bytes. Its existing blocking receive keeps that
+state on the Rust stack. Context readiness alone does not represent an unfinished
+operation: the earlier reference readiness model paused between instructions, and
+each scripted primitive still completed immediately.
+
+[The new private model](../src/runtime/adapter_operation_model.rs), on compiler
+0.189, retains a test-only operation continuation over real checked source. The
+harness evaluates and transfers its operands once, charges the original instruction
+once, and retains partial input independently of its not-yet-produced result.
+Primitive event arguments are value snapshots, so the model separately retains the
+resolved supplier address and checks that storage remains live at every poll,
+completion and emergency retirement. A copied value is insufficient borrow evidence.
+
+Two operations can wait independently, resume in either order and wait again after
+a wake without completing. Signals change eligibility; they neither consume source
+fuel nor run a continuation. Duplicate/stale wakes cannot select another operation.
+A rejected readiness registration preserves the selected operation and operands.
+Result label, arity and type validation precede normal adoption; malformed responses
+leave pending state intact. The checked caller receives its borrowed result only
+after actual completion, with no operand or script replay.
+
+The owning-fault models cover waiting and signalled operations, both with outer
+suppliers and with suppliers inside a nested boundary. Settlement discards each
+partial operation before unwinding its supplier frame, runs no normal continuation
+and suppresses the nested contingency. Only the owning contingency proceeds.
+Original/expanded single-operation comparisons preserve exact observations,
+diagnostics and fault reports at every fuel cutoff and across host quotas.
+
+All new runtime branches are `cfg(test)`. This is an operation-lifetime model, not
+a public async adapter ABI, source handoff or HTTP implementation. Native pending
+operation/resource evidence is the next gate: retained host identities, one-use
+delivery, borrower-before-owner retirement and late readiness invalidation must be
+proved before generated adapter or source/manifest admission. Current synchronous
+bindings and the settings application's single-writer storage policy are unchanged.
+Cancellation races and fallible or suspending cleanup still need their own rules;
+this model does not complete the broader E1 async acceptance specimen.

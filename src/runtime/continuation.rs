@@ -4,6 +4,9 @@ use super::tasks::{OwnerId, Readiness, Registry, TaskId, WaitId, retire_value};
 use super::*;
 
 #[cfg(test)]
+#[path = "adapter_operation_model.rs"]
+mod adapter_operation_model;
+#[cfg(test)]
 #[path = "completion_model.rs"]
 mod completion_model;
 #[cfg(test)]
@@ -144,6 +147,9 @@ struct PreparedInvocation<'a> {
 // Continuations represent sequential control flow, including consuming task awaits.
 // Blocks borrow immutable checked code; only active invocation/loop state is kept.
 enum Continuation<'a> {
+    /// Test-only operation lifetime model; no public adapter suspension is admitted.
+    #[cfg(test)]
+    AdapterOperation(adapter_operation_model::Pending<'a>),
     Block {
         code: &'a [Instruction],
         next: usize,
@@ -513,6 +519,13 @@ impl<'a> Machine<'a> {
                     }
                 }
             }
+            #[cfg(test)]
+            if matches!(continuation, Continuation::AdapterOperation(_))
+                && self.context.flow.is_none()
+            {
+                self.context.stack.push(continuation);
+                return false;
+            }
             // Keep both the original emergency and the exact continuation before
             // inspecting children. A quota pause or unavailable child context must
             // never consume the boundary or release its owners prematurely.
@@ -775,6 +788,12 @@ impl<'a> Machine<'a> {
             .take()
             .expect("a continuation receives completed nested work");
         match continuation {
+            #[cfg(test)]
+            Continuation::AdapterOperation(pending) => {
+                assert!(matches!(flow, Err(_) | Ok(Flow::Process(_))));
+                pending.retire(self)?;
+                self.context.flow = Some(flow);
+            }
             Continuation::Block { .. } | Continuation::Dispatch => unreachable!(),
             Continuation::Call {
                 region,

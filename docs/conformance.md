@@ -4812,3 +4812,22 @@ retained owners, contingency async calls and unhandled captured outcomes remain
 rejected. The runnable `boundary_handoff_tasks.tellur` example has a separate native
 fuel/quota comparison and fresh editor hover, unsaved repair and execution checks.
 Runtime code remains unchanged from 0.188; this release changes compiler admission.
+
+## Pending adapter operation model (internal on 0.189)
+
+`runtime::continuation::adapter_operation_model` intercepts a checked primitive only
+inside its private harness, retaining evaluated operands, a resolved borrowed
+supplier and partial input on a test-only continuation. Five cases cover two
+overlapping operations in both completion orders, repeated/spurious/duplicate/stale
+wakes, atomic rejection of malformed results and exhausted readiness registration,
+one-use completion, and owning-fault retirement of waiting/signalled work beneath
+ordinary or nested boundary frames. Partial operations retire while their suppliers
+are still live; stopped nested contingencies and normal continuations do not run.
+
+A single-operation comparison matches normal scripted reference execution before
+and after expansion at every fuel cutoff through success, with three host quota
+partitions. It compares complete outcomes, events, diagnostics and fault reports.
+The existing runtime census and readiness/settlement regressions remain separate
+checks. This model has no live I/O, native adapter implementation, public pending
+result, cancellation or fallible cleanup claim. No compiler/LSP/VSIX release is
+needed for these test-only branches and documentation.
