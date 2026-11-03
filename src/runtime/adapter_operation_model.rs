@@ -77,7 +77,7 @@ impl Pending<'_> {
     }
 }
 
-fn program(entry: &str) -> CheckedProgram {
+fn operation_manifest() -> Manifest {
     let mut config: serde_json::Value =
         serde_json::from_str(include_str!("../../playground/manifest.json")).unwrap();
     config["primitives"]
@@ -92,11 +92,10 @@ fn program(entry: &str) -> CheckedProgram {
             "outcomes":[{"name":"ready","fields":[{"name":"text","type":"string"}]}],
             "effects":["sample"],"returns":true
         }));
-    crate::compile(
-        &format!("{WORK}{entry}"),
-        Manifest::from_json(&config.to_string()).unwrap(),
-    )
-    .unwrap()
+    Manifest::from_json(&config.to_string()).unwrap()
+}
+fn program(entry: &str) -> CheckedProgram {
+    crate::compile(&format!("{WORK}{entry}"), operation_manifest()).unwrap()
 }
 
 fn scenario() -> Scenario {
@@ -590,3 +589,7 @@ control main() exits done {
 #[path = "pending_fault_model.rs"]
 mod fault_model;
 pub(crate) use fault_model::pending_fault_model;
+
+#[path = "source_operation_model.rs"]
+mod source_model;
+pub(super) use source_model::SourceOperations;

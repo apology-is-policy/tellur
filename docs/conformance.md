@@ -4876,3 +4876,22 @@ prove exact destruction and borrower-before-supplier order without imposing an
 order between independent siblings. Stopped nested contingencies, normal operation
 arms and late readiness/operation tickets cannot run. Shared production scheduling
 and adapter admission remain unchanged; source-scheduler readiness is the next gate.
+
+
+The E1f.3a reference source-pump tests use the existing source scheduler with three
+pending borrowed adapter shims, two under an owning request and one outside it.
+Twenty-four generous-fuel schedules combine normal/escaping-sibling-fault behavior,
+FIFO/reverse event order, early/idle-only signals and three host quota partitions.
+Partial and empty polls, one-time argument preparation/completion, adjacent source
+effects, stale generations, stopped nested contingencies and independent joins are
+asserted directly. An additional sweep covers every source fuel cutoff through
+success before/after expansion, with exact per-representation event/report/diagnostic
+agreement across quotas. Completed cross-expansion effects and dispositions agree while
+retaining each report's explicit expansion annotations.
+
+Test-only pumping appends eligible work and supplies readiness only at source
+selection or when no runnable producer remains; quotas alone never select a sibling.
+All retained value/task/await/domain and source queue/join/handle stores retire.
+This is reference scheduling evidence, separate from E1f.2c's generated host-schedule
+resource proof. Native source-pump differential evidence and public adapter admission
+remain outstanding; no live I/O or new production suspension is claimed.

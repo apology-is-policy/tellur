@@ -1,0 +1,89 @@
+async control leaf(ref mutable string text, string request)
+    exits ready { ref mutable string value from text }
+{
+    delta sample(text, move request) {
+        ready { string next } => received
+    }
+    [received]:
+        deref text = move next;
+        emit(text);
+        exit ready { text };
+}
+async control worker(ref mutable string text, string request) exits done {
+    auto child = defer leaf(text, move request);
+    emit("captured");
+    delta await child {
+        ready { auto value } => received
+    }
+    [received]: emit(value);
+        exit done;
+}
+control start(string initial, string request) exits done {
+    mutable string text = move initial;
+    run worker(borrow mutable text, move request);
+    exit done;
+}
+control nested(string initial, string request) exits done {
+    fault boundary {
+        mutable string text = move initial;
+        run worker(borrow mutable text, move request);
+    } contingency [] {
+        emit("nested contingency must not run");
+        escalate;
+    }
+    exit done;
+}
+
+async control branch(string initial, string request) exits done {
+    nested(move initial, move request);
+    exit done;
+}
+async control failure(bool stop) exits done faults {
+    emit("fault child queued");
+    yield;
+    delta stop {
+        true => failed,
+        false => finished
+    }
+    [failed]: fault "sibling failed";
+    [finished]: emit("fault child finished");
+        exit done;
+}
+async control startup(bool stop) exits done faults {
+    auto left = spawn branch("left", "left");
+    auto right = spawn branch("right", "right");
+    auto failed = spawn failure(stop);
+    emit("all queued");
+    emit("uninterrupted first");
+    emit("uninterrupted second");
+    await left;
+    emit("left joined");
+    await right;
+    await failed;
+    emit("all joined");
+    exit done;
+}
+boundary request(bool stop) {
+    run startup(stop);
+    terminate;
+}
+contingency(string reason) {
+    emit("owning contingency");
+    terminate;
+}
+control request_helper(bool stop) exits done {
+    supervise request(stop);
+    exit done;
+}
+async control outer(bool stop) exits done {
+    auto other = spawn branch("other", "other");
+    yield;
+    request_helper(stop);
+    emit("owner returned");
+    await other;
+    emit("independent joined");
+    exit done;
+}
+control main(bool stop) exits done {
+    forward run outer(stop);
+}

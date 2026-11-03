@@ -3798,3 +3798,45 @@ including no-runnable waiting, wake eligibility, retained partial operations and
 external child faults at explicit handoffs. Public adapter signatures, manifest
 admission and live transport integration still require their own implementation and
 checks. Cancellation and fallible or suspending cleanup remain separate design work.
+
+
+## Reference source-scheduler operation waits (E1f.3a)
+
+The [private source-operation model](../src/runtime/source_operation_model.rs)
+connects retained operations to the reference source scheduler's existing FIFO,
+started joins, cold awaits and fault routing. Its [fixture](../tests/fixtures/source_pending_operation.tellur)
+awaits adapter shims from three spawned branches. Two belong to a supervised
+request; the third belongs to an outside invocation and must survive that request's
+fault. Each shim retains a mutable supplier through a lexical helper boundary.
+
+The deterministic pump separates two actions. Nonblocking signals append eligible
+tasks behind already queued source work without selecting them, consuming source
+fuel, delivering results or changing values and effects. When the source runnable
+queue is empty, an idle pump supplies the next modeled readiness event. Repeated
+signals and an empty poll still require re-parking until the operation has complete
+input. Poll state belongs to the original operation, whose operands are prepared
+once; declared completion and borrowed result delivery happen once.
+
+A source sibling faults while the two request operations are waiting, or after an
+early signal makes work eligible behind that sibling. Their normal arms and stopped
+nested contingencies do not run. The ordinary source fault router restores the
+owning continuation and retires operations while their suppliers remain live. Only
+then does the owning contingency proceed. The unrelated pending operation resumes
+and its original owner joins it. Late readiness generations cannot revive retired
+work; execution, source queues, joins, handles and domain storage all finish empty.
+
+Normal and faulting runs compare exact observations across host quota partitions,
+including zero quota, FIFO and reverse readiness order, and early versus idle-only
+signals. The complete fuel sweep covers setup, waits, delivery, joins and fault
+handling in original and expanded programs. Reports and diagnostics compare exactly
+between quotas within each representation. Across representations, completed effects and
+dispositions agree; expansion call-site annotations remain in their actual reports.
+Adjacent effects before an explicit await stay adjacent even with one-instruction
+host quotas.
+
+The pump and operation interception are test-only. The awaited leaf is a private
+adapter shim; this does not authorize its ordinary synchronous `sample` binding to
+suspend in production. There is no public waiting result, external reactor, timeout
+policy or new source handoff. The next gate is the corresponding native source-pump
+experiment over generated continuations and real resources, followed by source and
+adapter contract integration. Compiler/LSP/VSIX 0.189 remains installed.

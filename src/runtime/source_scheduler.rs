@@ -10,6 +10,8 @@ enum Runnable<'a> {
 #[derive(Default)]
 pub(super) struct Scheduler<'a> {
     pub(super) enabled: bool,
+    #[cfg(test)]
+    pub(super) operations: Option<adapter_operation_model::SourceOperations>,
     runnable: VecDeque<Runnable<'a>>,
     handles: BTreeMap<TaskId, started::StartedTask<'a>>,
     joins: BTreeMap<TaskId, (Context<'a>, started::StartedJoin<'a>, &'a [Arm])>,
@@ -220,7 +222,22 @@ impl<'a> Machine<'a> {
             .push_back(Runnable::Context(caller));
         self.select_source()
     }
+    #[cfg(test)]
+    pub(super) fn assert_source_retired(&self) {
+        assert!(self.shared.scheduler.runnable.is_empty());
+        assert!(self.shared.scheduler.handles.is_empty());
+        assert!(self.shared.scheduler.joins.is_empty());
+    }
+    #[cfg(test)]
+    pub(super) fn queue_operation_readiness(&mut self, task: TaskId) {
+        self.shared
+            .scheduler
+            .runnable
+            .push_back(Runnable::Task(task));
+    }
     pub(super) fn select_source(&mut self) -> Result<()> {
+        #[cfg(test)]
+        self.pump_source_operations(false)?;
         loop {
             match self.shared.scheduler.runnable.pop_front() {
                 Some(Runnable::Task(task)) if self.shared.ready.contains_key(&task) => {
@@ -235,7 +252,13 @@ impl<'a> Machine<'a> {
                     self.context = context;
                     return Ok(());
                 }
-                None => return Err(error("source task wait has no runnable producer")),
+                None => {
+                    #[cfg(test)]
+                    if self.pump_source_operations(true)? {
+                        continue;
+                    }
+                    return Err(error("source task wait has no runnable producer"));
+                }
             }
         }
     }

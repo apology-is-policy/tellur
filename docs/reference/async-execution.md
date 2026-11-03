@@ -21,6 +21,10 @@ compares checked source and real resources across native/reference execution. Th
 checks stopped pending borrowers beneath nested boundaries, resource retirement
 before the owning contingency, and survival of an independent root. These controlled
 host schedules do not enable source async I/O or introduce additional handoffs.
+The [reference source-pump model](../async-execution.md#reference-source-scheduler-operation-waits-e1f3a)
+connects private awaited adapter shims to source scheduling and tests all-waiting
+progress, sibling faults and independent-task survival. Production synchronous
+bindings, source handoffs and execution-session results remain unchanged.
 
 ## Owned spawned children
 
