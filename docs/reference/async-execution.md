@@ -502,6 +502,14 @@ delivery change operands, paths, effects or fuel. This conservative check does n
 enable parent progress or source scheduling. See
 [native invocation ownership](../async-execution.md#native-invocation-ownership-and-atomic-selection-e1d2d3o).
 
+Since 0.143, generated native callbacks expose immutable symbolic access plans:
+operand order, field paths, indirection, borrow modes and storage retirement. Normal
+cold-await delivery has a separate result-write plan. Transitive operations and
+administrative states remain opaque or unknown. Querying a plan has no source effects;
+it does not grant permission to run beside a child. Parent selection remains guarded
+until captured loans and actual storage dependencies can be checked. See
+[native callback access plans](../async-execution.md#native-callback-access-plans-e1d2d3p).
+
 Since 0.128, entry process termination closes normal task admission and retires all
 registered execution contexts and results before delivering the original status.
 Prepared bodies never start; parked callers unwind without normal instructions or

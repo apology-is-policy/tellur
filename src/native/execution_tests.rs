@@ -51,6 +51,7 @@ static OWNER: Control = Control {
     parameters: &[0],
     retained: &[],
     constructor: false,
+    access: None,
     resume: returning,
 };
 static RESULT: Control = Control {
@@ -60,6 +61,7 @@ static RESULT: Control = Control {
     parameters: &[0, 1],
     retained: &[],
     constructor: false,
+    access: None,
     resume: returning,
 };
 static FAULT: Control = Control {
@@ -69,6 +71,7 @@ static FAULT: Control = Control {
     parameters: &[],
     retained: &[],
     constructor: false,
+    access: None,
     resume: failing,
 };
 static PROCESS: Control = Control {
@@ -78,6 +81,7 @@ static PROCESS: Control = Control {
     parameters: &[],
     retained: &[],
     constructor: false,
+    access: None,
     resume: terminating,
 };
 fn retained(c: &mut Contexts<'_>, k: &ContextKey) {

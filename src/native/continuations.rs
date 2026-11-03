@@ -85,7 +85,7 @@ pub(super) fn source(program: &CheckedProgram) -> String {
         g.constructing = g.constructors.contains(region.name.as_str());
         let _ = writeln!(
             g.code,
-            "static MODEL_{id}:Control=Control{{name:{},slots:{},atoms:{},parameters:&{:?},retained:&{:?},constructor:{},resume:model_{id}}};",
+            "static MODEL_{id}:Control=Control{{name:{},slots:{},atoms:{},parameters:&{:?},retained:&{:?},constructor:{},access:Some(access_{id}),resume:model_{id}}};",
             string(&program.runtime_name(&region.name)),
             g.layout.slots.len(),
             g.layout.atoms.len(),
@@ -107,6 +107,25 @@ pub(super) fn source(program: &CheckedProgram) -> String {
         );
         let mut plan = vec![];
         points(&region.code, &mut plan);
+        let mut access = format!(
+            "fn access_{id}(state:&Activation)->AccessPlan{{let a=&state.facts;match state.pc{{"
+        );
+        for (pc, point) in plan.iter().enumerate() {
+            let description = match &point.kind {
+                PointKind::Instruction(i) => {
+                    super::access::instruction(i, region, &g.layout, &g.constructors)
+                }
+                PointKind::BoundaryEnd(owner) => {
+                    let PointKind::Instruction(i) = &plan[*owner].kind else {
+                        unreachable!()
+                    };
+                    super::access::boundary_end(i, &g.layout)
+                }
+                PointKind::InvalidEnd(_) => "AccessPlan::UNKNOWN".into(),
+            };
+            let _ = writeln!(access, "{pc}=>{description},");
+        }
+        access.push_str("_=>AccessPlan::UNKNOWN,}}\n");
         for (pc, point) in plan.iter().enumerate() {
             let instruction = match &point.kind {
                 PointKind::Instruction(instruction) => *instruction,
@@ -347,6 +366,7 @@ pub(super) fn source(program: &CheckedProgram) -> String {
         g.code
             .push_str("_=>Err(\"E_NATIVE: checked region fell through\".into()),}}\n");
         g.code.push_str(&deliveries);
+        g.code.push_str(&access);
     }
     g.code
 }

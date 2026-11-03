@@ -98,6 +98,7 @@ static PARENT: Control = Control {
     parameters: &[0, 1],
     retained: &[],
     constructor: false,
+    access: None,
     resume: parent,
 };
 static CHILD: Control = Control {
@@ -107,6 +108,7 @@ static CHILD: Control = Control {
     parameters: &[0, 1],
     retained: &[],
     constructor: false,
+    access: None,
     resume: child,
 };
 static INVALID: Control = Control {
@@ -116,6 +118,7 @@ static INVALID: Control = Control {
     parameters: &[0, 0],
     retained: &[],
     constructor: false,
+    access: None,
     resume: child,
 };
 static INVALID_PARENT: Control = Control {
@@ -341,6 +344,7 @@ static SETTLED: Control = Control {
     parameters: &[],
     retained: &[],
     constructor: false,
+    access: None,
     resume: settled,
 };
 fn administrative(h: &mut Host, _: &mut Frames, a: &mut Activation) -> R<Step> {
@@ -454,6 +458,7 @@ static CHAIN: Control = Control {
     parameters: &[0],
     retained: &[],
     constructor: false,
+    access: None,
     resume: chain,
 };
 static DIRECT_CHAIN: Control = Control { ..CHAIN };
@@ -1002,5 +1007,88 @@ fn machine_selection_preserves_pending_delivery_until_other_children_join() {
     c.host
         .release_frame(&fields.into_iter().map(Some).collect::<Vec<_>>());
     assert_eq!(*drops.borrow(), [2, 0, 1]);
+    empty(&c);
+}
+
+fn access_parent(_: &Activation) -> AccessPlan {
+    AccessPlan {
+        transition: Transition::AwaitTask,
+        accesses: &[Access {
+            slot: Some(1),
+            fields: &[],
+            indirect: false,
+            kind: AccessKind::Move,
+        }],
+        delivery: &[Access {
+            slot: Some(1),
+            fields: &[],
+            indirect: false,
+            kind: AccessKind::Write,
+        }],
+        opaque: true,
+    }
+}
+static ACCESS_PARENT: Control = Control {
+    access: Some(access_parent),
+    ..PARENT
+};
+
+#[test]
+fn access_queries_distinguish_pending_delivery_from_arguments_and_administrative_results() {
+    let mut h = host();
+    let drops = Rc::new(RefCell::new(vec![]));
+    let mut c = Contexts::new(&mut h);
+    let root = start(&mut c, &ACCESS_PARENT, &drops);
+    assert_eq!(
+        c.parked[&root.id].machine.next_access(),
+        AccessPlan::UNKNOWN
+    );
+    let child = c.admit_await(&root).unwrap();
+    assert_eq!(
+        c.parked[&root.id].machine.next_access(),
+        AccessPlan::UNKNOWN
+    );
+    c.advance_retained(&child, 2).unwrap();
+    c.return_await(&root, &child).unwrap();
+    let slots = c.values.to_vec();
+    let tasks = c.host.tasks.clone();
+    let fuel = c.host.fuel;
+    let expected = AccessPlan {
+        transition: Transition::Delivery,
+        accesses: access_parent(&c.parked[&root.id].machine.stack[0]).delivery,
+        delivery: &[],
+        opaque: false,
+    };
+    for _ in 0..4 {
+        assert_eq!(c.parked[&root.id].machine.next_access(), expected);
+    }
+    assert_eq!(*c.values, slots);
+    assert_eq!(c.host.tasks, tasks);
+    assert_eq!(c.host.fuel, fuel);
+    for administrative in [
+        Ok(Completion::Process(23)),
+        Ok(Completion::Settled),
+        Err("E_NATIVE: rejected".into()),
+    ] {
+        let machine = &mut c.parked.get_mut(&root.id).unwrap().machine;
+        let Some(Pending::Await(p)) = &mut machine.stack[0].pending else {
+            panic!()
+        };
+        let normal = p.result.replace(administrative);
+        assert_eq!(machine.next_access(), AccessPlan::UNKNOWN);
+        let Some(Pending::Await(p)) = &mut machine.stack[0].pending else {
+            panic!()
+        };
+        p.result = normal;
+    }
+    assert!(drops.borrow().is_empty());
+    assert!(matches!(
+        c.advance_retained(&root, 1).unwrap(),
+        ContextPoll::Ready
+    ));
+    let (_, fields) = c.join(None, &root).unwrap().outcome().unwrap();
+    c.host
+        .release_frame(&fields.into_iter().map(Some).collect::<Vec<_>>());
+    assert_eq!(*drops.borrow(), [0, 1]);
     empty(&c);
 }

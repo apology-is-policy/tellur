@@ -111,6 +111,7 @@ static CALLER: Control = Control {
     parameters: &[0, 1],
     retained: &[],
     constructor: false,
+    access: None,
     resume: caller,
 };
 static MIDDLE: Control = Control {
@@ -120,6 +121,7 @@ static MIDDLE: Control = Control {
     parameters: &[0, 1],
     retained: &[],
     constructor: false,
+    access: None,
     resume: middle,
 };
 static LEAF: Control = Control {
@@ -129,6 +131,7 @@ static LEAF: Control = Control {
     parameters: &[0, 1],
     retained: &[],
     constructor: false,
+    access: None,
     resume: leaf,
 };
 static PARKED_CALLER: Control = Control {
@@ -138,6 +141,7 @@ static PARKED_CALLER: Control = Control {
     parameters: &[0, 1],
     retained: &[],
     constructor: false,
+    access: None,
     resume: passive,
 };
 static PARKED_MIDDLE: Control = Control {
@@ -147,6 +151,7 @@ static PARKED_MIDDLE: Control = Control {
     parameters: &[0, 1],
     retained: &[],
     constructor: false,
+    access: None,
     resume: passive,
 };
 fn queue(
@@ -320,6 +325,7 @@ static BOUNDED: Control = Control {
     parameters: &[0, 1],
     retained: &[],
     constructor: false,
+    access: None,
     resume: bounded,
 };
 static PARKED_BOUNDED: Control = Control {
@@ -329,6 +335,7 @@ static PARKED_BOUNDED: Control = Control {
     parameters: &[0, 1],
     retained: &[],
     constructor: false,
+    access: None,
     resume: parked_bounded,
 };
 #[test]
@@ -495,6 +502,7 @@ static PROCESS: Control = Control {
     parameters: &[],
     retained: &[],
     constructor: false,
+    access: None,
     resume: administrative,
 };
 static SETTLED: Control = Control {
@@ -504,6 +512,7 @@ static SETTLED: Control = Control {
     parameters: &[],
     retained: &[],
     constructor: false,
+    access: None,
     resume: administrative,
 };
 #[test]
@@ -634,6 +643,7 @@ static RECOVERING: Control = Control {
     parameters: &[0, 1],
     retained: &[],
     constructor: false,
+    access: None,
     resume: recovering,
 };
 static PARKED_RECOVERING: Control = Control {
@@ -643,6 +653,7 @@ static PARKED_RECOVERING: Control = Control {
     parameters: &[0, 1],
     retained: &[],
     constructor: false,
+    access: None,
     resume: parked_recovering,
 };
 #[test]
@@ -717,6 +728,7 @@ static OUTER: Control = Control {
     parameters: &[],
     retained: &[],
     constructor: false,
+    access: None,
     resume: outer,
 };
 fn independent_faults(

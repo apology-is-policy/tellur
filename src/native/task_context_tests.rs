@@ -42,6 +42,7 @@ static OWNER: Control = Control {
     parameters: &[0],
     retained: &[],
     constructor: false,
+    access: None,
     resume: returning,
 };
 static CHILD: Control = Control {
@@ -51,6 +52,7 @@ static CHILD: Control = Control {
     parameters: &[0, 1],
     retained: &[],
     constructor: false,
+    access: None,
     resume: returning,
 };
 static FAULT: Control = Control {
@@ -60,6 +62,7 @@ static FAULT: Control = Control {
     parameters: &[],
     retained: &[],
     constructor: false,
+    access: None,
     resume: failing,
 };
 static PROCESS: Control = Control {
@@ -69,6 +72,7 @@ static PROCESS: Control = Control {
     parameters: &[],
     retained: &[],
     constructor: false,
+    access: None,
     resume: process,
 };
 static HUGE: Control = Control {
@@ -78,6 +82,7 @@ static HUGE: Control = Control {
     parameters: &[0, 1],
     retained: &[],
     constructor: false,
+    access: None,
     resume: returning,
 };
 static BAD: Control = Control {
@@ -87,6 +92,7 @@ static BAD: Control = Control {
     parameters: &[0, 0],
     retained: &[],
     constructor: false,
+    access: None,
     resume: returning,
 };
 fn make(c: &mut Contexts<'_>, id: u32, drops: &Rc<RefCell<Vec<u32>>>) -> V {
@@ -377,6 +383,7 @@ static NESTED: Control = Control {
     parameters: &[],
     retained: &[],
     constructor: false,
+    access: None,
     resume: nested,
 };
 #[test]
@@ -428,6 +435,7 @@ static SUPERVISED: Control = Control {
     parameters: &[0],
     retained: &[],
     constructor: false,
+    access: None,
     resume: supervised,
 };
 #[test]

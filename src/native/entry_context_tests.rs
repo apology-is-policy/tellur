@@ -76,6 +76,7 @@ static ROOT: Control = Control {
     parameters: &[0],
     retained: &[],
     constructor: false,
+    access: None,
     resume: root,
 };
 static DIRECT: Control = Control { ..ROOT };

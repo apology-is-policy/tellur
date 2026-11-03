@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-darwin-arm64-0.142.0.vsix` using **Extensions:
+1. Install the supplied `tellur-language-darwin-arm64-0.143.0.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1288,3 +1288,10 @@ Every child and retained result now keeps its original parent invocation, preven
 another invocation in the same context from adopting it. Lower-level selection
 rejects live children before callbacks or pending delivery can change state.
 Fine-grained parent progress and source scheduling remain gated.
+
+## Native callback access plans in 0.143
+
+Generated native callbacks now describe symbolic reads, moves, borrows, writes and
+retirement before evaluation. Normal cold-await result writes have a separate plan.
+Queries preserve execution state; opaque accesses remain explicit. Parent progress
+with live children and source scheduling still require further dependency checks.

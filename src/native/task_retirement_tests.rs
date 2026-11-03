@@ -21,6 +21,7 @@ static COLD: Control = Control {
     parameters: &[0],
     retained: &[],
     constructor: false,
+    access: None,
     resume: never,
 };
 static BOUNDARY: BoundaryControl = BoundaryControl {
@@ -51,6 +52,7 @@ static LEXICAL: Control = Control {
     parameters: &[0],
     retained: &[],
     constructor: false,
+    access: None,
     resume: lexical,
 };
 fn setup(h: &mut Host, v: &mut Frames, d: &mut Domains, owner: V) -> Machine {
@@ -254,6 +256,7 @@ static LOOPING: Control = Control {
     parameters: &[],
     retained: &[],
     constructor: false,
+    access: None,
     resume: looping,
 };
 #[test]

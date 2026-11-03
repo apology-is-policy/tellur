@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.142.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.143.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -4184,3 +4184,20 @@ cold-await, owner-await, result, sibling, lexical-recovery and process models ru
 freshly, alongside cold-task/source-fault/process/manual targets. Unchanged checker,
 reference and LSP/Node evidence is reused; this is selected coverage, not a full suite.
 Release checks include a fresh isolated editor session. No source scheduler is added.
+
+## Native callback access plans (0.143)
+
+E1d.2d.3p adds five planner cases covering written evaluation order, fields and
+indirection, shared/exclusive modes, simultaneous binding moves, distinct call kinds,
+separate delivery writes, constructor destinations and loop-local retirement. One
+host case distinguishes normal pending delivery from waiting, error, process and
+settled states, while checking immutable repeated queries and resource cleanup.
+
+The generated selection probe repeatedly queries callback and delivery plans across
+original/expanded O0/O2 runs and quota partitions, compares complete observations and
+retains atomic rejection of parent selection with live children. Existing generated
+call/constructor, loop, lexical/named boundary, fault and process models run freshly,
+alongside selected production cold-task/source-fault/process/manual targets. This is
+selected coverage, not a full-suite claim. Unchanged checker, reference and LSP/Node
+evidence is reused; a fresh isolated editor verifies the packaged compiler. Symbolic
+plans do not grant concurrent access or add source scheduler handoffs.

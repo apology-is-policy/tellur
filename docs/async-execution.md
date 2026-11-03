@@ -1223,6 +1223,7 @@ Those boundaries need explicit contracts before being accepted by the checker.
 | E1d.2d.3m | Prepared owner awaits with siblings | Delivered in 0.140: an already-prepared native cold await can enter beside independent children. Sibling faults restore the original owning diagnostic segment from live/completed awaited contexts or saved nested boundary parents before resource retirement. Parent execution with live children and source scheduling remain gated |
 | E1d.2d.3n | Native retirement preflight | Delivered in 0.141: retained borrower membership is checked before runtime frame, loop or boundary retirement, and final-frame domain authority is checked before releasing storage. Parent selection remains guarded because generated callback evaluation can itself move operands |
 | E1d.2d.3o | Native invocation ownership and atomic selection | Delivered in 0.142: every child/result retains its original parent invocation; normal selection and joins validate that authority. Lower-level Machine selection rejects live child/result membership before callbacks or pending delivery can change state. Fine-grained parent progress and source scheduling remain gated |
+| E1d.2d.3p | Native callback access plans | Delivered in 0.143: immutable queries describe checked callback operands, field paths, borrow modes and storage retirement, with separate normal await-delivery writes and explicit opaque/unknown cases. Calls, run, direct await and cold-task await remain distinct. These symbolic plans do not grant selection permission; captured-loan resolution and source scheduling remain gated |
 | E1e | Explicit cooperative cancellation and suspending cleanup; normal completion races, cleanup failures and no abandoned losers | Define cancellation observation and cleanup admission; no implicit cancellation exception |
 | E2 | Pinned native coroutine experiment, then checked lowering and schedule-based differential validation | Reference semantics and legal frame retirement must precede native destruction |
 
@@ -1906,6 +1907,52 @@ The generated probe uses the existing loop/cold-await fixture: it inserts reject
 selections before generated callbacks and pending delivery, then compares full normal
 observations against an unprobed run at original/expanded O0/O2 and quota partitions.
 No source syntax or accepted ownership, origin, outcome or fault semantics change.
+
+## Native callback access plans (E1d.2d.3p)
+
+Compiler 0.143 generates an immutable access description beside each native callback.
+It uses checked IR and the same dense slot layout and path guards as execution. A
+query reads only the activation's program counter and facts: it does not evaluate
+source values, follow references, move operands, consume fuel or publish effects.
+Inactive paths have an empty skip description. Invalid points and unsupported
+administrative states report unknown access.
+
+Each symbolic access records a slot, field path, indirection and read, move, shared
+borrow, exclusive borrow, write or retirement mode. Written operand order is retained;
+simultaneous bindings evaluate all inputs before their writes. Loop restarts describe
+argument evaluation before local retirement and parameter replacement. Return plans
+include local retirement; constructor returns also identify the caller-supplied
+destination. Short-circuit operands and alternative output writes are conservative
+unions, so a listed access need not occur on every execution of that point.
+
+Call, synchronous `run`, direct async `await`, consuming task await and `defer` retain
+distinct transition identities. Callee/transitive accesses, host operations, pure
+intrinsics, reference-bearing variant inspection and dynamic scope transitions are
+explicitly opaque. An indirect place remains symbolic; the description is not a
+resolved loan set or proof that an instruction can run beside a child.
+
+For cold awaits, the input plan is retained before callback evaluation. Once a normal
+outcome has been returned, the next query describes only the possible result-slot
+writes, without repeating consumed argument accesses. Queued/waiting work, errors and
+administrative process/settled completions remain unknown. Ordinary synchronous call
+return and named supervision still require their opaque transition checks; this
+checkpoint does not add an independently selectable synchronous delivery step.
+
+Five planner tests cover operand ordering, field/indirection and borrow modes,
+simultaneous moves, caller delivery, constructor destinations and loop-local retirement.
+A host test checks normal versus administrative delivery and repeatable queries without
+storage, task, fuel or resource changes. The generated selection probe queries actual
+callbacks repeatedly across original/expanded O0/O2 executions and quota partitions,
+compares complete observations, and still verifies rejection with live children.
+Existing generated call/constructor, loop, boundary, fault and process models exercise
+the changed emitter and shared support.
+
+Both context and lower-level Machine selection continue to reject outstanding child
+membership. The next gate must resolve captured loan/storage dependencies and compare
+them with these plans before granting any parent progress. Source `spawn`/`yield`,
+independent admission from sequential contexts, started-task await, cancellation,
+suspending disposal, async adapters and LLVM coroutine lowering remain gated. No
+accepted ownership, origin, outcome, fault/contingency or path-label rule changes.
 
 ## Reference execution invariants
 

@@ -9,6 +9,7 @@ static SELECTION_CHILD: Control = Control {
     parameters: &[],
     retained: &[],
     constructor: false,
+    access: None,
     resume: selection_child,
 };
 fn selection_snapshot(c: &Contexts<'_>, root: &ContextKey) -> String {
@@ -60,10 +61,20 @@ pub fn drive_selection(
     let mut checked = 0;
     let mut nested = false;
     let mut delivery = false;
+    let mut access_kinds = std::collections::BTreeSet::new();
+    let every_point = quotas == [1];
     let mut quotas = quotas.iter().cycle();
     let result = loop {
         let selected = chain.last().unwrap().clone();
         if probes && selected.id == root.id {
+            let snapshot = selection_snapshot(&c, &root);
+            let description = c.parked[&root.id].machine.next_access();
+            assert_ne!(description.transition, Transition::Unknown);
+            for _ in 0..3 {
+                assert_eq!(c.parked[&root.id].machine.next_access(), description);
+            }
+            assert_eq!(selection_snapshot(&c, &root), snapshot);
+            access_kinds.insert(format!("{:?}", description.transition));
             let m = &c.parked[&root.id].machine;
             nested |= m.stack.len() > 1;
             delivery |= matches!(&m.stack.last().unwrap().pending, Some(Pending::Await(p)) if p.result.is_some());
@@ -101,6 +112,25 @@ pub fn drive_selection(
         }
     };
     assert!(!probes || (checked > 5 && nested && delivery));
+    if probes && every_point {
+        for kind in [
+            "Skip",
+            "Local",
+            "Effect",
+            "Run",
+            "Defer",
+            "AwaitTask",
+            "Loop",
+            "Restart",
+            "Return",
+            "Delivery",
+        ] {
+            assert!(
+                access_kinds.contains(kind),
+                "missing {kind}: {access_kinds:?}"
+            );
+        }
+    }
     assert!(c.parked.is_empty() && c.completed.is_empty() && c.values.is_empty());
     assert!(c.host.tasks.is_empty() && c.waits.is_empty() && c.entry.is_none());
     assert_eq!((c.domains.len(), c.domains.member_count()), (0, 0));

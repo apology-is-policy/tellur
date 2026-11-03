@@ -156,7 +156,7 @@ and terminal delivery separate. Fault/process settlement invalidates affected to
 unchanged owner logs cover normal, source-fault and host-limit paths. Shared native
 integration and source scheduling remain ahead; public execution is still synchronous.
 
-2 November 2026. This is the working revision plan, not a claim that all proposed
+3 November 2026. This is the working revision plan, not a claim that all proposed
 features are implemented. E1d.2d.1 separates private task queue admission from
 one-use completion joins, preserving atomic cold await and required result delivery.
 E1d.2d.2a now proves retained owned/exclusive-borrowed results in a checked-frame
@@ -191,8 +191,10 @@ the owning chain before sibling-fault settlement. E1d.2d.3n checks retained borr
 membership before runtime frame/loop/boundary retirement and final-frame domain
 authority before releasing storage. E1d.2d.3o binds every child/result to its original
 parent invocation and rejects lower-level selection before callback evaluation or
-pending delivery with live children. Fine-grained parent progress and source
-scheduling remain ahead. Compiler **0.142.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
+pending delivery with live children. E1d.2d.3p now emits symbolic per-callback access
+plans from checked code, separating operand evaluation from normal await-delivery
+writes and marking opaque work explicitly. Resolving captured loans and proving
+independent parent progress remain ahead of source scheduling. Compiler **0.143.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
 lifetime checkpoints of milestone 2, the array/vector/map core of milestone 3,
 and implicit entry, inline/stored adapters, owned capture, named outcome contracts
 and checked forwarding in milestone 4. A first [semantic foundation](semantic-foundation.md)
@@ -451,6 +453,7 @@ do not block this design work. E2 remains the native coroutine target.
 | E1d.2d.3m | Prepared owner awaits with siblings | Delivered in 0.140: an already-prepared native cold await can enter beside independent children. Sibling faults restore the original owning diagnostic segment from live/completed awaited contexts or saved nested boundary parents before resource retirement. Parent execution with live children and source scheduling remain gated |
 | E1d.2d.3n | Native retirement preflight | Delivered in 0.141: retained borrower membership is checked before runtime frame, loop or boundary retirement, and final-frame domain authority is checked before releasing storage. Parent selection remains guarded because generated callback evaluation can itself move operands |
 | E1d.2d.3o | Native invocation ownership and atomic selection | Delivered in 0.142: every child/result retains its original parent invocation; normal selection and joins validate that authority. Lower-level Machine selection rejects live child/result membership before callbacks or pending delivery can change state. Fine-grained parent progress and source scheduling remain gated |
+| E1d.2d.3p | Native callback access plans | Delivered in 0.143: immutable queries describe checked callback operands, field paths, borrow modes and storage retirement, with separate normal await-delivery writes and explicit opaque/unknown cases. Calls, run, direct await and cold-task await remain distinct. These symbolic plans do not grant selection permission; captured-loan resolution and source scheduling remain gated |
 | E2 | Native coroutine lowering | Preserved architectural target: direct LLVM coroutine primitives, pinned-toolchain experiment, frame lifetime rules and schedule-based differential tests; I1 must keep this route open |
 | T1 | Stronger source transformations | Hold current scope during P1–P5: extraction correspondence, continuation cuts, source-level lift and editor actions |
 | R1 | Mathematical foundations | Maintain existing evidence; defer extensions during P1–P5: preservation judgments, richer protocol abstractions, infinite/causal behavior, mechanization |

@@ -14,6 +14,8 @@ const EXECUTION: &str = include_str!("native/execution.rs");
 const CONTEXTS: &str = include_str!("native/contexts.rs");
 const CARGO: &str = include_str!("native/Cargo.template");
 const LOCK: &str = include_str!("native/Cargo.lock");
+#[path = "native/access.rs"]
+mod access;
 #[path = "native/continuations.rs"]
 mod continuations;
 #[cfg(test)]

@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.142.0** implements the v0.1 checked core and the current language
+Compiler release **0.143.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -799,3 +799,10 @@ Every child and retained result now keeps its original parent invocation, preven
 another invocation in the same context from adopting it. Lower-level selection
 rejects live children before callbacks or pending delivery can change state.
 Fine-grained parent progress and source scheduling remain gated.
+
+## Native callback access plans in 0.143
+
+Generated native callbacks now describe symbolic reads, moves, borrows, writes and
+retirement before evaluation. Normal cold-await result writes have a separate plan.
+Queries preserve execution state; opaque accesses remain explicit. Parent progress
+with live children and source scheduling still require further dependency checks.

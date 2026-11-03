@@ -11,6 +11,7 @@ static OWNER: Control = Control {
     parameters: &[],
     retained: &[],
     constructor: false,
+    access: None,
     resume: leaf,
 };
 static PRODUCER: Control = Control {
@@ -20,6 +21,7 @@ static PRODUCER: Control = Control {
     parameters: &[0, 1],
     retained: &[],
     constructor: false,
+    access: None,
     resume: leaf,
 };
 static IMPOSTOR: Control = Control {
@@ -29,6 +31,7 @@ static IMPOSTOR: Control = Control {
     parameters: &[0, 1],
     retained: &[],
     constructor: false,
+    access: None,
     resume: leaf,
 };
 static CONSTRUCTOR: Control = Control {
@@ -38,6 +41,7 @@ static CONSTRUCTOR: Control = Control {
     parameters: &[0, 1],
     retained: &[],
     constructor: true,
+    access: None,
     resume: leaf,
 };
 fn host() -> Host {

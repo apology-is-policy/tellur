@@ -3,6 +3,79 @@ use super::{BoundaryState, Completion, Frames, Host, R, V, frames::Frame};
 use domains::{DomainKey, DomainScope, Domains, Membership};
 
 pub type Deliver = fn(&mut Activation, &mut Frames, Completion) -> R<()>;
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AccessKind {
+    Read,
+    Move,
+    Shared,
+    Exclusive,
+    Write,
+    Retire,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Access {
+    /// None denotes the constructor's caller-supplied destination.
+    pub slot: Option<usize>,
+    pub fields: &'static [usize],
+    pub indirect: bool,
+    pub kind: AccessKind,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Transition {
+    Unknown,
+    Skip,
+    Local,
+    Effect,
+    Call,
+    Run,
+    Await,
+    AwaitTask,
+    Defer,
+    Boundary,
+    BoundaryEnd,
+    Loop,
+    Restart,
+    Recover,
+    Return,
+    Complete,
+    Fault,
+    Process,
+    Delivery,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AccessPlan {
+    pub transition: Transition,
+    pub accesses: &'static [Access],
+    /// Union of possible normal result writes; separate from argument evaluation.
+    pub delivery: &'static [Access],
+    /// Calls/operations with transitive accesses not described by this local plan.
+    pub opaque: bool,
+}
+impl AccessPlan {
+    pub const UNKNOWN: Self = Self {
+        transition: Transition::Unknown,
+        accesses: &[],
+        delivery: &[],
+        opaque: true,
+    };
+    pub const SKIP: Self = Self {
+        transition: Transition::Skip,
+        accesses: &[],
+        delivery: &[],
+        opaque: false,
+    };
+    fn delivered(self) -> Self {
+        if self.transition == Transition::Unknown {
+            return self;
+        }
+        Self {
+            transition: Transition::Delivery,
+            accesses: self.delivery,
+            delivery: &[],
+            opaque: false,
+        }
+    }
+}
 pub struct Control {
     pub name: &'static str,
     pub slots: usize,
@@ -10,6 +83,7 @@ pub struct Control {
     pub parameters: &'static [usize],
     pub retained: &'static [usize],
     pub constructor: bool,
+    pub access: Option<fn(&Activation) -> AccessPlan>,
     pub resume: fn(&mut Host, &mut Frames, &mut Activation) -> R<Step>,
 }
 pub struct Activation {
@@ -33,6 +107,7 @@ struct AwaitContinuation {
     child: Option<ContextKey>,
     result: Option<R<Completion>>,
     deliver: Deliver,
+    access: AccessPlan,
 }
 impl AwaitContinuation {
     fn retire(&mut self, host: &mut Host) -> R<()> {
@@ -242,6 +317,23 @@ pub struct Machine {
     fault_target: Option<DomainKey>,
 }
 impl Machine {
+    /// Symbolic local accesses only. This never grants selection permission or
+    /// resolves captured loans, and does not evaluate source values or consume fuel.
+    pub fn next_access(&self) -> AccessPlan {
+        let Some(frame) = self.stack.last() else {
+            return AccessPlan::UNKNOWN;
+        };
+        match &frame.pending {
+            Some(Pending::Await(p)) if matches!(&p.result, Some(Ok(Completion::Outcome(_)))) => {
+                p.access.delivered()
+            }
+            Some(_) => AccessPlan::UNKNOWN,
+            None => frame
+                .control
+                .access
+                .map_or(AccessPlan::UNKNOWN, |access| access(frame)),
+        }
+    }
     fn admit(
         host: &mut Host,
         values: &mut Frames,
@@ -401,6 +493,7 @@ impl Machine {
         values: &mut Frames,
         domains: &mut Domains,
     ) -> R<(bool, Option<Completion>)> {
+        let access = self.next_access();
         let frame = self
             .stack
             .last_mut()
@@ -455,6 +548,7 @@ impl Machine {
                     child: None,
                     result: None,
                     deliver,
+                    access,
                 }));
             }
             Step::Boundary(control) => {

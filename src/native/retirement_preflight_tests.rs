@@ -84,6 +84,7 @@ static PARENT: Control = Control {
     parameters: &[0],
     retained: &[],
     constructor: false,
+    access: None,
     resume: parent,
 };
 static WORK: Control = Control {

@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.142.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.143.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -162,3 +162,11 @@ Lower-level Machine selection now rejects live children before callbacks or pend
 delivery change operands, paths, effects or fuel. This conservative check does not
 enable parent progress or source scheduling. See
 [native invocation ownership](../async-execution.md#native-invocation-ownership-and-atomic-selection-e1d2d3o).
+
+Since 0.143, generated native callbacks expose immutable symbolic access plans:
+operand order, field paths, indirection, borrow modes and storage retirement. Normal
+cold-await delivery has a separate result-write plan. Transitive operations and
+administrative states remain opaque or unknown. Querying a plan has no source effects;
+it does not grant permission to run beside a child. Parent selection remains guarded
+until captured loans and actual storage dependencies can be checked. See
+[native callback access plans](../async-execution.md#native-callback-access-plans-e1d2d3p).

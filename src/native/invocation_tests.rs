@@ -40,6 +40,7 @@ static LEAF: Control = Control {
     parameters: &[],
     retained: &[],
     constructor: false,
+    access: None,
     resume: leaf,
 };
 static OUTER: Control = Control {
@@ -49,6 +50,7 @@ static OUTER: Control = Control {
     parameters: &[],
     retained: &[],
     constructor: false,
+    access: None,
     resume: outer,
 };
 static PROCESS: Control = Control {
@@ -58,6 +60,7 @@ static PROCESS: Control = Control {
     parameters: &[],
     retained: &[],
     constructor: false,
+    access: None,
     resume: process,
 };
 static SETTLED: Control = Control {
@@ -67,6 +70,7 @@ static SETTLED: Control = Control {
     parameters: &[],
     retained: &[],
     constructor: false,
+    access: None,
     resume: settled,
 };
 static CAPTURE: Control = Control {
@@ -76,6 +80,7 @@ static CAPTURE: Control = Control {
     parameters: &[0],
     retained: &[],
     constructor: false,
+    access: None,
     resume: leaf,
 };
 #[test]
