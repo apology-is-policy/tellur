@@ -32,6 +32,10 @@ The [owned Rust operation experiment](../async-execution.md#owned-typed-rust-ope
 checks typed polling with fresh resource borrows, owned state/results and destruction
 before supplier release. Compile-fail probes reject escaping borrows. This adds no
 public adapter mode or source call form.
+The [typed fault model](../async-execution.md#typed-operation-fault-and-registration-retirement-e1f4b)
+also checks disposal of unadopted typed results and rejection of exhausted runtime
+readiness registrations before owning-contingency execution. Real event backends
+remain separate.
 
 ## Owned spawned children
 

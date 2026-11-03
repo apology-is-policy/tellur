@@ -3939,8 +3939,44 @@ borrows; it does not prove plain-data shape, effect declarations, infallible bou
 cleanup or resource protocol compliance. Trusted adapter code must obey those
 contracts. Resource-consuming state, resource-bearing results, exclusive foreign
 mutation, fallible/suspending cleanup and a real readiness backend need additional
-work. The next independent check combines this typed state with externally routed
-owning faults while completion is retained but unadopted, and failed readiness
-registration. Public source call admission remains pending the separate recorded
+work. E1f.4b below combines this typed state with externally routed owning faults
+while completion is retained but unadopted, and failed readiness registration. Public source call admission remains pending the separate recorded
 async-host call-model decision. Existing bindings and compiler/LSP/VSIX 0.189 are
 unchanged.
+
+
+## Typed operation fault and registration retirement (E1f.4b)
+
+The [typed fault comparison](../src/native/owned_operation_fault_tests.rs) reuses
+E1f.2c's generated lexical/named supplier fixture and controlled owning-fault
+schedule. Each nested operation owns the E1f.4a typed state. Three modes stop it
+while waiting, after readiness is signalled, or after polling has produced a typed
+candidate that remains unadopted in the operation. The last mode wraps the generated
+plain-data outcome in a test disposal witness; it does not deliver the source arm
+or record a completed source primitive. The synchronous sample wrapper is a panic
+trap throughout this experiment.
+
+Before each valid registration, the test rejects a foreign operation ticket and
+forces exhaustion of the existing readiness-generation counter. Neither rejection
+may invoke the Rust poll, destroy state/results, change retained values, fuel,
+observations, adapter position or wait count. Restoring the test counter permits
+normal registration; the original operation remains valid. After owner settlement,
+late readiness and typed-poll tickets cannot revive it. This proves the existing
+runtime registration preflight, not partial failure of a future OS event backend.
+
+Original and expanded O0/O2 programs compare complete reference/native events and
+reports across every settlement/contingency fuel cutoff and three quota partitions.
+A separately parked independent root survives a completed owning contingency and
+resumes normally. Per-operation witnesses require state destruction exactly once;
+when a candidate exists, its destruction occurs once after state destruction and
+before the actual supplier resource is released. The owning contingency's first
+Rust call checks both states and any candidates already gone while its own resource
+remains live. Stopped nested contingencies and normal result arms cannot execute.
+
+All source admission and runtime scheduling remain unchanged. The next independent
+step is the readiness-backend contract: explicit interest registration and removal,
+one-use notifications and the original fixed deadline, including backend failure
+and stale-event handling. A live reactor or transport integration must establish
+those rules; this deterministic proof does not imply an OS subscription already
+exists. Public async-host call forms still await the recorded design decision, and
+resource-consuming/result protocols and fallible cleanup remain outside this slice.

@@ -4934,6 +4934,24 @@ borrows, borrowed results, exclusive poll signatures and wrong outcome types. A
 positive non-Send probe verifies moved allocation identity and exact destruction at
 unpolled, waiting, completed-unadopted and taken-result phases, including rejected
 premature/duplicate operations. These are private typed-contract tests; the source
-matrix covers waiting/signalled sibling faults, while completed-unadopted externally
-routed faults and registration-failure integration remain separate. Production
+matrix covers waiting/signalled sibling faults. E1f.4b below adds completed-unadopted
+externally routed faults and runtime registration-failure integration. Production
 adapter admission, host scheduling and the installed 0.189 release are unchanged.
+
+
+E1f.4b uses the existing generated owning-fault comparison with typed Rust operation
+state and a disposal witness around the generated plain-data result. Four
+original/expanded O0/O2 builds cover waiting, signalled and completed-unadopted states,
+three quotas and every settlement/contingency fuel cutoff, with exact reference
+reports/events and independent-root survival. Each run first rejects a foreign
+operation ticket and exhausted readiness generation, checking unchanged host/value/
+wait/operation observations before successful registration and owning-fault routing.
+Late typed polls and readiness signals reject after retirement.
+
+State and candidate witnesses require exact destruction before actual supplier
+release and before the owning handler's first typed checkpoint. Completed candidates
+remain unadopted; stopped source result arms and nested contingencies do not run,
+and the synchronous sample wrapper is a panic trap. Counter-exhaustion injection
+covers runtime preflight only; OS backend registration rollback/unregistration and
+live transport behavior are not claimed. Existing public compiler behavior and the
+0.189 installed release remain unchanged.

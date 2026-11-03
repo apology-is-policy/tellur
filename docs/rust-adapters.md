@@ -292,7 +292,10 @@ state and typed outcomes while obtaining a fresh shared retained-resource refere
 for each poll. Safe Rust cannot retain those short references or input slices in
 operation state/results. Runtime identity checks, readiness generations and source
 fault settlement remain outside the adapter. Generated source tests retain existing
-outcome validation and dispose of state before supplier release.
+outcome validation and dispose of state before supplier release. The
+[typed fault model](async-execution.md#typed-operation-fault-and-registration-retirement-e1f4b)
+also disposes of unadopted typed candidates before suppliers and the owning
+contingency, including after rejected runtime readiness registration.
 
 This is evidence for a future contract, not an `execution` value that manifests can
 use. Existing `immediate` and `blocking` bindings remain synchronous. The experiment

@@ -202,3 +202,6 @@ fn generated_pending_fault_retires_nested_borrowers_before_owning_contingency() 
     }
     fs::remove_dir_all(root).unwrap();
 }
+
+#[path = "owned_operation_fault_tests.rs"]
+mod owned_fault_tests;
