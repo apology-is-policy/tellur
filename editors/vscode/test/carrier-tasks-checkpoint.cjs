@@ -93,6 +93,21 @@ exports.run = async function (root) {
   await waitFor(() => diagnostics().some(d => code(d) === 'E_ASYNC' && d.message.includes('fault dispositions')), 'spawn refuses suspended owner without disposition');
   await replace(settled);
   await waitFor(async () => diagnostics().length === 0 && (await hover('spawn finish')).includes('producer owners retained across handoffs'), 'repaired producer stop obligations');
+  const awaited = 'async control work() exits done {yield;exit done;} ' + settled.replace('auto child=spawn finish(h);', 'auto child=spawn work();await finish(h);');
+  await replace(awaited);
+  await waitFor(async () => diagnostics().length === 0 && (await hover('auto child')).includes('task<work>'), 'parent await beside owned child');
+  await replace(awaited.replace('delta close(h)', 'yield;delta close(h)').replace('[closed|failed]:yield;', '[closed|failed]:'));
+  await waitFor(() => diagnostics().some(d => code(d) === 'E_ASYNC' && d.message.includes('await beside started children')), 'awaited producer stop permission refresh');
+  const parentAwait = await fs.readFile(path.join(__dirname, '../../../playground/parent_await.tellur'), 'utf8');
+  await replace(parentAwait);
+  await waitFor(async () => diagnostics().length === 0 && (await hover('spawn worker')).includes('Cold/direct awaits may retain parent borrows'), 'parent await repair and hover');
+  await document.save();
+  const parentRun = await vscode.commands.executeCommand('tellur.buildAndRun', {
+    arguments:['--json'], output:path.join(root, 'native output', 'parent-await')
+  });
+  assert.equal(parentRun.code, 0, parentRun.stderr);
+  assert.deepEqual(JSON.parse(parentRun.stdout).events.filter(e => e.kind === 'emit').map(e => e.message),
+    ['worker started', 'editor started', 'worker done', 'edited', 'editor started']);
   await fs.writeFile(path.join(fixture, 'passed.txt'), 'cold and started tasks, synchronous helpers, diagnostics, unsaved repair and native execution passed\n');
   console.log('TELLUR_CARRIER_TASKS_EDITOR_TESTS_PASSED: pending type hover, diagnostic repair and native run');
 };

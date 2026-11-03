@@ -4135,10 +4135,14 @@ impl Checker<'_> {
                 .signature(name, args, span)
                 .map_err(|e| operand.locate(e, span))?
         {
-            if sig.region && (operand.call_mode != syntax::CallMode::Direct || !sig.uninterrupted) {
+            if sig.region
+                && operand.call_mode != syntax::CallMode::Await
+                && (operand.call_mode != syntax::CallMode::Direct || !sig.uninterrupted)
+            {
                 self.require_no_started(domain, span)?;
             }
             if sig.region && operand.call_mode == syntax::CallMode::Await {
+                self.await_beside_started(sig.stoppable, domain, span)?;
                 self.record_stop_obligations(domain);
                 self.stoppable &= sig.stoppable;
             }

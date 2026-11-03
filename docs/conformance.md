@@ -4515,3 +4515,14 @@ its input first. Unsaved imported producer edits invalidate spawn admission and
 restore it after repair. Native original/expanded O0/O2 probes use a real Rust owner
 without a source fault disposition: every fuel cutoff and quota partition retires
 each allocation once, while normal execution closes it before yielding.
+
+## Parent cold/direct awaits beside children (0.169)
+
+Reference cases cover normal parent borrows, completed unjoined siblings, direct
+and cold awaits, and sibling faults before dispatch and inside a nested awaited
+boundary. The context census covers every fuel cutoff and quota partition. Native
+differential models cover original/expanded O0/O2, queued/nested/cold await faults
+and normal interleaving. Real Rust resource logs check suspended borrowers, nested
+local owners and completed sibling resources retire before the owning contingency.
+Unsaved imported producer edits recheck the required stop permissions. Inferred
+parent borrows and fault-capable sibling obligations remain enforced.

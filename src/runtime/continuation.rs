@@ -163,6 +163,9 @@ enum Continuation<'a> {
         wait: WaitId,
         caller: SuspensionId,
     },
+    /// The owning source continuation was recovered after an unrelated child
+    /// fault. Retire this await without returning to that caller a second time.
+    StoppedAwait(TaskId),
     Loop(&'a Action),
     SupervisedWork {
         name: &'a str,
@@ -877,6 +880,12 @@ impl<'a> Machine<'a> {
                 caller.handover = std::mem::take(&mut self.context.handover);
                 caller.flow = Some(result);
                 self.context = caller;
+            }
+            Continuation::StoppedAwait(task) => {
+                assert!(!self.settlements.is_empty());
+                assert!(matches!(flow, Err(_) | Ok(Flow::Process(_))));
+                self.shared.tasks.abandon(task);
+                self.context.flow = Some(flow);
             }
             Continuation::Loop(action) => {
                 let Action::Loop { id, .. } = action else {

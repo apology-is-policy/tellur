@@ -1,6 +1,37 @@
 //! Differential source execution using the exact production emitter and scheduler.
 use super::*;
 #[test]
+fn compiled_source_parent_await() {
+    compare(
+        "parent_await",
+        include_str!("../../playground/parent_await.tellur"),
+    );
+}
+#[test]
+fn compiled_source_parent_await_fault() {
+    compare(
+        "parent_await_fault",
+        include_str!("../../tests/fixtures/source_parent_await_fault.tellur"),
+    );
+}
+#[test]
+fn compiled_source_queued_parent_await_fault() {
+    let source = include_str!("../../tests/fixtures/source_parent_await_fault.tellur").replacen(
+        "yield;\n    yield;",
+        "",
+        1,
+    );
+    compare("queued_parent_await_fault", &source);
+}
+#[test]
+fn compiled_source_cold_parent_await_fault() {
+    let source = include_str!("../../tests/fixtures/source_parent_await_fault.tellur").replace(
+        "await nested(borrow mutable text);",
+        "auto cold=defer nested(borrow mutable text);await cold;",
+    );
+    compare("cold_parent_await_fault", &source);
+}
+#[test]
 fn compiled_source_uninterrupted_helpers() {
     compare(
         "helpers",
@@ -125,7 +156,7 @@ fn compare(label: &str, text: &str) {
                                 expected: &crate::fault::Report,
                             ) {
                                 if expected.message.starts_with("E_FUEL") {
-                                    assert!(actual.message.starts_with("E_FUEL"));
+                                    assert!(actual.message.starts_with("E_FUEL"), "{actual:?}");
                                     actual.message = expected.message.clone();
                                 }
                                 if let (Some(actual), Some(expected)) =
@@ -154,15 +185,19 @@ fn compare(label: &str, text: &str) {
 
 #[test]
 fn compiled_source_resources_retire_queued_running_and_completed_owners() {
-    source_resources(false);
+    source_resources(false, false);
 }
 #[test]
 fn compiled_source_helper_fault_retires_suspended_and_completed_owners() {
-    source_resources(true);
+    source_resources(true, false);
 }
-fn source_resources(helper_fault: bool) {
+#[test]
+fn compiled_source_parent_await_retires_borrowers_before_owner_contingency() {
+    source_resources(false, true);
+}
+fn source_resources(helper_fault: bool, parent_await: bool) {
     let root = std::env::temp_dir().join(format!(
-        "tellur-source-resource-{helper_fault}-{}",
+        "tellur-source-resource-{helper_fault}-{parent_await}-{}",
         std::process::id()
     ));
     fs::create_dir_all(&root).unwrap();
@@ -201,7 +236,36 @@ control main(string path,bool stop) exits done {
     [ready]:close(owner);exit done;
 }
 "#;
-    let source = if helper_fault {
+    let source = if parent_await {
+        let source = source
+            .replace(
+                "inspect(borrow value);yield;close(value);",
+                "inspect(borrow value);yield;yield;yield;yield;close(value);",
+            )
+            .replace("[failed]:fault", "[failed]:yield;yield;fault")
+            .replace(
+                "startup(string path,bool stop)",
+                "startup(string path,bool stop,ref counter parent)",
+            )
+            .replace(
+                "run startup(path,stop)",
+                "run startup(path,stop,borrow owner)",
+            )
+            .replace(
+                "yield;\n    delta await result",
+                "await observe(parent,path);\n    delta await result",
+            );
+        format!(
+            r#"{source}
+async control observe(ref counter parent,string path) exits done {{
+    delta make(borrow path,4) {{made {{counter local}}=>made}}
+    [made]:inspect(parent);fault boundary {{yield;yield;yield;}}
+    contingency [] {{emit("must not handle stopped observer");escalate;}}
+    [made]:close(local);exit done;
+}}
+"#
+        )
+    } else if helper_fault {
         let source = source
             .replace("spawn fail(stop)", "spawn fail(false)")
             .replace(
@@ -266,7 +330,7 @@ control main(string path,bool stop) exits done {
                         assert_eq!(out.stderr, expected.stderr);
                         assert_eq!(actual, owners);
                     }
-                    for id in [1, 2, 3] {
+                    for id in 1..=if parent_await { 4 } else { 3 } {
                         let count = |kind: &str| {
                             owners
                                 .lines()
@@ -278,7 +342,21 @@ control main(string path,bool stop) exits done {
                     }
                     if expected.status.code() == Some(if stop { 23 } else { 0 }) {
                         assert!(owners.ends_with("close 3\ndrop 3\n"), "{owners}");
-                        if stop {
+                        if stop && parent_await {
+                            assert!(
+                                !String::from_utf8_lossy(&expected.stdout)
+                                    .contains("must not handle stopped observer")
+                            );
+                            assert!(owners.contains("borrow 3"), "{owners}");
+                            for id in [1, 2, 4] {
+                                assert!(
+                                    owners.find(&format!("drop {id}")).unwrap()
+                                        < owners.find("close 3").unwrap(),
+                                    "{owners}"
+                                );
+                                assert!(!owners.contains(&format!("close {id}")), "{owners}");
+                            }
+                        } else if stop {
                             assert!(
                                 owners.contains("borrow 2\ndrop 1\ndrop 2\nclose 3"),
                                 "{owners}"

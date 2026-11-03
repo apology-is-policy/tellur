@@ -124,10 +124,28 @@ impl Checker<'_> {
             let live = self.bdd.and(domain, owned);
             if live != FALSE {
                 return Err(self.fail_domain("E_ASYNC",span,
-                    "await started children before a call that may hand off or enter a fault boundary; uninterrupted synchronous helpers, local work, spawn, yield and started joins remain available",live));
+                    "await started children before a synchronous call that may hand off or enter a fault boundary; checked cold/direct awaits, uninterrupted helpers, local work, spawn, yield and started joins remain available",live));
             }
         }
         Ok(())
+    }
+
+    pub(super) fn await_beside_started(
+        &mut self,
+        stoppable: bool,
+        domain: Formula,
+        span: Span,
+    ) -> Result<()> {
+        if !stoppable {
+            for (owned, _) in self.started_owners() {
+                let live = self.bdd.and(domain, owned);
+                if live != FALSE {
+                    return Err(self.fail_domain("E_ASYNC", span,
+                        "await beside started children requires fault dispositions for producer owners retained across handoffs; join the children first or complete those owners before handing off", live));
+                }
+            }
+        }
+        self.started_fault_permission(domain, span)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -489,7 +507,7 @@ impl Checker<'_> {
         self.record_stop_obligations(domain);
         self.stoppable &= sig.stoppable;
         if !started {
-            self.require_no_started(domain, span)?;
+            self.await_beside_started(sig.stoppable, domain, span)?;
         }
         self.started_fault_permission(domain, span)?;
         let stored = self.stored_value(&value, &ty, domain, span, true)?;

@@ -3053,3 +3053,24 @@ and owners retained for nested contingencies: the accepted enclosing-stop policy
 does not run those handlers. The proof neither infers `faults` nor changes sequential
 cold/direct calls. It is conservative for spawn regardless of the current caller's
 sibling mix. No new disposal protocol, task type or runtime switching point is added.
+
+## Parent awaits with owned children (E1e.4)
+
+Compiler 0.169 admits cold/direct parent awaits while reference-free started
+children remain live. The awaited producer must pass the checked stop-obligation
+proof; its captures, parent owners and existing possible sibling faults retain
+ordinary fault permission. Borrowed sequential captures remain live through await.
+
+The reference scheduler recovers the original suspended owning context and its
+tracker, including trackers saved beneath nested awaited boundaries. It severs only
+the matching one-use await return; borrowed frames and values remain for emergency
+retirement before the owner. This preserves causal child reports without making
+stopped awaited work a cause or running its nested contingency. The native source
+queue also selects restored or terminal owners when a sibling settles an await
+before dispatch, instead of losing their continuation behind a stale queue item.
+
+No host callback access gate is relaxed. Source handoffs, normal joins and boundary
+semantics are unchanged. Next audit synchronous handing-off helpers with live
+children: their original owner can be below the currently selected call frame.
+Keep that source gate until ownership routing and borrower-first settlement are
+proved. Parent boundary crossing and borrowed spawn remain separate work.

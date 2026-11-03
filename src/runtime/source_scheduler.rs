@@ -15,6 +15,108 @@ pub(super) struct Scheduler<'a> {
     joins: BTreeMap<TaskId, (Context<'a>, started::StartedJoin<'a>, &'a [Arm])>,
 }
 impl<'a> Machine<'a> {
+    fn retained_source_context(&mut self, task: TaskId) -> Result<&mut Context<'a>> {
+        if let Some(call) = self.shared.ready.get_mut(&task) {
+            return Ok(match call {
+                ReadyCall::Start { context, .. } | ReadyCall::Resume(context) => context,
+            });
+        }
+        if let Some(context) = self.shared.waiting.get_mut(&task) {
+            return Ok(context);
+        }
+        if let Some(context) = self.shared.completed.get_mut(&task) {
+            return Ok(context);
+        }
+        for runnable in &mut self.shared.scheduler.runnable {
+            if let Runnable::Context(context) = runnable
+                && context.task.is_some_and(|(id, _)| id == task)
+            {
+                return Ok(context);
+            }
+        }
+        for (context, _, _) in self.shared.scheduler.joins.values_mut() {
+            if context.task.is_some_and(|(id, _)| id == task) {
+                return Ok(context);
+            }
+        }
+        for call in self.shared.suspended.calls.values_mut() {
+            if call.context.task.is_some_and(|(id, _)| id == task) {
+                return Ok(&mut call.context);
+            }
+        }
+        Err(error("stopped await lost its retained context"))
+    }
+    /// Recover diagnostic ownership only. Awaited values and borrowers remain
+    /// retained for ordinary descendant-first emergency settlement.
+    fn restore_source_await(&mut self, owner: OwnerId) -> Result<Context<'a>> {
+        let (caller, task, wait) = self
+            .shared
+            .suspended
+            .calls
+            .iter()
+            .find_map(|(id, call)| {
+                (call.context.frame.owner == Some(owner)).then_some((*id, call.task, call.wait))
+            })
+            .ok_or_else(|| error("started fault lost its owning source continuation"))?;
+        let completed = self.shared.completed.contains_key(&task);
+        if !completed
+            && !self.retained_source_context(task)?.stack.iter().any(|c| {
+                matches!(c, Continuation::ResumeAwait {task: t, wait: w, caller: c}
+                if (*t, *w, *c) == (task, wait, caller))
+            })
+        {
+            return Err(error("stopped await has no matching original caller"));
+        }
+        let mut current = task;
+        let mut frames = 0;
+        let mut tracker = loop {
+            let next = self.shared.suspended.calls.values().find_map(|call| {
+                call.context
+                    .task
+                    .is_some_and(|(id, _)| id == current)
+                    .then_some(call.task)
+            });
+            let context = self.retained_source_context(current)?;
+            let mut saved = None;
+            for continuation in &mut context.stack {
+                match continuation {
+                    Continuation::Call { .. } => frames += 1,
+                    Continuation::BoundaryWork { parent, .. }
+                    | Continuation::BoundaryHandler { parent, .. }
+                    | Continuation::SupervisedWork { parent, .. }
+                    | Continuation::SupervisedHandler { parent, .. } => {
+                        saved = Some(std::mem::take(parent));
+                        break;
+                    }
+                    _ => {}
+                }
+            }
+            if let Some(saved) = saved {
+                break saved;
+            }
+            if let Some(next) = next {
+                current = next;
+            } else {
+                break std::mem::take(&mut context.activations);
+            }
+        };
+        for _ in 0..frames {
+            tracker.leave();
+        }
+        if !completed {
+            for continuation in &mut self.retained_source_context(task)?.stack {
+                if matches!(continuation, Continuation::ResumeAwait {task: t, wait: w, caller: c}
+                    if (*t, *w, *c) == (task, wait, caller))
+                {
+                    *continuation = Continuation::StoppedAwait(task);
+                    break;
+                }
+            }
+        }
+        let mut parent = self.shared.suspended.take(caller, task, wait)?;
+        parent.activations = tracker;
+        Ok(parent)
+    }
     pub(super) fn queue_source_await(&mut self, task: TaskId) -> Result<()> {
         self.shared
             .scheduler
@@ -151,9 +253,8 @@ impl<'a> Machine<'a> {
         Ok(true)
     }
     /// Escaping faults are delivered to the original owner before any sibling or
-    /// parent frame retires. A caller holding started children can enter only
-    /// helpers proved to contain no handoff or boundary. At a child handoff its
-    /// owner is therefore retained runnable or blocked on its consuming join.
+    /// parent frame retires. Its original continuation can be runnable, joining
+    /// a started child, or parked behind a sequential cold/direct await.
     pub(super) fn route_source_fault(&mut self) -> Result<bool> {
         if !self.shared.scheduler.enabled || !self.settlements.is_empty() {
             return Ok(false);
@@ -187,9 +288,12 @@ impl<'a> Machine<'a> {
                 .scheduler
                 .joins
                 .iter()
-                .find_map(|(task, (c, _, _))| (c.frame.owner == Some(owner)).then_some(*task))
-                .ok_or_else(|| error("started fault lost its owning source continuation"))?;
-            self.shared.scheduler.joins.remove(&task).unwrap().0
+                .find_map(|(task, (c, _, _))| (c.frame.owner == Some(owner)).then_some(*task));
+            if let Some(task) = task {
+                self.shared.scheduler.joins.remove(&task).unwrap().0
+            } else {
+                self.restore_source_await(owner)?
+            }
         };
         let source_fault = self.context.activations.is_source_fault();
         let report = self
@@ -281,6 +385,8 @@ mod tests {
             include_str!("../../tests/fixtures/source_task_grandchild_fault.tellur"),
             include_str!("../../playground/structured_helpers.tellur"),
             include_str!("../../tests/fixtures/source_helper_fault.tellur"),
+            include_str!("../../playground/parent_await.tellur"),
+            include_str!("../../tests/fixtures/source_parent_await_fault.tellur"),
         ] {
             let p = crate::compile(
                 text,

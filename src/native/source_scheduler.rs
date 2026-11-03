@@ -1,6 +1,6 @@
 //! Checked source driver. Owned child captures/results cannot borrow parent
-//! storage; source checking permits only uninterrupted synchronous helpers while
-//! children remain live. Host APIs retain their stricter access gates.
+//! storage; checked cold/direct awaits retain parent loans, and synchronous helpers
+//! must be uninterrupted while children remain live. Host APIs keep stricter gates.
 use super::super::super::tasks::TaskId;
 use super::*;
 use std::collections::VecDeque;
@@ -45,7 +45,18 @@ fn drive_source(
             loop {
                 match runnable.pop_front() {
                     Some(Runnable::Run(key)) if live(&contexts, &key) => break key,
-                    Some(Runnable::Await(parent)) if contexts.parked.contains_key(&parent.id) => {
+                    Some(Runnable::Await(parent)) if live(&contexts, &parent) => {
+                        // A sibling can settle this owner before its queued
+                        // await is dispatched. Select its restored handler or
+                        // terminal failure; never re-admit the abandoned call.
+                        let queued = contexts.parked.get(&parent.id).is_some_and(|p| {
+                            matches!(p.machine.stack.last().and_then(|a| a.pending.as_ref()),
+                                Some(Pending::Await(p)) if p.queued.is_some()
+                                    && p.child.is_none() && p.result.is_none())
+                        });
+                        if !queued {
+                            break parent;
+                        }
                         match contexts.admit_await(&parent) {
                             Ok(child) => {
                                 awaits.insert(child.id, parent);

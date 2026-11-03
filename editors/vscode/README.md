@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-darwin-arm64-0.168.0.vsix` using **Extensions:
+1. Install the supplied `tellur-language-darwin-arm64-0.169.0.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1475,3 +1475,10 @@ retained boundary owners and transitive callees. Complete resources lacking faul
 dispositions before yielding or awaiting. Unsaved imported body changes refresh
 this admission proof; source fault contracts and sequential cold calls are unchanged.
 Inferred cold and started handles display as `task<producer>` without private markers.
+
+## Parent await in 0.169
+
+Cold/direct awaits may borrow parent storage while owned spawned children remain
+live. Producer stop permissions and sibling fault obligations remain checked;
+unsaved imported edits refresh admission. The parent await example demonstrates
+normal interleaving and completion joins, with fresh editor build/run coverage.

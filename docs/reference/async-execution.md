@@ -3,7 +3,7 @@
 [Language reference](../language-reference.md) · [Design and next steps](../async-execution.md) ·
 [Execution failures](execution-failures.md)
 
-Compiler 0.168 supports `async control`, synchronous entry with `run`, direct
+Compiler 0.169 supports `async control`, synchronous entry with `run`, direct
 `await`, cold tasks with owned and borrowed captures, and a bounded cooperative
 scheduler for owned `spawn` tasks. Source handoffs occur at `await` and `yield`.
 Async host I/O, cancellation and LLVM coroutine lowering remain later work.
@@ -45,16 +45,18 @@ handle moves and parent work between handoffs. Every normal path must await its
 children. Handles cannot be copied, cloned, dropped, returned, or carried across a
 fault boundary. Local moves preserve the original invocation and spawning domain.
 Local inferred wrappers retain the same child obligations: unwrap and await the
-handle before a call that can hand off or enter a fault boundary. Their possible producer faults still apply
-at handoffs. There is no detach or implicit await at scope exit.
+handle before a synchronous call that can hand off or enter a fault boundary.
+Checked cold/direct awaits remain available beside wrapped children. Their possible
+producer faults still apply at handoffs. There is no detach or implicit await at scope exit.
 
 The first source profile accepts captures and normal results with **no references**,
 including owned structs, sums and resources. Borrowed and reference-bearing `defer`
 tasks keep their existing sequential semantics. A spawned body may itself use such
-cold/direct awaits and may own further spawned children. Before a parent enters
-a control that can hand off or enter a fault boundary, it must join its started
-children. Synchronous helpers proved to contain neither operation may run while
-children are live. Their calls, including constructors and concrete generic/trait
+cold/direct awaits and may own further spawned children. Before a parent enters a synchronous
+control that can hand off or enter a fault boundary, it must join its started
+children. Cold/direct awaits remain available beside children when the awaited
+producer permits fault settlement at handoffs. Synchronous helpers proved to
+contain neither handoffs nor boundaries may also run while children are live. Their calls, including constructors and concrete generic/trait
 calls, run uninterrupted under the same borrowing and fault rules. A helper may
 borrow parent storage and return a reference with its declared origin. See
 [structured helpers](../../playground/structured_helpers.tellur). The proof is
@@ -110,6 +112,49 @@ fault stops the owning boundary, applies resource fault dispositions to stopped
 children, and only then runs that boundary's contingency. Stopped sibling nested
 contingencies do not run. A child's own boundary can still handle its own fault.
 Faults remain separate from normal outcomes.
+
+## Parent awaits beside children
+
+A parent may await a cold task or invoke an async control directly while its owned
+children remain unjoined. The awaited work may borrow parent storage. Those loans
+last through the awaited completion, and the existing ownership rules still prevent
+conflicting access. Spawned siblings retain reference-free captures/results.
+
+<!-- tellur:check -->
+```tellur
+async control worker() exits done { yield; exit done; }
+async control edit(ref mutable string text) exits done {
+    yield;
+    deref text = "edited";
+    exit done;
+}
+async control startup() exits done {
+    mutable string text = "original";
+    auto child = spawn worker();
+    await edit(borrow mutable text);
+    auto cold = defer edit(borrow mutable text);
+    await cold;
+    await child;
+    exit done;
+}
+control main() exits done { forward run startup(); }
+```
+
+Each await is an explicit handoff. Sibling completions stay owned until their join.
+A sibling fault can arrive before the await dispatches or while its nested work is
+suspended. The executor restores the original owning continuation and diagnostic
+chain, retires awaited borrowers before supplying storage, and runs only the owning
+boundary's contingency. Stopped nested contingencies and normal await delivery do
+not run. Quotas do not add handoffs. See the runnable
+[parent await example](../../playground/parent_await.tellur).
+
+The awaited producer must permit enclosing stop settlement for its owners across
+handoffs, even if the currently known siblings do not fault. This is the same
+conservative producer proof used by spawn. Join the started children first when a
+sequential producer cannot satisfy it. Fault-capable siblings also require fault
+permission for the parent's owners and queued await captures. Synchronous helpers
+that hand off, parent fault-boundary crossing, borrowed spawn and escaping handles
+remain outside this profile.
 
 ## Calling and entering
 

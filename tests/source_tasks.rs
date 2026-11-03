@@ -192,8 +192,6 @@ fn started_handles_require_consumption_and_do_not_erase_the_admitted_profile() {
         "auto child=spawn work();await child;await child;exit done;",
         "auto child=spawn work();delta true {true=>yes,false=>no} [yes]:await child;exit done;[no]:exit done;",
         "auto child=spawn work();fault boundary {await child;} contingency [] {escalate;}exit done;",
-        "auto child=spawn work();await work();await child;exit done;",
-        "auto child=spawn work();auto cold=defer work();await cold;await child;exit done;",
     ] {
         let text = format!("{prefix} async control startup() exits done faults {{{body}}}");
         assert!(compile(&text, manifest()).is_err(), "{body}");
@@ -213,6 +211,122 @@ fn started_handles_require_consumption_and_do_not_erase_the_admitted_profile() {
         compile(no_permission, manifest()).unwrap_err().code,
         "E_FAULT_CONTRACT"
     );
+}
+
+#[test]
+fn parent_await_preserves_borrowed_storage_and_unjoined_completions() {
+    let p = compile(
+        include_str!("../playground/parent_await.tellur"),
+        manifest(),
+    )
+    .unwrap();
+    let expected = p.run(&scenario()).unwrap();
+    let messages: Vec<_> = expected
+        .events
+        .iter()
+        .filter_map(|e| match e {
+            Event::Emit { message } => Some(message.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        messages,
+        [
+            "worker started",
+            "editor started",
+            "worker done",
+            "edited",
+            "editor started"
+        ]
+    );
+    for p in [p.clone(), p.expanded("main").unwrap()] {
+        for quota in [1, 3, usize::MAX] {
+            let s = scenario();
+            let mut session = p.start_execution(&s, 1000);
+            for polls in 0..1000 {
+                assert!(matches!(session.advance(0), ExecutionProgress::Paused));
+                if let ExecutionProgress::Complete(r) = session.advance(quota) {
+                    let tellur::runtime::RunCompletion::Outcome(result) = r.unwrap() else {
+                        panic!()
+                    };
+                    assert_eq!(result, expected);
+                    break;
+                }
+                assert!(polls < 999);
+            }
+        }
+    }
+}
+
+#[test]
+fn sibling_fault_restores_queued_and_nested_parent_awaits() {
+    let source = include_str!("fixtures/source_parent_await_fault.tellur");
+    for delay in 0..3 {
+        for cold in [false, true] {
+            let mut source = source.replacen("yield;\n    yield;", &"yield;".repeat(delay), 1);
+            if cold {
+                source = source.replace(
+                    "await nested(borrow mutable text);",
+                    "auto cold=defer nested(borrow mutable text);await cold;",
+                );
+            }
+            let p = compile(&source, manifest()).unwrap();
+            for p in [p.clone(), p.expanded("main").unwrap()] {
+                let tellur::runtime::RunCompletion::Process(result) =
+                    p.run_completion(&scenario(), 1000).unwrap()
+                else {
+                    panic!()
+                };
+                assert_eq!(result.status, 23);
+                let messages: Vec<_> = result
+                    .events
+                    .iter()
+                    .filter_map(|e| match e {
+                        Event::Emit { message } => Some(message.as_str()),
+                        _ => None,
+                    })
+                    .collect();
+                assert_eq!(
+                    messages,
+                    if delay == 2 {
+                        vec!["borrower started", "owner contingency"]
+                    } else {
+                        vec!["owner contingency"]
+                    }
+                );
+                let report = result
+                    .events
+                    .iter()
+                    .find_map(|e| match e {
+                        Event::Fault { report } => Some(report),
+                        _ => None,
+                    })
+                    .unwrap();
+                assert_eq!(
+                    report
+                        .cause
+                        .as_ref()
+                        .unwrap()
+                        .activations
+                        .last()
+                        .unwrap()
+                        .control,
+                    "fail"
+                );
+                assert!(
+                    !report
+                        .activations
+                        .iter()
+                        .any(|a| ["nested", "leaf"].contains(&a.control.as_str())),
+                    "{report:?}"
+                );
+                assert!(
+                    report.activations.iter().any(|a| a.control == "startup"),
+                    "{report:?}"
+                );
+            }
+        }
+    }
 }
 #[test]
 fn pending_results_and_yield_keep_fault_disposition_obligations() {
@@ -274,7 +388,12 @@ control handoff() exits done {forward run work();}
         let error = compile(&text, manifest()).unwrap_err();
         assert_eq!(error.code, "E_ASYNC", "{error:?}");
     }
-    for handoff in ["yield;", "await other;"] {
+    for handoff in [
+        "yield;",
+        "await other;",
+        "await work();",
+        "auto cold=defer work();await cold;",
+    ] {
         let text = format!(
             r#"{prefix} async control startup() faults {{
             auto pending=spawn fail();auto wrapped=some {{pending}};auto other=spawn work();
@@ -550,5 +669,26 @@ fn stop_proof_reaches_awaited_producers_and_generic_helpers() {
         let error = compile(&source, stop_manifest()).unwrap_err();
         assert_eq!(error.code, "E_ASYNC", "{error}");
         assert!(error.message.contains("fault dispositions"), "{error}");
+    }
+}
+
+#[test]
+fn parent_await_checks_stopped_producer_obligations_and_keeps_sequential_repair() {
+    for awaited in [
+        "await producer();",
+        "auto cold=defer producer();await cold;",
+    ] {
+        let body = opened_body("yield;finish(h);");
+        let source = format!(
+            "{CLOSE_HANDLE} async control producer() exits done {{{body}}} async control startup() exits done {{auto child=spawn pause();{awaited}await child;exit done;}}"
+        );
+        let error = compile(&source, stop_manifest()).unwrap_err();
+        assert_eq!(error.code, "E_ASYNC", "{error}");
+        assert!(error.message.contains("fault dispositions"), "{error}");
+        let repaired = source.replace(
+            &format!("{awaited}await child;"),
+            &format!("await child;{awaited}"),
+        );
+        compile(&repaired, stop_manifest()).unwrap();
     }
 }

@@ -1,0 +1,31 @@
+async control worker() exits done {
+    emit("worker started");
+    yield;
+    emit("worker done");
+    exit done;
+}
+
+async control edit(ref mutable string text) exits done {
+    emit("editor started");
+    yield;
+    deref text = "edited";
+    exit done;
+}
+
+async control startup() exits done {
+    mutable string text = "original";
+    auto child = spawn worker();
+    await edit(borrow mutable text);
+    emit(borrow text);
+    auto cold = defer edit(borrow mutable text);
+    await cold;
+    await child;
+    exit done;
+}
+
+outcome program_result {
+    @exit 0 done
+}
+control main() exits program_result {
+    forward run startup();
+}

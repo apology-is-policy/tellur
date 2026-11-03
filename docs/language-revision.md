@@ -243,8 +243,12 @@ progression, borrowed spawn and application-driven library work remain ahead.
 E1e.3 closes spawned producer stop obligations: every owner held across a handoff
 must permit enclosing fault settlement, including transitive callees and retained
 nested boundary owners. Sequential use and escaping fault contracts stay distinct.
-The parent-await audit remains next; its owning-continuation routing gate is unchanged.
-Compiler **0.168.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
+E1e.4 now admits parent cold/direct awaits beside owned children. Awaited producer
+stop obligations, parent capture/result permissions and loans remain checked. Sibling
+faults restore original suspended owners and settle borrowers before contingency.
+Synchronous helpers that hand off and parent boundary crossing remain gated; audit
+the next bounded parent progression slice before widening them.
+Compiler **0.169.0** delivers milestone 1, the owned-value, borrowed-call, local, grouped-result, whole-record input, contained-reborrow and opaque-split
 lifetime checkpoints of milestone 2, the array/vector/map core of milestone 3,
 and implicit entry, inline/stored adapters, owned capture, named outcome contracts
 and checked forwarding in milestone 4. A first [semantic foundation](semantic-foundation.md)
