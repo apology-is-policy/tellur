@@ -6142,7 +6142,7 @@ fn source_task_hovers_and_diagnostics_describe_explicit_handoffs() {
     assert!(
         spawn.contains("queues an invocation-owned child")
             && spawn.contains("reference-free")
-            && spawn.contains("Synchronous helpers without inline boundaries")
+            && spawn.contains("Synchronous helpers may enter named or lexical boundaries")
             && spawn.contains(
                 "Direct borrows of reference-free storage stay live until the consuming join"
             ),
@@ -6187,10 +6187,17 @@ fn pending_children_recheck_unsaved_helper_inline_boundaries() {
     );
     assert_eq!(f.diagnostics(), json!([]));
     assert_eq!(hover_at(&f, source, "auto child"), initial);
-    let broken = uninterrupted.replace("fault boundary {}", "fault boundary {run work();}");
+    let handing = uninterrupted.replace("fault boundary {}", "fault boundary {run work();}");
     f.server.notification(
         "textDocument/didChange",
-        &json!({"textDocument":{"uri":uri,"version":2},"contentChanges":[{"text":broken}]}),
+        &json!({"textDocument":{"uri":uri,"version":2},"contentChanges":[{"text":handing}]}),
+    );
+    assert_eq!(f.diagnostics(), json!([]));
+    assert_eq!(hover_at(&f, source, "auto child"), initial);
+    let broken = handing.replace("pub control helper()", "pub async control helper()");
+    f.server.notification(
+        "textDocument/didChange",
+        &json!({"textDocument":{"uri":uri,"version":3},"contentChanges":[{"text":broken}]}),
     );
     let errors = f.diagnostics();
     assert_eq!(errors[0]["code"], "E_ASYNC", "{errors}");
@@ -6818,4 +6825,46 @@ fn outcome_chain_spawn_result_origins_follow_unsaved_imports() {
     );
     assert_eq!(f.diagnostics(), json!([]));
     assert_eq!(hover_at(&f, source, "auto result"), initial);
+}
+
+#[test]
+fn imported_boundary_handoffs_keep_public_origins_and_unsaved_loan_repairs() {
+    let mut f = Fixture::new();
+    let path = f.root.join("helpers.tellur");
+    let uri = url::Url::from_file_path(&path).unwrap().to_string();
+    let helper = "async control pause() exits done {yield;exit done;} pub trait reader {control read(ref self input) exits ready {ref self value from input} faults;} implement reader for string {control read(ref self input) exits ready {ref self value from input} faults {fault boundary {run pause();} contingency [] {escalate;}exit ready {input};}} pub control helper<t:reader>(ref t input) exits ready {ref t value from input} faults {forward reader<t>.read(input);}";
+    fs::write(&path, helper).unwrap();
+    let source = "import \"helpers.tellur\" as helpers; async control worker() exits done {yield;exit done;} async control startup() exits done {string text=\"parent\";auto child=spawn worker();delta helpers.helper<string>(borrow text) {ready {auto value}=>ready} [ready]:emit(value);await child;exit done;} control main() exits done {forward run startup();}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let hover = hover_at(&f, source, "helpers.helper<string>").to_string();
+    assert!(
+        hover.contains("from input") && hover.contains("string"),
+        "{hover}"
+    );
+    let broken = source.replace("[ready]:emit(value);", "[ready]:drop(text);emit(value);");
+    f.change(&broken, 2);
+    assert_eq!(f.diagnostics()[0]["code"], "E_LOAN");
+    f.change(source, 3);
+    assert_eq!(f.diagnostics(), json!([]));
+    assert_eq!(
+        hover_at(&f, source, "helpers.helper<string>").to_string(),
+        hover
+    );
+    let invalid = helper.replace("ref t value from input", "ref t value from missing");
+    f.server.notification(
+        "textDocument/didOpen",
+        &json!({"textDocument":{"uri":uri,"version":1,"text":invalid}}),
+    );
+    assert_eq!(f.diagnostics()[0]["code"], "E_LIFETIME");
+    assert!(hover_at(&f, source, "auto child").is_null());
+    f.server.notification(
+        "textDocument/didClose",
+        &json!({"textDocument":{"uri":uri}}),
+    );
+    assert_eq!(f.diagnostics(), json!([]));
+    assert_eq!(
+        hover_at(&f, source, "helpers.helper<string>").to_string(),
+        hover
+    );
 }

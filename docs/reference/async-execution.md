@@ -3,7 +3,7 @@
 [Language reference](../language-reference.md) · [Design and next steps](../async-execution.md) ·
 [Execution failures](execution-failures.md)
 
-Compiler 0.188 supports `async control`, synchronous entry with `run`, direct
+Compiler 0.189 supports `async control`, synchronous entry with `run`, direct
 `await`, cold tasks with owned and borrowed captures, and a bounded cooperative
 scheduler for `spawn` tasks with owned values, direct borrows and nested owned record/option/variant/named-outcome captures/results, plus borrowed record/option/variant/named-outcome captures and whole borrowed record/option/variant/named-outcome results, plus reference chains through records. Source handoffs occur at `await` and `yield`.
 Async host I/O, cancellation and LLVM coroutine lowering remain later work.
@@ -47,7 +47,7 @@ handle moves and parent work between handoffs. Every normal path must await its
 children. Handles cannot be copied, cloned, dropped, returned, or carried across a
 fault boundary. Local moves preserve the original invocation and spawning domain.
 Local inferred wrappers retain the same child obligations: keep the handle in its original invocation; unwrap and await it before a direct
-inline fault boundary or a boundary-bearing helper that may hand off.
+inline fault boundary. Helper calls keep that handle in its original invocation.
 Checked cold/direct awaits remain available beside wrapped children. Their possible
 producer faults still apply at handoffs. There is no detach or implicit await at scope exit.
 
@@ -63,24 +63,26 @@ reference-bearing collections remain gated. Broader reference-bearing `defer` ta
 keep their existing semantics. A spawned body may itself use cold/direct awaits
 and may own further spawned children.
 
-Synchronous helpers may run beside live children when their checked inline chain
-is boundary-free or cannot reach a task handoff. Uninterrupted helpers may enter
-local named or lexical fault boundaries, handle local faults and recover their
-own supervised loops. Children remain owned by the original async invocation;
-their handles and captured loans do not enter those helper boundaries. Local
-recovery neither joins nor stops those children. An escaping helper fault still
-settles the owning boundary before its contingency.
+Synchronous helpers may enter named or lexical fault boundaries and reach explicit
+`await`/`yield` handoffs beside live children. Every helper owner retained across a
+handoff must permit fault settlement, including owners retained for a local
+contingency. The check follows transitive calls, constructors and concrete generic
+or trait bodies; an unknown abstract body cannot establish permission.
 
-Direct inline boundaries and boundary-bearing helpers that may reach `await` or
-`yield` require joining children first. The proof follows every structural path,
-transitive call, constructor, concrete generic/trait body and named contingency.
-An abstract contract alone cannot establish permission. Helpers retain ordinary
-borrowing, result-origin and fault checks. Cold/direct awaits remain available
-when their producer permits stop settlement. Only reached `await`/`yield` sites
-switch tasks; boundary entry, recovery, `run` and host quotas do not. See
-[boundary helpers](../../playground/boundary_helpers.tellur) for queued, suspended
-and completed children beside local recovery.
-These are current admission limits, not changes to the accepted ownership model.
+Children and their handles remain in the original async invocation and spawning
+fault domain. A helper can handle its own fault and recover its supervised loop
+without joining or stopping those outside children. If an outside child faults,
+settlement reaches its original owning boundary, skips intervening helper
+contingencies and retires descendant borrowers before helper storage. A helper's
+own async work may own children, with the same required joins and fault rules.
+
+Direct inline boundary statements still require joining children first. Helpers
+retain ordinary isolation, borrowing, result-origin and fault checks; the new
+admission does not let handles enter or escape a different invocation or boundary.
+Only reached `await`/`yield` sites switch tasks. Boundary entry, recovery, `run` and
+host quotas do not. See [boundary handoffs](../../playground/boundary_handoff_tasks.tellur)
+for named recovery, lexical handoffs and borrowed parent/child results, and
+[uninterrupted helpers](../../playground/boundary_helpers.tellur) for work without handoffs.
 
 Spawn also requires every resource owner retained across a producer's handoff to
 permit fault settlement. This includes transitive callees, locally acquired owners,
@@ -859,9 +861,10 @@ control main() exits done { forward run startup(); }
 ```
 
 The proof follows ordinary calls, `run`, loops, constructors and concrete generic or
-trait bodies. An unknown abstract body cannot establish permission. Boundary-bearing helpers that can reach a handoff remain gated even when a structural
-branch is unreachable. Uninterrupted boundary helpers have the admission described above;
-direct parent boundary statements still require joining children first.
+trait bodies. An unknown abstract body cannot establish permission. Helpers containing
+named or lexical boundaries use the same retained-owner proof, including structurally
+reachable handoffs in branches that are not selected at runtime. Direct parent
+boundary statements still require joining children first.
 An awaited control has a separate retained context and may use its already-supported
 nested boundaries. See [cooperative helpers](../../playground/cooperative_helpers.tellur)
 for parent borrowing and a returned reference.
@@ -878,16 +881,17 @@ remain in its diagnostic chain; separately awaited work is excluded from that ch
 Affected retained borrowers retire before any inline helper frame releases storage.
 Stopped work cannot resume normally or run a nested contingency.
 
-An internal gated model now also preserves the original child-owning domain when
-that parent is inside a different inline boundary. The child fault skips that
-intervening boundary's contingency and retained-parameter handover. After the owning
-contingency begins, the routing target is cleared so a later fault uses its own
-boundary. Real-resource and nested-source-parent models also verify retirement and
-original-cause forwarding before settlement. This is implementation evidence only:
-source calls combining a boundary and a handoff beside live children remain rejected
-pending contingency-phase and helper-owned-child evidence. See
-[the routing audit](../async-execution.md#owning-domain-routing-model-e1e23a) and
-[resource/parent models](../async-execution.md#inline-boundary-resource-and-nested-parent-models-e1e23b).
+Since 0.189, checked source helper calls may combine local boundaries and handoffs
+beside live children. Original child-owning domains survive intervening named or
+lexical boundaries; their contingencies and retained-parameter handovers are skipped
+when the outside child faults. Entering the owning contingency clears the routing
+target, so later recovery uses the correct boundary. Local helper faults remain
+local, and their contingencies resume immediately without an implicit sibling turn.
+Contingencies cannot hand off directly or through helpers. The
+[routing audit](../async-execution.md#owning-domain-routing-model-e1e23a),
+[resource/parent models](../async-execution.md#inline-boundary-resource-and-nested-parent-models-e1e23b)
+and [source integration](../async-execution.md#checked-helper-boundary-handoffs-e1e23d)
+record the evidence.
 
 ## Calling and entering
 

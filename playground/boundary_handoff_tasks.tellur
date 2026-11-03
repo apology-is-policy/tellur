@@ -1,0 +1,53 @@
+async control step(string name) exits done {
+    emit(borrow name);
+    yield;
+    exit done;
+}
+
+boundary request() {
+    run step("named handoff");
+    fault "local request failed";
+}
+contingency(string reason) {
+    emit("named recovery");
+    terminate;
+}
+
+control helper<t>(ref t input) exits ready { ref t value from input } {
+    supervise request();
+    fault boundary {
+        run step("lexical handoff");
+    } contingency [] {
+        escalate;
+    }
+    exit ready { input };
+}
+
+async control worker(ref string text) exits ready { ref string value from text } {
+    emit("child started");
+    yield;
+    emit("child finished");
+    exit ready { text };
+}
+
+async control startup() exits done {
+    string text = "child result";
+    string parent = "parent result";
+    auto child = spawn worker(borrow text);
+    delta helper<string>(borrow parent) {
+        ready { auto value } => checked
+    }
+    [checked]: emit(value);
+        delta await child {
+            ready { auto result } => joined
+        }
+    [joined]: emit(result);
+        exit done;
+}
+
+outcome program_result {
+    @exit 0 done
+}
+control main() exits program_result {
+    forward run startup();
+}

@@ -458,7 +458,7 @@ fn synchronous_helpers_preserve_parent_borrows_and_explicit_handoffs() {
     }
 }
 #[test]
-fn transitive_inline_boundaries_still_require_joining_children() {
+fn transitive_inline_boundaries_allow_checked_helper_handoffs() {
     let prefix = "async control worker() exits done {fault boundary {} contingency [] {escalate;} yield;exit done;}";
     for (helper, call) in [
         (
@@ -479,14 +479,13 @@ fn transitive_inline_boundaries_still_require_joining_children() {
         ),
         (
             "control helper() exits ready {string text} {run worker();exit ready {\"value\"};}",
-            "auto saved=capture helper();drop(saved);",
+            "auto saved=capture helper();delta saved {ready {string text}=>ready} [ready]:drop(text);",
         ),
     ] {
         let source = format!(
             "{prefix} {helper} async control startup() exits done {{auto child=spawn worker();{call}await child;exit done;}}"
         );
-        let error = compile(&source, manifest()).unwrap_err();
-        assert_eq!(error.code, "E_ASYNC", "{source}\n{error}");
+        compile(&source, manifest()).unwrap_or_else(|e| panic!("{source}\n{e}"));
     }
 }
 #[test]

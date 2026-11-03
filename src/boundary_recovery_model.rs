@@ -1,5 +1,5 @@
-//! Gated inline helper schedules with local recovery and helper-owned children.
-use crate::{CheckedProgram, ir::*, manifest::Manifest};
+//! Checked source inline helper schedules with local recovery and helper-owned children.
+use crate::{CheckedProgram, manifest::Manifest};
 
 pub(crate) fn program(named: bool, spawned: bool, stop: bool) -> CheckedProgram {
     let child = if spawned {
@@ -42,8 +42,8 @@ pub(crate) fn program(named: bool, spawned: bool, stop: bool) -> CheckedProgram 
         }}
         {helper}
         async control startup() exits done faults {{
-            helper();
             auto child=spawn outside();
+            helper();
             await child;exit done;
         }}
         control main() exits done {{
@@ -54,24 +54,7 @@ pub(crate) fn program(named: bool, spawned: bool, stop: bool) -> CheckedProgram 
     "#
     );
     let manifest = Manifest::from_json(include_str!("../playground/manifest.json")).unwrap();
-    let gated = source.replace(
-        "helper();\n            auto child=spawn outside();",
-        "auto child=spawn outside();\n            helper();",
-    );
-    assert_ne!(source, gated);
-    let error = crate::compile(&gated, manifest.clone()).unwrap_err();
-    assert_eq!(error.code, "E_ASYNC", "{error}");
-    let mut p = crate::compile(&source, manifest).unwrap();
-    let code = &mut p.regions.get_mut("startup").unwrap().code;
-    assert!(
-        matches!(&code[0].action,Action::Decide {operation:Operation::Region(name),args,arms,..} if name=="helper" && args.is_empty() && arms.len()==1 && arms[0].slots.is_empty())
-    );
-    assert!(
-        matches!(&code[1].action,Action::Decide {operation:Operation::Spawn(name),args,..} if name=="outside" && args.is_empty())
-    );
-    assert_eq!(code[0].guard, Guard::True);
-    assert_eq!(code[1].guard, Guard::True);
-    code.swap(0, 1);
+    let p = crate::compile(&source, manifest).unwrap_or_else(|e| panic!("{e}\n{source}"));
     p.verify().unwrap();
     p
 }

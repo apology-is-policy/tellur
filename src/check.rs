@@ -54,8 +54,6 @@ struct Access {
 }
 #[derive(Clone)]
 struct Signature {
-    /// No boundary is entered along this invocation's inline call chain.
-    inline_boundary_free: bool,
     /// Source handoffs reachable through this body and its callees.
     handoffs: bool,
     /// Every suspended owner permits emergency retirement by an enclosing owner.
@@ -1866,7 +1864,6 @@ impl Checker<'_> {
                 )
             })?;
             return Ok(Some(Signature {
-                inline_boundary_free: true,
                 handoffs: false,
                 stoppable: true,
                 entry_only: false,
@@ -4135,13 +4132,6 @@ impl Checker<'_> {
                 .signature(name, args, span)
                 .map_err(|e| operand.locate(e, span))?
         {
-            if sig.region
-                && operand.call_mode != syntax::CallMode::Await
-                && !sig.inline_boundary_free
-                && sig.handoffs
-            {
-                self.require_no_started(domain, span)?;
-            }
             if sig.region && operand.call_mode == syntax::CallMode::Await {
                 self.handoff_beside_started(sig.stoppable, "await", domain, span)?;
                 self.record_stop_obligations(domain);
@@ -5382,7 +5372,6 @@ pub(crate) fn compile_concrete_unit(
         signatures.insert(
             p.name.clone(),
             Signature {
-                inline_boundary_free: true,
                 handoffs: false,
                 stoppable: true,
                 entry_only: false,
@@ -5464,7 +5453,6 @@ pub(crate) fn compile_concrete_unit(
         Ok((
             region.name.clone(),
             Signature {
-                inline_boundary_free: false,
                 handoffs: true,
                 stoppable: false,
                 entry_only: syntax::entry_only(&region.body),
@@ -5802,11 +5790,6 @@ pub(crate) fn compile_concrete_unit(
                 signatures.get_mut(&source.name).unwrap().outcomes = result.exits.clone();
                 signatures.get_mut(&source.name).unwrap().faults = result.faults;
                 signatures.get_mut(&source.name).unwrap().contingent = result.contingent;
-                let inline_boundary_free = tasks::inline_boundary_free(&result, &signatures);
-                signatures
-                    .get_mut(&source.name)
-                    .unwrap()
-                    .inline_boundary_free = inline_boundary_free;
                 // Named work and its contingency both belong to the inline call.
                 // Unknown signatures cannot prove uninterrupted execution.
                 let handoffs = tasks::handoffs(&result.code, &signatures)

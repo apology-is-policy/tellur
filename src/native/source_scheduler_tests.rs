@@ -1693,7 +1693,7 @@ control main(string path) exits done {forward run startup(path);}
 }
 
 #[test]
-fn compiled_gated_boundary_handoff_model() {
+fn compiled_checked_boundary_handoff_model() {
     for named in [false, true] {
         for awaited in [false, true] {
             let p = crate::boundary_handoff_model::program(named, awaited)
@@ -1705,7 +1705,7 @@ fn compiled_gated_boundary_handoff_model() {
 }
 
 #[test]
-fn compiled_gated_recovered_boundary_handoff_model() {
+fn compiled_checked_recovered_boundary_handoff_model() {
     for named in [false, true] {
         for awaited in [false, true] {
             let p = crate::boundary_handoff_model::recovery_program(named, awaited)
@@ -1717,7 +1717,7 @@ fn compiled_gated_recovered_boundary_handoff_model() {
 }
 
 #[test]
-fn compiled_gated_nested_boundary_handoff_model() {
+fn compiled_checked_nested_boundary_handoff_model() {
     for named in [false, true] {
         for awaited in [false, true] {
             let p = crate::boundary_handoff_model::nested_program(named, awaited)
@@ -1729,7 +1729,7 @@ fn compiled_gated_nested_boundary_handoff_model() {
 }
 
 #[test]
-fn compiled_gated_helper_local_recovery_and_children() {
+fn compiled_checked_helper_local_recovery_and_children() {
     for named in [false, true] {
         for spawned in [false, true] {
             for stop in [false, true] {
@@ -1747,5 +1747,13 @@ fn compiled_local_recovery_preserves_source_turn() {
     compare(
         "local_recovery_source",
         include_str!("../../playground/local_recovery_tasks.tellur"),
+    );
+}
+
+#[test]
+fn compiled_boundary_handoff_public_example() {
+    compare(
+        "boundary_handoff_public",
+        include_str!("../../playground/boundary_handoff_tasks.tellur"),
     );
 }

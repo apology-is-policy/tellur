@@ -4794,3 +4794,21 @@ rejection in both contingency forms. The native host regression suite guards the
 unchanged host polling protocol, and existing source task/fault/boundary and real
 resource cases cover settlement composition. This release changes native owner
 resumption and queue retirement, with no new source admission or fault semantics.
+
+## Checked helper boundary handoffs (0.189)
+
+The former E1e.23 gated IR models now compile spawn-before-helper source directly.
+Four `compiled_checked_*` tests compare twenty named/lexical, direct/awaited,
+recovering/nested-owner and helper-owned-child schedules in original/expanded O0/O2
+execution at every fuel cutoff and quota partition. The resource suite adds six
+source shapes with real Rust holders and inline/awaited/spawned observers, checking
+normal closes, fault dispositions, exact destruction and borrower-before-holder
+retirement. Private reference censuses require all retained stores to retire.
+
+`source_boundary_helpers`, `source_tasks` and LSP tests cover public/shared/exclusive
+result origins, generic/trait/transitive/constructor helpers, owned handle wrappers,
+imported unsaved edits and local recovery. Direct inline boundaries, nonstoppable
+retained owners, contingency async calls and unhandled captured outcomes remain
+rejected. The runnable `boundary_handoff_tasks.tellur` example has a separate native
+fuel/quota comparison and fresh editor hover, unsaved repair and execution checks.
+Runtime code remains unchanged from 0.188; this release changes compiler admission.

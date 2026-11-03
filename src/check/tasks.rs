@@ -23,36 +23,6 @@ pub(super) fn handoffs(body: &[Instruction], signatures: &BTreeMap<String, Signa
     })
 }
 
-/// Callees are checked before callers. Classify the emitted operations rather
-/// than authored syntax so imports, specialization and constructor staging all
-/// use the same proof. Unchecked/abstract signatures never grant permission.
-pub(super) fn inline_boundary_free(
-    region: &Region,
-    signatures: &BTreeMap<String, Signature>,
-) -> bool {
-    fn code(body: &[Instruction], signatures: &BTreeMap<String, Signature>) -> bool {
-        body.iter().all(|instruction| match &instruction.action {
-            Action::Decide {
-                operation: Operation::Region(name) | Operation::Run(name),
-                ..
-            } => signatures.get(name).is_some_and(|s| s.inline_boundary_free),
-            // Awaited/spawned invocations have their own retained context. Their
-            // boundaries do not cross the current invocation's child handles.
-            Action::Decide { .. } => true,
-            Action::Loop { body, .. } => code(body, signatures),
-            Action::Boundary { .. }
-            | Action::Supervise { .. }
-            | Action::Recover { .. }
-            | Action::Terminate
-            | Action::TerminateProcess(_)
-            | Action::Escalate
-            | Action::Complete { .. } => false,
-            _ => true,
-        })
-    }
-    !region.contingency && region.boundary.is_none() && code(&region.code, signatures)
-}
-
 impl Checker<'_> {
     /// An enclosing owner's fault suppresses this invocation's contingencies.
     /// Count every live owner, including protected/retained boundary storage;
@@ -110,7 +80,7 @@ impl Checker<'_> {
             let live = self.bdd.and(domain, owned);
             if live != FALSE {
                 return Err(self.fail_domain("E_ASYNC",span,
-                    "await started children before a direct inline fault boundary or a boundary-bearing helper that may hand off; checked awaits and uninterrupted boundary helpers remain available",live));
+                    "await started children before a direct inline fault boundary; checked awaits and boundary helpers retain their original child ownership",live));
             }
         }
         Ok(())

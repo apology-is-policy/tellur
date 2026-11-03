@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.188.0** implements the v0.1 checked core and the current language
+Compiler release **0.189.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -16,6 +16,12 @@ a reference interpreter, graph expansion, native compiler, language server, and
 VS Code build/run commands. The [revision plan](docs/language-revision.md) separates
 delivered features from the remaining reference, slice, outcome-expression and async work. The language is still
 fluid; this is an experimental implementation, not a production compiler.
+
+Release 0.189 adds [boundary helpers with explicit handoffs](playground/boundary_handoff_tasks.tellur).
+Named and lexical helpers may yield or await beside live children when retained
+owners permit fault settlement. Children keep their original invocation and fault
+boundary; local recovery, returned borrows and required joins retain their rules.
+Direct parent boundaries still require joining children first.
 
 Release 0.188 keeps local fault recovery in the owning execution chain: native
 execution no longer selects an unrelated sibling between fault settlement and its

@@ -1591,3 +1591,9 @@ another `await` or `yield`. The local-recovery editor fixture checks async hover
 unsaved missing-await rejection and repair, then runs the example through the
 native build command and verifies its complete emission order. Source admission
 and contingency restrictions remain unchanged.
+
+Release 0.189 admits boundary helpers that reach explicit handoffs while children
+remain with their original invocation and fault boundary. Hover explains the
+retained-owner settlement requirement and the direct parent-boundary limit. Imported
+generic/trait result origins survive unsaved diagnostic repair. The fresh boundary
+handoff fixture verifies source/contract repair and exact native execution order.

@@ -377,9 +377,11 @@ exports.run = async function (root) {
   assert.deepEqual(JSON.parse(outcomeChainRun.stdout).events.filter(e => e.kind === 'emit').map(e => e.message), ['left', 'right']);
   const boundaries = await fs.readFile(path.join(__dirname, '../../../playground/boundary_helpers.tellur'), 'utf8');
   await replace(boundaries);
-  await waitFor(async () => diagnostics().length === 0 && (await hover('spawn worker')).includes('Uninterrupted synchronous helpers may enter local'), 'uninterrupted boundary helper hover');
+  await waitFor(async () => diagnostics().length === 0 && (await hover('spawn worker')).includes('Synchronous helpers may enter named or lexical boundaries'), 'uninterrupted boundary helper hover');
   await replace('async control pause() exits done {yield;exit done;}\n' + boundaries.replace('supervise request(true);', 'supervise request(true);run pause();'));
-  await waitFor(() => diagnostics().some(d => code(d) === 'E_ASYNC'), 'transitive helper handoff invalidates caller');
+  await waitFor(() => diagnostics().length === 0, 'transitive boundary helper handoff accepted');
+  await replace(boundaries.replace('auto moved = move child;', 'fault boundary {} contingency [] {escalate;} auto moved = move child;'));
+  await waitFor(() => diagnostics().some(d => code(d) === 'E_ASYNC'), 'direct boundary retains invocation gate');
   await replace(boundaries);
   await waitFor(() => diagnostics().length === 0, 'boundary helper repair');
   await document.save();

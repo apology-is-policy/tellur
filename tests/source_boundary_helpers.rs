@@ -131,7 +131,7 @@ fn helper_boundaries_keep_existing_child_capture_and_result_loans() {
 }
 
 #[test]
-fn direct_boundaries_and_handoff_helpers_remain_gated() {
+fn direct_boundaries_remain_gated_while_helper_handoffs_are_checked() {
     let prefix = "async control worker() exits done {yield;exit done;}";
     for (decl, call) in [
         ("", "fault boundary {} contingency [] {escalate;}"),
@@ -159,8 +159,12 @@ fn direct_boundaries_and_handoff_helpers_remain_gated() {
         let s = format!(
             "{prefix}{decl} async control startup() exits done {{auto child=spawn worker();{call}await child;exit done;}}"
         );
-        let e = compile(&s, manifest()).unwrap_err();
-        assert_eq!(e.code, "E_ASYNC", "{s}\n{e}");
+        if call.starts_with("fault boundary") || call.starts_with("supervise") {
+            let e = compile(&s, manifest()).unwrap_err();
+            assert_eq!(e.code, "E_ASYNC", "{s}\n{e}");
+        } else {
+            compile(&s, manifest()).unwrap_or_else(|e| panic!("{s}\n{e}"));
+        }
     }
 }
 
@@ -285,4 +289,191 @@ fn awaited_local_recovery_finishes_contingency_before_an_unrelated_sibling() {
         ],
         None,
     );
+}
+
+const HANDOFF: &str = include_str!("../playground/boundary_handoff_tasks.tellur");
+#[test]
+fn boundary_handoffs_preserve_local_recovery_child_ownership_and_result_origins() {
+    observed(
+        HANDOFF,
+        &[
+            "named handoff",
+            "child started",
+            "named recovery",
+            "lexical handoff",
+            "child finished",
+            "parent result",
+            "child result",
+        ],
+        None,
+    );
+    for (before, after) in [
+        (
+            "delta helper<string>(borrow parent)",
+            "drop(text);delta helper<string>(borrow parent)",
+        ),
+        (
+            "[checked]: emit(value);",
+            "[checked]: drop(parent);emit(value);",
+        ),
+        (
+            "[checked]: emit(value);",
+            "[checked]: drop(text);emit(value);",
+        ),
+        (
+            "[joined]: emit(result);",
+            "[joined]: drop(text);emit(result);",
+        ),
+    ] {
+        let source = HANDOFF.replace(before, after);
+        assert_ne!(source, HANDOFF);
+        let error = compile(&source, manifest()).unwrap_err();
+        assert_eq!(error.code, "E_LOAN", "{source}\n{error}");
+    }
+}
+
+#[test]
+fn boundary_helpers_with_handoffs_preserve_exclusive_parent_results() {
+    let source = HANDOFF
+        .replace("ref t input", "ref mutable t input")
+        .replace("ref t value from input", "ref mutable t value from input")
+        .replace("string parent =", "mutable string parent =")
+        .replace("borrow parent", "borrow mutable parent")
+        .replace(
+            "[checked]: emit(value);",
+            "[checked]: deref value=\"edited parent\";emit(value);",
+        );
+    observed(
+        &source,
+        &[
+            "named handoff",
+            "child started",
+            "named recovery",
+            "lexical handoff",
+            "child finished",
+            "edited parent",
+            "child result",
+        ],
+        None,
+    );
+    let error = compile(
+        &source.replace("deref value=", "emit(borrow parent);deref value="),
+        manifest(),
+    )
+    .unwrap_err();
+    assert_eq!(error.code, "E_LOAN", "{error}");
+}
+
+#[test]
+fn boundary_helpers_with_handoffs_do_not_discard_captured_outcomes() {
+    let source = "async control pause() exits done {yield;exit done;} control helper() exits ready {string text} {fault boundary {run pause();} contingency [] {escalate;}exit ready {\"value\"};} async control startup() exits done {auto child=spawn pause();auto result=capture helper();drop(result);await child;exit done;}";
+    let error = compile(source, manifest()).unwrap_err();
+    assert_eq!(error.code, "E_OUTCOME", "{error}");
+}
+
+#[test]
+fn boundary_helpers_with_handoffs_require_fault_dispositions_for_retained_owners() {
+    let mut m = manifest();
+    m.primitives
+        .iter_mut()
+        .find(|p| p.name == "close")
+        .unwrap()
+        .contingent = true;
+    let close =
+        "delta close(h) {closed=>closed,failed {close_error e}=>failed} [closed|failed]:terminate;";
+    for named in [false, true] {
+        let helper = if named {
+            format!(
+                "boundary request(handle h) retains h {{run pause();{close}}} contingency(string reason) {{{close}}} control helper(handle h) exits done {{supervise request(h);exit done;}}"
+            )
+        } else {
+            format!(
+                "control helper(handle h) exits done {{fault boundary {{run pause();{}}} contingency [h] {{{}}} exit done;}}",
+                close.replace("terminate;", "emit(\"closed\");"),
+                close.replace("terminate;", "escalate;")
+            )
+        };
+        let caller = "async control startup(handle h) exits done {auto child=spawn pause();helper(h);await child;exit done;}";
+        let prefix = "async control pause() exits done {yield;exit done;}";
+        let source = format!("{prefix}{helper}{caller}");
+        let error = compile(&source, m.clone()).unwrap_err();
+        assert_eq!(error.code, "E_ASYNC", "{named}: {error}\n{source}");
+        assert!(error.message.contains("fault dispositions"), "{error}");
+        compile(
+            &source.replace("helper(h);await child;", "await child;helper(h);"),
+            m.clone(),
+        )
+        .unwrap();
+    }
+}
+
+#[test]
+fn trait_and_generic_boundary_helpers_preserve_returned_loans() {
+    let start = HANDOFF.find("control helper<t>").unwrap();
+    let end = HANDOFF[start..].find("async control worker").unwrap() + start;
+    let replacement = r#"
+        trait reader {control read(ref self input) exits ready {ref self value from input} faults;}
+        implement reader for string {
+            control read(ref self input) exits ready {ref self value from input} faults {
+                supervise request();
+                fault boundary {run step("lexical handoff");} contingency [] {escalate;}
+                exit ready {input};
+            }
+        }
+        control helper<t:reader>(ref t input) exits ready {ref t value from input} {
+            forward reader<t>.read(input);
+        }
+    "#;
+    let source = format!("{}{}{}", &HANDOFF[..start], replacement, &HANDOFF[end..]);
+    observed(
+        &source,
+        &[
+            "named handoff",
+            "child started",
+            "named recovery",
+            "lexical handoff",
+            "child finished",
+            "parent result",
+            "child result",
+        ],
+        None,
+    );
+    let error = compile(
+        &source.replace(
+            "[checked]: emit(value);",
+            "[checked]: drop(parent);emit(value);",
+        ),
+        manifest(),
+    )
+    .unwrap_err();
+    assert_eq!(error.code, "E_LOAN", "{error}");
+}
+
+#[test]
+fn owned_child_wrappers_survive_helper_boundary_handoffs_but_not_direct_boundaries() {
+    let source=HANDOFF.replace("worker(ref string text) exits ready { ref string value from text }", "worker(string text) exits ready { string value }")
+        .replace("spawn worker(borrow text);", "spawn worker(text);auto wrapped=some {move child};")
+        .replace("delta await child", "delta wrapped {some {auto moved}=>present,none=>exit done} [present]:delta await moved");
+    observed(
+        &source,
+        &[
+            "named handoff",
+            "child started",
+            "named recovery",
+            "lexical handoff",
+            "child finished",
+            "parent result",
+            "child result",
+        ],
+        None,
+    );
+    let error = compile(
+        &source.replace(
+            "delta helper<string>",
+            "fault boundary {} contingency [] {escalate;}delta helper<string>",
+        ),
+        manifest(),
+    )
+    .unwrap_err();
+    assert_eq!(error.code, "E_ASYNC", "{error}");
 }

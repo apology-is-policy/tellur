@@ -1,13 +1,13 @@
-//! Resource audit for deliberately gated inline boundary handoff schedules.
+//! Resource audit for checked source inline boundary handoff schedules.
 use super::*;
 
 #[test]
-fn gated_boundary_handoffs_release_borrowers_before_inline_resource_owners() {
+fn checked_boundary_handoffs_release_borrowers_before_inline_resource_owners() {
     native_models(false);
 }
 
 #[test]
-fn gated_helper_spawned_borrowers_release_before_inline_resource_owners() {
+fn checked_helper_spawned_borrowers_release_before_inline_resource_owners() {
     native_models(true);
 }
 
@@ -141,12 +141,12 @@ fn native_models(spawned: bool) {
 }
 
 #[test]
-fn gated_boundary_resource_models_retire_reference_storage_at_every_fuel_cut() {
+fn checked_boundary_resource_models_retire_reference_storage_at_every_fuel_cut() {
     reference_models(false);
 }
 
 #[test]
-fn gated_helper_spawned_resource_models_retire_reference_storage_at_every_fuel_cut() {
+fn checked_helper_spawned_resource_models_retire_reference_storage_at_every_fuel_cut() {
     reference_models(true);
 }
 

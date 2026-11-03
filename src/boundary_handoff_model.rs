@@ -1,7 +1,5 @@
-//! Test-only models for source combinations that remain gated. Each relocates
-//! a checked helper call across an independent spawn under its stated fixture
-//! constraints. This is not source admission or a user-facing transformation.
-use crate::{CheckedProgram, ir::*, manifest::Manifest};
+//! Checked source models for inline helper boundary handoffs and owning fault routing.
+use crate::{CheckedProgram, manifest::Manifest};
 
 pub(crate) fn program(named: bool, awaited: bool) -> CheckedProgram {
     build(named, awaited, false, false)
@@ -67,8 +65,8 @@ fn build(named: bool, awaited: bool, recovery: bool, nested: bool) -> CheckedPro
         async control work() exits done {{emit("helper active");{wait}exit done;}}
         {helper}
         async control startup() exits done faults {{
-            helper();
             auto child=spawn fail();
+            helper();
             await child;
         }}
         {main}
@@ -83,31 +81,7 @@ fn build(named: bool, awaited: bool, recovery: bool, nested: bool) -> CheckedPro
         source
     };
     let manifest = Manifest::from_json(include_str!("../playground/manifest.json")).unwrap();
-    let gated = source.replace(
-        "helper();\n            auto child=spawn fail();",
-        "auto child=spawn fail();\n            helper();",
-    );
-    assert_ne!(source, gated);
-    let error = crate::compile(&gated, manifest.clone()).unwrap_err();
-    assert_eq!(error.code, "E_ASYNC", "{error}");
-    let mut p = crate::compile(&source, manifest).unwrap();
-    let code = &mut p.regions.get_mut("startup").unwrap().code;
-    let call = code.iter().position(|i| matches!(&i.action, Action::Decide { operation: Operation::Region(name), .. } if name=="helper")).unwrap();
-    let spawn = code.iter().position(|i| matches!(&i.action, Action::Decide { operation: Operation::Spawn(name), .. } if name=="fail")).unwrap();
-    assert_eq!(spawn, call + 1);
-    for i in [&code[call], &code[spawn]] {
-        assert_eq!(i.guard, Guard::True);
-        let Action::Decide { args, .. } = &i.action else {
-            unreachable!()
-        };
-        assert!(args.is_empty());
-    }
-    let Action::Decide { arms, .. } = &code[call].action else {
-        unreachable!()
-    };
-    assert_eq!(arms.len(), 1);
-    assert!(arms[0].slots.is_empty());
-    code.swap(call, spawn);
+    let p = crate::compile(&source, manifest).unwrap_or_else(|e| panic!("{e}\n{source}"));
     p.verify().unwrap();
     p
 }
@@ -160,9 +134,8 @@ fn check(build: fn(bool, bool) -> CheckedProgram, expected: &[&str]) {
     }
 }
 
-/// A separate gated model with real resource contracts. Only the boolean child
-/// capture and independently moved string path are reordered; the child never observes either
-/// helper storage or the path. Resource capture admission is not bypassed.
+/// Checked source resource model: an independent child runs beside helper-owned
+/// holders and inline, awaited or spawned borrowers.
 pub(crate) fn resource_program(manifest: Manifest, named: bool, awaited: bool) -> CheckedProgram {
     resource_model(manifest, named, awaited, false)
 }
@@ -219,8 +192,8 @@ fn resource_model(manifest: Manifest, named: bool, awaited: bool, spawned: bool)
         }}
         {helper}
         async control startup(string path,bool stop) exits done faults {{
-            helper(path);
             auto child=spawn fail(stop);
+            helper(path);
             await child;exit done;
         }}
         control main(string path,bool stop) exits done {{
@@ -231,24 +204,7 @@ fn resource_model(manifest: Manifest, named: bool, awaited: bool, spawned: bool)
         }}
     "#
     );
-    let gated = source.replace(
-        "helper(path);\n            auto child=spawn fail(stop);",
-        "auto child=spawn fail(stop);\n            helper(path);",
-    );
-    assert_ne!(source, gated);
-    let e = crate::compile(&gated, manifest.clone()).unwrap_err();
-    assert_eq!(e.code, "E_ASYNC", "{e}\n{gated}");
-    let mut p = crate::compile(&source, manifest).unwrap_or_else(|e| panic!("{e}\n{source}"));
-    let code = &mut p.regions.get_mut("startup").unwrap().code;
-    assert!(
-        matches!(&code[0].action,Action::Decide {operation:Operation::Region(name),args,arms,..} if name=="helper" && args.len()==1 && arms.len()==1 && arms[0].slots.is_empty())
-    );
-    assert!(
-        matches!(&code[1].action,Action::Decide {operation:Operation::Spawn(name),args,..} if name=="fail" && args.len()==1)
-    );
-    assert_eq!(code[0].guard, Guard::True);
-    assert_eq!(code[1].guard, Guard::True);
-    code.swap(0, 1);
+    let p = crate::compile(&source, manifest).unwrap_or_else(|e| panic!("{e}\n{source}"));
     p.verify().unwrap();
     p
 }

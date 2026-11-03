@@ -437,14 +437,14 @@ pub(crate) fn census_model(p: &CheckedProgram, scenario: &Scenario) -> RunComple
 mod tests {
     use super::*;
     #[test]
-    fn gated_boundary_handoffs_retire_every_context_at_every_fuel_cut() {
-        gated_boundary_census(crate::boundary_handoff_model::program);
+    fn checked_boundary_handoffs_retire_every_context_at_every_fuel_cut() {
+        checked_boundary_census(crate::boundary_handoff_model::program);
     }
     #[test]
-    fn gated_recovered_boundary_handoffs_retire_every_context_at_every_fuel_cut() {
-        gated_boundary_census(crate::boundary_handoff_model::recovery_program);
+    fn checked_recovered_boundary_handoffs_retire_every_context_at_every_fuel_cut() {
+        checked_boundary_census(crate::boundary_handoff_model::recovery_program);
     }
-    fn gated_boundary_census(build: fn(bool, bool) -> CheckedProgram) {
+    fn checked_boundary_census(build: fn(bool, bool) -> CheckedProgram) {
         for named in [false, true] {
             for awaited in [false, true] {
                 let p = build(named, awaited);
@@ -490,6 +490,7 @@ mod tests {
     fn source_schedules_retire_every_context_at_every_fuel_cut() {
         for text in [
             include_str!("../../playground/boundary_helpers.tellur"),
+            include_str!("../../playground/boundary_handoff_tasks.tellur"),
             include_str!("../../tests/fixtures/source_boundary_helper_fault.tellur"),
             include_str!("../../playground/structured_tasks.tellur"),
             include_str!("../../tests/fixtures/source_task_tree.tellur"),

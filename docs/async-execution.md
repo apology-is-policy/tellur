@@ -3617,3 +3617,32 @@ released for existing legal programs while inline boundary-bearing helper handof
 remain gated. The next checkpoint is the final source-admission review against the
 combined routing, recovery, required-join and resource evidence. Direct parent
 boundaries, handle crossing, async I/O readiness and cancellation remain separate.
+
+## Checked helper boundary handoffs (E1e.23d)
+
+Compiler 0.189 removes the helper-call-only gate that required an inline chain to
+be boundary-free or uninterrupted. The ordinary handoff proof still requires every
+retained owner to permit enclosing fault settlement. It follows checked concrete
+callees, including generic/trait bodies, constructors, named work and transitive
+calls. Direct parent `fault boundary` and `supervise` statements still require all
+started children to be joined first. No task-handle crossing or escape is admitted.
+
+All E1e.23 routing, recovery, nested-parent and resource models now compile their
+spawn-before-helper source directly. They no longer reorder checked instructions
+or bypass a source admission check. Twenty routing/recovery schedules and six
+resource shapes retain original/expanded O0/O2, all-fuel and host-quota comparisons.
+Private reference census checks cover the same contexts and the public example.
+Native and reference runtime implementations are unchanged from 0.188.
+
+[The runnable example](../playground/boundary_handoff_tasks.tellur) combines a named
+helper fault/recovery, a lexical handoff, a live borrowed child and a borrowed parent
+result. Shared/exclusive results, owned child wrappers, concrete generic/trait calls
+and imported public contracts preserve existing loan and outcome obligations.
+Nonstoppable retained resources, direct boundaries, unhandled captured outcomes and
+contingency handoffs retain negative tests. Fresh editor checks repair source and
+imported-contract diagnostics, restore hover and execute the example natively.
+
+This completes the helper boundary-handoff admission audit. Further E1/P5 work
+should use concrete async adapter needs from the maintained applications and shared
+libraries. The remaining direct-boundary and handle restrictions are intentional;
+this checkpoint does not authorize a broader ownership or cancellation policy.
