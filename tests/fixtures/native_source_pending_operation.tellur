@@ -1,0 +1,106 @@
+async control leaf(ref probe resource, string request)
+    exits ready { ref probe value from resource } {
+    delta sample(resource, move request) {
+        ready { string response } => received
+    }
+
+    [received]:
+        emit(borrow response);
+        exit ready { resource };
+}
+
+async control worker(ref probe resource, string request) exits done {
+    auto pending = defer leaf(resource, move request);
+    emit("captured");
+    delta await pending {
+        ready { auto value } => received
+    }
+
+    [received]:
+        inspect(value);
+        exit done;
+}
+
+control nested(string request) exits done {
+    fault boundary {
+        delta make() {
+            made { probe inner } => made
+        }
+        [made]: run worker(borrow inner, move request);
+            close(inner);
+    } contingency [] {
+        emit("nested contingency must not run");
+        escalate;
+    }
+    exit done;
+}
+boundary supply(probe retained, string request) retains retained {
+    nested(move request);
+    close(retained);
+    terminate;
+}
+contingency(string reason) {
+    emit("named nested contingency must not run");
+    close(retained);
+    terminate;
+}
+control branch_body(string request) exits done {
+    delta make() {
+        made { probe retained } => made
+    }
+    [made]: supervise supply(retained, move request);
+        exit done;
+}
+async control branch(string request) exits done {
+    forward branch_body(move request);
+}
+async control failure(bool stop) exits done faults {
+    emit("fault child queued");
+    yield;
+    delta stop {
+        true => failed,
+        false => finished
+    }
+    [failed]: fault "sibling failed";
+    [finished]: emit("fault child finished");
+        exit done;
+}
+async control startup(bool stop) exits done faults {
+    auto left = spawn branch("left");
+    auto right = spawn branch("right");
+    auto failed = spawn failure(stop);
+    emit("all queued");
+    emit("uninterrupted first");
+    emit("uninterrupted second");
+    await left;
+    emit("left joined");
+    await right;
+    await failed;
+    emit("all joined");
+    exit done;
+}
+boundary request(bool stop) {
+    run startup(stop);
+    terminate;
+}
+contingency(string reason) {
+    checkpoint();
+    emit("owning contingency");
+    terminate;
+}
+control request_helper(bool stop) exits done {
+    supervise request(stop);
+    exit done;
+}
+async control outer(bool stop) exits done {
+    auto other = spawn branch("other");
+    yield;
+    request_helper(stop);
+    emit("owner returned");
+    await other;
+    emit("independent joined");
+    exit done;
+}
+control main(bool stop) exits done {
+    forward run outer(stop);
+}

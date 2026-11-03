@@ -4893,5 +4893,25 @@ Test-only pumping appends eligible work and supplies readiness only at source
 selection or when no runnable producer remains; quotas alone never select a sibling.
 All retained value/task/await/domain and source queue/join/handle stores retire.
 This is reference scheduling evidence, separate from E1f.2c's generated host-schedule
-resource proof. Native source-pump differential evidence and public adapter admission
-remain outstanding; no live I/O or new production suspension is claimed.
+resource proof. Native source-pump differential evidence is recorded below; public adapter admission
+remains outstanding. No live I/O or new production suspension is claimed.
+
+
+The E1f.3b generated source-pump test builds original/expanded resource programs at
+O0/O2 and sweeps every source fuel cutoff through completion for three quotas,
+normal/faulting siblings, FIFO/reverse readiness and early/idle-only signals. It
+compares complete native/reference events, outcomes and fault reports, normalizing
+only existing fuel wording. The reference pump reuses its existing String cases
+and accepts an explicit scripted resource scenario for this comparison.
+
+Six real resources span named retained-owner and lexical supplier scopes. Operation
+leases assert live suppliers; the owning handler's first typed adapter requires
+all four stopped resources and both operations already retired while the two
+outside resources remain live. Normal completion calls each typed sample once;
+pending faults suppress normal arms and stopped named/lexical contingencies.
+Partial/empty polls preserve fuel/effects, duplicate completions and late tokens
+are rejected, zero quotas do not replay ready results, and every created resource
+is destroyed once at every fuel cut. An independent outside task completes and is
+joined after request settlement. The production source driver, primitive bindings
+and shared native runtime are unchanged; only the test's generated overlay enables
+this pump.

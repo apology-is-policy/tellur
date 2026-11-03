@@ -303,3 +303,6 @@ control nested(bool stop) exits done faults {
 
 #[path = "pending_operation_fault_tests.rs"]
 mod fault_tests;
+
+#[path = "source_operation_tests.rs"]
+mod source_tests;

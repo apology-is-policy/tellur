@@ -150,7 +150,8 @@ impl Machine<'_> {
                     && self.shared.steps_left > 0
                     && matches!(self.context.stack.last(),Some(Continuation::Block {code,next})
                         if code.get(*next).is_some_and(|i| i.guard.evaluate(&self.context.frame.facts)
-                            && matches!(&i.action,Action::Emit(Expr::Value(Value::String(s))) if s=="owning contingency")))
+                            && (matches!(&i.action,Action::Emit(Expr::Value(Value::String(s))) if s=="owning contingency")
+                                || matches!(&i.action,Action::Decide {operation:Operation::Primitive(name),..} if name=="checkpoint"))))
                 {
                     let model = self.shared.scheduler.operations.as_mut().unwrap();
                     let trace = model.trace.borrow();
@@ -169,7 +170,11 @@ impl Machine<'_> {
                             .iter()
                             .any(|(name, kind)| name == "other" && kind == "retired")
                     );
-                    model.checked_contingencies += 1;
+                    if matches!(self.context.stack.last(),Some(Continuation::Block {code,next})
+                        if matches!(code[*next].action,Action::Emit(_)))
+                    {
+                        model.checked_contingencies += 1;
+                    }
                 }
                 let before = self.shared.steps_left;
                 if self.drive(1) {
@@ -206,9 +211,33 @@ fn run(
         arguments: vec![Value::Bool(stop)],
         calls: vec![],
     };
-    let mut session = p.start_execution(&s, fuel);
+    run_scenario(p, &s, fuel, quotas, reverse, early)
+}
+pub(crate) fn source_operation_model(
+    p: &CheckedProgram,
+    scenario: &Scenario,
+    fuel: usize,
+    quotas: &[usize],
+    reverse: bool,
+    early: bool,
+) -> RunResult {
+    run_scenario(p, scenario, fuel, quotas, reverse, early).0
+}
+fn run_scenario(
+    p: &CheckedProgram,
+    s: &Scenario,
+    fuel: usize,
+    quotas: &[usize],
+    reverse: bool,
+    early: bool,
+) -> (RunResult, Trace, usize) {
+    let [Value::Bool(stop)] = s.arguments.as_slice() else {
+        panic!("model requires stop argument")
+    };
+    let stop = *stop;
+    let mut session = p.start_execution(s, fuel);
     let m = session.machine.as_mut().unwrap();
-    m.enter(&s).unwrap();
+    m.enter(s).unwrap();
     let trace = Trace::default();
     m.shared.scheduler.operations = Some(SourceOperations {
         trace: trace.clone(),

@@ -23,8 +23,11 @@ before the owning contingency, and survival of an independent root. These contro
 host schedules do not enable source async I/O or introduce additional handoffs.
 The [reference source-pump model](../async-execution.md#reference-source-scheduler-operation-waits-e1f3a)
 connects private awaited adapter shims to source scheduling and tests all-waiting
-progress, sibling faults and independent-task survival. Production synchronous
-bindings, source handoffs and execution-session results remain unchanged.
+progress, sibling faults and independent-task survival. The
+[native source-pump model](../async-execution.md#native-source-scheduler-operation-waits-e1f3b)
+compares generated execution with real nested resources and full reference events
+and fault reports. Production synchronous bindings, source handoffs and
+execution-session results remain unchanged.
 
 ## Owned spawned children
 

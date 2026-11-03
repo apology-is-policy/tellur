@@ -593,3 +593,4 @@ pub(crate) use fault_model::pending_fault_model;
 #[path = "source_operation_model.rs"]
 mod source_model;
 pub(super) use source_model::SourceOperations;
+pub(crate) use source_model::source_operation_model;

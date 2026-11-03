@@ -3837,6 +3837,55 @@ host quotas.
 The pump and operation interception are test-only. The awaited leaf is a private
 adapter shim; this does not authorize its ordinary synchronous `sample` binding to
 suspend in production. There is no public waiting result, external reactor, timeout
-policy or new source handoff. The next gate is the corresponding native source-pump
-experiment over generated continuations and real resources, followed by source and
-adapter contract integration. Compiler/LSP/VSIX 0.189 remains installed.
+policy or new source handoff. E1f.3b below adds the corresponding native source-pump
+experiment over generated continuations and real resources. Source and adapter
+contract integration remain separate. Compiler/LSP/VSIX 0.189 remains installed.
+
+
+## Native source-scheduler operation waits (E1f.3b)
+
+[The generated comparison](../src/native/source_operation_tests.rs) overlays a
+private operation pump on the existing native source driver. It retains that
+driver's runnable FIFO, cold awaits, started handles and consuming joins, immediate
+owning-handler restoration and stopped-work pruning. Generated `sample` decisions
+use the earlier pending-operation hook; their normal arms are still compiled from
+the checked program. Production source generation selects neither overlay.
+
+Nonblocking signals append eligible contexts behind queued source work. Only an
+empty runnable queue requests the next deterministic idle event. A positive-quota
+selection consumes the readiness registration before polling the same retained
+operation; partial and empty polls re-park it. Polling preserves source fuel,
+effects and adapter position. Completion calls the typed Rust adapter once and
+hands its retained result to the original compiled delivery arm. Zero-quota pauses
+cannot re-poll completed operations or replay their arguments. Late readiness and
+operation tickets fail after retirement.
+
+[The resource fixture](../tests/fixtures/native_source_pending_operation.tellur)
+creates three source branches. Each owns a named boundary's retained resource and
+a lexical boundary's supplier, borrowed by an awaited operation. Two branches
+belong to a supervised request; a third belongs to the outside invocation. A
+faulting source sibling stops request operations while waiting or signalled without
+running their normal result arms or nested contingencies. The first owning-handler
+adapter asserts that both operations and all four stopped resources have retired,
+while the two outside resources remain alive. The outside task later completes and
+its original owner joins it. Lease destructors check live suppliers, and every
+created resource is destroyed exactly once on success or fuel exhaustion.
+
+The same fixture runs through the reference source pump using scripted resource
+creation, inspection and closure. Original and expanded native programs at O0/O2
+compare complete events, outcomes and fault reports at every fuel cutoff through
+completion, with three quota partitions, both readiness orders, and early versus
+idle-only signals. Generous-fuel runs additionally check all source-model lifecycle
+invariants. Only established native/reference fuel-message wording is normalized;
+expansion annotations are kept in each representation's reports. Resource traces
+check borrower-before-supplier order without prescribing a cross-sibling destruction
+order.
+
+This completes private reference/native source-pump differential evidence, not a
+public async adapter contract. The experiment has a finite modeled event stream,
+no sockets or reactor, and an awaited shim around a private pending primitive.
+Existing `immediate` and `blocking` bindings still complete synchronously. The next
+step is a bounded awaited-adapter contract audit and prototype: operation ownership,
+readiness registration, typed completion, stop disposition and explicit source
+admission must agree before live transport integration. Cancellation and fallible
+or suspending cleanup remain separate. Compiler/LSP/VSIX stays at 0.189.
