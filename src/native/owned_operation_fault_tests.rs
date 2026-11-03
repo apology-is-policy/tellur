@@ -190,3 +190,7 @@ fn owned_rust_state_and_unadopted_completion_retire_after_registration_failure()
     }
     fs::remove_dir_all(root).unwrap();
 }
+
+#[cfg(unix)]
+#[path = "live_candidate_fault_tests.rs"]
+mod live_candidate_tests;

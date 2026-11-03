@@ -309,6 +309,9 @@ The [private source bridge](async-execution.md#live-registration-and-source-wait
 checks persistent socket registration, transient runtime waits, positive-quota reads
 and owning-fault retirement with the typed sample operation. Its controlled peer
 barrier is test machinery; real HTTP parsing/deadline composition remains separate.
+The [live candidate fault composition](async-execution.md#live-socket-candidate-fault-settlement-e1f6d)
+retains physical registration through an unadopted result and checks disposal before
+the supplier and owning contingency.
 The maintained transport is unchanged.
 
 

@@ -5042,3 +5042,23 @@ resources are gone at the first owning checkpoint. The independent outer task
 survives and nested contingencies stay suppressed. HTTP parser/deadline source
 composition, concrete routed-fault candidate disposal and actual backend/reset
 failures remain separate. The installed 0.189 release is unchanged.
+
+
+E1f.6d combines the controlled routed-owner fault matrix with actual loopback reads
+and persistent physical registration. Each checked partial poll first publishes and
+signals a logical runtime wait, consumes eligibility and removes the logical
+subscription. Real partial/A/B input is consumed through a fresh shared supplier
+borrow without changing source fuel, events or cursor. The peer barrier remains
+explicit test machinery.
+
+Both nested operations then remain waiting, signalled, or completed with an unadopted
+typed candidate. All three cases retain a real registration. Logical insertion and
+runtime-generation rejections leave the operation available for valid registration;
+foreign/late tickets cannot perform I/O. Original/expanded O0/O2 cases compare full
+reference events and fault reports through settlement fuel cutoffs, three quotas
+and independent-root survival. Traces require each logical removal before physical
+deregistration, and state/candidate disposal before supplier release. The owning
+checkpoint requires actual socket destruction; stopped nested handlers and result
+arms remain silent. Existing source and HTTP/parser matrices are unchanged and
+reused. Real HTTP deadline/source composition and actual OS/reset failure handling
+remain separate; no public release changes.

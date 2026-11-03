@@ -49,8 +49,11 @@ generations. It tests descriptor reuse and retirement on macOS, but is still pri
 it supplies no public async host API or new handoff.
 The [private source bridge](../async-execution.md#live-registration-and-source-waits-e1f6c)
 then connects real socket registration to checked operation/wait identity, positive
-host quotas and owning-fault retirement using a controlled typed sample. HTTP parser
-and real deadline composition with source scheduling remain separate.
+host quotas and owning-fault retirement using a controlled typed sample. The
+[combined candidate fault model](../async-execution.md#live-socket-candidate-fault-settlement-e1f6d)
+also keeps a real registration attached to an unadopted typed result until its owning
+fault settles it before the supplier and contingency. HTTP parser and real deadline
+composition with source scheduling remain separate.
 
 ## Owned spawned children
 

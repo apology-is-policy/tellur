@@ -4188,7 +4188,43 @@ remain suppressed.
 This is concrete source scheduling and socket-lifetime evidence for the typed sample
 operation. The HTTP receiver and real expiry are separately validated by E1f.6a/b;
 their source composition is next, alongside real transport/reset and backend-failure
-audits. An unadopted typed result stopped by a routed fault with a concrete socket
-also needs its combined test; E1f.4b and E1f.6b establish its pieces separately.
+audits. The combined routed-fault test below extends E1f.4b and E1f.6b to an unadopted
+typed result with a concrete socket.
 Public async-host call admission still awaits the recorded answer. No installed
 compiler/LSP/VSIX release is warranted by this private bridge.
+
+
+## Live socket candidate fault settlement (E1f.6d)
+
+The [combined fault test](../src/native/live_candidate_fault_tests.rs) attaches the
+same persistent registration and logical wait bridge to E1f.4b's controlled owning
+fault. Two checked nested operations consume real `partial`, `A`, `B` input through
+fresh shared probe borrows. A private transport overlay changes only the fixture
+peer corpus/barrier; it does not change the E1f.6c transport or its source matrix.
+Each prepared poll commits a runtime wait, observes the controlled OS notification,
+consumes readiness eligibility and removes that logical subscription before reading.
+Those administrative steps preserve source fuel, events and host cursor.
+
+The fixture then leaves both operations waiting, signalled without a subsequent
+poll, or holding completed but unadopted typed candidates. It retains the physical
+registration in all three cases. Rejected foreign tickets and exhausted runtime
+wait generations preserve the existing state; injected logical insertion failures
+roll back even for a completed candidate. A final accepted hint is allowed without
+offering more bytes or polling a completed adapter.
+
+The original checked owner fault runs through the existing router and settlement
+machinery. Logical subscriptions retire first, followed by successful physical
+deregistration. Pending state or an unadopted candidate then retires before its
+actual supplier; an already completed state was consumed during its earlier poll.
+The first owning-contingency checkpoint requires affected sockets to be destroyed,
+not merely marked inactive. Independent work survives, stopped nested handlers and
+normal result arms do not run, and late notifications/tickets cannot resume retired
+operations. No synchronous wrapper is replayed.
+
+Original/expanded O0/O2 builds compare complete reference events and fault reports
+for all three states, settlement fuel cutoffs, three host quotas and an independent
+root. This closes the concrete candidate-lifetime composition gap. The controlled
+model still uses deadline token `57`; HTTP parsing and real expiry must next be
+composed with source waits. Actual OS insertion/removal errors, resets and timer
+race policy are not assigned new semantics here. The public async-host call-model
+question remains pending; compiler/LSP/VSIX stays at 0.189.
