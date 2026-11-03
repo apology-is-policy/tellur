@@ -2857,7 +2857,10 @@ impl Checker<'_> {
                 body,
                 captures,
                 handler,
-            } => self.lexical_boundary(body, captures, handler, guard, domain, span)?,
+            } => {
+                self.require_no_started(domain, span)?;
+                self.lexical_boundary(body, captures, handler, guard, domain, span)?;
+            }
             Statement::Recover(name) => self.recover(name, guard, domain, span)?,
             Statement::Forward(operand) => {
                 let pending = self.pending_call(operand, span)?;
@@ -2957,6 +2960,7 @@ impl Checker<'_> {
                 result?;
             }
             Statement::Supervise(operand) => {
+                self.require_no_started(domain, span)?;
                 self.contingent_call(false, span)?;
                 let syntax::ExprKind::Call(name, args) = &operand.kind else {
                     return Err(self.error(
@@ -3058,7 +3062,10 @@ impl Checker<'_> {
                 );
             }
             Statement::Bind(name, annotation, expression, mutable) => {
-                if expression.call_mode == syntax::CallMode::Defer {
+                if matches!(
+                    expression.call_mode,
+                    syntax::CallMode::Defer | syntax::CallMode::Spawn
+                ) {
                     return self.defer_task(
                         name,
                         annotation.as_deref(),
@@ -3191,6 +3198,24 @@ impl Checker<'_> {
             }
             Statement::Assign(target, expression) => {
                 self.assignment(target, expression, guard, domain, span)?;
+            }
+            Statement::Yield => {
+                self.started_fault_permission(domain, span)?;
+                let atom = self.fresh();
+                self.result.atoms.insert(atom, "$yield".into());
+                self.emit(
+                    guard,
+                    Action::Decide {
+                        operation: Operation::Yield,
+                        args: vec![],
+                        arms: vec![ir::Arm {
+                            outcome: "$yield".into(),
+                            atom,
+                            slots: vec![],
+                        }],
+                    },
+                    span,
+                );
             }
             Statement::Emit(expression) => {
                 let projected = self.materialize_projection(expression, domain, span)?;
@@ -4089,12 +4114,15 @@ impl Checker<'_> {
             && matches!(operand.kind, syntax::ExprKind::Name(_))
         {
             let (operation, value, outcomes) = self.await_task(operand, domain, span)?;
-            (Operation::AwaitTask(operation), vec![value], outcomes, None)
+            (operation, vec![value], outcomes, None)
         } else if let syntax::ExprKind::Call(name, args) = &operand.kind
             && let Some(sig) = self
                 .signature(name, args, span)
                 .map_err(|e| operand.locate(e, span))?
         {
+            if sig.region {
+                self.require_no_started(domain, span)?;
+            }
             if sig.boundary || sig.contingency {
                 return Err(self.error(
                     "E_BOUNDARY",
@@ -4119,7 +4147,9 @@ impl Checker<'_> {
                         syntax::CallMode::Direct => Operation::Region(name.clone()),
                         syntax::CallMode::Run => Operation::Run(name.clone()),
                         syntax::CallMode::Await => Operation::Await(name.clone()),
-                        syntax::CallMode::Defer => unreachable!("defer is a binding initializer"),
+                        syntax::CallMode::Defer | syntax::CallMode::Spawn => {
+                            unreachable!("task creation is a binding initializer")
+                        }
                     }
                 } else if crate::collections::is_operation(name) {
                     Operation::Collection(name.clone())
@@ -5802,7 +5832,9 @@ pub(crate) fn compile_concrete_unit(
                             | Operation::Run(name)
                             | Operation::Await(name)
                             | Operation::Defer(name)
-                            | Operation::AwaitTask(name),
+                            | Operation::Spawn(name)
+                            | Operation::AwaitTask(name)
+                            | Operation::Join(name),
                         ..
                     } => result.push(name.as_str()),
                     Action::Loop { body, .. } => result.extend(callees(body)),

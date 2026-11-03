@@ -36,7 +36,7 @@ exports.run = async function (root) {
   await waitFor(async () => diagnostics().length === 0 && (await hover('auto pending')).includes('task<first>'), 'pending task type hover');
   assert.ok((await hover('auto value')).includes('ref string'));
   assert.ok((await hover('defer first')).includes('storage stays borrowed'));
-  assert.ok((await hover('await pending')).includes('consumes a local cold task'));
+  assert.ok((await hover('await pending')).includes('consumes a cold or started task'));
   const broken = source.replace('emit("carrier borrowed");', 'right = "too soon";');
   assert.notEqual(broken, source);
   await replace(broken);
@@ -52,6 +52,23 @@ exports.run = async function (root) {
   const report = JSON.parse(result.stdout);
   assert.equal(report.outcome, 'done');
   assert.deepEqual(report.events.filter(e => e.kind === 'emit').map(e => e.message), ['carrier borrowed', 'first', 'released at await', 'released after last use']);
-  await fs.writeFile(path.join(fixture, 'passed.txt'), 'pending type hover, loan diagnostic, unsaved repair and native execution passed\n');
+  const structured = await fs.readFile(path.join(__dirname, '../../../playground/structured_tasks.tellur'), 'utf8');
+  await replace(structured);
+  await waitFor(async () => diagnostics().length === 0 && (await hover('spawn work')).includes('queues an invocation-owned child'), 'structured task hover');
+  assert.ok((await hover('yield;')).includes('Host quotas do not cause source handoffs'));
+  const missingJoin = structured.replace('await second;', '');
+  assert.notEqual(missingJoin, structured);
+  await replace(missingJoin);
+  await waitFor(() => diagnostics().length > 0, 'unjoined child diagnostic');
+  await replace(structured);
+  await waitFor(async () => diagnostics().length === 0 && (await hover('spawn work')).includes('reference-free'), 'repaired structured ownership');
+  await document.save();
+  const tasks = await vscode.commands.executeCommand('tellur.buildAndRun', {
+    arguments:['--json'], output:path.join(root, 'native output', 'structured-tasks')
+  });
+  assert.equal(tasks.code, 0, tasks.stderr);
+  assert.deepEqual(JSON.parse(tasks.stdout).events.filter(e => e.kind === 'emit').map(e => e.message),
+    ['queued', 'first', 'second', 'parent', 'first', 'second', 'joined first', 'joined second']);
+  await fs.writeFile(path.join(fixture, 'passed.txt'), 'cold and started task hover, diagnostics, unsaved repair and native execution passed\n');
   console.log('TELLUR_CARRIER_TASKS_EDITOR_TESTS_PASSED: pending type hover, diagnostic repair and native run');
 };

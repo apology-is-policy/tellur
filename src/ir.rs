@@ -194,6 +194,12 @@ pub struct Arm {
 pub enum Operation {
     /// Eagerly transfer owned arguments into a cold computation; do not invoke it.
     Defer(String),
+    /// Queue an invocation-owned child without executing it.
+    Spawn(String),
+    /// Consume a started handle and observe its completion.
+    Join(String),
+    /// Explicit cooperative source handoff.
+    Yield,
     /// Consume a local cold task and deliver the producer's normal outcomes.
     AwaitTask(String),
     /// Explicit synchronous entry into the bounded async execution profile.

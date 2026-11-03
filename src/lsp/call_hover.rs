@@ -90,6 +90,7 @@ fn statement<'a>(s: &'a Statement, out: &mut Vec<&'a Expr>) {
         }
         Statement::Recover(_)
         | Statement::Terminate
+        | Statement::Yield
         | Statement::TerminateProcess(_)
         | Statement::Escalate
         | Statement::ExitName(_) => (),

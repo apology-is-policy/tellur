@@ -71,6 +71,7 @@ pub fn statement(stmt: &Statement, names: &mut BTreeSet<String>) {
         Statement::Recover(_)
         | Statement::TerminateProcess(_)
         | Statement::Terminate
+        | Statement::Yield
         | Statement::Escalate => {}
         Statement::ExitName(name) => {
             names.insert(name.clone());

@@ -391,3 +391,23 @@ fn lexical_contingency_and_supervised_loop_layout_is_idempotent() {
     )
     .unwrap();
 }
+
+#[test]
+fn structured_task_handoffs_keep_tokens_and_checked_behavior() {
+    let text = include_str!("../playground/structured_tasks.tellur");
+    let result = formatted(text);
+    let manifest = Manifest::from_json(include_str!("../playground/manifest.json")).unwrap();
+    let scenario = Scenario {
+        entry: "main".into(),
+        arguments: vec![],
+        calls: vec![],
+    };
+    assert_eq!(
+        compile(text, manifest.clone())
+            .unwrap()
+            .run(&scenario)
+            .unwrap(),
+        compile(&result, manifest).unwrap().run(&scenario).unwrap()
+    );
+    assert!(result.contains("auto first = spawn work(\"first\");"));
+}

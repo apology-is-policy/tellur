@@ -374,6 +374,7 @@ impl Specializer<'_> {
             Statement::Recover(_)
             | Statement::TerminateProcess(_)
             | Statement::Terminate
+            | Statement::Yield
             | Statement::Escalate
             | Statement::ExitName(_) => (),
             Statement::Delta(_, e, arms) => {

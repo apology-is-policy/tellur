@@ -5853,7 +5853,7 @@ fn cold_task_auto_hover_and_unsaved_ownership_repair() {
         hover_at(&f, source, "await pending")["contents"]["value"]
             .as_str()
             .unwrap()
-            .contains("consumes a local cold task")
+            .contains("consumes a cold or started task")
     );
     let broken = source.replace("await pending;", "");
     f.change(&broken, 2);
@@ -6129,4 +6129,27 @@ fn payload_origin_ranges_follow_unsaved_imports_and_restore_hover() {
     );
     assert_eq!(f.diagnostics(), json!([]));
     assert_eq!(hover_at(&f, source, "auto text"), initial);
+}
+
+#[test]
+fn source_task_hovers_and_diagnostics_describe_explicit_handoffs() {
+    let mut f = Fixture::new();
+    let text = include_str!("../playground/structured_tasks.tellur");
+    f.open(text);
+    assert_eq!(f.diagnostics(), json!([]));
+    let spawn = hover_at(&f, text, "spawn work").to_string();
+    assert!(
+        spawn.contains("queues an invocation-owned child") && spawn.contains("reference-free"),
+        "{spawn}"
+    );
+    let handoff = hover_at(&f, text, "yield;").to_string();
+    assert!(
+        handoff.contains("Host quotas do not cause source handoffs"),
+        "{handoff}"
+    );
+    let broken = text.replace("await second;", "");
+    f.change(&broken, 2);
+    assert!(!f.diagnostics().as_array().unwrap().is_empty());
+    f.change(text, 3);
+    assert_eq!(f.diagnostics(), json!([]));
 }

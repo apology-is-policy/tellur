@@ -8,6 +8,7 @@ pub enum CallMode {
     Run,
     Await,
     Defer,
+    Spawn,
 }
 #[derive(Clone, Debug)]
 pub struct Expr {
@@ -218,6 +219,7 @@ pub enum Statement {
     Assign(Expr, Expr),
     Drop(Expr),
     Emit(Expr),
+    Yield,
     Fault(Expr),
     Exit(String, Vec<Expr>),
     ExitOutcome(OutcomeExpr),
@@ -1186,6 +1188,8 @@ impl Parser {
             CallMode::Run
         } else if self.eat("await") {
             CallMode::Await
+        } else if self.eat("spawn") {
+            CallMode::Spawn
         } else if self.eat("defer") {
             CallMode::Defer
         } else {
@@ -1444,6 +1448,8 @@ impl Parser {
             if self.at("forward") && !self.tokens.get(self.pos + 1).is_some_and(|t| t.is("(")) {
                 self.pos += 1;
                 Statement::Forward(self.expr(0)?)
+            } else if self.eat("yield") {
+                Statement::Yield
             } else if self.eat("supervise") {
                 Statement::Supervise(self.expr(0)?)
             } else if self.eat("terminate") {

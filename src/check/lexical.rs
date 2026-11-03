@@ -50,6 +50,15 @@ impl Checker<'_> {
             if boundary.protected.contains(&root) {
                 return Err(self.error("E_SUPERVISOR_STATE", span, "supervisor state stays outside protected work; prepare an owned request input before entering the boundary"));
             }
+            if boundary.prior_slots.contains(&root)
+                && !crate::async_calls::started_producers(self.manifest, &place.ty).is_empty()
+            {
+                return Err(self.error(
+                    "E_ASYNC",
+                    span,
+                    "a started task cannot cross its spawning fault boundary",
+                ));
+            }
             if place.via.is_some_and(|id| id < boundary.first_loan)
                 || (boundary.prior_slots.contains(&root)
                     && self

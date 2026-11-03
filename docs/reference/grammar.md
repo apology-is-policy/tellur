@@ -142,7 +142,7 @@ alternative, with a fixed nonempty inferred payload.
 statement        = "supervise" call ";" | "terminate" ";" | "escalate" ";"
                  | binding | assignment | flat_delta | exit | forwarding
                  | "fault" expression ";" | call ";" | "emit" "(" expression ")" ";"
-                 | "drop" "(" expression ")" ";"
+                 | "drop" "(" expression ")" ";" | "yield" ";"
                  | "again" name ("(" trailing_list(expression)? ")")? ";"
                  | lexical_boundary | recovery | process_termination ;
 binding          = "mutable"? type name "=" initializer ";" ;
@@ -227,7 +227,7 @@ loop may omit `()`, as may its ordinary `again name;` restart. Supervision does 
 relax the existing tail-loop or ownership rules. Process status is a literal 0–255;
 see [contingency](contingency.md) for placement and recovery restrictions.
 
-## Async operation operands and cold tasks
+## Async operation operands and tasks
 
 In an operation position (delta, capture, forward or a call statement), a call may
 be prefixed with `run` or `await`. `run` requires a synchronous caller and an async
@@ -238,4 +238,11 @@ async control. `await name` consumes that task in an operation position. Owned c
 existing reference-free storage are admitted; the internal inferred task type has no
 source spelling and cannot occur in a control result. Awaited completions retain their
 checked direct and contained result origins. Async operations are unavailable
-in contingency code. Scheduling remains planned; see [async execution](async-execution.md).
+in contingency code.
+
+`auto name = spawn call;` queues an owned child in the current async invocation.
+Its captures and normal results must be reference-free in the first source profile.
+`await name` consumes its started handle; `yield;` explicitly relinquishes the current
+async chain to queued work. Every normal path joins its children. Before entering
+another source control or fault boundary, the parent must join its started children.
+See [async execution](async-execution.md).

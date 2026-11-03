@@ -326,3 +326,10 @@ test('cold task creation and consuming await are keywords', () => {
     assert.ok(result.some(t => t.text === word && t.scopes.includes('keyword.control.tellur')), word);
   }
 });
+
+test('owned spawn and explicit yield retain control keyword scopes', () => {
+  const ts = tokens('async control work() exits done { auto child = spawn helper(); yield; await child; exit done; }');
+  has(ts, 'spawn', 'keyword.control.tellur');
+  has(ts, 'yield', 'keyword.control.tellur');
+  has(ts, 'await', 'keyword.control.tellur');
+});

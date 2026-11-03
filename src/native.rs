@@ -21,6 +21,9 @@ mod continuations;
 #[cfg(test)]
 #[path = "native/resume_model.rs"]
 mod resume_model;
+#[cfg(test)]
+#[path = "native/source_scheduler_tests.rs"]
+mod source_scheduler_tests;
 fn error(message: impl Into<String>) -> Diagnostic {
     Diagnostic::new("E_BACKEND", Span::default(), message)
 }
@@ -471,6 +474,9 @@ impl Generator<'_> {
                         continue;
                     }
                     let call = match operation {
+                        Operation::Spawn(_) | Operation::Join(_) | Operation::Yield => {
+                            unreachable!("source scheduling uses compiled continuations")
+                        }
                         Operation::Defer(name) => format!(
                             "(String::from({}), vec![V::Task {{binding: None, ty: {}.into(), operation: {}.into(), arguments: {}}}])",
                             string("$pending"),
@@ -620,6 +626,9 @@ impl CheckedProgram {
         g.code.push_str(include_str!("native/domains.rs"));
         g.code.push_str("\n}\nmod contexts {\n");
         g.code.push_str(CONTEXTS);
+        g.code.push_str("\nmod source_scheduler {\n");
+        g.code.push_str(include_str!("native/source_scheduler.rs"));
+        g.code.push_str("\n}\n");
         g.code.push_str("\nmod started_tasks {\n");
         g.code.push_str(include_str!("native/started_tasks.rs"));
         g.code.push_str("\n}\n");
@@ -632,6 +641,22 @@ impl CheckedProgram {
             .push_str("\n}\nuse support::*; use support::execution::*;\n");
         g.code.push_str(&crate::rust_host::source(self.manifest())?);
         g.code.push_str(&continuations::source(self));
+        fn schedules(code: &[Instruction]) -> bool {
+            code.iter().any(|i| match &i.action {
+                Action::Decide {
+                    operation: Operation::Spawn(_) | Operation::Join(_) | Operation::Yield,
+                    ..
+                } => true,
+                Action::Loop { body, .. } => schedules(body),
+                Action::Boundary { body, handler, .. } => schedules(body) || schedules(handler),
+                _ => false,
+            })
+        }
+        let driver = if self.regions().any(|r| schedules(&r.code)) {
+            "run_source_entry"
+        } else {
+            "run_entry"
+        };
         for r in self.regions() {
             let id = g.names[r.name.as_str()];
             if r.boundary.is_some()
@@ -646,7 +671,7 @@ impl CheckedProgram {
             } else {
                 let _ = writeln!(
                     g.code,
-                    "fn entry_{id}(host:&mut Host,args:Vec<V>)->R<Completion>{{run_entry(host,args,&MODEL_{id})}}",
+                    "fn entry_{id}(host:&mut Host,args:Vec<V>)->R<Completion>{{{driver}(host,args,&MODEL_{id})}}",
                 );
             }
         }

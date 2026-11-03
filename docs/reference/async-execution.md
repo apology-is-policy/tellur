@@ -1,12 +1,68 @@
-# Async calls and cold tasks
+# Async calls and structured tasks
 
 [Language reference](../language-reference.md) · [Design and next steps](../async-execution.md) ·
 [Execution failures](execution-failures.md)
 
-Compiler 0.113 supports `async control`, synchronous entry with `run`, direct
-`await operation(arguments)` and local cold tasks with owned and borrowed captures, including reference-bearing carriers, and borrowed completions. Execution
-remains sequential. There is no concurrent scheduler, I/O readiness or LLVM coroutine
-lowering yet.
+Compiler 0.166 supports `async control`, synchronous entry with `run`, direct
+`await`, cold tasks with owned and borrowed captures, and a bounded cooperative
+scheduler for owned `spawn` tasks. Source handoffs occur at `await` and `yield`.
+Async host I/O, cancellation and LLVM coroutine lowering remain later work.
+
+## Owned spawned children
+
+`auto child = spawn operation(arguments);` evaluates the arguments now and queues
+an independent child of the current async invocation. The body does not run until
+an explicit handoff. `yield;` places the caller behind already runnable work;
+`await child;` consumes its handle and waits for the declared normal completion.
+An already completed child is joined without running it again. Host instruction
+quotas pause the selected chain and never introduce a source handoff.
+
+<!-- tellur:check -->
+```tellur
+async control worker(string name) exits done {
+    emit(borrow name);
+    yield;
+    emit(borrow name);
+    exit done;
+}
+
+async control startup() exits done {
+    auto first = spawn worker("first");
+    auto second = spawn worker("second");
+    emit("queued");
+    yield;
+    await first;
+    await second;
+    exit done;
+}
+
+control main() exits done { forward run startup(); }
+```
+
+This emits `queued`, `first`, `second`, `first`, `second`. See the runnable
+[structured tasks example](../../playground/structured_tasks.tellur) for local
+handle moves and parent work between handoffs. Every normal path must await its
+children. Handles cannot be copied, cloned, dropped, returned, or carried across a
+fault boundary. Local moves preserve the original invocation and spawning domain.
+Local inferred wrappers retain the same child obligations: unwrap and await the
+handle before a source call or boundary. Their possible producer faults still apply
+at handoffs. There is no detach or implicit await at scope exit.
+
+The first source profile accepts captures and normal results with **no references**,
+including owned structs, sums and resources. Borrowed and reference-bearing `defer`
+tasks keep their existing sequential semantics. A spawned body may itself use such
+cold/direct awaits and may own further spawned children. Before a parent enters
+another source control or fault boundary, it must join its started children. Local
+work, primitive effects, further spawns, yields and started joins remain available.
+These are current admission limits, not changes to the accepted ownership model.
+
+A fault-capable child requires fault permission at spawn. At handoffs, all live
+owners must still permit the possible child fault. An unjoined handle accounts for
+both captured owners and every possible retained completion. An escaping child
+fault stops the owning boundary, applies resource fault dispositions to stopped
+children, and only then runs that boundary's contingency. Stopped sibling nested
+contingencies do not run. A child's own boundary can still handle its own fault.
+Faults remain separate from normal outcomes.
 
 ## Calling and entering
 
@@ -363,7 +419,10 @@ On fault, an unstarted task releases captures under their declared dispositions;
 its body is not started as cleanup. Native retained owners are settled before the
 nearest contingency handler receives control.
 
-## Transformations and current limits
+## Transformations and runtime development record
+
+The versioned notes below record earlier runtime checkpoints. Current source
+scheduling and its admission limits are specified in [owned spawned children](#owned-spawned-children).
 
 The reference interpreter retains explicit call continuations for direct calls and consuming task awaits.
 Its host instruction quotas can pause execution between instructions; these pauses
@@ -547,8 +606,8 @@ synchronous calls around them, but cannot erase the async boundary. Expansion
 certificates check this distinction. Protocol analysis currently rejects these
 boundaries rather than treating them as ordinary unobservable decisions.
 
-Escaping tasks, a public `task<...>` spelling, nested borrowed task storage, `spawn`,
-scheduling, cancellation and async host adapters remain unimplemented. No implicit
+Escaping tasks, a public `task<...>` spelling, nested borrowed task storage, borrowed
+spawn payloads, cancellation and async host adapters remain unimplemented. No implicit
 detach or cancellation by destruction is permitted. See the [design plan](../async-execution.md).
 
 The [executable readiness model](../async-execution.md#executable-readiness-protocol-model-e1d2c3a)

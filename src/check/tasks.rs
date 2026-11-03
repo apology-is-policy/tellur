@@ -2,6 +2,47 @@
 //! Captures retain parameter identity so completion loans can select their origins.
 use super::*;
 impl Checker<'_> {
+    fn started_owners(&self) -> Vec<(Formula, BTreeSet<String>)> {
+        let mut result = vec![];
+        for scope in &self.scopes {
+            for binding in scope.values.values() {
+                for (path, owned) in &binding.owned {
+                    // Record ownership is field-sensitive; sums/collections stay
+                    // sealed until their payload is selected and transferred.
+                    let mut ty = binding.slot.ty.as_str();
+                    for field in path {
+                        ty = &self.manifest.field_at(ty, *field).unwrap().ty;
+                    }
+                    let producers = crate::async_calls::started_producers(self.manifest, ty);
+                    if !producers.is_empty() {
+                        result.push((*owned, producers));
+                    }
+                }
+            }
+        }
+        result
+    }
+    pub(super) fn started_fault_permission(&mut self, domain: Formula, span: Span) -> Result<()> {
+        for (owned, producers) in self.started_owners() {
+            if self.bdd.and(domain, owned) != FALSE
+                && producers.iter().any(|p| self.signatures[p].faults)
+            {
+                return self.fault_permission(domain, span);
+            }
+        }
+        Ok(())
+    }
+    pub(super) fn require_no_started(&mut self, domain: Formula, span: Span) -> Result<()> {
+        for (owned, _) in self.started_owners() {
+            let live = self.bdd.and(domain, owned);
+            if live != FALSE {
+                return Err(self.fail_domain("E_ASYNC",span,
+                    "await started children before entering another call or fault boundary; local work, spawn, yield and started joins remain available",live));
+            }
+        }
+        Ok(())
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub(super) fn defer_task(
         &mut self,
@@ -29,8 +70,36 @@ impl Checker<'_> {
         self.contingent_call(false, span)?;
         // Arguments are evaluated/transferred now. Only initializer faults apply;
         // callee body fault permission is checked later, when the task is awaited.
+        let started = operand.call_mode == syntax::CallMode::Spawn;
+        if started {
+            // The initial source scheduler admits only ownership transfers. Shared
+            // backing storage needs a later checked source admission profile.
+            if sig
+                .parameters
+                .iter()
+                .any(|p| self.manifest.contains_references(&p.ty))
+                || sig
+                    .outcomes
+                    .iter()
+                    .flat_map(|o| &o.fields)
+                    .any(|p| self.manifest.contains_references(&p.ty))
+            {
+                return Err(self.error(
+                    "E_ASYNC",
+                    span,
+                    "spawn currently requires owned captures and results without references",
+                ));
+            }
+            if sig.faults {
+                self.fault_permission(domain, span)?;
+            }
+        }
         let (values, loans) = self.task_arguments(args, &sig.parameters, domain, span)?;
-        let ty = manifest::task_type(operation);
+        let ty = if started {
+            manifest::started_type(operation)
+        } else {
+            manifest::task_type(operation)
+        };
         if self.manifest.type_def(&ty).is_none() {
             self.manifest.types.push(manifest::TypeDef::Opaque {
                 name: ty.clone(),
@@ -39,7 +108,17 @@ impl Checker<'_> {
             });
             self.manifest.task_captures.insert(
                 ty.clone(),
-                sig.parameters.iter().map(|p| p.ty.clone()).collect(),
+                sig.parameters
+                    .iter()
+                    .map(|p| p.ty.clone())
+                    .chain(
+                        sig.outcomes
+                            .iter()
+                            .filter(|_| started)
+                            .flat_map(|o| &o.fields)
+                            .map(|f| f.ty.clone()),
+                    )
+                    .collect(),
             );
         }
         if !loans.is_empty() && self.find_value(name).is_some() {
@@ -72,7 +151,11 @@ impl Checker<'_> {
         self.emit(
             guard,
             Action::Decide {
-                operation: Operation::Defer(operation.clone()),
+                operation: if started {
+                    Operation::Spawn(operation.clone())
+                } else {
+                    Operation::Defer(operation.clone())
+                },
                 args: values,
                 arms: vec![ir::Arm {
                     outcome: "$pending".into(),
@@ -302,7 +385,7 @@ impl Checker<'_> {
         operand: &syntax::Expr,
         domain: Formula,
         span: Span,
-    ) -> Result<(String, Expr, Vec<manifest::Outcome>)> {
+    ) -> Result<(Operation, Expr, Vec<manifest::Outcome>)> {
         let call = self.pending_call(operand, span)?.unwrap();
         let syntax::ExprKind::Call(name, _) = call.kind else {
             unreachable!()
@@ -310,7 +393,12 @@ impl Checker<'_> {
         let sig = self.signatures[&name].clone();
         let mut value = operand.clone();
         value.call_mode = syntax::CallMode::Direct;
-        let ty = manifest::task_type(&name);
+        let ty = self.stored_type(&value, span)?.unwrap();
+        let started = manifest::is_started(&ty);
+        if !started {
+            self.require_no_started(domain, span)?;
+        }
+        self.started_fault_permission(domain, span)?;
         let stored = self.stored_value(&value, &ty, domain, span, true)?;
         self.contingent_call(false, span)?;
         if sig.faults {
@@ -329,6 +417,14 @@ impl Checker<'_> {
                 }
             }
         }
-        Ok((name, stored.expression, sig.outcomes))
+        Ok((
+            if started {
+                Operation::Join(name)
+            } else {
+                Operation::AwaitTask(name)
+            },
+            stored.expression,
+            sig.outcomes,
+        ))
     }
 }

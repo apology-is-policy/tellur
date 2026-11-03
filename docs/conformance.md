@@ -4480,3 +4480,15 @@ captures and wait exhaustion reject without consuming authority or payloads. Gen
 delivery cannot bypass the consuming join. Emergency drain retires unjoined task obligations
 after child unwind, including stopped nested boundaries and sequential descendants, before
 the owning continuation resumes. Source scheduling remains gated.
+
+## Owned source scheduling (0.166)
+
+Source spawn/yield cases check eager capture, queue-only spawn, deterministic handoffs,
+local handle moves, required normal-path await, original/expanded result and diagnostic
+agreement, nested cold/direct awaits and invocation-owned grandchildren. Native cases
+cover O0/O2, varying quotas including zero, every instruction-budget cut and disposal
+of real queued/running/completed resource owners before the owning contingency. Negative
+cases reject borrowed spawn, handle escape, duplicate/missing joins, cross-boundary use,
+and parent calls before joining. Pending results and newly acquired owners retain their
+fault-disposition checks at handoffs. Formatter, LSP and editor cases cover the syntax,
+unsaved repair and native example execution.

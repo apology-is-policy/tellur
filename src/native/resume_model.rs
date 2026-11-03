@@ -33,7 +33,7 @@ mod tests;
 
 #[cfg(test)]
 #[path = "resume_model_resource_tests.rs"]
-mod resource_tests;
+pub(super) mod resource_tests;
 
 #[cfg(test)]
 #[path = "context_model_tests.rs"]

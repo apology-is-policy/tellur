@@ -155,6 +155,7 @@ pub(crate) fn dependency_order(
             Statement::Recover(_)
             | Statement::TerminateProcess(_)
             | Statement::Terminate
+            | Statement::Yield
             | Statement::Escalate
             | Statement::ExitName(_) => {}
             Statement::Capture(_, _, e, _) | Statement::Forward(e) | Statement::Invoke(e) => {

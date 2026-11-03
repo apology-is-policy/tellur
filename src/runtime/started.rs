@@ -6,10 +6,10 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub(super) struct StartedOrigin<'a> {
     execution: Arc<()>,
-    task: TaskId,
-    owner: OwnerId,
-    domain: DomainId,
-    producer: &'a Region,
+    pub(super) task: TaskId,
+    pub(super) owner: OwnerId,
+    pub(super) domain: DomainId,
+    pub(super) producer: &'a Region,
 }
 /// Neither handle is cloneable; only the executor constructs their authority.
 pub(super) struct StartedTask<'a>(StartedOrigin<'a>);

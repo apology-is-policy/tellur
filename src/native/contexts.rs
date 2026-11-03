@@ -28,6 +28,7 @@ struct Parked {
     parent: Option<u64>,
     parent_invocation: Option<super::super::tasks::OwnerId>,
     started: bool,
+    diagnostic_pending: bool,
     task: Option<QueuedTask>,
     sequential: bool,
     awaiting: Option<u64>,
@@ -70,6 +71,7 @@ struct SelectionProgress {
 }
 const ADMISSION_TRANSITION_LIMIT: usize = 4096;
 pub struct Contexts<'a> {
+    source_checked: bool,
     host: &'a mut Host,
     values: Frames,
     domains: Domains,
@@ -87,6 +89,7 @@ pub struct Contexts<'a> {
 impl<'a> Contexts<'a> {
     pub fn new(host: &'a mut Host) -> Self {
         Self {
+            source_checked: false,
             host,
             values: Frames::default(),
             domains: Domains::default(),
@@ -178,6 +181,7 @@ impl<'a> Contexts<'a> {
                 parent: None,
                 parent_invocation: None,
                 started: false,
+                diagnostic_pending: false,
                 task: None,
                 sequential: false,
                 awaiting: None,
@@ -283,6 +287,7 @@ impl<'a> Contexts<'a> {
                 parent: Some(parent.id),
                 parent_invocation,
                 started: false,
+                diagnostic_pending: false,
                 task: None,
                 sequential: false,
                 awaiting: None,
@@ -388,7 +393,9 @@ impl<'a> Contexts<'a> {
             std::mem::take(tracker)
         } else {
             let mut tracker = parked.host.tracker.child();
-            tracker.enter(control.name)?;
+            if !self.source_checked || !retained {
+                tracker.enter(control.name)?;
+            }
             tracker
         };
         // All recoverable checks precede dispatch and capture/resource transfer.
@@ -431,6 +438,8 @@ impl<'a> Contexts<'a> {
             fault: None,
             handover: vec![],
             fault_target: None,
+            source_checked: false,
+            source_handoff: None,
         };
         self.parked.insert(
             id,
@@ -450,6 +459,7 @@ impl<'a> Contexts<'a> {
                 parent: Some(parent.id),
                 parent_invocation,
                 started: false,
+                diagnostic_pending: self.source_checked && retained,
                 task: Some(task),
                 sequential,
                 awaiting: None,
@@ -744,9 +754,10 @@ impl<'a> Contexts<'a> {
         let admission = if disjoint {
             Some(self.admit_one_callback(key)?)
         } else {
-            if self
-                .domains
-                .has_children(&self.parked[&key.id].machine.member)?
+            if !self.source_checked
+                && self
+                    .domains
+                    .has_children(&self.parked[&key.id].machine.member)?
             {
                 return Err("E_NATIVE: parent still awaits retained child contexts".into());
             }
@@ -754,6 +765,11 @@ impl<'a> Contexts<'a> {
         };
         if quota == 0 {
             return Ok(ContextPoll::Paused);
+        }
+        let selected = self.parked.get_mut(&key.id).unwrap();
+        if selected.diagnostic_pending {
+            selected.host.tracker.enter(selected.name)?;
+            selected.diagnostic_pending = false;
         }
         if let Some(task) = self.parked.get_mut(&key.id).unwrap().task.as_mut() {
             // Explicit selection of this context, never a quota-driven sibling
@@ -773,6 +789,7 @@ impl<'a> Contexts<'a> {
         }
         self.waits.remove(&key.id);
         let mut parked = self.parked.remove(&key.id).unwrap();
+        parked.machine.source_checked = self.source_checked;
         let was_started = parked.started;
         parked.started = true;
         self.host.exchange_context(&mut parked.host)?;
@@ -1387,6 +1404,11 @@ fn drive_sequential(
     }
     result
 }
+
+#[cfg(test)]
+#[path = "source_scheduler.rs"]
+mod source_scheduler;
+pub use source_scheduler::run_source_entry;
 
 #[cfg(test)]
 #[path = "execution_tests.rs"]

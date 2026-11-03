@@ -353,6 +353,17 @@ impl Activation {
 }
 pub enum Step {
     Continue,
+    Spawn {
+        task: QueuedTask,
+        slot: usize,
+        ty: &'static str,
+    },
+    Join {
+        value: V,
+        producer: &'static Control,
+        deliver: Deliver,
+    },
+    Yield,
     Await {
         task: QueuedTask,
         deliver: Deliver,
@@ -392,7 +403,22 @@ pub enum Poll {
     Complete(Completion),
     Settling(DomainKey),
 }
+enum SourceHandoff {
+    Spawn {
+        task: QueuedTask,
+        slot: usize,
+        ty: &'static str,
+    },
+    Join {
+        value: V,
+        producer: &'static Control,
+        deliver: Deliver,
+    },
+    Yield,
+}
 pub struct Machine {
+    source_checked: bool,
+    source_handoff: Option<SourceHandoff>,
     stack: Vec<Activation>,
     finished: bool,
     root: DomainScope,
@@ -477,6 +503,8 @@ impl Machine {
             fault: None,
             handover: vec![],
             fault_target: None,
+            source_checked: false,
+            source_handoff: None,
         })
     }
     fn start_related(
@@ -504,6 +532,8 @@ impl Machine {
             fault: None,
             handover: vec![],
             fault_target: None,
+            source_checked: false,
+            source_handoff: None,
         })
     }
     fn require_domain(&self, domains: &Domains) -> R<()> {
@@ -624,10 +654,27 @@ impl Machine {
                         | Completion::Complete(_)
                 )
         ) {
-            domains.require_no_children(&self.member)?;
+            if !self.source_checked {
+                domains.require_no_children(&self.member)?;
+            }
         }
         match step {
             Step::Continue => {}
+            Step::Spawn { task, slot, ty } => {
+                self.source_handoff = Some(SourceHandoff::Spawn { task, slot, ty });
+            }
+            Step::Join {
+                value,
+                producer,
+                deliver,
+            } => {
+                self.source_handoff = Some(SourceHandoff::Join {
+                    value,
+                    producer,
+                    deliver,
+                });
+            }
+            Step::Yield => self.source_handoff = Some(SourceHandoff::Yield),
             Step::Await { task, deliver } => {
                 if frame.pending.is_some() {
                     return Err("E_NATIVE: duplicate compiled await continuation".into());
@@ -1018,7 +1065,9 @@ impl Machine {
         // outside the step/error-unwind loop and before pending delivery, callback
         // operand moves, path facts, effects or fuel. Fine-grained parent progress
         // requires checked access metadata; context membership stays conservative.
-        domains.require_no_children(&self.member)?;
+        if !self.source_checked {
+            domains.require_no_children(&self.member)?;
+        }
         let mut remaining = quota;
         while remaining > 0 {
             let delivery =
@@ -1045,7 +1094,8 @@ impl Machine {
                     remaining -= usize::from(!delivery);
                 }
             }
-            if matches!(&self.stack.last().unwrap().pending, Some(Pending::Await(p)) if p.queued.is_some() && p.result.is_none())
+            if self.source_handoff.is_some()
+                || matches!(&self.stack.last().unwrap().pending, Some(Pending::Await(p)) if p.queued.is_some() && p.result.is_none())
             {
                 return Ok(Poll::Await);
             }
@@ -1061,8 +1111,10 @@ mod contexts;
 #[path = "domains.rs"]
 mod domains;
 pub use contexts::{AdmissionProgress, AdmissionStop};
+#[allow(unused_imports)]
 pub use contexts::{
     ContextKey, ContextPoll, Contexts, Readiness, StartedTask, TaskJoin, run_entry,
+    run_source_entry,
 };
 
 #[cfg(test)]

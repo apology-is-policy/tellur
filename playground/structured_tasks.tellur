@@ -1,0 +1,26 @@
+async control work(string text) exits done {
+    emit(borrow text);
+    yield;
+    emit(borrow text);
+    exit done;
+}
+async control startup() exits done {
+    auto first = spawn work("first");
+    auto second = spawn work("second");
+    emit("queued");
+    yield;
+    emit("parent");
+    auto moved = move first;
+    await moved;
+    emit("joined first");
+    await second;
+    emit("joined second");
+    exit done;
+}
+control main() exits program_result {
+    forward run startup();
+}
+
+outcome program_result {
+    @exit 0 done
+}

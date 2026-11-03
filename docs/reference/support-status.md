@@ -2,21 +2,16 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.165.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.166.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
 
-The private reference task registry now separates queue admission from completion
-joins and retains completed payloads until delivery or emergency retirement.
-Quiescence and fault settlement include these results and their parked callers.
-Entry process termination retires all registered chains/results before status delivery
-and closes late admission, completion and readiness operations.
-A [test-only compiled model](../async-execution.md#native-retained-completion-model-e1d2d3a)
-also retains native result owners through delayed joins and fault/process cleanup;
-Its resource-adoption step is now a shared host API; the completion/task lifecycle
-has not been promoted into a shared native scheduler. Source `spawn` and `yield`
-remain unimplemented.
+Source `spawn`/`yield` now use explicit cooperative scheduling in the reference and
+native executors. The first profile admits owned, reference-free captures/results,
+requires normal-path joins, and joins before the parent enters another source call
+or fault boundary. Queued and completed children retain their fault obligations.
+See [owned spawned children](async-execution.md#owned-spawned-children).
 
 ## Language and data
 
@@ -87,7 +82,7 @@ with complete schemas for every nested reference layer.
 | Protocol analysis | Finite graph/residual queries, completed finite trace-language comparison | Forgets data and concrete feasibility; supervision graphs are rejected; budgets can make results inconclusive |
 | [Execution failures](execution-failures.md) | Source faults, transitive private inference, explicit public/trait permissions, retained-owner release dispositions; reference/native reports with invocation IDs and source/expansion sites | No fault-valued inline leaves, general deep-local fault registration, panic recovery or asynchronous fault settlement |
 | [Contingency](contingency.md) | Named owned-input boundaries, retained handover, checked contingent calls/traits, outcome-free supervision, terminal escalation and activation-local storage | Sequential source-fault isolation only; no outer borrows, recursive calls or general execution-mode flags |
-| [Async execution](async-execution.md) | `async control`, synchronous `run`, direct `await`, local `defer` with owned captures with contained references/shared or exclusive carrier borrows and consuming `await pending`, retained fault obligations, borrowed result-origin delivery and reference/native sequential execution | No nested borrowed tasks or escaping/public task types, spawn, readiness scheduling, cancellation or LLVM coroutine lowering yet |
+| [Async execution](async-execution.md) | `async control`, synchronous `run`, direct `await`, local `defer` with owned captures with contained references/shared or exclusive carrier borrows and consuming `await pending`, retained fault obligations, borrowed result-origin delivery and reference/native execution; owned source spawn/yield and consuming joins | No borrowed spawn payloads, source calls/boundaries with live children, nested borrowed tasks, escaping/public task types, async I/O readiness, cancellation or LLVM coroutine lowering yet |
 | Runtime polymorphism | Roadmap only | Traits currently dispatch statically |
 
 The [conformance inventory](../conformance.md) records release validation. The
@@ -100,7 +95,12 @@ Trait origin coverage: [aggregate trait tests](../../tests/aggregate_traits.rs) 
 Local shared-reference collections: [tests](../../tests/borrowed_collections.rs),
 [example](../../playground/borrowed_collections.tellur).
 
-## Executable status contracts (0.48)
+## Runtime development record
+
+The versioned notes below describe earlier checkpoints; the matrix above describes
+the current source profile.
+
+### Executable status contracts (0.48)
 
 Named outcome alternatives accept `@exit N` with N in 0..255. Native generation
 checks complete final-entry mappings, including explicit manifest overrides.

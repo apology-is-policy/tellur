@@ -523,13 +523,19 @@ impl Server {
                 };
                 let info = match text {
                     "async" => Some(
-                        "`async control` permits `await` and local cold tasks created with `defer`. Synchronous callers enter with `run`. Execution is sequential; scheduling and async I/O remain planned.",
+                        "`async control` permits `await`, cold `defer` tasks and owned `spawn` children. `yield` and `await` are explicit cooperative handoffs; `spawn` only queues work. Synchronous callers enter with `run`. Async host I/O remains planned.",
                     ),
                     "run" => Some(
                         "`run operation(arguments)` enters an async control from synchronous code and waits for its completion. It exposes only normal outcomes and preserves the surrounding fault boundary. It does not catch faults or detach work.",
                     ),
                     "await" => Some(
-                        "`await operation(arguments)` invokes an async control; `await pending` consumes a local cold task exactly once. Direct-call arguments transfer in written order; caller storage and loans remain valid through completion. Await exposes normal outcomes and propagates faults separately.",
+                        "`await operation(arguments)` invokes an async control; `await pending` consumes a cold or started task exactly once. Started completion is observed without rescheduling its body. Direct-call arguments transfer in written order; caller storage and loans remain valid through completion. Await exposes normal outcomes and propagates faults separately.",
+                    ),
+                    "spawn" => Some(
+                        "`auto child = spawn operation(arguments);` queues an invocation-owned child without running it. The first profile requires reference-free captures and results. Move handles locally and await every child on every normal path before entering another source control or fault boundary. Escaping faults settle the owning boundary before contingency.",
+                    ),
+                    "yield" => Some(
+                        "`yield;` explicitly lets already runnable tasks proceed, placing this async invocation behind them. It is unavailable in synchronous or contingency code. Host quotas do not cause source handoffs.",
                     ),
                     "defer" => Some(
                         "`auto pending = defer operation(arguments);` transfers owned arguments, retaining their contained references and direct shared/exclusive borrows without starting the async body. Captured storage stays borrowed until await; returned references keep their selected origins after delivery. Await or move the handle; it cannot be copied, cloned or dropped. Whole reference-bearing carrier borrows retain storage and nested origins; escaping tasks remain unsupported.",

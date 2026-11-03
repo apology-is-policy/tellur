@@ -4,7 +4,7 @@
 [Fault boundaries](faults-and-activations.md) ·
 [Current feature status](reference/support-status.md)
 
-Updated 2 November 2026. This is an E1 design and implementation plan. Compilers 0.98–0.103 add
+Updated 3 November 2026. This is an E1 design and implementation plan. Compilers 0.98–0.103 add
 shared activation identities, persistent continuations and atomic invocation admission,
 prerequisites for overlapping execution contexts. They do **not** implement source
 tasks, source suspension, scheduling or async I/O. Compiler 0.105 additionally implements [direct async calls](reference/async-execution.md):
@@ -15,7 +15,7 @@ transfers selected borrowed completion origins. Compiler 0.109 retains contained
 references in owned captures. Compiler 0.110 retains whole borrowed carrier storage
 and nested dependencies through cold capture and result delivery. Compiler 0.111
 separates execution-wide storage and observations from resumable context state.
-Scheduling remains future work.
+Compiler 0.166 adds bounded owned source scheduling; see [E1e.1](#owned-source-scheduling-e1e1) for current limits.
 
 ## Existing direction
 
@@ -25,8 +25,8 @@ The roadmap already separates completed outcomes from pending computations:
 - `defer` evaluates and transfers owned arguments now, without running the body;
   direct borrowed captures are retained in 0.107 and owned contained captures in 0.109.
 - `await` consumes a local cold task and exposes only its declared normal outcomes.
-  Waiting for an independently running task remains planned.
-- Planned `spawn` explicitly schedules child work. A child belongs to an owning
+  It also consumes a started handle to observe its retained normal completion.
+- `spawn` explicitly schedules owned child work in the bounded 0.166 profile. A child belongs to an owning
   scope; every path settles or explicitly transfers ownership. There is no hidden
   detach or parallelism caused by an ordinary call.
 - Suspension preserves captured loans. Waiting does not end an exclusive borrow.
@@ -38,7 +38,7 @@ The first executor is cooperative and single-threaded, with deterministic modele
 readiness. Native coroutine lowering remains a separate E2 checkpoint. Thread
 transfer, synchronization traits and general annotation flags are not introduced.
 
-## What the current runtime does
+## Runtime development history
 
 Before 0.99, the reference interpreter invoked controls recursively through
 `Machine::invoke` and traversed loop/boundary instruction lists through `execute`.
@@ -2938,6 +2938,42 @@ These private operations are runtime groundwork: source spawn/yield and their sc
 are not enabled. The next integration must retain runnable owner continuations, route
 escaping independent faults to their owning boundary, and connect explicit handoffs and
 normal-path required-await checking in both executors together.
+
+## Owned source scheduling (E1e.1)
+
+Compiler 0.166 integrates the accepted invocation-owned child and explicit handoff
+model in the reference executor and generated native programs. `spawn` eagerly
+transfers arguments, queues a child and returns a linear local handle without
+running the body. `yield` and `await` select FIFO work; a host quota retains the
+selected source chain. Consuming a completed handle delivers its retained normal
+outcome once, without running the body again. The original parent diagnostic chain
+survives independent joins. Child activation identities are allocated at dispatch.
+
+The first admission profile requires reference-free captures and normal results.
+The existing linear checker requires an await on every normal path, permits local
+moves and rejects handle escape or fault-boundary crossing. A parent must join its
+started children before entering another source control, cold/direct await or
+fault boundary. Primitive effects, local work, spawn, yield and started joins remain
+available. These conservative limits bound this implementation; they do not change
+the accepted eventual borrowing or invocation ownership semantics.
+
+Started handles retain capture and possible completion fault obligations. Local
+wrappers retain producer identity through live owned leaves, so they cannot bypass
+call/boundary admission or handoff fault checks. Handoffs
+check fault permission for every live fault-capable sibling. Escaping child faults
+route to the retained owning continuation, preserving the original causal report
+through grandchildren. Settlement retires queued, suspended and completed children
+before the owning contingency. Stopped sibling nested contingencies do not run.
+Ordinary host context APIs retain their existing access gates; only the driver
+emitted for checked source programs uses this admitted profile.
+
+Runnable examples, negative ownership tests, source formatting/highlighting/hover,
+original/expanded execution, native O0/O2, varied host quotas, instruction-budget
+cuts and real resource disposal exercise this integration. See the
+[current source rules](reference/async-execution.md#owned-spawned-children).
+Borrowed spawn and broader parent progression need a further checked admission
+profile. External readiness, async adapters, cancellation protocols and direct LLVM
+coroutine lowering remain separate roadmap work.
 
 ## Reference execution invariants
 

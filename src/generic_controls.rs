@@ -110,6 +110,7 @@ fn rewrite_statement(s: &mut Statement, b: &BTreeMap<String, String>) {
         Statement::Recover(_)
         | Statement::TerminateProcess(_)
         | Statement::Terminate
+        | Statement::Yield
         | Statement::Escalate
         | Statement::ExitName(_) => (),
         Statement::Delta(_, e, arms) => {
@@ -273,6 +274,7 @@ fn statement_calls(s: &Statement, at: Span, v: &mut Visit<'_>) -> Result<()> {
         Statement::Recover(_)
         | Statement::TerminateProcess(_)
         | Statement::Terminate
+        | Statement::Yield
         | Statement::Escalate
         | Statement::ExitName(_) => (),
         Statement::Delta(_, e, arms) => {

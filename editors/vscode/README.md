@@ -4,12 +4,12 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-darwin-arm64-0.165.0.vsix` using **Extensions:
+1. Install the supplied `tellur-language-darwin-arm64-0.166.0.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
 3. Open `playground/hello.tellur` and click **▶** or **Tellur: Build and Run** (`⌘⌥R`).
-   Try `playground/sequential_initializers.tellur`, `playground/projected_construction.tellur`, `playground/composed_construction.tellur`, `playground/borrowed_construction.tellur`, `playground/construction.tellur`, `playground/named_outcomes.tellur`, `stored_adapters.tellur`, `adapters.tellur`, `outcomes.tellur`, `collections.tellur`, `references.tellur`, and `count.tellur` next.
+   Try `playground/structured_tasks.tellur`, `playground/sequential_initializers.tellur`, `playground/projected_construction.tellur`, `playground/composed_construction.tellur`, `playground/borrowed_construction.tellur`, `playground/construction.tellur`, `playground/named_outcomes.tellur`, `stored_adapters.tellur`, `adapters.tellur`, `outcomes.tellur`, `collections.tellur`, `references.tellur`, and `count.tellur` next.
 4. Read `docs/language-reference.md` for the detailed language reference.
 
 The package contains both `tellur-lsp` and `tellurc`. Native builds require the Rust/Cargo
@@ -1452,8 +1452,10 @@ Native runtime groundwork now composes independent children with awaited invocat
 Borrowed results and fault cleanup preserve the original caller chain. Source execution
 remains sequential while started-task and scheduling integration continues.
 
-## Reference started-task joins in 0.165
+## Owned source scheduling in 0.166
 
-Reference runtime groundwork now retains independent child ownership and consumes joins
-without replacing the original caller's diagnostics. Emergency cleanup retires the child
-obligation after its complete unwind. Source programs still use sequential awaits.
+`spawn` queues invocation-owned children; `yield` and `await` explicitly hand off
+execution. Every normal path must await each child. The first profile uses owned,
+reference-free captures/results and joins before another source call or fault
+boundary. Child faults settle siblings before the owning contingency.
+See the structured tasks playground and the current async execution reference.

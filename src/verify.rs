@@ -849,6 +849,19 @@ impl Verifier<'_> {
                     arms,
                 } => {
                     let outcomes = match operation {
+                        Operation::Yield => {
+                            if !self.region.asynchronous
+                                || self.region.contingent
+                                || self.handler
+                                || !args.is_empty()
+                            {
+                                return Err(error("invalid cooperative handoff"));
+                            }
+                            vec![crate::manifest::Outcome {
+                                name: "$yield".into(),
+                                fields: vec![],
+                            }]
+                        }
                         Operation::Variant(e) => {
                             if !args.is_empty() {
                                 return Err(error("variant decision has call args"));
@@ -871,6 +884,8 @@ impl Verifier<'_> {
                         | Operation::Run(name)
                         | Operation::Await(name)
                         | Operation::Defer(name)
+                        | Operation::Spawn(name)
+                        | Operation::Join(name)
                         | Operation::AwaitTask(name) => {
                             let r = self
                                 .program
@@ -883,6 +898,8 @@ impl Verifier<'_> {
                                 Operation::Run(_) => r.asynchronous,
                                 Operation::Await(_)
                                 | Operation::Defer(_)
+                                | Operation::Spawn(_)
+                                | Operation::Join(_)
                                 | Operation::AwaitTask(_) => {
                                     r.asynchronous && self.region.asynchronous
                                 }
@@ -907,12 +924,29 @@ impl Verifier<'_> {
                             {
                                 return Err(error("faulting call without control permission"));
                             }
-                            if matches!(operation, Operation::AwaitTask(_)) {
+                            if matches!(operation, Operation::Spawn(_))
+                                && (r
+                                    .parameters
+                                    .iter()
+                                    .any(|p| self.program.manifest().contains_references(&p.ty))
+                                    || r.exits.iter().flat_map(|o| &o.fields).any(|f| {
+                                        self.program.manifest().contains_references(&f.ty)
+                                    }))
+                            {
+                                return Err(error(
+                                    "spawn requires reference-free captures and results",
+                                ));
+                            }
+                            if matches!(operation, Operation::AwaitTask(_) | Operation::Join(_)) {
                                 self.args(
                                     args,
                                     &[Field {
                                         name: "pending".into(),
-                                        ty: crate::manifest::task_type(name),
+                                        ty: if matches!(operation, Operation::Join(_)) {
+                                            crate::manifest::started_type(name)
+                                        } else {
+                                            crate::manifest::task_type(name)
+                                        },
                                     }],
                                 )?;
                             } else {
@@ -927,21 +961,31 @@ impl Verifier<'_> {
                                         .collect::<Vec<_>>(),
                                 )?;
                             }
-                            if matches!(operation, Operation::Defer(_)) {
-                                let ty = crate::manifest::task_type(name);
+                            if matches!(operation, Operation::Defer(_) | Operation::Spawn(_)) {
+                                let ty = if matches!(operation, Operation::Spawn(_)) {
+                                    crate::manifest::started_type(name)
+                                } else {
+                                    crate::manifest::task_type(name)
+                                };
                                 let m = self.program.manifest();
+                                let obligations: Vec<_> = r
+                                    .parameters
+                                    .iter()
+                                    .map(|p| p.ty.clone())
+                                    .chain(
+                                        r.exits
+                                            .iter()
+                                            .filter(|_| matches!(operation, Operation::Spawn(_)))
+                                            .flat_map(|o| &o.fields)
+                                            .map(|f| f.ty.clone()),
+                                    )
+                                    .collect();
                                 if !matches!(
                                     m.type_def(&ty),
                                     Some(crate::manifest::TypeDef::Opaque { linear: true, .. })
-                                ) || m.task_captures.get(&ty)
-                                    != Some(
-                                        &r.parameters
-                                            .iter()
-                                            .map(|p| p.ty.clone())
-                                            .collect::<Vec<_>>(),
-                                    )
+                                ) || m.task_captures.get(&ty) != Some(&obligations)
                                     || m.permits_fault(&ty)
-                                        != r.parameters.iter().all(|p| m.permits_fault(&p.ty))
+                                        != obligations.iter().all(|ty| m.permits_fault(ty))
                                 {
                                     return Err(error("pending task capture disposition differs"));
                                 }

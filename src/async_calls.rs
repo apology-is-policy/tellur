@@ -33,27 +33,31 @@ impl Admission<'_> {
                         "an async control must be entered with run"
                     }));
                 }
-                CallMode::Run | CallMode::Await | CallMode::Defer if !asynchronous => {
-                    return Err(fail("run, await and defer require an async control"));
+                CallMode::Run | CallMode::Await | CallMode::Defer | CallMode::Spawn
+                    if !asynchronous =>
+                {
+                    return Err(fail("run, await, defer and spawn require an async control"));
                 }
                 CallMode::Run if self.asynchronous => {
                     return Err(fail(
                         "run belongs in synchronous controls; use await inside an async control",
                     ));
                 }
-                CallMode::Await | CallMode::Defer if !self.asynchronous => {
+                CallMode::Await | CallMode::Defer | CallMode::Spawn if !self.asynchronous => {
                     return Err(fail(
-                        "await/defer require an async control; use run for synchronous entry",
+                        "await/defer/spawn require an async control; use run for synchronous entry",
                     ));
                 }
-                CallMode::Run | CallMode::Await | CallMode::Defer if contingent => {
+                CallMode::Run | CallMode::Await | CallMode::Defer | CallMode::Spawn
+                    if contingent =>
+                {
                     return Err(fail(
                         "async invocation is not available in contingency code",
                     ));
                 }
-                CallMode::Defer if usage != Usage::Initializer => {
+                CallMode::Defer | CallMode::Spawn if usage != Usage::Initializer => {
                     return Err(fail(
-                        "defer currently requires a local auto binding initializer",
+                        "defer and spawn require a local auto binding initializer",
                     ));
                 }
                 _ => {}
@@ -120,6 +124,15 @@ impl Admission<'_> {
     }
     fn statement(&self, s: &Statement, contingent: bool, at: Span) -> Result<()> {
         match s {
+            Statement::Yield => {
+                if !self.asynchronous || contingent {
+                    return Err(Diagnostic::new(
+                        "E_ASYNC",
+                        at,
+                        "yield requires an async control outside contingency code",
+                    ));
+                }
+            }
             Statement::Invoke(e) | Statement::Forward(e) | Statement::Capture(_, _, e, _) => {
                 self.expression(e, Usage::Operation, contingent, at)?;
             }
@@ -234,4 +247,54 @@ pub(crate) fn contains_task(manifest: &crate::manifest::Manifest, ty: &str) -> b
         }
     }
     visit(manifest, ty, &mut BTreeSet::new())
+}
+
+/// Started obligations remain live when a local sum/record wraps the handle.
+/// Return every possible producer in a sealed owned leaf; its selected path is
+/// supplied separately by the ownership checker.
+pub(crate) fn started_producers(
+    manifest: &crate::manifest::Manifest,
+    ty: &str,
+) -> BTreeSet<String> {
+    fn visit(
+        m: &crate::manifest::Manifest,
+        ty: &str,
+        seen: &mut BTreeSet<String>,
+        result: &mut BTreeSet<String>,
+    ) {
+        if !seen.insert(ty.into()) {
+            return;
+        }
+        if crate::manifest::is_started(ty) {
+            result.insert(crate::manifest::task_inner(ty).unwrap().into());
+        } else if let Some((_, inner)) = crate::manifest::reference_inner(ty) {
+            visit(m, inner, seen, result);
+        } else if let Some(inner) = crate::manifest::option_inner(ty) {
+            visit(m, inner, seen, result);
+        } else if let Some(c) = crate::collection_support::Collection::parse(ty) {
+            for ty in c.types() {
+                visit(m, ty, seen, result);
+            }
+        } else {
+            match m.type_def(ty) {
+                Some(crate::manifest::TypeDef::Record { fields, .. }) => {
+                    for field in fields {
+                        visit(m, &field.ty, seen, result);
+                    }
+                }
+                Some(
+                    crate::manifest::TypeDef::Variant { constructors, .. }
+                    | crate::manifest::TypeDef::Outcome { constructors, .. },
+                ) => {
+                    for field in constructors.iter().flat_map(|c| &c.fields) {
+                        visit(m, &field.ty, seen, result);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    let mut result = BTreeSet::new();
+    visit(manifest, ty, &mut BTreeSet::new(), &mut result);
+    result
 }

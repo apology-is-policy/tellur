@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.165.0** implements the v0.1 checked core and the current language
+Compiler release **0.166.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -16,6 +16,13 @@ a reference interpreter, graph expansion, native compiler, language server, and
 VS Code build/run commands. The [revision plan](docs/language-revision.md) separates
 delivered features from the remaining reference, slice, outcome-expression and async work. The language is still
 fluid; this is an experimental implementation, not a production compiler.
+
+Release 0.166 adds [owned source scheduling](docs/reference/async-execution.md#owned-spawned-children):
+`spawn` queues invocation-owned children, and `await`/`yield` explicitly hand off
+execution. Try [structured_tasks.tellur](playground/structured_tasks.tellur) with
+`./bin/tellurc exec playground/structured_tasks.tellur playground/manifest.json`.
+The current reference describes the admitted profile; earlier versioned notes below
+record the limits at those historical checkpoints.
 
 Release 0.79 adds checked constructor contracts at call sites: concrete input types,
 ordered result origins, fault permission and selected histories. Try hovering over
@@ -963,8 +970,10 @@ Native runtime groundwork now composes independent children with awaited invocat
 Borrowed results and fault cleanup preserve the original caller chain. Source execution
 remains sequential while started-task and scheduling integration continues.
 
-## Reference started-task joins in 0.165
+## Owned source scheduling in 0.166
 
-Reference runtime groundwork now retains independent child ownership and consumes joins
-without replacing the original caller's diagnostics. Emergency cleanup retires the child
-obligation after its complete unwind. Source programs still use sequential awaits.
+`spawn` queues invocation-owned children; `yield` and `await` explicitly hand off
+execution. Every normal path must await each child. The first profile uses owned,
+reference-free captures/results and joins before another source call or fault
+boundary. Child faults settle siblings before the owning contingency.
+See the structured tasks playground and the current async execution reference.

@@ -1,0 +1,34 @@
+async control sibling() exits done {
+    fault boundary {
+        emit("sibling");
+        yield;
+        emit("stopped sibling resumed");
+    }
+        contingency [] {
+        emit("stopped nested handler");
+        escalate;
+    }
+    exit done;
+}
+async control fail() faults {
+    fault "child failed";
+}
+async control startup() exits done faults {
+    auto first = spawn sibling();
+    auto second = spawn fail();
+    emit("queued");
+    yield;
+    emit("stopped parent resumed");
+    await first;
+    await second;
+}
+control main() exits done {
+    fault boundary {
+        run startup();
+    }
+        contingency [] {
+        emit("owner contingency");
+        terminate process 23;
+    }
+    exit done;
+}

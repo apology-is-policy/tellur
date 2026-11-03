@@ -170,7 +170,10 @@ impl Graph {
                         Operation::Run(_)
                         | Operation::Await(_)
                         | Operation::Defer(_)
-                        | Operation::AwaitTask(_) => {
+                        | Operation::AwaitTask(_)
+                        | Operation::Spawn(_)
+                        | Operation::Join(_)
+                        | Operation::Yield => {
                             return Err(error(
                                 "protocol analysis cannot erase run or await boundaries",
                             ));

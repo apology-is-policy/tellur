@@ -1,0 +1,31 @@
+async control fail() faults {
+    yield;
+    fault "grandchild failed";
+}
+async control middle() faults {
+    auto child = spawn fail();
+    yield;
+    await child;
+}
+async control worker() exits done {
+    emit("sibling");
+    yield;
+    yield;
+    emit("forbidden");
+    exit done;
+}
+async control startup() faults {
+    auto first = spawn middle();
+    auto second = spawn worker();
+    yield;
+    await first;
+}
+control main() exits done {
+    fault boundary {
+        run startup();
+    }
+        contingency [] {
+        emit("owner contingency");
+        terminate process 29;
+    }
+}

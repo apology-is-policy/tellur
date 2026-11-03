@@ -737,6 +737,7 @@ impl Resolver<'_> {
             Statement::Recover(_)
             | Statement::TerminateProcess(_)
             | Statement::Terminate
+            | Statement::Yield
             | Statement::Escalate
             | Statement::ExitName(_) => (),
         }

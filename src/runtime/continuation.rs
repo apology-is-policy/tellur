@@ -34,6 +34,9 @@ mod completions;
 #[path = "started.rs"]
 mod started;
 use started::StartedOrigin;
+#[path = "source_scheduler.rs"]
+mod source_scheduler;
+use source_scheduler::Scheduler;
 
 type RunResult = std::result::Result<RunCompletion, Box<Failure>>;
 
@@ -80,6 +83,7 @@ impl CheckedProgram {
                     ready: BTreeMap::new(),
                     waiting: BTreeMap::new(),
                     completed: BTreeMap::new(),
+                    scheduler: Scheduler::default(),
                 },
                 context: Context::new(crate::fault::Tracker::new(self.runtime_sites())),
                 settlements: vec![],
@@ -202,6 +206,7 @@ struct SharedExecution<'a> {
     ready: BTreeMap<TaskId, ReadyCall<'a>>,
     waiting: BTreeMap<TaskId, Context<'a>>,
     completed: BTreeMap<TaskId, Context<'a>>,
+    scheduler: Scheduler<'a>,
 }
 
 /// A resumable control chain. Storage and effect history belong to the execution;
@@ -211,6 +216,7 @@ struct Context<'a> {
     domain: Option<DomainId>,
     task: Option<(TaskId, OwnerId)>,
     started: Option<StartedOrigin<'a>>,
+    source_cause: Option<crate::fault::Report>,
     contingencies: Vec<Diagnostic>,
     activations: crate::fault::Tracker,
     phase: crate::fault::Phase,
@@ -225,6 +231,7 @@ impl Context<'_> {
             domain: None,
             task: None,
             started: None,
+            source_cause: None,
             contingencies: vec![],
             activations,
             phase: crate::fault::Phase::EntryValidation,
@@ -441,6 +448,14 @@ impl<'a> Machine<'a> {
     /// No recursive source calls/loops/unwinding occur here.
     fn drive(&mut self, mut quota: usize) -> bool {
         loop {
+            self.prune_source();
+            match self.route_source_fault() {
+                Ok(true) => continue,
+                Ok(false) => {}
+                Err(diagnostic) => {
+                    self.context.flow = Some(Err(diagnostic));
+                }
+            }
             if let Some(Ok(Flow::Process(status))) = &self.context.flow {
                 if let Some(original) = self.process_status {
                     assert_eq!(*status, original, "process retirement changed status");
@@ -474,6 +489,11 @@ impl<'a> Machine<'a> {
                 }
                 if self.process_status.is_some() && self.begin_retained_settlement(None) {
                     continue;
+                }
+                match self.source_complete() {
+                    Ok(true) => continue,
+                    Ok(false) => {}
+                    Err(diagnostic) => self.context.flow = Some(Err(diagnostic)),
                 }
                 return true;
             };
@@ -608,7 +628,7 @@ impl<'a> Machine<'a> {
                 .map(|_| *task)
         });
         let Some(task) = ready.chain(waiting).min() else {
-            return false;
+            return self.settle_source(domain);
         };
         let context = if let Some(call) = self.shared.ready.remove(&task) {
             match call {
@@ -1004,6 +1024,7 @@ impl<'a> Machine<'a> {
             context.domain == Some(domain)
         });
         ready
+            || self.source_retained(domain)
             || self
                 .shared
                 .completed
@@ -1218,6 +1239,28 @@ impl<'a> Machine<'a> {
                 self.call(boundary, args)?;
             }
             Action::Decide {
+                operation: Operation::Spawn(name),
+                args,
+                arms,
+            } => {
+                self.source_spawn(name, args, arms)?;
+            }
+            Action::Decide {
+                operation: Operation::Join(name),
+                args,
+                arms,
+            } => {
+                self.source_join(name, args, arms)?;
+            }
+            Action::Decide {
+                operation: Operation::Yield,
+                arms,
+                ..
+            } => {
+                self.bind(arms, "$yield".into(), vec![])?;
+                self.yield_source()?;
+            }
+            Action::Decide {
                 operation: op @ (Operation::AwaitTask(name) | Operation::Await(name)),
                 args,
                 arms,
@@ -1281,7 +1324,11 @@ impl<'a> Machine<'a> {
                         )
                         .is_none()
                 );
-                self.context.stack.push(Continuation::Dispatch);
+                if self.shared.scheduler.enabled {
+                    self.queue_source_await(task)?;
+                } else {
+                    self.context.stack.push(Continuation::Dispatch);
+                }
             }
             Action::Decide {
                 operation: Operation::Region(name) | Operation::Run(name),
@@ -1428,7 +1475,10 @@ impl<'a> Machine<'a> {
                             arguments: args,
                         }],
                     ),
-                    Operation::AwaitTask(_) => unreachable!("task await has a continuation"),
+                    Operation::AwaitTask(_)
+                    | Operation::Join(_)
+                    | Operation::Spawn(_)
+                    | Operation::Yield => unreachable!("task operation has a continuation"),
                     Operation::Collection(name) => collection(name, args, values)?,
                     Operation::Region(name) | Operation::Run(name) | Operation::Await(name) => {
                         unreachable!("control calls have an explicit continuation: {name}")

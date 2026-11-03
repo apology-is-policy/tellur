@@ -251,6 +251,47 @@ pub(super) fn source(program: &CheckedProgram) -> String {
                 continue;
             }
             if let Action::Decide {
+                operation: Operation::Yield,
+                arms,
+                ..
+            } = &instruction.action
+            {
+                let p = &instruction.provenance;
+                let _ = writeln!(
+                    g.code,
+                    "host.at({});host.tick({}, {})?;if {} {{state.facts[{}]=true;return Ok(Step::Yield);}}Ok(Step::Continue)}} ,",
+                    instruction.id,
+                    p.span.line,
+                    p.span.column,
+                    guard(&instruction.guard, &g.layout),
+                    g.layout.atoms[&arms[0].atom]
+                );
+                continue;
+            }
+            if let Action::Decide {
+                operation: Operation::Spawn(name),
+                args,
+                arms,
+            } = &instruction.action
+            {
+                let p = &instruction.provenance;
+                let target = names[name.as_str()];
+                let _ = writeln!(
+                    g.code,
+                    "host.at({});host.tick({}, {})?;if {} {{let mut arguments={};let mut value=Some(state.defer_task(host,&MODEL_{target},{},&mut arguments)?);let task=state.queue_started(host,&MODEL_{target},&mut value)?;state.facts[{}]=true;return Ok(Step::Spawn{{task,slot:{},ty:{}}});}}Ok(Step::Continue)}} ,",
+                    instruction.id,
+                    p.span.line,
+                    p.span.column,
+                    guard(&instruction.guard, &g.layout),
+                    expressions(args, &g.layout),
+                    string(&crate::manifest::task_type(name)),
+                    g.layout.atoms[&arms[0].atom],
+                    g.layout.slots[&arms[0].slots[0]],
+                    string(&crate::manifest::started_type(name))
+                );
+                continue;
+            }
+            if let Action::Decide {
                 operation: Operation::Defer(name),
                 args,
                 arms,
@@ -280,7 +321,8 @@ pub(super) fn source(program: &CheckedProgram) -> String {
                         Operation::Region(name)
                         | Operation::Run(name)
                         | Operation::Await(name)
-                        | Operation::AwaitTask(name),
+                        | Operation::AwaitTask(name)
+                        | Operation::Join(name),
                     args,
                     arms,
                 } => Some((name, args, arms)),
@@ -310,7 +352,18 @@ pub(super) fn source(program: &CheckedProgram) -> String {
                     "None".into()
                 };
                 let target = names[name.as_str()];
-                if awaiting {
+                if matches!(
+                    &instruction.action,
+                    Action::Decide {
+                        operation: Operation::Join(_),
+                        ..
+                    }
+                ) {
+                    let _ = writeln!(
+                        g.code,
+                        "let mut arguments={arguments};let value=arguments.pop().ok_or(\"E_NATIVE: missing started handle\")?;return Ok(Step::Join{{value,producer:&MODEL_{target},deliver:deliver_{id}_{pc}}});\n}}Ok(Step::Continue)\n}},"
+                    );
+                } else if awaiting {
                     debug_assert_eq!(args.len(), 1);
                     let _ = writeln!(
                         g.code,

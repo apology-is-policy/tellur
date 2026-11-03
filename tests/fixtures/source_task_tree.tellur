@@ -1,0 +1,32 @@
+async control leaf(ref mutable string text) exits done {
+    emit("leaf");
+    yield;
+    deref text = "changed";
+    exit done;
+}
+async control worker(string text) exits done {
+    emit(borrow text);
+    yield;
+    emit(borrow text);
+    exit done;
+}
+async control group() exits done {
+    mutable string text = "initial";
+    auto pending = defer leaf(borrow mutable text);
+    await pending;
+    emit(borrow text);
+    auto grandchild = spawn worker("grandchild");
+    yield;
+    await grandchild;
+    exit done;
+}
+async control startup() exits done {
+    auto child = spawn group();
+    auto peer = spawn worker("peer");
+    await child;
+    await peer;
+    exit done;
+}
+control main() exits done {
+    forward run startup();
+}

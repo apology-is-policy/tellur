@@ -97,7 +97,7 @@ fn compare_resources(label: &str, source: &str, statuses: [i32; 2]) {
     fs::remove_dir_all(root).unwrap();
 }
 
-pub(super) fn resource_manifest(root: &Path) -> crate::manifest::Manifest {
+pub(in crate::native) fn resource_manifest(root: &Path) -> crate::manifest::Manifest {
     fs::write(root.join("host.rs"), HOST).unwrap();
     fs::write(
         root.join("Cargo.lock"),

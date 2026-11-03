@@ -115,7 +115,8 @@ pub struct Manifest {
     pub rust: Option<crate::rust_host::Configuration>,
     #[serde(skip)]
     pub(crate) abstract_types: BTreeMap<String, Capabilities>,
-    /// Compiler-only capture types; never accepted as host manifest input.
+    /// Compiler-only obligation types: cold captures and, for started handles,
+    /// every possible retained completion. Never accepted as host manifest input.
     #[serde(skip)]
     pub(crate) task_captures: BTreeMap<String, Vec<String>>,
     pub version: String,
@@ -135,8 +136,16 @@ pub fn reference_inner(ty: &str) -> Option<(bool, &str)> {
 pub(crate) fn task_type(operation: &str) -> String {
     format!("$task<{operation}>")
 }
+pub(crate) fn started_type(operation: &str) -> String {
+    format!("$started<{operation}>")
+}
+pub(crate) fn is_started(ty: &str) -> bool {
+    ty.starts_with("$started<") && task_inner(ty).is_some()
+}
 pub(crate) fn task_inner(ty: &str) -> Option<&str> {
-    ty.strip_prefix("$task<").and_then(|s| s.strip_suffix('>'))
+    ty.strip_prefix("$task<")
+        .or_else(|| ty.strip_prefix("$started<"))
+        .and_then(|s| s.strip_suffix('>'))
 }
 /// Producer-indexed and anonymous compiler schemas; named outcomes use TypeDef::Outcome.
 pub fn outcome_inner(ty: &str) -> Option<&str> {

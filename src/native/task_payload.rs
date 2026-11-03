@@ -91,6 +91,17 @@ pub struct QueuedTask {
     arguments: Option<Vec<V>>,
 }
 impl QueuedTask {
+    pub(super) fn source_handle(&self, ty: &str) -> (TaskId, V) {
+        (
+            self.binding.task,
+            V::Task {
+                binding: Some(self.binding.clone()),
+                ty: ty.into(),
+                operation: self.binding.producer.name.into(),
+                arguments: vec![],
+            },
+        )
+    }
     pub(super) fn dependencies(&self, values: &Frames) -> Dependencies {
         match &self.arguments {
             Some(arguments) => Dependencies::describe(values, arguments),
@@ -233,6 +244,31 @@ impl QueuedTask {
     }
 }
 impl Activation {
+    pub(super) fn source_task_identity(
+        &self,
+        host: &Host,
+        value: &V,
+        producer: &'static Control,
+    ) -> R<TaskId> {
+        self.require_task_host(host)?;
+        let V::Task {
+            binding: Some(binding),
+            arguments,
+            ..
+        } = value
+        else {
+            return Err("E_NATIVE: source join requires a bound task".into());
+        };
+        if !arguments.is_empty()
+            || !Arc::ptr_eq(&binding.registry, &self.registry)
+            || binding.owner != self.owner
+            || !std::ptr::eq(binding.producer, producer)
+        {
+            return Err("E_NATIVE: source join authority differs".into());
+        }
+        Ok(binding.task)
+    }
+
     pub(super) fn require_task_host(&self, host: &Host) -> R<()> {
         if !Arc::ptr_eq(&self.registry, &host.resources.identity) {
             return Err("E_NATIVE: invocation belongs to another host".into());
