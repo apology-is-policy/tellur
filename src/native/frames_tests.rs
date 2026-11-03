@@ -4,6 +4,43 @@ use serde_json::json;
 use std::{cell::RefCell, rc::Rc};
 
 #[test]
+fn storage_identity_rejects_foreign_frames_and_offset_reuse() {
+    let mut a = Frames::default();
+    let frame = a.enter(2).unwrap();
+    let empty = a.enter(0).unwrap();
+    let later = a.enter(1).unwrap();
+    let stored = a.local_storage(&frame, 1).unwrap();
+    assert_eq!(stored, a.storage_at(frame.base + 1).unwrap());
+    assert!(a.local_storage(&frame, 2).is_err());
+    assert!(a.local_storage(&frame, usize::MAX).is_err());
+    assert!(a.local_storage(&empty, 0).is_err());
+    assert!(a.storage_at(usize::MAX).is_err());
+    let mut b = Frames::default();
+    let foreign = b.enter(2).unwrap();
+    let other = b.local_storage(&foreign, 1).unwrap();
+    assert_ne!(
+        stored, other,
+        "equal numeric identities in separate arenas differ"
+    );
+    assert!(a.local_storage(&foreign, 1).is_err());
+    assert!(a.require_storage(&other).is_err());
+    a.retire(&frame).unwrap();
+    assert!(a.storage_at(frame.base).is_err());
+    let replacement = a.enter(2).unwrap();
+    assert_eq!(replacement.base, frame.base);
+    let fresh = a.local_storage(&replacement, 1).unwrap();
+    assert_ne!(stored, fresh);
+    assert!(a.require_storage(&stored).is_err());
+    assert_eq!(a.require_storage(&fresh).unwrap(), frame.base + 1);
+    assert!(a.local_storage(&frame, 1).is_err());
+    assert!(a.frame_values(&empty).unwrap().is_empty());
+    a.retire(&later).unwrap();
+    a.retire(&replacement).unwrap();
+    a.retire(&empty).unwrap();
+    assert!(a.is_empty());
+}
+
+#[test]
 fn every_retirement_order_preserves_live_ranges_and_coalesces_storage() {
     for a in 0..4 {
         for b in 0..4 {

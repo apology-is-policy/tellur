@@ -1061,6 +1061,18 @@ fn access_queries_distinguish_pending_delivery_from_arguments_and_administrative
     };
     for _ in 0..4 {
         assert_eq!(c.parked[&root.id].machine.next_access(), expected);
+        let m = &c.parked[&root.id].machine;
+        let resolved = m.resolve_access(&c.values).unwrap();
+        assert_eq!(resolved.transition, Transition::Delivery);
+        assert!(!resolved.opaque && resolved.delivery.is_empty());
+        assert_eq!(resolved.accesses.len(), 1);
+        assert_eq!(resolved.accesses[0].kind, AccessKind::Write);
+        assert_eq!(
+            c.values
+                .require_storage(&resolved.accesses[0].place.storage)
+                .unwrap(),
+            m.stack[0].base() + 1
+        );
     }
     assert_eq!(*c.values, slots);
     assert_eq!(c.host.tasks, tasks);
@@ -1076,6 +1088,9 @@ fn access_queries_distinguish_pending_delivery_from_arguments_and_administrative
         };
         let normal = p.result.replace(administrative);
         assert_eq!(machine.next_access(), AccessPlan::UNKNOWN);
+        let resolved = machine.resolve_access(&c.values).unwrap();
+        assert_eq!(resolved.transition, Transition::Unknown);
+        assert!(resolved.opaque && resolved.accesses.is_empty() && resolved.delivery.is_empty());
         let Some(Pending::Await(p)) = &mut machine.stack[0].pending else {
             panic!()
         };

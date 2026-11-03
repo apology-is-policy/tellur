@@ -3,10 +3,50 @@ use serde_json::Value as Json;
 
 #[test]
 fn compiled_selection_rejects_before_callback_moves_effects_and_pending_delivery() {
-    let root = std::env::temp_dir().join(format!("tellur-selection-{}", std::process::id()));
+    compare_selection(
+        "loops",
+        include_str!("../../tests/fixtures/native_resume_loops.tellur"),
+        &[
+            "Skip",
+            "Local",
+            "Effect",
+            "Run",
+            "Defer",
+            "AwaitTask",
+            "Loop",
+            "Restart",
+            "Return",
+            "Delivery",
+        ],
+    );
+}
+
+#[test]
+fn compiled_storage_resolution_covers_constructors_and_borrowed_result_delivery() {
+    compare_selection(
+        "constructors",
+        include_str!("../../tests/fixtures/native_resume.tellur"),
+        &[
+            "Skip",
+            "Local",
+            "Effect",
+            "Call",
+            "Run",
+            "Await",
+            "Defer",
+            "AwaitTask",
+            "Return",
+            "Delivery",
+        ],
+    );
+}
+
+fn compare_selection(label: &str, input: &str, expected: &[&str]) {
+    let root =
+        std::env::temp_dir().join(format!("tellur-selection-{label}-{}", std::process::id()));
     fs::create_dir_all(&root).unwrap();
     let original = crate::compile(
-        include_str!("../../tests/fixtures/native_resume_loops.tellur"),
+        input,
         crate::manifest::Manifest::from_json(include_str!("../../playground/manifest.json"))
             .unwrap(),
     )
@@ -19,6 +59,13 @@ fn compiled_selection_rejects_before_callback_moves_effects_and_pending_delivery
         .expanded("main")
         .unwrap();
     for (is_expanded, program) in [(false, original), (true, expanded)] {
+        // Expansion can inline the constructor; its explicit destination is
+        // exercised by the unexpanded run, with equivalent expanded observations.
+        let expected: Vec<_> = expected
+            .iter()
+            .copied()
+            .filter(|kind| !is_expanded || *kind != "Call")
+            .collect();
         let entry = program.regions().position(|r| r.name == "main").unwrap();
         let normal = format!(
             "fn entry_{entry}(host:&mut Host,args:Vec<V>)->R<Completion>{{drive(host,args,&MODEL_{entry})}}"
@@ -26,7 +73,7 @@ fn compiled_selection_rejects_before_callback_moves_effects_and_pending_delivery
         let replacement = format!(
             r#"fn entry_{entry}(host:&mut Host,args:Vec<V>)->R<Completion>{{
             let quotas=std::env::var("TELLUR_NATIVE_MODEL_QUOTAS").unwrap().split(',').map(|s|s.parse::<usize>().unwrap()).collect::<Vec<_>>();
-            drive_selection(host,&MODEL_{entry},args,std::env::var("TELLUR_SELECTION_PROBES").unwrap()=="true",&quotas)
+            drive_selection(host,&MODEL_{entry},args,std::env::var("TELLUR_SELECTION_PROBES").unwrap()=="true",&quotas,&{expected:?})
         }}"#
         );
         let generated = source(&program, "main").unwrap();

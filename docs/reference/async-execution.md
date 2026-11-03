@@ -510,6 +510,14 @@ it does not grant permission to run beside a child. Parent selection remains gua
 until captured loans and actual storage dependencies can be checked. See
 [native callback access plans](../async-execution.md#native-callback-access-plans-e1d2d3p).
 
+Since 0.144, native access plans can resolve to live arena/frame/slot identities and
+field paths without consuming source values. Indirect accesses include their reference
+holder reads; normal result writes and caller constructor destinations stay distinct.
+Resolved identities reject retired allocations and offset reuse, while opaque/unknown
+work remains explicit. These current storage descriptions do not establish captured
+loan permission or enable parent progress. See
+[native storage resolution](../async-execution.md#native-access-storage-resolution-e1d2d3q).
+
 Since 0.128, entry process termination closes normal task admission and retires all
 registered execution contexts and results before delivering the original status.
 Prepared bodies never start; parked callers unwind without normal instructions or

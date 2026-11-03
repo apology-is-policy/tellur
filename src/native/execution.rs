@@ -2,6 +2,10 @@
 use super::{BoundaryState, Completion, Frames, Host, R, V, frames::Frame};
 use domains::{DomainKey, DomainScope, Domains, Membership};
 
+#[cfg(test)]
+#[path = "access_resolution.rs"]
+pub mod access_resolution;
+
 pub type Deliver = fn(&mut Activation, &mut Frames, Completion) -> R<()>;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AccessKind {

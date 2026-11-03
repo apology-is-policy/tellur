@@ -1,6 +1,6 @@
 # Revision status
 
-Compiler 0.143.0 retains the v0.1 profile below and adds revised syntax plus owned
+Compiler 0.144.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
 outcomes. See [the revision roadmap](language-revision.md).
 `tests/revision.rs` covers typed declarations, brace patterns, pure expressions,
@@ -4201,3 +4201,20 @@ alongside selected production cold-task/source-fault/process/manual targets. Thi
 selected coverage, not a full-suite claim. Unchanged checker, reference and LSP/Node
 evidence is reused; a fresh isolated editor verifies the packaged compiler. Symbolic
 plans do not grant concurrent access or add source scheduler handoffs.
+
+## Native access storage resolution (0.144)
+
+E1d.2d.3q adds five host tests for live allocation identity, foreign arenas and offset
+reuse, direct/indirect field paths, shared/exclusive authority, unavailable reads,
+uninitialized destinations and atomic failure. Buffer pointers and real resource
+owners survive repeated queries. The await-delivery case now resolves normal writes
+and checks that error/process/settled states remain unknown.
+
+Two generated probes query every selected context in existing loop and constructor
+fixtures across original/expanded O0/O2 runs and quota partitions. The unexpanded
+constructor verifies its external destination; expansion can inline it. Full observations
+agree and existing rejected parent selections remain atomic. Selected retained-child,
+result, lexical/owner-boundary and process models and production/manual targets run
+freshly. Unchanged checker, reference and LSP/Node evidence is reused. A fresh isolated
+editor checks the release. This is selected coverage, not a full-suite claim, and does
+not enable source concurrency or prove captured carrier loan permissions.

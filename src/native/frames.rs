@@ -21,6 +21,23 @@ impl Frame {
     }
 }
 
+/// A slot in one live allocation, not an offset that may be reused by another frame.
+/// This identifies storage only; it grants no loan or execution permission.
+#[derive(Clone, Debug)]
+pub struct Storage {
+    arena: Arc<()>,
+    frame: u64,
+    root: usize,
+}
+impl PartialEq for Storage {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.arena, &other.arena)
+            && self.frame == other.frame
+            && self.root == other.root
+    }
+}
+impl Eq for Storage {}
+
 /// Reserved capacity and a checked layout; no slot or identity is installed yet.
 pub(super) struct PreparedFrame {
     arena: Arc<()>,
@@ -53,6 +70,42 @@ impl DerefMut for Frames {
     }
 }
 impl Frames {
+    /// Resolve an activation-relative slot, including an uninitialized destination.
+    pub fn local_storage(&self, frame: &Frame, slot: usize) -> R<Storage> {
+        self.require(frame)?;
+        if slot >= frame.len {
+            return Err("E_NATIVE: access slot is outside its activation".into());
+        }
+        Ok(Storage {
+            arena: self.identity.clone(),
+            frame: frame.id,
+            root: frame.base + slot,
+        })
+    }
+    /// Bind a currently live absolute address to its allocation identity. Existing
+    /// source references carry offsets; this cannot reconstruct their past lifetime.
+    pub fn storage_at(&self, root: usize) -> R<Storage> {
+        let (&frame, _) = self
+            .live
+            .iter()
+            .find(|(_, (base, len))| root >= *base && root - *base < *len)
+            .ok_or("E_NATIVE: access address has no live frame")?;
+        Ok(Storage {
+            arena: self.identity.clone(),
+            frame,
+            root,
+        })
+    }
+    pub fn require_storage(&self, storage: &Storage) -> R<usize> {
+        let live = self
+            .live
+            .get(&storage.frame)
+            .is_some_and(|(base, len)| storage.root >= *base && storage.root - *base < *len);
+        if !Arc::ptr_eq(&self.identity, &storage.arena) || !live {
+            return Err("E_NATIVE: access storage is foreign or retired".into());
+        }
+        Ok(storage.root)
+    }
     pub(super) fn prepare(&mut self, len: usize) -> R<PreparedFrame> {
         let id = self
             .next

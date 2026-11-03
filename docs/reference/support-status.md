@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.143.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.144.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -170,3 +170,11 @@ administrative states remain opaque or unknown. Querying a plan has no source ef
 it does not grant permission to run beside a child. Parent selection remains guarded
 until captured loans and actual storage dependencies can be checked. See
 [native callback access plans](../async-execution.md#native-callback-access-plans-e1d2d3p).
+
+Since 0.144, native access plans can resolve to live arena/frame/slot identities and
+field paths without consuming source values. Indirect accesses include their reference
+holder reads; normal result writes and caller constructor destinations stay distinct.
+Resolved identities reject retired allocations and offset reuse, while opaque/unknown
+work remains explicit. These current storage descriptions do not establish captured
+loan permission or enable parent progress. See
+[native storage resolution](../async-execution.md#native-access-storage-resolution-e1d2d3q).

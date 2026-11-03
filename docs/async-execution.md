@@ -1224,6 +1224,7 @@ Those boundaries need explicit contracts before being accepted by the checker.
 | E1d.2d.3n | Native retirement preflight | Delivered in 0.141: retained borrower membership is checked before runtime frame, loop or boundary retirement, and final-frame domain authority is checked before releasing storage. Parent selection remains guarded because generated callback evaluation can itself move operands |
 | E1d.2d.3o | Native invocation ownership and atomic selection | Delivered in 0.142: every child/result retains its original parent invocation; normal selection and joins validate that authority. Lower-level Machine selection rejects live child/result membership before callbacks or pending delivery can change state. Fine-grained parent progress and source scheduling remain gated |
 | E1d.2d.3p | Native callback access plans | Delivered in 0.143: immutable queries describe checked callback operands, field paths, borrow modes and storage retirement, with separate normal await-delivery writes and explicit opaque/unknown cases. Calls, run, direct await and cold-task await remain distinct. These symbolic plans do not grant selection permission; captured-loan resolution and source scheduling remain gated |
+| E1d.2d.3q | Native access storage resolution | Delivered in 0.144: immutable queries bind symbolic places to live arena/frame/slot identities, preserve indirect holder reads and field paths, and reject invalid places without source effects. Resolved identities reject retired allocations and reused offsets. Captured-loan analysis and parent selection permission remain separate gates |
 | E1e | Explicit cooperative cancellation and suspending cleanup; normal completion races, cleanup failures and no abandoned losers | Define cancellation observation and cleanup admission; no implicit cancellation exception |
 | E2 | Pinned native coroutine experiment, then checked lowering and schedule-based differential validation | Reference semantics and legal frame retirement must precede native destruction |
 
@@ -1953,6 +1954,54 @@ them with these plans before granting any parent progress. Source `spawn`/`yield
 independent admission from sequential contexts, started-task await, cancellation,
 suspending disposal, async adapters and LLVM coroutine lowering remain gated. No
 accepted ownership, origin, outcome, fault/contingency or path-label rule changes.
+
+## Native access storage resolution (E1d.2d.3q)
+
+Compiler 0.144 adds immutable storage resolution for the generated callback plans.
+Activation-relative slots resolve within that activation's live range. Each resolved
+place records arena identity, allocation identity, slot and field path. Equal numeric
+offsets in different arenas differ; a retained identity cannot become live again when
+a retired range is reused. Even an empty or unknown plan requires a live activation.
+
+An indirect access first records the read of its local reference holder, then resolves
+the referent using the holder's path followed by the instruction's field path. Shared
+references cannot describe an indirect move, exclusive borrow or mutation. Field paths
+are checked by borrowing the existing values, without cloning owned buffers or resource
+owners. Whole-slot writes and retirement may address uninitialized storage; reads,
+borrows and nested field paths must already exist. Constructor destinations resolve
+in their caller's storage. Normal cold-await delivery retains its separate write plan.
+
+Queries leave frames, operands, task obligations, source fuel, effects and resources
+unchanged, including when a later access in the plan fails. Missing holders, invalid
+fields, unavailable reads, foreign/retired activations and destinations outside live
+storage reject administratively. Opaque/unknown flags remain intact. Conservative
+unions can describe accesses that are not taken; a query does not evaluate an expression
+to decide which branch occurs or turn an unavailable conservative access into permission.
+
+This is a current storage description, not a loan certificate. Source reference values
+still carry offsets: resolving an address cannot reconstruct its earlier allocation
+history. Retained resolved identities detect subsequent retirement/reuse, but newly
+supplied forged or stale reference values still require the existing checked-execution
+assumptions. Queries must be repeated after storage changes; allocation liveness alone
+does not prove a holder or aggregate still has the same meaning. Reading a reference
+inside a carrier does not recursively read its referent. Captured carrier dependencies,
+permission attenuation and their lifecycle through results remain the next analysis.
+
+Five new host cases cover allocation reuse and foreign identity, direct/indirect paths,
+shared/exclusive access, atomic failure, uninitialized destinations, preserved buffer
+allocations and exact resource destruction. The existing await test also resolves
+normal result writes while keeping administrative results unknown. Generated probes
+query every selected context in the loop/cold-await and constructor/borrowed-result
+fixtures, compare original/expanded O0/O2 observations and quota partitions, and retain
+rejected parent-selection checks. Expansion may inline constructors; the original
+fixture specifically verifies the caller-supplied destination.
+
+Both parent-selection guards remain unchanged. Resolving a nonopaque plan does not
+permit parent execution beside children. Captured-loan membership and per-instruction
+interference checks must agree with invocation/domain authority before that gate can
+change. Source scheduling, independent admission from sequential contexts, started-task
+await, cancellation, suspending disposal, async adapters and LLVM coroutine lowering
+remain separate work. Accepted source ownership, origins, outcomes and faults are intact.
 
 ## Reference execution invariants
 

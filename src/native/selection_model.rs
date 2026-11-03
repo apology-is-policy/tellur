@@ -54,6 +54,7 @@ pub fn drive_selection(
     args: Vec<V>,
     probes: bool,
     quotas: &[usize],
+    expected: &[&str],
 ) -> R<Completion> {
     let mut c = Contexts::new(host);
     let root = c.start_entry(control, args)?;
@@ -62,19 +63,33 @@ pub fn drive_selection(
     let mut nested = false;
     let mut delivery = false;
     let mut access_kinds = std::collections::BTreeSet::new();
+    let mut indirect = false;
+    let mut destination = false;
     let every_point = quotas == [1];
     let mut quotas = quotas.iter().cycle();
     let result = loop {
         let selected = chain.last().unwrap().clone();
-        if probes && selected.id == root.id {
-            let snapshot = selection_snapshot(&c, &root);
-            let description = c.parked[&root.id].machine.next_access();
+        if probes {
+            let snapshot = selection_snapshot(&c, &selected);
+            let m = &c.parked[&selected.id].machine;
+            let description = m.next_access();
+            let resolved = m.resolve_access(&c.values)?;
             assert_ne!(description.transition, Transition::Unknown);
-            for _ in 0..3 {
-                assert_eq!(c.parked[&root.id].machine.next_access(), description);
+            assert_eq!(resolved.transition, description.transition);
+            assert_eq!(resolved.opaque, description.opaque);
+            indirect |= description.accesses.iter().any(|a| a.indirect);
+            destination |= description.accesses.iter().any(|a| a.slot.is_none());
+            for a in resolved.accesses.iter().chain(&resolved.delivery) {
+                c.values.require_storage(&a.place.storage)?;
             }
-            assert_eq!(selection_snapshot(&c, &root), snapshot);
+            for _ in 0..3 {
+                assert_eq!(m.next_access(), description);
+                assert_eq!(m.resolve_access(&c.values)?, resolved);
+            }
+            assert_eq!(selection_snapshot(&c, &selected), snapshot);
             access_kinds.insert(format!("{:?}", description.transition));
+        }
+        if probes && selected.id == root.id {
             let m = &c.parked[&root.id].machine;
             nested |= m.stack.len() > 1;
             delivery |= matches!(&m.stack.last().unwrap().pending, Some(Pending::Await(p)) if p.result.is_some());
@@ -113,20 +128,19 @@ pub fn drive_selection(
     };
     assert!(!probes || (checked > 5 && nested && delivery));
     if probes && every_point {
-        for kind in [
-            "Skip",
-            "Local",
-            "Effect",
-            "Run",
-            "Defer",
-            "AwaitTask",
-            "Loop",
-            "Restart",
-            "Return",
-            "Delivery",
-        ] {
+        assert!(
+            indirect,
+            "fixture must resolve a real indirect callback access"
+        );
+        if expected.contains(&"Call") {
             assert!(
-                access_kinds.contains(kind),
+                destination,
+                "constructor fixture must resolve its caller destination"
+            );
+        }
+        for kind in expected {
+            assert!(
+                access_kinds.contains(*kind),
                 "missing {kind}: {access_kinds:?}"
             );
         }
