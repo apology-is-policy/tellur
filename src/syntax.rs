@@ -268,6 +268,8 @@ pub struct Region {
     pub span: Span,
     pub end: Span,
     pub name_span: Span,
+    /// Authored control/region keyword, excluding annotations and async.
+    pub declaration_keyword_range: SourceRange,
     pub name: String,
     pub parameters: Vec<Field>,
     pub exits: Vec<Outcome>,
@@ -829,6 +831,7 @@ impl Parser {
             None
         };
         let asynchronous = self.eat("async");
+        let keyword_start = self.here();
         let modern = self.eat("control");
         if asynchronous && !modern {
             return Err(self.error("async requires control syntax"));
@@ -836,6 +839,7 @@ impl Parser {
         if !modern {
             self.need("region")?;
         }
+        let declaration_keyword_range = self.range_from(keyword_start);
         let name_span = self.here();
         let name = self.id()?;
         let type_parameters_start = self.here();
@@ -997,6 +1001,7 @@ impl Parser {
             abstract_signature: false,
             type_parameters,
             type_parameters_range,
+            declaration_keyword_range,
             type_bounds,
             type_bindings: Default::default(),
             public,
@@ -2019,6 +2024,7 @@ pub(crate) fn parse_with_layout(source: &str) -> Result<(Unit, Vec<Token>, crate
                 abstract_signature: false,
                 type_parameters: vec![],
                 type_parameters_range: SourceRange::default(),
+                declaration_keyword_range: SourceRange::default(),
                 type_bounds: Default::default(),
                 type_bindings: Default::default(),
                 public,
@@ -2196,6 +2202,7 @@ pub(crate) fn parse_with_layout(source: &str) -> Result<(Unit, Vec<Token>, crate
                             abstract_signature: false,
                             type_parameters: type_parameters.clone(),
                             type_parameters_range: SourceRange::default(),
+                            declaration_keyword_range: SourceRange::default(),
                             type_bounds: type_parameters
                                 .iter()
                                 .map(|p| (p.clone(), vec![]))

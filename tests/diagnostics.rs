@@ -6748,7 +6748,8 @@ fn trait_inference_ranges_keep_structural_member_and_identity_priorities() {
             assert_eq!(error.span.column, source.find("<t>").unwrap() + 1);
             assert_eq!(error.end.as_ref().unwrap().column, error.span.column + 3);
         } else {
-            assert!(error.end.is_none(), "{error}");
+            assert_eq!(error.span.column, source.find("region").unwrap() + 1);
+            assert_eq!(error.end.as_ref().unwrap().column, error.span.column + 6);
         }
     }
     let source = "trait reader {control read(u32 item,u32 item) exits auto;}";
@@ -7125,8 +7126,225 @@ fn trait_generic_profile_ranges_leave_ordinary_generics_and_parser_barriers_sepa
         let error = &check_errors(source).errors[0];
         assert_eq!(error.code, code, "{error}");
         assert!(error.message.contains(message));
-        assert!(error.end.is_none());
+        if code == "E_TRAIT_SIGNATURE" {
+            assert_eq!(error.span.column, source.find("region").unwrap() + 1);
+            assert_eq!(error.end.as_ref().unwrap().column, error.span.column + 6);
+        } else {
+            assert!(error.end.is_none());
+        }
     }
     let source = "trait reader {control read<t>() exits ready...;}";
     assert_eq!(check_errors(source).errors[0].code, "E_PARSE");
+}
+
+#[test]
+fn trait_legacy_profile_ranges_select_only_the_authored_keyword() {
+    let f = Fixture::new();
+    for prefix in ["", "@contingent // 😀\r\n "] {
+        for implementation in [false, true] {
+            let signature = format!("{prefix}region // between\r\n read() exits auto");
+            let source = if implementation {
+                format!(
+                    "trait reader {{@contingent control read() exits done;}} implement reader for u32 {{{signature} {{exit done;}}}}"
+                )
+            } else {
+                format!("trait reader {{{signature};}}")
+            };
+            f.write("main.tellur", &source);
+            let report = f.report(&["check", "main.tellur", "--json"], false);
+            let errors = report["diagnostics"].as_array().unwrap();
+            assert_eq!(errors.len(), 1, "{report}");
+            assert_eq!(errors[0]["code"], "E_TRAIT_SIGNATURE");
+            assert_eq!(
+                errors[0]["message"],
+                "trait methods use nongeneric control declarations with explicit exit contracts"
+            );
+            assert_eq!(errors[0]["range"], selected_range(&source, "region"));
+            assert_eq!(errors[0]["position"], errors[0]["range"]["start"]);
+            let batch = check_errors(&source);
+            assert_eq!(
+                compile(
+                    &source,
+                    Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
+                )
+                .unwrap_err(),
+                batch.errors[0]
+            );
+        }
+    }
+}
+
+#[test]
+fn trait_legacy_profile_ranges_preserve_imported_coordinates_and_repairs() {
+    let f = Fixture::new();
+    f.write("middle.tellur", "import \"worker.tellur\" as worker;");
+    f.write(
+        "main.tellur",
+        "import \"middle.tellur\" as middle;control main() exits done {exit done;}",
+    );
+    let valid = "pub trait reader {@contingent control read(self input) exits done;}\r\nimplement reader for u32 {@contingent control read(self first) exits done {string note=\"😀\";drop(note);exit done;}} implement reader for string {@contingent control read(self second) exits done {exit done;}}\r\npub control work() exits done {reader<u32>.read(1);reader<string>.read(\"x\");exit done;}";
+    for name in ["input", "first", "second"] {
+        let source = valid.replace(
+            &format!("control read(self {name})"),
+            &format!("region // 😀\r\n read(self {name})"),
+        );
+        f.write("worker.tellur", &source);
+        let report = f.report(&["check", "main.tellur", "--json"], false);
+        let error = &report["diagnostics"][0];
+        assert_eq!(
+            report["diagnostics"].as_array().unwrap().len(),
+            1,
+            "{report}"
+        );
+        assert_eq!(error["code"], "E_TRAIT_SIGNATURE");
+        assert_eq!(
+            error["path"],
+            f.root.join("worker.tellur").to_string_lossy().as_ref()
+        );
+        assert_eq!(error["range"], selected_range(&source, "region"));
+        let first = tellur::compile_file(
+            f.root.join("main.tellur"),
+            Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(first.path, f.root.join("worker.tellur"));
+        assert_eq!(
+            json!({"line":first.diagnostic.span.line,"column":first.diagnostic.span.column}),
+            error["position"]
+        );
+        let end = first.diagnostic.end.as_ref().unwrap();
+        assert_eq!(
+            json!({"line":end.line,"column":end.column}),
+            error["range"]["end"]
+        );
+        f.write("worker.tellur", valid);
+        f.report(&["check", "main.tellur", "--json"], true);
+    }
+}
+
+#[test]
+fn trait_legacy_profile_ranges_keep_profile_member_and_identity_priorities() {
+    let source = "trait reader {region read(u32 item,u32 item) exits auto;}";
+    let error = &check_errors(source).errors[0];
+    assert_eq!(error.span.column, source.find("region").unwrap() + 1);
+    let fixed = source.replace("region", "control");
+    let error = &check_errors(&fixed).errors[0];
+    assert_eq!(error.span.column, fixed.find("exits auto").unwrap() + 1);
+    assert!(
+        check_errors(&fixed.replace("auto", "done")).errors[0]
+            .message
+            .ends_with("`item`")
+    );
+    let source = "trait reader {type item;type item;region read() exits auto;}";
+    assert!(check_errors(source).errors[0].message.ends_with("`item`"));
+    let source = "trait reader {region read() exits auto;control read() exits done;}";
+    assert!(check_errors(source).errors[0].message.ends_with("`read`"));
+    let source = "implement absent for missing {} trait reader {region read() exits auto;}";
+    assert_eq!(check_errors(source).errors[0].code, "E_TRAIT_SIGNATURE");
+    let source = "trait reader {control read() exits done;} implement reader for u32 {region read() exits done {exit done;}} implement absent for missing {}";
+    assert_eq!(check_errors(source).errors.len(), 1);
+    assert_eq!(check_errors(source).errors[0].code, "E_TRAIT_SIGNATURE");
+    assert!(
+        check_errors(&source.replace("region", "control")).errors[0]
+            .message
+            .contains("unknown trait")
+    );
+    let source = "trait reader {control read() exits done;} implement reader for missing {region read() exits done {exit done;}}";
+    assert!(
+        check_errors(source).errors[0]
+            .message
+            .contains("unknown or unapplied")
+    );
+    let source = "trait reader {control read() exits done;} implement reader for u32 {control read() exits done {exit done;}} implement reader for u32 {region read() exits done {exit done;}}";
+    assert_eq!(check_errors(source).errors[0].code, "E_TRAIT_SIGNATURE");
+    assert_eq!(
+        check_errors(&source.replace("region", "control")).errors[0].code,
+        "E_COHERENCE"
+    );
+    let f = Fixture::new();
+    f.write("types.tellur", "pub struct wrapper {u32 value;}");
+    let source = "import \"types.tellur\" as types;trait reader {region read(types.missing item) exits auto;}";
+    f.write("main.tellur", source);
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    assert_eq!(report["diagnostics"][0]["code"], "E_NAME");
+    assert_eq!(
+        report["diagnostics"][0]["range"],
+        selected_range(source, "types.missing")
+    );
+}
+
+#[test]
+fn trait_legacy_profile_ranges_keep_ordinary_legacy_and_parser_barriers_separate() {
+    let f = Fixture::new();
+    f.write(
+        "main.tellur",
+        "region main() exits Done {[Entry]: exit Done;}",
+    );
+    f.report(&["check", "main.tellur", "--json"], true);
+    for (source, code) in [
+        ("trait reader {region read<t>() exits auto;}", "E_GENERIC"),
+        ("trait reader {region read() exits ready...;}", "E_PARSE"),
+        ("trait reader {async region read() exits done;}", "E_PARSE"),
+        (
+            "trait reader {control read<t:copy+copy>() exits done;}",
+            "E_BOUND",
+        ),
+    ] {
+        let error = &check_errors(source).errors[0];
+        assert_eq!(error.code, code, "{error}");
+        assert!(!error.message.contains("trait methods use"));
+    }
+    // A modern generic restriction keeps its own clause even though every parsed
+    // method now also carries a declaration-keyword range.
+    let source = "trait reader {control read<t>() exits auto;}";
+    let error = &check_errors(source).errors[0];
+    assert_eq!(error.span.column, source.find("<t>").unwrap() + 1);
+    assert_eq!(error.end.as_ref().unwrap().column, error.span.column + 3);
+}
+
+#[test]
+fn trait_legacy_profile_ranges_keep_independent_batches_and_limits() {
+    for implementations in [false, true] {
+        let mut source = if implementations {
+            "trait reader {control read() exits done;control other() exits done;}\n".to_owned()
+        } else {
+            String::new()
+        };
+        for n in (0..36).rev() {
+            if implementations {
+                source.push_str(&format!("struct value_{n:02} {{u32 value;}} implement reader for value_{n:02} {{region read() exits auto {{exit done;}} region other() exits auto {{exit done;}}}}\n"));
+            } else {
+                source.push_str(&format!(
+                    "trait reader_{n:02} {{region read() exits auto;region other() exits auto;}}\n"
+                ));
+            }
+        }
+        let errors = check_errors(&source);
+        assert_eq!(errors.errors.len(), 32, "{errors}");
+        assert!(errors.limit_reached);
+        for (n, error) in errors.errors.iter().enumerate() {
+            assert_eq!(error.span.line, n + 1 + usize::from(implementations));
+            assert_eq!(error.code, "E_TRAIT_SIGNATURE");
+            let line = source.lines().nth(error.span.line - 1).unwrap();
+            assert_eq!(error.span.column, line.find("region").unwrap() + 1);
+            assert_eq!(error.end.as_ref().unwrap().column, error.span.column + 6);
+        }
+        assert_eq!(
+            compile(
+                &source,
+                Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
+            )
+            .unwrap_err(),
+            errors.errors[0]
+        );
+    }
+    let source = format!(
+        "trait reader {{control read() exits done;}}\n{}",
+        "implement reader for u32 {region read() exits auto {exit done;}}\n".repeat(1025)
+    );
+    let errors = check_errors(&source);
+    assert_eq!(errors.errors.len(), 1);
+    assert!(!errors.limit_reached);
+    assert!(errors.errors[0].message.contains("1024-implementation"));
+    assert!(errors.errors[0].end.is_none());
 }

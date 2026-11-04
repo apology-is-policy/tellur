@@ -1153,8 +1153,8 @@ trait reader {
 }
 ```
 
-Explicit contracts remain required. Legacy methods retain their method point,
-including when inference is also written. Generic method ranges follow below.
+Explicit contracts remain required. Generic clause and legacy keyword locations
+follow below, including when inference is also written.
 Bodyless trait declarations using `label...` still fail during parsing. Member and
 shared identity errors retain priority, and method-profile errors still precede
 parameter/exit/payload uniqueness. Declaration batches precede implementations;
@@ -1186,7 +1186,7 @@ Trait methods remain nongeneric. This restriction still precedes inferred-result
 contracts and parameter/exit/payload uniqueness. A missing generic-clause range
 keeps the method point even if an inference range is available. Legacy generic
 syntax and duplicate capability bounds retain their earlier parser diagnostics;
-non-generic legacy methods retain their profile point.
+non-generic legacy keyword locations follow below.
 
 Trait generic methods are rejected before resolving their bound identities.
 Ordinary generic controls keep their separate bound lookup and remain supported.
@@ -1195,6 +1195,36 @@ declaration/implementation batches and both diagnostic/implementation budgets ar
 unchanged. Generated boundary signatures and constructor-inherited type parameters
 have no invented clause range. Metadata retained after specialization does not
 make a nongeneric method invalid. Checked hover returns only after full repair.
+
+
+## Legacy trait-method keyword locations
+
+Since 0.213, the existing `E_TRAIT_SIGNATURE` rejection of legacy trait methods
+selects the written `region` keyword. Annotations, `async`, comments, whitespace,
+method names and contracts are outside that range. The parser retains the actual
+keyword token; its location is independent of the enclosing declaration point and
+survives imported source remapping and rewritten method names.
+
+<!-- tellur:reject E_TRAIT_SIGNATURE -->
+```tellur
+trait reader {
+    @contingent
+    region read() exits done;
+}
+```
+
+Trait methods still require `control` syntax. Legacy rejection precedes generic
+and inferred contracts, parameter/exit/payload uniqueness and later conformance.
+Missing keyword metadata keeps the method point without falling through to an
+available inference range. Generated boundary signatures and constructors have no
+invented keyword range; metadata alone does not reject a repaired modern method.
+
+Ordinary legacy regions remain supported. Legacy generic declarations, bodyless
+payload inference and `async region` retain their earlier parser errors. Member
+identity checks, module type lookup, shared target identity, coherence replay,
+independent declaration/implementation batches and diagnostic/implementation limits
+retain their order. Unsaved imported repairs expose remaining inference errors
+before restoring checked hover and native execution.
 
 
 ## Constructor-call preparation batches

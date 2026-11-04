@@ -1,8 +1,8 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.212.0 -->
+<!-- tellur-reference-version: 0.213.0 -->
 
-This manual describes **compiler 0.212.0**, including the current ownership model,
+This manual describes **compiler 0.213.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -15,7 +15,7 @@ as a bug to investigate, not a promise that either must remain unchanged. The
 updates at every implementation checkpoint.
 
 
-Compiler 0.212 also supports [owned spawned children](reference/async-execution.md#owned-spawned-children)
+Compiler 0.213 also supports [owned spawned children](reference/async-execution.md#owned-spawned-children)
 with explicit `await`/`yield` handoffs, required normal-path joins and owning-boundary
 fault settlement. The current profile admits reference-free values, direct borrows and nested owned record/option/variant/named-outcome
 captures/results with reference leaves to reference-free storage, plus borrowed record/option/variant/named-outcome captures
@@ -2664,8 +2664,8 @@ check order and separate ordinary-control and nominal checks are unchanged. See
 
 Since 0.211, trait-method inference errors select `exits auto` or the first written
 inferred payload clause in an implementation. Trait methods still require explicit
-contracts. Legacy profile restrictions retain their method locations, and bodyless
-payload inference keeps its parser diagnostic. Generic clause locations follow below. See
+contracts. Bodyless payload inference keeps its parser diagnostic. Generic clause
+and legacy keyword locations follow below. See
 [trait inference locations](reference/diagnostics-and-limits.md#trait-inferred-contract-locations).
 
 Since 0.212, rejected generic trait methods select their complete written `<…>`
@@ -2673,6 +2673,13 @@ clause, including bounds and internal comments. The generic restriction retains
 priority over inference; a missing clause range keeps the method point. Ordinary
 generic controls remain supported. See
 [generic trait-method locations](reference/diagnostics-and-limits.md#generic-trait-method-profile-locations).
+
+Since 0.213, legacy trait-method rejection selects the authored `region` keyword,
+excluding preceding annotations and following names/comments. Legacy restrictions
+still precede inference and signature uniqueness. Missing keyword metadata keeps
+the method point; ordinary legacy controls and earlier generic/payload parser
+errors are unchanged. See
+[legacy trait-method locations](reference/diagnostics-and-limits.md#legacy-trait-method-keyword-locations).
 
 A module may implement a trait only if it owns that trait or the outer nominal target
 type. A foreign container holding a local type is still foreign. Duplicate trait/type
@@ -2913,7 +2920,7 @@ General expression-type hover remains unsupported.
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and broader spawn payloads (anonymous contracts and reference-bearing collections) remain planned; they are not executable features of 0.212.0.
+and broader spawn payloads (anonymous contracts and reference-bearing collections) remain planned; they are not executable features of 0.213.0.
 ## Contingency and supervised boundaries
 
 The [contingency reference](reference/contingency.md) specifies `@contingent`,

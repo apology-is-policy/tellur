@@ -182,10 +182,10 @@ fn method_profile(r: &Region) -> Result<()> {
             r.span,
             "trait methods use nongeneric control declarations with explicit exit contracts",
         );
-        // Keep generic restrictions ahead of inference, even when the selected
-        // clause has no authored metadata. Legacy methods retain their point.
+        // Keep legacy, generic and inference restrictions in order, even when
+        // the selected restriction has no authored metadata.
         let range = if !r.modern {
-            SourceRange::default()
+            r.declaration_keyword_range
         } else if !r.type_parameters.is_empty() {
             r.type_parameters_range
         } else {
@@ -1057,6 +1057,76 @@ mod tests {
     use super::*;
 
     #[test]
+    fn trait_legacy_profile_ranges_keep_missing_metadata_without_inference_fallthrough() {
+        for source in [
+            "trait reader {@contingent region read() exits auto;}",
+            "trait reader {control read() exits done;} implement reader for u32 {region read() exits auto {exit done;}}",
+        ] {
+            let mut unit = crate::syntax::parse_unit(source).unwrap();
+            let method = if let Some(i) = unit.implementations.first_mut() {
+                &mut i.methods[0]
+            } else {
+                &mut unit.traits[0].methods[0]
+            };
+            assert_ne!(method.inferred_exit_range.start.line, 0);
+            assert_ne!(method.declaration_keyword_range.start.line, 0);
+            method.declaration_keyword_range = SourceRange::default();
+            let error = method_profile(method).unwrap_err();
+            assert_eq!(error.span, method.span);
+            assert!(error.end.is_none());
+        }
+    }
+
+    #[test]
+    fn trait_legacy_profile_ranges_survive_rewritten_names_and_profile_repairs() {
+        let mut unit = crate::syntax::parse_unit(
+            "trait reader {@contingent // 😀\r\n region // keyword\r\n read() exits auto;}",
+        )
+        .unwrap();
+        let method = &mut unit.traits[0].methods[0];
+        let range = method.declaration_keyword_range;
+        assert_eq!(range.start.line, 2);
+        assert_eq!(range.end.column - range.start.column, 6);
+        method.name = "a_different_internal_method_name".into();
+        let error = method_profile(method).unwrap_err();
+        assert_eq!(error.span, range.start);
+        assert_eq!(*error.end.unwrap(), range.end);
+        // Clearing the restriction selects inference, never the retained keyword.
+        method.modern = true;
+        let error = method_profile(method).unwrap_err();
+        assert_eq!(error.span, method.inferred_exit_range.start);
+        method.infer_exits = false;
+        method_profile(method).unwrap();
+    }
+
+    #[test]
+    fn trait_legacy_profile_ranges_distinguish_authored_and_generated_keywords() {
+        let source = "@contingent async control ordinary<t:copy>() exits done {exit done;} region old() exits Done {exit Done;} struct wrapper<u> {u value;constructor(u input) {self.value=move input;}} boundary work() {} contingency(string reason) {drop(reason);}";
+        let unit = crate::syntax::parse_unit(source).unwrap();
+        for region in &unit.regions {
+            let range = region.declaration_keyword_range;
+            let keyword = match region.name.as_str() {
+                "ordinary" => "control",
+                "old" => "region",
+                _ => {
+                    assert_eq!(range, SourceRange::default());
+                    continue;
+                }
+            };
+            assert_eq!(range.start.column, source.find(keyword).unwrap() + 1);
+            assert_eq!(range.end.column - range.start.column, keyword.len());
+        }
+        assert_eq!(
+            unit.data[0]
+                .constructor
+                .as_ref()
+                .unwrap()
+                .declaration_keyword_range,
+            SourceRange::default()
+        );
+    }
+
+    #[test]
     fn trait_generic_profile_ranges_keep_missing_metadata_and_legacy_fallbacks() {
         for source in [
             "trait reader {control read<t>() exits auto;}",
@@ -1073,6 +1143,7 @@ mod tests {
             assert_ne!(method.type_parameters_range.start.line, 0);
             let mut legacy = method.clone();
             legacy.modern = false;
+            legacy.declaration_keyword_range = SourceRange::default();
             let error = method_profile(&legacy).unwrap_err();
             assert_eq!(error.span, span);
             assert!(error.end.is_none());
@@ -1150,6 +1221,7 @@ mod tests {
                 method.type_parameters.push("t".into());
             } else {
                 method.modern = false;
+                method.declaration_keyword_range = SourceRange::default();
             }
             assert_ne!(method.inferred_exit_range.start.line, 0);
             let error = method_profile(&method).unwrap_err();

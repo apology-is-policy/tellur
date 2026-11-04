@@ -5684,3 +5684,23 @@ regions. Three earlier priority tests now expect generic ranges. LSP and isolate
 VS Code repair generic clauses before exposing inference errors, then restore
 checked hover and native execution. Constructor and borrowed-constructor suites
 exercise the shared Region initializer. Public async-host admission remains pending.
+
+
+## Legacy trait-method keyword locations (0.213 / P2au)
+
+Syntax regions retain the parsed `control`/`region` keyword after optional
+annotation and async parsing. Generated boundary signatures and constructors use
+empty metadata. Both module resolution paths remap endpoints. Only the existing
+legacy trait-profile rejection selects this range, ahead of generic/inference
+restrictions; missing metadata preserves the enclosing method point.
+
+Five CLI cases cover annotated/commented keywords, Unicode/CRLF imported source,
+repairs, first-error APIs, ordinary legacy acceptance, parser barriers, profile,
+member/type/identity/coherence priorities and diagnostic/implementation limits.
+Three units cover missing metadata without inference fallback, rewritten names,
+retained metadata after repair, actual keyword tokens and generated signatures.
+Two earlier CLI priority tests now expect legacy keyword ranges; two earlier
+metadata tests explicitly remove keyword metadata for their point fallback.
+LSP and isolated VS Code tests repair unsaved imported legacy declarations and
+implementations before remaining inference errors, then restore hover and native
+execution. Public async-host admission remains pending its recorded decision.

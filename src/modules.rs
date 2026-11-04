@@ -642,6 +642,10 @@ impl Resolver<'_> {
             *c = annotation.ty;
         }
         self.items(&mut region.body)?;
+        if region.declaration_keyword_range.start.line != 0 {
+            region.declaration_keyword_range.start.line += self.offset;
+            region.declaration_keyword_range.end.line += self.offset;
+        }
         if region.type_parameters_range.start.line != 0 {
             region.type_parameters_range.start.line += self.offset;
             region.type_parameters_range.end.line += self.offset;
@@ -1091,6 +1095,10 @@ fn resolve(
                 }
             }
             r.items(&mut region.body)?;
+            if region.declaration_keyword_range.start.line != 0 {
+                region.declaration_keyword_range.start.line += offset;
+                region.declaration_keyword_range.end.line += offset;
+            }
             if region.type_parameters_range.start.line != 0 {
                 region.type_parameters_range.start.line += offset;
                 region.type_parameters_range.end.line += offset;
