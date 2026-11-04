@@ -5026,7 +5026,8 @@ fn associated_assignment_ranges_preserve_identity_and_phase_priority() {
     let permission = source.replace("ref string", "string");
     let error = &check_errors(&permission).errors[0];
     assert_eq!(error.code, "E_ASYNC");
-    assert!(error.end.is_none());
+    assert_eq!(error.span.column, permission.find("async").unwrap() + 1);
+    assert_eq!(error.end.as_ref().unwrap().column, error.span.column + 5);
     let bound = permission.replace("async control", "control");
     let error = &check_errors(&bound).errors[0];
     assert_eq!(error.code, "E_BOUND");
@@ -7347,4 +7348,253 @@ fn trait_legacy_profile_ranges_keep_independent_batches_and_limits() {
     assert!(!errors.limit_reached);
     assert!(errors.errors[0].message.contains("1024-implementation"));
     assert!(errors.errors[0].end.is_none());
+}
+
+#[test]
+fn implementation_async_ranges_select_extra_or_missing_modifier_locations() {
+    let f = Fixture::new();
+    for extra in [false, true] {
+        for annotated in [false, true] {
+            let declaration = if extra { "control" } else { "async control" };
+            let prefix = if annotated {
+                "@contingent // 😀\r\n "
+            } else {
+                ""
+            };
+            let implementation = if extra {
+                "async // between\r\n control"
+            } else {
+                "control"
+            };
+            let source = format!(
+                "trait reader {{@contingent {declaration} read() exits done;}} implement reader for u32 {{{prefix}{implementation} // trailing\r\n read() exits done {{exit done;}}}}"
+            );
+            f.write("main.tellur", &source);
+            let report = f.report(&["check", "main.tellur", "--json"], false);
+            let errors = report["diagnostics"].as_array().unwrap();
+            assert_eq!(errors.len(), 1, "{report}");
+            let e = &errors[0];
+            assert_eq!(e["code"], "E_ASYNC");
+            assert_eq!(
+                e["message"],
+                "implementation must match the trait control's async permission"
+            );
+            let keyword = if extra { "async" } else { "control" };
+            let at = source.rfind(keyword).unwrap();
+            assert_eq!(
+                e["range"],
+                json!({"start":scalar_position(&source,at),"end":scalar_position(&source,at+keyword.len())})
+            );
+            let errors = check_errors(&source);
+            assert_eq!(
+                compile(
+                    &source,
+                    Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
+                )
+                .unwrap_err(),
+                errors.errors[0]
+            );
+        }
+    }
+}
+
+#[test]
+fn implementation_async_ranges_preserve_imported_coordinates_and_repairs() {
+    let f = Fixture::new();
+    f.write("middle.tellur", "import \"worker.tellur\" as worker;");
+    f.write(
+        "main.tellur",
+        "import \"middle.tellur\" as middle;control main() exits done {exit done;}",
+    );
+    let valid = "pub trait a_sync {@contingent control read(self input) exits done;} pub trait b_async {async control read(self input) exits done;}\r\nimplement a_sync for u32 {control read(self first) exits done {string note=\"😀\";drop(note);exit done;}} implement b_async for string {async control read(self second) exits done {exit done;}}\r\npub control work() exits done {a_sync<u32>.read(1);run b_async<string>.read(\"x\");exit done;}";
+    for (needle, replacement, selected, width) in [
+        (
+            "control read(self first)",
+            "@contingent // 😀\r\n async // modifier\r\n control read(self first)",
+            "async // modifier",
+            5,
+        ),
+        (
+            "async control read(self second)",
+            "@contingent control // 😀\r\n read(self second)",
+            "control // 😀",
+            7,
+        ),
+    ] {
+        let source = valid.replace(needle, replacement);
+        f.write("worker.tellur", &source);
+        let report = f.report(&["check", "main.tellur", "--json"], false);
+        let e = &report["diagnostics"][0];
+        assert_eq!(
+            report["diagnostics"].as_array().unwrap().len(),
+            1,
+            "{report}"
+        );
+        assert_eq!(e["code"], "E_ASYNC");
+        assert_eq!(
+            e["path"],
+            f.root.join("worker.tellur").to_string_lossy().as_ref()
+        );
+        let at = source.find(selected).unwrap();
+        assert_eq!(
+            e["range"],
+            json!({"start":scalar_position(&source,at),"end":scalar_position(&source,at+width)})
+        );
+        let first = tellur::compile_file(
+            f.root.join("main.tellur"),
+            Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(first.path, f.root.join("worker.tellur"));
+        let end = first.diagnostic.end.as_ref().unwrap();
+        assert_eq!(
+            json!({"line":end.line,"column":end.column}),
+            e["range"]["end"]
+        );
+        f.write("worker.tellur", valid);
+        f.report(&["check", "main.tellur", "--json"], true);
+    }
+}
+
+#[test]
+fn implementation_async_ranges_keep_permission_and_phase_priorities() {
+    let source = "trait reader {type item:copy;control read(self input) exits done;} implement reader for u32 {type item=ref string;@contingent async control read(ref self input) exits done faults {exit done;}}";
+    assert_eq!(check_errors(source).errors[0].code, "E_LIFETIME");
+    let source = source.replace("item=ref string", "item=string");
+    let e = &check_errors(&source).errors[0];
+    assert_eq!(e.code, "E_ASYNC");
+    assert_eq!(e.span.column, source.find("async").unwrap() + 1);
+    let source = source.replace("async control", "control");
+    let e = &check_errors(&source).errors[0];
+    assert_eq!(e.code, "E_FAULT_CONTRACT");
+    assert!(e.end.is_none());
+    let source = source.replace("done faults", "done");
+    let e = &check_errors(&source).errors[0];
+    assert_eq!(e.code, "E_CONTINGENT");
+    assert!(e.end.is_none());
+    let source = source.replace("@contingent ", "");
+    assert_eq!(check_errors(&source).errors[0].code, "E_BOUND");
+    let source = source.replace("item=string", "item=u32");
+    assert_eq!(check_errors(&source).errors[0].code, "E_TRAIT_SIGNATURE");
+    let source = source.replace("ref self input", "self input");
+    compile(
+        &source,
+        Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+    )
+    .unwrap();
+    for (prefix, code) in [
+        (
+            "trait bad {control work() exits auto;}",
+            "E_TRAIT_SIGNATURE",
+        ),
+        ("implement absent for bool {}", "E_TRAIT"),
+        (
+            "trait bad {type item;} implement bad for bool {}",
+            "E_TRAIT",
+        ),
+    ] {
+        let source = format!(
+            "{prefix} trait reader {{control read() exits done;}} implement reader for u32 {{async control read() exits done {{exit done;}}}}"
+        );
+        assert_eq!(check_errors(&source).errors[0].code, code);
+    }
+    let source = "trait reader {async control read() exits done;} implement reader for u32 {control read() exits done {exit done;}} implement reader for u32 {async control read() exits done {exit done;}}";
+    assert_eq!(check_errors(source).errors[0].code, "E_COHERENCE");
+}
+
+#[test]
+fn implementation_async_ranges_keep_canonical_batches_written_order_and_limits() {
+    let source = "trait a_reader {control first() exits done;control second() exits done;} trait b_reader {async control first() exits done;}\nimplement b_reader for u32 {control first() exits done {exit done;}}\nimplement a_reader for u32 {async control second() exits done {exit done;} async control first() exits done {exit done;}}";
+    let errors = check_errors(source);
+    assert_eq!(errors.errors.len(), 2);
+    assert_eq!(errors.errors[0].span.line, 3);
+    assert_eq!(errors.errors[1].span.line, 2);
+    assert_eq!(
+        errors.errors[0].span.column,
+        source.lines().nth(2).unwrap().find("async").unwrap() + 1
+    );
+    assert_eq!(
+        errors.errors[1].end.as_ref().unwrap().column,
+        errors.errors[1].span.column + 7
+    );
+    for extra in [false, true] {
+        let decl = if extra { "control" } else { "async control" };
+        let imp = if extra { "async control" } else { "control" };
+        let keyword = if extra { "async" } else { "control" };
+        let mut source = format!("trait reader {{{decl} read() exits done;}}\n");
+        for n in (0..36).rev() {
+            source.push_str(&format!("struct value_{n:02} {{u32 value;}} implement reader for value_{n:02} {{{imp} read() exits done {{exit done;}}}}\n"));
+        }
+        let errors = check_errors(&source);
+        assert_eq!(errors.errors.len(), 32);
+        assert!(errors.limit_reached);
+        for (n, e) in errors.errors.iter().enumerate() {
+            assert_eq!(e.code, "E_ASYNC");
+            assert_eq!(e.span.line, 37 - n);
+            let line = source.lines().nth(e.span.line - 1).unwrap();
+            assert_eq!(e.span.column, line.find(keyword).unwrap() + 1);
+            assert_eq!(
+                e.end.as_ref().unwrap().column,
+                e.span.column + keyword.len()
+            );
+        }
+        assert_eq!(
+            compile(
+                &source,
+                Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
+            )
+            .unwrap_err(),
+            errors.errors[0]
+        );
+    }
+    let source = format!(
+        "trait reader {{control read() exits done;}}{}",
+        "implement reader for u32 {async control read() exits done {exit done;}}".repeat(1025)
+    );
+    let errors = check_errors(&source);
+    assert_eq!(errors.errors.len(), 1);
+    assert!(errors.errors[0].message.contains("1024-implementation"));
+    assert!(errors.errors[0].end.is_none());
+}
+
+#[test]
+fn implementation_async_ranges_leave_ordinary_async_and_parser_barriers_separate() {
+    let source = "async control work() exits done {exit done;} control main() exits done {run work();exit done;}";
+    let p = compile(
+        source,
+        Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+    )
+    .unwrap();
+    let scenario = tellur::runtime::Scenario {
+        entry: "main".into(),
+        arguments: vec![],
+        calls: vec![],
+    };
+    assert_eq!(
+        p.run(&scenario).unwrap(),
+        p.expanded("main").unwrap().run(&scenario).unwrap()
+    );
+    let forbidden = "@contingent async control work() exits done {exit done;}";
+    let error = &check_errors(forbidden).errors[0];
+    assert_eq!(error.code, "E_ASYNC");
+    assert!(error.message.contains("cannot be contingent"));
+    assert!(error.end.is_none());
+
+    for (source, code) in [
+        ("trait reader {async region read() exits done;}", "E_PARSE"),
+        (
+            "trait reader {async control read<t>() exits done;}",
+            "E_TRAIT_SIGNATURE",
+        ),
+        (
+            "trait reader {async control read() exits auto;}",
+            "E_TRAIT_SIGNATURE",
+        ),
+        (
+            "trait reader {async control read() exits ready...;}",
+            "E_PARSE",
+        ),
+    ] {
+        assert_eq!(check_errors(source).errors[0].code, code);
+    }
 }

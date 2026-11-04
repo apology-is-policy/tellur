@@ -219,11 +219,23 @@ fn implementation_permissions(i: &Implementation, d: &TraitDeclaration) -> Resul
     for method in &i.methods {
         let declared = d.methods.iter().find(|m| m.name == method.name).unwrap();
         if method.asynchronous != declared.asynchronous {
-            return Err(Diagnostic::new(
+            let diagnostic = Diagnostic::new(
                 "E_ASYNC",
                 method.span,
                 "implementation must match the trait control's async permission",
-            ));
+            );
+            // Extra async selects its modifier; a missing modifier selects the
+            // implementation's control keyword. Missing metadata keeps the point.
+            let range = if method.asynchronous {
+                method.async_keyword_range
+            } else {
+                method.declaration_keyword_range
+            };
+            return Err(if range.start.line != 0 {
+                diagnostic.with_range(range)
+            } else {
+                diagnostic
+            });
         }
         if method.fault_contract == Some(true) && !declared.fault_contract.unwrap_or(false) {
             return Err(Diagnostic::new(
@@ -1055,6 +1067,74 @@ pub(crate) fn abstract_witness(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn implementation_async_ranges_keep_selected_metadata_fallbacks() {
+        for extra in [false, true] {
+            let decl = if extra { "control" } else { "async control" };
+            let imp = if extra { "async control" } else { "control" };
+            let source = format!(
+                "trait reader {{{decl} read() exits done;}} implement reader for u32 {{@contingent {imp} read() exits done {{exit done;}}}}"
+            );
+            let mut unit = crate::syntax::parse_unit(&source).unwrap();
+            let declaration = &unit.traits[0];
+            let implementation = &mut unit.implementations[0];
+            let method = &mut implementation.methods[0];
+            if extra {
+                assert_ne!(method.declaration_keyword_range.start.line, 0);
+                method.async_keyword_range = SourceRange::default();
+            } else {
+                method.async_keyword_range = declaration.methods[0].async_keyword_range;
+                method.declaration_keyword_range = SourceRange::default();
+            }
+            let point = method.span;
+            let error = implementation_permissions(implementation, declaration).unwrap_err();
+            assert_eq!(error.span, point);
+            assert!(error.end.is_none());
+        }
+    }
+
+    #[test]
+    fn implementation_async_ranges_survive_rewritten_names_and_equal_permissions() {
+        let source = "trait reader {@contingent control read() exits done;} implement reader for u32 {@contingent // 😀\r\n async // modifier\r\n control read() exits done {exit done;}}";
+        let mut unit = crate::syntax::parse_unit(source).unwrap();
+        let d = &mut unit.traits[0];
+        let i = &mut unit.implementations[0];
+        let range = i.methods[0].async_keyword_range;
+        assert_eq!(range.start.line, 2);
+        assert_eq!(range.end.column - range.start.column, 5);
+        d.methods[0].name = "rewritten".into();
+        i.methods[0].name = "rewritten".into();
+        let e = implementation_permissions(i, d).unwrap_err();
+        assert_eq!(e.span, range.start);
+        assert_eq!(*e.end.unwrap(), range.end);
+        d.methods[0].asynchronous = true;
+        implementation_permissions(i, d).unwrap();
+        i.methods[0].asynchronous = false;
+        let e = implementation_permissions(i, d).unwrap_err();
+        assert_eq!(e.span, i.methods[0].declaration_keyword_range.start);
+    }
+
+    #[test]
+    fn implementation_async_ranges_keep_generated_and_synchronous_metadata_empty() {
+        let unit=crate::syntax::parse_unit("@contingent async control work() exits done {exit done;} control ordinary() exits done {exit done;} struct wrapper<t> {t value;constructor(t input) {self.value=move input;}} boundary guarded() {} contingency(string reason) {drop(reason);}").unwrap();
+        for region in &unit.regions {
+            if region.name == "work" {
+                assert_eq!(region.async_keyword_range.start.column, 13);
+                assert_eq!(region.async_keyword_range.end.column, 18);
+            } else {
+                assert_eq!(region.async_keyword_range, SourceRange::default());
+            }
+        }
+        assert_eq!(
+            unit.data[0]
+                .constructor
+                .as_ref()
+                .unwrap()
+                .async_keyword_range,
+            SourceRange::default()
+        );
+    }
 
     #[test]
     fn trait_legacy_profile_ranges_keep_missing_metadata_without_inference_fallthrough() {

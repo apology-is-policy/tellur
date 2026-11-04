@@ -247,6 +247,8 @@ pub type TypeBounds = std::collections::BTreeMap<String, Vec<String>>;
 #[derive(Clone, Debug)]
 pub struct Region {
     pub asynchronous: bool,
+    /// Written async modifier; empty for synchronous or generated signatures.
+    pub async_keyword_range: SourceRange,
     pub contingent_contract: Option<bool>,
     pub boundary: Option<Boundary>,
     pub contingency: bool,
@@ -830,7 +832,13 @@ impl Parser {
         } else {
             None
         };
+        let async_start = self.here();
         let asynchronous = self.eat("async");
+        let async_keyword_range = if asynchronous {
+            self.range_from(async_start)
+        } else {
+            SourceRange::default()
+        };
         let keyword_start = self.here();
         let modern = self.eat("control");
         if asynchronous && !modern {
@@ -1002,6 +1010,7 @@ impl Parser {
             type_parameters,
             type_parameters_range,
             declaration_keyword_range,
+            async_keyword_range,
             type_bounds,
             type_bindings: Default::default(),
             public,
@@ -2025,6 +2034,7 @@ pub(crate) fn parse_with_layout(source: &str) -> Result<(Unit, Vec<Token>, crate
                 type_parameters: vec![],
                 type_parameters_range: SourceRange::default(),
                 declaration_keyword_range: SourceRange::default(),
+                async_keyword_range: SourceRange::default(),
                 type_bounds: Default::default(),
                 type_bindings: Default::default(),
                 public,
@@ -2203,6 +2213,7 @@ pub(crate) fn parse_with_layout(source: &str) -> Result<(Unit, Vec<Token>, crate
                             type_parameters: type_parameters.clone(),
                             type_parameters_range: SourceRange::default(),
                             declaration_keyword_range: SourceRange::default(),
+                            async_keyword_range: SourceRange::default(),
                             type_bounds: type_parameters
                                 .iter()
                                 .map(|p| (p.clone(), vec![]))

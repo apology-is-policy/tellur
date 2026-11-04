@@ -776,9 +776,45 @@ Generic witnesses retain the same rules.
 
 The preflight is read-only. A failed phase publishes no substitutions, generated
 controls, visibility entries or witnesses. Associated bounds, origin/signature
-conformance and body checking remain later phases. Original imported points and
+conformance and body checking remain later phases. Original imported locations and
 UTF-16 editor locations follow unsaved partial repairs, with checked hover withheld
 until the whole source validates. Permission acceptance and execution are unchanged.
+
+
+## Implementation async-permission locations
+
+Since 0.214, the existing implementation `E_ASYNC` permission mismatch selects the
+written `async` modifier when the trait requires synchronous execution. If the
+trait requires async execution and the implementation omits `async`, the diagnostic
+selects that implementation's `control` keyword. Preceding annotations, following
+comments and names are excluded. Both locations survive module remapping and
+rewritten method names.
+
+<!-- tellur:reject E_ASYNC -->
+```tellur
+trait reader {
+    async control read() exits done;
+}
+implement reader for u32 {
+    control read() exits done {
+        exit done;
+    }
+}
+```
+
+Async permission still matches exactly. Canonical implementation order, written
+method order, one error per implementation and the shared 32-error budget are
+unchanged. Async equality precedes fault and contingency subset checks; earlier
+profile, identity and associated-type preparation still take priority, and bounds,
+signature/origin conformance and bodies remain later phases.
+
+A missing selected token range keeps the method point. An extra-async error never
+falls through to a separately available control range. Generated boundary and
+constructor signatures have no invented async range; retained metadata does not
+reject equal permissions. Ordinary async execution, legacy parser barriers and the
+separate restriction against contingent async controls keep their current behavior.
+The async-host call-model design question is unaffected. Unsaved imported repairs
+restore checked hover only after the whole source validates.
 
 
 ## Implementation conformance batches

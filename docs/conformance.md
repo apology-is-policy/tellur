@@ -5704,3 +5704,23 @@ metadata tests explicitly remove keyword metadata for their point fallback.
 LSP and isolated VS Code tests repair unsaved imported legacy declarations and
 implementations before remaining inference errors, then restore hover and native
 execution. Public async-host admission remains pending its recorded decision.
+
+
+## Implementation async-permission locations (0.214 / P2av)
+
+Syntax regions retain the parsed async modifier independently of the declaration
+keyword. Synchronous and generated boundary/constructor signatures use empty async
+metadata. Both module paths remap endpoints. The existing implementation permission
+preflight selects extra `async` or missing-async `control`, preserving point fallback.
+
+Five CLI regressions cover both directions, annotations/comments, imported Unicode
+and CRLF ranges, repair, first-error compatibility, earlier preparation barriers,
+async/fault/contingency/bound/conformance replay, canonical implementation and written
+method order, diagnostic/implementation budgets and ordinary async/parser behavior.
+Three units cover selected metadata fallback, rewritten names, equal permissions and
+generated signatures. One prior associated-assignment priority test now expects the
+async token range. LSP and isolated VS Code repair both mismatch directions in unsaved
+imports, withholding stale hover until repair and then running the native program.
+The first imported fixture incorrectly marked an async trait contingent; correction
+preserves the existing separate rejection without changing production semantics.
+Public async-host admission remains pending its recorded decision.
