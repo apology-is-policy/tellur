@@ -31,6 +31,32 @@ pub control answer() exits auto {
 
 Write `exits ready { u32 value }` or use a public named outcome contract. Replacing
 `exits auto` with `exits ready...` still requests inference and is also rejected.
+Since 0.194, this diagnostic selects the written `exits auto` clause or the first
+inferred `label...` clause in source order. In a mixed or wrapped contract such as
+`exits { plain, zebra..., alpha... }`, it selects `zebra...`; commas, braces and
+other alternatives are excluded. Internal whitespace and comments are included,
+while trailing comments and the control body are excluded. Legacy `region ... exits
+auto` keeps the same range behavior; legacy payload inference remains a syntax error.
+Imported and unused generic definitions keep their original header coordinates.
+Missing synthetic metadata retains the control-name fallback.
+
+<!-- tellur:reject E_PUBLIC_CONTRACT -->
+```tellur
+pub control select(bool flag) exits plain, ready... {
+    delta flag {
+        true => exit plain,
+        false => exit ready { 1 }
+    }
+}
+```
+
+The error selects `ready...`. Making the control private permits inference; spelling
+`ready { u32 value }` preserves an explicit public contract. The public-shape batch
+still reports one error per control before shared schemas and bodies, up to 32 errors.
+Fixing one unsaved declaration removes its error while independent failures remain;
+checked hover returns only after the complete program validates. Missing borrowed
+result origins are separate errors with their existing locations.
+
 
 <!-- tellur:reject E_PUBLIC_CONTRACT -->
 ```tellur

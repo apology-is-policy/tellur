@@ -1662,7 +1662,7 @@ fn type_annotation_ranges_keep_original_generic_definition_and_named_payload_loc
 }
 
 #[test]
-fn type_annotation_ranges_keep_batches_first_error_apis_and_non_type_points() {
+fn type_annotation_ranges_keep_batches_first_error_apis_and_separate_contract_ranges() {
     let source = "control first(\n ref absent_first input\n) exits done {exit done;}\ncontrol second() exits ready {\n absent_second value\n} {exit ready {}; }";
     let manifest = Manifest::from_json(include_str!("../playground/manifest.json")).unwrap();
     let batch = tellur::check_source(source, manifest.clone()).unwrap_err();
@@ -1680,12 +1680,12 @@ fn type_annotation_ranges_keep_batches_first_error_apis_and_non_type_points() {
         tellur::compile(source, manifest.clone()).unwrap_err(),
         batch.errors[0]
     );
-    let point =
-        tellur::compile("pub control probe() exits auto {exit done;}", manifest).unwrap_err();
-    assert_eq!(point.code, "E_PUBLIC_CONTRACT");
-    assert!(
-        point.end.is_none(),
-        "unrelated contract-shape diagnostics remain points"
+    let source = "pub control probe() exits auto {exit done;}";
+    let shape = tellur::compile(source, manifest).unwrap_err();
+    assert_eq!(shape.code, "E_PUBLIC_CONTRACT");
+    assert_eq!(
+        json!({"start":shape.span,"end":shape.end.as_deref().unwrap()}),
+        selected_range(source, "exits auto")
     );
 }
 
@@ -3219,4 +3219,138 @@ fn contributor_ranges_select_nested_outcome_expressions_without_surrounding_stat
         selected_range(source, "auto saved=capture leaf();"),
         "{report}"
     );
+}
+
+#[test]
+fn public_shape_ranges_select_written_inference_clauses_in_authored_order() {
+    let f = Fixture::new();
+    for (source, selected) in [
+        ("pub control one() exits auto {exit done;}", "exits auto"),
+        ("pub region one() exits auto {exit done;}", "exits auto"),
+        (
+            "pub async control one() exits auto {exit done;}",
+            "exits auto",
+        ),
+        (
+            "pub control one<t>(t input) exits // 😀\r\n auto {exit ready {input};}",
+            "exits // 😀\r\n auto",
+        ),
+        (
+            "pub control one() exits ready // 😀\r\n ... {exit ready {1};}",
+            "ready // 😀\r\n ...",
+        ),
+        (
+            "pub control one() exits {plain, zebra..., alpha...} {exit plain;}",
+            "zebra...",
+        ),
+        (
+            "pub control one() exits plain {u32 value}, zebra..., alpha... {exit plain {1};}",
+            "zebra...",
+        ),
+    ] {
+        f.write("main.tellur", source);
+        let report = f.report(&["check", "main.tellur", "--json"], false);
+        let errors = report["diagnostics"].as_array().unwrap();
+        assert_eq!(errors.len(), 1, "{report}");
+        assert_eq!(errors[0]["code"], "E_PUBLIC_CONTRACT");
+        assert_eq!(
+            errors[0]["range"],
+            selected_range(source, selected),
+            "{report}"
+        );
+        let errors = check_errors(source);
+        assert_eq!(
+            compile(
+                source,
+                Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
+            )
+            .unwrap_err(),
+            errors.errors[0]
+        );
+    }
+}
+
+#[test]
+fn public_shape_ranges_preserve_transitive_imports_and_independent_repairs() {
+    let f = Fixture::new();
+    let first =
+        "// 😀\r\npub control first<t>(t input) exits // clause\r\n auto {exit ready {input};}";
+    let second = "import \"first.tellur\" as first;\npub control second<t>(t input) exits empty, ready // 😀\r\n ... {exit ready {input};}";
+    f.write("first.tellur", first);
+    f.write("second.tellur", second);
+    f.write(
+        "main.tellur",
+        "import \"second.tellur\" as second; control main() exits done {u32 wrong=true;exit done;}",
+    );
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    let errors = report["diagnostics"].as_array().unwrap();
+    assert_eq!(errors.len(), 2, "{report}");
+    for (path, source, selected) in [
+        ("first.tellur", first, "exits // clause\r\n auto"),
+        ("second.tellur", second, "ready // 😀\r\n ..."),
+    ] {
+        let error = errors
+            .iter()
+            .find(|error| error["path"].as_str().unwrap().ends_with(path))
+            .unwrap();
+        assert_eq!(error["code"], "E_PUBLIC_CONTRACT");
+        assert!(error["path"].as_str().unwrap().ends_with(path));
+        assert_eq!(error["range"], selected_range(source, selected), "{report}");
+    }
+    f.write(
+        "first.tellur",
+        &first.replace("exits // clause\r\n auto", "exits ready {t value}"),
+    );
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    assert_eq!(report["diagnostics"].as_array().unwrap().len(), 1);
+    assert!(
+        report["diagnostics"][0]["path"]
+            .as_str()
+            .unwrap()
+            .ends_with("second.tellur")
+    );
+    f.write(
+        "second.tellur",
+        &second.replace("ready // 😀\r\n ...", "ready {t value}"),
+    );
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    assert_eq!(report["diagnostics"].as_array().unwrap().len(), 1);
+    assert_eq!(report["diagnostics"][0]["code"], "E_TYPE");
+}
+
+#[test]
+fn public_shape_ranges_keep_phase_priority_budget_and_private_inference() {
+    let mut source = (0..40)
+        .map(|n| format!("pub control bad_{n}() exits auto {{exit done;}}\n"))
+        .collect::<String>();
+    source.push_str("struct bad['a,'a] {ref string value <- 'a;} control main() exits done {u32 wrong=true;exit done;}");
+    let errors = check_errors(&source);
+    assert_eq!(errors.errors.len(), 32);
+    assert!(errors.limit_reached);
+    assert!(
+        errors
+            .errors
+            .iter()
+            .all(|e| e.code == "E_PUBLIC_CONTRACT" && e.end.is_some())
+    );
+    for source in [
+        "control one() exits auto {exit done;}",
+        "control one() exits ready... {exit ready {1};}",
+        "control one(bool flag) exits plain {u32 value}, ready... {delta flag {true=>exit plain {1},false=>exit ready {2}}}",
+    ] {
+        compile(
+            source,
+            Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+        )
+        .unwrap();
+    }
+    for source in [
+        "pub region old() exits ready... {exit ready(1);}",
+        "trait reader {control read() exits ready...;}",
+        "trait reader {control read() exits auto;}",
+    ] {
+        let errors = check_errors(source);
+        assert_eq!(errors.errors.len(), 1);
+        assert_ne!(errors.errors[0].code, "E_PUBLIC_CONTRACT");
+    }
 }

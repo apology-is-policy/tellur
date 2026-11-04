@@ -266,6 +266,8 @@ pub struct Region {
     pub parameters: Vec<Field>,
     pub exits: Vec<Outcome>,
     pub infer_exits: bool,
+    /// First authored inference clause: `exits auto` or an individual `label...`.
+    pub inferred_exit_range: SourceRange,
     /// Declared labels whose nonempty payloads are inferred from the body.
     pub infer_payloads: std::collections::BTreeSet<String>,
     pub exit_contract: Option<String>,
@@ -278,6 +280,9 @@ pub struct Region {
     pub body: Vec<Item>,
 }
 impl Region {
+    pub(crate) fn inferred_exit_error(&self, error: Diagnostic) -> Diagnostic {
+        type_error(self.inferred_exit_range, error, self.name_span)
+    }
     pub(crate) fn exit_type_error(&self, error: Diagnostic) -> Diagnostic {
         type_error(self.exit_contract_range, error, self.span)
     }
@@ -815,6 +820,11 @@ impl Parser {
             self.need("exits")?;
         }
         let infer_exits = !fault_only && self.eat("auto");
+        let mut inferred_exit_range = if infer_exits {
+            self.range_from(self.tokens[contract_start].span)
+        } else {
+            SourceRange::default()
+        };
         let mut exits = vec![];
         let mut infer_payloads = std::collections::BTreeSet::new();
         let mut return_origins = std::collections::BTreeMap::new();
@@ -857,6 +867,9 @@ impl Parser {
                     }
                     bare = false;
                     infer_payloads.insert(name.clone());
+                    if inferred_exit_range.start.line == 0 {
+                        inferred_exit_range = self.range_from(name_start);
+                    }
                     (vec![], vec![])
                 } else if self.at("(") {
                     bare = false;
@@ -942,6 +955,7 @@ impl Parser {
             parameters,
             exits,
             infer_exits,
+            inferred_exit_range,
             infer_payloads,
             exit_contract_range: if exit_contract.is_some() {
                 exit_contract_range
@@ -1953,6 +1967,7 @@ pub(crate) fn parse_with_layout(source: &str) -> Result<(Unit, Vec<Token>, crate
                 parameters,
                 exits: vec![],
                 infer_exits: false,
+                inferred_exit_range: SourceRange::default(),
                 infer_payloads: Default::default(),
                 exit_contract: None,
                 exit_contract_range: SourceRange::default(),
@@ -2124,6 +2139,7 @@ pub(crate) fn parse_with_layout(source: &str) -> Result<(Unit, Vec<Token>, crate
                             parameters,
                             exits: vec![],
                             infer_exits: false,
+                            inferred_exit_range: SourceRange::default(),
                             infer_payloads: Default::default(),
                             exit_contract: None,
                             exit_contract_range: SourceRange::default(),

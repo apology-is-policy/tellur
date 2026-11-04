@@ -6,11 +6,11 @@ pub(super) const OMITTED: &str = crate::absorption::OMITTED;
 
 pub(super) fn public_shape(region: &syntax::Region) -> Result<()> {
     if region.public && (region.infer_exits || !region.infer_payloads.is_empty()) {
-        return Err(Diagnostic::new(
+        return Err(region.inferred_exit_error(Diagnostic::new(
             "E_PUBLIC_CONTRACT",
             region.name_span,
             "public controls require explicit exit labels and payload types or a named outcome contract; keep exits auto and label... on private controls",
-        ));
+        )));
     }
     Ok(())
 }
@@ -114,5 +114,19 @@ impl Checker<'_> {
             }
         }
         diagnostic
+    }
+}
+
+#[cfg(test)]
+mod range_tests {
+    #[test]
+    fn public_shape_range_preserves_missing_metadata_fallback() {
+        let mut unit =
+            crate::syntax::parse_unit("pub control one() exits auto {exit done;}").unwrap();
+        let region = &mut unit.regions[0];
+        region.inferred_exit_range = Default::default();
+        let error = super::public_shape(region).unwrap_err();
+        assert_eq!(error.span, region.name_span);
+        assert!(error.end.is_none());
     }
 }

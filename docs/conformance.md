@@ -5318,3 +5318,23 @@ restore after repair and run the repaired program natively. Existing contributor
 absorption, contract-snapshot, module, generic-control and public-contract tests verify
 unchanged evidence and execution; manual, formatting and all-target checks accompany
 the release. Public async-host admission remains pending its recorded design choice.
+
+
+## Public inferred-contract locations (0.194 / P2ab)
+
+The parser retains the first authored inference clause in each control header:
+`exits auto` or an individual `label...`. Public-shape diagnostics use this range
+without changing acceptance, declaration ordering, phase barriers or the 32-error
+budget. Mixed/wrapped headers preserve written order even when label names sort
+differently. Both module-resolution paths retain both endpoints; synthetic boundary
+and constructor contracts default to no inference range.
+
+CLI tests cover modern/legacy/async spelling, multiline Unicode/CRLF comments,
+unused generics, transitive imports, independent repairs and later body errors.
+Private inference still compiles; trait and legacy payload-inference barriers remain
+separate. A focused unit test checks the missing-metadata control-name fallback.
+LSP and isolated editor tests cover unsaved partial repair and exact imported UTF-16
+ranges, hover restoration and native execution. Affected diagnostics, formatting,
+payload inference, public contracts, traits, generics, modules and manual checks
+accompany the release; the ownership/runtime and pending async-host decision are
+unchanged.
