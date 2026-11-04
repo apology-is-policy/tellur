@@ -6974,3 +6974,87 @@ fn schema_group_ranges_follow_unsaved_imports_and_restore_hover() {
     assert_eq!(f.diagnostics(), json!([]));
     assert_eq!(hover_at(&f, source, "auto text"), initial);
 }
+
+#[test]
+fn schema_recovery_tracks_partial_unsaved_dependency_repairs_without_stale_hover() {
+    let mut f = Fixture::new();
+    let path = f.root.join("worker.tellur");
+    let uri = url::Url::from_file_path(&path).unwrap().to_string();
+    let valid = "pub struct first<t>['a] {pub ref t value <- 'a;}\r\npub struct holder<t>['a] {pub first<t>['a] value;}\r\npub outcome second<t>['b] {ready {ref t value <- 'b}}\r\npub control work() exits done {exit done;}";
+    fs::write(&path, valid).unwrap();
+    let source = "import \"worker.tellur\" as worker; control main() exits done {auto text=\"x\";drop(text);worker.work();exit done;}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let initial = hover_at(&f, source, "auto text");
+    assert!(initial.to_string().contains("string"));
+    let partial = valid.replace("outcome second<t>['b]", "outcome second<t>['b,'unused]");
+    let broken = partial.replace("struct first<t>['a]", "struct first<t>['a,' // 😀\r\n a]");
+    for (version, text, selections) in [
+        (1, broken.as_str(), vec!["' // 😀\r\n a", "'unused"]),
+        (2, partial.as_str(), vec!["'unused"]),
+    ] {
+        if version == 1 {
+            f.server.notification(
+                "textDocument/didOpen",
+                &json!({"textDocument":{"uri":uri,"version":version,"text":text}}),
+            );
+        } else {
+            f.server.notification("textDocument/didChange", &json!({"textDocument":{"uri":uri,"version":version},"contentChanges":[{"text":text}]}));
+        }
+        let errors = f.diagnostics();
+        assert_eq!(
+            errors.as_array().unwrap().len(),
+            selections.len(),
+            "{errors}"
+        );
+        for (error, selected) in errors.as_array().unwrap().iter().zip(selections) {
+            assert_eq!(error["code"], "E_ORIGIN");
+            let location = &error["relatedInformation"][0]["location"];
+            assert_eq!(location["uri"], uri);
+            let at = text.find(selected).unwrap();
+            let position = |offset| {
+                let prefix = &text[..offset];
+                json!({"line":prefix.bytes().filter(|b|*b==b'\n').count(),"character":prefix.rsplit('\n').next().unwrap().encode_utf16().count()})
+            };
+            assert_eq!(
+                location["range"],
+                json!({"start":position(at),"end":position(at+selected.len())})
+            );
+        }
+        assert!(hover_at(&f, source, "auto text").is_null());
+    }
+    f.server.notification(
+        "textDocument/didChange",
+        &json!({"textDocument":{"uri":uri,"version":3},"contentChanges":[{"text":valid}]}),
+    );
+    assert_eq!(f.diagnostics(), json!([]));
+    assert_eq!(hover_at(&f, source, "auto text"), initial);
+    f.server.notification(
+        "textDocument/didClose",
+        &json!({"textDocument":{"uri":uri}}),
+    );
+    assert_eq!(f.diagnostics(), json!([]));
+    assert_eq!(hover_at(&f, source, "auto text"), initial);
+}
+
+#[test]
+fn schema_recovery_budget_is_visible_and_clears_after_repair() {
+    let mut f = Fixture::new();
+    let source = (0..40)
+        .map(|n| format!("struct bad_{n}['a,'a] {{ref string value <- 'a;}}\n"))
+        .collect::<String>()
+        + "control main() exits done {exit done;}";
+    f.open(&source);
+    let errors = f.diagnostics();
+    let errors = errors.as_array().unwrap();
+    assert_eq!(errors.len(), 32);
+    assert!(errors.iter().all(|e| e["code"] == "E_ORIGIN"));
+    assert!(
+        errors.last().unwrap()["message"]
+            .as_str()
+            .unwrap()
+            .contains("diagnostic limit reached")
+    );
+    f.change(VALID, 2);
+    assert_eq!(f.diagnostics(), json!([]));
+}

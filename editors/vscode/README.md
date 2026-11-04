@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-darwin-arm64-0.169.0.vsix` using **Extensions:
+1. Install the supplied `tellur-language-darwin-arm64-0.192.0.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1616,3 +1616,9 @@ generics, declaration order, field-error priority and unchanged global schema li
 Unsaved dependency LSP/editor checks verify UTF-16 ranges, stale-hover suppression,
 repair and normal native execution. Source syntax, accepted origin schemas and
 first-error shared preparation remain unchanged.
+
+Compiler 0.192 reports independent origin-schema errors together, including unused
+imported generic structs and named outcomes. Fixing one unsaved declaration removes
+its diagnostic while independent failures remain. Declarations depending on a failed
+schema are suppressed, and hover stays unavailable until the whole check succeeds.
+The existing 32-error limit and original-file ranges apply.

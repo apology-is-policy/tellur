@@ -361,7 +361,7 @@ pub(crate) fn lower(
         .iter()
         .map(|d| (d.name.clone(), d.clone()))
         .collect::<BTreeMap<_, _>>();
-    let origin_schemas = crate::origins::schemas(&unit)?;
+    let origin_schemas = crate::origins::schemas_checked(&unit)?;
     let mut declarations = BTreeMap::new();
     for d in &unit.traits {
         if manifest.primitives.iter().any(|p| p.name == d.name)

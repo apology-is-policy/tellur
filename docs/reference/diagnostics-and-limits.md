@@ -10,7 +10,8 @@ public-shape and signature errors, and 0.78 adds named completion bindings. Rele
 0.83 extends statement recovery to named boundary work and contingency bodies, and
 0.84 adds lexical boundary work bodies; 0.85 adds lexical contingency handlers;
 0.86 adds explicit exit-adapter arms; 0.87 adds explicitly typed stored-adapter arms,
-0.93 inferred stored adapters, and 0.94 inferred exit adapters.
+0.93 inferred stored adapters, and 0.94 inferred exit adapters. Release 0.192 also
+collects independent origin-schema declaration errors before later preparation.
 Fixing an error
 may expose another within that body or a dependent control. The precise
 message wording may improve between releases. The negative examples here are checked
@@ -361,8 +362,8 @@ field `ref view['missing] value <- 'a`, the error selects `['missing]`; an inval
 storage group instead selects its arrow. Internal comments and whitespace are
 included; trailing comments are excluded. Storage groups are still checked before
 referent groups, even though their spelling follows the brackets. Missing mappings
-and schema depth limits keep their existing fallback points. Shared schema preparation still stops at its first error, before
-body checking; this range improvement adds no recovery through an invalid schema.
+and schema depth limits keep their existing fallback points. Schema failures block
+body checking; independent schema recovery is described below.
 
 Since 0.191, **duplicate and unused declared origin groups** select the individual
 apostrophe name in a struct, variant or named-outcome header. A duplicate selects
@@ -386,8 +387,37 @@ groups are still checked before fields; unused groups are checked after all fiel
 validate, so an invalid field mapping keeps priority over an unused group. The first
 unused group follows declaration order. Missing mappings, malformed header syntax
 and global schema limits retain their existing diagnostic behavior. Shared schema
-preparation remains a first-error barrier; no partial schema reaches later checking
-or hover.
+preparation must succeed before any schema reaches later checking or hover.
+
+Since 0.192, checking collects **independent origin-schema failures** from structs,
+variants and named outcomes, including unused generic declarations and imports.
+Each declaration retains its existing first-error validation order. If checking a
+nested schema fails, declarations that depend on that failure are skipped, including
+transitive and shared dependencies. Fixing that schema can expose further errors in
+its dependents. Independent declarations continue up to the shared 32-error limit.
+
+<!-- tellur:reject E_ORIGIN -->
+```tellur
+struct first['a, 'a] {
+    ref string value <- 'a;
+}
+struct second['b, 'unused] {
+    ref string value <- 'b;
+}
+control main() exits done {
+    exit done;
+}
+```
+
+Checking this program reports the duplicate `'a` and unused `'unused` together.
+Repairing either declaration removes its error without hiding the other. Partial
+schemas never reach trait lowering, instantiation, body checking or editor hover;
+those phases resume only after every schema succeeds. The first-error compile API
+still returns the same first diagnostic. Ambiguous declaration identities retain
+first-error behavior; parsing, import loading and earlier preparation keep their
+existing barriers. Schema cycles, depth and size limits retain their diagnoses,
+while unrelated declarations can still report their own failures. Ordinary recursive
+layouts without origin schemas remain a separate validation phase.
 
 Imports preserve both endpoints in the original file; unsaved dependencies supply
 the text used for editor UTF-16 conversion. Generic substitution preserves the
@@ -427,12 +457,13 @@ unavailable until the current program checks successfully; declared syntax can
 still appear in outline or hover.
 
 Recovery is deliberately bounded. Parsing, import/name resolution, shared type
-validation, implementation normalization/conformance, generic expansion
+validation outside the origin-schema batch, implementation normalization/conformance, generic expansion
 and graph-cycle failures still stop at their first error. Independent control
 declarations use the three batches described below; constructor-call access has
 its own preparation batch since 0.91, generic-bound declarations since 0.92, and
 trait declarations since 0.95. Since 0.96, constructor definitions also have an earlier
-file-local preparation batch. Generic definition bodies may
+file-local preparation batch. Independent origin schemas have a separate batch since
+0.192, with failed dependencies suppressed. Generic definition bodies may
 report several errors during universal checking; a failed phase prevents later
 concrete checking. Broader recovery across shared preparation remains future work.
 

@@ -111,6 +111,9 @@ fn error(at: Span, text: impl Into<String>) -> Diagnostic {
     Diagnostic::new("E_ORIGIN", at, text)
 }
 pub(crate) fn schemas(unit: &syntax::Unit) -> Result<Schemas> {
+    schemas_checked(unit).map_err(crate::Diagnostics::first)
+}
+pub(crate) fn schemas_checked(unit: &syntax::Unit) -> crate::CheckResult<Schemas> {
     let mut declarations = unit.data.clone();
     declarations.extend(unit.contracts.iter().map(|c| syntax::DataDeclaration {
         constructor: None,
@@ -323,11 +326,81 @@ pub(crate) fn schemas(unit: &syntax::Unit) -> Result<Schemas> {
     }) {
         return Ok(Schemas::default());
     }
-    let mut done = BTreeMap::new();
+    // Follow the same named-schema dependencies as visit, including references
+    // and inherited option groups. Generic arguments are not separate schema
+    // visits here: the existing visitor checks the declaration's own fields.
+    let mut dependencies = BTreeMap::<String, BTreeSet<String>>::new();
     for d in data {
-        visit(&d.name, data, &mut done, &mut BTreeSet::new())?;
+        let fields: Vec<_> = match &d.body {
+            syntax::DataBody::Struct(fields) => fields.iter().collect(),
+            syntax::DataBody::Variant(outcomes) => {
+                outcomes.iter().flat_map(|o| &o.fields).collect()
+            }
+        };
+        let mut edges = BTreeSet::new();
+        for field in fields {
+            let mut ty =
+                manifest::reference_inner(&field.ty).map_or(field.ty.as_str(), |(_, inner)| inner);
+            while let Some(inner) = manifest::option_inner(ty) {
+                ty = manifest::reference_inner(inner).map_or(inner, |(_, inner)| inner);
+            }
+            let base = crate::collection_support::generic(ty).map_or(ty, |(base, _)| base);
+            if let Some(target) = data
+                .iter()
+                .find(|d| d.name == ty)
+                .or_else(|| data.iter().find(|d| d.name == base))
+            {
+                edges.insert(target.name.clone());
+            }
+        }
+        dependencies.entry(d.name.clone()).or_insert(edges);
     }
-    Ok(Schemas(done))
+    // Ambiguous declaration identities retain the previous first-error barrier.
+    // Identity validation still belongs to its existing later phase.
+    let independent_identities = dependencies.len() == data.len();
+    let mut failed = BTreeSet::new();
+    let mut done = BTreeMap::new();
+    let mut errors = vec![];
+    for d in data {
+        let mut pending = vec![d.name.as_str()];
+        let mut seen = BTreeSet::new();
+        let mut blocked = false;
+        if !failed.is_empty() {
+            while let Some(name) = pending.pop() {
+                if failed.contains(name) {
+                    blocked = true;
+                    break;
+                }
+                if seen.insert(name) {
+                    if let Some(edges) = dependencies.get(name) {
+                        pending.extend(edges.iter().map(String::as_str));
+                    }
+                }
+            }
+        }
+        if blocked {
+            continue;
+        }
+        let mut active = BTreeSet::new();
+        if let Err(error) = visit(&d.name, data, &mut done, &mut active) {
+            // The visitor removes successfully checked frames. The remaining
+            // active chain contains the failed schema and its blocked callers.
+            failed.extend(active);
+            failed.insert(d.name.clone());
+            errors.push(error);
+            if !independent_identities || errors.len() == crate::diagnostics::MAX_DIAGNOSTICS {
+                break;
+            }
+        }
+    }
+    if errors.is_empty() {
+        Ok(Schemas(done))
+    } else {
+        Err(crate::Diagnostics {
+            limit_reached: errors.len() == crate::diagnostics::MAX_DIAGNOSTICS,
+            errors,
+        })
+    }
 }
 pub(crate) fn result_type(
     ty: &str,

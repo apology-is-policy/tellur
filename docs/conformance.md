@@ -5280,3 +5280,22 @@ generics, declaration order, field-error priority and unchanged global schema li
 Unsaved dependency LSP/editor checks verify UTF-16 ranges, stale-hover suppression,
 repair and normal native execution. Source syntax, accepted origin schemas and
 first-error shared preparation remain unchanged.
+
+
+## Shared origin-schema preparation recovery (0.192 / P2z)
+
+Independent struct, variant and named-outcome origin-schema errors now collect at
+the existing schema preparation points. The original recursive visitor and its
+first diagnostic are preserved. Failed active chains and their transitive/diamond
+dependents are retired; successful private cache entries never escape a failed
+phase. Ambiguous identities retain the first-error barrier, and all batches use
+the existing 32-error budget before later preparation or body checking.
+
+Diagnostic tests cover independent and dependent declarations, generic/reference/
+option edges, valid shared children, named outcomes, cycles, depth/group limits,
+ambiguous identities, ordinary recursive layouts, earlier public-shape/bound phases,
+first-error API compatibility, imported Unicode/CRLF ranges and budget exhaustion.
+LSP and isolated editor checks cover unsaved partial repair, exact dependency ranges,
+stale-hover suppression, full repair and normal native execution. The affected
+frontend, trait, generic, module and origin suites retain normal acceptance and
+native comparisons. Runtime and public async-host admission are unchanged.

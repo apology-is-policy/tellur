@@ -2735,7 +2735,7 @@ fn schema_origin_ranges_survive_imported_generic_data_and_named_outcomes() {
 fn schema_origin_ranges_preserve_shared_preparation_order_and_missing_mapping_fallbacks() {
     let source = "struct first['a] {ref string value <- 'missing;}\nstruct second['b] {ref string value <- 'other;}\ncontrol main() exits done {u32 wrong=true;exit done;}";
     let errors = check_errors(source);
-    assert_eq!(errors.errors.len(), 1, "{errors}");
+    assert_eq!(errors.errors.len(), 2, "{errors}");
     assert_eq!(errors.errors[0].code, "E_ORIGIN");
     assert!(errors.errors[0].message.contains("'missing"));
     assert!(errors.errors[0].end.is_some());
@@ -2879,25 +2879,28 @@ fn schema_group_ranges_survive_transitive_imports_and_unused_generic_definitions
 #[test]
 fn schema_group_ranges_preserve_field_priority_and_global_schema_limits() {
     let f = Fixture::new();
-    for (source, selected, message) in [
+    for (source, selected, message, count) in [
         (
             "struct view['a,'a] {ref string value <- 'missing;} control main() exits done {u32 wrong=true;exit done;}",
             "'a]",
             "duplicate",
+            1,
         ),
         (
             "struct view['a,'unused] {ref string value <- 'missing;} control main() exits done {u32 wrong=true;exit done;}",
             "<- 'missing",
             "unknown",
+            1,
         ),
         (
             "struct view['a,'unused] {ref string value <- 'a;} struct second['b,'b] {ref string value <- 'b;} control main() exits done {u32 wrong=true;exit done;}",
             "'unused",
             "not used",
+            2,
         ),
     ] {
         let errors = check_errors(source);
-        assert_eq!(errors.errors.len(), 1, "{errors}");
+        assert_eq!(errors.errors.len(), count, "{errors}");
         assert!(errors.errors[0].message.contains(message));
         let first = compile(
             source,
@@ -2926,4 +2929,186 @@ fn schema_group_ranges_preserve_field_priority_and_global_schema_limits() {
     assert_eq!(errors.errors.len(), 1);
     assert!(errors.errors[0].message.contains("exceeds 256"));
     assert!(errors.errors[0].end.is_none());
+}
+
+#[test]
+fn schema_recovery_collects_independent_failures_without_body_errors() {
+    let source = "struct first['a,'a] {ref string value <- 'a;}\nstruct second['b,'unused] {ref string value <- 'b;}\noutcome third['c] {ready {ref string value <- 'missing}}\ncontrol main() exits done {u32 wrong=true;exit done;}";
+    let errors = check_errors(source);
+    assert_eq!(errors.errors.len(), 3, "{errors}");
+    assert!(!errors.limit_reached);
+    assert!(
+        errors
+            .errors
+            .iter()
+            .all(|e| e.code == "E_ORIGIN" && e.end.is_some())
+    );
+    assert_eq!(
+        errors
+            .errors
+            .iter()
+            .map(|e| e.span.line)
+            .collect::<Vec<_>>(),
+        [1, 2, 3]
+    );
+    assert_eq!(
+        compile(
+            source,
+            Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
+        )
+        .unwrap_err(),
+        errors.errors[0]
+    );
+}
+
+#[test]
+fn schema_recovery_suppresses_transitive_and_diamond_dependents() {
+    for generic in [false, true] {
+        let source = if generic {
+            "struct root<t>['a] {option<middle<t>>['a] value;}\nstruct middle<t>['a] {leaf<t>['a] value;}\nstruct leaf<t>['a,'a] {ref t value <- 'a;}\nstruct sibling<t>['a] {ref leaf<t>['a] value <- 'a;}\nstruct independent['b,'unused] {ref string value <- 'b;}\ncontrol main() exits done {exit done;}"
+        } else {
+            "struct root['a] {middle['a] value;}\nstruct middle['a] {leaf['a] value;}\nstruct leaf['a,'a] {ref string value <- 'a;}\nstruct sibling['a] {option<leaf>['a] value;}\nstruct independent['b,'unused] {ref string value <- 'b;}\ncontrol main() exits done {exit done;}"
+        };
+        for traits in [
+            "",
+            "trait marker {control inspect(ref self input) exits done;}",
+        ] {
+            let source = format!("{source}\n{traits}");
+            let errors = check_errors(&source);
+            assert_eq!(errors.errors.len(), 2, "{source}: {errors}");
+            assert!(errors.errors[0].message.contains("duplicate"));
+            assert_eq!(errors.errors[0].span.line, 3);
+            assert!(errors.errors[1].message.contains("not used"));
+            assert_eq!(errors.errors[1].span.line, 5);
+        }
+    }
+}
+
+#[test]
+fn schema_recovery_retains_valid_shared_children_and_never_publishes_partial_schemas() {
+    let source = "struct leaf['a] {ref string value <- 'a;}\nstruct first['a,'unused] {leaf['a] value;}\nstruct valid['a] {leaf['a] value;}\noutcome second['b,'b] {ready {ref string value <- 'b}}\ncontrol main() exits done {exit done;}";
+    let errors = check_errors(source);
+    assert_eq!(errors.errors.len(), 2, "{errors}");
+    assert_eq!(
+        errors
+            .errors
+            .iter()
+            .map(|e| e.span.line)
+            .collect::<Vec<_>>(),
+        [2, 4]
+    );
+    let repaired = source
+        .replace("first['a,'unused]", "first['a]")
+        .replace("second['b,'b]", "second['b]");
+    compile(
+        &repaired,
+        Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+    )
+    .unwrap();
+    let errors = check_errors(&source.replace("exit done;", "u32 wrong=true;exit done;"));
+    assert_eq!(errors.errors.len(), 2);
+    assert!(errors.errors.iter().all(|e| e.code == "E_ORIGIN"));
+}
+
+#[test]
+fn schema_recovery_preserves_cycles_limits_and_earlier_phase_barriers() {
+    let independent =
+        "struct other['b,'b] {ref string value <- 'b;} control main() exits done {exit done;}";
+    let cycle = format!("struct cycle['a] {{cycle['a] value;}} {independent}");
+    let errors = check_errors(&cycle);
+    assert_eq!(errors.errors.len(), 2, "{errors}");
+    assert!(errors.errors[0].message.contains("cyclic"));
+    let groups = (0..257)
+        .map(|n| format!("'g{n}"))
+        .collect::<Vec<_>>()
+        .join(",");
+    let source = format!("struct huge[{groups}] {{ref string value <- 'g0;}} {independent}");
+    let errors = check_errors(&source);
+    assert_eq!(errors.errors.len(), 2, "{errors}");
+    assert!(errors.errors[0].message.contains("exceeds 256"));
+    assert!(errors.errors[0].end.is_none());
+    for (prefix, code) in [
+        (
+            "pub control wrong() exits auto {exit done;}",
+            "E_PUBLIC_CONTRACT",
+        ),
+        (
+            "control wrong<t: missing>() exits done {exit done;}",
+            "E_BOUND",
+        ),
+    ] {
+        let errors = check_errors(&format!("{prefix}{source}"));
+        assert_eq!(errors.errors.len(), 1, "{errors}");
+        assert_eq!(errors.errors[0].code, code);
+    }
+}
+
+#[test]
+fn schema_recovery_uses_the_shared_budget_and_preserves_first_error() {
+    for count in [31, 32, 40] {
+        let mut source = (0..count)
+            .map(|n| format!("struct bad_{n}['a,'a] {{ref string value <- 'a;}}\n"))
+            .collect::<String>();
+        source.push_str("control main() exits done {u32 wrong=true;exit done;}");
+        let errors = check_errors(&source);
+        assert_eq!(errors.errors.len(), count.min(32));
+        assert_eq!(errors.limit_reached, count >= 32);
+        assert!(errors.errors.iter().all(|e| e.code == "E_ORIGIN"));
+        assert_eq!(
+            compile(
+                &source,
+                Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
+            )
+            .unwrap_err(),
+            errors.errors[0]
+        );
+    }
+}
+
+#[test]
+fn schema_recovery_cli_maps_independent_imports_to_original_ranges() {
+    let f = Fixture::new();
+    f.write("main.tellur", "import \"first.tellur\" as first;import \"second.tellur\" as second;control main() exits done {u32 wrong=true;exit done;}");
+    let first = "// 😀\r\npub struct first<t>['a,' // 😀\r\n a] {pub ref t value <- 'a;}";
+    let second = "pub outcome second<t>['b,'unused] {ready {ref t value <- 'b}}";
+    f.write("first.tellur", first);
+    f.write("second.tellur", second);
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    let errors = report["diagnostics"].as_array().unwrap();
+    assert_eq!(errors.len(), 2, "{report}");
+    for (error, (path, source, selected)) in errors.iter().zip([
+        ("first.tellur", first, "' // 😀\r\n a"),
+        ("second.tellur", second, "'unused"),
+    ]) {
+        assert_eq!(error["code"], "E_ORIGIN");
+        assert!(error["path"].as_str().unwrap().ends_with(path));
+        assert_eq!(error["range"], selected_range(source, selected));
+    }
+}
+
+#[test]
+fn schema_recovery_keeps_ambiguous_identities_and_no_origin_layouts_separate() {
+    // Identity validation has not run yet. Do not claim independence for aliases
+    // that may refer to either same-named declaration.
+    let source = "struct same['a,'a] {ref string value <- 'a;} struct same['b,'b] {ref string value <- 'b;} struct other['c,'c] {ref string value <- 'c;} control main() exits done {exit done;}";
+    let errors = check_errors(source);
+    assert_eq!(errors.errors.len(), 1, "{errors}");
+    assert!(errors.errors[0].message.contains("duplicate origin"));
+    let source = "struct recursive {recursive value;} control main() exits done {exit done;}";
+    let errors = check_errors(source);
+    assert_eq!(errors.errors.len(), 1, "{errors}");
+    assert_ne!(errors.errors[0].code, "E_ORIGIN");
+}
+
+#[test]
+fn schema_recovery_bounds_deep_dependencies_without_repeating_the_failed_chain() {
+    let mut source = (0..66)
+        .map(|n| format!("struct node_{n}['a] {{node_{}['a] value;}}\n", n + 1))
+        .collect::<String>();
+    source.push_str("struct node_66['a] {ref string value <- 'a;}\nstruct separate['b,'b] {ref string value <- 'b;}\ncontrol main() exits done {exit done;}");
+    let errors = check_errors(&source);
+    assert_eq!(errors.errors.len(), 2, "{errors}");
+    assert!(errors.errors[0].message.contains("excessively deep"));
+    assert!(errors.errors[0].end.is_none());
+    assert!(errors.errors[1].message.contains("duplicate"));
 }

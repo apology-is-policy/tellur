@@ -453,11 +453,18 @@ fn acyclic(
     Ok(())
 }
 pub(crate) fn instantiate(
+    unit: Unit,
+    manifest: &Manifest,
+    extra: &[(String, Span)],
+) -> crate::CheckResult<Unit> {
+    crate::origins::schemas_checked(&unit)?;
+    instantiate_checked_schemas(unit, manifest, extra).map_err(Into::into)
+}
+fn instantiate_checked_schemas(
     mut unit: Unit,
     manifest: &Manifest,
     extra: &[(String, Span)],
 ) -> Result<Unit> {
-    crate::origins::schemas(&unit)?;
     if !unit.data.iter().any(|d| !d.type_parameters.is_empty())
         && !unit.contracts.iter().any(|d| !d.type_parameters.is_empty())
         && extra.is_empty()
