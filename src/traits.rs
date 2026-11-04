@@ -799,13 +799,15 @@ pub(crate) fn check_contracts(
     contracts: &[OutcomeContract],
     schemas: &crate::origins::Schemas,
     m: &Manifest,
-) -> Result<BTreeMap<String, Region>> {
-    let mut signatures = BTreeMap::new();
+) -> crate::CheckResult<BTreeMap<String, Region>> {
     let contracts = contracts
         .iter()
         .map(|c| (c.name.clone(), c.clone()))
         .collect();
-    for c in checks {
+    // Each implementation stages its trait-side signatures privately. Preserve
+    // all local check ordering, but publish nothing until the whole phase passes.
+    let signatures = crate::diagnostics::collect_checks(checks.iter().map(|c| {
+        let mut signatures = Vec::new();
         for (ty, bounds, at) in &c.requirements {
             for bound in bounds {
                 if !m.has_capability(ty, bound) {
@@ -882,10 +884,11 @@ pub(crate) fn check_contracts(
             }
             // Retain the validated trait-side names and origins for source tooling.
             // Implementation parameter/payload names may legitimately differ.
-            signatures.insert(expected.name.clone(), expected);
+            signatures.push((expected.name.clone(), expected));
         }
-    }
-    Ok(signatures)
+        Ok(signatures)
+    }))?;
+    Ok(signatures.into_iter().flatten().collect())
 }
 
 pub(crate) fn has_witness(checks: &[TraitCheck], trait_name: &str, target: &str) -> bool {

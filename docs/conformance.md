@@ -5436,3 +5436,24 @@ track UTF-16 points after preceding emoji text, suppress stale hover, and execut
 repaired trait calls natively. Trait, generic, aggregate-origin, module, public
 contract, async, fault, contingency and reference checks accompany this release.
 The pending public async-host call-model decision remains separate.
+
+
+## Independent implementation conformance (0.200 / P2ah)
+
+Each implementation stages its validated trait-side signatures privately. The common
+collector preserves canonical implementation order and each implementation's existing
+capability/type/origin/signature priority, producing one original error per failed
+implementation within the 32-error cap. Signatures publish only when all checks pass.
+The earlier normalization/permission/schema phases and later argument/body phases
+remain separate. Abstract witnesses keep dependency-reachable method handling.
+
+Focused cases cover mixed associated-bound, parameter, payload, direct-origin and
+contained-origin failures, trait declaration method order, unused implementations,
+partial repairs, named contracts, generic witnesses, imports, first-error APIs and
+the budget. The permission-to-origin regression now expects both independent origin
+errors after permission repair. Repaired generic calls match reference and expanded
+execution. LSP and isolated editor cases check mixed bound/signature errors, exact
+UTF-16 imported points, partial repairs, suppressed stale hover, restored trait-side
+parameter names and native calls. Selected trait, bound, aggregate-origin, generic,
+module, public-contract, async/fault/contingency and reference suites accompany this
+release. The public async-host call-model question remains unanswered.

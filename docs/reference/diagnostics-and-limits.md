@@ -781,6 +781,47 @@ UTF-16 editor locations follow unsaved partial repairs, with checked hover withh
 until the whole source validates. Permission acceptance and execution are unchanged.
 
 
+## Implementation conformance batches
+
+Since 0.200, independent implementations can report conformance failures together,
+including associated capability requirements, target/associated type checks,
+parameter ownership, exit payloads, direct return origins and contained origin
+mappings. Unused implementations are checked. The phase reports at most one error
+per implementation and stops at the shared 32-error budget.
+
+<!-- tellur:reject E_BOUND -->
+```tellur
+trait reader {
+    type item: copy;
+}
+implement reader for u32 {
+    type item = string;
+}
+implement reader for string {
+    type item = string;
+}
+```
+
+Both assignments violate `copy`. Fixing one leaves the other error. Checking keeps
+the existing canonical implementation order, associated requirements before method
+contracts, and expected methods in trait declaration order. Within a method, named
+contracts resolve first; direct origins, contained origins and exact ownership/exit
+shapes retain their existing priority. Local parameter/payload names and exit-label
+order may still differ when the contracts otherwise match.
+
+Shared identities, member profiles, normalization, permissions, generic/layout
+preparation and manifest validation keep their earlier barriers. A failed conformance
+phase publishes no checked trait-side signatures, and later argument-bound and body
+checking waits. Generic definition checking keeps dependency-reachable abstract
+witnesses and restores user-facing parameter names across the whole diagnostic batch.
+Single-error APIs still return the first failure.
+
+Imported points retain their original files and refresh from unsaved text. Checked
+trait-call hover remains unavailable while any implementation fails; after repair,
+it uses the trait's declared names and origins. Source acceptance, ownership and
+origin semantics are unchanged.
+
+
 ## Constructor-call preparation batches
 
 Since 0.91, inaccessible constructor calls in independent bodies report together.

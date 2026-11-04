@@ -4157,8 +4157,8 @@ fn implementation_permission_batches_precede_implementation_origin_conformance()
     assert!(errors.errors.iter().all(|e| e.code == "E_ASYNC"));
     let repaired = source.replace("async control read", "control read");
     let errors = check_errors(&repaired);
-    assert_eq!(errors.errors.len(), 1, "{errors}");
-    assert_eq!(errors.errors[0].code, "E_LIFETIME");
+    assert_eq!(errors.errors.len(), 2, "{errors}");
+    assert!(errors.errors.iter().all(|e| e.code == "E_LIFETIME"));
     compile(
         &repaired.replace(
             "exits found {ref self value}",
@@ -4304,5 +4304,224 @@ fn implementation_permission_batches_preserve_transitive_imported_points() {
         errors[0]["path"].as_str().unwrap()
     );
     assert_eq!(first.diagnostic.code, "E_ASYNC");
+    assert_eq!(first.diagnostic.span.line, 4);
+}
+
+#[test]
+fn implementation_conformance_batches_mix_capability_signature_and_origin_failures() {
+    let source = "struct pair['a,'b] {ref string left <- 'a;ref string right <- 'b;}\ntrait a_bound {type item:copy;} implement a_bound for u32 {type item=string;}\ntrait b_parameter {control act(self input) exits done;} implement b_parameter for u32 {control act(ref self input) exits done {exit done;}}\ntrait c_payload {control act() exits ready {u32 value};} implement c_payload for u32 {control act() exits ready {string value} {exit ready {\"x\"};}}\ntrait d_origin {control pick(ref string left,ref string right) exits ready {ref string value from left};} implement d_origin for u32 {control pick(ref string a,ref string b) exits ready {ref string value from b} {exit ready {b};}}\ntrait e_group {control pick(ref pair input) exits ready {pair[input['a],input['b]] value};} implement e_group for u32 {control pick(ref pair owner) exits ready {pair[owner['b],owner['a]] result} {exit ready {pair {owner.right,owner.left}};}}";
+    let errors = check_errors(source);
+    assert_eq!(
+        errors
+            .errors
+            .iter()
+            .map(|e| (e.code, e.span.line))
+            .collect::<Vec<_>>(),
+        [
+            ("E_BOUND", 2),
+            ("E_TRAIT_SIGNATURE", 3),
+            ("E_TRAIT_SIGNATURE", 4),
+            ("E_LIFETIME", 5),
+            ("E_ORIGIN", 6)
+        ],
+        "{errors}"
+    );
+    assert!(!errors.limit_reached);
+    assert_eq!(
+        compile(
+            source,
+            Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
+        )
+        .unwrap_err(),
+        errors.errors[0]
+    );
+}
+
+#[test]
+fn implementation_conformance_batches_preserve_local_priority_and_method_declaration_order() {
+    let source = "trait reader {control first(self input) exits done;control second() exits ready {u32 value};}\nimplement reader for u32 {\ncontrol second() exits ready {string value} {exit ready {\"x\"};}\ncontrol first(ref self input) exits done {exit done;}\n}\nimplement reader for string {\ncontrol second() exits ready {string value} {exit ready {\"x\"};}\ncontrol first(ref self input) exits done {exit done;}\n}";
+    let errors = check_errors(source);
+    assert_eq!(
+        errors
+            .errors
+            .iter()
+            .map(|e| (e.code, e.span.line))
+            .collect::<Vec<_>>(),
+        [("E_TRAIT_SIGNATURE", 8), ("E_TRAIT_SIGNATURE", 4)],
+        "{errors}"
+    );
+    let source = source
+        .replace("trait reader {", "trait reader {type item:copy;")
+        .replace(
+            "implement reader for u32 {",
+            "implement reader for u32 {type item=string;",
+        )
+        .replace(
+            "implement reader for string {",
+            "implement reader for string {type item=string;",
+        );
+    let errors = check_errors(&source);
+    assert_eq!(errors.errors.len(), 2, "{errors}");
+    assert!(errors.errors.iter().all(|e| e.code == "E_BOUND"));
+}
+
+#[test]
+fn implementation_conformance_batches_replay_repairs_before_body_errors() {
+    let source = "trait reader {type item:copy;control read(self input) exits done;}\nimplement reader for u32 {type item=string;control read(ref self input) exits done {u32 wrong=true;exit done;}}\nimplement reader for string {type item=string;control read(self input) exits done {exit done;}}";
+    let errors = check_errors(source);
+    assert_eq!(errors.errors.len(), 2, "{errors}");
+    assert!(errors.errors.iter().all(|e| e.code == "E_BOUND"));
+    let partial = source.replace("for string {type item=string", "for string {type item=u32");
+    let errors = check_errors(&partial);
+    assert_eq!(errors.errors.len(), 1, "{errors}");
+    assert_eq!(errors.errors[0].code, "E_BOUND");
+    assert_eq!(errors.errors[0].span.line, 2);
+    let repaired = partial.replace("item=string", "item=u32");
+    assert_eq!(check_errors(&repaired).errors[0].code, "E_TRAIT_SIGNATURE");
+    let repaired = repaired.replace("ref self input", "self input");
+    assert_eq!(check_errors(&repaired).errors[0].code, "E_TYPE");
+    compile(
+        &repaired.replace("u32 wrong=true;", ""),
+        Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+    )
+    .unwrap();
+}
+
+#[test]
+fn implementation_conformance_batches_resolve_named_contracts_and_keep_generic_witnesses() {
+    let source = "outcome expected {ready {u32 value},empty} outcome alternative {empty,ready {u32 different}} trait reader {control read(self input) exits expected;} implement reader for u32 {control read(ref self input) exits alternative {exit ready {1};}} implement reader for string {control read(ref self input) exits alternative {exit ready {2};}} control use<t:reader>(t input) exits expected {forward reader<t>.read(input);} control main() exits auto {forward use<string>(\"x\");}";
+    let errors = check_errors(source);
+    assert_eq!(errors.errors.len(), 2, "{errors}");
+    assert!(
+        errors.errors.iter().all(|e| e.code == "E_TRAIT_SIGNATURE"),
+        "{errors}"
+    );
+    assert!(!errors.to_string().contains("_path_poly_"), "{errors}");
+    let fixed = source.replace("ref self input", "self input");
+    let p = compile(
+        &fixed,
+        Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+    )
+    .unwrap();
+    let scenario = tellur::runtime::Scenario {
+        entry: "main".into(),
+        arguments: vec![],
+        calls: vec![],
+    };
+    let report = p.run(&scenario).unwrap();
+    assert_eq!(report.fields, vec![tellur::ir::Value::U32(2)]);
+    assert_eq!(report, p.expanded("main").unwrap().run(&scenario).unwrap());
+    // Abstract signatures for unused methods must not require concrete regions in
+    // the dependency-reachable symbolic checking unit.
+    let extra = fixed
+        .replace(
+            "trait reader {",
+            "trait reader {control unused() exits done;",
+        )
+        .replace(
+            "implement reader for u32 {",
+            "implement reader for u32 {control unused() exits done {exit done;}",
+        )
+        .replace(
+            "implement reader for string {",
+            "implement reader for string {control unused() exits done {exit done;}",
+        );
+    compile(
+        &extra,
+        Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+    )
+    .unwrap();
+}
+
+#[test]
+fn implementation_conformance_batches_keep_earlier_barriers_and_budget() {
+    let source = "trait reader {type item:copy;} implement reader for u32 {type item=string;} implement reader for string {type item=string;}";
+    for (prefix, code) in [
+        (
+            "struct invalid['a,'a] {ref string value <- 'a;} ",
+            "E_ORIGIN",
+        ),
+        (
+            "trait invalid {control read() exits auto;} ",
+            "E_TRAIT_SIGNATURE",
+        ),
+        (
+            "trait missing {type item;} implement missing for bool {} ",
+            "E_TRAIT",
+        ),
+        (
+            "trait source {type item;} implement source for bool {type item=ref string;} ",
+            "E_LIFETIME",
+        ),
+        (
+            "trait operation {control act() exits done;} implement operation for bool {async control act() exits done {exit done;}} ",
+            "E_ASYNC",
+        ),
+    ] {
+        let errors = check_errors(&format!("{prefix}{source}"));
+        assert_eq!(errors.errors.len(), 1, "{errors}");
+        assert_eq!(errors.errors[0].code, code);
+    }
+    let mut source = "trait reader {type item:copy;}\n".to_owned();
+    for n in 0..40 {
+        source.push_str(&format!(
+            "struct value_{n} {{u32 value;}} implement reader for value_{n} {{type item=string;}}\n"
+        ));
+    }
+    let errors = check_errors(&source);
+    assert_eq!(errors.errors.len(), 32, "{errors}");
+    assert!(errors.limit_reached);
+    assert!(errors.errors.iter().all(|e| e.code == "E_BOUND"));
+}
+
+#[test]
+fn implementation_conformance_batches_preserve_transitive_imported_points() {
+    let f = Fixture::new();
+    f.write("contract.tellur", "pub trait reader {type item:copy;}");
+    for file in ["first.tellur", "second.tellur"] {
+        f.write(file,"import \"contract.tellur\" as contract;\r\nstruct local {u32 value;}\r\nimplement contract.reader for local {\r\n    type item=string;\r\n}");
+    }
+    f.write(
+        "middle.tellur",
+        "import \"first.tellur\" as first;import \"second.tellur\" as second;",
+    );
+    f.write(
+        "main.tellur",
+        "import \"middle.tellur\" as middle;control main() exits done {exit done;}",
+    );
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    let errors = report["diagnostics"].as_array().unwrap();
+    assert_eq!(errors.len(), 2, "{report}");
+    for error in errors {
+        assert_eq!(error["code"], "E_BOUND");
+        assert_eq!(error["position"], json!({"line":4,"column":10}));
+    }
+    let paths = errors
+        .iter()
+        .map(|e| {
+            PathBuf::from(e["path"].as_str().unwrap())
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(
+        paths,
+        ["first.tellur".to_owned(), "second.tellur".to_owned()]
+            .into_iter()
+            .collect()
+    );
+    assert!(report["summary"].is_null());
+    let first = tellur::compile_file(
+        f.root.join("main.tellur"),
+        Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+    )
+    .unwrap_err();
+    assert_eq!(
+        first.path.to_string_lossy(),
+        errors[0]["path"].as_str().unwrap()
+    );
+    assert_eq!(first.diagnostic.code, "E_BOUND");
     assert_eq!(first.diagnostic.span.line, 4);
 }
