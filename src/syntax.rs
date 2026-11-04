@@ -92,6 +92,8 @@ pub enum Mask {
 }
 #[derive(Clone, Debug)]
 pub struct Field {
+    /// Written binding name only; preserved independently of type and origin ranges.
+    pub name_range: SourceRange,
     /// Written type only, excluding the binding name and origin mappings.
     pub type_range: SourceRange,
     pub origins: Vec<OriginArgument>,
@@ -767,9 +769,11 @@ impl Parser {
     fn field(&mut self) -> Result<Field> {
         let named = self.tokens.get(self.pos + 1).is_some_and(|t| t.is(":"));
         let name = if named {
+            let start = self.here();
             let n = self.id()?;
+            let range = self.range_from(start);
             self.need(":")?;
-            Some(n)
+            Some((n, range))
         } else {
             None
         };
@@ -783,9 +787,16 @@ impl Parser {
         } else {
             self.range_from(origins_start)
         };
-        let name = if let Some(n) = name { n } else { self.id()? };
+        let (name, name_range) = if let Some(n) = name {
+            n
+        } else {
+            let start = self.here();
+            let name = self.id()?;
+            (name, self.range_from(start))
+        };
         Ok(Field {
             name,
+            name_range,
             ty,
             origins,
             origins_range,
@@ -1712,13 +1723,16 @@ impl Parser {
                                 .get(self.pos + 1)
                                 .is_some_and(|t| t.is(",") || t.is(")"))
                             {
+                                let name_start = self.here();
+                                let name = self.id()?;
                                 bindings.push(Field {
+                                    name_range: self.range_from(name_start),
                                     type_range: crate::SourceRange::default(),
                                     origins_range: crate::SourceRange::default(),
                                     referent_origins_range: crate::SourceRange::default(),
                                     origins: vec![],
                                     referent_origins: vec![],
-                                    name: self.id()?,
+                                    name,
                                     ty: "auto".into(),
                                 });
                             } else {

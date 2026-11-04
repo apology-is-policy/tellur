@@ -6075,7 +6075,7 @@ fn trait_member_duplicate_ranges_keep_independent_batches_and_budgets() {
 }
 
 #[test]
-fn trait_member_duplicate_ranges_leave_parameter_exit_and_payload_checks_at_their_points() {
+fn trait_member_duplicate_ranges_keep_signature_checks_separate() {
     for source in [
         "trait reader {control read(u32 item,u32 item) exits done;}",
         "trait reader {control read() exits done,done;}",
@@ -6091,6 +6091,258 @@ fn trait_member_duplicate_ranges_leave_parameter_exit_and_payload_checks_at_thei
                 .contains("duplicate trait member or parameter"),
             "{errors}"
         );
-        assert!(errors.errors[0].end.is_none(), "{errors}");
+        if errors.errors[0].message.ends_with("`item`") {
+            let at = source.rfind("item").unwrap();
+            assert_eq!(errors.errors[0].span.column, at + 1);
+            assert_eq!(errors.errors[0].end.as_ref().unwrap().column, at + 5);
+        } else {
+            assert!(errors.errors[0].end.is_none(), "{errors}");
+        }
+    }
+}
+
+#[test]
+fn trait_signature_duplicate_ranges_select_only_written_field_names() {
+    let f = Fixture::new();
+    let marker = "// selected 😀\r\n ";
+    for (parameters, exits) in [
+        (format!("u32 item, u32 {marker}item"), "done".into()),
+        (format!("item:u32, {marker}item:u32"), "done".into()),
+        (
+            format!("ref u32 item_long2, ref u32 {marker}item_long2"),
+            "done".into(),
+        ),
+        ("".into(), format!("done(u32 value,u32 {marker}value)")),
+        ("".into(), format!("done(value:u32,{marker}value:u32)")),
+        (
+            "ref u32 input".into(),
+            format!("done(ref u32 value from input,ref u32 {marker}value from input)"),
+        ),
+    ] {
+        for implementation in [false, true] {
+            let signature = format!("control read({parameters}) exits {exits}");
+            let source = if implementation {
+                format!(
+                    "trait reader {{control read() exits done;}} implement reader for u32 {{{signature} {{exit done;}}}}"
+                )
+            } else {
+                format!("trait reader {{{signature};}}")
+            };
+            f.write("main.tellur", &source);
+            let report = f.report(&["check", "main.tellur", "--json"], false);
+            let errors = report["diagnostics"].as_array().unwrap();
+            assert_eq!(errors.len(), 1, "{report}");
+            let at = source.find(marker).unwrap() + marker.len();
+            let name = source[at..]
+                .split(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+                .next()
+                .unwrap();
+            assert_eq!(errors[0]["code"], "E_TRAIT");
+            assert_eq!(
+                errors[0]["message"],
+                format!("duplicate trait member or parameter `{name}`")
+            );
+            assert_eq!(
+                errors[0]["range"],
+                json!({"start":scalar_position(&source,at),"end":scalar_position(&source,at+name.len())})
+            );
+            let batch = check_errors(&source);
+            assert_eq!(
+                compile(
+                    &source,
+                    Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
+                )
+                .unwrap_err(),
+                batch.errors[0]
+            );
+        }
+    }
+}
+
+#[test]
+fn trait_signature_duplicate_ranges_preserve_imported_coordinates_and_repairs() {
+    let f = Fixture::new();
+    f.write("types.tellur", "pub struct wrapper {u32 value;}");
+    f.write("middle.tellur", "import \"worker.tellur\" as worker;");
+    f.write(
+        "main.tellur",
+        "import \"middle.tellur\" as middle;control main() exits done {exit done;}",
+    );
+    let valid = "import \"types.tellur\" as types;\r\npub trait reader {control read(self input) exits done;}\r\nimplement reader for u32 {control read(self first) exits done {string note=\"😀\";drop(note);exit done;}} implement reader for string {control read(self second) exits done {exit done;}}\r\npub control work() exits done {reader<u32>.read(1);reader<string>.read(\"x\");exit done;}";
+    for (needle, replacement, selected) in [
+        ("read(self input)", "read(self arg2,self arg2)", "arg2)"),
+        (
+            "exits done;",
+            "exits done(u32 item,item:types.wrapper);",
+            "item:types.wrapper",
+        ),
+        (
+            "read(self first)",
+            "read(arg3:self,arg3:self)",
+            "arg3:self)",
+        ),
+        (
+            "read(self second) exits done",
+            "read(self second) exits done(u32 part,u32 part)",
+            "part)",
+        ),
+    ] {
+        let source = valid.replace(needle, replacement);
+        f.write("worker.tellur", &source);
+        let report = f.report(&["check", "main.tellur", "--json"], false);
+        let error = &report["diagnostics"][0];
+        assert_eq!(
+            report["diagnostics"].as_array().unwrap().len(),
+            1,
+            "{report}"
+        );
+        assert_eq!(error["code"], "E_TRAIT");
+        assert_eq!(
+            error["path"],
+            f.root.join("worker.tellur").to_string_lossy().as_ref()
+        );
+        let at = source.find(selected).unwrap();
+        assert_eq!(
+            error["range"],
+            json!({"start":scalar_position(&source,at),"end":scalar_position(&source,at+4)})
+        );
+        let first = tellur::compile_file(
+            f.root.join("main.tellur"),
+            Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(first.path, f.root.join("worker.tellur"));
+        assert_eq!(
+            first.diagnostic.span.column,
+            error["position"]["column"].as_u64().unwrap() as usize
+        );
+        assert_eq!(
+            first.diagnostic.end.as_ref().unwrap().column,
+            first.diagnostic.span.column + 4
+        );
+        f.write("worker.tellur", valid);
+        f.report(&["check", "main.tellur", "--json"], true);
+    }
+}
+
+#[test]
+fn trait_signature_duplicate_ranges_keep_profile_phase_and_identity_priorities() {
+    let profile = "trait reader {control read<t>(u32 item,u32 item) exits done;}";
+    let error = &check_errors(profile).errors[0];
+    assert_eq!(error.code, "E_TRAIT_SIGNATURE");
+    assert!(error.end.is_none());
+    let source =
+        "trait reader {control read(u32 item,u32 item) exits done(u32 value,u32 value),done;}";
+    let error = &check_errors(source).errors[0];
+    assert!(error.message.ends_with("`item`"));
+    assert!(error.end.is_some());
+    let fixed = source.replace("u32 item,u32 item", "u32 item");
+    let error = &check_errors(&fixed).errors[0];
+    assert!(error.message.ends_with("`done`"));
+    assert!(error.end.is_none());
+    let fixed = fixed.replace(",done;", ";");
+    let error = &check_errors(&fixed).errors[0];
+    assert!(error.message.ends_with("`value`"));
+    assert!(error.end.is_some());
+    let source = "trait reader {type item;type item;control read(u32 value,u32 value) exits done;}";
+    assert!(check_errors(source).errors[0].message.ends_with("`item`"));
+    let source = "implement absent for missing {} trait reader {control read(u32 item,u32 item) exits done;}";
+    assert!(check_errors(source).errors[0].message.ends_with("`item`"));
+    let source = "trait reader {control read(u32 item) exits done;} implement reader for u32 {control read(u32 item,u32 item) exits done {exit done;}} implement absent for missing {}";
+    let errors = check_errors(source);
+    assert_eq!(errors.errors.len(), 1);
+    assert!(errors.errors[0].message.ends_with("`item`"));
+    let fixed = source.replace("read(u32 item,u32 item)", "read(u32 item)");
+    assert!(
+        check_errors(&fixed).errors[0]
+            .message
+            .contains("unknown trait")
+    );
+    let source = "trait reader {control read(u32 item) exits done;} implement reader for missing {control read(u32 item,u32 item) exits done {exit done;}}";
+    assert!(
+        check_errors(source).errors[0]
+            .message
+            .contains("unknown or unapplied")
+    );
+    let f = Fixture::new();
+    f.write("types.tellur", "pub struct wrapper {u32 value;}");
+    let source = "import \"types.tellur\" as types;trait reader {control read(u32 item,types.missing item) exits done;}";
+    f.write("main.tellur", source);
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    assert_eq!(report["diagnostics"][0]["code"], "E_NAME");
+    assert_eq!(
+        report["diagnostics"][0]["range"],
+        selected_range(source, "types.missing")
+    );
+}
+
+#[test]
+fn trait_signature_duplicate_ranges_keep_independent_batches_and_limits() {
+    for implementations in [false, true] {
+        let mut source = if implementations {
+            "trait reader {control read(u32 item) exits done;}\n".to_owned()
+        } else {
+            String::new()
+        };
+        for n in (0..36).rev() {
+            if implementations {
+                source.push_str(&format!("struct value_{n:02} {{u32 value;}} implement reader for value_{n:02} {{control read(u32 item,u32 item) exits done(u32 part,u32 part) {{exit done;}}}}\n"));
+            } else {
+                source.push_str(&format!("trait reader_{n:02} {{control read(u32 item,u32 item) exits done(u32 part,u32 part);}}\n"));
+            }
+        }
+        let errors = check_errors(&source);
+        assert_eq!(errors.errors.len(), 32, "{errors}");
+        assert!(errors.limit_reached);
+        for (n, error) in errors.errors.iter().enumerate() {
+            assert_eq!(error.span.line, n + 1 + usize::from(implementations));
+            assert!(error.message.ends_with("`item`"));
+            assert_eq!(error.end.as_ref().unwrap().column, error.span.column + 4);
+        }
+        assert_eq!(
+            compile(
+                &source,
+                Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
+            )
+            .unwrap_err(),
+            errors.errors[0]
+        );
+    }
+    let source = format!(
+        "trait reader {{control read(u32 item) exits done;}}\n{}",
+        "implement reader for u32 {control read(u32 item,u32 item) exits done {exit done;}}\n"
+            .repeat(1025)
+    );
+    let errors = check_errors(&source);
+    assert_eq!(errors.errors.len(), 1);
+    assert!(!errors.limit_reached);
+    assert!(errors.errors[0].message.contains("1024-implementation"));
+    assert!(errors.errors[0].end.is_none());
+}
+
+#[test]
+fn trait_signature_duplicate_ranges_leave_ordinary_controls_and_exit_labels_unchanged() {
+    for (source, code, message) in [
+        (
+            "control ordinary(u32 item,u32 item) exits done {exit done;}",
+            "E_NAME",
+            "duplicate parameter",
+        ),
+        (
+            "control ordinary() exits done(u32 item,u32 item) {exit done(1,2);}",
+            "E_NAME",
+            "duplicate exit field",
+        ),
+        (
+            "trait reader {control ordinary() exits done,done;}",
+            "E_TRAIT",
+            "duplicate trait member or parameter `done`",
+        ),
+    ] {
+        let errors = check_errors(source);
+        assert_eq!(errors.errors.len(), 1, "{errors}");
+        assert_eq!(errors.errors[0].code, code);
+        assert_eq!(errors.errors[0].message, message);
+        assert!(errors.errors[0].end.is_none());
     }
 }

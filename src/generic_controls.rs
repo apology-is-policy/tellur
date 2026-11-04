@@ -785,6 +785,7 @@ pub(crate) fn compile(
                                 .fields
                                 .iter()
                                 .map(|f| Field {
+                                    name_range: crate::SourceRange::default(),
                                     type_range: crate::SourceRange::default(),
                                     origins_range: crate::SourceRange::default(),
                                     referent_origins_range: crate::SourceRange::default(),

@@ -245,6 +245,7 @@ impl Checker<'_> {
             bindings: vec![syntax::Field {
                 origins_range: crate::SourceRange::default(),
                 referent_origins_range: crate::SourceRange::default(),
+                name_range: crate::SourceRange::default(),
                 type_range: crate::SourceRange {
                     start: span,
                     end: span,

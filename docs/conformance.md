@@ -5608,3 +5608,24 @@ each kind of member metadata in declarations and implementations to check fallba
 LSP and isolated VS Code repair declaration errors before implementation batches,
 then restore exact checked hover and native calls; the previous trait-name fixture
 remains a regression. Public async-host admission still awaits its recorded decision.
+
+
+## Duplicate trait-signature field locations (0.209 / P2aq)
+
+Syntax fields retain a parsed name range separately from type and origin metadata.
+Both field spellings and compatibility bindings capture the actual identifier;
+module remapping preserves both endpoints. Generated constructor results, manifest
+payloads and checker adapter fields carry empty metadata. Cloned fields retain their
+authored ranges through rewriting. The shared uniqueness traversal accepts complete
+ranges and selects them only for trait parameter and inline payload duplicates.
+
+CLI regressions cover both spellings, comments, long identifiers, borrowed payload
+origins, transitive imports, Unicode/CRLF coordinates, repairs, first-error APIs,
+profile/member/type/identity priorities, independent batches and budgets. Two unit
+cases cover missing metadata and preservation after field renaming. Ordinary-control
+and exit-label diagnostics keep their existing points. The earlier member regression
+now expects the new parameter/payload ranges while retaining the exit-label point.
+LSP and isolated VS Code repair parameter and payload errors across declarations and
+implementations, then restore checked hover and native execution. Constructor and
+named-outcome suites exercise shared field carriers alongside existing trait/generic
+coverage. Public async-host admission still awaits its recorded decision.

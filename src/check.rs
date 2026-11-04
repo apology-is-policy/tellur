@@ -3422,6 +3422,7 @@ impl Checker<'_> {
                     .iter()
                     .enumerate()
                     .map(|(j, f)| syntax::Field {
+                        name_range: crate::SourceRange::default(),
                         type_range: crate::SourceRange::default(),
                         origins_range: crate::SourceRange::default(),
                         referent_origins_range: crate::SourceRange::default(),
@@ -3514,6 +3515,7 @@ impl Checker<'_> {
                     .iter()
                     .enumerate()
                     .map(|(j, f)| syntax::Field {
+                        name_range: crate::SourceRange::default(),
                         type_range: crate::SourceRange::default(),
                         origins_range: crate::SourceRange::default(),
                         referent_origins_range: crate::SourceRange::default(),
@@ -4340,6 +4342,7 @@ impl Checker<'_> {
                         .fields
                         .iter()
                         .map(|f| syntax::Field {
+                            name_range: crate::SourceRange::default(),
                             type_range: crate::SourceRange::default(),
                             origins_range: crate::SourceRange::default(),
                             referent_origins_range: crate::SourceRange::default(),
@@ -4374,6 +4377,7 @@ impl Checker<'_> {
                         .iter()
                         .enumerate()
                         .map(|(j, f)| syntax::Field {
+                            name_range: crate::SourceRange::default(),
                             type_range: crate::SourceRange::default(),
                             origins_range: crate::SourceRange::default(),
                             referent_origins_range: crate::SourceRange::default(),
@@ -5381,6 +5385,7 @@ pub(crate) fn compile_concrete_unit(
                         .fields
                         .iter()
                         .map(|f| syntax::Field {
+                            name_range: crate::SourceRange::default(),
                             type_range: crate::SourceRange::default(),
                             origins_range: crate::SourceRange::default(),
                             referent_origins_range: crate::SourceRange::default(),

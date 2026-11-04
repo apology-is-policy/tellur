@@ -1,7 +1,7 @@
 //! Coherent, explicitly selected concrete trait implementations. Associated type
 //! normalization is bounded and precedes ordinary ownership/control checking.
 use crate::{
-    Diagnostic, Result, Span,
+    Diagnostic, Result, SourceRange, Span,
     collection_support::{generic, qualified_member},
     generics::substitute,
     manifest::{self, Manifest},
@@ -16,23 +16,17 @@ fn signature_error(at: Span, message: impl Into<String>) -> Diagnostic {
     Diagnostic::new("E_TRAIT_SIGNATURE", at, message)
 }
 fn unique<'a>(names: impl Iterator<Item = &'a str>, at: Span) -> Result<()> {
-    unique_at(names.map(|name| (name, Span::default())), at)
+    unique_at(names.map(|name| (name, SourceRange::default())), at)
 }
-fn unique_at<'a>(names: impl Iterator<Item = (&'a str, Span)>, at: Span) -> Result<()> {
+fn unique_at<'a>(names: impl Iterator<Item = (&'a str, SourceRange)>, at: Span) -> Result<()> {
     let mut seen = BTreeSet::new();
-    for (n, name_at) in names {
+    for (n, name_range) in names {
         if !seen.insert(n) {
             let diagnostic = error(at, format!("duplicate trait member or parameter `{n}`"));
-            return Err(if name_at.line == 0 {
+            return Err(if name_range.start.line == 0 {
                 diagnostic
             } else {
-                diagnostic.with_range(crate::SourceRange {
-                    start: name_at,
-                    end: Span {
-                        line: name_at.line,
-                        column: name_at.column + n.chars().count(),
-                    },
-                })
+                diagnostic.with_range(name_range)
             });
         }
     }
@@ -47,7 +41,19 @@ fn unique_members(associated: &[AssociatedType], methods: &[Region], at: Span) -
         associated
             .iter()
             .map(|a| (a.name.as_str(), a.span))
-            .chain(methods.iter().map(|m| (m.name.as_str(), m.name_span))),
+            .chain(methods.iter().map(|m| (m.name.as_str(), m.name_span)))
+            .map(|(name, start)| {
+                (
+                    name,
+                    SourceRange {
+                        start,
+                        end: Span {
+                            line: start.line,
+                            column: start.column + name.chars().count(),
+                        },
+                    },
+                )
+            }),
         at,
     )
 }
@@ -180,10 +186,16 @@ fn method_profile(r: &Region) -> Result<()> {
             "trait methods use nongeneric control declarations with explicit exit contracts",
         ));
     }
-    unique(r.parameters.iter().map(|p| p.name.as_str()), r.span)?;
+    unique_at(
+        r.parameters.iter().map(|p| (p.name.as_str(), p.name_range)),
+        r.span,
+    )?;
     unique(r.exits.iter().map(|o| o.name.as_str()), r.span)?;
     for o in &r.exits {
-        unique(o.fields.iter().map(|f| f.name.as_str()), r.span)?;
+        unique_at(
+            o.fields.iter().map(|f| (f.name.as_str(), f.name_range)),
+            r.span,
+        )?;
     }
     Ok(())
 }
@@ -1029,6 +1041,68 @@ pub(crate) fn abstract_witness(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn trait_signature_duplicate_ranges_keep_missing_metadata_fallback() {
+        for source in [
+            "trait reader {control read(u32 item,u32 item) exits done;}",
+            "trait reader {control read() exits done(u32 item,u32 item);}",
+            "trait reader {control read(u32 item) exits done;} implement reader for u32 {control read(u32 item,u32 item) exits done {exit done;}}",
+            "trait reader {control read() exits done;} implement reader for u32 {control read() exits done(u32 item,u32 item) {exit done;}}",
+        ] {
+            let mut unit = crate::syntax::parse_unit(source).unwrap();
+            let method = if let Some(i) = unit.implementations.first_mut() {
+                &mut i.methods[0]
+            } else {
+                &mut unit.traits[0].methods[0]
+            };
+            let span = method.span;
+            let fields = if method.parameters.len() > 1 {
+                &mut method.parameters
+            } else {
+                &mut method.exits[0].fields
+            };
+            assert_ne!(fields[1].name_range, fields[1].type_range);
+            fields[1].name_range = SourceRange::default();
+            let errors = crate::check::compile_unit(
+                unit,
+                Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+                &Visibility::default(),
+            )
+            .unwrap_err();
+            assert_eq!(errors.errors.len(), 1);
+            assert_eq!(errors.errors[0].span, span);
+            assert!(errors.errors[0].end.is_none());
+            assert!(errors.errors[0].message.ends_with("`item`"));
+        }
+    }
+
+    #[test]
+    fn trait_signature_duplicate_ranges_survive_renamed_fields() {
+        for source in [
+            "trait reader {control read(u32 item_long2,u32 item_long2) exits done;}",
+            "trait reader {control read(item_long2:u32,item_long2:u32) exits done;}",
+            "trait reader {control read() exits done(u32 item_long2,u32 item_long2);}",
+            "trait reader {control read() exits done(item_long2:u32,item_long2:u32);}",
+        ] {
+            let mut unit = crate::syntax::parse_unit(source).unwrap();
+            let method = &mut unit.traits[0].methods[0];
+            let fields = if method.parameters.len() > 1 {
+                &mut method.parameters
+            } else {
+                &mut method.exits[0].fields
+            };
+            let range = fields[1].name_range;
+            assert_eq!(range.end.column - range.start.column, "item_long2".len());
+            for field in fields {
+                field.name = "x".into();
+            }
+            let error = method_profile(method).unwrap_err();
+            assert_eq!(error.span, range.start);
+            assert_eq!(*error.end.unwrap(), range.end);
+            assert!(error.message.ends_with("`x`"));
+        }
+    }
 
     #[test]
     fn trait_member_duplicate_ranges_keep_missing_metadata_fallback() {

@@ -189,6 +189,7 @@ pub(crate) fn prepare(unit: &mut Unit) -> crate::CheckResult<()> {
         control.exits = vec![Outcome {
             name: COMPLETED.into(),
             fields: vec![Field {
+                name_range: crate::SourceRange::default(),
                 type_range: crate::SourceRange::default(),
                 origins_range: crate::SourceRange::default(),
                 referent_origins_range: crate::SourceRange::default(),

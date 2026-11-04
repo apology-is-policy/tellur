@@ -1077,6 +1077,36 @@ locations and existing priorities. No partially checked contract becomes executa
 or available to hover.
 
 
+## Duplicate trait-signature field locations
+
+Since 0.209, duplicate parameters and inline result-payload fields in trait
+declarations and implementations select the repeated name token. The range excludes
+the type, colon, comments, origin bindings and `from` clause. Type-first and name-first
+field spellings retain their own parsed name ranges; imports and unsaved edits
+preserve original coordinates independently of type and origin metadata.
+
+<!-- tellur:reject E_TRAIT -->
+```tellur
+trait reader {
+    control read(u32 item, u32 item) exits done;
+}
+```
+
+The second `item` is selected. Method-profile restrictions still run first, followed
+by parameter uniqueness, exit-label uniqueness, then each inline payload field list.
+Only the first profile error per trait or implementation is reported. Ordinary
+control checks, named outcome declarations and duplicate exit labels keep their
+separate diagnostics and locations.
+
+Declaration errors still precede implementation checks. Shared identity/coherence
+failures retain interleaved first-error replay; independent preparation batches keep
+the 32-error budget and the earlier 1024-implementation limit. Module type lookup
+still precedes trait checking and keeps its own type range. Renaming a field does
+not widen its retained name range; generated fields and absent metadata keep the
+method point. Repaired contracts become available to hover only after all required
+checks succeed. No ownership, origin, outcome or execution rule changes.
+
+
 ## Constructor-call preparation batches
 
 Since 0.91, inaccessible constructor calls in independent bodies report together.
