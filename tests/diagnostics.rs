@@ -2360,14 +2360,26 @@ fn named_completion_origin_ranges_survive_imports_generics_and_traits() {
 }
 
 #[test]
-fn named_completion_origin_ranges_do_not_relabel_missing_or_schema_errors() {
+fn named_completion_origin_ranges_keep_missing_contract_and_schema_locations_distinct() {
     for source in [
         "pub control probe(ref string input) exits ready {ref string value} {exit ready {input};}",
         "outcome reply['a] {ready {ref string value <- 'a}} pub control probe(ref string input) exits reply {exit ready {input};}",
     ] {
         let errors = check_errors(source);
         assert_eq!(errors.errors.len(), 1);
-        assert!(errors.errors[0].end.is_none(), "{errors}");
+        assert_eq!(errors.errors[0].code, "E_PUBLIC_CONTRACT");
+        let selected = if source.contains("exits reply") {
+            "reply {exit"
+        } else {
+            "ref string value"
+        };
+        let at = source.find(selected).unwrap();
+        let length = if selected == "reply {exit" { 5 } else { 10 };
+        assert_eq!(errors.errors[0].span.column, at + 1);
+        assert_eq!(
+            errors.errors[0].end.as_ref().unwrap().column,
+            at + 1 + length
+        );
     }
     let source = "outcome reply['a] {ready {ref string value <- 'missing}} control probe(ref string input) exits reply[input] {exit ready {input};}";
     let errors = check_errors(source);
@@ -2465,7 +2477,7 @@ fn return_origin_ranges_preserve_imported_generic_and_trait_signatures() {
 }
 
 #[test]
-fn return_origin_range_batches_keep_first_error_order_and_absent_contract_points() {
+fn return_origin_range_batches_keep_first_error_order_and_missing_contract_locations() {
     let source = "control first(ref string input) exits ready {ref string value from missing} {exit ready {input};}\ncontrol second(ref string input) exits ready {ref mutable string value from input} {exit ready {input};}\ncontrol body() exits done {u32 value=true;exit done;}";
     let errors = check_errors(source);
     assert_eq!(errors.errors.len(), 2, "{errors}");
@@ -2495,7 +2507,14 @@ fn return_origin_range_batches_keep_first_error_order_and_absent_contract_points
     ] {
         let errors = check_errors(source);
         assert_eq!(errors.errors.len(), 1);
-        assert!(errors.errors[0].end.is_none(), "{errors}");
+        if source.starts_with("pub") {
+            let at = source.find("ref string value").unwrap();
+            assert_eq!(errors.errors[0].span.column, at + 1);
+            assert_eq!(errors.errors[0].end.as_ref().unwrap().column, at + 11);
+        } else {
+            // Trait origin requirements remain a separate validation path.
+            assert!(errors.errors[0].end.is_none(), "{errors}");
+        }
     }
 }
 
@@ -2630,7 +2649,9 @@ fn payload_origin_ranges_preserve_storage_clauses_named_contracts_and_error_orde
     ] {
         let errors = check_errors(source);
         assert_eq!(errors.errors.len(), 1, "{errors}");
-        assert!(errors.errors[0].end.is_none(), "{errors}");
+        let at = source.find("view value").unwrap();
+        assert_eq!(errors.errors[0].span.column, at + 1);
+        assert_eq!(errors.errors[0].end.as_ref().unwrap().column, at + 5);
     }
 }
 
@@ -3352,5 +3373,173 @@ fn public_shape_ranges_keep_phase_priority_budget_and_private_inference() {
         let errors = check_errors(source);
         assert_eq!(errors.errors.len(), 1);
         assert_ne!(errors.errors[0].code, "E_PUBLIC_CONTRACT");
+    }
+}
+
+#[test]
+fn missing_public_origin_ranges_select_result_types_and_named_completion_uses() {
+    let f = Fixture::new();
+    for (source, selected, message) in [
+        (
+            "pub control one(ref string input) exits ready {ref // 😀\r\n string value} {exit ready {input};}",
+            "ref // 😀\r\n string",
+            "borrowed result",
+        ),
+        (
+            "pub control one(ref mutable u32 input) exits ready {ref mutable u32 value} {exit ready {input};}",
+            "ref mutable u32",
+            "borrowed result",
+        ),
+        (
+            "pub control one<t>(ref t input) exits ready {ref // result\n t value} {exit ready {input};}",
+            "ref // result\n t",
+            "borrowed result",
+        ),
+        (
+            "pub struct view['a] {ref string text <- 'a;} pub control one(ref string input) exits ready {view value} {exit ready {view {input}};}",
+            "view value",
+            "aggregate result",
+        ),
+        (
+            "pub struct view['a] {ref string text <- 'a;} pub control one(ref view input) exits ready {ref // result\n view value from input} {exit ready {input};}",
+            "ref // result\n view",
+            "aggregate result",
+        ),
+        (
+            "pub outcome reply<t>['a] {ready {ref t value <- 'a}} pub control one<t>(ref t input) exits reply // 😀\r\n <t> {exit ready {input};}",
+            "reply // 😀\r\n <t>",
+            "borrowed result",
+        ),
+        (
+            "pub struct view['a] {ref string text <- 'a;} pub outcome reply['a] {ready {view['a] value}} pub control one(ref string input) exits reply {exit ready {view {input}};}",
+            "reply {exit",
+            "aggregate result",
+        ),
+    ] {
+        f.write("main.tellur", source);
+        let report = f.report(&["check", "main.tellur", "--json"], false);
+        let errors = report["diagnostics"].as_array().unwrap();
+        assert_eq!(errors.len(), 1, "{report}");
+        assert_eq!(errors[0]["code"], "E_PUBLIC_CONTRACT", "{report}");
+        assert!(
+            errors[0]["message"].as_str().unwrap().contains(message),
+            "{report}"
+        );
+        // Use a unique context to distinguish result and use sites from inputs/schema names.
+        let expected = if selected == "view value" || selected == "reply {exit" {
+            let at = source.find(selected).unwrap();
+            let len = if selected == "view value" { 4 } else { 5 };
+            json!({"start":scalar_position(source,at),"end":scalar_position(source,at+len)})
+        } else if selected == "ref mutable u32" {
+            let at = source.rfind(selected).unwrap();
+            json!({"start":scalar_position(source,at),"end":scalar_position(source,at+selected.len())})
+        } else {
+            selected_range(source, selected)
+        };
+        assert_eq!(errors[0]["range"], expected, "{report}");
+        let errors = check_errors(source);
+        assert_eq!(
+            compile(
+                source,
+                Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
+            )
+            .unwrap_err(),
+            errors.errors[0]
+        );
+    }
+}
+
+#[test]
+fn missing_public_origin_ranges_keep_transitive_schema_and_use_files_distinct() {
+    let f = Fixture::new();
+    f.write(
+        "schema.tellur",
+        "pub outcome reply<t>['a] {ready {ref t value <- 'a}}",
+    );
+    let worker = "import \"schema.tellur\" as schema;\r\npub control one(ref string input) exits schema.reply // 😀\r\n <string> {exit ready {input};}\r\npub control two(ref string input) exits ready {ref // result\r\n string value} {exit ready {input};}";
+    f.write("worker.tellur", worker);
+    f.write(
+        "main.tellur",
+        "import \"worker.tellur\" as worker; control main() exits done {u32 wrong=true;exit done;}",
+    );
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    let errors = report["diagnostics"].as_array().unwrap();
+    assert_eq!(errors.len(), 2, "{report}");
+    for (error, selected) in errors.iter().zip([
+        "schema.reply // 😀\r\n <string>",
+        "ref // result\r\n string",
+    ]) {
+        assert_eq!(error["code"], "E_PUBLIC_CONTRACT");
+        assert!(error["path"].as_str().unwrap().ends_with("worker.tellur"));
+        assert_eq!(error["range"], selected_range(worker, selected));
+    }
+    let partial = worker.replace("<string> {exit", "<string>[input] {exit");
+    f.write("worker.tellur", &partial);
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    assert_eq!(report["diagnostics"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        report["diagnostics"][0]["range"],
+        selected_range(&partial, "ref // result\r\n string")
+    );
+    f.write(
+        "worker.tellur",
+        &partial.replace("string value}", "string value from input}"),
+    );
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    assert_eq!(report["diagnostics"].as_array().unwrap().len(), 1);
+    assert_eq!(report["diagnostics"][0]["code"], "E_TYPE");
+}
+
+#[test]
+fn missing_public_origin_ranges_preserve_first_result_and_preparation_barriers() {
+    let source = "pub control one(ref string input) exits ready {ref string first, ref string second} {exit ready {input,input};}";
+    let errors = check_errors(source);
+    assert_eq!(errors.errors.len(), 1);
+    assert!(errors.errors[0].message.contains("`first`"));
+    let repaired = source.replace("first,", "first from input,");
+    assert!(
+        check_errors(&repaired).errors[0]
+            .message
+            .contains("`second`")
+    );
+    let mut many = (0..40).map(|n| format!("pub control bad_{n}(ref string input) exits ready {{ref string value}} {{exit ready {{input}};}}\n")).collect::<String>();
+    let errors = check_errors(&many);
+    assert_eq!(errors.errors.len(), 32);
+    assert!(errors.limit_reached);
+    assert!(
+        errors
+            .errors
+            .iter()
+            .all(|e| e.code == "E_PUBLIC_CONTRACT" && e.end.is_some())
+    );
+    many.push_str("struct bad['a,'a] {ref string value <- 'a;}");
+    assert_eq!(check_errors(&many).errors[0].code, "E_ORIGIN");
+    many.push_str("pub control shape() exits auto {exit done;}");
+    assert_eq!(check_errors(&many).errors[0].code, "E_PUBLIC_CONTRACT");
+    assert!(
+        check_errors(&many).errors[0]
+            .message
+            .contains("explicit exit labels")
+    );
+    // Written invalid bindings retain their existing bracket/from selection and code.
+    let f = Fixture::new();
+    for (source, selected) in [
+        (
+            "pub control one(ref string input) exits ready {ref string value from absent} {exit ready {input};}",
+            "from absent",
+        ),
+        (
+            "pub outcome reply['a] {ready {ref string value <- 'a}} pub control one(ref string input) exits reply[input,input] {exit ready {input};}",
+            "[input,input]",
+        ),
+    ] {
+        f.write("main.tellur", source);
+        let report = f.report(&["check", "main.tellur", "--json"], false);
+        assert_ne!(report["diagnostics"][0]["code"], "E_PUBLIC_CONTRACT");
+        assert_eq!(
+            report["diagnostics"][0]["range"],
+            selected_range(source, selected),
+            "{report}"
+        );
     }
 }

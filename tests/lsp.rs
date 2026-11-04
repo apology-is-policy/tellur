@@ -7184,3 +7184,64 @@ fn public_shape_ranges_follow_unsaved_partial_repairs_and_restore_hover() {
     );
     assert_eq!(f.diagnostics(), json!([]));
 }
+#[test]
+fn missing_public_origin_ranges_follow_unsaved_partial_repairs_and_restore_hover() {
+    let mut f = Fixture::new();
+    let path = f.root.join("worker.tellur");
+    let uri = url::Url::from_file_path(&path).unwrap().to_string();
+    let valid = "pub outcome reply['a] {ready {ref string value <- 'a}}\r\npub control first(ref string input) exits ready {ref string value from input} {exit ready {input};}\r\npub control second(ref string input) exits reply[input] {exit ready {input};}\r\npub control work() exits done {exit done;}";
+    fs::write(&path, valid).unwrap();
+    let source = "import \"worker.tellur\" as worker;control main() exits done {auto text=\"x\";drop(text);worker.work();exit done;}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let initial = hover_at(&f, source, "auto text");
+    assert!(initial.to_string().contains("string"));
+    let partial = valid.replace("exits reply[input]", "exits reply // 😀\r\n ");
+    let broken = partial.replace("ref string value from input", "ref // 😀\r\n string value");
+    for (version, text, selected) in [
+        (1, broken.as_str(), vec!["ref // 😀\r\n string", "reply"]),
+        (2, partial.as_str(), vec!["reply"]),
+    ] {
+        if version == 1 {
+            f.server.notification(
+                "textDocument/didOpen",
+                &json!({"textDocument":{"uri":uri,"version":version,"text":text}}),
+            );
+        } else {
+            f.server.notification("textDocument/didChange",&json!({"textDocument":{"uri":uri,"version":version},"contentChanges":[{"text":text}]}));
+        }
+        let errors = f.diagnostics();
+        assert_eq!(errors.as_array().unwrap().len(), selected.len(), "{errors}");
+        for (error, selected) in errors.as_array().unwrap().iter().zip(selected) {
+            assert_eq!(error["code"], "E_PUBLIC_CONTRACT");
+            let location = &error["relatedInformation"][0]["location"];
+            assert_eq!(location["uri"], uri);
+            let at = if selected == "reply" {
+                text.find("exits reply").unwrap() + 6
+            } else {
+                text.find(selected).unwrap()
+            };
+            let position = |offset| {
+                let prefix = &text[..offset];
+                json!({"line":prefix.bytes().filter(|b|*b==b'\n').count(),"character":prefix.rsplit('\n').next().unwrap().encode_utf16().count()})
+            };
+            assert_eq!(
+                location["range"],
+                json!({"start":position(at),"end":position(at+selected.len())}),
+                "{errors}"
+            );
+        }
+        assert!(hover_at(&f, source, "auto text").is_null());
+    }
+    f.server.notification(
+        "textDocument/didChange",
+        &json!({"textDocument":{"uri":uri,"version":3},"contentChanges":[{"text":valid}]}),
+    );
+    assert_eq!(f.diagnostics(), json!([]));
+    assert_eq!(hover_at(&f, source, "auto text"), initial);
+    f.server.notification(
+        "textDocument/didClose",
+        &json!({"textDocument":{"uri":uri}}),
+    );
+    assert_eq!(f.diagnostics(), json!([]));
+}

@@ -5338,3 +5338,23 @@ ranges, hover restoration and native execution. Affected diagnostics, formatting
 payload inference, public contracts, traits, generics, modules and manual checks
 accompany the release; the ownership/runtime and pending async-host decision are
 unchanged.
+
+
+## Missing public-origin contract locations (0.195 / P2ac)
+
+Missing public borrowed/aggregate result contracts select the authored result type.
+Named completion expansion copies schema fields, so these errors instead select the
+completion type at the control's use. No range is fabricated for an absent clause;
+synthetic metadata falls back to the original control-name point.
+
+CLI cases cover shared/exclusive results, borrowed carriers with an existing `from`,
+unused generic results/completions, named aggregate payloads, multiline Unicode/CRLF,
+and transitive imports whose schema and use occur in different files. Partial
+repairs preserve independent errors and expose body errors only after contracts
+validate. First-result ordering, first-error APIs, earlier schema/shape barriers,
+the 32-error budget and existing invalid-binding locations remain checked. A focused
+unit case checks inline and copied-schema fallback. Fresh LSP and isolated editor
+checks exercise exact unsaved UTF-16 ranges, partial repairs, stale-hover suppression,
+full repair and native execution. The selected public-contract, origin, generic,
+trait, module and manual suites accompany the release. Public async-host admission
+still awaits its recorded design choice.

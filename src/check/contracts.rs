@@ -29,9 +29,9 @@ pub(super) fn public_origins(
                     .return_origins
                     .contains_key(&(outcome.name.clone(), index))
             {
-                return Err(Diagnostic::new(
-                    "E_PUBLIC_CONTRACT",
-                    region.name_span,
+                return Err(public_origin_error(
+                    region,
+                    field,
                     format!(
                         "public borrowed result `{}` requires an explicit from input origin",
                         field.name
@@ -40,9 +40,9 @@ pub(super) fn public_origins(
             }
             let ty = reference.map_or(field.ty.as_str(), |(_, t)| t);
             if schemas.get(ty).is_some_and(|s| !s.leaves.is_empty()) && field.origins.is_empty() {
-                return Err(Diagnostic::new(
-                    "E_PUBLIC_CONTRACT",
-                    region.name_span,
+                return Err(public_origin_error(
+                    region,
+                    field,
                     format!(
                         "public aggregate result `{}` requires explicit bracket origin bindings",
                         field.name
@@ -52,6 +52,25 @@ pub(super) fn public_origins(
         }
     }
     Ok(())
+}
+// Named contracts copy their schema fields into the region. A missing binding
+// belongs to the completion use, not to a field in the shared schema.
+fn public_origin_error(
+    region: &syntax::Region,
+    field: &syntax::Field,
+    message: String,
+) -> Diagnostic {
+    let range = if region.exit_contract.is_some() {
+        region.exit_contract_range
+    } else {
+        field.type_range
+    };
+    let error = Diagnostic::new("E_PUBLIC_CONTRACT", region.name_span, message);
+    if range.start.line == 0 {
+        error
+    } else {
+        error.with_range(range)
+    }
 }
 pub(super) fn append(notes: &mut Vec<DiagnosticNote>, note: DiagnosticNote) {
     if notes.contains(&note) {
@@ -126,6 +145,37 @@ mod range_tests {
         let region = &mut unit.regions[0];
         region.inferred_exit_range = Default::default();
         let error = super::public_shape(region).unwrap_err();
+        assert_eq!(error.span, region.name_span);
+        assert!(error.end.is_none());
+    }
+}
+
+#[cfg(test)]
+mod public_origin_range_tests {
+    #[test]
+    fn missing_public_origin_ranges_preserve_synthetic_fallback() {
+        let mut unit = crate::syntax::parse_unit(
+            "pub control one(ref string input) exits ready {ref string value} {exit ready {input};}",
+        ).unwrap();
+        let region = &mut unit.regions[0];
+        // Inline missing metadata falls back to the original control-name point.
+        region.exits[0].fields[0].type_range = Default::default();
+        let error = super::public_origins(region, &Default::default()).unwrap_err();
+        assert_eq!(error.span, region.name_span);
+        assert!(error.end.is_none());
+        // A generated named use must not select copied schema field coordinates.
+        region.exit_contract = Some("reply".into());
+        region.exits[0].fields[0].type_range = crate::SourceRange {
+            start: crate::Span {
+                line: 99,
+                column: 3,
+            },
+            end: crate::Span {
+                line: 99,
+                column: 13,
+            },
+        };
+        let error = super::public_origins(region, &Default::default()).unwrap_err();
         assert_eq!(error.span, region.name_span);
         assert!(error.end.is_none());
     }

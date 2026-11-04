@@ -55,7 +55,7 @@ The error selects `ready...`. Making the control private permits inference; spel
 still reports one error per control before shared schemas and bodies, up to 32 errors.
 Fixing one unsaved declaration removes its error while independent failures remain;
 checked hover returns only after the complete program validates. Missing borrowed
-result origins are separate errors with their existing locations.
+result origins are checked in the later signature phase.
 
 
 <!-- tellur:reject E_PUBLIC_CONTRACT -->
@@ -68,7 +68,14 @@ pub control view(ref string input) exits ready { ref string value } {
 Add `from input` after the result binding. Reference-bearing aggregate results
 need explicit bracket mappings as well; references to such aggregates need both
 storage and contained-origin contracts. An unused generic public declaration must
-satisfy the same rule. See [explicit public contracts](../language-reference.md#explicit-public-contracts).
+satisfy the same rule. Since 0.195, a missing `from` or aggregate bracket contract
+selects the written result type, excluding the binding name and any existing origin
+clauses. For a named completion it selects the completion type at the control's use,
+including type arguments, rather than the shared schema's field declaration. The
+absent clause has no source range of its own. Imported and generic definitions retain
+authored coordinates; synthetic types without metadata retain the control-name point.
+The first missing result contract in each control still wins, and earlier schema,
+shape and named-binding failures still block signature checking. See [explicit public contracts](../language-reference.md#explicit-public-contracts).
 
 For incompatible `forward` calls, missing adapter arms and unfinished identity
 paths, CLI notes and VS Code
