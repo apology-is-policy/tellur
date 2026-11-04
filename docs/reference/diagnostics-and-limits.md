@@ -1153,8 +1153,8 @@ trait reader {
 }
 ```
 
-Explicit contracts remain required. The same diagnostic for generic or legacy
-methods retains its method point, including when inference is also written.
+Explicit contracts remain required. Legacy methods retain their method point,
+including when inference is also written. Generic method ranges follow below.
 Bodyless trait declarations using `label...` still fail during parsing. Member and
 shared identity errors retain priority, and method-profile errors still precede
 parameter/exit/payload uniqueness. Declaration batches precede implementations;
@@ -1165,6 +1165,36 @@ Ordinary public controls keep their separate `E_PUBLIC_CONTRACT` ranges; private
 control inference remains supported. Missing clause metadata keeps the method
 point. Renaming labels or lowering method names does not change retained endpoints.
 Partial repairs do not expose an unchecked contract through hover.
+
+
+## Generic trait-method profile locations
+
+Since 0.212, the existing `E_TRAIT_SIGNATURE` rejection of generic trait methods
+selects the written type-parameter clause, from `<` through `>`. The range includes
+bounds, qualifications, commas and internal comments or line breaks. Method names,
+value parameters, trailing comments, result clauses and bodies are excluded.
+Original ranges survive imports and rewritten parameter or bound names.
+
+<!-- tellur:reject E_TRAIT_SIGNATURE -->
+```tellur
+trait reader {
+    control read<t: copy>() exits done;
+}
+```
+
+Trait methods remain nongeneric. This restriction still precedes inferred-result
+contracts and parameter/exit/payload uniqueness. A missing generic-clause range
+keeps the method point even if an inference range is available. Legacy generic
+syntax and duplicate capability bounds retain their earlier parser diagnostics;
+non-generic legacy methods retain their profile point.
+
+Trait generic methods are rejected before resolving their bound identities.
+Ordinary generic controls keep their separate bound lookup and remain supported.
+Module parameter-type lookup, member checks, shared identities, coherence replay,
+declaration/implementation batches and both diagnostic/implementation budgets are
+unchanged. Generated boundary signatures and constructor-inherited type parameters
+have no invented clause range. Metadata retained after specialization does not
+make a nongeneric method invalid. Checked hover returns only after full repair.
 
 
 ## Constructor-call preparation batches

@@ -182,15 +182,20 @@ fn method_profile(r: &Region) -> Result<()> {
             r.span,
             "trait methods use nongeneric control declarations with explicit exit contracts",
         );
-        // Structural profile restrictions retain the method point. Otherwise
-        // this freshly created error describes the first written inference clause.
-        return Err(
-            if r.modern && r.type_parameters.is_empty() && r.inferred_exit_range.start.line != 0 {
-                diagnostic.with_range(r.inferred_exit_range)
-            } else {
-                diagnostic
-            },
-        );
+        // Keep generic restrictions ahead of inference, even when the selected
+        // clause has no authored metadata. Legacy methods retain their point.
+        let range = if !r.modern {
+            SourceRange::default()
+        } else if !r.type_parameters.is_empty() {
+            r.type_parameters_range
+        } else {
+            r.inferred_exit_range
+        };
+        return Err(if range.start.line != 0 {
+            diagnostic.with_range(range)
+        } else {
+            diagnostic
+        });
     }
     unique_at(
         r.parameters.iter().map(|p| (p.name.as_str(), p.name_range)),
@@ -1050,6 +1055,73 @@ pub(crate) fn abstract_witness(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn trait_generic_profile_ranges_keep_missing_metadata_and_legacy_fallbacks() {
+        for source in [
+            "trait reader {control read<t>() exits auto;}",
+            "trait reader {control read() exits done;} implement reader for u32 {control read<t>() exits ready... {exit ready(1);}}",
+        ] {
+            let mut unit = crate::syntax::parse_unit(source).unwrap();
+            let method = if let Some(i) = unit.implementations.first_mut() {
+                &mut i.methods[0]
+            } else {
+                &mut unit.traits[0].methods[0]
+            };
+            let span = method.span;
+            assert_ne!(method.inferred_exit_range.start.line, 0);
+            assert_ne!(method.type_parameters_range.start.line, 0);
+            let mut legacy = method.clone();
+            legacy.modern = false;
+            let error = method_profile(&legacy).unwrap_err();
+            assert_eq!(error.span, span);
+            assert!(error.end.is_none());
+            method.type_parameters_range = SourceRange::default();
+            let error = method_profile(method).unwrap_err();
+            assert_eq!(error.span, span);
+            assert!(error.end.is_none());
+        }
+    }
+
+    #[test]
+    fn trait_generic_profile_ranges_survive_rewritten_parameters_and_specialization() {
+        let mut unit = crate::syntax::parse_unit(
+            "trait reader {control read<t // 😀\r\n :copy,u:drop>() exits auto;}",
+        )
+        .unwrap();
+        let method = &mut unit.traits[0].methods[0];
+        let range = method.type_parameters_range;
+        assert!(range.end.line > range.start.line);
+        method.name = "internal_long_name".into();
+        method.type_parameters = vec!["x".into()];
+        method.type_bounds.clear();
+        method
+            .type_bounds
+            .insert("x".into(), vec!["rewritten_trait_name".into()]);
+        let error = method_profile(method).unwrap_err();
+        assert_eq!(error.span, range.start);
+        assert_eq!(*error.end.unwrap(), range.end);
+        method.type_parameters.clear();
+        let error = method_profile(method).unwrap_err();
+        assert_eq!(error.span, method.inferred_exit_range.start);
+        assert_eq!(*error.end.unwrap(), method.inferred_exit_range.end);
+    }
+
+    #[test]
+    fn trait_generic_profile_ranges_keep_generated_region_metadata_empty() {
+        let unit=crate::syntax::parse_unit("control ordinary<t:copy>() exits done {exit done;} struct wrapper<u> {u value;constructor(u input) {self.value=move input;}} boundary work() {} contingency(string reason) {drop(reason);}").unwrap();
+        let control = unit.regions.iter().find(|r| r.name == "ordinary").unwrap();
+        assert_eq!(
+            control.type_parameters_range.end.column - control.type_parameters_range.start.column,
+            8
+        );
+        let constructor = unit.data[0].constructor.as_ref().unwrap();
+        assert_eq!(constructor.type_parameters, vec!["u"]);
+        assert_eq!(constructor.type_parameters_range, SourceRange::default());
+        for region in unit.regions.iter().filter(|r| r.name != "ordinary") {
+            assert_eq!(region.type_parameters_range, SourceRange::default());
+        }
+    }
 
     #[test]
     fn trait_inference_ranges_keep_missing_metadata_and_structural_fallbacks() {

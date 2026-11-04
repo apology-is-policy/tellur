@@ -257,6 +257,8 @@ pub struct Region {
     /// Compiler-only abstract witness signature; never emitted in an executable program.
     pub abstract_signature: bool,
     pub type_parameters: Vec<String>,
+    /// Written control type-parameter clause, including bounds and angle brackets.
+    pub type_parameters_range: SourceRange,
     pub type_bounds: TypeBounds,
     /// Compiler-only lexical type bindings of a specialized control.
     pub type_bindings: std::collections::BTreeMap<String, String>,
@@ -836,7 +838,13 @@ impl Parser {
         }
         let name_span = self.here();
         let name = self.id()?;
+        let type_parameters_start = self.here();
         let (type_parameters, type_bounds) = self.control_type_parameters()?;
+        let type_parameters_range = if type_parameters.is_empty() {
+            SourceRange::default()
+        } else {
+            self.range_from(type_parameters_start)
+        };
         if !modern && !type_parameters.is_empty() {
             return Err(Diagnostic::new(
                 "E_GENERIC",
@@ -988,6 +996,7 @@ impl Parser {
             return_origin_ranges,
             abstract_signature: false,
             type_parameters,
+            type_parameters_range,
             type_bounds,
             type_bindings: Default::default(),
             public,
@@ -2009,6 +2018,7 @@ pub(crate) fn parse_with_layout(source: &str) -> Result<(Unit, Vec<Token>, crate
                 return_origin_ranges: Default::default(),
                 abstract_signature: false,
                 type_parameters: vec![],
+                type_parameters_range: SourceRange::default(),
                 type_bounds: Default::default(),
                 type_bindings: Default::default(),
                 public,
@@ -2185,6 +2195,7 @@ pub(crate) fn parse_with_layout(source: &str) -> Result<(Unit, Vec<Token>, crate
                             return_origin_ranges: Default::default(),
                             abstract_signature: false,
                             type_parameters: type_parameters.clone(),
+                            type_parameters_range: SourceRange::default(),
                             type_bounds: type_parameters
                                 .iter()
                                 .map(|p| (p.clone(), vec![]))

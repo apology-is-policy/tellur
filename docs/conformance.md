@@ -5666,3 +5666,21 @@ The earlier target-priority regression now expects the inference range while
 preserving coherence points. LSP and isolated VS Code cover partial declaration
 and implementation repair, UTF-16 ranges, hover recovery and native execution.
 No public async-host call model has been selected.
+
+
+## Generic trait-method profile locations (0.212 / P2at)
+
+Syntax regions retain the authored control type-parameter clause separately from
+parameter names and bounds. Normal controls capture both angle brackets; generated
+boundary signatures and constructor-inherited parameters use empty metadata. Both
+module resolution paths remap endpoints. Trait profile rejection selects the generic
+clause before inference, with legacy and missing-metadata method fallbacks.
+
+Five CLI cases cover bounded/multiline/qualified clauses, comments, Unicode/CRLF,
+imports, repairs, first-error APIs, generic/inference/member/type/identity/coherence
+priorities and budgets. Three units cover missing metadata, legacy fallback,
+rewritten parameter/bound names, cleared specialization parameters and generated
+regions. Three earlier priority tests now expect generic ranges. LSP and isolated
+VS Code repair generic clauses before exposing inference errors, then restore
+checked hover and native execution. Constructor and borrowed-constructor suites
+exercise the shared Region initializer. Public async-host admission remains pending.
