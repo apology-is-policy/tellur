@@ -5396,3 +5396,23 @@ emoji changes position, suppress stale hover and execute the repaired trait call
 natively. Trait, generic-trait, aggregate-origin, module, generic-control, public
 contract and manual checks accompany this slice. Existing async/fault/contingency
 permissions and the pending public async-host decision remain unchanged.
+
+
+## Independent associated-type normalization (0.198 / P2af)
+
+Normalization keeps completed values, active recursion and failed dependencies
+separate. It collects original independent failures in the existing canonical
+trait/type and written member order, suppresses failed lexical/qualified selections,
+and retires only the active path entries owned by each recursive invocation.
+Substitution remains atomic; no successful sibling exposes a partial witness.
+
+Diagnostics cover independent owned-type violations, lexical diamonds, computed
+selection targets, cross-implementation cycles, missing members/implementations,
+partial repair, depth/type-size limits, the 32-error cap, first-error compatibility,
+transitive imports and earlier/later phase barriers. Repaired aliases execute in
+the reference and expanded interpreters. LSP and isolated editor checks repair
+unsaved imported assignments, suppress dependent aliases and stale hover, track
+UTF-16 points after preceding emoji edits, and execute repaired code natively.
+Selected trait, bound, generic, aggregate-origin, module, public-contract, async,
+fault, contingency and manual suites accompany this release. The public async-host
+call model remains an unanswered design question.

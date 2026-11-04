@@ -701,6 +701,47 @@ conformance and async/fault/contingency permission checks remain separate later
 checks. Trait acceptance, ownership and origin rules do not change.
 
 
+## Associated-type normalization batches
+
+Since 0.198, normalization collects independent associated-type failures after all
+shared schemas, traits, implementation identities and local members have prepared.
+The shared 32-error limit applies, including unused assignments. Roots keep the
+existing canonical trait/type order, followed by each implementation's written
+member order; this is not global source order. The first-error APIs preserve the
+first failure and its original root location.
+
+<!-- tellur:reject E_LIFETIME -->
+```tellur
+trait source {
+    type item;
+    type alias;
+}
+implement source for u32 {
+    type item = ref string;
+    type alias = item;
+}
+implement source for string {
+    type item = ref u32;
+    type alias = item;
+}
+```
+
+Both `item` assignments violate the owned-associated-type rule. Their aliases depend
+on those failures and add no repeated diagnostics. Dependency tracking follows actual
+normalization, including lexical aliases, qualified selections and the types used as
+selection arguments. A failed recursive path is retired before the next root; cycles
+never become spurious failures in independent roots. Existing depth 64 and type-size
+16,384 bounds remain in force. A long dependency chain can exhaust the depth budget
+again from a later, previously unvisited root.
+
+Only completed values are cached internally. If any root fails, no substitutions,
+normalized witnesses, generated methods or checked hover reach later phases.
+Associated bounds, visibility, method conformance and body checking still wait for
+the whole normalization phase. Imported diagnostics retain original-file points;
+partial unsaved repairs remove resolved failures and restore hover only after the
+entire program checks. This changes recovery, not trait acceptance or ownership.
+
+
 ## Constructor-call preparation batches
 
 Since 0.91, inaccessible constructor calls in independent bodies report together.

@@ -3849,3 +3849,245 @@ fn implementation_preparation_batches_preserve_imported_origins_and_coherence_ba
     assert_eq!(report["diagnostics"].as_array().unwrap().len(), 1);
     assert_eq!(report["diagnostics"][0]["code"], "E_COHERENCE");
 }
+
+#[test]
+fn associated_normalization_batches_preserve_canonical_root_order_and_first_error() {
+    let source = "trait source {type item;}\nimplement source for u32 {type item=ref string;}\nimplement source for string {type item=ref u32;}\ncontrol main() exits done {u32 wrong=true;exit done;}";
+    let errors = check_errors(source);
+    assert_eq!(errors.errors.len(), 2, "{errors}");
+    assert_eq!(
+        errors
+            .errors
+            .iter()
+            .map(|e| (e.code, e.span.line, e.span.column))
+            .collect::<Vec<_>>(),
+        [("E_LIFETIME", 3, 35), ("E_LIFETIME", 2, 32)]
+    );
+    assert!(!errors.limit_reached);
+    assert_eq!(
+        compile(
+            source,
+            Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
+        )
+        .unwrap_err(),
+        errors.errors[0]
+    );
+}
+
+#[test]
+fn associated_normalization_batches_suppress_lexical_diamonds_and_replay_repairs() {
+    let source = "trait source {type a;type b;type c;type d;}\nimplement source for u32 {\ntype a=b;\ntype b=ref string;\ntype c=vector<b>;\ntype d=ref u32;\n}";
+    let errors = check_errors(source);
+    assert_eq!(
+        errors
+            .errors
+            .iter()
+            .map(|e| (e.code, e.span.line))
+            .collect::<Vec<_>>(),
+        [("E_LIFETIME", 3), ("E_LIFETIME", 6)],
+        "{errors}"
+    );
+    let partial = source.replace("b=ref string", "b=string");
+    let errors = check_errors(&partial);
+    assert_eq!(errors.errors.len(), 1, "{errors}");
+    assert_eq!(errors.errors[0].span.line, 6);
+    let fixed = format!(
+        "{} control main() exits auto {{source<u32>.a a=\"x\";source<u32>.c c=[\"y\"];exit done {{a,c}};}}",
+        partial.replace("d=ref u32", "d=u32")
+    );
+    let p = compile(
+        &fixed,
+        Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+    )
+    .unwrap();
+    let scenario = tellur::runtime::Scenario {
+        entry: "main".into(),
+        arguments: vec![],
+        calls: vec![],
+    };
+    assert_eq!(
+        p.run(&scenario).unwrap(),
+        p.expanded("main").unwrap().run(&scenario).unwrap()
+    );
+}
+
+#[test]
+fn associated_normalization_batches_retire_cross_implementation_cycles() {
+    let source = "trait source {type a;type b;}\nimplement source for u32 {\ntype a=source<string>.a;\ntype b=ref u32;\n}\nimplement source for string {\ntype a=source<u32>.a;\ntype b=ref string;\n}";
+    let errors = check_errors(source);
+    assert_eq!(
+        errors
+            .errors
+            .iter()
+            .map(|e| (e.code, e.span.line))
+            .collect::<Vec<_>>(),
+        [("E_TRAIT", 7), ("E_LIFETIME", 8), ("E_LIFETIME", 4)],
+        "{errors}"
+    );
+    assert!(errors.errors[0].message.contains("cyclic"));
+    // Two roots sharing one missing qualified selection report its first failure once.
+    let source = "trait source {type a;type b;type c;type d;} implement source for u32 {type a=source<u32>.missing;type b=source<u32>.missing;type c=source<string>.a;type d=ref u32;}";
+    let errors = check_errors(source);
+    assert_eq!(errors.errors.len(), 3, "{errors}");
+    assert!(errors.errors[0].message.contains("unknown associated type"));
+    assert!(errors.errors[1].message.contains("no implementation"));
+    assert_eq!(errors.errors[2].code, "E_LIFETIME");
+}
+
+#[test]
+fn associated_normalization_batches_follow_normalized_selection_targets() {
+    let source = "trait lookup {type item;} implement lookup for string {type item=string;}\ntrait source {type value;type target;type other;}\nimplement source for u32 {\ntype value=lookup<target>.item;\ntype target=ref string;\ntype other=ref bool;\n}";
+    let errors = check_errors(source);
+    assert_eq!(
+        errors
+            .errors
+            .iter()
+            .map(|e| (e.code, e.span.line))
+            .collect::<Vec<_>>(),
+        [("E_LIFETIME", 4), ("E_LIFETIME", 6)],
+        "{errors}"
+    );
+    let repaired = source
+        .replace("target=ref string", "target=string")
+        .replace("other=ref bool", "other=bool");
+    compile(&format!("{repaired} control main() exits done {{source<u32>.value text=\"valid\";drop(text);exit done;}}"),Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()).unwrap();
+    // A target can normalize successfully while the selected value itself fails.
+    let errors = check_errors(
+        &repaired
+            .replace("item=string", "item=ref string")
+            .replace("other=bool", "other=ref bool"),
+    );
+    assert_eq!(errors.errors.len(), 2, "{errors}");
+    assert!(errors.errors.iter().all(|e| e.code == "E_LIFETIME"));
+}
+
+#[test]
+fn associated_normalization_batches_keep_depth_type_size_and_diagnostic_budgets() {
+    let mut declaration = String::new();
+    let mut assignments = String::new();
+    for n in 0..70 {
+        declaration.push_str(&format!("type a{n};"));
+        assignments.push_str(&format!(
+            "type a{n}={};",
+            if n == 69 {
+                "u32".into()
+            } else {
+                format!("a{}", n + 1)
+            }
+        ));
+    }
+    let source = format!(
+        "trait source {{{declaration}type independent;}} implement source for u32 {{{assignments}type independent=ref u32;}}"
+    );
+    let errors = check_errors(&source);
+    assert_eq!(errors.errors.len(), 3, "{errors}");
+    assert!(
+        errors.errors[0].message.contains("deep") || errors.errors[0].message.contains("depth")
+    );
+    assert!(errors.errors[1].message.contains("depth"));
+    assert_eq!(errors.errors[2].code, "E_LIFETIME");
+    let source = format!(
+        "trait source {{type a;type b;}} implement source for u32 {{type a={};type b=ref u32;}}",
+        "x".repeat(16385)
+    );
+    let errors = check_errors(&source);
+    assert_eq!(errors.errors.len(), 2, "{errors}");
+    assert!(errors.errors[0].message.contains("type-size budget"));
+    assert_eq!(errors.errors[1].code, "E_LIFETIME");
+    let mut source = "trait source {type item;}\n".to_owned();
+    for n in 0..40 {
+        source.push_str(&format!("struct value_{n} {{u32 value;}} implement source for value_{n} {{type item=ref u32;}}\n"));
+    }
+    let errors = check_errors(&source);
+    assert_eq!(errors.errors.len(), 32, "{errors}");
+    assert!(errors.limit_reached);
+    assert!(errors.errors.iter().all(|e| e.code == "E_LIFETIME"));
+}
+
+#[test]
+fn associated_normalization_batches_keep_preparation_and_conformance_barriers() {
+    let source = "trait source {type item:copy;control read(self input) exits done;} implement source for u32 {type item=string;control read(ref self input) exits done {exit done;}} implement source for string {type item=ref string;control read(self input) exits done {exit done;}}";
+    let errors = check_errors(source);
+    assert_eq!(errors.errors.len(), 1, "{errors}");
+    assert_eq!(errors.errors[0].code, "E_LIFETIME");
+    let errors = check_errors(&source.replace("item=ref string", "item=u32"));
+    assert_eq!(errors.errors.len(), 1, "{errors}");
+    assert_eq!(errors.errors[0].code, "E_BOUND");
+    let errors = check_errors(
+        &source
+            .replace("item=ref string", "item=u32")
+            .replace("item=string", "item=u32"),
+    );
+    assert_eq!(errors.errors.len(), 1, "{errors}");
+    assert_eq!(errors.errors[0].code, "E_TRAIT_SIGNATURE");
+    for (prefix, code) in [
+        (
+            "struct invalid['a,'a] {ref string value <- 'a;} ",
+            "E_ORIGIN",
+        ),
+        (
+            "trait invalid {control read() exits auto;} ",
+            "E_TRAIT_SIGNATURE",
+        ),
+        (
+            "trait missing {type item;} implement missing for bool {} ",
+            "E_TRAIT",
+        ),
+        ("implement absent for bool {} ", "E_TRAIT"),
+    ] {
+        let errors = check_errors(&format!("{prefix}{source}"));
+        assert_eq!(errors.errors.len(), 1, "{errors}");
+        assert_eq!(errors.errors[0].code, code);
+    }
+}
+
+#[test]
+fn associated_normalization_batches_keep_transitive_imported_points_and_first_error() {
+    let f = Fixture::new();
+    for file in ["first.tellur", "second.tellur"] {
+        f.write(file,"trait source {type item;}\r\n// 😀\r\nimplement source for u32 {type item=ref string;}\r\n");
+    }
+    f.write(
+        "middle.tellur",
+        "import \"first.tellur\" as first;import \"second.tellur\" as second;",
+    );
+    f.write(
+        "main.tellur",
+        "import \"middle.tellur\" as middle;control main() exits done {exit done;}",
+    );
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    let errors = report["diagnostics"].as_array().unwrap();
+    assert_eq!(errors.len(), 2, "{report}");
+    for error in errors {
+        assert_eq!(error["code"], "E_LIFETIME");
+        assert_eq!(error["position"], json!({"line":3,"column":32}));
+    }
+    let paths = errors
+        .iter()
+        .map(|e| {
+            PathBuf::from(e["path"].as_str().unwrap())
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(
+        paths,
+        ["first.tellur".to_owned(), "second.tellur".to_owned()]
+            .into_iter()
+            .collect()
+    );
+    assert!(report["summary"].is_null());
+    let first = tellur::compile_file(
+        f.root.join("main.tellur"),
+        Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+    )
+    .unwrap_err();
+    assert_eq!(
+        first.path.to_string_lossy(),
+        errors[0]["path"].as_str().unwrap()
+    );
+    assert_eq!(first.diagnostic.span.line, 3);
+    assert_eq!(first.diagnostic.code, "E_LIFETIME");
+}

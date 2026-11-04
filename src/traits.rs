@@ -163,10 +163,23 @@ fn method_profile(r: &Region) -> Result<()> {
     }
     Ok(())
 }
+// A dependent root has already contributed an original diagnostic. Keep that
+// suppression separate from real failures, without inventing placeholder errors.
+enum NormalizationFailure {
+    Diagnostic(Diagnostic),
+    Dependent,
+}
+impl From<Diagnostic> for NormalizationFailure {
+    fn from(error: Diagnostic) -> Self {
+        Self::Diagnostic(error)
+    }
+}
+type NormalizationResult<T> = std::result::Result<T, NormalizationFailure>;
 struct Normalizer<'a> {
     implementations: &'a BTreeMap<(String, String), Implementation>,
     values: BTreeMap<String, String>,
     active: BTreeSet<String>,
+    failed: BTreeSet<String>,
 }
 impl Normalizer<'_> {
     fn ty(
@@ -175,12 +188,13 @@ impl Normalizer<'_> {
         context: Option<(&str, &str)>,
         at: Span,
         depth: usize,
-    ) -> Result<String> {
+    ) -> NormalizationResult<String> {
         if depth > 64 || ty.len() > 16384 {
             return Err(error(
                 at,
                 "associated type normalization exceeds its depth or type-size budget",
-            ));
+            )
+            .into());
         }
         if let Some((trait_name, target)) = context {
             if ty == "self" {
@@ -207,7 +221,8 @@ impl Normalizer<'_> {
                 return Err(error(
                     at,
                     "an associated type selects one implementing type and one member",
-                ));
+                )
+                .into());
             }
             let target = self.ty(args[0], context, at, depth + 1)?;
             return self.associated(base, &target, member, at, depth + 1);
@@ -216,7 +231,7 @@ impl Normalizer<'_> {
             let args = args
                 .iter()
                 .map(|a| self.ty(a, context, at, depth + 1))
-                .collect::<Result<Vec<_>>>()?;
+                .collect::<NormalizationResult<Vec<_>>>()?;
             return Ok(format!("{base}<{}>", args.join(",")));
         }
         Ok(ty.into())
@@ -228,43 +243,60 @@ impl Normalizer<'_> {
         name: &str,
         at: Span,
         depth: usize,
-    ) -> Result<String> {
+    ) -> NormalizationResult<String> {
         let key = format!("{trait_name}<{target}>.{name}");
         if let Some(value) = self.values.get(&key) {
             return Ok(value.clone());
         }
+        if self.failed.contains(&key) {
+            return Err(NormalizationFailure::Dependent);
+        }
         if depth > 64 || !self.active.insert(key.clone()) {
+            self.failed.insert(key.clone());
             return Err(error(
                 at,
                 format!("cyclic or excessively deep associated type `{key}`"),
-            ));
+            )
+            .into());
         }
-        let implementation = self
-            .implementations
-            .get(&(trait_name.into(), target.into()))
-            .ok_or_else(|| {
-                error(
+        let result = (|| {
+            let implementation = self
+                .implementations
+                .get(&(trait_name.into(), target.into()))
+                .ok_or_else(|| {
+                    error(
+                        at,
+                        format!("no implementation of `{trait_name}` for `{target}`"),
+                    )
+                })?;
+            let value = implementation
+                .associated
+                .iter()
+                .find(|a| a.name == name)
+                .and_then(|a| a.value.clone())
+                .ok_or_else(|| error(at, format!("unknown associated type `{key}`")))?;
+            let value = self.ty(&value, Some((trait_name, target)), at, depth + 1)?;
+            if manifest::reference_inner(&value).is_some() {
+                return Err(Diagnostic::new(
+                    "E_LIFETIME",
                     at,
-                    format!("no implementation of `{trait_name}` for `{target}`"),
-                )
-            })?;
-        let value = implementation
-            .associated
-            .iter()
-            .find(|a| a.name == name)
-            .and_then(|a| a.value.clone())
-            .ok_or_else(|| error(at, format!("unknown associated type `{key}`")))?;
-        let value = self.ty(&value, Some((trait_name, target)), at, depth + 1)?;
-        if manifest::reference_inner(&value).is_some() {
-            return Err(Diagnostic::new(
-                "E_LIFETIME",
-                at,
-                "associated types are owned types; stored borrowed types require the lifetime checkpoint",
-            ));
-        }
+                    "associated types are owned types; stored borrowed types require the lifetime checkpoint",
+                ).into());
+            }
+            Ok(value)
+        })();
+        // Only the invocation that inserted this active key retires it. Recursive
+        // cycle detection must leave the ancestor's active entry in place.
         self.active.remove(&key);
-        self.values.insert(key, value.clone());
-        Ok(value)
+        match &result {
+            Ok(value) => {
+                self.values.insert(key, value.clone());
+            }
+            Err(_) => {
+                self.failed.insert(key);
+            }
+        }
+        result
     }
 }
 fn in_scope(
@@ -557,12 +589,22 @@ pub(crate) fn lower(
         implementations: &implementations,
         values: BTreeMap::new(),
         active: BTreeSet::new(),
+        failed: BTreeSet::new(),
     };
-    for ((name, target), i) in &implementations {
-        for a in &i.associated {
-            normalizer.associated(name, target, &a.name, a.span, 0)?;
-        }
-    }
+    // Preserve canonical trait/target order and each implementation's member order.
+    // Completed dependencies remain private; no substitutions escape a failed phase.
+    crate::diagnostics::collect_checks(
+        implementations
+            .iter()
+            .flat_map(|((name, target), i)| i.associated.iter().map(move |a| (name, target, a)))
+            .filter_map(|(name, target, a)| {
+                match normalizer.associated(name, target, &a.name, a.span, 0) {
+                    Ok(_) => Some(Ok(())),
+                    Err(NormalizationFailure::Diagnostic(error)) => Some(Err(error)),
+                    Err(NormalizationFailure::Dependent) => None,
+                }
+            }),
+    )?;
     let replacements = normalizer.values;
     // Every substitution comes from a checked trait/type/member identity.
     for data in &mut unit.data {
