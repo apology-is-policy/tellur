@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-darwin-arm64-0.201.0.vsix` using **Extensions:
+1. Install the supplied `tellur-language-darwin-arm64-0.202.0.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1659,3 +1659,10 @@ shape and return-origin conformance errors. Named completions select their use s
 Imported unsaved partial repairs refresh both range endpoints; precise child errors
 and parameter mismatch locations keep their priority. Checked trait-call hover
 returns after full validation with the trait's declared parameter names and origins.
+
+
+Compiler 0.202 selects the first mismatched written parameter type when implementation
+and trait parameter counts match. Ownership modifiers and generic/associated aliases
+retain their source ranges, including imported unsaved edits. Different parameter
+counts keep the method point. Earlier origin checks, independent batches and checked
+trait-side hover retain their existing behavior.

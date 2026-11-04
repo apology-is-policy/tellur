@@ -5477,3 +5477,24 @@ partial repair, suppress stale hover and restore trait-side names and native cal
 Selected trait, associated-bound, aggregate-origin, generic, module, public-contract,
 async/fault/contingency and reference suites accompany the release. The recorded
 public async-host call-model question remains unanswered.
+
+
+## Implementation parameter locations (0.202 / P2aj)
+
+Equal-length implementation signatures now select the first actual parameter type
+that differs from the trait contract. The existing field range helper preserves
+written ownership modifiers, generic arguments and associated/self aliases, while
+missing metadata or different arities retain the method-point fallback. Earlier
+origin comparisons and the parameter-before-completion shape priority are unchanged.
+
+CLI cases cover modern and compatibility annotations, multiline Unicode/CRLF,
+first differing positions, nested and associated types, transitive imports, generic
+callers, repair, missing/extra parameters, child and outer origin precedence, batch
+order, budgets and first-error APIs. The earlier completion-priority regression now
+expects the precise parameter type. A synthetic unit case removes type metadata.
+LSP and isolated VS Code exercise independent imported parameter failures, unsaved
+partial repairs, full UTF-16 annotations, suppressed stale hover, restored trait names
+and native calls. The prior mixed bound/signature editor case is updated and rerun.
+Selected trait, bound, aggregate-origin, generic, module, public-contract, async,
+fault/contingency and reference checks accompany the release. The public async-host
+call-model decision remains pending.

@@ -802,6 +802,24 @@ fn completion_conformance_error(actual: &Region, error: Diagnostic) -> Diagnosti
         error
     }
 }
+fn parameter_conformance_error(
+    expected: &Region,
+    actual: &Region,
+    error: Diagnostic,
+) -> Diagnostic {
+    // Different counts have no corresponding authored type for a missing slot.
+    if expected.parameters.len() == actual.parameters.len()
+        && let Some((parameter, _)) = actual
+            .parameters
+            .iter()
+            .zip(&expected.parameters)
+            .find(|(actual, expected)| actual.ty != expected.ty)
+    {
+        parameter.type_error(error, actual.span)
+    } else {
+        error
+    }
+}
 pub(crate) fn check_contracts(
     checks: &[TraitCheck],
     regions: &[Region],
@@ -892,7 +910,7 @@ pub(crate) fn check_contracts(
                 return Err(if same_parameters {
                     completion_conformance_error(&actual, error)
                 } else {
-                    error
+                    parameter_conformance_error(&expected, &actual, error)
                 });
             }
             // Retain the validated trait-side names and origins for source tooling.
@@ -998,6 +1016,23 @@ mod tests {
         let range = method.declared_exit_range;
         assert_ne!(span, range.start);
         method.declared_exit_range = crate::SourceRange::default();
+        let manifest = Manifest::from_json(include_str!("../playground/manifest.json")).unwrap();
+        let errors =
+            crate::check::compile_unit(unit, manifest, &Visibility::default()).unwrap_err();
+        assert_eq!(errors.errors.len(), 1);
+        assert_eq!(errors.errors[0].code, "E_TRAIT_SIGNATURE");
+        assert_eq!(errors.errors[0].span, span);
+        assert!(errors.errors[0].end.is_none());
+    }
+
+    #[test]
+    fn implementation_parameter_range_keeps_missing_metadata_fallback() {
+        let source = "trait reader {control read(u32 input) exits done;} implement reader for u32 {control read(ref u32 input) exits done {exit done;}}";
+        let mut unit = crate::syntax::parse_unit(source).unwrap();
+        let method = &mut unit.implementations[0].methods[0];
+        let span = method.span;
+        assert_ne!(method.parameters[0].type_range.start, span);
+        method.parameters[0].type_range = crate::SourceRange::default();
         let manifest = Manifest::from_json(include_str!("../playground/manifest.json")).unwrap();
         let errors =
             crate::check::compile_unit(unit, manifest, &Visibility::default()).unwrap_err();

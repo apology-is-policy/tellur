@@ -4664,25 +4664,35 @@ fn implementation_completion_ranges_preserve_imported_generic_named_use_sites() 
 #[test]
 fn implementation_completion_ranges_keep_parameter_priority_child_ranges_and_fault_only_fallback() {
     let f = Fixture::new();
-    for (source, selected) in [
+    for (source, selected, annotation) in [
         (
             "trait reader {control read(u32 input) exits ready {u32 value};} implement reader for u32 {control read(ref u32 input) exits ready {string value} {exit ready {\"x\"};}}",
             "control read(ref u32 input)",
+            Some("ref u32"),
         ),
         (
             "trait reader {control read() exits done faults;} implement reader for u32 {control read() faults {fault \"x\";}}",
             "control read() faults",
+            None,
         ),
     ] {
         f.write("main.tellur", source);
         let report = f.report(&["check", "main.tellur", "--json"], false);
         let error = &report["diagnostics"][0];
         assert_eq!(error["code"], "E_TRAIT_SIGNATURE", "{report}");
-        assert!(error["range"].is_null(), "{report}");
-        assert_eq!(
-            error["position"],
-            scalar_position(source, source.find(selected).unwrap())
-        );
+        if let Some(annotation) = annotation {
+            assert_eq!(
+                error["range"],
+                selected_range(source, annotation),
+                "{report}"
+            );
+        } else {
+            assert!(error["range"].is_null(), "{report}");
+            assert_eq!(
+                error["position"],
+                scalar_position(source, source.find(selected).unwrap())
+            );
+        }
     }
     let source = "trait reader {control read(ref string input) exits ready {ref string value from input};} implement reader for u32 {control read(ref string owner) exits ready {ref string value from missing} {exit ready {owner};}}";
     f.write("main.tellur", source);
@@ -4718,6 +4728,169 @@ fn implementation_completion_ranges_preserve_batch_order_and_budget() {
         assert_eq!(
             error.end.as_ref().unwrap().column,
             range["end"]["column"].as_u64().unwrap() as usize
+        );
+    }
+    assert_eq!(
+        compile(
+            &source,
+            Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
+        )
+        .unwrap_err(),
+        errors.errors[0]
+    );
+}
+
+#[test]
+fn implementation_parameter_ranges_select_first_differing_written_type() {
+    let f = Fixture::new();
+    for (expected, actual, selected) in [
+        ("self input", "ref self owner", "ref self"),
+        (
+            "ref self input",
+            "ref mutable self owner",
+            "ref mutable self",
+        ),
+        ("self input", "owner: &self", "&self"),
+        (
+            "u32 first,u32 second,u32 third",
+            "u32 a,string b,bool c",
+            "string",
+        ),
+        (
+            "vector<u32> input",
+            "vector< // 😀\r\n string> owner",
+            "vector< // 😀\r\n string>",
+        ),
+        (
+            "self input",
+            "ref // 😀\r\n self owner",
+            "ref // 😀\r\n self",
+        ),
+    ] {
+        let source = format!(
+            "trait reader {{control read({expected}) exits done;}}\r\nimplement reader for u32 {{control read({actual}) exits done {{exit done;}}}}"
+        );
+        f.write("main.tellur", &source);
+        let report = f.report(&["check", "main.tellur", "--json"], false);
+        assert_eq!(
+            report["diagnostics"].as_array().unwrap().len(),
+            1,
+            "{report}"
+        );
+        let error = &report["diagnostics"][0];
+        assert_eq!(error["code"], "E_TRAIT_SIGNATURE", "{report}");
+        assert_eq!(
+            error["range"],
+            selected_range(&source, selected),
+            "{report}"
+        );
+        assert_eq!(error["position"], error["range"]["start"]);
+    }
+}
+
+#[test]
+fn implementation_parameter_ranges_keep_imported_aliases_and_generic_callers() {
+    let f = Fixture::new();
+    f.write(
+        "main.tellur",
+        "import \"middle.tellur\" as middle;control main() exits done {exit done;}",
+    );
+    f.write("middle.tellur", "import \"worker.tellur\" as worker;");
+    let source = "// 😀\r\ntrait reader {type item;control read(vector<item> input) exits done;}\r\nimplement reader for u32 {type item=u32;control read(ref vector< // 😀\r\n item> owner) exits done {exit done;}}\r\ncontrol call<t:reader>(vector<reader<t>.item> input) exits done {reader<t>.read(input);exit done;}";
+    f.write("worker.tellur", source);
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    assert_eq!(
+        report["diagnostics"].as_array().unwrap().len(),
+        1,
+        "{report}"
+    );
+    let error = &report["diagnostics"][0];
+    assert_eq!(error["code"], "E_TRAIT_SIGNATURE", "{report}");
+    assert_eq!(
+        error["path"],
+        f.root.join("worker.tellur").to_string_lossy().as_ref()
+    );
+    assert_eq!(
+        error["range"],
+        selected_range(source, "ref vector< // 😀\r\n item>")
+    );
+    assert!(!report.to_string().contains("_path_poly_"));
+    let first = tellur::compile_file(
+        f.root.join("main.tellur"),
+        Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+    )
+    .unwrap_err();
+    assert_eq!(first.path, f.root.join("worker.tellur"));
+    assert_eq!(
+        first.diagnostic.span.line,
+        error["position"]["line"].as_u64().unwrap() as usize
+    );
+    assert_eq!(
+        first.diagnostic.end.as_ref().unwrap().column,
+        error["range"]["end"]["column"].as_u64().unwrap() as usize
+    );
+    // Repair ownership and let the now-owned implementation consume its input.
+    let fixed = source.replace("read(ref vector<", "read(vector<").replace(
+        "owner) exits done {exit done;}",
+        "owner) exits done {drop(owner);exit done;}",
+    );
+    f.write("worker.tellur", &fixed);
+    f.report(&["check", "main.tellur", "--json"], true);
+}
+
+#[test]
+fn implementation_parameter_ranges_preserve_arity_fallback_and_origin_priority() {
+    let f = Fixture::new();
+    for (expected, actual) in [
+        ("u32 input", ""),
+        ("", "u32 input"),
+        ("u32 input", "string first,u32 second"),
+    ] {
+        let source = format!(
+            "trait reader {{control read({expected}) exits done;}} implement reader for u32 {{control read({actual}) exits done {{exit done;}}}}"
+        );
+        f.write("main.tellur", &source);
+        let report = f.report(&["check", "main.tellur", "--json"], false);
+        let error = &report["diagnostics"][0];
+        assert_eq!(error["code"], "E_TRAIT_SIGNATURE", "{report}");
+        assert!(error["range"].is_null(), "{report}");
+        assert_eq!(
+            error["position"],
+            scalar_position(&source, source.rfind("control read").unwrap())
+        );
+    }
+    for (origin, selected) in [
+        ("b", "exits ready {ref string value from b}"),
+        ("missing", "from missing"),
+    ] {
+        let source = format!(
+            "trait reader {{control read(ref string left,ref string right,u32 n) exits ready {{ref string value from left}};}} implement reader for u32 {{control read(ref string a,ref string b,bool n) exits ready {{ref string value from {origin}}} {{exit ready {{b}};}}}}"
+        );
+        f.write("main.tellur", &source);
+        let report = f.report(&["check", "main.tellur", "--json"], false);
+        assert_eq!(report["diagnostics"][0]["code"], "E_LIFETIME", "{report}");
+        assert_eq!(
+            report["diagnostics"][0]["range"],
+            selected_range(&source, selected)
+        );
+    }
+}
+
+#[test]
+fn implementation_parameter_ranges_preserve_batch_order_and_budget() {
+    let mut source = "trait reader {control read(u32 input) exits done;}\n".to_owned();
+    for n in (0..40).rev() {
+        source.push_str(&format!("struct value_{n:02} {{u32 value;}} implement reader for value_{n:02} {{control read(ref u32 input) exits done {{exit done;}}}}\n"));
+    }
+    let errors = check_errors(&source);
+    assert_eq!(errors.errors.len(), 32, "{errors}");
+    assert!(errors.limit_reached);
+    for (n, error) in errors.errors.iter().enumerate() {
+        assert_eq!(error.code, "E_TRAIT_SIGNATURE");
+        assert_eq!(error.span.line, 41 - n);
+        assert_eq!(
+            error.end.as_ref().unwrap().column - error.span.column,
+            "ref u32".len()
         );
     }
     assert_eq!(

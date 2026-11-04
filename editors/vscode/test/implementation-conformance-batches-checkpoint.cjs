@@ -42,13 +42,13 @@ exports.run = async function (root) {
   const partial = original.replace("for string {type item=u32", "for string {type item=string");
   const broken = partial.replace("read(self first)", "read(ref self first)");
   for (const [text, selections] of [
-    [broken, ["item=string", "control read(ref self first)"]],
+    [broken, ["item=string", "ref self"]],
     [partial, ["item=string"]],
   ]) {
     await replace(text);
     const expected = selections.map(selected => {
       const at = text.indexOf(selected);
-      return new vscode.Range(dependency.positionAt(at), dependency.positionAt(at + (selected.startsWith("item") ? 4 : 7)));
+      return new vscode.Range(dependency.positionAt(at), dependency.positionAt(at + (selected.startsWith("item") ? 4 : selected.length)));
     });
     await waitFor(() => diagnostics().length === expected.length && diagnostics().every((d, i) => code(d) === (selections[i].startsWith('item') ? 'E_BOUND' : 'E_TRAIT_SIGNATURE') && d.relatedInformation?.some(info => info.location.uri.toString() === dependency.uri.toString() && info.location.range.isEqual(expected[i]))), 'fresh implementation conformance diagnostics after partial repair');
     assert.ok(!(await hover()).includes('done'), 'partial contract repair must not expose stale hover');

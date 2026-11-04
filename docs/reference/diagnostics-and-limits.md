@@ -849,12 +849,46 @@ origin bindings, rather than copied fields in the outcome definition. Imported a
 unsaved files retain their original source coordinates; the editor converts both
 endpoints to UTF-16 positions.
 
-This does not change conformance rules or check order. Parameter mismatches keep
-their existing method point; narrower child errors such as an invalid `from` origin
-keep their precise ranges. Fault-only or synthetic methods without written completion
+This does not change conformance rules or check order. Parameter mismatches use
+their own locations described below; narrower child errors such as an invalid `from`
+origin keep their precise ranges. Fault-only or synthetic methods without written completion
 metadata keep the existing point fallback. Independent implementation ordering,
 partial repairs, the 32-error cap and single-error APIs remain as described above.
 Checked trait-call hover returns after the entire conformance phase succeeds.
+
+
+## Implementation parameter locations
+
+Since 0.202, an implementation with the same number of parameters as its trait
+method selects the first parameter whose type or ownership differs. The range covers
+the written type, including `ref`, `mutable` and generic arguments, and excludes the
+local parameter name. Associated-type and `self` aliases retain their authored
+spelling locations through normalization, imported files and generic checking.
+
+<!-- tellur:reject E_TRAIT_SIGNATURE -->
+```tellur
+trait reader {
+    control read(self input) exits done;
+}
+implement reader for u32 {
+    control read(ref self owner) exits done {
+        exit done;
+    }
+}
+```
+
+The error selects `ref self` in the implementation. Renaming `owner` to `input` would
+not repair the ownership mismatch; local parameter names do not affect conformance.
+Different parameter counts keep the existing method point, even if a shared-prefix
+parameter also differs. Synthetic parameters without written type metadata use the
+same fallback.
+
+Direct and contained return-origin checks still precede parameter comparison. When
+both parameter and completion shapes differ, the parameter mismatch retains priority;
+when parameters agree, the completion clause locations above apply. Independent
+implementation order, trait method order, child diagnostics, partial repairs, the
+32-error cap and atomic publication of checked trait signatures remain unchanged.
+Imported unsaved edits update both range endpoints before checked hover returns.
 
 
 ## Constructor-call preparation batches
