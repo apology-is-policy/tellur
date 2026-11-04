@@ -990,6 +990,35 @@ layout-count budgets are unchanged. Targets, ordinary generic arguments and
 synthetic requirements retain their existing fallbacks.
 
 
+## Implementation target locations
+
+Since 0.206, implementation target lookup and preparation errors select the written
+type after `for`. The range includes qualified names, reference modifiers and generic
+arguments, including interior comments. The `for` keyword, trailing comments and
+body braces stay outside it. Both endpoints survive imported and unsaved source maps.
+
+<!-- tellur:reject E_TRAIT -->
+```tellur
+trait reader {}
+implement reader for ref mutable u32 {}
+```
+
+This error selects `ref mutable u32`: targets still must be concrete owned types.
+Unknown or unapplied types, wrong arity, invalid array lengths and dependent
+associated selections similarly select their written target. Lookup failures for
+private or missing imported target names keep their existing codes and select the
+qualified target use.
+
+Trait lookup remains earlier. Unknown-trait, foreign-module and duplicate-pair
+coherence errors keep their existing points; member/profile checks keep their
+separate locations. Invalid or ambiguous identities still disable independent
+implementation recovery and preserve the original interleaved first-error order.
+The 1024-implementation limit remains earlier and keeps its own point. Valid shared
+identities still permit the existing 32-error preparation batches. Missing target
+metadata falls back to the implementation point, and precise child ranges are
+preserved. No target acceptance or ownership/coherence rule changes.
+
+
 ## Constructor-call preparation batches
 
 Since 0.91, inaccessible constructor calls in independent bodies report together.

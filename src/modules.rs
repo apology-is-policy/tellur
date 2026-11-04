@@ -975,7 +975,12 @@ fn resolve(
             r.type_parameters.clear();
             implementation.trait_name =
                 r.name(&implementation.trait_name, implementation.span, Some(true))?;
-            implementation.target = r.ty(&implementation.target, implementation.span)?;
+            implementation.target =
+                r.ty(&implementation.target, implementation.span)
+                    .map_err(|mut error| {
+                        error.diagnostic = implementation.target_error(error.diagnostic);
+                        error
+                    })?;
             implementation.module = id;
             r.type_parameters = implementation
                 .associated
@@ -998,6 +1003,10 @@ fn resolve(
             }
             for method in &mut implementation.methods {
                 r.method(method)?;
+            }
+            if implementation.target_range.start.line != 0 {
+                implementation.target_range.start.line += offset;
+                implementation.target_range.end.line += offset;
             }
             implementation.span.line += offset;
             implementation.end.line += offset;

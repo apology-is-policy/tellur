@@ -394,9 +394,16 @@ pub struct Implementation {
     pub end: Span,
     pub trait_name: String,
     pub target: String,
+    /// Written target type after `for`, excluding the implementation body.
+    pub target_range: SourceRange,
     pub module: usize,
     pub associated: Vec<AssociatedType>,
     pub methods: Vec<Region>,
+}
+impl Implementation {
+    pub(crate) fn target_error(&self, error: Diagnostic) -> Diagnostic {
+        type_error(self.target_range, error, self.span)
+    }
 }
 #[derive(Clone, Debug)]
 pub struct TraitCheck {
@@ -2066,7 +2073,9 @@ pub(crate) fn parse_with_layout(source: &str) -> Result<(Unit, Vec<Token>, crate
             }
             let trait_name = p.qualified()?;
             p.need("for")?;
+            let target_start = p.here();
             let target = p.ty()?;
+            let target_range = p.range_from(target_start);
             p.layout.blocks.insert(p.pos);
             p.need("{")?;
             let mut associated = vec![];
@@ -2086,6 +2095,7 @@ pub(crate) fn parse_with_layout(source: &str) -> Result<(Unit, Vec<Token>, crate
                 end: p.tokens[p.pos - 1].span,
                 trait_name,
                 target,
+                target_range,
                 module: 0,
                 associated,
                 methods,

@@ -5225,8 +5225,11 @@ fn associated_concrete_ranges_preserve_bound_type_body_and_visibility_priority()
         "trait reader {type item;} implement reader for missing {type item=vector<missing>; }";
     let error = &check_errors(target).errors[0];
     assert_eq!(error.code, "E_TRAIT");
-    assert_eq!(error.span.column, target.find("implement").unwrap() + 1);
-    assert!(error.end.is_none());
+    assert_eq!(error.span.column, target.find("for ").unwrap() + 5);
+    assert_eq!(
+        error.end.as_ref().unwrap().column - error.span.column,
+        "missing".len()
+    );
 }
 
 #[test]
@@ -5427,8 +5430,11 @@ fn associated_instantiation_ranges_preserve_declaration_signature_and_body_prior
     let error = &check_errors(target).errors[0];
     assert_eq!(error.code, "E_TRAIT", "{error}");
     assert!(error.message.contains("wrong arity"));
-    assert_eq!(error.span.column, target.find("implement").unwrap() + 1);
-    assert!(error.end.is_none());
+    assert_eq!(error.span.column, target.find("for ").unwrap() + 5);
+    assert_eq!(
+        error.end.as_ref().unwrap().column - error.span.column,
+        "box<u32,bool>".len()
+    );
 }
 
 #[test]
@@ -5466,4 +5472,183 @@ fn associated_instantiation_ranges_keep_single_error_canonical_order_and_repairs
         Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
     )
     .unwrap();
+}
+
+#[test]
+fn implementation_target_ranges_select_complete_written_types() {
+    let f = Fixture::new();
+    for target in [
+        "missing",
+        "box",
+        "box< // 😀\r\n u32,bool>",
+        "ref // 😀\r\n mutable u32",
+        "array<u32,string>",
+        "source<u32>.item",
+    ] {
+        let source = format!(
+            "struct box<t> {{t value;}} trait source {{type item;}} trait reader {{}}\r\nimplement reader for {target} // outside\r\n{{}}"
+        );
+        f.write("main.tellur", &source);
+        let report = f.report(&["check", "main.tellur", "--json"], false);
+        let errors = report["diagnostics"].as_array().unwrap();
+        assert_eq!(errors.len(), 1, "{report}");
+        assert_eq!(errors[0]["code"], "E_TRAIT", "{report}");
+        let at = source.find("implement reader for ").unwrap() + "implement reader for ".len();
+        assert_eq!(
+            errors[0]["range"],
+            json!({"start":scalar_position(&source,at),"end":scalar_position(&source,at+target.len())}),
+            "{report}"
+        );
+        assert_eq!(errors[0]["position"], errors[0]["range"]["start"]);
+        assert_eq!(
+            compile(
+                &source,
+                Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
+            )
+            .unwrap_err(),
+            check_errors(&source).errors[0]
+        );
+    }
+}
+
+#[test]
+fn implementation_target_ranges_preserve_imported_lookup_and_privacy() {
+    let f = Fixture::new();
+    f.write(
+        "types.tellur",
+        "pub struct item {u32 value;} pub struct box<t> {t value;} struct hidden {u32 value;}",
+    );
+    f.write("middle.tellur", "import \"worker.tellur\" as worker;");
+    f.write(
+        "main.tellur",
+        "import \"middle.tellur\" as middle;control main() exits done {exit done;}",
+    );
+    for (target, code) in [
+        ("types.missing", "E_NAME"),
+        ("types.hidden", "E_VISIBILITY"),
+        ("types.box< // 😀\r\n u32,bool>", "E_TRAIT"),
+        ("ref mutable types.item", "E_TRAIT"),
+    ] {
+        let source = format!(
+            "import \"types.tellur\" as types;\r\ntrait reader {{}}\r\nimplement reader for {target} {{}}"
+        );
+        f.write("worker.tellur", &source);
+        let report = f.report(&["check", "main.tellur", "--json"], false);
+        let error = &report["diagnostics"][0];
+        assert_eq!(error["code"], code, "{report}");
+        assert_eq!(
+            error["path"],
+            f.root.join("worker.tellur").to_string_lossy().as_ref()
+        );
+        assert_eq!(error["range"], selected_range(&source, target), "{report}");
+        let first = tellur::compile_file(
+            f.root.join("main.tellur"),
+            Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(first.path, f.root.join("worker.tellur"));
+        assert_eq!(first.diagnostic.code, code);
+        assert_eq!(
+            first.diagnostic.span.line,
+            error["position"]["line"].as_u64().unwrap() as usize
+        );
+        assert_eq!(
+            first.diagnostic.end.as_ref().unwrap().column,
+            error["range"]["end"]["column"].as_u64().unwrap() as usize
+        );
+        f.write("worker.tellur", &source.replace(target, "types.item"));
+        f.report(&["check", "main.tellur", "--json"], true);
+    }
+}
+
+#[test]
+fn implementation_target_ranges_keep_identity_coherence_and_member_priority() {
+    let source = "trait reader {control read(self input) exits done;} implement reader for u32 {} implement reader for missing {}";
+    let error = &check_errors(source).errors[0];
+    assert!(error.message.contains("supply exactly"));
+    assert!(error.end.is_none());
+    let fixed = source.replace(
+        "for u32 {}",
+        "for u32 {control read(self input) exits done {exit done;}}",
+    );
+    let error = &check_errors(&fixed).errors[0];
+    assert!(error.message.contains("unknown or unapplied"));
+    assert!(error.end.is_some());
+    for (source, code, message) in [
+        (
+            "trait reader {} implement absent for missing {}",
+            "E_TRAIT",
+            "unknown trait",
+        ),
+        (
+            "trait reader {} implement reader for u32 {} implement reader for u32 {} implement reader for missing {}",
+            "E_COHERENCE",
+            "duplicate implementation",
+        ),
+        (
+            "trait reader {control read(self input) exits done;} implement reader for u32 {control read(self input) exits auto {exit done;}} implement reader for missing {}",
+            "E_TRAIT_SIGNATURE",
+            "explicit",
+        ),
+    ] {
+        let errors = check_errors(source);
+        assert_eq!(errors.errors.len(), 1, "{errors}");
+        assert_eq!(errors.errors[0].code, code, "{errors}");
+        assert!(errors.errors[0].message.contains(message), "{errors}");
+        assert!(errors.errors[0].end.is_none(), "{errors}");
+    }
+    let f = Fixture::new();
+    f.write(
+        "types.tellur",
+        "pub trait reader {} pub struct item {u32 value;}",
+    );
+    let source = "import \"types.tellur\" as types;\r\nimplement types.reader for types.item {}";
+    f.write("main.tellur", source);
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    let error = &report["diagnostics"][0];
+    assert_eq!(error["code"], "E_COHERENCE", "{report}");
+    assert_eq!(error["position"], json!({"line":2,"column":1}));
+    assert!(error["range"].is_null());
+}
+
+#[test]
+fn implementation_target_ranges_keep_invalid_identity_order_and_budgets() {
+    let mut source = "trait reader {}\n".to_owned();
+    for n in (0..40).rev() {
+        source.push_str(&format!("implement reader for missing_{n:02} {{}}\n"));
+    }
+    for fixed in 0..2 {
+        let errors = check_errors(&source);
+        assert_eq!(errors.errors.len(), 1, "{errors}");
+        assert!(!errors.limit_reached);
+        let error = &errors.errors[0];
+        assert_eq!(error.code, "E_TRAIT");
+        assert_eq!(error.span.line, 2 + fixed);
+        assert_eq!(
+            error.end.as_ref().unwrap().column - error.span.column,
+            "missing_39".len()
+        );
+        assert_eq!(
+            compile(
+                &source,
+                Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
+            )
+            .unwrap_err(),
+            *error
+        );
+        source = source.replace(
+            &format!("missing_{:02}", 39 - fixed),
+            if fixed == 0 { "u32" } else { "string" },
+        );
+    }
+    let limited = format!(
+        "trait reader {{}}\n{}",
+        "implement reader for missing {}\n".repeat(1025)
+    );
+    let errors = check_errors(&limited);
+    assert_eq!(errors.errors.len(), 1, "{errors}");
+    assert!(!errors.limit_reached);
+    assert!(errors.errors[0].message.contains("1024-implementation"));
+    assert_eq!(errors.errors[0].span.line, 1026);
+    assert!(errors.errors[0].end.is_none());
 }

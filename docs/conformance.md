@@ -5556,3 +5556,21 @@ next failure, then restore checked trait-side hover and native execution. The pr
 concrete-type/visibility editor fixture remains a regression. Generic-data budget
 and specialization checks join the selected suites. Public async-host admission
 still awaits the recorded design decision.
+
+
+## Implementation target locations (0.206 / P2an)
+
+Implementation targets retain a parsed range around the type after `for`. Module
+lookup attaches that range before remapping, and preparation applies it to concrete
+owned-target profile and declared-type shape errors. Shared identity preflight and
+interleaved replay still use the same checks; unknown traits, coherence and member
+errors retain their original priority and locations.
+
+CLI cases cover unknown/unapplied/wrong-arity targets, dependent selections, array
+lengths, multiline borrowed types, comments, imports, private and missing qualified
+names, first-error APIs, member/identity/coherence ordering, repairs and the 1024
+implementation limit. A unit case checks missing metadata and precise child ranges.
+Two earlier target-priority regressions now expect target ranges. LSP and isolated
+VS Code cases repair the first invalid target to reveal the next, then restore
+trait-side hover and native calls. The previous independent preparation fixture
+remains a regression. Public async-host admission still awaits the recorded decision.

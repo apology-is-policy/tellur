@@ -392,12 +392,13 @@ fn implementation_identity<'a>(
         .get(&i.trait_name)
         .ok_or_else(|| error(i.span, format!("unknown trait `{}`", i.trait_name)))?;
     if manifest::reference_inner(&i.target).is_some() || qualified_member(&i.target).is_some() {
-        return Err(error(
+        return Err(i.target_error(error(
             i.span,
             "implementation targets must be explicit concrete owned types",
-        ));
+        )));
     }
-    check_decl_type(&i.target, &BTreeSet::new(), &arities, i.span)?;
+    check_decl_type(&i.target, &BTreeSet::new(), &arities, i.span)
+        .map_err(|e| i.target_error(e))?;
     if d.module != i.module && !visibility.owns(i.module, &i.target) {
         return Err(Diagnostic::new(
             "E_COHERENCE",
@@ -1016,6 +1017,42 @@ pub(crate) fn abstract_witness(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn implementation_target_ranges_keep_missing_metadata_and_child_locations() {
+        for target in ["missing", "box<u32,bool>", "ref mutable u32"] {
+            let source = format!(
+                "struct box<t> {{t value;}} trait reader {{}} implement reader for {target} {{}}"
+            );
+            let mut unit = crate::syntax::parse_unit(&source).unwrap();
+            let implementation = &mut unit.implementations[0];
+            let span = implementation.span;
+            assert_ne!(implementation.target_range.start, span);
+            let child =
+                Diagnostic::new("E_TRAIT", span, "precise child").with_range(crate::SourceRange {
+                    start: Span {
+                        line: 90,
+                        column: 2,
+                    },
+                    end: Span {
+                        line: 90,
+                        column: 7,
+                    },
+                });
+            assert_eq!(implementation.target_error(child.clone()), child);
+            implementation.target_range = crate::SourceRange::default();
+            let errors = crate::check::compile_unit(
+                unit,
+                Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+                &Visibility::default(),
+            )
+            .unwrap_err();
+            assert_eq!(errors.errors.len(), 1);
+            assert_eq!(errors.errors[0].code, "E_TRAIT");
+            assert_eq!(errors.errors[0].span, span);
+            assert!(errors.errors[0].end.is_none());
+        }
+    }
 
     #[test]
     fn associated_instantiation_ranges_keep_missing_metadata_fallback() {
