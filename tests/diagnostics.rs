@@ -5268,3 +5268,202 @@ fn associated_concrete_ranges_keep_canonical_batches_and_visibility_barrier() {
         "vector<hidden>".len()
     );
 }
+
+#[test]
+fn associated_instantiation_ranges_select_written_types_and_aliases() {
+    let f = Fixture::new();
+    for (prefix, assignment, selected, message) in [
+        (
+            "",
+            "type a=box< // 😀\r\n u32,bool>;",
+            "box< // 😀\r\n u32,bool>",
+            "expects 1",
+        ),
+        ("", "type a=box;", "box;}", "requires explicit"),
+        (
+            "",
+            "type a=option<box<missing>>;",
+            "option<box<missing>>",
+            "unknown type",
+        ),
+        (
+            "",
+            "type a=b;type b=box<u32,bool>;",
+            "b;type b",
+            "expects 1",
+        ),
+        (
+            "trait z_source {type item;} implement z_source for bool {type item=box<u32,bool>;}",
+            "type a=z_source<bool>.item;",
+            "z_source<bool>.item",
+            "expects 1",
+        ),
+    ] {
+        let members = if assignment.contains("type b=") {
+            "type a;type b;"
+        } else {
+            "type a;"
+        };
+        let source = format!(
+            "struct box<t> {{t value;}} {prefix}\r\ntrait reader {{{members}}}\r\nimplement reader for u32 {{{assignment}}}"
+        );
+        f.write("main.tellur", &source);
+        let report = f.report(&["check", "main.tellur", "--json"], false);
+        let errors = report["diagnostics"].as_array().unwrap();
+        assert_eq!(errors.len(), 1, "{report}");
+        assert_eq!(errors[0]["code"], "E_GENERIC", "{report}");
+        assert!(
+            errors[0]["message"].as_str().unwrap().contains(message),
+            "{report}"
+        );
+        let at = source.find(selected).unwrap();
+        let length = if selected == "b;type b" {
+            1
+        } else if selected == "box;}" {
+            3
+        } else {
+            selected.len()
+        };
+        assert_eq!(
+            errors[0]["range"],
+            json!({"start":scalar_position(&source,at),"end":scalar_position(&source,at+length)}),
+            "{report}"
+        );
+        assert_eq!(
+            compile(
+                &source,
+                Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
+            )
+            .unwrap_err(),
+            check_errors(&source).errors[0]
+        );
+    }
+}
+
+#[test]
+fn associated_instantiation_ranges_preserve_imported_aliases_and_witnesses() {
+    let f = Fixture::new();
+    f.write("types.tellur", "pub struct box<t> {t value;}");
+    f.write("middle.tellur", "import \"worker.tellur\" as worker;");
+    f.write(
+        "main.tellur",
+        "import \"middle.tellur\" as middle;control main() exits done {exit done;}",
+    );
+    let value = "types.box< // 😀\r\n u32,bool>";
+    let source = format!(
+        "import \"types.tellur\" as types;\r\npub trait reader {{type item;control read(self input) exits done;}}\r\nimplement reader for u32 {{type item={value};control read(self local) exits done {{exit done;}}}}\r\ncontrol call<t:reader>(t input) exits done {{reader<t>.read(input);exit done;}}"
+    );
+    f.write("worker.tellur", &source);
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    let error = &report["diagnostics"][0];
+    assert_eq!(error["code"], "E_GENERIC", "{report}");
+    assert_eq!(
+        error["path"],
+        f.root.join("worker.tellur").to_string_lossy().as_ref()
+    );
+    assert_eq!(error["range"], selected_range(&source, value), "{report}");
+    assert!(!report.to_string().contains("_path_poly_"));
+    let first = tellur::compile_file(
+        f.root.join("main.tellur"),
+        Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+    )
+    .unwrap_err();
+    assert_eq!(first.path, f.root.join("worker.tellur"));
+    assert_eq!(first.diagnostic.code, "E_GENERIC");
+    assert_eq!(
+        first.diagnostic.span.line,
+        error["position"]["line"].as_u64().unwrap() as usize
+    );
+    assert_eq!(
+        first.diagnostic.end.as_ref().unwrap().column,
+        error["range"]["end"]["column"].as_u64().unwrap() as usize
+    );
+    f.write("worker.tellur", &source.replace(value, "types.box<u32>"));
+    f.report(&["check", "main.tellur", "--json"], true);
+}
+
+#[test]
+fn associated_instantiation_ranges_preserve_declaration_signature_and_body_priority() {
+    let f = Fixture::new();
+    let base = "struct box<t> {t value;} trait reader {type item:copy;} implement reader for u32 {type item=box<u32,bool>;}";
+    for (prefix, selected) in [
+        ("struct broken {missing field;}", "missing"),
+        (
+            "control earlier(box<u32,bool> value) exits done {exit done;}",
+            "box<u32,bool> value",
+        ),
+        (
+            "control earlier() exits done {box<u32,bool> value=1;exit done;}",
+            "box<u32,bool> value",
+        ),
+    ] {
+        let source = format!("{prefix}\r\n{base}");
+        f.write("main.tellur", &source);
+        let report = f.report(&["check", "main.tellur", "--json"], false);
+        let error = &report["diagnostics"][0];
+        assert_eq!(error["code"], "E_GENERIC", "{report}");
+        let start = source.find(selected).unwrap();
+        let length = if selected == "missing" {
+            7
+        } else {
+            "box<u32,bool>".len()
+        };
+        assert_eq!(
+            error["range"],
+            json!({"start":scalar_position(&source,start),"end":scalar_position(&source,start+length)}),
+            "{report}"
+        );
+    }
+    assert_eq!(check_errors(base).errors[0].code, "E_GENERIC");
+    let bound = base.replace("box<u32,bool>", "box<string>");
+    assert_eq!(check_errors(&bound).errors[0].code, "E_BOUND");
+    compile(
+        &base.replace("box<u32,bool>", "box<u32>"),
+        Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+    )
+    .unwrap();
+    // A malformed implementation target is required before its assigned types.
+    let target = "struct box<t> {t value;} trait reader {type item;} implement reader for box<u32,bool> {type item=box<missing>;}";
+    let error = &check_errors(target).errors[0];
+    assert_eq!(error.code, "E_TRAIT", "{error}");
+    assert!(error.message.contains("wrong arity"));
+    assert_eq!(error.span.column, target.find("implement").unwrap() + 1);
+    assert!(error.end.is_none());
+}
+
+#[test]
+fn associated_instantiation_ranges_keep_single_error_canonical_order_and_repairs() {
+    let mut source = "struct box<t> {t value;} trait reader {type item;}\n".to_owned();
+    for n in (0..40).rev() {
+        source.push_str(&format!("struct value_{n:02} {{u32 n;}} implement reader for value_{n:02} {{type item=box<u32,bool>;}}\n"));
+    }
+    for fixed in 0..2 {
+        let errors = check_errors(&source);
+        assert_eq!(errors.errors.len(), 1, "{errors}");
+        assert!(!errors.limit_reached);
+        let error = &errors.errors[0];
+        assert_eq!(error.code, "E_GENERIC");
+        assert_eq!(error.span.line, 41 - fixed);
+        assert_eq!(
+            error.end.as_ref().unwrap().column - error.span.column,
+            "box<u32,bool>".len()
+        );
+        assert_eq!(
+            compile(
+                &source,
+                Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
+            )
+            .unwrap_err(),
+            *error
+        );
+        source = source.replace(
+            &format!("for value_{fixed:02} {{type item=box<u32,bool>"),
+            &format!("for value_{fixed:02} {{type item=box<u32>"),
+        );
+    }
+    compile(
+        &source.replace("box<u32,bool>", "box<u32>"),
+        Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+    )
+    .unwrap();
+}

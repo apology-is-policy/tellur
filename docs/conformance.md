@@ -5537,3 +5537,22 @@ isolated VS Code cases cross from two concrete type failures through partial rep
 to a later visibility failure, then restore trait-side hover and native execution.
 The previous assignment-range editor fixture remains a regression. Public
 async-host admission still awaits the recorded design decision.
+
+
+## Associated generic instantiation locations (0.205 / P2am)
+
+Trait-required type inputs retain associated annotations through generic layout
+instantiation. Target, ordinary generic argument and expected-signature requirements
+retain synthetic metadata and original fallback points. The extra-type loop attaches
+ranges only to matching fallback diagnostics; shared declaration/schema validation,
+region signature/body requirements and specialization ordering remain unchanged.
+
+CLI cases cover arity, missing and invalid arguments, nested/qualified/local aliases,
+imported Unicode/CRLF ranges, generic witnesses, declaration/signature/body priority,
+earlier invalid-target rejection, later capability errors, canonical first-error
+ordering and repeated repairs. A unit case removes metadata for each error class.
+LSP and isolated VS Code cases repair the first imported assignment to expose the
+next failure, then restore checked trait-side hover and native execution. The prior
+concrete-type/visibility editor fixture remains a regression. Generic-data budget
+and specialization checks join the selected suites. Public async-host admission
+still awaits the recorded design decision.

@@ -959,9 +959,35 @@ associated-type checks; all associated types are validated before method conform
 Independent concrete type failures still report one per implementation within the
 32-error cap. Public visibility remains a single-error barrier after body checking.
 Generic witnesses synthesize no assignment range, and absent metadata preserves
-the implementation point. Earlier generic instantiation keeps its existing location
-and priority; this range support does not change that phase. Associated-type
-acceptance, ownership rules and private-layout protection are unchanged.
+the implementation point. Associated-type acceptance, ownership rules and
+private-layout protection are unchanged.
+
+Since 0.205, associated assignments also keep their written range during earlier
+generic layout instantiation. Missing explicit arguments, wrong arity and invalid
+concrete arguments select the assigned type. Local and qualified associated aliases
+retain their original written use after normalization.
+
+<!-- tellur:reject E_GENERIC -->
+```tellur
+struct box<t> {
+    t value;
+}
+trait reader {
+    type item;
+}
+implement reader for u32 {
+    type item = box<u32, bool>;
+}
+```
+
+This error selects `box<u32, bool>`. Shared schema/declaration validation and region
+signature/body layout requirements keep their earlier priority and precise child
+ranges. Extra type requirements retain their order: ordinary generic arguments,
+then each implementation's target, associated assignments and expected signatures.
+Instantiation still stops at the first error; later capability/type/conformance
+batches do not run until it succeeds. The specialization cache, depth/type-size and
+layout-count budgets are unchanged. Targets, ordinary generic arguments and
+synthetic requirements retain their existing fallbacks.
 
 
 ## Constructor-call preparation batches

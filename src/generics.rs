@@ -455,7 +455,7 @@ fn acyclic(
 pub(crate) fn instantiate(
     unit: Unit,
     manifest: &Manifest,
-    extra: &[(String, Span)],
+    extra: &[(TypeAnnotation, Span)],
 ) -> crate::CheckResult<Unit> {
     crate::origins::schemas_checked(&unit)?;
     instantiate_checked_schemas(unit, manifest, extra).map_err(Into::into)
@@ -463,7 +463,7 @@ pub(crate) fn instantiate(
 fn instantiate_checked_schemas(
     mut unit: Unit,
     manifest: &Manifest,
-    extra: &[(String, Span)],
+    extra: &[(TypeAnnotation, Span)],
 ) -> Result<Unit> {
     if !unit.data.iter().any(|d| !d.type_parameters.is_empty())
         && !unit.contracts.iter().any(|d| !d.type_parameters.is_empty())
@@ -569,7 +569,7 @@ fn instantiate_checked_schemas(
         s.items(&r.body)?;
     }
     for (ty, at) in extra {
-        s.require(ty, *at, 0)?;
+        s.require(ty, *at, 0).map_err(|e| ty.type_error(e, *at))?;
     }
     unit.data.extend(s.data);
     unit.contracts.extend(s.outcomes);

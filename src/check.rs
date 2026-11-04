@@ -5236,7 +5236,7 @@ pub(crate) fn compile_concrete_unit(
     let public_interfaces = crate::modules::PublicInterfaces::new(&unit);
     let mut argument_types = type_arguments
         .iter()
-        .map(|a| (a.ty.clone(), a.span))
+        .map(|a| (a.ty.clone().into(), a.span))
         .collect::<Vec<_>>();
     argument_types.extend(crate::traits::required_types(&unit.trait_checks));
     let unit = crate::generics::instantiate(unit, &manifest, &argument_types)?;

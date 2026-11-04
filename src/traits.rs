@@ -742,11 +742,11 @@ pub(crate) fn lower(
     unit.implementations.clear();
     Ok(unit)
 }
-pub(crate) fn required_types(checks: &[TraitCheck]) -> Vec<(String, Span)> {
+pub(crate) fn required_types(checks: &[TraitCheck]) -> Vec<(TypeAnnotation, Span)> {
     let mut types = vec![];
     for c in checks {
-        types.push((c.target.clone(), c.span));
-        types.extend(c.associated.iter().map(|t| (t.ty.clone(), c.span)));
+        types.push((c.target.clone().into(), c.span));
+        types.extend(c.associated.iter().map(|t| (t.clone(), c.span)));
         for r in &c.expected {
             types.extend(
                 r.parameters
@@ -764,7 +764,7 @@ pub(crate) fn required_types(checks: &[TraitCheck]) -> Vec<(String, Span)> {
             if let Some(t) = &r.exit_contract
                 && generic(t).is_some()
             {
-                types.push((t.clone(), c.span));
+                types.push((t.clone().into(), c.span));
             }
         }
     }
@@ -1018,6 +1018,28 @@ mod tests {
     use super::*;
 
     #[test]
+    fn associated_instantiation_ranges_keep_missing_metadata_fallback() {
+        for value in ["box<u32,bool>", "box", "box<missing>"] {
+            let source = format!(
+                "struct box<t> {{t value;}} trait reader {{type item;}} implement reader for u32 {{type item={value};}}"
+            );
+            let mut unit = crate::syntax::parse_unit(&source).unwrap();
+            let span = unit.implementations[0].span;
+            unit.implementations[0].associated[0].value_range = crate::SourceRange::default();
+            let errors = crate::check::compile_unit(
+                unit,
+                Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+                &Visibility::default(),
+            )
+            .unwrap_err();
+            assert_eq!(errors.errors.len(), 1);
+            assert_eq!(errors.errors[0].code, "E_GENERIC");
+            assert_eq!(errors.errors[0].span, span);
+            assert!(errors.errors[0].end.is_none());
+        }
+    }
+
+    #[test]
     fn associated_concrete_ranges_keep_missing_and_synthetic_metadata_fallback() {
         for (value, code) in [
             ("vector<missing>", "E_MANIFEST"),
@@ -1055,10 +1077,10 @@ mod tests {
         assert_eq!(check.associated.len(), 1);
         assert_eq!(check.associated[0].range, crate::SourceRange::default());
         assert!(!check.public);
-        assert_eq!(
-            required_types(&unit.trait_checks)[1],
-            (check.associated[0].ty.clone(), check.span)
-        );
+        let required = required_types(&unit.trait_checks);
+        assert_eq!(required[1].0.ty, check.associated[0].ty);
+        assert_eq!(required[1].0.range, crate::SourceRange::default());
+        assert_eq!(required[1].1, check.span);
     }
 
     #[test]
