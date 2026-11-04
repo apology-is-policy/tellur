@@ -793,6 +793,15 @@ fn exits(r: &Region, m: &Manifest) -> Vec<(String, Vec<String>)> {
     result.sort();
     result
 }
+fn completion_conformance_error(actual: &Region, error: Diagnostic) -> Diagnostic {
+    // Named contract binding copies schema fields, but this range still belongs
+    // to the implementation's authored clause, including its origin mapping.
+    if error.end.is_none() && actual.declared_exit_range.start.line != 0 {
+        error.with_range(actual.declared_exit_range)
+    } else {
+        error
+    }
+}
 pub(crate) fn check_contracts(
     checks: &[TraitCheck],
     regions: &[Region],
@@ -845,11 +854,11 @@ pub(crate) fn check_contracts(
             if crate::lifetimes::declared_with_schemas(&expected, true, schemas)?
                 != crate::lifetimes::declared_with_schemas(&actual, true, schemas)?
             {
-                return Err(Diagnostic::new(
+                return Err(completion_conformance_error(&actual, Diagnostic::new(
                     "E_LIFETIME",
                     actual.span,
                     "implementation return origins must match the trait's parameter positions",
-                ));
+                )));
             }
             let stored = |r: &Region| -> Result<_> {
                 let mut returns = crate::origins::declared(r, schemas)?;
@@ -865,22 +874,26 @@ pub(crate) fn check_contracts(
                 Ok(returns)
             };
             if stored(&expected)? != stored(&actual)? {
-                return Err(Diagnostic::new(
+                return Err(completion_conformance_error(&actual, Diagnostic::new(
                     "E_ORIGIN",
                     actual.span,
                     "implementation contained origins must match the trait's parameter positions and public groups",
-                ));
+                )));
             }
-            if parameters(&expected) != parameters(&actual)
-                || exits(&expected, m) != exits(&actual, m)
-            {
-                return Err(signature_error(
+            let same_parameters = parameters(&expected) == parameters(&actual);
+            if !same_parameters || exits(&expected, m) != exits(&actual, m) {
+                let error = signature_error(
                     actual.span,
                     format!(
                         "implementation `{}` must match declared parameter ownership and exit payloads",
                         actual.name
                     ),
-                ));
+                );
+                return Err(if same_parameters {
+                    completion_conformance_error(&actual, error)
+                } else {
+                    error
+                });
             }
             // Retain the validated trait-side names and origins for source tooling.
             // Implementation parameter/payload names may legitimately differ.
@@ -970,4 +983,27 @@ pub(crate) fn abstract_witness(
         expected: vec![],
     });
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn implementation_completion_range_keeps_missing_metadata_fallback() {
+        let source = "trait reader {control read() exits ready {u32 value};} implement reader for u32 {control read() exits ready {string value} {exit ready {\"x\"};}}";
+        let mut unit = crate::syntax::parse_unit(source).unwrap();
+        let method = &mut unit.implementations[0].methods[0];
+        let span = method.span;
+        let range = method.declared_exit_range;
+        assert_ne!(span, range.start);
+        method.declared_exit_range = crate::SourceRange::default();
+        let manifest = Manifest::from_json(include_str!("../playground/manifest.json")).unwrap();
+        let errors =
+            crate::check::compile_unit(unit, manifest, &Visibility::default()).unwrap_err();
+        assert_eq!(errors.errors.len(), 1);
+        assert_eq!(errors.errors[0].code, "E_TRAIT_SIGNATURE");
+        assert_eq!(errors.errors[0].span, span);
+        assert!(errors.errors[0].end.is_none());
+    }
 }

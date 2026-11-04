@@ -5457,3 +5457,23 @@ UTF-16 imported points, partial repairs, suppressed stale hover, restored trait-
 parameter names and native calls. Selected trait, bound, aggregate-origin, generic,
 module, public-contract, async/fault/contingency and reference suites accompany this
 release. The public async-host call-model question remains unanswered.
+
+
+## Implementation completion locations (0.201 / P2ai)
+
+Completion-shape conformance errors with matching parameters and direct/contained
+return-origin mismatches now select the actual implementation's written `exits`
+clause. Named completion binding preserves use-site metadata separately from copied
+schema fields. Parameter mismatches, child origin diagnostics and absent metadata
+keep their previous priority and locations. Conformance acceptance is unchanged.
+
+CLI cases cover multiline alternatives, Unicode/CRLF, fault/body exclusions,
+direct and contained origins, imported generic named contracts, explicit mappings,
+generic callers, parameter priority, child ranges, fault-only methods, canonical
+batch ordering, budgets and first-error compatibility. A unit case removes the
+metadata to verify synthetic fallback. LSP and isolated VS Code cases change two
+imported implementations without saving, check full UTF-16 clause ranges through a
+partial repair, suppress stale hover and restore trait-side names and native calls.
+Selected trait, associated-bound, aggregate-origin, generic, module, public-contract,
+async/fault/contingency and reference suites accompany the release. The recorded
+public async-host call-model question remains unanswered.

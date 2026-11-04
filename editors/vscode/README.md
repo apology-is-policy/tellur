@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-darwin-arm64-0.200.0.vsix` using **Extensions:
+1. Install the supplied `tellur-language-darwin-arm64-0.201.0.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1652,3 +1652,10 @@ capabilities, ownership/payload shapes and return origins. Partial unsaved repai
 retain the remaining imported diagnostics. Checked trait-call hover returns only
 after full validation, preserving the trait's declared parameter names and origins.
 The phase retains one error per implementation and the shared 32-error cap.
+
+
+Compiler 0.201 selects whole written implementation `exits` clauses for completion
+shape and return-origin conformance errors. Named completions select their use sites.
+Imported unsaved partial repairs refresh both range endpoints; precise child errors
+and parameter mismatch locations keep their priority. Checked trait-call hover
+returns after full validation with the trait's declared parameter names and origins.

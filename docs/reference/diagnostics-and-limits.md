@@ -822,6 +822,41 @@ it uses the trait's declared names and origins. Source acceptance, ownership and
 origin semantics are unchanged.
 
 
+## Implementation completion locations
+
+Since 0.201, an implementation whose completion shape differs from its trait's
+contract selects its complete written `exits` clause, provided parameter types and
+ownership already match. Direct return-origin and contained origin conformance
+mismatches also select that clause. The selected text includes all written exit
+alternatives, payloads and origin mappings, ending before trailing comments, fault
+permissions or the body.
+
+<!-- tellur:reject E_TRAIT_SIGNATURE -->
+```tellur
+trait reader {
+    control read() exits ready { u32 value };
+}
+implement reader for u32 {
+    control read() exits ready { string value } {
+        exit ready { "text" };
+    }
+}
+```
+
+The error selects `exits ready { string value }` in the implementation. A named
+completion selects its authored use clause, including generic arguments and explicit
+origin bindings, rather than copied fields in the outcome definition. Imported and
+unsaved files retain their original source coordinates; the editor converts both
+endpoints to UTF-16 positions.
+
+This does not change conformance rules or check order. Parameter mismatches keep
+their existing method point; narrower child errors such as an invalid `from` origin
+keep their precise ranges. Fault-only or synthetic methods without written completion
+metadata keep the existing point fallback. Independent implementation ordering,
+partial repairs, the 32-error cap and single-error APIs remain as described above.
+Checked trait-call hover returns after the entire conformance phase succeeds.
+
+
 ## Constructor-call preparation batches
 
 Since 0.91, inaccessible constructor calls in independent bodies report together.
