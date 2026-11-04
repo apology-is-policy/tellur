@@ -891,6 +891,44 @@ implementation order, trait method order, child diagnostics, partial repairs, th
 Imported unsaved edits update both range endpoints before checked hover returns.
 
 
+## Associated assignment locations
+
+Since 0.203, associated assignments retain the full written type after `=`. Module
+lookup errors, normalization-root failures and associated capability-bound errors
+select that type, including reference modifiers, generic arguments and qualified
+associated selections. Member names, `=`, trailing comments and semicolons stay
+outside the range. Imported and unsaved text retain both original endpoints.
+
+<!-- tellur:reject E_BOUND -->
+```tellur
+trait reader {
+    type item: copy;
+}
+implement reader for u32 {
+    type item = option<string>;
+}
+```
+
+The error selects `option<string>`. An assignment to an alias or qualified associated
+selection selects that written use, even after normalization resolves it to a
+concrete type. For normalization failures, the range belongs to the root being
+checked: in `type a = b; type b = ref string;`, if `a` reaches the failure first, the
+error selects `b` in `a`'s assignment. Later dependent roots remain suppressed.
+
+Canonical implementation/member order, cycle and depth checks, the 32-error budget,
+phase barriers and the single-error API's first result are unchanged. Capability
+checks still follow normalization and permission checks. No partial substitution
+or checked trait signature reaches callers or hover. Declarations and synthetic
+assignments without value metadata keep their original point fallback; member
+identity errors retain their separate locations.
+
+Later instantiated-type validation and public-interface visibility remain separate
+location follow-ups. For example, an unqualified unknown type can be rejected by
+manifest validation after module lookup has completed. This checkpoint preserves
+that phase and its current location. Associated-type acceptance and ownership rules
+are unchanged.
+
+
 ## Constructor-call preparation batches
 
 Since 0.91, inaccessible constructor calls in independent bodies report together.

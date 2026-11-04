@@ -369,6 +369,13 @@ pub struct AssociatedType {
     pub span: Span,
     pub name: String,
     pub value: Option<String>,
+    /// Written assigned type, excluding the member name, equals sign and semicolon.
+    pub value_range: SourceRange,
+}
+impl AssociatedType {
+    pub(crate) fn value_error(&self, error: Diagnostic) -> Diagnostic {
+        type_error(self.value_range, error, self.span)
+    }
 }
 #[derive(Clone, Debug)]
 pub struct TraitDeclaration {
@@ -394,7 +401,7 @@ pub struct Implementation {
 #[derive(Clone, Debug)]
 pub struct TraitCheck {
     pub trait_name: String,
-    pub requirements: Vec<(String, Vec<String>, Span)>,
+    pub requirements: Vec<(TypeAnnotation, Vec<String>, Span)>,
     pub span: Span,
     pub target: String,
     pub public: bool,
@@ -980,9 +987,13 @@ impl Parser {
     fn associated(&mut self, implementation: bool) -> Result<AssociatedType> {
         let span = self.here();
         let name = self.id()?;
+        let mut value_range = SourceRange::default();
         let value = if implementation {
             self.need("=")?;
-            Some(self.ty()?)
+            let start = self.here();
+            let value = self.ty()?;
+            value_range = self.range_from(start);
+            Some(value)
         } else {
             None
         };
@@ -1014,6 +1025,7 @@ impl Parser {
             span,
             name,
             value,
+            value_range,
             bounds,
         })
     }

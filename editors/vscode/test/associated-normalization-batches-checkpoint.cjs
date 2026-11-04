@@ -46,8 +46,8 @@ exports.run = async function (root) {
   ]) {
     await replace(text);
     const expected = selections.map(selected => {
-      const at = text.indexOf(selected);
-      return new vscode.Range(dependency.positionAt(at), dependency.positionAt(at + "item".length));
+      const at = text.indexOf(selected) + 5;
+      return new vscode.Range(dependency.positionAt(at), dependency.positionAt(at + selected.length - 5));
     });
     await waitFor(() => diagnostics().length === expected.length && diagnostics().every((d, i) => code(d) === 'E_LIFETIME' && d.relatedInformation?.some(info => info.location.uri.toString() === dependency.uri.toString() && info.location.range.isEqual(expected[i]))), 'fresh associated-type diagnostics after partial repair');
     assert.ok(!(await hover()).includes('done'), 'partial contract repair must not expose stale hover');

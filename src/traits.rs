@@ -629,7 +629,7 @@ pub(crate) fn lower(
             .filter_map(|(name, target, a)| {
                 match normalizer.associated(name, target, &a.name, a.span, 0) {
                     Ok(_) => Some(Ok(())),
-                    Err(NormalizationFailure::Diagnostic(error)) => Some(Err(error)),
+                    Err(NormalizationFailure::Diagnostic(error)) => Some(Err(a.value_error(error))),
                     Err(NormalizationFailure::Dependent) => None,
                 }
             }),
@@ -711,7 +711,10 @@ pub(crate) fn lower(
             .iter()
             .map(|a| {
                 (
-                    bindings[&a.name].clone(),
+                    TypeAnnotation {
+                        ty: bindings[&a.name].clone(),
+                        range: a.value_range,
+                    },
                     d.associated
                         .iter()
                         .find(|d| d.name == a.name)
@@ -838,14 +841,14 @@ pub(crate) fn check_contracts(
         for (ty, bounds, at) in &c.requirements {
             for bound in bounds {
                 if !m.has_capability(ty, bound) {
-                    return Err(Diagnostic::new(
+                    return Err(ty.type_error(Diagnostic::new(
                         "E_BOUND",
                         *at,
                         format!(
                             "associated type `{}` does not satisfy `{bound}`",
                             manifest::display_type(ty)
                         ),
-                    ));
+                    ), *at));
                 }
             }
         }
@@ -1006,6 +1009,35 @@ pub(crate) fn abstract_witness(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn associated_assignment_ranges_keep_missing_metadata_fallback() {
+        for (bounds, value, code) in [
+            ("", "ref string", "E_LIFETIME"),
+            (":copy", "string", "E_BOUND"),
+        ] {
+            let source = format!(
+                "trait reader {{type item{bounds};}} implement reader for u32 {{type item={value};}}"
+            );
+            let mut unit = crate::syntax::parse_unit(&source).unwrap();
+            assert_eq!(
+                unit.traits[0].associated[0].value_range,
+                crate::SourceRange::default()
+            );
+            let assigned = &mut unit.implementations[0].associated[0];
+            let span = assigned.span;
+            assert_ne!(assigned.value_range.start, span);
+            assigned.value_range = crate::SourceRange::default();
+            let manifest =
+                Manifest::from_json(include_str!("../playground/manifest.json")).unwrap();
+            let errors =
+                crate::check::compile_unit(unit, manifest, &Visibility::default()).unwrap_err();
+            assert_eq!(errors.errors.len(), 1);
+            assert_eq!(errors.errors[0].code, code);
+            assert_eq!(errors.errors[0].span, span);
+            assert!(errors.errors[0].end.is_none());
+        }
+    }
 
     #[test]
     fn implementation_completion_range_keeps_missing_metadata_fallback() {

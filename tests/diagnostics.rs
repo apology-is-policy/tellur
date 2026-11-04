@@ -3861,7 +3861,7 @@ fn associated_normalization_batches_preserve_canonical_root_order_and_first_erro
             .iter()
             .map(|e| (e.code, e.span.line, e.span.column))
             .collect::<Vec<_>>(),
-        [("E_LIFETIME", 3, 35), ("E_LIFETIME", 2, 32)]
+        [("E_LIFETIME", 3, 40), ("E_LIFETIME", 2, 37)]
     );
     assert!(!errors.limit_reached);
     assert_eq!(
@@ -4060,7 +4060,7 @@ fn associated_normalization_batches_keep_transitive_imported_points_and_first_er
     assert_eq!(errors.len(), 2, "{report}");
     for error in errors {
         assert_eq!(error["code"], "E_LIFETIME");
-        assert_eq!(error["position"], json!({"line":3,"column":32}));
+        assert_eq!(error["position"], json!({"line":3,"column":37}));
     }
     let paths = errors
         .iter()
@@ -4494,7 +4494,7 @@ fn implementation_conformance_batches_preserve_transitive_imported_points() {
     assert_eq!(errors.len(), 2, "{report}");
     for error in errors {
         assert_eq!(error["code"], "E_BOUND");
-        assert_eq!(error["position"], json!({"line":4,"column":10}));
+        assert_eq!(error["position"], json!({"line":4,"column":15}));
     }
     let paths = errors
         .iter()
@@ -4901,4 +4901,169 @@ fn implementation_parameter_ranges_preserve_batch_order_and_budget() {
         .unwrap_err(),
         errors.errors[0]
     );
+}
+
+#[test]
+fn associated_assignment_ranges_select_complete_written_types() {
+    let f = Fixture::new();
+    for (bounds, value, code) in [
+        ("", "ref // 😀\r\n mutable string", "E_LIFETIME"),
+        (":copy", "option< // 😀\r\n string>", "E_BOUND"),
+        ("", "reader<string>.item", "E_TRAIT"),
+        ("", "reader<u32>.missing", "E_TRAIT"),
+    ] {
+        let source = format!(
+            "trait reader {{type item{bounds};}}\r\nimplement reader for u32 {{type item = {value} // outside\r\n ;}}"
+        );
+        f.write("main.tellur", &source);
+        let report = f.report(&["check", "main.tellur", "--json"], false);
+        assert_eq!(
+            report["diagnostics"].as_array().unwrap().len(),
+            1,
+            "{report}"
+        );
+        let error = &report["diagnostics"][0];
+        assert_eq!(error["code"], code, "{report}");
+        assert_eq!(error["range"], selected_range(&source, value), "{report}");
+        assert_eq!(error["position"], error["range"]["start"]);
+        let batch = check_errors(&source);
+        assert_eq!(
+            compile(
+                &source,
+                Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
+            )
+            .unwrap_err(),
+            batch.errors[0]
+        );
+    }
+}
+
+#[test]
+fn associated_assignment_ranges_preserve_normalization_roots_and_suppress_dependents() {
+    let f = Fixture::new();
+    for (source, selected, codes) in [
+        (
+            "trait reader {type a;type b;type c;type d;} implement reader for u32 {type a=b;type b=ref string;type c=vector<b>;type d=ref u32;}",
+            vec!["b;type b", "ref u32"],
+            vec!["E_LIFETIME", "E_LIFETIME"],
+        ),
+        (
+            "trait reader {type a;type b;type c;} implement reader for u32 {type a=reader<string>.a;type b=ref u32;type c=a;} implement reader for string {type a=reader<u32>.a;type b=ref string;type c=a;}",
+            vec!["reader<u32>.a", "ref string", "ref u32"],
+            vec!["E_TRAIT", "E_LIFETIME", "E_LIFETIME"],
+        ),
+    ] {
+        f.write("main.tellur", source);
+        let report = f.report(&["check", "main.tellur", "--json"], false);
+        let errors = report["diagnostics"].as_array().unwrap();
+        assert_eq!(errors.len(), selected.len(), "{report}");
+        for ((error, selected), code) in errors.iter().zip(selected).zip(codes) {
+            let at = source.find(selected).unwrap();
+            let length = if selected.starts_with("b;") {
+                1
+            } else {
+                selected.len()
+            };
+            assert_eq!(error["code"], code, "{report}");
+            assert_eq!(
+                error["range"],
+                json!({"start":scalar_position(source,at),"end":scalar_position(source,at+length)}),
+                "{report}"
+            );
+        }
+    }
+}
+
+#[test]
+fn associated_assignment_ranges_preserve_imported_use_sites_and_module_resolution() {
+    let f = Fixture::new();
+    f.write("types.tellur", "pub trait source {type item;} implement source for string {type item=string;} struct hidden {u32 value;}");
+    f.write("middle.tellur", "import \"worker.tellur\" as worker;");
+    f.write(
+        "main.tellur",
+        "import \"middle.tellur\" as middle;control main() exits done {exit done;}",
+    );
+    for (bounds, value, code) in [
+        (":copy", "t.source<string>.item", "E_BOUND"),
+        ("", "t.source<bool>.item", "E_TRAIT"),
+        ("", "vector< // 😀\r\n t.missing>", "E_NAME"),
+        ("", "t.hidden", "E_VISIBILITY"),
+    ] {
+        let source = format!(
+            "import \"types.tellur\" as t;\r\ntrait reader {{type item{bounds};}}\r\nimplement reader for u32 {{type item={value};}}\r\ncontrol call<t:reader>(reader<t>.item input) exits ready {{reader<t>.item value}} {{exit ready {{input}};}}"
+        );
+        f.write("worker.tellur", &source);
+        let report = f.report(&["check", "main.tellur", "--json"], false);
+        let error = &report["diagnostics"][0];
+        assert_eq!(error["code"], code, "{report}");
+        assert_eq!(
+            error["path"],
+            f.root.join("worker.tellur").to_string_lossy().as_ref()
+        );
+        assert_eq!(error["range"], selected_range(&source, value), "{report}");
+        let first = tellur::compile_file(
+            f.root.join("main.tellur"),
+            Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(first.path, f.root.join("worker.tellur"));
+        assert_eq!(first.diagnostic.code, code);
+        assert_eq!(
+            first.diagnostic.span.line,
+            error["position"]["line"].as_u64().unwrap() as usize
+        );
+        assert_eq!(
+            first.diagnostic.end.as_ref().unwrap().column,
+            error["range"]["end"]["column"].as_u64().unwrap() as usize
+        );
+    }
+}
+
+#[test]
+fn associated_assignment_ranges_preserve_identity_and_phase_priority() {
+    let source = "trait reader {type item:copy;control read() exits done;} implement reader for u32 {type item=ref string;async control read() exits done {exit done;}}";
+    assert_eq!(check_errors(source).errors[0].code, "E_LIFETIME");
+    let permission = source.replace("ref string", "string");
+    let error = &check_errors(&permission).errors[0];
+    assert_eq!(error.code, "E_ASYNC");
+    assert!(error.end.is_none());
+    let bound = permission.replace("async control", "control");
+    let error = &check_errors(&bound).errors[0];
+    assert_eq!(error.code, "E_BOUND");
+    assert!(error.end.is_some());
+    let duplicate = format!(
+        "{bound} implement reader for u32 {{type item=u32;control read() exits done {{exit done;}}}}"
+    );
+    let error = &check_errors(&duplicate).errors[0];
+    assert_eq!(error.code, "E_COHERENCE");
+    assert!(error.end.is_none());
+    compile(
+        &bound.replace("item=string", "item=u32"),
+        Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+    )
+    .unwrap();
+}
+
+#[test]
+fn associated_assignment_ranges_keep_canonical_order_and_error_budget() {
+    for (bound, value, code) in [
+        ("", "ref u32", "E_LIFETIME"),
+        (":copy", "string", "E_BOUND"),
+    ] {
+        let mut source = format!("trait reader {{type item{bound};}}\n");
+        for n in (0..40).rev() {
+            source.push_str(&format!("struct value_{n:02} {{u32 n;}} implement reader for value_{n:02} {{type item={value};}}\n"));
+        }
+        let errors = check_errors(&source);
+        assert_eq!(errors.errors.len(), 32, "{errors}");
+        assert!(errors.limit_reached);
+        for (n, error) in errors.errors.iter().enumerate() {
+            assert_eq!(error.code, code);
+            assert_eq!(error.span.line, 41 - n);
+            assert_eq!(
+                error.end.as_ref().unwrap().column - error.span.column,
+                value.len()
+            );
+        }
+    }
 }

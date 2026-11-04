@@ -984,8 +984,15 @@ fn resolve(
                 .chain(std::iter::once("self".into()))
                 .collect();
             for a in &mut implementation.associated {
-                if let Some(ty) = &mut a.value {
-                    *ty = r.ty(ty, a.span)?;
+                if let Some(ty) = &a.value {
+                    a.value = Some(r.ty(ty, a.span).map_err(|mut error| {
+                        error.diagnostic = a.value_error(error.diagnostic);
+                        error
+                    })?);
+                }
+                if a.value_range.start.line != 0 {
+                    a.value_range.start.line += offset;
+                    a.value_range.end.line += offset;
                 }
                 a.span.line += offset;
             }

@@ -5498,3 +5498,24 @@ and native calls. The prior mixed bound/signature editor case is updated and rer
 Selected trait, bound, aggregate-origin, generic, module, public-contract, async,
 fault/contingency and reference checks accompany the release. The public async-host
 call-model decision remains pending.
+
+
+## Associated assignment locations (0.203 / P2ak)
+
+Associated assignments retain a written RHS range through parsing, module offsets,
+normalization-root diagnostics and capability requirements. Normalized bound types
+carry their original annotation separately from their canonical spelling. Module
+errors attach ranges before remapping; normalization recovery and caching are
+unchanged. Identity errors and absent metadata preserve their existing points.
+
+CLI cases cover multiline reference/nested/qualified types, comments and CRLF,
+capabilities, missing selections and implementations, original imported alias uses,
+module visibility/lookup, generic callers, root versus dependency attribution,
+cycles, suppression, phase order, repairs, canonical batches and budgets. A unit
+case removes metadata before normalization and bound checking. Earlier normalization
+and mixed bound/signature regressions now expect RHS ranges. LSP and three isolated
+VS Code fixtures cover unsaved partial repairs, UTF-16 endpoints, restored trait
+names and native calls. Selected formatter and public contract snapshots join the
+trait, generic, module, origin, permission and reference suites because syntax
+metadata changed. Later instantiated-type and public-visibility locations remain
+follow-ups. Public async-host admission still awaits the recorded design decision.
