@@ -502,6 +502,16 @@ impl Resolver<'_> {
         }
         Ok(())
     }
+    fn outcomes(&self, outcomes: &mut [syntax::Outcome], span: Span) -> Result<()> {
+        for outcome in outcomes {
+            self.fields(&mut outcome.fields, span)?;
+            if outcome.name_range.start.line != 0 {
+                outcome.name_range.start.line += self.offset;
+                outcome.name_range.end.line += self.offset;
+            }
+        }
+        Ok(())
+    }
     fn fields(&self, fields: &mut [syntax::Field], span: Span) -> Result<()> {
         for f in fields {
             f.ty = self.ty(&f.ty, span).map_err(|mut error| {
@@ -614,9 +624,7 @@ impl Resolver<'_> {
         }
         self.locals = region.parameters.iter().map(|p| p.name.clone()).collect();
         self.fields(&mut region.parameters, region.span)?;
-        for o in &mut region.exits {
-            self.fields(&mut o.fields, region.span)?;
-        }
+        self.outcomes(&mut region.exits, region.span)?;
         if let Some(c) = &mut region.exit_contract
             && (self.files[self.module]
                 .symbols
@@ -914,9 +922,7 @@ fn resolve(
                     r.fields(fs, data.span)?;
                 }
                 DataBody::Variant(os) => {
-                    for o in os {
-                        r.fields(&mut o.fields, data.span)?;
-                    }
+                    r.outcomes(os, data.span)?;
                 }
             }
             if let Some(c) = &mut data.constructor {
@@ -940,9 +946,7 @@ fn resolve(
             r.type_parameters = contract.type_parameters.iter().cloned().collect();
             contract.name = file.symbols[&contract.name].global.clone();
             visibility.types.insert(contract.name.clone(), id);
-            for o in &mut contract.outcomes {
-                r.fields(&mut o.fields, contract.span)?;
-            }
+            r.outcomes(&mut contract.outcomes, contract.span)?;
             for range in &mut contract.origin_parameter_ranges {
                 if range.start.line != 0 {
                     range.start.line += offset;
@@ -1067,9 +1071,7 @@ fn resolve(
             region.name = file.symbols[&region.name].global.clone();
             visibility.controls.insert(region.name.clone(), id);
             r.fields(&mut region.parameters, region.span)?;
-            for o in &mut region.exits {
-                r.fields(&mut o.fields, region.span)?;
-            }
+            r.outcomes(&mut region.exits, region.span)?;
             if let Some(contract) = &mut region.exit_contract {
                 // A bare nullary exit label is not necessarily a type declaration.
                 if file.symbols.get(contract).is_some_and(|s| s.is_type)

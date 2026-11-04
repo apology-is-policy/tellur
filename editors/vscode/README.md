@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-darwin-arm64-0.209.0.vsix` using **Extensions:
+1. Install the supplied `tellur-language-darwin-arm64-0.210.0.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1709,3 +1709,9 @@ Compiler 0.209 selects duplicate trait parameter and inline payload names. Impor
 unsaved repairs retain exact UTF-16 identifier ranges, preserve check priorities and
 restore checked hover only after validation. The isolated fixture includes both
 declaration and implementation errors and validates native execution after repair.
+
+
+Compiler 0.210 selects duplicate trait exit names, including multiline qualified
+labels. Imported unsaved repairs preserve exact UTF-16 endpoints, declaration and
+implementation priority, and checked hover recovery. The isolated fixture also
+validates native execution after a full repair.

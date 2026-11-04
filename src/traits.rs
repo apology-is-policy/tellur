@@ -15,9 +15,6 @@ fn error(at: Span, message: impl Into<String>) -> Diagnostic {
 fn signature_error(at: Span, message: impl Into<String>) -> Diagnostic {
     Diagnostic::new("E_TRAIT_SIGNATURE", at, message)
 }
-fn unique<'a>(names: impl Iterator<Item = &'a str>, at: Span) -> Result<()> {
-    unique_at(names.map(|name| (name, SourceRange::default())), at)
-}
 fn unique_at<'a>(names: impl Iterator<Item = (&'a str, SourceRange)>, at: Span) -> Result<()> {
     let mut seen = BTreeSet::new();
     for (n, name_range) in names {
@@ -190,7 +187,10 @@ fn method_profile(r: &Region) -> Result<()> {
         r.parameters.iter().map(|p| (p.name.as_str(), p.name_range)),
         r.span,
     )?;
-    unique(r.exits.iter().map(|o| o.name.as_str()), r.span)?;
+    unique_at(
+        r.exits.iter().map(|o| (o.name.as_str(), o.name_range)),
+        r.span,
+    )?;
     for o in &r.exits {
         unique_at(
             o.fields.iter().map(|f| (f.name.as_str(), f.name_range)),
@@ -1041,6 +1041,91 @@ pub(crate) fn abstract_witness(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn trait_exit_ranges_preserve_nominal_carriers_and_binding() {
+        let source = "variant choice {present {u32 value},absent} outcome result {@exit 0 finished {u32 value},missing} trait reader {control read() exits result;}";
+        let unit = crate::syntax::parse_unit(source).unwrap();
+        let DataBody::Variant(alternatives) = &unit.data[0].body else {
+            panic!("expected variant")
+        };
+        for outcome in alternatives.iter().chain(&unit.contracts[0].outcomes) {
+            let at = source.find(&outcome.name).unwrap();
+            assert_eq!(
+                outcome.name_range.start,
+                Span {
+                    line: 1,
+                    column: at + 1
+                }
+            );
+            assert_eq!(
+                outcome.name_range.end,
+                Span {
+                    line: 1,
+                    column: at + 1 + outcome.name.len()
+                }
+            );
+        }
+        let signature = declared_signature(
+            &unit.traits[0].methods[0],
+            &unit
+                .contracts
+                .iter()
+                .map(|c| (c.name.clone(), c.clone()))
+                .collect(),
+        )
+        .unwrap();
+        for (actual, declared) in signature.exits.iter().zip(&unit.contracts[0].outcomes) {
+            assert_eq!(actual.name_range, declared.name_range);
+        }
+    }
+
+    #[test]
+    fn trait_exit_duplicate_ranges_keep_missing_metadata_fallback() {
+        for source in [
+            "trait reader {control read() exits done,done;}",
+            "trait reader {control read() exits done;} implement reader for u32 {control read() exits done,done {exit done;}}",
+        ] {
+            let mut unit = crate::syntax::parse_unit(source).unwrap();
+            let method = if let Some(i) = unit.implementations.first_mut() {
+                &mut i.methods[0]
+            } else {
+                &mut unit.traits[0].methods[0]
+            };
+            let span = method.span;
+            assert_ne!(method.exits[1].name_range.start, span);
+            method.exits[1].name_range = SourceRange::default();
+            let errors = crate::check::compile_unit(
+                unit,
+                Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+                &Visibility::default(),
+            )
+            .unwrap_err();
+            assert_eq!(errors.errors.len(), 1);
+            assert_eq!(errors.errors[0].span, span);
+            assert!(errors.errors[0].end.is_none());
+            assert!(errors.errors[0].message.ends_with("`done`"));
+        }
+    }
+
+    #[test]
+    fn trait_exit_duplicate_ranges_survive_renamed_outcomes() {
+        for source in [
+            "trait reader {control read() exits finished_long2,finished_long2;}",
+            "trait reader {control read() exits {reply.done,reply // 😀\r\n .done};}",
+        ] {
+            let mut unit = crate::syntax::parse_unit(source).unwrap();
+            let method = &mut unit.traits[0].methods[0];
+            let range = method.exits[1].name_range;
+            for outcome in &mut method.exits {
+                outcome.name = "x".into();
+            }
+            let error = method_profile(method).unwrap_err();
+            assert_eq!(error.span, range.start);
+            assert_eq!(*error.end.unwrap(), range.end);
+            assert!(error.message.ends_with("`x`"));
+        }
+    }
 
     #[test]
     fn trait_signature_duplicate_ranges_keep_missing_metadata_fallback() {

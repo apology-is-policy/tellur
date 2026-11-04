@@ -5381,6 +5381,7 @@ pub(crate) fn compile_concrete_unit(
                 .iter()
                 .map(|o| syntax::Outcome {
                     name: o.name.clone(),
+                    name_range: crate::SourceRange::default(),
                     fields: o
                         .fields
                         .iter()

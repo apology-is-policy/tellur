@@ -5629,3 +5629,22 @@ LSP and isolated VS Code repair parameter and payload errors across declarations
 implementations, then restore checked hover and native execution. Constructor and
 named-outcome suites exercise shared field carriers alongside existing trait/generic
 coverage. Public async-host admission still awaits its recorded decision.
+
+
+## Duplicate trait exit-label locations (0.210 / P2ar)
+
+Syntax outcomes retain a parsed name range independently of payload and origin
+metadata. Control exits, variants and named outcome alternatives capture names;
+module remapping preserves both endpoints. Generated constructor and manifest
+completions use empty metadata; named completion binding preserves cloned ranges.
+Only trait method exit uniqueness consumes the new ranges. Existing ordinary and
+nominal diagnostics remain separate.
+
+Six CLI regressions cover qualified/wrapped spellings, comments, long names,
+transitive imports, Unicode/CRLF, repairs, first-error APIs, profile/member/type/
+identity priorities, coherence replay, independent batches and budgets. Three unit
+cases cover missing metadata, renaming, nominal carriers and completion binding.
+LSP and isolated VS Code exercise partial declaration and implementation repairs,
+multiline UTF-16 ranges, stale-hover suppression, restored hover and native calls.
+Shared constructor, generic, module and outcome suites cover generated/cloned
+carriers. Public async-host admission still awaits its recorded decision.

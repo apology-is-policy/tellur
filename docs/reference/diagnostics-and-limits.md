@@ -1095,8 +1095,8 @@ trait reader {
 The second `item` is selected. Method-profile restrictions still run first, followed
 by parameter uniqueness, exit-label uniqueness, then each inline payload field list.
 Only the first profile error per trait or implementation is reported. Ordinary
-control checks, named outcome declarations and duplicate exit labels keep their
-separate diagnostics and locations.
+control checks and named outcome declarations keep their separate diagnostics and
+locations. Duplicate trait exit-label ranges are described below.
 
 Declaration errors still precede implementation checks. Shared identity/coherence
 failures retain interleaved first-error replay; independent preparation batches keep
@@ -1105,6 +1105,36 @@ still precedes trait checking and keeps its own type range. Renaming a field doe
 not widen its retained name range; generated fields and absent metadata keep the
 method point. Repaired contracts become available to hover only after all required
 checks succeed. No ownership, origin, outcome or execution rule changes.
+
+
+## Duplicate trait exit-label locations
+
+Since 0.210, repeated inline exit labels in trait declarations and implementations
+select the complete written name. Qualified names may span comments and line breaks;
+the range excludes payloads, origin clauses and trailing comments. Wrapped and
+unwrapped exit lists retain the same checks. Imports preserve both endpoints, and
+unsaved editor diagnostics use the original dependency coordinates.
+
+<!-- tellur:reject E_TRAIT -->
+```tellur
+trait reader {
+    control read() exits { done, done };
+}
+```
+
+The second `done` is selected. Profile restrictions still precede parameter
+uniqueness, which precedes exit-label and payload-field uniqueness. Member checks
+remain earlier. Only the first profile error per trait or implementation is
+reported; independent batches retain the 32-error budget and the earlier
+1024-implementation limit. Invalid identities still trigger interleaved replay;
+local profile errors retain their priority over a duplicate implementation key.
+
+Ordinary controls, named outcome declarations and variants keep their separate
+validation. Trait declaration errors still precede later variant-schema checks.
+Module type lookup keeps its earlier phase and its own type range. Retained name
+ranges survive renaming; synthetic or absent metadata falls back to the method
+point. Partially repaired signatures remain unavailable to checked hover. This
+changes diagnostic locations without changing outcome or path-label semantics.
 
 
 ## Constructor-call preparation batches

@@ -179,6 +179,8 @@ pub struct LoopParameter {
 #[derive(Clone, Debug)]
 pub struct Outcome {
     pub name: String,
+    /// Written alternative name only, independent of payloads and origin clauses.
+    pub name_range: SourceRange,
     pub fields: Vec<Field>,
 }
 #[derive(Clone, Debug)]
@@ -876,8 +878,9 @@ impl Parser {
                     self.pos = saved;
                     name = self.ty()?;
                 }
+                let name_range = self.range_from(name_start);
                 if exits.is_empty() {
-                    exit_contract_range = self.range_from(name_start);
+                    exit_contract_range = name_range;
                 }
                 let origins_start = self.here();
                 let bindings = self.origin_arguments()?;
@@ -935,7 +938,11 @@ impl Parser {
                         return_origins.insert((name.clone(), index), origin);
                     }
                 }
-                exits.push(Outcome { name, fields });
+                exits.push(Outcome {
+                    name,
+                    name_range,
+                    fields,
+                });
                 if !self.eat(",") || (wrapped && self.at("}")) {
                     break;
                 }
@@ -2218,13 +2225,19 @@ pub(crate) fn parse_with_layout(source: &str) -> Result<(Unit, Vec<Token>, crate
             } else {
                 let mut alternatives = vec![];
                 while !p.at("}") {
+                    let name_start = p.here();
                     let name = p.id()?;
+                    let name_range = p.range_from(name_start);
                     let fields = if p.at("{") {
                         p.schema_fields()?
                     } else {
                         vec![]
                     };
-                    alternatives.push(Outcome { name, fields });
+                    alternatives.push(Outcome {
+                        name,
+                        name_range,
+                        fields,
+                    });
                     if !p.eat(",") {
                         break;
                     }
@@ -2287,7 +2300,9 @@ pub(crate) fn parse_with_layout(source: &str) -> Result<(Unit, Vec<Token>, crate
                 } else {
                     None
                 };
+                let name_start = p.here();
                 let name = p.id()?;
+                let name_range = p.range_from(name_start);
                 if let Some(code) = annotation {
                     exit_codes.insert(name.clone(), code);
                 }
@@ -2296,7 +2311,11 @@ pub(crate) fn parse_with_layout(source: &str) -> Result<(Unit, Vec<Token>, crate
                 } else {
                     vec![]
                 };
-                outcomes.push(Outcome { name, fields });
+                outcomes.push(Outcome {
+                    name,
+                    name_range,
+                    fields,
+                });
                 if !p.eat(",") {
                     break;
                 }

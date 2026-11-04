@@ -781,6 +781,7 @@ pub(crate) fn compile(
                         .iter()
                         .map(|o| Outcome {
                             name: o.name.clone(),
+                            name_range: crate::SourceRange::default(),
                             fields: o
                                 .fields
                                 .iter()

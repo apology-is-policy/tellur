@@ -6096,7 +6096,9 @@ fn trait_member_duplicate_ranges_keep_signature_checks_separate() {
             assert_eq!(errors.errors[0].span.column, at + 1);
             assert_eq!(errors.errors[0].end.as_ref().unwrap().column, at + 5);
         } else {
-            assert!(errors.errors[0].end.is_none(), "{errors}");
+            let at = source.rfind("done").unwrap();
+            assert_eq!(errors.errors[0].span.column, at + 1);
+            assert_eq!(errors.errors[0].end.as_ref().unwrap().column, at + 5);
         }
     }
 }
@@ -6239,7 +6241,8 @@ fn trait_signature_duplicate_ranges_keep_profile_phase_and_identity_priorities()
     let fixed = source.replace("u32 item,u32 item", "u32 item");
     let error = &check_errors(&fixed).errors[0];
     assert!(error.message.ends_with("`done`"));
-    assert!(error.end.is_none());
+    assert_eq!(error.span.column, fixed.rfind("done").unwrap() + 1);
+    assert_eq!(error.end.as_ref().unwrap().column, error.span.column + 4);
     let fixed = fixed.replace(",done;", ";");
     let error = &check_errors(&fixed).errors[0];
     assert!(error.message.ends_with("`value`"));
@@ -6321,7 +6324,7 @@ fn trait_signature_duplicate_ranges_keep_independent_batches_and_limits() {
 }
 
 #[test]
-fn trait_signature_duplicate_ranges_leave_ordinary_controls_and_exit_labels_unchanged() {
+fn trait_signature_duplicate_ranges_leave_ordinary_controls_separate() {
     for (source, code, message) in [
         (
             "control ordinary(u32 item,u32 item) exits done {exit done;}",
@@ -6343,6 +6346,272 @@ fn trait_signature_duplicate_ranges_leave_ordinary_controls_and_exit_labels_unch
         assert_eq!(errors.errors.len(), 1, "{errors}");
         assert_eq!(errors.errors[0].code, code);
         assert_eq!(errors.errors[0].message, message);
+        if code == "E_TRAIT" {
+            let at = source.rfind("done").unwrap();
+            assert_eq!(errors.errors[0].span.column, at + 1);
+            assert_eq!(errors.errors[0].end.as_ref().unwrap().column, at + 5);
+        } else {
+            assert!(errors.errors[0].end.is_none());
+        }
+    }
+}
+
+#[test]
+fn trait_exit_duplicate_ranges_select_complete_written_names() {
+    let f = Fixture::new();
+    let marker = "// selected 😀\r\n ";
+    for (canonical, written, payload) in [
+        ("done", "done", ""),
+        ("finished_long2", "finished_long2", "(u32 value)"),
+        ("reply.done", "reply.done", "{u32 value}"),
+        ("reply.done", "reply // 😀\r\n . done", "(u32 value)"),
+    ] {
+        for implementation in [false, true] {
+            for wrapped in [false, true] {
+                let exits =
+                    format!("{canonical}{payload}, {marker}{written} // trailing\r\n {payload}");
+                let exits = if wrapped {
+                    format!("{{{exits}}}")
+                } else {
+                    exits
+                };
+                let signature = format!("control read() exits {exits}");
+                let source = if implementation {
+                    format!(
+                        "trait reader {{control read() exits done;}} implement reader for u32 {{{signature} {{exit done;}}}}"
+                    )
+                } else {
+                    format!("trait reader {{{signature};}}")
+                };
+                f.write("main.tellur", &source);
+                let report = f.report(&["check", "main.tellur", "--json"], false);
+                let errors = report["diagnostics"].as_array().unwrap();
+                assert_eq!(errors.len(), 1, "{report}");
+                let at = source.find(marker).unwrap() + marker.len();
+                assert_eq!(errors[0]["code"], "E_TRAIT");
+                assert_eq!(
+                    errors[0]["message"],
+                    format!("duplicate trait member or parameter `{canonical}`")
+                );
+                assert_eq!(
+                    errors[0]["range"],
+                    json!({"start":scalar_position(&source,at),"end":scalar_position(&source,at+written.len())})
+                );
+                let batch = check_errors(&source);
+                assert_eq!(
+                    compile(
+                        &source,
+                        Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
+                    )
+                    .unwrap_err(),
+                    batch.errors[0]
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn trait_exit_duplicate_ranges_preserve_imported_coordinates_and_repairs() {
+    let f = Fixture::new();
+    f.write("middle.tellur", "import \"worker.tellur\" as worker;");
+    f.write(
+        "main.tellur",
+        "import \"middle.tellur\" as middle;control main() exits done {exit done;}",
+    );
+    let valid = "pub trait reader {control read(self input) exits done;}\r\nimplement reader for u32 {control read(self first) exits done {string note=\"😀\";drop(note);exit done;}} implement reader for string {control read(self second) exits done {exit done;}}\r\npub control work() exits done {reader<u32>.read(1);reader<string>.read(\"x\");exit done;}";
+    for (needle, replacement, selected) in [
+        ("exits done;", "exits done, // selected\r\n done;", "done"),
+        (
+            "read(self first) exits done",
+            "read(self first) exits {done, // selected\r\n done}",
+            "done",
+        ),
+        (
+            "read(self second) exits done",
+            "read(self second) exits reply.done, // selected\r\n reply.done",
+            "reply.done",
+        ),
+        (
+            "read(self second) exits done",
+            "read(self second) exits {reply.done, // selected\r\n reply // 😀\r\n .done}",
+            "reply // 😀\r\n .done",
+        ),
+    ] {
+        let source = valid.replace(needle, replacement);
+        f.write("worker.tellur", &source);
+        let report = f.report(&["check", "main.tellur", "--json"], false);
+        let error = &report["diagnostics"][0];
+        assert_eq!(
+            report["diagnostics"].as_array().unwrap().len(),
+            1,
+            "{report}"
+        );
+        assert_eq!(error["code"], "E_TRAIT");
+        assert_eq!(
+            error["path"],
+            f.root.join("worker.tellur").to_string_lossy().as_ref()
+        );
+        let at = source.find("// selected\r\n ").unwrap() + "// selected\r\n ".len();
+        assert!(source[at..].starts_with(selected));
+        assert_eq!(
+            error["range"],
+            json!({"start":scalar_position(&source,at),"end":scalar_position(&source,at+selected.len())})
+        );
+        let first = tellur::compile_file(
+            f.root.join("main.tellur"),
+            Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(first.path, f.root.join("worker.tellur"));
+        assert_eq!(
+            json!({"line":first.diagnostic.span.line,"column":first.diagnostic.span.column}),
+            error["position"]
+        );
+        let end = first.diagnostic.end.as_ref().unwrap();
+        assert_eq!(
+            json!({"line":end.line,"column":end.column}),
+            error["range"]["end"]
+        );
+        f.write("worker.tellur", valid);
+        f.report(&["check", "main.tellur", "--json"], true);
+    }
+}
+
+#[test]
+fn trait_exit_duplicate_ranges_keep_profile_phase_and_identity_priorities() {
+    let profile = "trait reader {control read<t>() exits done,done;}";
+    let error = &check_errors(profile).errors[0];
+    assert_eq!(error.code, "E_TRAIT_SIGNATURE");
+    assert!(error.end.is_none());
+    let source =
+        "trait reader {control read(u32 item,u32 item) exits done(u32 value,u32 value),done;}";
+    let error = &check_errors(source).errors[0];
+    assert!(error.message.ends_with("`item`"));
+    let fixed = source.replace("u32 item,u32 item", "u32 item");
+    let error = &check_errors(&fixed).errors[0];
+    assert!(error.message.ends_with("`done`"));
+    assert_eq!(error.span.column, fixed.rfind("done").unwrap() + 1);
+    let fixed = fixed.replace(",done;", ";");
+    assert!(check_errors(&fixed).errors[0].message.ends_with("`value`"));
+    let source = "trait reader {type item;type item;control read() exits done,done;}";
+    assert!(check_errors(source).errors[0].message.ends_with("`item`"));
+    let source = "implement absent for missing {} trait reader {control read() exits done,done;}";
+    assert!(check_errors(source).errors[0].message.ends_with("`done`"));
+    let source = "trait reader {control read() exits done;} implement reader for u32 {control read() exits done,done {exit done;}} implement absent for missing {}";
+    let errors = check_errors(source);
+    assert_eq!(errors.errors.len(), 1);
+    assert!(errors.errors[0].message.ends_with("`done`"));
+    let fixed = source.replace("exits done,done", "exits done");
+    assert!(
+        check_errors(&fixed).errors[0]
+            .message
+            .contains("unknown trait")
+    );
+    let source = "trait reader {control read() exits done;} implement reader for missing {control read() exits done,done {exit done;}}";
+    assert!(
+        check_errors(source).errors[0]
+            .message
+            .contains("unknown or unapplied")
+    );
+    let source = "trait reader {control read() exits done;} implement reader for u32 {control read() exits done {exit done;}} implement reader for u32 {control read() exits done,done {exit done;}}";
+    assert!(check_errors(source).errors[0].message.ends_with("`done`"));
+    let fixed = source.replace("exits done,done", "exits done");
+    let error = &check_errors(&fixed).errors[0];
+    assert_eq!(error.code, "E_COHERENCE");
+    assert!(error.end.is_none());
+    let f = Fixture::new();
+    f.write("types.tellur", "pub struct wrapper {u32 value;}");
+    let source = "import \"types.tellur\" as types;trait reader {control read() exits done(types.missing item),done;}";
+    f.write("main.tellur", source);
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    assert_eq!(report["diagnostics"][0]["code"], "E_NAME");
+    assert_eq!(
+        report["diagnostics"][0]["range"],
+        selected_range(source, "types.missing")
+    );
+}
+
+#[test]
+fn trait_exit_duplicate_ranges_keep_independent_batches_and_limits() {
+    for implementations in [false, true] {
+        let mut source = if implementations {
+            "trait reader {control read() exits done;control other() exits done;}\n".to_owned()
+        } else {
+            String::new()
+        };
+        for n in (0..36).rev() {
+            if implementations {
+                source.push_str(&format!("struct value_{n:02} {{u32 value;}} implement reader for value_{n:02} {{control read() exits done(u32 part,u32 part),done {{exit done;}} control other() exits done,done {{exit done;}}}}\n"));
+            } else {
+                source.push_str(&format!("trait reader_{n:02} {{control read() exits done(u32 part,u32 part),done;control other() exits done,done;}}\n"));
+            }
+        }
+        let errors = check_errors(&source);
+        assert_eq!(errors.errors.len(), 32, "{errors}");
+        assert!(errors.limit_reached);
+        for (n, error) in errors.errors.iter().enumerate() {
+            assert_eq!(error.span.line, n + 1 + usize::from(implementations));
+            assert!(error.message.ends_with("`done`"));
+            assert_eq!(error.end.as_ref().unwrap().column, error.span.column + 4);
+            let line = source.lines().nth(error.span.line - 1).unwrap();
+            assert_eq!(error.span.column, line.find(",done").unwrap() + 2);
+        }
+        assert_eq!(
+            compile(
+                &source,
+                Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
+            )
+            .unwrap_err(),
+            errors.errors[0]
+        );
+    }
+    let source = format!(
+        "trait reader {{control read() exits done;}}\n{}",
+        "implement reader for u32 {control read() exits done,done {exit done;}}\n".repeat(1025)
+    );
+    let errors = check_errors(&source);
+    assert_eq!(errors.errors.len(), 1);
+    assert!(!errors.limit_reached);
+    assert!(errors.errors[0].message.contains("1024-implementation"));
+    assert!(errors.errors[0].end.is_none());
+}
+
+#[test]
+fn trait_exit_duplicate_ranges_leave_ordinary_and_nominal_validation_separate() {
+    for (source, code, message) in [
+        (
+            "control ordinary() exits done,done {exit done;}",
+            "E_NAME",
+            "duplicate exit",
+        ),
+        (
+            "outcome result {done,done} trait reader {control read() exits result;}",
+            "E_MANIFEST",
+            "invalid or duplicate name `done`",
+        ),
+        (
+            "variant result {done,done} trait reader {control read() exits done;}",
+            "E_MANIFEST",
+            "invalid or duplicate name `done`",
+        ),
+    ] {
+        let errors = check_errors(source);
+        assert_eq!(errors.errors.len(), 1, "{errors}");
+        assert_eq!(errors.errors[0].code, code);
+        assert_eq!(errors.errors[0].message, message);
         assert!(errors.errors[0].end.is_none());
     }
+}
+
+#[test]
+fn trait_exit_duplicate_ranges_keep_trait_validation_before_variant_schemas() {
+    let source = "variant result {done,done} trait reader {control read() exits done,done;}";
+    let errors = check_errors(source);
+    assert_eq!(errors.errors.len(), 1);
+    assert_eq!(errors.errors[0].code, "E_TRAIT");
+    assert_eq!(
+        errors.errors[0].span.column,
+        source.rfind("done").unwrap() + 1
+    );
 }
