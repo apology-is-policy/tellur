@@ -390,7 +390,7 @@ fn implementation_identity<'a>(
 ) -> Result<&'a TraitDeclaration> {
     let d = declarations
         .get(&i.trait_name)
-        .ok_or_else(|| error(i.span, format!("unknown trait `{}`", i.trait_name)))?;
+        .ok_or_else(|| i.trait_error(error(i.span, format!("unknown trait `{}`", i.trait_name))))?;
     if manifest::reference_inner(&i.target).is_some() || qualified_member(&i.target).is_some() {
         return Err(i.target_error(error(
             i.span,
@@ -1017,6 +1017,31 @@ pub(crate) fn abstract_witness(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn implementation_trait_ranges_keep_missing_metadata_and_child_locations() {
+        let mut unit =
+            crate::syntax::parse_unit("trait reader {} implement absent for missing {}").unwrap();
+        let implementation = &mut unit.implementations[0];
+        let span = implementation.span;
+        assert_ne!(implementation.trait_name_range.start, span);
+        assert_ne!(implementation.trait_name_range, implementation.target_range);
+        let child =
+            Diagnostic::new("E_TRAIT", span, "child").with_range(implementation.target_range);
+        assert_eq!(implementation.trait_error(child.clone()), child);
+        implementation.trait_name_range = crate::SourceRange::default();
+        let errors = crate::check::compile_unit(
+            unit,
+            Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+            &Visibility::default(),
+        )
+        .unwrap_err();
+        assert_eq!(errors.errors.len(), 1);
+        assert_eq!(errors.errors[0].code, "E_TRAIT");
+        assert!(errors.errors[0].message.contains("unknown trait"));
+        assert_eq!(errors.errors[0].span, span);
+        assert!(errors.errors[0].end.is_none());
+    }
 
     #[test]
     fn implementation_target_ranges_keep_missing_metadata_and_child_locations() {

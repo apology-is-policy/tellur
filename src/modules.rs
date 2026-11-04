@@ -973,8 +973,12 @@ fn resolve(
         }
         for implementation in &mut unit.implementations {
             r.type_parameters.clear();
-            implementation.trait_name =
-                r.name(&implementation.trait_name, implementation.span, Some(true))?;
+            implementation.trait_name = r
+                .name(&implementation.trait_name, implementation.span, Some(true))
+                .map_err(|mut error| {
+                    error.diagnostic = implementation.trait_error(error.diagnostic);
+                    error
+                })?;
             implementation.target =
                 r.ty(&implementation.target, implementation.span)
                     .map_err(|mut error| {
@@ -1003,6 +1007,10 @@ fn resolve(
             }
             for method in &mut implementation.methods {
                 r.method(method)?;
+            }
+            if implementation.trait_name_range.start.line != 0 {
+                implementation.trait_name_range.start.line += offset;
+                implementation.trait_name_range.end.line += offset;
             }
             if implementation.target_range.start.line != 0 {
                 implementation.target_range.start.line += offset;

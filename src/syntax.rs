@@ -393,6 +393,8 @@ pub struct Implementation {
     pub span: Span,
     pub end: Span,
     pub trait_name: String,
+    /// Written trait name between `implement` and `for`.
+    pub trait_name_range: SourceRange,
     pub target: String,
     /// Written target type after `for`, excluding the implementation body.
     pub target_range: SourceRange,
@@ -401,6 +403,9 @@ pub struct Implementation {
     pub methods: Vec<Region>,
 }
 impl Implementation {
+    pub(crate) fn trait_error(&self, error: Diagnostic) -> Diagnostic {
+        type_error(self.trait_name_range, error, self.span)
+    }
     pub(crate) fn target_error(&self, error: Diagnostic) -> Diagnostic {
         type_error(self.target_range, error, self.span)
     }
@@ -2071,7 +2076,9 @@ pub(crate) fn parse_with_layout(source: &str) -> Result<(Unit, Vec<Token>, crate
                     "implementations do not use pub; trait and type visibility govern access",
                 ));
             }
+            let trait_start = p.here();
             let trait_name = p.qualified()?;
+            let trait_name_range = p.range_from(trait_start);
             p.need("for")?;
             let target_start = p.here();
             let target = p.ty()?;
@@ -2094,6 +2101,7 @@ pub(crate) fn parse_with_layout(source: &str) -> Result<(Unit, Vec<Token>, crate
                 span,
                 end: p.tokens[p.pos - 1].span,
                 trait_name,
+                trait_name_range,
                 target,
                 target_range,
                 module: 0,

@@ -1009,14 +1009,41 @@ associated selections similarly select their written target. Lookup failures for
 private or missing imported target names keep their existing codes and select the
 qualified target use.
 
-Trait lookup remains earlier. Unknown-trait, foreign-module and duplicate-pair
-coherence errors keep their existing points; member/profile checks keep their
-separate locations. Invalid or ambiguous identities still disable independent
+Trait lookup remains earlier and retains its separate locations. Foreign-module
+and duplicate-pair coherence errors keep their existing points; member/profile
+checks keep their separate locations. Invalid or ambiguous identities still disable independent
 implementation recovery and preserve the original interleaved first-error order.
 The 1024-implementation limit remains earlier and keeps its own point. Valid shared
 identities still permit the existing 32-error preparation batches. Missing target
 metadata falls back to the implementation point, and precise child ranges are
 preserved. No target acceptance or ownership/coherence rule changes.
+
+
+## Implementation trait-name locations
+
+Since 0.207, implementation trait-name errors select the written name between
+`implement` and `for`. The range includes namespace qualification and interior
+comments; keywords, trailing comments and target types stay outside it. Imported
+and unsaved text preserve both endpoints independently of the target range.
+
+<!-- tellur:reject E_TRAIT -->
+```tellur
+implement absent for u32 {}
+```
+
+This error selects `absent`. Missing unqualified names still reach core trait lookup
+and report `E_TRAIT`; qualified missing members retain `E_NAME`, private imported
+names retain `E_VISIBILITY`, and wrong-kind module declarations retain `E_TYPE`.
+Using a known data type as a trait still reaches core lookup. Namespace-only uses
+and other name-lookup errors select the written qualification as well.
+
+Trait resolution remains before target resolution. Within core preparation, invalid
+identities still use the original interleaved first-error replay, so a later unknown
+trait cannot hide an earlier member or coherence error. Module lookup and core
+preparation keep their distinct phase priorities. The 1024 implementation limit,
+valid-identity 32-error recovery, target/associated ranges and ownership rules are
+unchanged. Missing trait-name metadata keeps the implementation point; existing
+precise child ranges remain intact.
 
 
 ## Constructor-call preparation batches

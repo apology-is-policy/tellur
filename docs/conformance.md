@@ -5574,3 +5574,20 @@ Two earlier target-priority regressions now expect target ranges. LSP and isolat
 VS Code cases repair the first invalid target to reveal the next, then restore
 trait-side hover and native calls. The previous independent preparation fixture
 remains a regression. Public async-host admission still awaits the recorded decision.
+
+
+## Implementation trait-name locations (0.207 / P2ao)
+
+Implementation trait names retain a parsed range independently from target types.
+Module name lookup attaches it before remapping, and core identity checking uses it
+for unknown-trait failures. Unresolved bare names still reach core E_TRAIT checking;
+qualified/private/wrong-kind lookups preserve their existing codes and phases.
+
+CLI cases cover missing and qualified names, comments, namespace-only and wrong-kind
+uses, imported privacy, original Unicode/CRLF ranges, single-error APIs, trait-before-
+target lookup, member/coherence interleaving, repairs and implementation budgets.
+A unit case checks absent metadata, distinct target ranges and precise children.
+The previous target-priority case now expects a range for its unknown-trait branch.
+LSP and isolated VS Code cases reveal the next invalid trait after partial repair,
+then restore trait-side hover and native calls. The previous target-range fixture
+remains a regression. Public async-host admission still awaits the recorded decision.
