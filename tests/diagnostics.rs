@@ -5844,3 +5844,253 @@ fn implementation_trait_ranges_keep_invalid_identity_order_and_budgets() {
     assert_eq!(errors.errors[0].span.line, 1026);
     assert!(errors.errors[0].end.is_none());
 }
+
+#[test]
+fn trait_member_duplicate_ranges_select_identifiers_in_existing_check_order() {
+    let f = Fixture::new();
+    let marker = "// selected 😀\r\n ";
+    for source in [
+        format!("trait reader {{type item;type {marker}item:copy;}}"),
+        format!("trait reader {{type item_name2;type {marker}item_name2;type item_name2;}}"),
+        format!(
+            "trait reader {{control read_value2() exits done;control {marker}read_value2() exits done;}}"
+        ),
+        format!(
+            "trait reader {{async control read() exits done;async control {marker}read() exits done;}}"
+        ),
+        format!("trait reader {{control {marker}item() exits done;type item;}}"),
+        format!(
+            "trait reader {{control read() exits done;control read() exits done;type item;type {marker}item;}}"
+        ),
+        format!(
+            "trait reader {{type item;}} implement reader for u32 {{type item=u32;type {marker}item=string;}}"
+        ),
+        format!(
+            "trait reader {{async control read() exits done;}} implement reader for u32 {{async control read() exits done {{exit done;}} async control {marker}read() exits done {{exit done;}}}}"
+        ),
+        format!(
+            "trait reader {{type item;}} implement reader for u32 {{control {marker}item() exits done {{exit done;}} type item=u32;}}"
+        ),
+        format!(
+            "trait reader {{type item;control read() exits done;}} implement reader for u32 {{control read() exits done {{exit done;}} control read() exits done {{exit done;}} type item=u32; type {marker}item=string;}}"
+        ),
+    ] {
+        f.write("main.tellur", &source);
+        let report = f.report(&["check", "main.tellur", "--json"], false);
+        let errors = report["diagnostics"].as_array().unwrap();
+        assert_eq!(errors.len(), 1, "{report}");
+        let at = source.find(marker).unwrap() + marker.len();
+        let name = source[at..]
+            .split(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+            .next()
+            .unwrap();
+        assert_eq!(errors[0]["code"], "E_TRAIT");
+        assert_eq!(
+            errors[0]["message"],
+            format!("duplicate trait member or parameter `{name}`")
+        );
+        assert_eq!(
+            errors[0]["range"],
+            json!({"start":scalar_position(&source,at),"end":scalar_position(&source,at+name.len())})
+        );
+        let batch = check_errors(&source);
+        assert_eq!(batch.errors.len(), 1);
+        assert_eq!(
+            compile(
+                &source,
+                Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
+            )
+            .unwrap_err(),
+            batch.errors[0]
+        );
+    }
+}
+
+#[test]
+fn trait_member_duplicate_ranges_preserve_imported_coordinates_and_repairs() {
+    let f = Fixture::new();
+    f.write("types.tellur", "pub struct wrapper {u32 value;}");
+    f.write("middle.tellur", "import \"worker.tellur\" as worker;");
+    f.write(
+        "main.tellur",
+        "import \"middle.tellur\" as middle;control main() exits done {exit done;}",
+    );
+    let valid = "import \"types.tellur\" as types;\r\npub trait reader {type item:copy;control read(self input) exits done;}\r\nimplement reader for u32 {type item=u32;control read(self local) exits done {string text=\"😀\";drop(text);exit done;}}\r\npub control work() exits done {reader<u32>.read(1);exit done;}";
+    for (needle, replacement, selected) in [
+        (
+            "type item:copy;",
+            "type item:copy;type item:drop;",
+            "item:drop",
+        ),
+        (
+            "control read(self input) exits done;",
+            "control read(self input) exits done;control read(self second) exits done;",
+            "read(self second)",
+        ),
+        (
+            "type item=u32;",
+            "type item=u32;type item=types.wrapper;",
+            "item=types.wrapper",
+        ),
+        (
+            "drop(text);exit done;}}",
+            "drop(text);exit done;}control read(self second) exits done {exit done;}}",
+            "read(self second)",
+        ),
+    ] {
+        let source = valid.replace(needle, replacement);
+        f.write("worker.tellur", &source);
+        let report = f.report(&["check", "main.tellur", "--json"], false);
+        let error = &report["diagnostics"][0];
+        assert_eq!(
+            report["diagnostics"].as_array().unwrap().len(),
+            1,
+            "{report}"
+        );
+        assert_eq!(error["code"], "E_TRAIT", "{report}");
+        assert_eq!(
+            error["path"],
+            f.root.join("worker.tellur").to_string_lossy().as_ref()
+        );
+        let at = source.find(selected).unwrap();
+        assert_eq!(
+            error["range"],
+            json!({"start":scalar_position(&source,at),"end":scalar_position(&source,at+4)})
+        );
+        let first = tellur::compile_file(
+            f.root.join("main.tellur"),
+            Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(first.path, f.root.join("worker.tellur"));
+        assert_eq!(
+            first.diagnostic.span.column,
+            error["position"]["column"].as_u64().unwrap() as usize
+        );
+        assert_eq!(
+            first.diagnostic.end.unwrap().column,
+            first.diagnostic.span.column + 4
+        );
+        f.write("worker.tellur", valid);
+        f.report(&["check", "main.tellur", "--json"], true);
+    }
+}
+
+#[test]
+fn trait_member_duplicate_ranges_keep_declaration_identity_and_coherence_priorities() {
+    let source = "implement absent for missing {} trait reader {type item;type item:copy;}";
+    let errors = check_errors(source);
+    assert_eq!(errors.errors.len(), 1);
+    assert!(errors.errors[0].message.contains("duplicate trait member"));
+    let fixed = source.replace("type item:copy;", "");
+    assert!(
+        check_errors(&fixed).errors[0]
+            .message
+            .contains("unknown trait")
+    );
+
+    let source = "trait reader {type item;} implement reader for u32 {type item=u32;type item=string;} implement absent for missing {}";
+    let errors = check_errors(source);
+    assert_eq!(errors.errors.len(), 1);
+    assert!(errors.errors[0].message.contains("duplicate trait member"));
+    assert_eq!(
+        errors.errors[0].span.column,
+        source.find("item=string").unwrap() + 1
+    );
+    let fixed = source.replace("type item=string;", "");
+    assert!(
+        check_errors(&fixed).errors[0]
+            .message
+            .contains("unknown trait")
+    );
+
+    for (source, message, code) in [
+        (
+            "trait reader {type item;} implement reader for missing {type item=u32;type item=string;}",
+            "unknown or unapplied",
+            "E_TRAIT",
+        ),
+        (
+            "trait reader {type item;} implement reader for u32 {} implement reader for string {type item=u32;type item=string;}",
+            "supply exactly",
+            "E_TRAIT",
+        ),
+        (
+            "trait reader {type item;} implement reader for u32 {type item=u32;} implement reader for u32 {type item=u32;} implement reader for string {type item=u32;type item=string;}",
+            "duplicate implementation",
+            "E_COHERENCE",
+        ),
+    ] {
+        let errors = check_errors(source);
+        assert_eq!(errors.errors[0].code, code, "{errors}");
+        assert!(errors.errors[0].message.contains(message), "{errors}");
+        if message != "unknown or unapplied" {
+            assert!(errors.errors[0].end.is_none());
+        }
+    }
+}
+
+#[test]
+fn trait_member_duplicate_ranges_keep_independent_batches_and_budgets() {
+    for implementations in [false, true] {
+        let mut source = if implementations {
+            "trait reader {type item;}\n".to_owned()
+        } else {
+            String::new()
+        };
+        for n in (0..36).rev() {
+            if implementations {
+                source.push_str(&format!("struct item_{n:02} {{u32 value;}} implement reader for item_{n:02} {{type item=u32;type item=string;}}\n"));
+            } else {
+                source.push_str(&format!("trait reader_{n:02} {{type item;type item:copy;control read() exits done;control read() exits done;}}\n"));
+            }
+        }
+        let errors = check_errors(&source);
+        assert_eq!(errors.errors.len(), 32, "{errors}");
+        assert!(errors.limit_reached);
+        for (n, error) in errors.errors.iter().enumerate() {
+            assert_eq!(error.code, "E_TRAIT");
+            assert_eq!(error.message, "duplicate trait member or parameter `item`");
+            assert_eq!(error.span.line, n + 1 + usize::from(implementations));
+            assert_eq!(error.end.as_ref().unwrap().column, error.span.column + 4);
+        }
+        assert_eq!(
+            compile(
+                &source,
+                Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
+            )
+            .unwrap_err(),
+            errors.errors[0]
+        );
+    }
+    let source = format!(
+        "trait reader {{type item;}}\n{}",
+        "implement reader for u32 {type item=u32;type item=string;}\n".repeat(1025)
+    );
+    let errors = check_errors(&source);
+    assert_eq!(errors.errors.len(), 1);
+    assert!(!errors.limit_reached);
+    assert!(errors.errors[0].message.contains("1024-implementation"));
+    assert!(errors.errors[0].end.is_none());
+}
+
+#[test]
+fn trait_member_duplicate_ranges_leave_parameter_exit_and_payload_checks_at_their_points() {
+    for source in [
+        "trait reader {control read(u32 item,u32 item) exits done;}",
+        "trait reader {control read() exits done,done;}",
+        "trait reader {control read() exits done(u32 item,u32 item);}",
+        "trait reader {control read(u32 item) exits done;} implement reader for u32 {control read(u32 item,u32 item) exits done {exit done;}}",
+    ] {
+        let errors = check_errors(source);
+        assert_eq!(errors.errors.len(), 1, "{errors}");
+        assert_eq!(errors.errors[0].code, "E_TRAIT", "{errors}");
+        assert!(
+            errors.errors[0]
+                .message
+                .contains("duplicate trait member or parameter"),
+            "{errors}"
+        );
+        assert!(errors.errors[0].end.is_none(), "{errors}");
+    }
+}

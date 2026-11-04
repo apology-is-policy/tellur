@@ -5591,3 +5591,20 @@ The previous target-priority case now expects a range for its unknown-trait bran
 LSP and isolated VS Code cases reveal the next invalid trait after partial repair,
 then restore trait-side hover and native calls. The previous target-range fixture
 remains a regression. Public async-host admission still awaits the recorded decision.
+
+
+## Duplicate trait-member locations (0.208 / P2ap)
+
+The shared uniqueness traversal accepts original member-name positions while method
+parameter, exit and payload uniqueness retains its existing point diagnostics.
+Member names are still unqualified parser identifiers at preparation time; imported
+spans have already been remapped, and later method lowering cannot affect the range.
+
+CLI cases cover associated/control/cross-kind duplicates, longer identifiers,
+associated-before-control order, repeated names, async modifiers, imported repairs,
+Unicode/CRLF coordinates, first-error APIs, declaration/identity/coherence priorities,
+independent batches and the 32-error/1024-implementation limits. A unit case removes
+each kind of member metadata in declarations and implementations to check fallback.
+LSP and isolated VS Code repair declaration errors before implementation batches,
+then restore exact checked hover and native calls; the previous trait-name fixture
+remains a regression. Public async-host admission still awaits its recorded decision.

@@ -16,16 +16,40 @@ fn signature_error(at: Span, message: impl Into<String>) -> Diagnostic {
     Diagnostic::new("E_TRAIT_SIGNATURE", at, message)
 }
 fn unique<'a>(names: impl Iterator<Item = &'a str>, at: Span) -> Result<()> {
+    unique_at(names.map(|name| (name, Span::default())), at)
+}
+fn unique_at<'a>(names: impl Iterator<Item = (&'a str, Span)>, at: Span) -> Result<()> {
     let mut seen = BTreeSet::new();
-    for n in names {
+    for (n, name_at) in names {
         if !seen.insert(n) {
-            return Err(error(
-                at,
-                format!("duplicate trait member or parameter `{n}`"),
-            ));
+            let diagnostic = error(at, format!("duplicate trait member or parameter `{n}`"));
+            return Err(if name_at.line == 0 {
+                diagnostic
+            } else {
+                diagnostic.with_range(crate::SourceRange {
+                    start: name_at,
+                    end: Span {
+                        line: name_at.line,
+                        column: name_at.column + n.chars().count(),
+                    },
+                })
+            });
         }
     }
     Ok(())
+}
+fn unique_members(associated: &[AssociatedType], methods: &[Region], at: Span) -> Result<()> {
+    // These are still the original single-token member identifiers: module
+    // resolution remaps their spans, and qualified method lowering happens later.
+    // Keep the existing associated-before-method traversal even when source order
+    // interleaves the two kinds of member.
+    unique_at(
+        associated
+            .iter()
+            .map(|a| (a.name.as_str(), a.span))
+            .chain(methods.iter().map(|m| (m.name.as_str(), m.name_span))),
+        at,
+    )
 }
 fn leaves(ty: &str) -> Vec<String> {
     if let Some((_, inner)) = manifest::reference_inner(ty) {
@@ -470,13 +494,7 @@ pub(crate) fn lower(
     // Shared identities and schemas must be valid before checking independent
     // declarations. No witness, substitution or lowered method is published here.
     crate::diagnostics::collect_checks(unit.traits.iter().map(|d| -> Result<()> {
-        unique(
-            d.associated
-                .iter()
-                .map(|a| a.name.as_str())
-                .chain(d.methods.iter().map(|m| m.name.as_str())),
-            d.span,
-        )?;
+        unique_members(&d.associated, &d.methods, d.span)?;
         let mut params = BTreeSet::from(["self".into()]);
         for a in &d.associated {
             if a.name == "self"
@@ -570,13 +588,7 @@ pub(crate) fn lower(
     let mut implementations = BTreeMap::new();
     let checks = unit.implementations.iter().map(|i| -> Result<()> {
         let d = implementation_identity(i, &declarations, &arities, visibility)?;
-        unique(
-            i.associated
-                .iter()
-                .map(|a| a.name.as_str())
-                .chain(i.methods.iter().map(|m| m.name.as_str())),
-            i.span,
-        )?;
+        unique_members(&i.associated, &i.methods, i.span)?;
         if i.associated
             .iter()
             .map(|a| a.name.as_str())
@@ -1017,6 +1029,43 @@ pub(crate) fn abstract_witness(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn trait_member_duplicate_ranges_keep_missing_metadata_fallback() {
+        for source in [
+            "trait reader {type item;type item;}",
+            "trait reader {control read() exits done;control read() exits done;}",
+            "trait reader {type item;} implement reader for u32 {type item=u32;type item=string;}",
+            "trait reader {control read() exits done;} implement reader for u32 {control read() exits done {exit done;}control read() exits done {exit done;}}",
+        ] {
+            let mut unit = crate::syntax::parse_unit(source).unwrap();
+            let (associated, methods, at) = if let Some(i) = unit.implementations.first_mut() {
+                (&mut i.associated, &mut i.methods, i.span)
+            } else {
+                let d = &mut unit.traits[0];
+                (&mut d.associated, &mut d.methods, d.span)
+            };
+            if associated.len() > 1 {
+                associated[1].span = Span::default();
+            } else {
+                methods[1].name_span = Span::default();
+            }
+            let errors = crate::check::compile_unit(
+                unit,
+                Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+                &Visibility::default(),
+            )
+            .unwrap_err();
+            assert_eq!(errors.errors.len(), 1);
+            assert_eq!(errors.errors[0].span, at);
+            assert!(errors.errors[0].end.is_none());
+            assert!(
+                errors.errors[0]
+                    .message
+                    .contains("duplicate trait member or parameter")
+            );
+        }
+    }
 
     #[test]
     fn implementation_trait_ranges_keep_missing_metadata_and_child_locations() {

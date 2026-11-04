@@ -1046,6 +1046,37 @@ unchanged. Missing trait-name metadata keeps the implementation point; existing
 precise child ranges remain intact.
 
 
+## Duplicate trait-member locations
+
+Since 0.208, duplicate associated-type and control members in traits and
+implementations select the repeated name token. The range excludes `type`, `control`,
+modifiers, comments, parameter lists and assignments. Imported and unsaved sources
+retain original coordinates, including Unicode text before a member on the same line.
+
+<!-- tellur:reject E_TRAIT -->
+```tellur
+trait reader {
+    type item;
+    type item;
+}
+```
+
+The second `item` is selected. Validation still visits associated types in their
+written order, then controls in their written order. A cross-kind duplicate selects
+the control name even when that control appears before the associated type in the
+source. Only the first duplicate in this check order is reported per declaration or
+implementation; later member/profile checks wait for its repair.
+
+Independent declaration errors still precede implementations. Valid implementation
+identities permit independent preparation errors; invalid or duplicate identities
+retain the original interleaved first-error barrier. The 32-error budget and the
+earlier 1024-implementation limit remain unchanged. Missing member-name metadata
+keeps the enclosing declaration/implementation point. Parameter, exit and payload
+name uniqueness, member-set mismatch and reserved-name checks keep their separate
+locations and existing priorities. No partially checked contract becomes executable
+or available to hover.
+
+
 ## Constructor-call preparation batches
 
 Since 0.91, inaccessible constructor calls in independent bodies report together.
