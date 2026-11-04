@@ -1,8 +1,8 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.198.0 -->
+<!-- tellur-reference-version: 0.199.0 -->
 
-This manual describes **compiler 0.198.0**, including the current ownership model,
+This manual describes **compiler 0.199.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -15,7 +15,7 @@ as a bug to investigate, not a promise that either must remain unchanged. The
 updates at every implementation checkpoint.
 
 
-Compiler 0.198 also supports [owned spawned children](reference/async-execution.md#owned-spawned-children)
+Compiler 0.199 also supports [owned spawned children](reference/async-execution.md#owned-spawned-children)
 with explicit `await`/`yield` handoffs, required normal-path joins and owning-boundary
 fault settlement. The current profile admits reference-free values, direct borrows and nested owned record/option/variant/named-outcome
 captures/results with reference leaves to reference-free storage, plus borrowed record/option/variant/named-outcome captures
@@ -2603,6 +2603,11 @@ with dependent aliases suppressed and no partial substitutions. Roots retain the
 canonical trait/type order, then written member order. Cycles and normalization
 budgets retain their existing rules. See [associated-type normalization diagnostics](reference/diagnostics-and-limits.md#associated-type-normalization-batches).
 
+Since 0.199, implementation async/fault/contingency permission errors are collected
+before substitutions and method generation, with one error per implementation.
+Async equality and the fault/contingency permission rules remain unchanged.
+See [implementation permission diagnostics](reference/diagnostics-and-limits.md#implementation-permission-batches).
+
 A module may implement a trait only if it owns that trait or the outer nominal target
 type. A foreign container holding a local type is still foreign. Duplicate trait/type
 pairs are errors, including across imports. Visibility applies to both trait and type;
@@ -2842,7 +2847,7 @@ General expression-type hover remains unsupported.
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and broader spawn payloads (anonymous contracts and reference-bearing collections) remain planned; they are not executable features of 0.198.0.
+and broader spawn payloads (anonymous contracts and reference-bearing collections) remain planned; they are not executable features of 0.199.0.
 ## Contingency and supervised boundaries
 
 The [contingency reference](reference/contingency.md) specifies `@contingent`,

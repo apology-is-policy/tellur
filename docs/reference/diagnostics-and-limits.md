@@ -742,6 +742,45 @@ partial unsaved repairs remove resolved failures and restore hover only after th
 entire program checks. This changes recovery, not trait acceptance or ownership.
 
 
+## Implementation permission batches
+
+Since 0.199, independent implementation permission failures report together after
+all identities, local members and associated types have prepared. Checking keeps
+canonical trait/type order, then each implementation's written method order. It
+reports at most one error per implementation and stops at the shared 32-error budget,
+including unused implementations. Single-error APIs retain the first diagnostic.
+
+<!-- tellur:reject E_ASYNC -->
+```tellur
+trait reader {
+    control read(self input) exits done;
+}
+implement reader for u32 {
+    async control read(self input) exits done {
+        exit done;
+    }
+}
+implement reader for string {
+    async control read(self input) exits done {
+        exit done;
+    }
+}
+```
+
+Both methods add async permission to a synchronous trait operation. Removing one
+`async` leaves the other error. Within a method, checking still compares async
+permission first, then fault permission, then contingency permission. Async must
+match exactly. An implementation cannot add `faults` or `@contingent` permission
+that its trait did not grant; a valid implementation inherits those permissions.
+Generic witnesses retain the same rules.
+
+The preflight is read-only. A failed phase publishes no substitutions, generated
+controls, visibility entries or witnesses. Associated bounds, origin/signature
+conformance and body checking remain later phases. Original imported points and
+UTF-16 editor locations follow unsaved partial repairs, with checked hover withheld
+until the whole source validates. Permission acceptance and execution are unchanged.
+
+
 ## Constructor-call preparation batches
 
 Since 0.91, inaccessible constructor calls in independent bodies report together.

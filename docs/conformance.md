@@ -5416,3 +5416,23 @@ UTF-16 points after preceding emoji edits, and execute repaired code natively.
 Selected trait, bound, generic, aggregate-origin, module, public-contract, async,
 fault, contingency and manual suites accompany this release. The public async-host
 call model remains an unanswered design question.
+
+
+## Independent implementation permissions (0.199 / P2ag)
+
+A read-only preflight collects permission failures only after every implementation
+identity, local member and associated type has prepared. Canonical trait/type order,
+written method order and async-before-fault-before-contingency priority preserve the
+first diagnostic. Each implementation contributes at most one error, within the
+shared 32-error limit. Failed phases expose no substitutions, generated methods,
+visibility entries or witnesses; accepted permission propagation is unchanged.
+
+Tests cover mixed independent failures, multiple invalid methods, async equality
+in both directions, fault/contingency subsets, inherited generic permissions,
+partial repair, later bounds/origin/signature/body barriers, earlier preparation,
+unused implementations, transitive imports and first-error compatibility. LSP and
+isolated editor checks repair async and fault annotations in an unsaved dependency,
+track UTF-16 points after preceding emoji text, suppress stale hover, and execute
+repaired trait calls natively. Trait, generic, aggregate-origin, module, public
+contract, async, fault, contingency and reference checks accompany this release.
+The pending public async-host call-model decision remains separate.

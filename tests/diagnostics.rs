@@ -4091,3 +4091,218 @@ fn associated_normalization_batches_keep_transitive_imported_points_and_first_er
     assert_eq!(first.diagnostic.span.line, 3);
     assert_eq!(first.diagnostic.code, "E_LIFETIME");
 }
+
+#[test]
+fn implementation_permission_batches_preserve_canonical_order_and_method_priority() {
+    let source = "trait a_async {control first(self input) exits done;control second() exits done;}\ntrait b_fault {control first(self input) exits done;control second() exits done;}\ntrait c_contingent {control first(self input) exits done;control second() exits done;}\nimplement c_contingent for u32 {@contingent control first(self input) exits done {exit done;} @contingent control second() exits done {exit done;}}\nimplement b_fault for u32 {control second() exits done faults {exit done;} async control first(self input) exits done {exit done;}}\nimplement a_async for u32 {async control first(self input) exits done faults {exit done;} control second() exits done faults {exit done;}}";
+    let errors = check_errors(source);
+    assert_eq!(
+        errors
+            .errors
+            .iter()
+            .map(|e| (e.code, e.span.line))
+            .collect::<Vec<_>>(),
+        [("E_ASYNC", 6), ("E_FAULT_CONTRACT", 5), ("E_CONTINGENT", 4)],
+        "{errors}"
+    );
+    assert!(!errors.limit_reached);
+    assert_eq!(
+        compile(
+            source,
+            Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
+        )
+        .unwrap_err(),
+        errors.errors[0]
+    );
+    // Within the same implementation methods retain written order, not trait order;
+    // within one method, async equality still precedes a fault permission error.
+    let later = source.replace(
+        "async control first(self input) exits done faults",
+        "control first(self input) exits done faults",
+    );
+    assert_eq!(check_errors(&later).errors[0].code, "E_FAULT_CONTRACT");
+}
+
+#[test]
+fn implementation_permission_batches_replay_before_bounds_conformance_and_bodies() {
+    let source = "trait reader {type item:copy;control read(self input) exits done;}\nimplement reader for u32 {type item=string;async control read(ref self input) exits done {u32 wrong=true;exit done;}}\nimplement reader for string {type item=u32;control read(self input) exits done faults {exit done;}}";
+    let errors = check_errors(source);
+    assert_eq!(
+        errors.errors.iter().map(|e| e.code).collect::<Vec<_>>(),
+        ["E_FAULT_CONTRACT", "E_ASYNC"],
+        "{errors}"
+    );
+    let partial = source.replace("async control read", "control read");
+    let errors = check_errors(&partial);
+    assert_eq!(errors.errors.len(), 1, "{errors}");
+    assert_eq!(errors.errors[0].code, "E_FAULT_CONTRACT");
+    let repaired = partial.replace("done faults", "done");
+    assert_eq!(check_errors(&repaired).errors[0].code, "E_BOUND");
+    let repaired = repaired.replace("item=string", "item=u32");
+    assert_eq!(check_errors(&repaired).errors[0].code, "E_TRAIT_SIGNATURE");
+    let repaired = repaired.replace("ref self input", "self input");
+    assert_eq!(check_errors(&repaired).errors[0].code, "E_TYPE");
+    compile(
+        &repaired.replace("u32 wrong=true;", ""),
+        Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+    )
+    .unwrap();
+}
+
+#[test]
+fn implementation_permission_batches_precede_implementation_origin_conformance() {
+    let source = "trait reader {control read(ref self input) exits found {ref self value from input};} implement reader for u32 {async control read(ref self input) exits found {ref self value} {exit found {input};}} implement reader for string {async control read(ref self input) exits found {ref self value} {exit found {input};}}";
+    let errors = check_errors(source);
+    assert_eq!(errors.errors.len(), 2, "{errors}");
+    assert!(errors.errors.iter().all(|e| e.code == "E_ASYNC"));
+    let repaired = source.replace("async control read", "control read");
+    let errors = check_errors(&repaired);
+    assert_eq!(errors.errors.len(), 1, "{errors}");
+    assert_eq!(errors.errors[0].code, "E_LIFETIME");
+    compile(
+        &repaired.replace(
+            "exits found {ref self value}",
+            "exits found {ref self value from input}",
+        ),
+        Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+    )
+    .unwrap();
+}
+
+#[test]
+fn implementation_permission_batches_preserve_earlier_phases_and_budget() {
+    let source = "trait reader {control read(self input) exits done;} implement reader for u32 {async control read(self input) exits done {exit done;}} implement reader for string {async control read(self input) exits done {exit done;}}";
+    for (prefix, code) in [
+        (
+            "struct invalid['a,'a] {ref string value <- 'a;} ",
+            "E_ORIGIN",
+        ),
+        (
+            "trait invalid {control read() exits auto;} ",
+            "E_TRAIT_SIGNATURE",
+        ),
+        (
+            "trait missing {type item;} implement missing for bool {} ",
+            "E_TRAIT",
+        ),
+        (
+            "trait source {type item;} implement source for bool {type item=ref string;} ",
+            "E_LIFETIME",
+        ),
+        ("implement absent for bool {} ", "E_TRAIT"),
+    ] {
+        let errors = check_errors(&format!("{prefix}{source}"));
+        assert_eq!(errors.errors.len(), 1, "{errors}");
+        assert_eq!(errors.errors[0].code, code);
+    }
+    let mut source = "trait reader {control read(self input) exits done;}\n".to_owned();
+    for n in 0..40 {
+        source.push_str(&format!("struct value_{n} {{u32 value;}} implement reader for value_{n} {{async control read(self input) exits done {{exit done;}}}}\n"));
+    }
+    let errors = check_errors(&source);
+    assert_eq!(errors.errors.len(), 32, "{errors}");
+    assert!(errors.limit_reached);
+    assert!(errors.errors.iter().all(|e| e.code == "E_ASYNC"));
+}
+
+#[test]
+fn implementation_permission_batches_preserve_equality_subsets_and_generic_propagation() {
+    for (declaration, implementation, expected) in [
+        (
+            "async control read(self input) exits done;",
+            "control read(self input) exits done {exit done;}",
+            "E_ASYNC",
+        ),
+        (
+            "control read(self input) exits done;",
+            "async control read(self input) exits done {exit done;}",
+            "E_ASYNC",
+        ),
+        (
+            "control read(self input) exits done;",
+            "control read(self input) exits done faults {exit done;}",
+            "E_FAULT_CONTRACT",
+        ),
+        (
+            "control read(self input) exits done;",
+            "@contingent control read(self input) exits done {exit done;}",
+            "E_CONTINGENT",
+        ),
+    ] {
+        let source = format!(
+            "trait reader {{{declaration}}} implement reader for u32 {{{implementation}}} implement reader for string {{{implementation}}}"
+        );
+        let errors = check_errors(&source);
+        assert_eq!(errors.errors.len(), 2, "{errors}");
+        assert!(errors.errors.iter().all(|e| e.code == expected));
+    }
+    let source = "trait reader {async control read(self input) exits done faults;} implement reader for u32 {async control read(self input) exits done {exit done;}} async control work<t:reader>(t input) exits done faults {await reader<t>.read(input);exit done;} trait cleanup {@contingent control finish(self input) exits done;} implement cleanup for string {control finish(self input) exits done {emit(input);exit done;}} @contingent control finish<t:cleanup>(t input) exits done {cleanup<t>.finish(input);exit done;} control main() exits done faults {run work<u32>(1);finish<string>(\"finished\");exit done;}";
+    let p = compile(
+        source,
+        Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+    )
+    .unwrap();
+    let scenario = tellur::runtime::Scenario {
+        entry: "main".into(),
+        arguments: vec![],
+        calls: vec![],
+    };
+    let report = p.run(&scenario).unwrap();
+    assert_eq!(report.events.len(), 1);
+    assert_eq!(report, p.expanded("main").unwrap().run(&scenario).unwrap());
+}
+
+#[test]
+fn implementation_permission_batches_preserve_transitive_imported_points() {
+    let f = Fixture::new();
+    f.write(
+        "contract.tellur",
+        "pub trait reader {control read(self input) exits done;}",
+    );
+    for file in ["first.tellur", "second.tellur"] {
+        f.write(file,"import \"contract.tellur\" as contract;\r\nstruct local {u32 value;}\r\nimplement contract.reader for local {\r\n    async control read(self input) exits done {exit done;}\r\n}");
+    }
+    f.write(
+        "middle.tellur",
+        "import \"first.tellur\" as first;import \"second.tellur\" as second;",
+    );
+    f.write(
+        "main.tellur",
+        "import \"middle.tellur\" as middle;control main() exits done {exit done;}",
+    );
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    let errors = report["diagnostics"].as_array().unwrap();
+    assert_eq!(errors.len(), 2, "{report}");
+    for error in errors {
+        assert_eq!(error["code"], "E_ASYNC");
+        assert_eq!(error["position"], json!({"line":4,"column":5}));
+    }
+    let paths = errors
+        .iter()
+        .map(|e| {
+            PathBuf::from(e["path"].as_str().unwrap())
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(
+        paths,
+        ["first.tellur".to_owned(), "second.tellur".to_owned()]
+            .into_iter()
+            .collect()
+    );
+    assert!(report["summary"].is_null());
+    let first = tellur::compile_file(
+        f.root.join("main.tellur"),
+        Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+    )
+    .unwrap_err();
+    assert_eq!(
+        first.path.to_string_lossy(),
+        errors[0]["path"].as_str().unwrap()
+    );
+    assert_eq!(first.diagnostic.code, "E_ASYNC");
+    assert_eq!(first.diagnostic.span.line, 4);
+}

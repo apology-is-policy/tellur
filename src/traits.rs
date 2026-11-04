@@ -163,6 +163,35 @@ fn method_profile(r: &Region) -> Result<()> {
     }
     Ok(())
 }
+// Local member identities have already validated. Check permissions without
+// publishing generated controls or visibility for a partially valid phase.
+fn implementation_permissions(i: &Implementation, d: &TraitDeclaration) -> Result<()> {
+    for method in &i.methods {
+        let declared = d.methods.iter().find(|m| m.name == method.name).unwrap();
+        if method.asynchronous != declared.asynchronous {
+            return Err(Diagnostic::new(
+                "E_ASYNC",
+                method.span,
+                "implementation must match the trait control's async permission",
+            ));
+        }
+        if method.fault_contract == Some(true) && !declared.fault_contract.unwrap_or(false) {
+            return Err(Diagnostic::new(
+                "E_FAULT_CONTRACT",
+                method.span,
+                "implementation cannot add faults to a trait control that does not permit them",
+            ));
+        }
+        if method.contingent_contract == Some(true) && declared.contingent_contract != Some(true) {
+            return Err(Diagnostic::new(
+                "E_CONTINGENT",
+                method.span,
+                "implementation cannot enlarge the trait contingency subset",
+            ));
+        }
+    }
+    Ok(())
+}
 // A dependent root has already contributed an original diagnostic. Keep that
 // suppression separate from real failures, without inventing placeholder errors.
 enum NormalizationFailure {
@@ -605,6 +634,14 @@ pub(crate) fn lower(
                 }
             }),
     )?;
+    // Keep canonical implementation order and the original per-method priority.
+    // Normalization must finish first; substitutions and witnesses wait for all
+    // permissions, including those in unused implementations, to validate.
+    crate::diagnostics::collect_checks(
+        implementations
+            .iter()
+            .map(|((trait_name, _), i)| implementation_permissions(i, &declarations[trait_name])),
+    )?;
     let replacements = normalizer.values;
     // Every substitution comes from a checked trait/type/member identity.
     for data in &mut unit.data {
@@ -653,52 +690,9 @@ pub(crate) fn lower(
             expected.push(method);
         }
         for mut method in i.methods.clone() {
-            if method.asynchronous
-                != d.methods
-                    .iter()
-                    .find(|m| m.name == method.name)
-                    .unwrap()
-                    .asynchronous
-            {
-                return Err(Diagnostic::new(
-                    "E_ASYNC",
-                    method.span,
-                    "implementation must match the trait control's async permission",
-                )
-                .into());
-            }
-            let permission = d
-                .methods
-                .iter()
-                .find(|m| m.name == method.name)
-                .unwrap()
-                .fault_contract
-                .unwrap_or(false);
-            if method.fault_contract == Some(true) && !permission {
-                return Err(Diagnostic::new(
-                    "E_FAULT_CONTRACT",
-                    method.span,
-                    "implementation cannot add faults to a trait control that does not permit them",
-                )
-                .into());
-            }
-            method.fault_contract = Some(permission);
-            let contingent = d
-                .methods
-                .iter()
-                .find(|m| m.name == method.name)
-                .unwrap()
-                .contingent_contract
-                == Some(true);
-            if method.contingent_contract == Some(true) && !contingent {
-                return Err(Diagnostic::new(
-                    "E_CONTINGENT",
-                    method.span,
-                    "implementation cannot enlarge the trait contingency subset",
-                )
-                .into());
-            }
-            method.contingent_contract = Some(contingent);
+            let declared = d.methods.iter().find(|m| m.name == method.name).unwrap();
+            method.fault_contract = Some(declared.fault_contract.unwrap_or(false));
+            method.contingent_contract = Some(declared.contingent_contract == Some(true));
             method.name = format!("{trait_name}<{target}>.{}", method.name);
             method.public = public;
             crate::generic_controls::rewrite_region(&mut method, &bindings);
