@@ -5648,3 +5648,21 @@ LSP and isolated VS Code exercise partial declaration and implementation repairs
 multiline UTF-16 ranges, stale-hover suppression, restored hover and native calls.
 Shared constructor, generic, module and outcome suites cover generated/cloned
 carriers. Public async-host admission still awaits its recorded decision.
+
+
+## Trait inferred-contract locations (0.211 / P2as)
+
+Trait method-profile rejection uses the existing first inference-clause range only
+for modern nongeneric methods. Structural restrictions keep their method point;
+parser acceptance, module remapping and ordinary public-shape handling are unchanged.
+The diagnostic is created locally before attachment, avoiding a mismatch with the
+public-shape helper's control-name fallback.
+
+Five CLI cases cover auto/payload clauses, mixed/wrapped lists, qualifications,
+comments, Unicode/CRLF, imports, repairs, first-error APIs, structural/member/type/
+identity/coherence priorities and both budgets. Two units cover absent metadata,
+structural fallback despite present ranges, and names rewritten after parsing.
+The earlier target-priority regression now expects the inference range while
+preserving coherence points. LSP and isolated VS Code cover partial declaration
+and implementation repair, UTF-16 ranges, hover recovery and native execution.
+No public async-host call model has been selected.

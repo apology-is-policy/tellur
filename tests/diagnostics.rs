@@ -5604,6 +5604,15 @@ fn implementation_target_ranges_keep_identity_coherence_and_member_priority() {
                 errors.errors[0].end.as_ref().unwrap().column - errors.errors[0].span.column,
                 "absent".len()
             );
+        } else if code == "E_TRAIT_SIGNATURE" {
+            assert_eq!(
+                errors.errors[0].span.column,
+                source.find("exits auto").unwrap() + 1
+            );
+            assert_eq!(
+                errors.errors[0].end.as_ref().unwrap().column,
+                errors.errors[0].span.column + 10
+            );
         } else {
             assert!(errors.errors[0].end.is_none(), "{errors}");
         }
@@ -6614,4 +6623,259 @@ fn trait_exit_duplicate_ranges_keep_trait_validation_before_variant_schemas() {
         errors.errors[0].span.column,
         source.rfind("done").unwrap() + 1
     );
+}
+
+#[test]
+fn trait_inference_ranges_select_the_first_written_clause() {
+    let f = Fixture::new();
+    for (contract, selected) in [
+        ("exits auto", "exits auto"),
+        ("exits // 😀\r\n auto", "exits // 😀\r\n auto"),
+        ("exits ready...", "ready..."),
+        ("exits {plain,zebra...,alpha...}", "zebra..."),
+        (
+            "exits plain,reply // 😀\r\n .ready ... , later...",
+            "reply // 😀\r\n .ready ...",
+        ),
+    ] {
+        for implementation in [false, true] {
+            if !implementation && contract.contains("...") {
+                continue;
+            }
+            let source = if implementation {
+                format!(
+                    "trait reader {{control read() exits done;}} implement reader for u32 {{control read() {contract} // trailing\r\n {{exit done;}}}}"
+                )
+            } else {
+                format!("trait reader {{control read() {contract} // trailing\r\n ;}}")
+            };
+            f.write("main.tellur", &source);
+            let report = f.report(&["check", "main.tellur", "--json"], false);
+            let errors = report["diagnostics"].as_array().unwrap();
+            assert_eq!(errors.len(), 1, "{report}");
+            assert_eq!(errors[0]["code"], "E_TRAIT_SIGNATURE");
+            assert_eq!(
+                errors[0]["message"],
+                "trait methods use nongeneric control declarations with explicit exit contracts"
+            );
+            assert_eq!(errors[0]["range"], selected_range(&source, selected));
+            let batch = check_errors(&source);
+            assert_eq!(
+                compile(
+                    &source,
+                    Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
+                )
+                .unwrap_err(),
+                batch.errors[0]
+            );
+        }
+    }
+}
+
+#[test]
+fn trait_inference_ranges_preserve_imported_coordinates_and_repairs() {
+    let f = Fixture::new();
+    f.write("middle.tellur", "import \"worker.tellur\" as worker;");
+    f.write(
+        "main.tellur",
+        "import \"middle.tellur\" as middle;control main() exits done {exit done;}",
+    );
+    let valid = "pub trait reader {control read(self input) exits done;}\r\nimplement reader for u32 {control read(self first) exits done {string note=\"😀\";drop(note);exit done;}} implement reader for string {control read(self second) exits done {exit done;}}\r\npub control work() exits done {reader<u32>.read(1);reader<string>.read(\"x\");exit done;}";
+    for (needle, replacement, selected) in [
+        (
+            "exits done;",
+            "exits // 😀\r\n auto;",
+            "exits // 😀\r\n auto",
+        ),
+        (
+            "read(self first) exits done",
+            "read(self first) exits auto",
+            "exits auto",
+        ),
+        (
+            "read(self second) exits done",
+            "read(self second) exits {plain,reply // 😀\r\n .ready...,alpha...}",
+            "reply // 😀\r\n .ready...",
+        ),
+    ] {
+        let source = valid.replace(needle, replacement);
+        f.write("worker.tellur", &source);
+        let report = f.report(&["check", "main.tellur", "--json"], false);
+        let error = &report["diagnostics"][0];
+        assert_eq!(
+            report["diagnostics"].as_array().unwrap().len(),
+            1,
+            "{report}"
+        );
+        assert_eq!(error["code"], "E_TRAIT_SIGNATURE");
+        assert_eq!(
+            error["path"],
+            f.root.join("worker.tellur").to_string_lossy().as_ref()
+        );
+        assert_eq!(error["range"], selected_range(&source, selected));
+        let first = tellur::compile_file(
+            f.root.join("main.tellur"),
+            Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(first.path, f.root.join("worker.tellur"));
+        assert_eq!(
+            json!({"line":first.diagnostic.span.line,"column":first.diagnostic.span.column}),
+            error["position"]
+        );
+        let end = first.diagnostic.end.as_ref().unwrap();
+        assert_eq!(
+            json!({"line":end.line,"column":end.column}),
+            error["range"]["end"]
+        );
+        f.write("worker.tellur", valid);
+        f.report(&["check", "main.tellur", "--json"], true);
+    }
+}
+
+#[test]
+fn trait_inference_ranges_keep_structural_member_and_identity_priorities() {
+    for source in [
+        "trait reader {control read<t>() exits auto;}",
+        "trait reader {region read() exits auto;}",
+        "trait reader {control read() exits done;} implement reader for u32 {control read<t>() exits done... {exit done;}}",
+    ] {
+        let error = &check_errors(source).errors[0];
+        assert_eq!(error.code, "E_TRAIT_SIGNATURE", "{error}");
+        assert!(error.end.is_none(), "{error}");
+    }
+    let source = "trait reader {control read(u32 item,u32 item) exits auto;}";
+    let error = &check_errors(source).errors[0];
+    assert_eq!(error.code, "E_TRAIT_SIGNATURE");
+    assert_eq!(error.span.column, source.find("exits").unwrap() + 1);
+    assert!(
+        check_errors(&source.replace("auto", "done")).errors[0]
+            .message
+            .ends_with("`item`")
+    );
+    let source = "trait reader {type item;type item;control read() exits auto;}";
+    assert!(check_errors(source).errors[0].message.ends_with("`item`"));
+    let source = "implement absent for missing {} trait reader {control read() exits auto;}";
+    assert_eq!(check_errors(source).errors[0].code, "E_TRAIT_SIGNATURE");
+    let source = "trait reader {control read() exits done;} implement reader for u32 {control read() exits auto {exit done;}} implement absent for missing {}";
+    let errors = check_errors(source);
+    assert_eq!(errors.errors.len(), 1);
+    assert_eq!(errors.errors[0].code, "E_TRAIT_SIGNATURE");
+    assert!(
+        check_errors(&source.replace("exits auto", "exits done")).errors[0]
+            .message
+            .contains("unknown trait")
+    );
+    let source = "trait reader {control read() exits done;} implement reader for missing {control read() exits auto {exit done;}}";
+    assert!(
+        check_errors(source).errors[0]
+            .message
+            .contains("unknown or unapplied")
+    );
+    let source = "trait reader {control read() exits done;} implement reader for u32 {control read() exits done {exit done;}} implement reader for u32 {control read() exits auto {exit done;}}";
+    assert_eq!(check_errors(source).errors[0].code, "E_TRAIT_SIGNATURE");
+    let fixed = source.replace("exits auto", "exits done");
+    let error = &check_errors(&fixed).errors[0];
+    assert_eq!(error.code, "E_COHERENCE");
+    assert!(error.end.is_none());
+    let f = Fixture::new();
+    f.write("types.tellur", "pub struct wrapper {u32 value;}");
+    let source = "import \"types.tellur\" as types;trait reader {control read(types.missing item) exits auto;}";
+    f.write("main.tellur", source);
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    assert_eq!(report["diagnostics"][0]["code"], "E_NAME");
+    assert_eq!(
+        report["diagnostics"][0]["range"],
+        selected_range(source, "types.missing")
+    );
+}
+
+#[test]
+fn trait_inference_ranges_keep_independent_batches_and_limits() {
+    for implementations in [false, true] {
+        let mut source = if implementations {
+            "trait reader {control read() exits done;control other() exits done;}\n".to_owned()
+        } else {
+            String::new()
+        };
+        for n in (0..36).rev() {
+            if implementations {
+                source.push_str(&format!("struct value_{n:02} {{u32 value;}} implement reader for value_{n:02} {{control read() exits {{zebra...,alpha...}} {{exit zebra(1);}} control other() exits auto {{exit done;}}}}\n"));
+            } else {
+                source.push_str(&format!("trait reader_{n:02} {{control read() exits auto;control other() exits auto;}}\n"));
+            }
+        }
+        let errors = check_errors(&source);
+        assert_eq!(errors.errors.len(), 32, "{errors}");
+        assert!(errors.limit_reached);
+        for (n, error) in errors.errors.iter().enumerate() {
+            let selected = if implementations {
+                "zebra..."
+            } else {
+                "exits auto"
+            };
+            assert_eq!(error.span.line, n + 1 + usize::from(implementations));
+            assert_eq!(error.code, "E_TRAIT_SIGNATURE");
+            let line = source.lines().nth(error.span.line - 1).unwrap();
+            assert_eq!(error.span.column, line.find(selected).unwrap() + 1);
+            assert_eq!(
+                error.end.as_ref().unwrap().column,
+                error.span.column + selected.len()
+            );
+        }
+        assert_eq!(
+            compile(
+                &source,
+                Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
+            )
+            .unwrap_err(),
+            errors.errors[0]
+        );
+    }
+    let source = format!(
+        "trait reader {{control read() exits done;}}\n{}",
+        "implement reader for u32 {control read() exits auto {exit done;}}\n".repeat(1025)
+    );
+    let errors = check_errors(&source);
+    assert_eq!(errors.errors.len(), 1);
+    assert!(!errors.limit_reached);
+    assert!(errors.errors[0].message.contains("1024-implementation"));
+    assert!(errors.errors[0].end.is_none());
+}
+
+#[test]
+fn trait_inference_ranges_leave_public_private_and_parser_rules_separate() {
+    let f = Fixture::new();
+    for contract in ["exits auto", "exits ready..."] {
+        let source = format!("pub control ordinary() {contract} {{exit ready(1);}}");
+        f.write("main.tellur", &source);
+        let report = f.report(&["check", "main.tellur", "--json"], false);
+        assert_eq!(report["diagnostics"][0]["code"], "E_PUBLIC_CONTRACT");
+        assert_eq!(
+            report["diagnostics"][0]["range"],
+            selected_range(
+                &source,
+                if contract.ends_with("auto") {
+                    contract
+                } else {
+                    "ready..."
+                }
+            )
+        );
+        let private = source.replace("pub ", "");
+        f.write("main.tellur", &private);
+        f.report(&["check", "main.tellur", "--json"], true);
+    }
+    for source in [
+        "trait reader {control read() exits ready...;}",
+        "trait reader {region read() exits ready...;}",
+    ] {
+        let error = &check_errors(source).errors[0];
+        assert_eq!(error.code, "E_PARSE");
+        assert_eq!(
+            error.message,
+            "payload inference requires a control body; use an explicit payload contract here"
+        );
+        assert!(error.end.is_some());
+    }
 }

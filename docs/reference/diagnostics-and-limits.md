@@ -1137,6 +1137,36 @@ point. Partially repaired signatures remain unavailable to checked hover. This
 changes diagnostic locations without changing outcome or path-label semantics.
 
 
+## Trait inferred-contract locations
+
+Since 0.211, the existing `E_TRAIT_SIGNATURE` rejection of inferred trait-method
+contracts selects the written `exits auto` clause. An implementation using selected
+payload inference selects its first written `label...`, including qualified names
+and internal comments or line breaks. Other alternatives, wrapping braces, trailing
+comments, fault annotations and bodies are excluded. Imports and unsaved edits
+preserve original coordinates.
+
+<!-- tellur:reject E_TRAIT_SIGNATURE -->
+```tellur
+trait reader {
+    control read() exits auto;
+}
+```
+
+Explicit contracts remain required. The same diagnostic for generic or legacy
+methods retains its method point, including when inference is also written.
+Bodyless trait declarations using `label...` still fail during parsing. Member and
+shared identity errors retain priority, and method-profile errors still precede
+parameter/exit/payload uniqueness. Declaration batches precede implementations;
+invalid identities and duplicate implementation keys preserve interleaved replay.
+The 32-error and 1024-implementation limits are unchanged.
+
+Ordinary public controls keep their separate `E_PUBLIC_CONTRACT` ranges; private
+control inference remains supported. Missing clause metadata keeps the method
+point. Renaming labels or lowering method names does not change retained endpoints.
+Partial repairs do not expose an unchecked contract through hover.
+
+
 ## Constructor-call preparation batches
 
 Since 0.91, inaccessible constructor calls in independent bodies report together.

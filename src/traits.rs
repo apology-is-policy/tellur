@@ -178,10 +178,19 @@ fn explicit_origins(r: &Region, schemas: &crate::origins::Schemas) -> Result<()>
 
 fn method_profile(r: &Region) -> Result<()> {
     if !r.modern || !r.type_parameters.is_empty() || r.infer_exits || !r.infer_payloads.is_empty() {
-        return Err(signature_error(
+        let diagnostic = signature_error(
             r.span,
             "trait methods use nongeneric control declarations with explicit exit contracts",
-        ));
+        );
+        // Structural profile restrictions retain the method point. Otherwise
+        // this freshly created error describes the first written inference clause.
+        return Err(
+            if r.modern && r.type_parameters.is_empty() && r.inferred_exit_range.start.line != 0 {
+                diagnostic.with_range(r.inferred_exit_range)
+            } else {
+                diagnostic
+            },
+        );
     }
     unique_at(
         r.parameters.iter().map(|p| (p.name.as_str(), p.name_range)),
@@ -1041,6 +1050,58 @@ pub(crate) fn abstract_witness(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn trait_inference_ranges_keep_missing_metadata_and_structural_fallbacks() {
+        for source in [
+            "trait reader {control read() exits auto;}",
+            "trait reader {control read() exits done;} implement reader for u32 {control read() exits ready... {exit ready(1);}}",
+        ] {
+            let mut unit = crate::syntax::parse_unit(source).unwrap();
+            let method = if let Some(i) = unit.implementations.first_mut() {
+                &mut i.methods[0]
+            } else {
+                &mut unit.traits[0].methods[0]
+            };
+            let span = method.span;
+            assert_ne!(method.inferred_exit_range.start, span);
+            method.inferred_exit_range = SourceRange::default();
+            let error = method_profile(method).unwrap_err();
+            assert_eq!(error.span, span);
+            assert!(error.end.is_none());
+        }
+        let unit = crate::syntax::parse_unit("trait reader {control read() exits auto;}").unwrap();
+        let original = unit.traits[0].methods[0].clone();
+        for generic in [false, true] {
+            let mut method = original.clone();
+            if generic {
+                method.type_parameters.push("t".into());
+            } else {
+                method.modern = false;
+            }
+            assert_ne!(method.inferred_exit_range.start.line, 0);
+            let error = method_profile(&method).unwrap_err();
+            assert_eq!(error.span, method.span);
+            assert!(error.end.is_none());
+        }
+    }
+
+    #[test]
+    fn trait_inference_ranges_survive_rewritten_labels_and_method_names() {
+        let mut unit=crate::syntax::parse_unit("trait reader {control read() exits done;} implement reader for u32 {control read() exits {plain,zebra // 😀\r\n ...,alpha...} {exit plain;}}").unwrap();
+        let method = &mut unit.implementations[0].methods[0];
+        let range = method.inferred_exit_range;
+        assert!(range.end.line > range.start.line);
+        method.name = "a_much_longer_internal_method_name".into();
+        method.infer_payloads.clear();
+        method.infer_payloads.insert("x".into());
+        for outcome in &mut method.exits {
+            outcome.name = "x".into();
+        }
+        let error = method_profile(method).unwrap_err();
+        assert_eq!(error.span, range.start);
+        assert_eq!(*error.end.unwrap(), range.end);
+    }
 
     #[test]
     fn trait_exit_ranges_preserve_nominal_carriers_and_binding() {
