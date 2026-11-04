@@ -56,6 +56,7 @@ impl Raw {
         };
         DiagnosticNote {
             span: self.span,
+            end: None,
             path: None,
             message,
         }

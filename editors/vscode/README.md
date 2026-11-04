@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-darwin-arm64-0.192.0.vsix` using **Extensions:
+1. Install the supplied `tellur-language-darwin-arm64-0.193.0.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1622,3 +1622,8 @@ imported generic structs and named outcomes. Fixing one unsaved declaration remo
 its diagnostic while independent failures remain. Declarations depending on a failed
 schema are suppressed, and hover stays unavailable until the whole check succeeds.
 The existing 32-error limit and original-file ranges apply.
+
+Compiler 0.193 selects the authored statement or outcome expression for supported
+contributor notes in related information. Producing exits, captures and forwarding
+calls retain multiline comments and original imported locations. Unsaved dependency
+edits update these UTF-16 ranges; declaration/omission notes keep their point fallback.

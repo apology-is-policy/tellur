@@ -114,7 +114,7 @@ is either `{ "start": position, "end": position }` or null. Its start is include
 and its end is excluded; `position` remains the same start point for existing
 consumers. A missing position is null, as with a manifest error
 that has no checked source location. A missing path is null, as with command
-usage errors. Notes have their own `path`, `position` and `message`; imported
+usage errors. Notes have their own `path`, `position`, `range` (since 0.193) and `message`; imported
 source locations refer to their original files. Message wording is for humans
 and can change; consumers should use codes and structured fields.
 
@@ -419,6 +419,22 @@ existing barriers. Schema cycles, depth and size limits retain their diagnoses,
 while unrelated declarations can still report their own failures. Ordinary recursive
 layouts without origin schemas remain a separate validation phase.
 
+Since 0.193, **contributor notes** also carry optional half-open ranges. When a
+note's source anchor exactly matches an authored statement or outcome expression,
+the note selects that occurrence: for example, `exit changed;`, `forward leaf();`,
+a capture statement, or the inner `changed {}` of an adapter. If multiple recorded
+occurrences share the same start, the shorter range is used. Internal comments and
+newlines are included; trailing comments and surrounding expressions are excluded.
+Statement delimiters are included when they belong to the recorded statement.
+
+The note's existing position and message stay unchanged. CLI JSON exposes a `range`
+object or null for every note; editor related information converts an authored range
+to UTF-16 using the current source buffer. Declaration notes, omission markers and
+occurrences without exact parser metadata retain their point/token fallback. Generic
+substitution and private/imported names never determine the range length. Notes still
+have the same order, deduplication and 32-note limit plus omission marker; this adds
+no new provenance claims or recovery paths. Outcome-absorption snapshots are unchanged.
+
 Imports preserve both endpoints in the original file; unsaved dependencies supply
 the text used for editor UTF-16 conversion. Generic substitution preserves the
 authored spelling, including a type parameter, rather than estimating a range from
@@ -427,7 +443,7 @@ original declaration locations. CLI JSON continues to use one-based Unicode scal
 coordinates; LSP uses zero-based UTF-16 coordinates.
 
 This is not a range for every declaration error. Other whole-contract shape/origin errors,
-associated normalization, contributor notes and checks without authored type metadata retain
+associated normalization, contributor declaration notes and checks without authored metadata retain
 their existing locations. Synthetic fields have no invented annotation range.
 More precise child errors keep their own coordinates. Diagnostic codes, phase order,
 batch limits and acceptance rules are unchanged.

@@ -1067,6 +1067,12 @@ fn resolve(
             region.name_span.line += offset;
             region.end.line += offset;
         }
+        for mut site in unit.selection_sites {
+            site.anchor.line += offset;
+            site.range.start.line += offset;
+            site.range.end.line += offset;
+            combined.selection_sites.push(site);
+        }
         combined.traits.extend(unit.traits);
         combined.implementations.extend(unit.implementations);
         combined.data.extend(unit.data);
@@ -1135,6 +1141,9 @@ fn locate(sources: &[SourceFile], mut diagnostic: Diagnostic) -> ModuleError {
             .unwrap_or(&sources[0]);
         note.path = Some(source.path.clone());
         note.span.line = note.span.line.saturating_sub(source.start_line - 1).max(1);
+        if let Some(end) = &mut note.end {
+            end.line = end.line.saturating_sub(source.start_line - 1).max(1);
+        }
     }
     for source in sources {
         for (global, local) in &source.names {

@@ -5165,6 +5165,41 @@ pub(crate) fn compile_unit(
     manifest: Manifest,
     visibility: &crate::modules::Visibility,
 ) -> crate::CheckResult<CheckedProgram> {
+    // Authored occurrences survive independently of lowered/generic body names.
+    // Enrich only the finished failure batch so note deduplication, ordering and
+    // omission limits remain exactly those of the existing contributor analysis.
+    let mut ranges = BTreeMap::new();
+    for site in &unit.selection_sites {
+        if matches!(
+            site.kind,
+            syntax::SelectionKind::Statement | syntax::SelectionKind::Outcome
+        ) && site.anchor == site.range.start
+        {
+            let end = (site.range.end.line, site.range.end.column);
+            ranges
+                .entry((site.anchor.line, site.anchor.column))
+                .and_modify(|old: &mut (usize, usize)| *old = (*old).min(end))
+                .or_insert(end);
+        }
+    }
+    compile_unit_inner(unit, manifest, visibility).map_err(|errors| {
+        errors.map(|mut error| {
+            for note in &mut error.notes {
+                if note.end.is_none() && note.message != crate::absorption::OMITTED {
+                    if let Some(&(line, column)) = ranges.get(&(note.span.line, note.span.column)) {
+                        note.end = Some(Box::new(Span { line, column }));
+                    }
+                }
+            }
+            error
+        })
+    })
+}
+fn compile_unit_inner(
+    unit: syntax::Unit,
+    manifest: Manifest,
+    visibility: &crate::modules::Visibility,
+) -> crate::CheckResult<CheckedProgram> {
     crate::diagnostics::collect_checks(unit.regions.iter().map(contracts::public_shape))?;
     crate::traits::validate_bounds(&unit)?;
     let mut visibility = visibility.clone();

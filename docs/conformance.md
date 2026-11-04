@@ -5299,3 +5299,22 @@ LSP and isolated editor checks cover unsaved partial repair, exact dependency ra
 stale-hover suppression, full repair and normal native execution. The affected
 frontend, trait, generic, module and origin suites retain normal acceptance and
 native comparisons. Runtime and public async-host admission are unchanged.
+
+
+## Contributor statement and outcome locations (0.193 / P2aa)
+
+Finished diagnostic batches now enrich supported contributor notes from exact parser
+statement/outcome anchors. Imported source ranges offset and return both endpoints;
+generic definitions keep authored spelling. Matching uses no lowered-name length or
+new lineage inference. Note construction, ordering, deduplication and omission bounds
+finish before range enrichment. Declaration and omission notes retain point fallback;
+public absorption snapshots and executable IR are unchanged.
+
+CLI tests cover multiline Unicode/CRLF producing exits and forwarders, transitive
+imports, generic definitions, nested outcome expressions, received capture statements,
+first-error API compatibility, declaration fallback and long-chain omission bounds.
+LSP and isolated editor checks update unsaved dependency ranges, suppress stale hover,
+restore after repair and run the repaired program natively. Existing contributor,
+absorption, contract-snapshot, module, generic-control and public-contract tests verify
+unchanged evidence and execution; manual, formatting and all-target checks accompany
+the release. Public async-host admission remains pending its recorded design choice.

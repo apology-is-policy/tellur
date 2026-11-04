@@ -3112,3 +3112,111 @@ fn schema_recovery_bounds_deep_dependencies_without_repeating_the_failed_chain()
     assert!(errors.errors[0].end.is_none());
     assert!(errors.errors[1].message.contains("duplicate"));
 }
+
+#[test]
+fn contributor_ranges_select_producing_and_forwarding_occurrences() {
+    let f = Fixture::new();
+    let source = "control leaf() exits auto {\r\n    exit // 😀\r\n        added; // outside\r\n}\r\ncontrol middle() exits auto {\r\n    forward // 😀\r\n        leaf(); // outside\r\n}\r\ncontrol main() exits done {delta middle() {}}";
+    f.write("main.tellur", source);
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    let notes = report["diagnostics"][0]["notes"].as_array().unwrap();
+    assert_eq!(notes.len(), 2, "{report}");
+    for (note, selected) in notes.iter().zip([
+        "exit // 😀\r\n        added;",
+        "forward // 😀\r\n        leaf();",
+    ]) {
+        assert_eq!(note["range"], selected_range(source, selected));
+        assert_eq!(note["position"], note["range"]["start"]);
+    }
+    let errors = check_errors(source);
+    assert_eq!(errors.errors.len(), 1);
+    assert!(errors.errors[0].notes.iter().all(|n| n.end.is_some()));
+    let first = compile(
+        source,
+        Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+    )
+    .unwrap_err();
+    assert_eq!(first, errors.errors[0]);
+}
+
+#[test]
+fn contributor_ranges_follow_transitive_imports_and_generic_definition_spelling() {
+    let f = Fixture::new();
+    let leaf = "pub control leaf<t>(t input) exits added {t value} {\r\n    exit // 😀\r\n        added {input};\r\n}";
+    let middle = "import \"leaf.tellur\" as leaf;\ncontrol middle() exits auto {\n    forward leaf.leaf<string>(\"x\");\n}\npub control work() exits done {delta middle() {}}";
+    f.write("leaf.tellur", leaf);
+    f.write("middle.tellur", middle);
+    f.write(
+        "main.tellur",
+        "import \"middle.tellur\" as middle; control main() exits done {middle.work();exit done;}",
+    );
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    let notes = report["diagnostics"][0]["notes"].as_array().unwrap();
+    assert_eq!(notes.len(), 2, "{report}");
+    for (note, (file, source, selected)) in notes.iter().zip([
+        ("leaf.tellur", leaf, "exit // 😀\r\n        added {input};"),
+        ("middle.tellur", middle, "forward leaf.leaf<string>(\"x\");"),
+    ]) {
+        assert!(note["path"].as_str().unwrap().ends_with(file));
+        assert_eq!(note["range"], selected_range(source, selected), "{report}");
+    }
+}
+
+#[test]
+fn contributor_ranges_preserve_point_fallbacks_and_omission_bounds() {
+    let mut source = "control f0() exits auto {exit changed;}\n".to_owned();
+    for i in 1..45 {
+        source.push_str(&format!(
+            "control f{i}() exits auto {{forward f{}();}}\n",
+            i - 1
+        ));
+    }
+    source.push_str("control main() exits done {delta f44() {}}");
+    let errors = check_errors(&source);
+    let notes = &errors.errors[0].notes;
+    assert_eq!(notes.len(), 33);
+    assert!(notes[..32].iter().all(|n| n.end.is_some()));
+    assert!(notes[32].message.contains("omitted"));
+    assert!(notes[32].end.is_none());
+    let errors = check_errors(
+        "control leaf() exits first,second {exit first;} control main() exits done {delta leaf() {first=>exit done}}",
+    );
+    let note = errors.errors[0]
+        .notes
+        .iter()
+        .find(|n| n.message.contains("declared"))
+        .unwrap();
+    assert!(note.end.is_none(), "{errors}");
+}
+
+#[test]
+fn contributor_ranges_select_nested_outcome_expressions_without_surrounding_statements() {
+    let f = Fixture::new();
+    let source = "control leaf() exits auto {exit first;} control main() exits done {auto saved=capture leaf();auto mapped=delta saved {first=>second // 😀\r\n {}};exit delta mapped {}; }";
+    f.write("main.tellur", source);
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    let notes = report["diagnostics"][0]["notes"].as_array().unwrap();
+    let note = notes
+        .iter()
+        .find(|n| {
+            n["message"]
+                .as_str()
+                .unwrap()
+                .contains("`second` is constructed")
+        })
+        .unwrap();
+    assert_eq!(
+        note["range"],
+        selected_range(source, "second // 😀\r\n {}"),
+        "{report}"
+    );
+    let received = notes
+        .iter()
+        .find(|n| n["message"].as_str().unwrap().contains("received"))
+        .unwrap();
+    assert_eq!(
+        received["range"],
+        selected_range(source, "auto saved=capture leaf();"),
+        "{report}"
+    );
+}

@@ -480,7 +480,7 @@ fn json_check(args: &[String]) -> ExitCode {
             report["diagnostics"] = errors.errors.into_iter().map(|Failure { path, diagnostic }| {
             let notes: Vec<_> = diagnostic.notes.iter().map(|note| {
                 let path = note.path.as_ref().or(path.as_ref());
-                json!({"path":path.map(|p| p.to_string_lossy()),"position":position(note.span),"message":note.message})
+                json!({"path":path.map(|p| p.to_string_lossy()),"position":position(note.span),"range":note.end.as_deref().map(|end| json!({"start":position(note.span),"end":position(*end)})),"message":note.message})
             }).collect();
             json!({
                 "code":diagnostic.code, "message":diagnostic.message,

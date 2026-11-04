@@ -60,6 +60,8 @@ pub struct SourceRange {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DiagnosticNote {
     pub span: Span,
+    /// Optional authored exclusive end; absent for declaration and omission fallbacks.
+    pub end: Option<Box<Span>>,
     pub path: Option<std::path::PathBuf>,
     pub message: String,
 }
