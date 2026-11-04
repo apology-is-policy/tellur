@@ -2745,14 +2745,185 @@ fn schema_origin_ranges_preserve_shared_preparation_order_and_missing_mapping_fa
     )
     .unwrap_err();
     assert_eq!(first, errors.errors[0]);
-    for source in [
-        "struct view['a] {ref string value;} control main() exits done {exit done;}",
-        "struct view['a,'a] {ref string value <- 'a;} control main() exits done {exit done;}",
-        "struct view['a,'b] {ref string value <- 'a;} control main() exits done {exit done;}",
-    ] {
+    for source in ["struct view['a] {ref string value;} control main() exits done {exit done;}"] {
         let errors = check_errors(source);
         assert_eq!(errors.errors.len(), 1, "{errors}");
         assert_eq!(errors.errors[0].code, "E_ORIGIN");
         assert!(errors.errors[0].end.is_none(), "{errors}");
     }
+}
+
+#[test]
+fn schema_group_ranges_select_duplicate_occurrences_and_unused_declarations() {
+    let f = Fixture::new();
+    for (declaration, selected, message) in [
+        (
+            "struct view['a,'a] {ref string value <- 'a;}",
+            "'a",
+            "duplicate",
+        ),
+        (
+            "struct view['a,' // 😀\r\n a // outside\r\n] {ref string value <- 'a;}",
+            "' // 😀\r\n a",
+            "duplicate",
+        ),
+        (
+            "struct view['a,'unused] {ref string value <- 'a;}",
+            "'unused",
+            "not used",
+        ),
+        (
+            "struct view['a,' // 😀\r\n unused // outside\r\n] {ref string value <- 'a;}",
+            "' // 😀\r\n unused",
+            "not used",
+        ),
+        (
+            "struct view['a,'unused] {value: &String <- 'a;}",
+            "'unused",
+            "not used",
+        ),
+        (
+            "variant view['a,'a] {ready {ref string value <- 'a},none}",
+            "'a",
+            "duplicate",
+        ),
+        (
+            "variant view['a,'unused] {ready {ref string value <- 'a},none}",
+            "'unused",
+            "not used",
+        ),
+        (
+            "outcome view['a,'a] {ready {ref string value <- 'a},none}",
+            "'a",
+            "duplicate",
+        ),
+        (
+            "outcome view['a,'unused] {ready {ref string value <- 'a},none}",
+            "'unused",
+            "not used",
+        ),
+        (
+            "struct view['a,'unused,'later] {ref string value <- 'a;}",
+            "'unused",
+            "not used",
+        ),
+    ] {
+        let source = format!("{declaration}\ncontrol main() exits done {{exit done;}}");
+        f.write("main.tellur", &source);
+        let report = f.report(&["check", "main.tellur", "--json"], false);
+        let error = &report["diagnostics"][0];
+        assert_eq!(error["code"], "E_ORIGIN", "{source}: {report}");
+        assert!(
+            error["message"].as_str().unwrap().contains(message),
+            "{report}"
+        );
+        let header = &source[..source.find('{').unwrap()];
+        let at = header.rfind(selected).unwrap();
+        assert_eq!(
+            error["range"],
+            json!({"start":scalar_position(&source,at),"end":scalar_position(&source,at+selected.len())}),
+            "{source}: {report}"
+        );
+    }
+}
+
+#[test]
+fn schema_group_ranges_survive_transitive_imports_and_unused_generic_definitions() {
+    let f = Fixture::new();
+    f.write(
+        "main.tellur",
+        "import \"library.tellur\" as library;control main() exits done {exit done;}",
+    );
+    f.write(
+        "library.tellur",
+        "import \"types.tellur\" as types;pub control work() exits done {exit done;}",
+    );
+    for (declaration, selected) in [
+        ("pub struct view<t>['a,'a] {pub ref t value <- 'a;}", "'a"),
+        (
+            "pub struct view<t>['a,'unused] {pub ref t value <- 'a;}",
+            "'unused",
+        ),
+        (
+            "pub variant view<t>['a,' // 😀\r\n a] {ready {ref t value <- 'a},none}",
+            "' // 😀\r\n a",
+        ),
+        (
+            "pub variant view<t>['a,'unused] {ready {ref t value <- 'a},none}",
+            "'unused",
+        ),
+        (
+            "pub outcome view<t>['a,'a] {ready {ref t value <- 'a},none}",
+            "'a",
+        ),
+        (
+            "pub outcome view<t>['a,' // 😀\r\n unused] {ready {ref t value <- 'a},none}",
+            "' // 😀\r\n unused",
+        ),
+    ] {
+        let source = format!("// original 😀\r\n{declaration}");
+        f.write("types.tellur", &source);
+        let report = f.report(&["check", "main.tellur", "--json"], false);
+        let error = &report["diagnostics"][0];
+        assert_eq!(error["code"], "E_ORIGIN", "{report}");
+        assert!(error["path"].as_str().unwrap().ends_with("types.tellur"));
+        let at = source[..source.find('{').unwrap()].rfind(selected).unwrap();
+        assert_eq!(
+            error["range"],
+            json!({"start":scalar_position(&source,at),"end":scalar_position(&source,at+selected.len())}),
+            "{report}"
+        );
+    }
+}
+
+#[test]
+fn schema_group_ranges_preserve_field_priority_and_global_schema_limits() {
+    let f = Fixture::new();
+    for (source, selected, message) in [
+        (
+            "struct view['a,'a] {ref string value <- 'missing;} control main() exits done {u32 wrong=true;exit done;}",
+            "'a]",
+            "duplicate",
+        ),
+        (
+            "struct view['a,'unused] {ref string value <- 'missing;} control main() exits done {u32 wrong=true;exit done;}",
+            "<- 'missing",
+            "unknown",
+        ),
+        (
+            "struct view['a,'unused] {ref string value <- 'a;} struct second['b,'b] {ref string value <- 'b;} control main() exits done {u32 wrong=true;exit done;}",
+            "'unused",
+            "not used",
+        ),
+    ] {
+        let errors = check_errors(source);
+        assert_eq!(errors.errors.len(), 1, "{errors}");
+        assert!(errors.errors[0].message.contains(message));
+        let first = compile(
+            source,
+            Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(first, errors.errors[0]);
+        f.write("main.tellur", source);
+        let report = f.report(&["check", "main.tellur", "--json"], false);
+        let at = source.find(selected).unwrap();
+        let len = selected.trim_end_matches(']').len();
+        assert_eq!(
+            report["diagnostics"][0]["range"],
+            json!({"start":scalar_position(source,at),"end":scalar_position(source,at+len)}),
+            "{report}"
+        );
+    }
+    let groups = (0..257)
+        .map(|n| format!("'g{n}"))
+        .collect::<Vec<_>>()
+        .join(",");
+    let source = format!(
+        "struct view[{groups}] {{ref string value <- 'g0;}} control main() exits done {{exit done;}}"
+    );
+    let errors = check_errors(&source);
+    assert_eq!(errors.errors.len(), 1);
+    assert!(errors.errors[0].message.contains("exceeds 256"));
+    assert!(errors.errors[0].end.is_none());
 }

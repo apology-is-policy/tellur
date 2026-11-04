@@ -115,6 +115,7 @@ pub(crate) fn schemas(unit: &syntax::Unit) -> Result<Schemas> {
     declarations.extend(unit.contracts.iter().map(|c| syntax::DataDeclaration {
         constructor: None,
         origin_parameters: c.origin_parameters.clone(),
+        origin_parameter_ranges: c.origin_parameter_ranges.clone(),
         type_parameters: c.type_parameters.clone(),
         public: c.public,
         public_fields: Default::default(),
@@ -191,9 +192,12 @@ pub(crate) fn schemas(unit: &syntax::Unit) -> Result<Schemas> {
             return Err(error(d.span, "origin schema exceeds 256 groups"));
         }
         let mut groups = BTreeSet::new();
-        for n in &d.origin_parameters {
+        for (index, n) in d.origin_parameters.iter().enumerate() {
             if !groups.insert(n) {
-                return Err(error(d.span, format!("duplicate origin group `'{n}`")));
+                return Err(d.origin_parameter_error(
+                    index,
+                    error(d.span, format!("duplicate origin group `'{n}`")),
+                ));
             }
         }
         let mut schema = Schema {
@@ -294,9 +298,12 @@ pub(crate) fn schemas(unit: &syntax::Unit) -> Result<Schemas> {
 
         for (index, name) in schema.groups.iter().enumerate() {
             if !schema.leaves.iter().any(|l| l.group == Some(index)) {
-                return Err(error(
-                    d.span,
-                    format!("origin group `'{name}` is not used by a reference field"),
+                return Err(d.origin_parameter_error(
+                    index,
+                    error(
+                        d.span,
+                        format!("origin group `'{name}` is not used by a reference field"),
+                    ),
                 ));
             }
         }

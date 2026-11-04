@@ -914,6 +914,12 @@ fn resolve(
                 c.name_span.line += offset;
                 c.end.line += offset;
             }
+            for range in &mut data.origin_parameter_ranges {
+                if range.start.line != 0 {
+                    range.start.line += offset;
+                    range.end.line += offset;
+                }
+            }
             data.span.line += offset;
             data.name_span.line += offset;
             data.end.line += offset;
@@ -924,6 +930,12 @@ fn resolve(
             visibility.types.insert(contract.name.clone(), id);
             for o in &mut contract.outcomes {
                 r.fields(&mut o.fields, contract.span)?;
+            }
+            for range in &mut contract.origin_parameter_ranges {
+                if range.start.line != 0 {
+                    range.start.line += offset;
+                    range.end.line += offset;
+                }
             }
             contract.span.line += offset;
             contract.name_span.line += offset;

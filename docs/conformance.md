@@ -5270,3 +5270,13 @@ arity and absent reference origins, multiline comments, legacy fields and unchan
 shared preparation order. Unsaved dependency LSP/editor checks verify UTF-16 ranges,
 stale-hover suppression and repair. Missing mappings and declaration-level errors
 retain fallback points. Origin acceptance and the shared diagnostic budget are unchanged.
+
+
+Release 0.191 (P2y) selects the repeated declared group for a duplicate and the
+individual declaration for an unused origin group. Structs, variants and named
+outcomes retain original group ranges through generic copies and module offsets.
+Exact CLI tests cover internal Unicode comments, CRLF, transitive imports, unused
+generics, declaration order, field-error priority and unchanged global schema limits.
+Unsaved dependency LSP/editor checks verify UTF-16 ranges, stale-hover suppression,
+repair and normal native execution. Source syntax, accepted origin schemas and
+first-error shared preparation remain unchanged.

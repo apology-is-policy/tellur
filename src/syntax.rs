@@ -308,6 +308,8 @@ pub struct OutcomeContract {
     /// Host-boundary defaults; deliberately separate from alternative shapes.
     pub exit_codes: std::collections::BTreeMap<String, u8>,
     pub origin_parameters: Vec<String>,
+    /// Authored apostrophe-name ranges, parallel to the declaration groups.
+    pub origin_parameter_ranges: Vec<SourceRange>,
     pub type_parameters: Vec<String>,
     pub public: bool,
     pub span: Span,
@@ -325,6 +327,8 @@ pub enum DataBody {
 pub struct DataDeclaration {
     pub constructor: Option<Region>,
     pub origin_parameters: Vec<String>,
+    /// Authored apostrophe-name ranges, parallel to the declaration groups.
+    pub origin_parameter_ranges: Vec<SourceRange>,
     pub type_parameters: Vec<String>,
     pub public: bool,
     pub public_fields: std::collections::BTreeSet<String>,
@@ -333,6 +337,18 @@ pub struct DataDeclaration {
     pub end: Span,
     pub name: String,
     pub body: DataBody,
+}
+impl DataDeclaration {
+    pub(crate) fn origin_parameter_error(&self, index: usize, error: Diagnostic) -> Diagnostic {
+        type_error(
+            self.origin_parameter_ranges
+                .get(index)
+                .copied()
+                .unwrap_or_default(),
+            error,
+            self.span,
+        )
+    }
 }
 #[derive(Clone, Debug)]
 pub struct Import {
@@ -686,23 +702,41 @@ impl Parser {
         }
     }
     fn origin_arguments(&mut self) -> Result<Vec<OriginArgument>> {
+        Ok(self
+            .origin_arguments_with_ranges()?
+            .into_iter()
+            .map(|(arg, _)| arg)
+            .collect())
+    }
+    fn origin_arguments_with_ranges(&mut self) -> Result<Vec<(OriginArgument, SourceRange)>> {
         if !self.eat("[") {
             return Ok(vec![]);
         }
         let mut args = vec![];
         loop {
+            let start = self.here();
             let arg = if self.eat("'") {
                 OriginArgument::Group(self.id()?)
             } else {
                 self.input_origin()?
             };
-            args.push(arg);
+            args.push((arg, self.range_from(start)));
             if !self.eat(",") {
                 break;
             }
         }
         self.need("]")?;
         Ok(args)
+    }
+    fn origin_parameters(&mut self) -> Result<(Vec<String>, Vec<SourceRange>)> {
+        self.origin_arguments_with_ranges()?
+            .into_iter()
+            .map(|(arg, range)| match arg {
+                OriginArgument::Group(name) => Ok((name, range)),
+                _ => Err(self.error("origin parameters use apostrophe names, such as 'a")),
+            })
+            .collect::<Result<Vec<_>>>()
+            .map(|parameters| parameters.into_iter().unzip())
     }
     fn field(&mut self) -> Result<Field> {
         let named = self.tokens.get(self.pos + 1).is_some_and(|t| t.is(":"));
@@ -2030,14 +2064,7 @@ pub(crate) fn parse_with_layout(source: &str) -> Result<(Unit, Vec<Token>, crate
             let name_span = p.here();
             let name = p.id()?;
             let type_parameters = p.type_parameters()?;
-            let origin_parameters = p
-                .origin_arguments()?
-                .into_iter()
-                .map(|a| match a {
-                    OriginArgument::Group(n) => Ok(n),
-                    _ => Err(p.error("origin parameters use apostrophe names, such as 'a")),
-                })
-                .collect::<Result<Vec<_>>>()?;
+            let (origin_parameters, origin_parameter_ranges) = p.origin_parameters()?;
             p.layout.blocks.insert(p.pos);
             p.need("{")?;
             let mut public_fields = std::collections::BTreeSet::new();
@@ -2138,6 +2165,7 @@ pub(crate) fn parse_with_layout(source: &str) -> Result<(Unit, Vec<Token>, crate
             data.push(DataDeclaration {
                 constructor,
                 origin_parameters,
+                origin_parameter_ranges,
                 type_parameters,
                 public,
                 public_fields,
@@ -2154,14 +2182,7 @@ pub(crate) fn parse_with_layout(source: &str) -> Result<(Unit, Vec<Token>, crate
             let name_span = p.here();
             let name = p.id()?;
             let type_parameters = p.type_parameters()?;
-            let origin_parameters = p
-                .origin_arguments()?
-                .into_iter()
-                .map(|a| match a {
-                    OriginArgument::Group(n) => Ok(n),
-                    _ => Err(p.error("origin parameters use apostrophe names, such as 'a")),
-                })
-                .collect::<Result<Vec<_>>>()?;
+            let (origin_parameters, origin_parameter_ranges) = p.origin_parameters()?;
             p.layout.blocks.insert(p.pos);
             p.need("{")?;
             let mut outcomes = vec![];
@@ -2214,6 +2235,7 @@ pub(crate) fn parse_with_layout(source: &str) -> Result<(Unit, Vec<Token>, crate
             contracts.push(OutcomeContract {
                 exit_codes,
                 origin_parameters,
+                origin_parameter_ranges,
                 type_parameters,
                 public,
                 span,

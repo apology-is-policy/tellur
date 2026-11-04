@@ -360,10 +360,34 @@ This selects `<- 'missing`, excluding the field name and semicolon. For a carrie
 field `ref view['missing] value <- 'a`, the error selects `['missing]`; an invalid
 storage group instead selects its arrow. Internal comments and whitespace are
 included; trailing comments are excluded. Storage groups are still checked before
-referent groups, even though their spelling follows the brackets. Missing mappings,
-duplicate/unused declaration groups and schema depth limits keep their existing
-fallback points. Shared schema preparation still stops at its first error, before
+referent groups, even though their spelling follows the brackets. Missing mappings
+and schema depth limits keep their existing fallback points. Shared schema preparation still stops at its first error, before
 body checking; this range improvement adds no recovery through an invalid schema.
+
+Since 0.191, **duplicate and unused declared origin groups** select the individual
+apostrophe name in a struct, variant or named-outcome header. A duplicate selects
+the repeated occurrence, while an unused group selects its declaration. The range
+includes internal whitespace/comments between the apostrophe and name, but excludes
+commas, brackets and trailing comments. Generic definitions retain the authored
+coordinates even when unused or reached through transitive imports.
+
+<!-- tellur:reject E_ORIGIN -->
+```tellur
+struct view['a, 'unused] {
+    ref string value <- 'a;
+}
+control main() exits done {
+    exit done;
+}
+```
+
+This selects `'unused`. In `view['a, 'a]`, the second `'a` is selected. Duplicate
+groups are still checked before fields; unused groups are checked after all fields
+validate, so an invalid field mapping keeps priority over an unused group. The first
+unused group follows declaration order. Missing mappings, malformed header syntax
+and global schema limits retain their existing diagnostic behavior. Shared schema
+preparation remains a first-error barrier; no partial schema reaches later checking
+or hover.
 
 Imports preserve both endpoints in the original file; unsaved dependencies supply
 the text used for editor UTF-16 conversion. Generic substitution preserves the
