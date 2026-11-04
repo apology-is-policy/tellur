@@ -5168,6 +5168,17 @@ pub(crate) fn compile_unit(
     // Authored occurrences survive independently of lowered/generic body names.
     // Enrich only the finished failure batch so note deduplication, ordering and
     // omission limits remain exactly those of the existing contributor analysis.
+    let declarations = unit
+        .regions
+        .iter()
+        .filter(|region| region.declared_exit_range.start.line != 0)
+        .map(|region| {
+            (
+                (region.name_span.line, region.name_span.column),
+                region.declared_exit_range,
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
     let mut ranges = BTreeMap::new();
     for site in &unit.selection_sites {
         if matches!(
@@ -5186,7 +5197,14 @@ pub(crate) fn compile_unit(
         errors.map(|mut error| {
             for note in &mut error.notes {
                 if note.end.is_none() && note.message != crate::absorption::OMITTED {
-                    if let Some(&(line, column)) = ranges.get(&(note.span.line, note.span.column)) {
+                    // Declaration anchors are control names, distinct from body
+                    // statement/outcome anchors. Keep raw contributor evidence intact.
+                    if let Some(range) = declarations.get(&(note.span.line, note.span.column)) {
+                        note.span = range.start;
+                        note.end = Some(Box::new(range.end));
+                    } else if let Some(&(line, column)) =
+                        ranges.get(&(note.span.line, note.span.column))
+                    {
                         note.end = Some(Box::new(Span { line, column }));
                     }
                 }

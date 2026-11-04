@@ -90,7 +90,14 @@ and merged path labels. Different fields and alternatives stay separate. Disjoin
 writes are filtered by the selected path; overwriting a value removes its old
 lineage on that path. This analysis does **not** narrow a value's type: every
 contract alternative still needs a disposition, even if its only known construction
-was overwritten. A declared but unproduced control outcome points to its declaration.
+was overwritten. Since 0.196, an outcome declared by an ordinary control selects its complete written `exits` clause,
+including alternatives, payloads and origin mappings but excluding a following
+`faults` annotation or body. Named contracts select that clause at the control's use,
+not the shared schema declaration. Imported and generic headers retain authored
+coordinates. All declared alternatives share this header range; the note identifies
+the relevant alternative by name. Lowered trait methods, constructors and named
+boundaries retain the original point when no ordinary declaration header matches. The range is attached after aggregation, preserving raw
+contributor evidence, note deduplication/order and omission limits.
 
 <!-- tellur:reject E_ARMS -->
 ```tellur

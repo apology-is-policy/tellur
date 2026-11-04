@@ -5358,3 +5358,21 @@ checks exercise exact unsaved UTF-16 ranges, partial repairs, stale-hover suppre
 full repair and native execution. The selected public-contract, origin, generic,
 trait, module and manual suites accompany the release. Public async-host admission
 still awaits its recorded design choice.
+
+
+## Declared contributor clause locations (0.196 / P2ad)
+
+For ordinary controls, parser metadata retains the full explicit exit clause separately from body, named
+type and origin ranges. Declaration notes select that clause after aggregation;
+raw absorption evidence, ordering, deduplication and omission bounds do not change.
+All declared alternatives share their written clause, with the note naming the
+relevant alternative. Named contracts point to their use, not their shared schema.
+
+CLI cases cover inline/wrapped/legacy headers, generic payloads, named contracts,
+Unicode/CRLF and exclusion of following fault annotations. Transitive imported
+generic named contracts retain both endpoints in the original use file. A focused
+internal case clears metadata and confirms the control-name fallback. LSP and
+isolated editor checks cover unsaved header edits, distinct body/forwarding ranges,
+stale-hover suppression, repair and native execution. Contributor, absorption,
+contract snapshot, module, generic, public-contract, formatting and manual suites
+accompany the checkpoint. The pending public async-host decision is unchanged.

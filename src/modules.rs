@@ -630,6 +630,10 @@ impl Resolver<'_> {
             *c = annotation.ty;
         }
         self.items(&mut region.body)?;
+        if region.declared_exit_range.start.line != 0 {
+            region.declared_exit_range.start.line += self.offset;
+            region.declared_exit_range.end.line += self.offset;
+        }
         if region.inferred_exit_range.start.line != 0 {
             region.inferred_exit_range.start.line += self.offset;
             region.inferred_exit_range.end.line += self.offset;
@@ -1053,6 +1057,10 @@ fn resolve(
                 }
             }
             r.items(&mut region.body)?;
+            if region.declared_exit_range.start.line != 0 {
+                region.declared_exit_range.start.line += offset;
+                region.declared_exit_range.end.line += offset;
+            }
             if region.inferred_exit_range.start.line != 0 {
                 region.inferred_exit_range.start.line += offset;
                 region.inferred_exit_range.end.line += offset;

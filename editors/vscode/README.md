@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-darwin-arm64-0.195.0.vsix` using **Extensions:
+1. Install the supplied `tellur-language-darwin-arm64-0.196.0.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1628,7 +1628,7 @@ contributor notes in related information. Producing exits, captures and forwardi
 calls retain multiline comments and original imported locations. Unsaved dependency
 edits update these UTF-16 ranges; declaration/omission notes keep their point fallback.
 
-Compiler 0.195 selects `exits auto` or the first written `label...` when a public
+Compiler 0.196 selects `exits auto` or the first written `label...` when a public
 control requires an explicit contract. Mixed and wrapped contracts keep the selected
 clause's authored range, including internal comments. Imported generic definitions
 and unsaved partial repairs retain exact UTF-16 locations and fresh hover checking.

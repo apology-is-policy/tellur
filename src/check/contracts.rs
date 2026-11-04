@@ -180,3 +180,24 @@ mod public_origin_range_tests {
         assert!(error.end.is_none());
     }
 }
+
+#[cfg(test)]
+mod declaration_range_tests {
+    #[test]
+    fn declared_contributor_range_preserves_synthetic_fallback() {
+        let mut unit = crate::syntax::parse_unit("control leaf() exits first, second {exit first;} control main() exits done {delta leaf() {first=>exit done}}").unwrap();
+        let anchor = unit.regions[0].name_span;
+        unit.regions[0].declared_exit_range = Default::default();
+        let manifest =
+            crate::manifest::Manifest::from_json(include_str!("../../playground/manifest.json"))
+                .unwrap();
+        let errors = crate::check::compile_unit(unit, manifest, &Default::default()).unwrap_err();
+        let note = errors.errors[0]
+            .notes
+            .iter()
+            .find(|n| n.message.contains("declared"))
+            .unwrap();
+        assert_eq!(note.span, anchor);
+        assert!(note.end.is_none());
+    }
+}

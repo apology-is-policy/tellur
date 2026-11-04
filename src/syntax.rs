@@ -268,6 +268,8 @@ pub struct Region {
     pub infer_exits: bool,
     /// First authored inference clause: `exits auto` or an individual `label...`.
     pub inferred_exit_range: SourceRange,
+    /// Full written explicit exit clause, without the following fault annotation/body.
+    pub declared_exit_range: SourceRange,
     /// Declared labels whose nonempty payloads are inferred from the body.
     pub infer_payloads: std::collections::BTreeSet<String>,
     pub exit_contract: Option<String>,
@@ -919,6 +921,11 @@ impl Parser {
         if !exit_origins.is_empty() && exit_contract.is_none() {
             return Err(self.error("origin arguments require a named exit contract"));
         }
+        let declared_exit_range = if !fault_only && !infer_exits {
+            self.range_from(self.tokens[contract_start].span)
+        } else {
+            SourceRange::default()
+        };
         let fault_contract = if modern && self.eat("faults") {
             Some(true)
         } else if public || signature {
@@ -956,6 +963,7 @@ impl Parser {
             exits,
             infer_exits,
             inferred_exit_range,
+            declared_exit_range,
             infer_payloads,
             exit_contract_range: if exit_contract.is_some() {
                 exit_contract_range
@@ -1968,6 +1976,7 @@ pub(crate) fn parse_with_layout(source: &str) -> Result<(Unit, Vec<Token>, crate
                 exits: vec![],
                 infer_exits: false,
                 inferred_exit_range: SourceRange::default(),
+                declared_exit_range: SourceRange::default(),
                 infer_payloads: Default::default(),
                 exit_contract: None,
                 exit_contract_range: SourceRange::default(),
@@ -2140,6 +2149,7 @@ pub(crate) fn parse_with_layout(source: &str) -> Result<(Unit, Vec<Token>, crate
                             exits: vec![],
                             infer_exits: false,
                             inferred_exit_range: SourceRange::default(),
+                            declared_exit_range: SourceRange::default(),
                             infer_payloads: Default::default(),
                             exit_contract: None,
                             exit_contract_range: SourceRange::default(),

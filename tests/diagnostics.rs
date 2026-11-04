@@ -3184,7 +3184,7 @@ fn contributor_ranges_follow_transitive_imports_and_generic_definition_spelling(
 }
 
 #[test]
-fn contributor_ranges_preserve_point_fallbacks_and_omission_bounds() {
+fn contributor_ranges_preserve_declared_contract_and_omission_bounds() {
     let mut source = "control f0() exits auto {exit changed;}\n".to_owned();
     for i in 1..45 {
         source.push_str(&format!(
@@ -3207,7 +3207,8 @@ fn contributor_ranges_preserve_point_fallbacks_and_omission_bounds() {
         .iter()
         .find(|n| n.message.contains("declared"))
         .unwrap();
-    assert!(note.end.is_none(), "{errors}");
+    assert_eq!(note.span.column, 16);
+    assert_eq!(note.end.as_ref().unwrap().column, 34);
 }
 
 #[test]
@@ -3542,4 +3543,123 @@ fn missing_public_origin_ranges_preserve_first_result_and_preparation_barriers()
             "{report}"
         );
     }
+}
+
+#[test]
+fn declared_contributor_ranges_select_complete_written_contracts() {
+    let f = Fixture::new();
+    for (definition, selected, call) in [
+        (
+            "control leaf() exits first, second {exit first;}",
+            "exits first, second",
+            "leaf()",
+        ),
+        (
+            "region leaf() exits {first, second} {exit first;}",
+            "exits {first, second}",
+            "leaf()",
+        ),
+        (
+            "control leaf<t>(t input) exits first {t value}, second {exit first {input};}",
+            "exits first {t value}, second",
+            "leaf<u32>(1)",
+        ),
+        (
+            "outcome reply {first,second} control leaf() exits // 😀\r\n reply {exit first;}",
+            "exits // 😀\r\n reply",
+            "leaf()",
+        ),
+        (
+            "control leaf() exits first, second faults {exit first;}",
+            "exits first, second",
+            "leaf()",
+        ),
+    ] {
+        let source = format!("{definition} control main() exits done {{delta {call} {{}}}}");
+        f.write("main.tellur", &source);
+        let report = f.report(&["check", "main.tellur", "--json"], false);
+        assert_eq!(report["diagnostics"][0]["code"], "E_UNCOVERED", "{report}");
+        let notes = report["diagnostics"][0]["notes"].as_array().unwrap();
+        let declared = notes
+            .iter()
+            .filter(|n| n["message"].as_str().unwrap().contains("declared"))
+            .collect::<Vec<_>>();
+        assert!(!declared.is_empty(), "{report}");
+        for note in declared {
+            assert_eq!(note["range"], selected_range(&source, selected), "{report}");
+        }
+        // Produced exits still select the body occurrence, never the header.
+        for note in notes
+            .iter()
+            .filter(|n| n["message"].as_str().unwrap().contains("produced"))
+        {
+            assert_ne!(note["range"], selected_range(&source, selected));
+        }
+    }
+}
+
+#[test]
+fn declared_contributor_ranges_keep_named_schema_and_transitive_generic_use_sites_distinct() {
+    let f = Fixture::new();
+    f.write(
+        "schema.tellur",
+        "pub outcome reply<t> {first {t value},second}",
+    );
+    let worker = "import \"schema.tellur\" as schema;\r\npub control leaf<t>(t input) exits // 😀\r\n schema.reply<t> {exit first {input};}";
+    f.write("worker.tellur", worker);
+    f.write("main.tellur", "import \"worker.tellur\" as worker;control main() exits done {delta worker.leaf<u32>(1) {first {u32 value}=>exit done}}");
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    assert_eq!(report["diagnostics"][0]["code"], "E_UNCOVERED", "{report}");
+    let note = report["diagnostics"][0]["notes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|n| n["message"].as_str().unwrap().contains("declared"))
+        .unwrap();
+    assert!(note["path"].as_str().unwrap().ends_with("worker.tellur"));
+    assert_eq!(
+        note["range"],
+        selected_range(worker, "exits // 😀\r\n schema.reply<t>")
+    );
+}
+
+#[test]
+fn declared_contributor_ranges_keep_shared_header_notes_distinct_and_bounded() {
+    let labels = (0..40)
+        .map(|n| format!("label_{n:02}"))
+        .collect::<Vec<_>>()
+        .join(",");
+    let clause = format!("exits {labels}");
+    let source = format!(
+        "control leaf() {clause} {{exit label_00;}} control main() exits done {{delta leaf() {{}}}}"
+    );
+    let f = Fixture::new();
+    f.write("main.tellur", &source);
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    let notes = report["diagnostics"][0]["notes"].as_array().unwrap();
+    assert_eq!(notes.len(), 33, "{report}");
+    assert!(notes[32]["message"].as_str().unwrap().contains("omitted"));
+    assert!(notes[32]["range"].is_null());
+    let declared = notes[..32]
+        .iter()
+        .filter(|n| n["message"].as_str().unwrap().contains("declared"))
+        .collect::<Vec<_>>();
+    assert!(declared.len() >= 30, "{report}");
+    let unique = declared
+        .iter()
+        .map(|n| n["message"].as_str().unwrap())
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(unique.len(), declared.len());
+    for note in declared {
+        assert_eq!(note["range"], selected_range(&source, &clause));
+    }
+    let errors = check_errors(&source);
+    assert_eq!(
+        compile(
+            &source,
+            Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
+        )
+        .unwrap_err(),
+        errors.errors[0]
+    );
 }
