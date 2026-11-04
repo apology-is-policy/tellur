@@ -4563,3 +4563,44 @@ assumes an immediately completed first receive; this checkpoint does not extend 
 to a sibling fault while that first receive is still pending. This controlled macOS fixture does not define general backend
 failure or timer arbitration policy. The maintained synchronous transport and public
 async-host admission remain unchanged; compiler/LSP/VSIX stays 0.189.
+
+
+## Faults during the first repeated HTTP receive (E1f.6m)
+
+The repeated-operation fault profile now covers a sibling fault while the first
+receive is still pending. Its previous assertions described only an immediately
+completed first receive followed by a pending second operation. Applying those
+assertions to a delayed first receive incorrectly required a completion and a
+successor that source execution had never reached. The change extends private
+fixture expectations; production scheduling and fault routing are unchanged.
+
+With two planned waits on the first connection, the queued fault child wins before
+that receive can complete. Idle-only readiness leaves one poll/wait; the one early
+notification batch allows a second partial poll/wait. FIFO/reverse hint order and
+host quota partitions preserve these counts. The first operation is prepared and
+retired exactly once, with no completion or selected result arm. The second
+connection is an owned resource, but has no operation state, ticket, wait or physical
+registration. Its resource disposition still runs before the owning contingency.
+
+Reference checks explicitly distinguish these counts from the previous
+immediate-first profile. Native traces require exactly the expected prepared states,
+one destruction per state and resource, no synthetic replacement ticket and no
+normal result event from the stopped operation. The owning checkpoint requires
+both affected resources gone and the independent connection still live; it does not
+invent a state-drop event for an unstarted operation. Physical interest, where it
+exists, retires after its logical wait and before state/supplier/socket release.
+Stopped nested contingencies remain suppressed.
+
+The deterministic, live HTTP and reset-capable peer matrices cover original/expanded
+O0/O2 normal and sibling-fault schedules plus every fuel cutoff and three quota
+partitions. A separate reference matrix compares the new pending-first profile
+across request/disconnected plans, early/idle hints and FIFO/reverse order. In the
+reset-capable profile, the fault precedes the planned abortive peer close: early
+readiness supplies partial body bytes, but no reset or receive completion occurs.
+The actual reset-read evidence from E1f.6k/l remains distinct and is rechecked where
+its shared helpers changed. Candidate settlement is also rechecked against the
+updated live checkpoint.
+
+This closes the observed pending-first fixture gap without adding source handoffs,
+a public asynchronous host contract or a cleanup-error policy. Compiler/LSP/VSIX
+remains 0.189, and public call admission still awaits its recorded decision.

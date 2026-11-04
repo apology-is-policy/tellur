@@ -395,15 +395,32 @@ pub(crate) fn http_source_operation_sequence_model(
         let t = trace.borrow();
         let count =
             |name: &str, kind: &str| t.iter().filter(|(n, k)| n == name && k == kind).count();
+        // With two pending waits, the queued fault child wins before the first
+        // receive can complete. An early batch permits one extra partial poll.
+        let pending_first = stop && !instant;
+        let left_completed = if pending_first {
+            0
+        } else if stop {
+            1
+        } else {
+            2
+        };
+        let left_waits = if pending_first {
+            assert_eq!(responses["left"].waits, 2);
+            1 + usize::from(early)
+        } else {
+            responses["left"].waits
+        };
         assert_eq!(count("left", "prepared"), if stop { 1 } else { 2 });
-        assert_eq!(count("left", "completed"), if stop { 1 } else { 2 });
-        assert_eq!(count("left", "waiting"), responses["left"].waits);
+        assert_eq!(count("left", "completed"), left_completed);
+        assert_eq!(count("left", "retired"), usize::from(pending_first));
+        assert_eq!(count("left", "waiting"), left_waits);
+        assert_eq!(count("left", "polled"), left_waits + left_completed);
+        assert_eq!(count("right", "prepared"), usize::from(!pending_first));
         assert_eq!(
-            count("left", "polled"),
-            responses["left"].waits + if stop { 1 } else { 2 }
+            count("right", "retired"),
+            usize::from(stop && !pending_first)
         );
-        assert_eq!(count("right", "prepared"), 1);
-        assert_eq!(count("right", "retired"), usize::from(stop));
         assert_eq!(count("right", "completed"), usize::from(!stop));
         assert_eq!(count("other", "completed"), 1);
         assert_eq!(count("other", "retired"), 0);
@@ -412,7 +429,7 @@ pub(crate) fn http_source_operation_sequence_model(
                 .iter()
                 .filter(|s| s.as_str() == "first completed")
                 .count(),
-            1
+            usize::from(!pending_first)
         );
         assert_eq!(
             messages
@@ -560,3 +577,6 @@ fn http_source_queue_preserves_fuel_faults_and_quota_turns_after_expansion() {
 #[path = "http_candidate_fault_model.rs"]
 mod candidate_fault;
 pub(crate) use candidate_fault::http_candidate_fault_model;
+
+#[path = "http_pending_first_fault_tests.rs"]
+mod pending_first_fault_tests;

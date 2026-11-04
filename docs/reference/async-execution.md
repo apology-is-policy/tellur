@@ -87,6 +87,10 @@ The [source reset checks](../async-execution.md#actual-reset-through-the-http-so
 then compare a partial-body reset through the existing source queue, including
 fuel/quota stops, repeated operations and supplier cleanup. Notifications do
 not read or complete an operation; only selected polling observes the socket error.
+The [pending-first fault checks](../async-execution.md#faults-during-the-first-repeated-http-receive-e1f6m)
+also retire a first operation before completion while releasing an unstarted second
+resource. Only prepared operations have state/waits to dispose; both resource
+dispositions finish before the owning contingency, and independent work survives.
 
 ## Owned spawned children
 

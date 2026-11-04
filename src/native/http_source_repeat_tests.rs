@@ -167,6 +167,7 @@ fn compare_repeated(
         events,
         "{context}"
     );
+    let pending_first = stop && !instant;
     let trace = fs::read_to_string(root.join("trace.log")).unwrap();
     let lines = trace.lines().collect::<Vec<_>>();
     let count = |s: &str| lines.iter().filter(|l| **l == s).count();
@@ -190,8 +191,26 @@ fn compare_repeated(
             );
         }
         if reference.is_ok() {
+            let expected_started = match name {
+                "left" => {
+                    if stop {
+                        1
+                    } else {
+                        2
+                    }
+                }
+                "right" => usize::from(!pending_first),
+                _ => 1,
+            };
+            assert_eq!(started, expected_started, "{context}");
             let completed = if name == "left" {
-                if stop { 1 } else { 2 }
+                if pending_first {
+                    0
+                } else if stop {
+                    1
+                } else {
+                    2
+                }
             } else if name == "right" {
                 usize::from(!stop)
             } else {
@@ -213,32 +232,43 @@ fn compare_repeated(
             .collect::<Vec<_>>();
         assert_eq!(
             replacements.len(),
-            if stop { 1 } else { 2 },
+            if stop { usize::from(!pending_first) } else { 2 },
             "{context}: {trace}"
         );
-        let first = replacements[0].split_whitespace().collect::<Vec<_>>();
-        assert_eq!(first[1], "right");
-        if !stop {
-            let duplicate = replacements[1].split_whitespace().collect::<Vec<_>>();
-            assert_eq!(
-                duplicate[0], first[0],
-                "same retained context must host all three operations"
-            );
-            assert_eq!(duplicate[1], "left");
-            assert_eq!(count("duplicate no read left"), 1);
-            if !instant {
-                assert!(
-                    lines.iter().any(|l| l
-                        .starts_with(&format!("replacement wait {} right stale=", first[0]))
-                        && !l.ends_with("stale=0")),
-                    "{context}: {trace}"
+        if !pending_first {
+            let first = replacements[0].split_whitespace().collect::<Vec<_>>();
+            assert_eq!(first[1], "right");
+            if !stop {
+                let duplicate = replacements[1].split_whitespace().collect::<Vec<_>>();
+                assert_eq!(
+                    duplicate[0], first[0],
+                    "same retained context must host all three operations"
                 );
+                assert_eq!(duplicate[1], "left");
+                assert_eq!(count("duplicate no read left"), 1);
+                if !instant {
+                    assert!(
+                        lines.iter().any(|l| l
+                            .starts_with(&format!("replacement wait {} right stale=", first[0]))
+                            && !l.ends_with("stale=0")),
+                        "{context}: {trace}"
+                    );
+                }
             }
         }
         assert_eq!(
             count("wait original deadline left"),
-            if instant { 0 } else { 2 }
+            if pending_first {
+                1 + usize::from(early)
+            } else if instant {
+                0
+            } else {
+                2
+            }
         );
+        if pending_first {
+            assert_eq!(count("wait original deadline right"), 0);
+        }
         if !stop {
             assert_eq!(count("wait original deadline right"), 4);
         }
@@ -276,7 +306,8 @@ fn native_http_repeated_context_rejects_previous_operations_and_waits() {
             fs::write(&project.2, repeated_source(&p)).unwrap();
             p.finish_native_build(project, opt).unwrap();
             for label in ["request", "timed_out"] {
-                for (instant, stop) in [(false, false), (true, false), (true, true)] {
+                for (instant, stop) in [(false, false), (true, false), (true, true), (false, true)]
+                {
                     for reverse in [false, true] {
                         for early in [false, true] {
                             for quotas in ["1", "0,2,0,7", "3,1,9"] {
@@ -293,6 +324,8 @@ fn native_http_repeated_context_rejects_previous_operations_and_waits() {
             for (label, instant, stop, reverse, early) in [
                 ("request", false, false, false, false),
                 ("request", true, true, true, true),
+                ("request", false, true, false, false),
+                ("request", false, true, true, true),
                 ("timed_out", false, false, true, true),
             ] {
                 let mut finished = false;

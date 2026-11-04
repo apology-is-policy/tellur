@@ -55,14 +55,31 @@ fn reset_manifest(root: &Path) -> Manifest {
     fs::write(root.join("host.rs"), host).unwrap();
     manifest
 }
-fn reset_trace(root: &Path, success: bool) {
+fn reset_trace(root: &Path, success: bool, stop: bool, early: bool) {
     let text = fs::read_to_string(root.join("trace.log")).unwrap();
     let count = |s: &str| text.lines().filter(|l| *l == s).count();
     let resets = count("reset error left");
     let closes = count("abort peer left");
     assert!(resets <= closes && closes <= 1, "{text}");
     if success {
-        assert_eq!(resets, 1, "{text}");
+        assert_eq!(resets, usize::from(!stop), "{text}");
+    }
+    if stop {
+        assert_eq!(closes, 0, "fault precedes planned peer reset: {text}");
+        if success {
+            let body = "left:🙂";
+            let packet = format!(
+                "HEAD /left HTTP/1.1\r\nHost: local\r\nX-Name: left\r\nContent-Length: {}\r\n\r\n{body}",
+                body.len()
+            );
+            assert!(
+                text.contains(&format!(
+                    "resource drop left head={early} bytes={}",
+                    if early { packet.len() - 2 } else { 0 }
+                )),
+                "{text}"
+            );
+        }
     }
     if resets > 0 {
         let error = text.find("reset error left").unwrap();
@@ -104,7 +121,7 @@ fn live_http_resets_preserve_source_events_faults_and_retirement() {
             let project = p.native_project("main", &binary).unwrap();
             fs::write(&project.2, live_source(&p)).unwrap();
             p.finish_native_build(project, opt).unwrap();
-            for (instant, stop) in [(false, false)] {
+            for (instant, stop) in [(false, false), (false, true)] {
                 for reverse in [false, true] {
                     for early in [false, true] {
                         assert!(compare_repeated(
@@ -120,12 +137,16 @@ fn live_http_resets_preserve_source_events_faults_and_retirement() {
                             early
                         ));
                         live_trace(&root, instant, stop, true);
-                        reset_trace(&root, true);
+                        reset_trace(&root, true, stop, early);
                         comparisons += 1;
                     }
                 }
             }
-            for (instant, stop, reverse, early) in [(false, false, false, false)] {
+            for (instant, stop, reverse, early) in [
+                (false, false, false, false),
+                (false, true, false, false),
+                (false, true, true, true),
+            ] {
                 let mut finished = false;
                 for fuel in 0..250 {
                     for quotas in ["1", "0,2,0,7", "3,1,9"] {
@@ -142,7 +163,7 @@ fn live_http_resets_preserve_source_events_faults_and_retirement() {
                             early,
                         );
                         live_trace(&root, instant, stop, finished);
-                        reset_trace(&root, finished);
+                        reset_trace(&root, finished, stop, early);
                         comparisons += 1;
                     }
                     if finished {

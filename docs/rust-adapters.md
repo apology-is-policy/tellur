@@ -351,6 +351,11 @@ adds partial-body reset delivery through the checked queue, comparing full refer
 events/reports across fuel/quota schedules. Backend notifications
 remain read-free, including when a fuel cutoff retires a reset socket before another
 poll. Repeated-operation identity and supplier retirement remain checked.
+The [pending-first fault profile](async-execution.md#faults-during-the-first-repeated-http-receive-e1f6m)
+distinguishes active operation state from an owned resource whose operation has not
+started. A sibling fault retires the first wait/state and both resources before the
+owning contingency without fabricating successor state, registrations or completion.
+Its reset-capable peer has not yet reset when that fault occurs.
 The maintained transport is unchanged.
 
 

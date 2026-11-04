@@ -477,7 +477,28 @@ pub fn checkpoint() -> rust_api::checkpoint_outcome {
     TRACE.with(|t| {
         let mut trace = t.borrow_mut();
         for name in ["left", "right"] {
-            assert!(trace.iter().any(|s| s == &format!("state drop {name}")));
+            let started = trace
+                .iter()
+                .filter(|s| *s == &format!("state start {name}"))
+                .count();
+            assert!(started <= 1);
+            if name == "left" {
+                assert_eq!(started, 1);
+            }
+            assert_eq!(
+                trace
+                    .iter()
+                    .filter(|s| *s == &format!("state drop {name}"))
+                    .count(),
+                started
+            );
+            assert_eq!(
+                trace
+                    .iter()
+                    .filter(|s| s.starts_with(&format!("resource drop {name} ")))
+                    .count(),
+                1
+            );
             assert!(
                 trace
                     .iter()

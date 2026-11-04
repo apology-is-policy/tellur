@@ -5237,3 +5237,27 @@ separate evidence. The existing repeated-operation sibling-fault profile assumes
 an immediate first receive and is not widened here to pending-first-receive faults.
 General backend/cleanup-error policy and public async-host admission remain pending.
 The maintained transport and compiler/LSP/VSIX 0.189 are unchanged.
+
+
+E1f.6m extends the repeated HTTP fixture's immediate-first fault assumptions to a
+fault while the first two-wait receive is still pending. Explicit reference counts
+require one prepared/retired first operation and no completed first operation or
+prepared successor. Idle-only hints permit one poll/wait; an early batch permits
+two. The unstarted second resource still releases before the owning contingency.
+Both resources release exactly once; prepared states drop exactly once, and no
+state-drop or physical registration is invented for an unstarted operation.
+
+The new reference matrix compares request/disconnected plans, original/expanded
+programs, FIFO/reverse and early/idle hints, all fuel cutoffs and three quota cycles.
+The affected deterministic repeated, live source and reset-capable native matrices
+add pending-first faults at O0/O2 while preserving their previous cases. Exact
+reference events/reports, no stopped result adoption, suppressed nested handlers,
+independent work and logical-wait/physical-interest/state/supplier retirement remain
+checked. The reset-capable peer never reaches its abortive close in this fault
+profile; early hints supply partial body bytes, not a reset error or completion.
+Existing actual reset cases retain their separate requirements.
+
+Shared checkpoint changes also trigger rechecks of the earlier HTTP source and
+candidate matrices. This is a private test-profile correction and extension, with
+no production scheduler, language, parser or maintained transport change. Public
+async-host admission remains pending; compiler/LSP/VSIX stays 0.189.
