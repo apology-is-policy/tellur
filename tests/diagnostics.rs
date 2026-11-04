@@ -5067,3 +5067,204 @@ fn associated_assignment_ranges_keep_canonical_order_and_error_budget() {
         }
     }
 }
+
+#[test]
+fn associated_concrete_ranges_select_written_types_and_aliases() {
+    let f = Fixture::new();
+    for (prefix, assignments, selected, code) in [
+        (
+            "",
+            "type a=option< // 😀\r\n vector<missing>>;",
+            "option< // 😀\r\n vector<missing>>",
+            "E_MANIFEST",
+        ),
+        (
+            "",
+            "type a=b;type b=vector<missing>;",
+            "b;type b",
+            "E_MANIFEST",
+        ),
+        (
+            "trait z_source {type item;} implement z_source for u32 {type item=vector<missing>;}",
+            "type a=z_source<u32>.item;",
+            "z_source<u32>.item",
+            "E_MANIFEST",
+        ),
+        (
+            "struct hidden {u32 value;}",
+            "type a=vector< // 😀\r\n hidden>;",
+            "vector< // 😀\r\n hidden>",
+            "E_VISIBILITY",
+        ),
+        (
+            "struct hidden {u32 value;}",
+            "type a=b;type b=hidden;",
+            "b;type b",
+            "E_VISIBILITY",
+        ),
+        (
+            "struct hidden {u32 value;} trait z_source {type item;} implement z_source for u32 {type item=hidden;}",
+            "type a=z_source<u32>.item;",
+            "z_source<u32>.item",
+            "E_VISIBILITY",
+        ),
+    ] {
+        let declaration = if assignments.contains("type b=") {
+            "type a;type b;"
+        } else {
+            "type a;"
+        };
+        let source = format!(
+            "{prefix}\r\npub trait reader {{{declaration}}}\r\nimplement reader for u32 {{{assignments}}}"
+        );
+        f.write("main.tellur", &source);
+        let report = f.report(&["check", "main.tellur", "--json"], false);
+        let errors = report["diagnostics"].as_array().unwrap();
+        assert_eq!(
+            errors.len(),
+            if prefix.contains("vector<missing>") {
+                2
+            } else {
+                1
+            },
+            "{report}"
+        );
+        let error = &errors[0];
+        assert_eq!(error["code"], code, "{report}");
+        let at = source.find(selected).unwrap();
+        let length = if selected.starts_with("b;") {
+            1
+        } else {
+            selected.len()
+        };
+        assert_eq!(
+            error["range"],
+            json!({"start":scalar_position(&source,at),"end":scalar_position(&source,at+length)}),
+            "{report}"
+        );
+        assert_eq!(error["position"], error["range"]["start"]);
+        let batch = check_errors(&source);
+        assert_eq!(
+            compile(
+                &source,
+                Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
+            )
+            .unwrap_err(),
+            batch.errors[0]
+        );
+    }
+}
+
+#[test]
+fn associated_concrete_ranges_preserve_imports_and_generic_witnesses() {
+    let f = Fixture::new();
+    f.write("middle.tellur", "import \"worker.tellur\" as worker;");
+    f.write(
+        "main.tellur",
+        "import \"middle.tellur\" as middle;control main() exits done {exit done;}",
+    );
+    for (value, code) in [
+        ("vector< // 😀\r\n missing>", "E_MANIFEST"),
+        ("option< // 😀\r\n hidden>", "E_VISIBILITY"),
+    ] {
+        let source = format!(
+            "struct hidden {{u32 value;}}\r\npub trait reader {{type item;control read(self input) exits done;}}\r\nimplement reader for u32 {{type item={value};control read(self local) exits done {{exit done;}}}}\r\ncontrol call<t:reader>(t input) exits done {{reader<t>.read(input);exit done;}}"
+        );
+        f.write("worker.tellur", &source);
+        let report = f.report(&["check", "main.tellur", "--json"], false);
+        let error = &report["diagnostics"][0];
+        assert_eq!(error["code"], code, "{report}");
+        assert_eq!(
+            error["path"],
+            f.root.join("worker.tellur").to_string_lossy().as_ref()
+        );
+        assert_eq!(error["range"], selected_range(&source, value), "{report}");
+        assert!(!report.to_string().contains("_path_poly_"));
+        let first = tellur::compile_file(
+            f.root.join("main.tellur"),
+            Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(first.path, f.root.join("worker.tellur"));
+        assert_eq!(first.diagnostic.code, code);
+        assert_eq!(
+            first.diagnostic.span.line,
+            error["position"]["line"].as_u64().unwrap() as usize
+        );
+        assert_eq!(
+            first.diagnostic.end.as_ref().unwrap().column,
+            error["range"]["end"]["column"].as_u64().unwrap() as usize
+        );
+        f.write("worker.tellur", &source.replace(value, "u32"));
+        f.report(&["check", "main.tellur", "--json"], true);
+    }
+}
+
+#[test]
+fn associated_concrete_ranges_preserve_bound_type_body_and_visibility_priority() {
+    let source = "struct hidden {u32 value;} pub trait reader {type a;type b:copy;type c;control read(self input) exits done;} implement reader for u32 {type a=vector<missing>;type b=string;type c=hidden;control read(ref self local) exits done {u32 wrong=true;exit done;}}";
+    let mut repaired = source.to_owned();
+    for (code, from, to) in [
+        ("E_BOUND", "type b=string", "type b=u32"),
+        ("E_MANIFEST", "vector<missing>", "u32"),
+        ("E_TRAIT_SIGNATURE", "ref self local", "self local"),
+        ("E_TYPE", "u32 wrong=true;", ""),
+        ("E_VISIBILITY", "type c=hidden", "type c=u32"),
+    ] {
+        let errors = check_errors(&repaired);
+        assert_eq!(errors.errors.len(), 1, "{errors}");
+        assert_eq!(errors.errors[0].code, code, "{errors}");
+        repaired = repaired.replace(from, to);
+    }
+    compile(
+        &repaired,
+        Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+    )
+    .unwrap();
+    let target =
+        "trait reader {type item;} implement reader for missing {type item=vector<missing>; }";
+    let error = &check_errors(target).errors[0];
+    assert_eq!(error.code, "E_TRAIT");
+    assert_eq!(error.span.column, target.find("implement").unwrap() + 1);
+    assert!(error.end.is_none());
+}
+
+#[test]
+fn associated_concrete_ranges_keep_canonical_batches_and_visibility_barrier() {
+    let mut source = "pub trait reader {type a;type b;}\n".to_owned();
+    for n in (0..40).rev() {
+        source.push_str(&format!("pub struct value_{n:02} {{u32 n;}} implement reader for value_{n:02} {{type a=vector<missing>;type b=missing;}}\n"));
+    }
+    let errors = check_errors(&source);
+    assert_eq!(errors.errors.len(), 32, "{errors}");
+    assert!(errors.limit_reached);
+    for (n, error) in errors.errors.iter().enumerate() {
+        assert_eq!(error.code, "E_MANIFEST");
+        assert_eq!(error.span.line, 41 - n);
+        assert_eq!(
+            error.end.as_ref().unwrap().column - error.span.column,
+            "vector<missing>".len()
+        );
+    }
+    assert_eq!(
+        compile(
+            &source,
+            Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
+        )
+        .unwrap_err(),
+        errors.errors[0]
+    );
+    let private = format!(
+        "struct hidden {{u32 n;}}\n{}",
+        source.replace("missing", "hidden")
+    );
+    let errors = check_errors(&private);
+    assert_eq!(errors.errors.len(), 1, "{errors}");
+    assert!(!errors.limit_reached);
+    assert_eq!(errors.errors[0].code, "E_VISIBILITY");
+    assert_eq!(errors.errors[0].span.line, 42);
+    assert_eq!(
+        errors.errors[0].end.as_ref().unwrap().column - errors.errors[0].span.column,
+        "vector<hidden>".len()
+    );
+}

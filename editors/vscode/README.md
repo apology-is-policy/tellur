@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-darwin-arm64-0.203.0.vsix` using **Extensions:
+1. Install the supplied `tellur-language-darwin-arm64-0.204.0.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1673,3 +1673,9 @@ normalization-root and capability-bound failures. Imported unsaved edits update
 complete UTF-16 ranges while dependent normalization errors remain suppressed.
 Partial repairs retain remaining failures; full validation restores checked hover
 and trait-side names. Existing phase order and ownership rules are unchanged.
+
+
+Compiler 0.204 retains associated assignment ranges through concrete type and
+public-interface visibility checks. Imported unsaved partial repairs update full
+UTF-16 ranges across those phases; checked hover returns after full validation.
+Earlier generic instantiation and body-before-visibility priority are unchanged.

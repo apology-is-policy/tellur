@@ -5519,3 +5519,21 @@ names and native calls. Selected formatter and public contract snapshots join th
 trait, generic, module, origin, permission and reference suites because syntax
 metadata changed. Later instantiated-type and public-visibility locations remain
 follow-ups. Public async-host admission still awaits the recorded design decision.
+
+
+## Concrete associated-type locations (0.204 / P2al)
+
+Lowered concrete associated types retain their written RHS annotations for manifest
+type validation and public-interface visibility. Abstract witnesses keep synthetic
+metadata, and the earlier generic-instantiation input still carries its existing
+type/span pairs. Target fallback, capability-before-type, type-before-method and
+body-before-visibility ordering are unchanged.
+
+CLI cases cover nested unknown types, local/qualified aliases, original imported
+Unicode/CRLF ranges, generic witnesses, canonical ordering, the 32-error cap,
+first-error APIs and the existing single-error visibility barrier. A unit case
+removes assignment metadata and checks synthesized abstract witnesses. LSP and
+isolated VS Code cases cross from two concrete type failures through partial repair
+to a later visibility failure, then restore trait-side hover and native execution.
+The previous assignment-range editor fixture remains a regression. Public
+async-host admission still awaits the recorded design decision.

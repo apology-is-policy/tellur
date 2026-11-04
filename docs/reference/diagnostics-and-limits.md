@@ -922,11 +922,46 @@ or checked trait signature reaches callers or hover. Declarations and synthetic
 assignments without value metadata keep their original point fallback; member
 identity errors retain their separate locations.
 
-Later instantiated-type validation and public-interface visibility remain separate
-location follow-ups. For example, an unqualified unknown type can be rejected by
-manifest validation after module lookup has completed. This checkpoint preserves
-that phase and its current location. Associated-type acceptance and ownership rules
-are unchanged.
+Since 0.204, concrete associated-type validation and public-interface visibility
+also retain these ranges. An unqualified unknown nested type can pass module lookup
+and normalization before manifest validation rejects it. The later error selects
+the original assignment type. When normalization resolves an alias, its written
+use remains selected rather than the resolved spelling or another assignment.
+
+<!-- tellur:reject E_MANIFEST -->
+```tellur
+trait reader {
+    type item;
+}
+implement reader for u32 {
+    type item = vector<missing>;
+}
+```
+
+This error selects `vector<missing>`. A public trait/type pair exposing a private
+associated type similarly selects its assigned type, including enclosing containers.
+
+<!-- tellur:reject E_VISIBILITY -->
+```tellur
+struct hidden {
+    u32 value;
+}
+pub trait reader {
+    type item;
+}
+implement reader for u32 {
+    type item = option<hidden>;
+}
+```
+
+This error selects `option<hidden>`. Capability checks remain before target and
+associated-type checks; all associated types are validated before method conformance.
+Independent concrete type failures still report one per implementation within the
+32-error cap. Public visibility remains a single-error barrier after body checking.
+Generic witnesses synthesize no assignment range, and absent metadata preserves
+the implementation point. Earlier generic instantiation keeps its existing location
+and priority; this range support does not change that phase. Associated-type
+acceptance, ownership rules and private-layout protection are unchanged.
 
 
 ## Constructor-call preparation batches

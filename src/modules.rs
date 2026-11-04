@@ -1245,7 +1245,7 @@ impl PublicInterfaces {
                     check
                         .associated
                         .iter()
-                        .map(|t| (t.clone().into(), check.span, vec![])),
+                        .map(|t| (t.clone(), check.span, vec![])),
                 );
             }
         }

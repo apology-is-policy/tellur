@@ -680,7 +680,10 @@ pub(crate) fn lower(
         let mut associated = vec![];
         for a in &i.associated {
             let value = replacements[&format!("{trait_name}<{target}>.{}", a.name)].clone();
-            associated.push(value.clone());
+            associated.push(TypeAnnotation {
+                ty: value.clone(),
+                range: a.value_range,
+            });
             bindings.insert(a.name.clone(), value);
         }
         let mut expected = vec![];
@@ -743,7 +746,7 @@ pub(crate) fn required_types(checks: &[TraitCheck]) -> Vec<(String, Span)> {
     let mut types = vec![];
     for c in checks {
         types.push((c.target.clone(), c.span));
-        types.extend(c.associated.iter().map(|t| (t.clone(), c.span)));
+        types.extend(c.associated.iter().map(|t| (t.ty.clone(), c.span)));
         for r in &c.expected {
             types.extend(
                 r.parameters
@@ -852,10 +855,14 @@ pub(crate) fn check_contracts(
                 }
             }
         }
-        for t in std::iter::once(&c.target).chain(&c.associated) {
+        m.check_type(&c.target).map_err(|mut e| {
+            e.span = c.span;
+            e
+        })?;
+        for t in &c.associated {
             m.check_type(t).map_err(|mut e| {
                 e.span = c.span;
-                e
+                t.type_error(e, c.span)
             })?;
         }
         for expected in &c.expected {
@@ -985,7 +992,7 @@ pub(crate) fn abstract_witness(
             format!("{trait_name}<{parameter}>.{}", a.name),
         );
         bindings.insert(a.name.clone(), name.clone());
-        associated.push(name);
+        associated.push(name.into());
     }
     for mut method in declaration.methods {
         method.name = format!("{trait_name}<{target}>.{}", method.name);
@@ -1009,6 +1016,50 @@ pub(crate) fn abstract_witness(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn associated_concrete_ranges_keep_missing_and_synthetic_metadata_fallback() {
+        for (value, code) in [
+            ("vector<missing>", "E_MANIFEST"),
+            ("hidden", "E_VISIBILITY"),
+        ] {
+            let source = format!(
+                "struct hidden {{u32 value;}} pub trait reader {{type item;}} implement reader for u32 {{type item={value};}}"
+            );
+            let mut unit = crate::syntax::parse_unit(&source).unwrap();
+            let span = unit.implementations[0].span;
+            unit.implementations[0].associated[0].value_range = crate::SourceRange::default();
+            let manifest =
+                Manifest::from_json(include_str!("../playground/manifest.json")).unwrap();
+            let errors =
+                crate::check::compile_unit(unit, manifest, &Visibility::default()).unwrap_err();
+            assert_eq!(errors.errors.len(), 1);
+            assert_eq!(errors.errors[0].code, code);
+            assert_eq!(errors.errors[0].span, span);
+            assert!(errors.errors[0].end.is_none());
+        }
+        let mut unit = crate::syntax::parse_unit("trait reader {type item:copy;}").unwrap();
+        let mut manifest =
+            Manifest::from_json(include_str!("../playground/manifest.json")).unwrap();
+        abstract_witness(
+            &mut unit,
+            &mut manifest,
+            "reader",
+            "u32",
+            "t",
+            &mut 0,
+            &mut BTreeMap::new(),
+        )
+        .unwrap();
+        let check = &unit.trait_checks[0];
+        assert_eq!(check.associated.len(), 1);
+        assert_eq!(check.associated[0].range, crate::SourceRange::default());
+        assert!(!check.public);
+        assert_eq!(
+            required_types(&unit.trait_checks)[1],
+            (check.associated[0].ty.clone(), check.span)
+        );
+    }
 
     #[test]
     fn associated_assignment_ranges_keep_missing_metadata_fallback() {

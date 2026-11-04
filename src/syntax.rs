@@ -405,7 +405,7 @@ pub struct TraitCheck {
     pub span: Span,
     pub target: String,
     pub public: bool,
-    pub associated: Vec<String>,
+    pub associated: Vec<TypeAnnotation>,
     pub expected: Vec<Region>,
 }
 #[derive(Clone, Debug)]

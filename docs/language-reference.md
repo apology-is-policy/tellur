@@ -1,8 +1,8 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.203.0 -->
+<!-- tellur-reference-version: 0.204.0 -->
 
-This manual describes **compiler 0.203.0**, including the current ownership model,
+This manual describes **compiler 0.204.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -15,7 +15,7 @@ as a bug to investigate, not a promise that either must remain unchanged. The
 updates at every implementation checkpoint.
 
 
-Compiler 0.203 also supports [owned spawned children](reference/async-execution.md#owned-spawned-children)
+Compiler 0.204 also supports [owned spawned children](reference/async-execution.md#owned-spawned-children)
 with explicit `await`/`yield` handoffs, required normal-path joins and owning-boundary
 fault settlement. The current profile admits reference-free values, direct borrows and nested owned record/option/variant/named-outcome
 captures/results with reference leaves to reference-free storage, plus borrowed record/option/variant/named-outcome captures
@@ -2630,8 +2630,9 @@ point, and earlier origin checks keep their priority. See
 Since 0.203, module lookup, normalization-root and capability-bound errors in
 associated assignments select the written type after `=`. Aliases select their
 written use; normalization keeps the root that first encountered the failure and
-suppresses dependent assignments. Later instantiated-type and public-visibility
-checks keep their existing locations. See
+suppresses dependent assignments. Since 0.204, later concrete associated-type and
+public-interface visibility errors also select the written assignment type. Earlier
+generic instantiation retains its separate locations. See
 [associated assignment locations](reference/diagnostics-and-limits.md#associated-assignment-locations).
 
 A module may implement a trait only if it owns that trait or the outer nominal target
@@ -2873,7 +2874,7 @@ General expression-type hover remains unsupported.
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and broader spawn payloads (anonymous contracts and reference-bearing collections) remain planned; they are not executable features of 0.203.0.
+and broader spawn payloads (anonymous contracts and reference-bearing collections) remain planned; they are not executable features of 0.204.0.
 ## Contingency and supervised boundaries
 
 The [contingency reference](reference/contingency.md) specifies `@contingent`,
