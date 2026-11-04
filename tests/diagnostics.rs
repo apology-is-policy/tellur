@@ -2363,13 +2363,22 @@ fn named_completion_origin_ranges_survive_imports_generics_and_traits() {
 fn named_completion_origin_ranges_do_not_relabel_missing_or_schema_errors() {
     for source in [
         "pub control probe(ref string input) exits ready {ref string value} {exit ready {input};}",
-        "outcome reply['a] {ready {ref string value <- 'missing}} control probe(ref string input) exits reply[input] {exit ready {input};}",
         "outcome reply['a] {ready {ref string value <- 'a}} pub control probe(ref string input) exits reply {exit ready {input};}",
     ] {
         let errors = check_errors(source);
         assert_eq!(errors.errors.len(), 1);
         assert!(errors.errors[0].end.is_none(), "{errors}");
     }
+    let source = "outcome reply['a] {ready {ref string value <- 'missing}} control probe(ref string input) exits reply[input] {exit ready {input};}";
+    let errors = check_errors(source);
+    assert_eq!(errors.errors.len(), 1);
+    assert_eq!(errors.errors[0].code, "E_ORIGIN");
+    let at = source.find("<- 'missing").unwrap();
+    assert_eq!(errors.errors[0].span.column, at + 1);
+    assert_eq!(
+        errors.errors[0].end.as_ref().unwrap().column,
+        at + 1 + "<- 'missing".len()
+    );
     let source = "outcome reply['a] {ready {ref string value <- 'a}} control probe(ref string input) exits reply[input] {u32 wrong=true;exit ready {input};}";
     let errors = check_errors(source);
     assert_eq!(errors.errors[0].code, "E_TYPE");
@@ -2618,10 +2627,132 @@ fn payload_origin_ranges_preserve_storage_clauses_named_contracts_and_error_orde
     assert_eq!(first, errors.errors[0]);
     for source in [
         "struct view['a] {ref string value <- 'a;} pub control probe(ref string input) exits ready {view value} {exit ready {view {value:input}};}",
-        "struct view['a] {ref string value <- 'missing;} control probe(ref string input) exits ready {view[input] value} {exit ready {view {value:input}};}",
     ] {
         let errors = check_errors(source);
         assert_eq!(errors.errors.len(), 1, "{errors}");
+        assert!(errors.errors[0].end.is_none(), "{errors}");
+    }
+}
+
+#[test]
+fn schema_origin_ranges_select_storage_arrows_and_referent_brackets() {
+    let f = Fixture::new();
+    let view = "struct view['a] {ref string value <- 'a;}";
+    for (declaration, selected) in [
+        (
+            "struct bad['a] {ref string value <- 'missing;}",
+            "<- 'missing",
+        ),
+        (
+            "struct bad['a] {value: &String <- 'missing;}",
+            "<- 'missing",
+        ),
+        (
+            "struct bad['a] {ref string value <- // 😀\r\n 'missing // outside\r\n;}",
+            "<- // 😀\r\n 'missing",
+        ),
+        ("struct bad['a] {view['missing] value;}", "['missing]"),
+        (
+            "struct bad['a] {ref view['a] value <- 'missing;}",
+            "<- 'missing",
+        ),
+        (
+            "struct bad['a] {ref view['missing] value <- 'a;}",
+            "['missing]",
+        ),
+        (
+            "struct bad['a] {ref view['first] value <- 'second;}",
+            "<- 'second",
+        ),
+        ("struct bad['a] {view[value] value;}", "[value]"),
+        ("struct bad {ref string value <- 'a;}", "<- 'a"),
+        ("struct bad['a] {u32['a] value;}", "['a]"),
+        ("struct bad['a] {view['a,'a] value;}", "['a,'a]"),
+        ("struct bad['a] {ref view['a,'a] value <- 'a;}", "['a,'a]"),
+        ("struct bad['a] {ref view value <- 'a;}", "<- 'a"),
+        (
+            "variant bad['a] {some {ref string value <- 'missing},none}",
+            "<- 'missing",
+        ),
+        (
+            "outcome bad['a] {some {ref view['missing] value <- 'a},none}",
+            "['missing]",
+        ),
+    ] {
+        let source = format!("{view}\n{declaration}\ncontrol main() exits done {{exit done;}}");
+        f.write("main.tellur", &source);
+        let report = f.report(&["check", "main.tellur", "--json"], false);
+        let error = &report["diagnostics"][0];
+        assert_eq!(error["code"], "E_ORIGIN", "{source}: {report}");
+        assert_eq!(
+            error["range"],
+            {
+                let at = view.len() + 1 + declaration.rfind(selected).unwrap();
+                json!({"start":scalar_position(&source, at),"end":scalar_position(&source, at+selected.len())})
+            },
+            "{source}: {report}"
+        );
+    }
+}
+
+#[test]
+fn schema_origin_ranges_survive_imported_generic_data_and_named_outcomes() {
+    let f = Fixture::new();
+    f.write(
+        "main.tellur",
+        "import \"library.tellur\" as library;control main() exits done {exit done;}",
+    );
+    for (body, selected) in [
+        (
+            "pub struct bad<t>['a] {pub ref t value <- 'missing;}",
+            "<- 'missing",
+        ),
+        (
+            "pub variant bad<t>['a] {some {ref view<t>['missing] value <- 'a},none}",
+            "['missing]",
+        ),
+        (
+            "pub outcome bad<t>['a] {some {ref view<t>['a] value <- // 😀\r\n 'missing},none}",
+            "<- // 😀\r\n 'missing",
+        ),
+    ] {
+        let source =
+            format!("pub struct view<t>['a] {{pub ref t value <- 'a;}}\r\n// imported\r\n{body}");
+        f.write("library.tellur", &source);
+        let report = f.report(&["check", "main.tellur", "--json"], false);
+        let error = &report["diagnostics"][0];
+        assert_eq!(error["code"], "E_ORIGIN", "{report}");
+        assert!(error["path"].as_str().unwrap().ends_with("library.tellur"));
+        assert_eq!(
+            error["range"],
+            selected_range(&source, selected),
+            "{report}"
+        );
+    }
+}
+
+#[test]
+fn schema_origin_ranges_preserve_shared_preparation_order_and_missing_mapping_fallbacks() {
+    let source = "struct first['a] {ref string value <- 'missing;}\nstruct second['b] {ref string value <- 'other;}\ncontrol main() exits done {u32 wrong=true;exit done;}";
+    let errors = check_errors(source);
+    assert_eq!(errors.errors.len(), 1, "{errors}");
+    assert_eq!(errors.errors[0].code, "E_ORIGIN");
+    assert!(errors.errors[0].message.contains("'missing"));
+    assert!(errors.errors[0].end.is_some());
+    let first = compile(
+        source,
+        Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+    )
+    .unwrap_err();
+    assert_eq!(first, errors.errors[0]);
+    for source in [
+        "struct view['a] {ref string value;} control main() exits done {exit done;}",
+        "struct view['a,'a] {ref string value <- 'a;} control main() exits done {exit done;}",
+        "struct view['a,'b] {ref string value <- 'a;} control main() exits done {exit done;}",
+    ] {
+        let errors = check_errors(source);
+        assert_eq!(errors.errors.len(), 1, "{errors}");
+        assert_eq!(errors.errors[0].code, "E_ORIGIN");
         assert!(errors.errors[0].end.is_none(), "{errors}");
     }
 }

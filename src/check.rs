@@ -3424,6 +3424,7 @@ impl Checker<'_> {
                     .map(|(j, f)| syntax::Field {
                         type_range: crate::SourceRange::default(),
                         origins_range: crate::SourceRange::default(),
+                        referent_origins_range: crate::SourceRange::default(),
                         origins: vec![],
                         referent_origins: vec![],
                         name: format!("$identity_{serial}_{i}_{j}"),
@@ -3515,6 +3516,7 @@ impl Checker<'_> {
                     .map(|(j, f)| syntax::Field {
                         type_range: crate::SourceRange::default(),
                         origins_range: crate::SourceRange::default(),
+                        referent_origins_range: crate::SourceRange::default(),
                         origins: vec![],
                         referent_origins: vec![],
                         name: format!("$payload_{serial}_{i}_{j}"),
@@ -4340,6 +4342,7 @@ impl Checker<'_> {
                         .map(|f| syntax::Field {
                             type_range: crate::SourceRange::default(),
                             origins_range: crate::SourceRange::default(),
+                            referent_origins_range: crate::SourceRange::default(),
                             origins: vec![],
                             referent_origins: vec![],
                             name: f.name.clone(),
@@ -4373,6 +4376,7 @@ impl Checker<'_> {
                         .map(|(j, f)| syntax::Field {
                             type_range: crate::SourceRange::default(),
                             origins_range: crate::SourceRange::default(),
+                            referent_origins_range: crate::SourceRange::default(),
                             origins: vec![],
                             referent_origins: vec![],
                             name: format!("$identity_{serial}_{index}_{j}"),
@@ -5326,6 +5330,7 @@ pub(crate) fn compile_concrete_unit(
                         .map(|f| syntax::Field {
                             type_range: crate::SourceRange::default(),
                             origins_range: crate::SourceRange::default(),
+                            referent_origins_range: crate::SourceRange::default(),
                             origins: vec![],
                             referent_origins: vec![],
                             name: f.name.clone(),

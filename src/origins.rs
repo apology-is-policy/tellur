@@ -206,42 +206,66 @@ pub(crate) fn schemas(unit: &syntax::Unit) -> Result<Schemas> {
             } else {
                 visit(&field.ty, data, done, active)?
             };
+            // Mapping-wide failures select the referent brackets when present;
+            // individual group failures retain their own storage/referent range.
+            // Missing mappings keep the declaration fallback and phase ordering.
+            let mapping_range = if field.referent_origins_range.start.line != 0 {
+                field.referent_origins_range
+            } else {
+                field.origins_range
+            };
+            let mapping_error = |range: crate::SourceRange, message: String| {
+                let diagnostic = error(d.span, message);
+                if range.start.line == 0 {
+                    diagnostic
+                } else {
+                    diagnostic.with_range(range)
+                }
+            };
             if manifest::reference_inner(&field.ty).is_some()
                 && nested.groups.len() > 1
                 && !field.origins.is_empty()
                 && field.referent_origins.is_empty()
             {
-                return Err(error(
-                    d.span,
-                    "carrier reference fields require both referent bracket mappings and a storage arrow origin",
+                return Err(mapping_error(
+                    mapping_range,
+                    "carrier reference fields require both referent bracket mappings and a storage arrow origin".into(),
                 ));
             }
             if schema.groups.is_empty()
                 && (!field.origins.is_empty() || !field.referent_origins.is_empty())
             {
-                return Err(error(
-                    d.span,
-                    "field origins require declared type origin parameters",
+                return Err(mapping_error(
+                    mapping_range,
+                    "field origins require declared type origin parameters".into(),
                 ));
             }
-            let mapped = field
-                .origins
-                .iter()
-                .chain(&field.referent_origins)
-                .map(|a| {
-                    let OriginArgument::Group(n) = a else {
-                        return Err(error(d.span, "field origins must name apostrophe groups"));
-                    };
-                    schema
-                        .groups
-                        .iter()
-                        .position(|g| g == n)
-                        .ok_or_else(|| error(d.span, format!("unknown origin group `'{n}`")))
-                })
-                .collect::<Result<Vec<_>>>()?;
+            let mapped =
+                field
+                    .origins
+                    .iter()
+                    .map(|a| (a, field.origins_range))
+                    .chain(
+                        field
+                            .referent_origins
+                            .iter()
+                            .map(|a| (a, field.referent_origins_range)),
+                    )
+                    .map(|(a, range)| {
+                        let OriginArgument::Group(n) = a else {
+                            return Err(mapping_error(
+                                range,
+                                "field origins must name apostrophe groups".into(),
+                            ));
+                        };
+                        schema.groups.iter().position(|g| g == n).ok_or_else(|| {
+                            mapping_error(range, format!("unknown origin group `'{n}`"))
+                        })
+                    })
+                    .collect::<Result<Vec<_>>>()?;
             if !mapped.is_empty() && nested.leaves.is_empty() {
-                return Err(error(
-                    d.span,
+                return Err(mapping_error(
+                    mapping_range,
                     format!("field `{}` has no reference origins to map", field.name),
                 ));
             }
@@ -249,8 +273,8 @@ pub(crate) fn schemas(unit: &syntax::Unit) -> Result<Schemas> {
                 && !nested.leaves.is_empty()
                 && (nested.groups.is_empty() || mapped.len() != nested.groups.len())
             {
-                return Err(error(
-                    d.span,
+                return Err(mapping_error(
+                    mapping_range,
                     format!(
                         "field `{}` requires a complete mapping of its {} origin groups",
                         field.name,

@@ -285,8 +285,7 @@ control peek(ref string input) exits view[missing] {
 ```
 
 Here `missing` does not name a parameter; the diagnostic selects `[missing]`.
-Missing mappings have no invented range. Invalid shared origin schemas retain
-their earlier locations. A body
+Missing mappings have no invented range. Shared schema errors use the field mapping locations described below when available. A body
 error still selects its own expression. Error order and the shared recovery budget
 are unchanged; improving a location does not enable checking through an invalid schema.
 
@@ -336,9 +335,35 @@ control peek(ref string input)
 Here the diagnostic selects `[missing]`, even if another payload has valid brackets.
 For named completions such as `exits reply[missing]`, that invocation mapping takes
 precedence over the payload's group names in the reused outcome definition. A separate
-invalid `from` clause keeps its own range. Missing mappings and invalid origin schemas
-retain their existing source points; body and type errors keep their own ranges.
+invalid `from` clause keeps its own range. Missing mappings retain their existing source points; schema field mappings use the
+ranges described below, and body and type errors keep their own ranges.
 Origin acceptance, declaration ordering and the 32-error budget are unchanged.
+
+Since 0.190, **schema field origin mappings** select their written brackets or
+storage arrow. This applies to structs, variants and named outcomes, including
+unused generic definitions and legacy `name: type` fields. Unknown groups and
+non-group entries select the mapping containing that entry. Mapping-wide errors
+(such as incomplete groups or a field with no reference origins) select referent
+brackets when present, otherwise the primary bracket or storage-arrow mapping.
+
+<!-- tellur:reject E_ORIGIN -->
+```tellur
+struct view['a] {
+    ref string value <- 'missing;
+}
+control main() exits done {
+    exit done;
+}
+```
+
+This selects `<- 'missing`, excluding the field name and semicolon. For a carrier
+field `ref view['missing] value <- 'a`, the error selects `['missing]`; an invalid
+storage group instead selects its arrow. Internal comments and whitespace are
+included; trailing comments are excluded. Storage groups are still checked before
+referent groups, even though their spelling follows the brackets. Missing mappings,
+duplicate/unused declaration groups and schema depth limits keep their existing
+fallback points. Shared schema preparation still stops at its first error, before
+body checking; this range improvement adds no recovery through an invalid schema.
 
 Imports preserve both endpoints in the original file; unsaved dependencies supply
 the text used for editor UTF-16 conversion. Generic substitution preserves the

@@ -787,6 +787,7 @@ pub(crate) fn compile(
                                 .map(|f| Field {
                                     type_range: crate::SourceRange::default(),
                                     origins_range: crate::SourceRange::default(),
+                                    referent_origins_range: crate::SourceRange::default(),
                                     origins: vec![],
                                     referent_origins: vec![],
                                     name: f.name.clone(),

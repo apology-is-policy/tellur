@@ -95,10 +95,11 @@ pub struct Field {
     /// Written type only, excluding the binding name and origin mappings.
     pub type_range: SourceRange,
     pub origins: Vec<OriginArgument>,
-    /// Written bracket mapping, separate from the type and any storage arrow.
+    /// Written mapping: brackets, or the storage arrow on a schema reference field.
     pub origins_range: SourceRange,
     /// Bracket mappings on a schema reference field with a separate storage arrow.
     pub referent_origins: Vec<OriginArgument>,
+    pub referent_origins_range: SourceRange,
     pub name: String,
     pub ty: String,
 }
@@ -728,6 +729,7 @@ impl Parser {
             ty,
             origins,
             origins_range,
+            referent_origins_range: SourceRange::default(),
             referent_origins: vec![],
             type_range,
         })
@@ -1015,21 +1017,26 @@ impl Parser {
         }
         Ok((parameters, bounds))
     }
+    fn schema_field(&mut self) -> Result<Field> {
+        let mut field = self.field()?;
+        let arrow_start = self.here();
+        if self.eat("<-") {
+            if !field.origins.is_empty() && crate::manifest::reference_inner(&field.ty).is_none() {
+                return Err(self.error("arrow origins require a reference field"));
+            }
+            field.referent_origins = std::mem::take(&mut field.origins);
+            field.referent_origins_range = field.origins_range;
+            self.need("'")?;
+            field.origins.push(OriginArgument::Group(self.id()?));
+            field.origins_range = self.range_from(arrow_start);
+        }
+        Ok(field)
+    }
     fn schema_fields(&mut self) -> Result<Vec<Field>> {
         self.need("{")?;
         let mut fields = vec![];
         while !self.at("}") {
-            let mut field = self.field()?;
-            if self.eat("<-") {
-                if !field.origins.is_empty()
-                    && crate::manifest::reference_inner(&field.ty).is_none()
-                {
-                    return Err(self.error("arrow origins require a reference field"));
-                }
-                field.referent_origins = std::mem::take(&mut field.origins);
-                self.need("'")?;
-                field.origins.push(OriginArgument::Group(self.id()?));
-            }
+            let field = self.schema_field()?;
             fields.push(field);
             if !self.eat(",") {
                 break;
@@ -1628,6 +1635,7 @@ impl Parser {
                                 bindings.push(Field {
                                     type_range: crate::SourceRange::default(),
                                     origins_range: crate::SourceRange::default(),
+                                    referent_origins_range: crate::SourceRange::default(),
                                     origins: vec![],
                                     referent_origins: vec![],
                                     name: self.id()?,
@@ -2102,17 +2110,7 @@ pub(crate) fn parse_with_layout(source: &str) -> Result<(Unit, Vec<Token>, crate
                     if contingent {
                         return Err(p.error("@contingent annotates a constructor, not a field"));
                     }
-                    let mut field = p.field()?;
-                    if p.eat("<-") {
-                        if !field.origins.is_empty()
-                            && crate::manifest::reference_inner(&field.ty).is_none()
-                        {
-                            return Err(p.error("arrow origins require a reference field"));
-                        }
-                        field.referent_origins = std::mem::take(&mut field.origins);
-                        p.need("'")?;
-                        field.origins.push(OriginArgument::Group(p.id()?));
-                    }
+                    let field = p.schema_field()?;
                     if visible {
                         public_fields.insert(field.name.clone());
                     }

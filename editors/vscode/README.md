@@ -1597,3 +1597,12 @@ remain with their original invocation and fault boundary. Hover explains the
 retained-owner settlement requirement and the direct parent-boundary limit. Imported
 generic/trait result origins survive unsaved diagnostic repair. The fresh boundary
 handoff fixture verifies source/contract repair and exact native execution order.
+
+
+Release 0.190 (P2x) preserves authored schema field mapping ranges: primary brackets
+or storage arrows and separate referent brackets in structs, variants and named
+outcomes. Exact CLI/imported generic tests cover invalid groups, non-group entries,
+arity and absent reference origins, multiline comments, legacy fields and unchanged
+shared preparation order. Unsaved dependency LSP/editor checks verify UTF-16 ranges,
+stale-hover suppression and repair. Missing mappings and declaration-level errors
+retain fallback points. Origin acceptance and the shared diagnostic budget are unchanged.

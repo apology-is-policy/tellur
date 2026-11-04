@@ -5261,3 +5261,12 @@ Shared checkpoint changes also trigger rechecks of the earlier HTTP source and
 candidate matrices. This is a private test-profile correction and extension, with
 no production scheduler, language, parser or maintained transport change. Public
 async-host admission remains pending; compiler/LSP/VSIX stays 0.189.
+
+
+Release 0.190 (P2x) preserves authored schema field mapping ranges: primary brackets
+or storage arrows and separate referent brackets in structs, variants and named
+outcomes. Exact CLI/imported generic tests cover invalid groups, non-group entries,
+arity and absent reference origins, multiline comments, legacy fields and unchanged
+shared preparation order. Unsaved dependency LSP/editor checks verify UTF-16 ranges,
+stale-hover suppression and repair. Missing mappings and declaration-level errors
+retain fallback points. Origin acceptance and the shared diagnostic budget are unchanged.

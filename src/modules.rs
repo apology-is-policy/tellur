@@ -516,6 +516,10 @@ impl Resolver<'_> {
                 f.origins_range.start.line += self.offset;
                 f.origins_range.end.line += self.offset;
             }
+            if f.referent_origins_range.start.line != 0 {
+                f.referent_origins_range.start.line += self.offset;
+                f.referent_origins_range.end.line += self.offset;
+            }
         }
         Ok(())
     }
