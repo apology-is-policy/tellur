@@ -319,6 +319,34 @@ pub(crate) fn validate_bounds(unit: &Unit) -> crate::CheckResult<()> {
     Ok(())
 }
 
+/// Validate only shared implementation identity/coherence. This read-only check
+/// decides whether local preparation can recover without ambiguous witnesses.
+fn implementation_identity<'a>(
+    i: &Implementation,
+    declarations: &'a BTreeMap<String, TraitDeclaration>,
+    arities: &BTreeMap<String, usize>,
+    visibility: &Visibility,
+) -> Result<&'a TraitDeclaration> {
+    let d = declarations
+        .get(&i.trait_name)
+        .ok_or_else(|| error(i.span, format!("unknown trait `{}`", i.trait_name)))?;
+    if manifest::reference_inner(&i.target).is_some() || qualified_member(&i.target).is_some() {
+        return Err(error(
+            i.span,
+            "implementation targets must be explicit concrete owned types",
+        ));
+    }
+    check_decl_type(&i.target, &BTreeSet::new(), &arities, i.span)?;
+    if d.module != i.module && !visibility.owns(i.module, &i.target) {
+        return Err(Diagnostic::new(
+            "E_COHERENCE",
+            i.span,
+            "implementation module must own the trait or the outer nominal target type",
+        ));
+    }
+    Ok(d)
+}
+
 pub(crate) fn lower(
     mut unit: Unit,
     manifest: &Manifest,
@@ -472,27 +500,14 @@ pub(crate) fn lower(
         )
         .into());
     }
+    let mut implementation_keys = BTreeSet::new();
+    let recover_implementations = unit.implementations.iter().all(|i| {
+        implementation_identity(i, &declarations, &arities, visibility).is_ok()
+            && implementation_keys.insert((i.trait_name.clone(), i.target.clone()))
+    });
     let mut implementations = BTreeMap::new();
-    for i in &unit.implementations {
-        let d = declarations
-            .get(&i.trait_name)
-            .ok_or_else(|| error(i.span, format!("unknown trait `{}`", i.trait_name)))?;
-        if manifest::reference_inner(&i.target).is_some() || qualified_member(&i.target).is_some() {
-            return Err(error(
-                i.span,
-                "implementation targets must be explicit concrete owned types",
-            )
-            .into());
-        }
-        check_decl_type(&i.target, &BTreeSet::new(), &arities, i.span)?;
-        if d.module != i.module && !visibility.owns(i.module, &i.target) {
-            return Err(Diagnostic::new(
-                "E_COHERENCE",
-                i.span,
-                "implementation module must own the trait or the outer nominal target type",
-            )
-            .into());
-        }
+    let checks = unit.implementations.iter().map(|i| -> Result<()> {
+        let d = implementation_identity(i, &declarations, &arities, visibility)?;
         unique(
             i.associated
                 .iter()
@@ -514,8 +529,7 @@ pub(crate) fn lower(
             return Err(error(
                 i.span,
                 "implementation must supply exactly the trait's associated types and controls",
-            )
-            .into());
+            ));
         }
         for m in &i.methods {
             method_profile(m)?;
@@ -526,8 +540,17 @@ pub(crate) fn lower(
                 "E_COHERENCE",
                 i.span,
                 "duplicate implementation for the same trait and type",
-            )
-            .into());
+            ));
+        }
+        Ok(())
+    });
+    if recover_implementations {
+        crate::diagnostics::collect_checks(checks)?;
+    } else {
+        // Preserve the old interleaved first-error order. A later ambiguous or
+        // foreign identity must not hide an earlier member/profile diagnostic.
+        for check in checks {
+            check?;
         }
     }
     let mut normalizer = Normalizer {

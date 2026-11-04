@@ -3663,3 +3663,189 @@ fn declared_contributor_ranges_keep_shared_header_notes_distinct_and_bounded() {
         errors.errors[0]
     );
 }
+
+#[test]
+fn implementation_preparation_batches_report_one_error_per_unused_implementation() {
+    let source = "trait reader {type item;control read(self input) exits done;}\nimplement reader for u32 {type item=u32;}\nimplement reader for string {type item=string;type item=string;control read(self input) exits done {exit done;}}\nimplement reader for bool {type item=bool;control read<t>(self input) exits done {exit done;}}\nimplement reader for bytes {type item=bytes;control read(self input) exits auto {exit done;}}\ncontrol main() exits done {u32 wrong=true;exit done;}";
+    let errors = check_errors(source);
+    assert_eq!(
+        errors.errors.iter().map(|e| e.code).collect::<Vec<_>>(),
+        [
+            "E_TRAIT",
+            "E_TRAIT",
+            "E_TRAIT_SIGNATURE",
+            "E_TRAIT_SIGNATURE"
+        ],
+        "{errors}"
+    );
+    assert_eq!(
+        errors
+            .errors
+            .iter()
+            .map(|e| e.span.line)
+            .collect::<Vec<_>>(),
+        [2, 3, 4, 5]
+    );
+    assert!(!errors.limit_reached);
+    assert_eq!(
+        compile(
+            source,
+            Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
+        )
+        .unwrap_err(),
+        errors.errors[0]
+    );
+}
+
+#[test]
+fn implementation_preparation_batches_replay_repairs_before_associated_and_body_checks() {
+    let missing = "trait reader {control read(self input) exits done;}\nimplement reader for u32 {}\nimplement reader for string {}";
+    assert_eq!(check_errors(missing).errors.len(), 2);
+    let partial = missing.replace("implement reader for u32 {}", "implement reader for u32 {control read(self input) exits done {u32 wrong=true;exit done;}}");
+    let errors = check_errors(&partial);
+    assert_eq!(errors.errors.len(), 1);
+    assert_eq!(errors.errors[0].span.line, 3);
+    assert!(errors.errors[0].message.contains("supply exactly"));
+    let repaired = partial.replace(
+        "implement reader for string {}",
+        "implement reader for string {control read(self input) exits done {exit done;}}",
+    );
+    assert_eq!(check_errors(&repaired).errors[0].code, "E_TYPE");
+    compile(
+        &repaired.replace("u32 wrong=true;", ""),
+        Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+    )
+    .unwrap();
+    let source = "trait source {type item;} implement source for u32 {type item=source<u32>.item;} implement source for string {}";
+    let errors = check_errors(source);
+    assert_eq!(errors.errors.len(), 1);
+    assert!(errors.errors[0].message.contains("supply exactly"));
+    let errors = check_errors(&source.replace("for string {}", "for string {type item=string;}"));
+    assert_eq!(errors.errors.len(), 1);
+    assert!(errors.errors[0].message.contains("cycl"), "{errors}");
+}
+
+#[test]
+fn implementation_preparation_batches_preserve_ambiguous_identity_first_error_order() {
+    for (source, expected) in [
+        (
+            "trait reader {control read(self input) exits done;} implement reader for u32 {} implement reader for u32 {} implement reader for string {}",
+            "supply exactly",
+        ),
+        (
+            "trait reader {control read(self input) exits done;} implement reader for u32 {control read(self input) exits done {exit done;}} implement reader for u32 {control read(self input) exits done {exit done;}} implement reader for string {}",
+            "duplicate implementation",
+        ),
+        (
+            "trait reader {control read(self input) exits done;} implement reader for u32 {} implement absent for string {} implement reader for bool {}",
+            "supply exactly",
+        ),
+        (
+            "trait reader {control read(self input) exits done;} implement absent for u32 {} implement reader for string {} implement reader for bool {}",
+            "unknown trait",
+        ),
+        (
+            "trait reader {control read(self input) exits done;} implement reader for ref u32 {} implement reader for string {}",
+            "concrete owned types",
+        ),
+        (
+            "trait reader {control read(self input) exits done;} implement reader for unknown {} implement reader for string {}",
+            "unknown or unapplied type",
+        ),
+    ] {
+        let errors = check_errors(source);
+        assert_eq!(errors.errors.len(), 1, "{errors}");
+        assert!(!errors.limit_reached);
+        assert!(errors.errors[0].message.contains(expected), "{errors}");
+        assert_eq!(
+            compile(
+                source,
+                Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
+            )
+            .unwrap_err(),
+            errors.errors[0]
+        );
+    }
+}
+
+#[test]
+fn implementation_preparation_batches_preserve_phase_barriers_and_budgets() {
+    let mut source = "trait reader {control read(self input) exits done;}\n".to_owned();
+    for n in 0..40 {
+        source.push_str(&format!(
+            "struct item_{n} {{u32 value;}} implement reader for item_{n} {{}}\n"
+        ));
+    }
+    let errors = check_errors(&source);
+    assert_eq!(errors.errors.len(), 32);
+    assert!(errors.limit_reached);
+    assert!(
+        errors
+            .errors
+            .iter()
+            .all(|e| e.code == "E_TRAIT" && e.message.contains("supply exactly"))
+    );
+    let errors = check_errors(&format!(
+        "struct invalid['a,'a] {{ref string value <- 'a;}} {source}"
+    ));
+    assert_eq!(errors.errors.len(), 1);
+    assert_eq!(errors.errors[0].code, "E_ORIGIN");
+    let errors = check_errors(&format!(
+        "trait invalid {{control read() exits auto;}} {source}"
+    ));
+    assert_eq!(errors.errors.len(), 1);
+    assert_eq!(errors.errors[0].code, "E_TRAIT_SIGNATURE");
+    let source = format!(
+        "trait marker {{}} {}",
+        "implement marker for u32 {}\n".repeat(1025)
+    );
+    let errors = check_errors(&source);
+    assert_eq!(errors.errors.len(), 1);
+    assert!(!errors.limit_reached);
+    assert!(errors.errors[0].message.contains("1024-implementation"));
+    // Conformance still waits for every local implementation header to prepare.
+    let source = "trait reader {control read(self input) exits done;} implement reader for u32 {control read(ref self input) exits done {exit done;}} implement reader for string {}";
+    assert!(
+        check_errors(source).errors[0]
+            .message
+            .contains("supply exactly")
+    );
+    let repaired = source.replace(
+        "for string {}",
+        "for string {control read(self input) exits done {exit done;}}",
+    );
+    assert_eq!(check_errors(&repaired).errors[0].code, "E_TRAIT_SIGNATURE");
+}
+
+#[test]
+fn implementation_preparation_batches_preserve_imported_origins_and_coherence_barriers() {
+    let f = Fixture::new();
+    f.write(
+        "contract.tellur",
+        "pub trait reader {control read(self input) exits done;}",
+    );
+    for file in ["first.tellur", "second.tellur"] {
+        f.write(file,"import \"contract.tellur\" as contract;\r\nstruct local {u32 value;}\r\nimplement contract.reader for local {}\r\n");
+    }
+    f.write("main.tellur", "import \"first.tellur\" as first; import \"second.tellur\" as second;control main() exits done {exit done;}");
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    let errors = report["diagnostics"].as_array().unwrap();
+    assert_eq!(errors.len(), 2, "{report}");
+    for (error, file) in errors.iter().zip(["first.tellur", "second.tellur"]) {
+        assert_eq!(error["code"], "E_TRAIT");
+        assert!(error["path"].as_str().unwrap().ends_with(file));
+        assert_eq!(error["position"], json!({"line":3,"column":1}));
+    }
+    // A foreign target disables recovery without preempting the earlier local error.
+    f.write(
+        "second.tellur",
+        "import \"contract.tellur\" as contract;implement contract.reader for u32 {}",
+    );
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    assert_eq!(report["diagnostics"].as_array().unwrap().len(), 1);
+    assert_eq!(report["diagnostics"][0]["code"], "E_TRAIT");
+    f.write("first.tellur", "import \"contract.tellur\" as contract;struct local {u32 value;}implement contract.reader for local {control read(self input) exits done {exit done;}}");
+    let report = f.report(&["check", "main.tellur", "--json"], false);
+    assert_eq!(report["diagnostics"].as_array().unwrap().len(), 1);
+    assert_eq!(report["diagnostics"][0]["code"], "E_COHERENCE");
+}

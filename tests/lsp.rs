@@ -7305,3 +7305,67 @@ fn declared_contributor_ranges_follow_unsaved_headers_and_clear_on_repair() {
     assert_eq!(f.diagnostics(), json!([]));
     assert_eq!(hover_at(&f, source, "auto text"), initial);
 }
+#[test]
+fn implementation_preparation_batches_follow_unsaved_partial_repairs_and_restore_hover() {
+    let mut f = Fixture::new();
+    let path = f.root.join("worker.tellur");
+    let uri = url::Url::from_file_path(&path).unwrap().to_string();
+    let valid = "trait reader {control read(self input) exits done;}\r\nimplement reader for u32 {control read(self first) exits done {string note=\"😀\";drop(note);exit done;}} implement reader for string {control read(self second) exits done {exit done;}}\r\npub control work() exits done {reader<u32>.read(1);reader<string>.read(\"x\");exit done;}";
+    fs::write(&path, valid).unwrap();
+    let source = "import \"worker.tellur\" as worker;control main() exits done {auto text=\"x\";drop(text);worker.work();exit done;}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let initial = hover_at(&f, source, "auto text");
+    assert!(initial.to_string().contains("string"));
+    let partial = valid.replace("control read(self second) exits done {exit done;}", "");
+    let broken = partial.replace(
+        "control read(self first) exits done {string note=\"😀\";drop(note);exit done;}",
+        "",
+    );
+    for (version, text, selected) in [
+        (
+            1,
+            broken.as_str(),
+            vec!["implement reader for u32", "implement reader for string"],
+        ),
+        (2, partial.as_str(), vec!["implement reader for string"]),
+    ] {
+        if version == 1 {
+            f.server.notification(
+                "textDocument/didOpen",
+                &json!({"textDocument":{"uri":uri,"version":version,"text":text}}),
+            );
+        } else {
+            f.server.notification("textDocument/didChange",&json!({"textDocument":{"uri":uri,"version":version},"contentChanges":[{"text":text}]}));
+        }
+        let errors = f.diagnostics();
+        assert_eq!(errors.as_array().unwrap().len(), selected.len(), "{errors}");
+        for (error, selected) in errors.as_array().unwrap().iter().zip(selected) {
+            assert_eq!(error["code"], "E_TRAIT");
+            let location = &error["relatedInformation"][0]["location"];
+            assert_eq!(location["uri"], uri);
+            let at = text.find(selected).unwrap();
+            let position = |offset| {
+                let prefix = &text[..offset];
+                json!({"line":prefix.bytes().filter(|b|*b==b'\n').count(),"character":prefix.rsplit('\n').next().unwrap().encode_utf16().count()})
+            };
+            assert_eq!(
+                location["range"],
+                json!({"start":position(at),"end":position(at+"implement".len())}),
+                "{errors}"
+            );
+        }
+        assert!(hover_at(&f, source, "auto text").is_null());
+    }
+    f.server.notification(
+        "textDocument/didChange",
+        &json!({"textDocument":{"uri":uri,"version":3},"contentChanges":[{"text":valid}]}),
+    );
+    assert_eq!(f.diagnostics(), json!([]));
+    assert_eq!(hover_at(&f, source, "auto text"), initial);
+    f.server.notification(
+        "textDocument/didClose",
+        &json!({"textDocument":{"uri":uri}}),
+    );
+    assert_eq!(f.diagnostics(), json!([]));
+}

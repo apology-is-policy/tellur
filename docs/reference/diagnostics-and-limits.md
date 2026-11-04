@@ -517,7 +517,7 @@ validation outside the origin-schema batch, implementation normalization/conform
 and graph-cycle failures still stop at their first error. Independent control
 declarations use the three batches described below; constructor-call access has
 its own preparation batch since 0.91, generic-bound declarations since 0.92, and
-trait declarations since 0.95. Since 0.96, constructor definitions also have an earlier
+trait declarations since 0.95, and implementation-local preparation since 0.197. Since 0.96, constructor definitions also have an earlier
 file-local preparation batch. Independent origin schemas have a separate batch since
 0.192, with failed dependencies suppressed. Generic definition bodies may
 report several errors during universal checking; a failed phase prevents later
@@ -666,6 +666,40 @@ the first diagnostic in the failed phase. Checked call contracts and inferred ho
 return only when the entire source checks successfully. Try temporarily changing
 the `reader` declaration in [traits.tellur](../../playground/traits.tellur) to
 `exits auto`, alongside a second invalid trait declaration.
+
+
+## Implementation preparation batches
+
+Since 0.197, independent implementations with valid, unique trait/type identities
+can report one member-inventory or method-profile error each, up to the shared
+32-error budget. This includes missing/extra/duplicate associated types or controls,
+generic/inferred method profiles and duplicate parameters or exit names. Unused
+implementations are checked too.
+
+<!-- tellur:reject E_TRAIT -->
+```tellur
+trait reader {
+    control read(self input) exits done;
+}
+implement reader for u32 {}
+implement reader for string {}
+```
+
+Both implementations must supply `read`. Repairing one leaves the other error;
+associated-type normalization, conformance, generated methods and body checking wait
+until every implementation has prepared. The failed phase exposes no partial witness
+table, substitutions or checked hover. Imported errors retain original points, and
+unsaved repairs update their locations before restoring hover on a fully valid program.
+
+A read-only identity check admits this recovery only when every trait exists, each
+target is an allowed concrete owned type, module ownership is coherent and each
+trait/type pair is unique. Otherwise checking follows the previous sequential order:
+a later invalid identity never preempts an earlier member/profile failure. These
+coherence cases remain one-error barriers. Shared trait/schema errors and the existing
+1024-implementation limit still run before this phase. Associated-type cycles,
+conformance and async/fault/contingency permission checks remain separate later
+checks. Trait acceptance, ownership and origin rules do not change.
+
 
 ## Constructor-call preparation batches
 

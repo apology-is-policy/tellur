@@ -5376,3 +5376,23 @@ isolated editor checks cover unsaved header edits, distinct body/forwarding rang
 stale-hover suppression, repair and native execution. Contributor, absorption,
 contract snapshot, module, generic, public-contract, formatting and manual suites
 accompany the checkpoint. The pending public async-host decision is unchanged.
+
+
+## Independent implementation preparation (0.197 / P2ae)
+
+A read-only identity/coherence preflight enables recovery for independent member
+inventories and method profiles. Valid unique trait/type pairs retain source-order
+checking, one error per implementation and the 32-error budget. Invalid or duplicate
+identities use the original interleaved validation order, so later ambiguity never
+hides an earlier local error. All successful preparation remains private until the
+whole phase passes; associated normalization and substitutions run afterward.
+
+Focused diagnostics cover missing/extra/duplicate members, invalid method profiles,
+unused definitions, partial repair, earlier schemas/traits, later cycles/conformance
+and body errors, the 1024-implementation limit, imports and foreign ownership.
+First-error APIs retain the first diagnostic. LSP and isolated editor cases repair
+independent unsaved implementations, follow UTF-16 coordinates after a preceding
+emoji changes position, suppress stale hover and execute the repaired trait calls
+natively. Trait, generic-trait, aggregate-origin, module, generic-control, public
+contract and manual checks accompany this slice. Existing async/fault/contingency
+permissions and the pending public async-host decision remain unchanged.
