@@ -1861,7 +1861,7 @@ fn async_host_operation_hover_names_the_operation_and_await_admission() {
     );
     assert!(
         h.contains("Async host operation: invoke it with `await` inside an async control")
-            && h.contains("native builds do not yet support them")
+            && h.contains("Reference and native executions use scripted completions")
             && !h.contains("$host"),
         "{h}"
     );

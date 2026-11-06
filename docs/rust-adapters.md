@@ -60,8 +60,9 @@ must implement all Rust-bound primitives in the manifest, including unused ones.
 Each binding must declare `execution` as `immediate` or `blocking`. This records a
 host execution contract; neither introduces suspension. Since 0.217 a primitive may
 declare `"async": true` instead, making it an async host operation awaited from
-async controls; such primitives cannot have Rust bindings until native async support
-arrives (see [async host operations](reference/async-execution.md#async-host-operations)). `immediate` is not a purity
+async controls; such primitives cannot have Rust bindings until the adapter poll
+contract arrives (see [async host operations](reference/async-execution.md#async-host-operations)).
+Native executables run them from `--scenario` scripts since 0.218. `immediate` is not a purity
 proof. Foreign wrappers cannot opt into Tellur pure-expression evaluation. Effects
 and execution classification remain promises made by the adapter author.
 

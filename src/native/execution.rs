@@ -14,6 +14,8 @@ pub mod reference_evidence;
 use dependencies::Dependencies;
 
 pub type Deliver = fn(&mut Activation, &mut Frames, Completion) -> R<()>;
+/// Binds an async host operation's completion into its generated control.
+pub type HostDeliver = fn(&mut Activation, &mut Frames, String, Vec<V>) -> R<()>;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AccessKind {
     Read,
@@ -176,6 +178,25 @@ enum Pending {
     Call(Deliver),
     Await(AwaitContinuation),
     Supervise(Supervision),
+    Host(HostOperation),
+}
+/// A started async host operation. Its scripted completion was bound and
+/// validated at start; it is delivered once, after its remaining waits.
+struct HostOperation {
+    operation: &'static str,
+    arguments: Vec<V>,
+    outcome: String,
+    fields: Vec<V>,
+    waits: u32,
+    deliver: HostDeliver,
+}
+impl HostOperation {
+    /// Publish the completion event with the arguments captured at start, then
+    /// bind the outcome. Neither consumes instruction fuel.
+    fn complete(self, host: &mut Host, values: &mut Frames, frame: &mut Activation) -> R<()> {
+        host.finish_host_operation(self.operation, self.arguments, &self.outcome, &self.fields)?;
+        (self.deliver)(frame, values, self.outcome, self.fields)
+    }
 }
 struct AwaitContinuation {
     // Query provenance stays bound to the invocation/domain where captures left
@@ -360,6 +381,11 @@ pub enum Step {
         deliver: Deliver,
     },
     Continue,
+    Host {
+        operation: &'static str,
+        arguments: Vec<V>,
+        deliver: HostDeliver,
+    },
     Spawn {
         task: QueuedTask,
         slot: usize,
@@ -635,6 +661,17 @@ impl Machine {
             operation.deliver(values, frame)?;
             return Ok((false, None));
         }
+        // A pending host operation completes administratively once its waits elapse.
+        if let Some(Pending::Host(operation)) = &frame.pending {
+            if operation.waits > 0 {
+                return Ok((false, None));
+            }
+            let Some(Pending::Host(operation)) = frame.pending.take() else {
+                unreachable!()
+            };
+            operation.complete(host, values, frame)?;
+            return Ok((false, None));
+        }
         // Returning a child is administrative: it neither evaluates the source
         // await again nor consumes another instruction/fuel allowance.
         let (instruction, step) = if matches!(&frame.pending, Some(Pending::Await(p)) if p.result.is_some())
@@ -695,6 +732,29 @@ impl Machine {
                 )));
             }
             Step::Continue => {}
+            Step::Host {
+                operation,
+                arguments,
+                deliver,
+            } => {
+                if frame.pending.is_some() {
+                    return Err("E_NATIVE: duplicate host operation continuation".into());
+                }
+                let (outcome, fields, waits) = host.start_host_operation(operation, &arguments)?;
+                let operation = HostOperation {
+                    operation,
+                    arguments,
+                    outcome,
+                    fields,
+                    waits,
+                    deliver,
+                };
+                if waits == 0 {
+                    operation.complete(host, values, frame)?;
+                } else {
+                    frame.pending = Some(Pending::Host(operation));
+                }
+            }
             Step::Spawn { task, slot, ty } => {
                 self.source_handoff = Some(SourceHandoff::Spawn { task, slot, ty });
             }
@@ -882,6 +942,9 @@ impl Machine {
                             );
                         }
                         Pending::Call(deliver) => deliver(parent, values, result)?,
+                        Pending::Host(_) => {
+                            return Err("E_NATIVE: call returned into a host operation".into());
+                        }
                         Pending::Await(_) => {
                             return Err("E_NATIVE: call returned into an await continuation".into());
                         }
@@ -924,6 +987,11 @@ impl Machine {
             if let Some(Pending::Adapter(operation)) = &frame.pending {
                 operation.require(host, values, frame, domains, &self.current)?;
                 // Drop the partial host operation before any supplier scope or frame.
+                drop(frame.pending.take());
+            }
+            if matches!(&frame.pending, Some(Pending::Host(_))) {
+                // A stopped host operation publishes nothing. Its borrowed
+                // resource arguments are supplier handles, never released here.
                 drop(frame.pending.take());
             }
             if let Some(Pending::Await(pending)) = &mut frame.pending {
@@ -1097,6 +1165,26 @@ impl Machine {
             faulted,
         }
     }
+    /// The selected activation awaits readiness of a started host operation.
+    pub fn host_waiting(&self) -> bool {
+        matches!(
+            self.stack.last().and_then(|a| a.pending.as_ref()),
+            Some(Pending::Host(operation)) if operation.waits > 0
+        )
+    }
+    /// One readiness report for the pending host operation; `all` elapses every
+    /// remaining wait when no other source work can observe the difference.
+    pub fn host_progress(&mut self, all: bool) {
+        if let Some(Pending::Host(operation)) =
+            self.stack.last_mut().and_then(|a| a.pending.as_mut())
+        {
+            operation.waits = if all {
+                0
+            } else {
+                operation.waits.saturating_sub(1)
+            };
+        }
+    }
     pub fn advance(
         &mut self,
         host: &mut Host,
@@ -1121,6 +1209,9 @@ impl Machine {
             if matches!(&self.stack.last().unwrap().pending,
                 Some(Pending::Adapter(operation)) if !operation.ready())
             {
+                return Ok(Poll::Paused);
+            }
+            if self.host_waiting() {
                 return Ok(Poll::Paused);
             }
             let delivery =

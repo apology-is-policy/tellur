@@ -415,6 +415,9 @@ pub struct ScriptCall {
     operation: String,
     outcome: String,
     fields: Vec<V>,
+    /// Scripted readiness of an async host operation: pending reports before completion.
+    #[serde(default)]
+    waits: u32,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -1260,6 +1263,72 @@ impl Host {
         }
         Ok(())
     }
+    fn declared_primitive(&self, name: &str) -> R<Json> {
+        self.manifest["primitives"]
+            .as_array()
+            .and_then(|ps| ps.iter().find(|p| p["name"] == name))
+            .cloned()
+            .ok_or_else(|| "E_DRIVER: undeclared primitive".into())
+    }
+    /// Start an async host operation. Its scripted completion is bound and
+    /// validated now; pending reports never consume or replay script entries.
+    pub fn start_host_operation(&mut self, name: &str, args: &[V]) -> R<(String, Vec<V>, u32)> {
+        let p = self.declared_primitive(name)?;
+        if p["async"] != true {
+            return Err(format!("E_NATIVE: `{name}` is not an async host operation"));
+        }
+        let types = p["parameters"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|p| p["type"].as_str().unwrap().into())
+            .collect::<Vec<_>>();
+        validate_args(args, &types, &self.manifest)?;
+        let Some(script) = &self.script else {
+            return Err(format!(
+                "E_HOST: no live adapter for async host operation `{name}`; supply --scenario"
+            ));
+        };
+        let call = script
+            .get(self.cursor)
+            .ok_or_else(|| format!("E_DRIVER: script exhausted before {name}"))?;
+        if call.operation != name {
+            return Err(format!(
+                "E_DRIVER: expected {name}, found {}",
+                call.operation
+            ));
+        }
+        let o = p["outcomes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|o| o["name"] == call.outcome.as_str())
+            .ok_or_else(|| format!("E_DRIVER: undeclared outcome {}", call.outcome))?;
+        let types = o["fields"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|f| f["type"].as_str().unwrap().into())
+            .collect::<Vec<_>>();
+        validate_args(&call.fields, &types, &self.manifest)?;
+        let started = (call.outcome.clone(), call.fields.clone(), call.waits);
+        self.cursor += 1;
+        Ok(started)
+    }
+    /// Publish a completed host operation once, with its start-time arguments.
+    pub fn finish_host_operation(
+        &mut self,
+        name: &str,
+        args: Vec<V>,
+        outcome: &str,
+        fields: &[V],
+    ) -> R<()> {
+        if self.trace {
+            let p = self.declared_primitive(name)?;
+            self.events.push(json!({"kind":"primitive","operation":name,"arguments":args,"outcome":outcome,"fields":fields,"effects":p["effects"]}));
+        }
+        Ok(())
+    }
     pub fn primitive(&mut self, name: &str, args: Vec<V>) -> R<Outcome> {
         let p = self.manifest["primitives"]
             .as_array()
@@ -1288,6 +1357,11 @@ impl Host {
                 return Err(format!(
                     "E_DRIVER: expected {name}, found {}",
                     call.operation
+                ));
+            }
+            if call.waits != 0 {
+                return Err(format!(
+                    "E_DRIVER: scripted waits require an async host operation; `{name}` completes immediately"
                 ));
             }
             self.cursor += 1;

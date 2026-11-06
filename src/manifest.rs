@@ -897,7 +897,7 @@ impl Manifest {
         }
         if p.rust.is_some() {
             return fail(
-                "cannot have a Rust binding yet; native async host operations are not yet supported"
+                "cannot have a Rust binding yet; Rust adapters for async host operations are not yet supported"
                     .into(),
             );
         }

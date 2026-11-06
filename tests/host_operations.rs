@@ -1,7 +1,14 @@
-//! E1g.1: manifest async host operations, admitted by direct `await` only and
-//! executed by the reference interpreter with scripted readiness.
+//! Manifest async host operations, admitted by direct `await` only. E1g.1 runs them
+//! in the reference interpreter with scripted readiness; E1g.2a runs the same
+//! scripts in native executables.
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    process::Command,
+};
 use tellur::{
     CheckedProgram, compile,
+    fault::Report,
     ir::{Operation, Value},
     manifest::Manifest,
     runtime::{Event, ExecutionProgress, RunCompletion, Scenario, ScriptCall},
@@ -65,6 +72,66 @@ fn trace(events: &[Event]) -> Vec<String> {
         .collect()
 }
 
+const SEQUENTIAL: &str = r#"
+async control fetch(ref handle input) exits got { bytes data }, ended {} {
+    delta await receive(input) {
+        data { bytes data } => received,
+        closed => ended,
+        failed { read_error error } => broken
+    }
+
+    [received]: exit got { data };
+    [ended | broken]: exit ended;
+}
+control main() exits done, missing {
+    delta open("input") {
+        opened { handle input } => ready,
+        not_found => absent,
+        denied => blocked
+    }
+
+    [absent | blocked]: exit missing;
+    [ready]:
+        delta run fetch(borrow input) {
+            got { bytes data } => fetched,
+            ended => ended
+        }
+    [ready]:
+        delta close(move input) {
+            closed => closed,
+            failed { close_error error } => failed
+        }
+    [ready]: exit done;
+}
+"#;
+const FAULTING: &str = r#"
+async control step(string label) exits done {
+    delta await tick(move label) {
+        ticked { string result } => ticked
+    }
+
+    [ticked]:
+        emit(result);
+        exit done;
+}
+async control failing() exits done faults {
+    emit("failing");
+    yield;
+    yield;
+    yield;
+    fault "sibling failed";
+}
+async control startup() exits done faults {
+    auto pending = spawn step("one");
+    auto failure = spawn failing();
+    await pending;
+    await failure;
+    exit done;
+}
+control main() exits done faults {
+    forward run startup();
+}
+"#;
 const CONCURRENT: &str = r#"
 async control step(string label) exits done {
     emit(borrow label);
@@ -203,39 +270,7 @@ fn pending_host_operations_preserve_fuel_and_quota_results() {
 
 #[test]
 fn sequential_awaits_and_borrowed_resources_complete_once() {
-    let source = r#"
-async control fetch(ref handle input) exits got { bytes data }, ended {} {
-    delta await receive(input) {
-        data { bytes data } => received,
-        closed => ended,
-        failed { read_error error } => broken
-    }
-
-    [received]: exit got { data };
-    [ended | broken]: exit ended;
-}
-control main() exits done, missing {
-    delta open("input") {
-        opened { handle input } => ready,
-        not_found => absent,
-        denied => blocked
-    }
-
-    [absent | blocked]: exit missing;
-    [ready]:
-        delta run fetch(borrow input) {
-            got { bytes data } => fetched,
-            ended => ended
-        }
-    [ready]:
-        delta close(move input) {
-            closed => closed,
-            failed { close_error error } => failed
-        }
-    [ready]: exit done;
-}
-"#;
-    let p = checked(source);
+    let p = checked(SEQUENTIAL);
     let handle = Value::Opaque {
         ty: "handle".into(),
         token: "h1".into(),
@@ -268,35 +303,7 @@ control main() exits done, missing {
 
 #[test]
 fn owning_faults_stop_pending_host_operations_without_events() {
-    let source = r#"
-async control step(string label) exits done {
-    delta await tick(move label) {
-        ticked { string result } => ticked
-    }
-
-    [ticked]:
-        emit(result);
-        exit done;
-}
-async control failing() exits done faults {
-    emit("failing");
-    yield;
-    yield;
-    yield;
-    fault "sibling failed";
-}
-async control startup() exits done faults {
-    auto pending = spawn step("one");
-    auto failure = spawn failing();
-    await pending;
-    await failure;
-    exit done;
-}
-control main() exits done faults {
-    forward run startup();
-}
-"#;
-    let p = checked(source);
+    let p = checked(FAULTING);
     // Still pending at the sibling fault: the operation stops and publishes nothing.
     let s = scenario(vec![tick("one", 9)]);
     let failure = p.run_detailed(&s, 10_000).unwrap_err();
@@ -413,18 +420,158 @@ fn unused_host_operations_add_no_controls_and_wrappers_are_not_entries() {
     assert_eq!(awaited, "tick$host");
 }
 
+fn native(p: &CheckedProgram, root: &Path, name: &str) -> PathBuf {
+    let binary = root.join(name);
+    let codes = p
+        .region("main")
+        .unwrap()
+        .exits
+        .iter()
+        .map(|o| (o.name.clone(), 0))
+        .collect();
+    p.clone()
+        .with_entry_exit_codes("main", codes)
+        .unwrap()
+        .build_native("main", &binary, 0)
+        .unwrap();
+    binary
+}
+/// Native stdout on completion, or the failure report on stderr.
+fn native_run(
+    binary: &Path,
+    input: &Path,
+    s: &Scenario,
+    fuel: Option<usize>,
+) -> Result<serde_json::Value, Report> {
+    fs::write(input, serde_json::to_vec(s).unwrap()).unwrap();
+    let mut command = Command::new(binary);
+    command.arg("--scenario").arg(input);
+    if let Some(fuel) = fuel {
+        command.args(["--fuel", &fuel.to_string()]);
+    }
+    let output = command.output().unwrap();
+    if output.status.success() {
+        Ok(serde_json::from_slice(&output.stdout).unwrap())
+    } else {
+        Err(serde_json::from_slice(&output.stderr)
+            .unwrap_or_else(|e| panic!("{e}: {}", String::from_utf8_lossy(&output.stderr))))
+    }
+}
+fn same_failure(native: &Report, reference: &Report) {
+    // Host fuel limits use backend-specific wording for the same limit.
+    if reference.message.starts_with("E_FUEL") {
+        assert!(native.message.starts_with("E_FUEL"), "{}", native.message);
+    } else {
+        assert_eq!(native.message, reference.message);
+    }
+    assert_eq!(native.phase, reference.phase);
+    assert_eq!(native.activations, reference.activations);
+    assert_eq!(native.site, reference.site);
+}
+struct Workspace(PathBuf);
+impl Workspace {
+    fn new(name: &str) -> Self {
+        let root = std::env::temp_dir().join(format!("tellur-host-{name}-{}", std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+        Self(root)
+    }
+}
+impl Drop for Workspace {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
 #[test]
-fn native_builds_reject_async_host_operations_explicitly() {
+fn native_source_schedules_match_reference_waits_fuel_and_expansion() {
+    let w = Workspace::new("concurrent");
+    let input = w.0.join("scenario.json");
+    let original = checked(CONCURRENT);
+    for (expanded, p) in [
+        (false, original.clone()),
+        (true, original.expanded("main").unwrap()),
+    ] {
+        let binary = native(&p, &w.0, &format!("concurrent-{expanded}"));
+        for (first, second) in [(0, 0), (2, 0), (0, 2), (1, 1), (3, 1)] {
+            let s = scenario(vec![tick("one", first), tick("two", second)]);
+            assert_eq!(
+                native_run(&binary, &input, &s, None).unwrap(),
+                serde_json::to_value(p.run(&s).unwrap()).unwrap(),
+                "expanded {expanded}, waits {first}/{second}"
+            );
+        }
+        // Pending polls consume no fuel; every cut fails or completes identically.
+        let s = scenario(vec![tick("one", 2), tick("two", 1)]);
+        let mut completed = false;
+        for fuel in 0..200 {
+            match (
+                p.run_completion(&s, fuel),
+                native_run(&binary, &input, &s, Some(fuel)),
+            ) {
+                (Ok(reference), Ok(native)) => {
+                    assert_eq!(native, serde_json::to_value(reference).unwrap());
+                    completed = true;
+                    break;
+                }
+                (Err(reference), Err(native)) => same_failure(&native, &reference.report),
+                (reference, native) => {
+                    panic!("fuel {fuel}: {:?} / {native:?}", reference.map(|_| ()))
+                }
+            }
+        }
+        assert!(completed, "expanded {expanded}");
+    }
+}
+
+#[test]
+fn native_sequential_awaits_and_owning_faults_match_reference() {
+    let w = Workspace::new("sequential");
+    let input = w.0.join("scenario.json");
+    let p = checked(SEQUENTIAL);
+    let binary = native(&p, &w.0, "sequential");
+    let handle = Value::Opaque {
+        ty: "handle".into(),
+        token: "h1".into(),
+    };
+    for waits in [0, 3] {
+        let s = scenario(vec![
+            call("open", "opened", vec![handle.clone()], 0),
+            call("receive", "closed", vec![], waits),
+            call("close", "closed", vec![], 0),
+        ]);
+        assert_eq!(
+            native_run(&binary, &input, &s, None).unwrap(),
+            serde_json::to_value(p.run(&s).unwrap()).unwrap()
+        );
+    }
+    let p = checked(FAULTING);
+    let binary = native(&p, &w.0, "faulting");
+    for waits in [0, 1, 3, 9] {
+        let s = scenario(vec![tick("one", waits)]);
+        let reference = p.run_detailed(&s, 10_000).unwrap_err();
+        same_failure(
+            &native_run(&binary, &input, &s, None).unwrap_err(),
+            &reference.report,
+        );
+    }
+    // Script misuse is rejected before the operation starts.
     let p = checked(CONCURRENT);
-    let error = p.native_source("main").unwrap_err();
-    assert_eq!(error.code, "E_BACKEND");
+    let binary = native(&p, &w.0, "concurrent");
+    let error = native_run(&binary, &input, &scenario(vec![tick("one", 1)]), None).unwrap_err();
     assert!(
-        error
-            .message
-            .contains("native builds do not yet support async host operation `tick`"),
-        "{error}"
+        error.message.contains("script exhausted before tick"),
+        "{}",
+        error.message
     );
-    // An unused declaration keeps native generation available.
+    let output = Command::new(&binary).arg("--json").output().unwrap();
+    assert!(!output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("no live adapter for async host operation `tick`; supply --scenario"),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    // An unused declaration keeps native generation unchanged.
     let p = checked(
         "outcome program_result {\n    @exit 0 done\n}\ncontrol main() exits program_result {\n    exit done;\n}\n",
     );

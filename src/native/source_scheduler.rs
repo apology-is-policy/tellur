@@ -43,6 +43,14 @@ fn drive_source(
             key
         } else {
             loop {
+                // Idle point: no live source work remains, so one pending host
+                // operation becomes ready in FIFO order.
+                if !runnable.iter().any(|r| match r {
+                    Runnable::Run(k) | Runnable::Await(k) => live(&contexts, k),
+                }) && let Some(key) = contexts.signal_host_operation()?
+                {
+                    runnable.push_back(Runnable::Run(key));
+                }
                 match runnable.pop_front() {
                     Some(Runnable::Run(key)) if live(&contexts, &key) => break key,
                     Some(Runnable::Await(parent)) if live(&contexts, &parent) => {
@@ -131,6 +139,13 @@ fn drive_source(
                     .ok_or("E_NATIVE: missing entry failure")?);
             }
             ContextPoll::Failed(_) => {}
+        }
+        // A pending host operation parks its task; quota pauses never do.
+        if let Some(current) = selected.clone()
+            && contexts.host_operation_waiting(&current)
+        {
+            contexts.park_host_operation(&current)?;
+            selected = None;
         }
         // A completion only wakes its consuming caller; it does not replace the
         // selected source chain or force an implicit switch at a host quota.

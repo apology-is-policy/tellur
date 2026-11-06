@@ -5802,3 +5802,30 @@ maintained `.tellur` source with the 0.216 compiler and finds identical reports.
 `playground/guarded_task_captures.tellur` now declares an `@exit` contract for
 its executable entry; the maintained-playground exit-code test had been failing
 since that file was added.
+
+
+## Native scripted async host operations (0.218 / E1g.2a)
+
+The leaf of a generated `op$host` control lowers to a production `Step::Host`
+callback step. The native host validates and binds the scripted completion at start,
+including the scenario's `waits`, and rejects nonzero `waits` on synchronous
+primitives. A pending operation is recorded as `Pending::Host` and pauses its
+activation without fuel. The sequential driver elapses waits immediately. The
+source driver parks the context through the readiness registry and signals the
+oldest live operation at idle points. Completion publishes the event with
+start-time arguments and binds the outcome without an instruction. Fault unwinding
+drops pending operations without releasing borrowed supplier handles. Without a
+scenario, a native executable reports that no live adapter exists. The `E_BACKEND`
+rejection is removed, and the private `Step::Adapter` gates and text-surgery
+anchors are unchanged.
+
+Two native differential tests build five executables. They compare interleaved
+operations with five waits combinations, original and expanded programs, and every
+fuel cut through completion. They also cover sequential borrowed resources with and
+without waits, owning faults with pending and ready operations (report message,
+phase, activations and site), script exhaustion and the missing-adapter error. LSP
+hover describes scripted reference and native execution. Isolated VS Code builds the
+fixture, reports the missing adapter when a live `open` reaches the operation without
+a scenario, and runs it with a scripted `waits` scenario. The full native library
+suite (184 models) exposed one exhaustive pending-state match in the private
+selection model; it now names `Pending::Host`, and its ten models were rerun.

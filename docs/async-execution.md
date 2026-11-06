@@ -4657,8 +4657,27 @@ retires its prepared arguments and completion before its suppliers, and publishe
 nothing. Synchronous primitives reject nonzero `waits`. With no other runnable
 work, waiting does not change the observable result.
 
-Native builds report `E_BACKEND` for a program that awaits an async host operation.
-An unused declaration generates no control and leaves native generation unchanged.
-E1g.2 adds native lowering, generated adapter glue and an idle re-poll loop without
-new dependencies; E1g.3 adds internal fd readiness. The private E1f models remain
-the evidence for those native stages.
+In 0.217 native builds reported `E_BACKEND` for a program that awaits an async host
+operation. An unused declaration generates no control and leaves native generation
+unchanged.
+
+### Native scripted execution (E1g.2a, 0.218)
+
+The generated control's leaf lowers to a production `Step::Host` callback step. On
+its instruction the host binds and validates the scripted completion (`waits`
+included, through the native scenario format) and either completes at once or
+records `Pending::Host` on the activation. A pending activation pauses without
+fuel. The sequential driver elapses its waits immediately, as no other source work
+can observe them. The source driver parks the context through the existing
+readiness registry and, at an idle point with no live runnable work, signals the
+oldest live operation, counts one pending report and queues the context. Completion
+publishes the event with start-time arguments and delivers the outcome without an
+instruction. Fault unwinding drops a pending operation without releasing its
+borrowed supplier handles, so stopped operations publish nothing. The private E1f
+`Step::Adapter` models and their seven test gates are unchanged.
+
+Differential tests compare native and reference executions of interleaved
+operations (original and expanded programs, every fuel cut), sequential borrowed
+resources and owning faults while operations are pending or ready. E1g.2b adds
+the Rust adapter poll contract and an idle re-poll loop without new dependencies;
+E1g.3 adds internal fd readiness.

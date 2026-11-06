@@ -211,6 +211,54 @@ fn generate(program: &CheckedProgram, _pending_operation: Option<(&str, &str)>) 
                 );
                 continue;
             }
+            // The single leaf of a generated async host-operation control.
+            if let Action::Decide {
+                operation: Operation::Primitive(name),
+                args,
+                arms,
+            } = &instruction.action
+                && program
+                    .manifest()
+                    .primitives
+                    .iter()
+                    .any(|p| p.name == *name && p.asynchronous)
+            {
+                let p = &instruction.provenance;
+                let _ = writeln!(
+                    g.code,
+                    "host.at({});host.tick({}, {})?;if {} {{let arguments={};return Ok(Step::Host{{operation:{},arguments,deliver:host_{id}_{pc}}});}}Ok(Step::Continue)}},",
+                    instruction.id,
+                    p.span.line,
+                    p.span.column,
+                    guard(&instruction.guard, &g.layout),
+                    expressions(args, &g.layout),
+                    string(name)
+                );
+                let _ = writeln!(
+                    deliveries,
+                    "fn host_{id}_{pc}(state:&mut Activation,v:&mut Frames,outcome:String,fields:Vec<V>)->R<()>{{let base=state.base();let a=&mut state.facts;match outcome.as_str(){{"
+                );
+                for arm in arms {
+                    let _ = writeln!(
+                        deliveries,
+                        "{}=>{{a[{}]=true;let mut fields=fields.into_iter();",
+                        string(&arm.outcome),
+                        g.layout.atoms[&arm.atom]
+                    );
+                    for slot in &arm.slots {
+                        let _ = writeln!(
+                            deliveries,
+                            "v[base+{}]=fields.next();",
+                            g.layout.slots[slot]
+                        );
+                    }
+                    deliveries.push_str("},\n");
+                }
+                deliveries.push_str(
+                    "_=>return Err(\"E_NATIVE: unmatched host operation outcome\".into()),}Ok(())}\n",
+                );
+                continue;
+            }
             if let Action::Supervise { boundary, args } = &instruction.action {
                 let work = program.region(boundary).unwrap();
                 let handler = &work.boundary.as_ref().unwrap().handler;

@@ -7,8 +7,9 @@ Compiler 0.189 supports `async control`, synchronous entry with `run`, direct
 `await`, cold tasks with owned and borrowed captures, and a bounded cooperative
 scheduler for `spawn` tasks with owned values, direct borrows and nested owned record/option/variant/named-outcome captures/results, plus borrowed record/option/variant/named-outcome captures and whole borrowed record/option/variant/named-outcome results, plus reference chains through records. Source handoffs occur at `await` and `yield`.
 Compiler 0.217 adds [async host operations](#async-host-operations) awaited
-directly in the reference interpreter. Native async host I/O, cancellation and LLVM
-coroutine lowering remain later work.
+directly, and 0.218 runs them in native executables from scripted scenarios. Live
+Rust adapters for async host I/O, cancellation and LLVM coroutine lowering remain
+later work.
 
 The private E1f.1 reference and E1f.2a native models retain unfinished adapter
 operations through readiness waits and fault settlement. The native model also
@@ -1082,13 +1083,15 @@ This first profile has deliberate limits:
   consumed owned values. Consuming resources, resource-bearing outcome payloads,
   references, and contingent or pure async primitives are rejected when the
   manifest is validated.
-- The reference interpreter executes host operations from scripted scenarios.
-  A scenario call may add `"waits": N` to report pending `N` times before
-  completing. Each idle point readies one pending operation in FIFO order. The
-  completion is bound when the operation starts, so scripts list operations in
-  start order. Events appear in completion order.
-- Native builds do not yet support async host operations. They report
-  `E_BACKEND`, and async primitives cannot have Rust bindings yet.
+- The reference interpreter and, since 0.218, native executables run host
+  operations from scripted scenarios (`tellurc run`, or `--scenario FILE` for a
+  native executable). A scenario call may add `"waits": N` to report pending `N`
+  times before completing. Each idle point readies one pending operation in FIFO
+  order. The completion is bound when the operation starts, so scripts list
+  operations in start order. Events appear in completion order. Pending reports
+  consume no instruction fuel.
+- Async primitives cannot have Rust bindings yet, so native executables have no
+  live adapter for them: without a scenario they stop with `E_HOST`.
 
 <!-- tellur:reject E_ASYNC -->
 ```tellur

@@ -23,6 +23,7 @@ fn selection_snapshot(c: &Contexts<'_>, root: &ContextKey) -> String {
                 None => "none".into(),
                 Some(Pending::Call(_)) => "call".into(),
                 Some(Pending::Supervise(_)) => "supervise".into(),
+                Some(Pending::Host(_)) => "host".into(),
                 Some(Pending::Await(p)) => format!(
                     "await:{:?}:{}:{}:{:?}",
                     p.child,

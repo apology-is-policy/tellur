@@ -49,8 +49,23 @@ exports.run = async function (root) {
   await replace(original);
   await waitFor(async () => diagnostics().length === 0 && (await hover()) === initial, 'repair restores hover');
   await document.save();
-  const result = await vscode.commands.executeCommand('tellur.buildAndRun', {arguments:['--json'], output:path.join(root, 'native output', 'host-operations')});
-  assert.notEqual(result.code, 0);
-  assert.ok(`${result.stderr}${result.stdout}`.includes('native builds do not yet support async host operation `receive`'), `${result.stderr}${result.stdout}`);
-  console.log('TELLUR_HOST_OPERATIONS_EDITOR_TESTS_PASSED: async host operation hover, unsaved E_ASYNC repair, UTF-16 ranges and explicit native rejection');
+  const output = path.join(root, 'native output', 'host-operations');
+  // The live built-in `open` finds this file; `receive` then has no live adapter.
+  await fs.writeFile(path.join(root, 'input'), 'live input');
+  const unscripted = await vscode.commands.executeCommand('tellur.buildAndRun', {arguments:['--json'], output});
+  await fs.rm(path.join(root, 'input'));
+  assert.notEqual(unscripted.code, 0);
+  assert.ok(unscripted.stderr.includes('no live adapter for async host operation `receive`; supply --scenario'), unscripted.stderr);
+  const scenario = path.join(fixture, 'scenario.json');
+  await fs.writeFile(scenario, JSON.stringify({entry:'main', arguments:[], calls:[
+    {operation:'open', outcome:'opened', fields:[{kind:'opaque', value:{ty:'handle', token:'h1'}}]},
+    {operation:'receive', outcome:'data', fields:[{kind:'bytes', value:[111, 107]}], waits:2},
+    {operation:'close', outcome:'closed', fields:[]},
+  ]}));
+  const result = await vscode.commands.executeCommand('tellur.buildAndRun', {arguments:['--scenario', scenario], output});
+  assert.equal(result.code, 0, result.stderr);
+  const report = JSON.parse(result.stdout);
+  assert.equal(report.outcome, 'done');
+  assert.deepEqual(report.events.map(e => e.operation), ['open', 'receive', 'close']);
+  console.log('TELLUR_HOST_OPERATIONS_EDITOR_TESTS_PASSED: async host operation hover, unsaved E_ASYNC repair, UTF-16 ranges and scripted native execution with waits');
 };

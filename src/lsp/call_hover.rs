@@ -813,7 +813,7 @@ pub(super) fn hover(
             })
             .unwrap_or("");
         let asynchronous = if p.asynchronous {
-            "\n\nAsync host operation: invoke it with `await` inside an async control. The awaiting caller is suspended, and its borrowed inputs stay live, until the single completion. `run`, `defer` and `spawn` of host operations are not yet admitted; native builds do not yet support them."
+            "\n\nAsync host operation: invoke it with `await` inside an async control. The awaiting caller is suspended, and its borrowed inputs stay live, until the single completion. `run`, `defer` and `spawn` of host operations are not yet admitted. Reference and native executions use scripted completions; Rust bindings are not yet supported."
         } else {
             ""
         };
