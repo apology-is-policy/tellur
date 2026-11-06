@@ -7,7 +7,7 @@ fn replace(text: &mut String, from: &str, to: &str) {
 }
 fn http_manifest(root: &Path) -> Manifest {
     let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let example = repo.join("examples/http_hello");
+    let example = repo.join("tests/fixtures/http_sync");
     let original: serde_json::Value =
         serde_json::from_str(&fs::read_to_string(example.join("manifest.json")).unwrap()).unwrap();
     let receive = original["primitives"]

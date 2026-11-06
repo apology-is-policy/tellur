@@ -303,6 +303,7 @@
     },
     {
       "name": "http_receive",
+      "async": true,
       "parameters": [
         {
           "name": "connection",
@@ -380,7 +381,7 @@
       ],
       "returns": true,
       "rust": {
-        "execution": "blocking"
+        "execution": "poll"
       }
     },
     {
@@ -607,7 +608,8 @@
     "modules": {
       "files": "../../library/host/text_file.rs",
       "json": "../../library/host/json_string_map.rs",
-      "http": "../../library/host/loopback_http.rs"
+      "http": "../../library/host/loopback_http.rs",
+      "http_receive": "../../library/host/loopback_http_receive.rs"
     }
   },
   "launch": {

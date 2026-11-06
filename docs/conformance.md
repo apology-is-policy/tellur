@@ -5881,3 +5881,27 @@ the readable poll), and no retry loop. A sibling fault stops a registered receiv
 without waiting for its data, dropping state before the channel. The earlier delay,
 sequential, fault and binding tests, the scripted differential tests and all Rust
 adapter tests pass.
+
+
+## Async loopback HTTP receive (0.221 / E1g stage b)
+
+`library/loopback_http.tellur` declares `receive` as an async control that forwards
+`await http_receive(connection)`. Both maintained manifests mark `http_receive` as
+`"async": true`, bind it with `"execution": "poll"`, embed
+`library/host/loopback_http_receive.rs` and re-lock their adapter dependencies. The
+polled adapter keeps the request buffer and parsed head in operation state. It reads
+a nonblocking duplicate handle until `WouldBlock`, then parks on readability bounded
+by the request's single two-second deadline. The deadline is checked before every
+read, as before. Blocking mode is restored when the operation completes or is
+dropped, so responses and failure replies keep their blocking writes. The parser,
+limits and outcomes follow the blocking baseline. That baseline stays in
+`loopback_http.rs` for the private receive experiments, which now also strip the
+async flag from their copied manifest entry. The settings service, the HTTP example
+and the second-receive test enter the async control with `run`.
+
+The library and settings HTTP suites (scripted failures, live routes, the framing and
+deadline matrix, fault recovery and O0/O2 builds) pass unchanged against the async
+receive. LSP and format checks of the maintained sources stay clean.
+The private E1f receive models splice the blocking baseline into generated code, so
+they now compile a frozen synchronous copy of the HTTP example and facade
+(`tests/fixtures/http_sync`).

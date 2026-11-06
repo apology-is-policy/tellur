@@ -12,6 +12,7 @@ fn program() -> CheckedProgram {
         .unwrap()
         .clone();
     receive.as_object_mut().unwrap().remove("rust");
+    receive.as_object_mut().unwrap().remove("async");
     let mut manifest = serde_json::json!({"version":"0.1","types":[{"name":"http_connection","kind":"opaque","linear":true,"fault":"release"}],"primitives":[receive,{"name":"close_test","parameters":[{"name":"connection","type":"http_connection","mode":"consume"}],"outcomes":[{"name":"done","fields":[]}],"effects":["close"],"returns":true,"contingent":true}]});
     manifest["rust"] = serde_json::json!({"source":concat!(env!("CARGO_MANIFEST_DIR"),"/library/host/loopback_http.rs"),"lockfile":concat!(env!("CARGO_MANIFEST_DIR"),"/examples/http_hello/Cargo.lock"),"resources":{"http_connection":"Connection"},"dependencies":original["rust"]["dependencies"]});
     let primitives = manifest["primitives"].as_array_mut().unwrap();

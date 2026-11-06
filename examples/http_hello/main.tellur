@@ -88,7 +88,7 @@ control exchange(ref http_connection connection, ref string authority)
     disconnected,
     failed { string message }
 {
-    delta http.receive(connection) {
+    delta run http.receive(connection) {
         request {
             string method,
             string target,

@@ -372,11 +372,11 @@ fn imported_contingency_handles_fault_then_restarts_without_a_second_response() 
 #[test]
 fn transport_rejects_a_second_receive_without_consuming_or_replacing_the_first() {
     let p = program(|s| {
-        *s = s.replace("delta http.receive(connection)", "delta checked_receive(connection)");
+        *s = s.replace("delta run http.receive(connection)", "delta checked_receive(connection)");
         s.push_str(r#"
             control checked_receive(ref http_connection connection) exits http.receive_result {
-                auto first = capture http.receive(connection);
-                delta http.receive(connection) {
+                auto first = capture run http.receive(connection);
+                delta run http.receive(connection) {
                     request {string method, string target, map<string,string> headers, string body} => received,
                     malformed {string message} => malformed,
                     headers_too_large => headers_large, body_too_large => body_large,

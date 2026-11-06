@@ -8,9 +8,10 @@ use std::{
 // mechanisms do not know the application's routes, keys or response policy.
 pub use std::net::TcpListener as Listener;
 pub struct Connection {
-    stream: std::net::TcpStream,
-    receive_started: std::cell::Cell<bool>,
-    head: std::cell::Cell<bool>,
+    // Shared with the polled receive module (loopback_http_receive.rs).
+    pub(crate) stream: std::net::TcpStream,
+    pub(crate) receive_started: std::cell::Cell<bool>,
+    pub(crate) head: std::cell::Cell<bool>,
     response_started: std::cell::Cell<bool>,
 }
 const HEADER_LIMIT: usize = 16384;

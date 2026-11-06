@@ -153,7 +153,7 @@ control prepare(
     disconnected,
     failed { string message }
 {
-    exit delta transport.receive(connection) {
+    exit delta run transport.receive(connection) {
         request {
             string method,
             string target,

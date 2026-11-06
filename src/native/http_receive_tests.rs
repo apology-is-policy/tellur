@@ -4,7 +4,7 @@ use super::*;
 fn owned_receive_state_matches_synchronous_outcomes_and_fixed_deadlines() {
     let root = std::env::temp_dir().join(format!("tellur-owned-receive-{}", std::process::id()));
     fs::create_dir_all(&root).unwrap();
-    let example = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/http_hello");
+    let example = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/http_sync");
     let manifest = crate::manifest::Manifest::from_json_at(
         &fs::read_to_string(example.join("manifest.json")).unwrap(),
         &example.join("manifest.json"),

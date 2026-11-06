@@ -145,13 +145,21 @@ profile, adding the repeated-receive guard needed by independent callers:
   at most 100 ms, then releasing the descriptor. This is not a delivery guarantee.
 
 The caller chooses Host matching, browser-origin policy and route interpretation.
-`accept` validates an idle timeout of 1..60,000 ms. Listen, accept, read, write and
-completion operations are blocking; these deadlines do not define an async scheduler.
-There is no TLS, authentication or concurrency in this profile.
+`accept` validates an idle timeout of 1..60,000 ms. Since 0.221 `receive` is an
+`async control` over the async host operation `http_receive`: await it from async
+code, or `run transport.receive(connection)` from synchronous code. While the
+socket would block, the awaiting task parks on descriptor readiness, bounded by the
+same two-second deadline, and other tasks can run. Listen, accept, write and
+completion operations remain blocking. There is no TLS or authentication, and the
+maintained settings service still handles one connection at a time.
 
-[host/loopback_http.rs](host/loopback_http.rs) is embedded by explicit `rust.modules`
-and depends on the project's locked `httparse` version. The root adapter re-exports
-`Listener`, `Connection` and the seven primitive functions. See the standalone
+[host/loopback_http.rs](host/loopback_http.rs) and the polled receive in
+[host/loopback_http_receive.rs](host/loopback_http_receive.rs) are embedded by explicit
+`rust.modules` and depend on the project's locked `httparse` version (and, for the
+polled adapter, the internal readiness dependency; rerun `tellurc lock-native`). The
+root adapter re-exports `Listener`, `Connection` and the seven primitive functions,
+taking `http_receive` from the polled module. The blocking `http_receive` stays in
+`loopback_http.rs` as the baseline for the private receive experiments. See the standalone
 [manifest](../examples/http_hello/manifest.json) and [adapter](../examples/http_hello/host.rs).
 This uses the existing typed Rust source boundary and retained-resource rules;
 it creates no stable Rust binary ABI, future/executor contract or coroutine restriction.
@@ -169,4 +177,4 @@ async I/O; these public controls and Rust wrappers retain the synchronous profil
 above. The follow-up [live transport experiment](../docs/async-execution.md#concrete-private-http-receivereadiness-e1f6b)
 reuses that parser with private nonblocking sockets and readiness generations. It
 checks the original deadline, partial input, EOF and descriptor retirement on macOS.
-It supplies no public async HTTP control or new manifest execution mode.
+The public polled receive (0.221) follows that parser and deadline profile.

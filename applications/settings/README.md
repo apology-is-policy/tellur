@@ -228,7 +228,9 @@ Header/body reads share a two-second deadline; response writes have a separate
 two-second deadline and 2 MiB size limit. Oversized headers return 431, oversized
 bodies 413, and expired request reads 408 when a reply can still be sent. Queued
 pipelined requests are never executed. These bounds do not bound filesystem I/O
-latency; the service is synchronous and handles one client at a time.
+latency. Since 0.221 request reception is an async host operation, entered with
+`run transport.receive(connection)` and parked on socket readiness; the service still
+handles one client at a time.
 
 The connection completion operation half-closes the write side, drains at most
 1 MiB + 16 KiB for at most 100 ms, and releases the descriptor. Bounded staged

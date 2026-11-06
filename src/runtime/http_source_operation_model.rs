@@ -109,6 +109,7 @@ fn http_program() -> CheckedProgram {
         .unwrap()
         .clone();
     receive.as_object_mut().unwrap().remove("rust");
+    receive.as_object_mut().unwrap().remove("async");
     let manifest=Manifest::from_json(&serde_json::json!({
         "version":"0.1","types":[{"name":"http_connection","kind":"opaque","linear":true,"fault":"release"}],
         "rust":{"source":concat!(env!("CARGO_MANIFEST_DIR"),"/library/host/loopback_http.rs"),"lockfile":concat!(env!("CARGO_MANIFEST_DIR"),"/examples/http_hello/Cargo.lock"),"resources":{"http_connection":"Connection"},"dependencies":original["rust"]["dependencies"]},

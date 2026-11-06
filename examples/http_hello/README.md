@@ -45,4 +45,6 @@ route; tests inject invariant failures into a separate source loader to exercise
 This is the library's fixed development profile: loopback only, one request per
 connection, bounded headers/body/deadlines, and no TLS, authentication, keep-alive or
 concurrency. Its [limits and resource contracts](../../library/README.md#bounded-loopback-http)
-apply. A blocking host call does not yet suspend a Tellur task or use an executor.
+apply. Since 0.221 `exchange` enters the async `receive` with `run`; the polled
+receive parks on socket readiness instead of blocking reads. Other transport calls
+still block.

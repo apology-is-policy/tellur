@@ -6,7 +6,7 @@ fn live_owned_receive_readiness_deadlines_and_descriptor_retirement() {
     let root = std::env::temp_dir().join(format!("tellur-live-receive-{}", std::process::id()));
     fs::create_dir_all(&root).unwrap();
     let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let example = repo.join("examples/http_hello");
+    let example = repo.join("tests/fixtures/http_sync");
     let mut manifest = crate::manifest::Manifest::from_json_at(
         &fs::read_to_string(example.join("manifest.json")).unwrap(),
         &example.join("manifest.json"),

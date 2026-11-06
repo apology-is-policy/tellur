@@ -1,0 +1,170 @@
+import "loopback_http.tellur" as http;
+
+outcome service_result {
+    @exit 0 completed,
+    @exit 0 idle,
+    @exit 1 failed { string message },
+    @exit 2 invalid_configuration
+}
+
+control main(u32 port, u32 max_connections, u32 idle_ms) exits service_result {
+    delta (port <= 65535
+        && max_connections > 0
+        && max_connections <= 1000000
+        && idle_ms > 0
+        && idle_ms <= 60000
+    ) {
+        true => valid,
+        false => exit invalid_configuration
+    }
+    [valid]: delta http.listen(port) {
+        listening { http_listener listener, string authority } => listening,
+        failed { string message } => exit failed { message }
+    }
+    [listening]:
+        emit(concat("http://", clone(borrow authority)));
+        auto result = capture run(borrow listener, borrow authority, max_connections, idle_ms);
+        http.release(listener);
+        exit result;
+}
+
+control run(ref http_listener listener, ref string authority, u32 limit, u32 idle_ms)
+    exits completed,
+    idle,
+    failed { string message }
+{
+    supervised loop accept_next(mutable u32 remaining = limit) {
+        delta checked_sub(remaining, 1) {
+            difference { u32 next } => available,
+            underflow => exit completed
+        }
+        [available]: delta http.accept(listener, idle_ms) {
+            accepted { http_connection connection } => accepted,
+            idle => exit idle,
+            failed { string message } => exit failed { message }
+        }
+        [accepted]:
+            remaining = next;
+            string request_authority = clone(authority);
+            fault boundary {
+                auto result = capture exchange(borrow connection, borrow request_authority);
+                auto cleanup = capture http.close(connection);
+                delta result {
+                    sent => sent,
+                    disconnected => disconnected,
+                    failed { string message } => failed
+                }
+                delta cleanup {
+                    closed => closed,
+                    failed { string cleanup_message } => cleanup_failed
+                }
+
+                [failed]: emit(message);
+                [cleanup_failed]: emit(cleanup_message);
+            } contingency [connection] {
+                emit(borrow @fault.message);
+                auto result = capture http.reply_failure(borrow connection);
+                auto cleanup = capture http.close(connection);
+                delta result {
+                    sent => sent,
+                    unavailable => unavailable,
+                    failed { string message } => failed
+                }
+                delta cleanup {
+                    closed => closed,
+                    failed { string cleanup_message } => cleanup_failed
+                }
+
+                [failed]: emit(message);
+                [cleanup_failed]: emit(cleanup_message);
+                [entry]: recover again accept_next;
+            }
+            again accept_next(remaining);
+    }
+}
+
+control exchange(ref http_connection connection, ref string authority)
+    exits sent,
+    disconnected,
+    failed { string message }
+{
+    delta http.receive(connection) {
+        request {
+            string method,
+            string target,
+            map<string, string> headers,
+            string body
+        } => received,
+        malformed { string message } => malformed,
+        headers_too_large => headers_too_large,
+        body_too_large => body_too_large,
+        unsupported_transfer => unsupported_transfer,
+        unsupported_expectation => unsupported_expectation,
+        timed_out => timed_out,
+        disconnected => exit disconnected,
+        failed { string message } => exit failed { message }
+    }
+
+    [received]:
+        delta route(authority, method, target, headers, body) {
+            response { u32 status, string content, string allow } => response
+        }
+    [response]: forward http.send(
+        connection,
+        status,
+        borrow content,
+        borrow "text/plain; charset=utf-8",
+        borrow allow
+    );
+    [malformed]: forward reply(connection, 400, "Malformed request");
+    [headers_too_large]: forward reply(connection, 431, "Headers too large");
+    [body_too_large]: forward reply(connection, 413, "Body too large");
+    [unsupported_transfer]: forward reply(connection, 501, "Transfer encoding unsupported");
+    [unsupported_expectation]: forward reply(connection, 417, "Expectation unsupported");
+    [timed_out]: forward reply(connection, 408, "Request deadline exceeded");
+}
+
+control reply(ref http_connection connection, u32 status, string body) exits http.send_result {
+    forward http.send(
+        connection,
+        status,
+        borrow body,
+        borrow "text/plain; charset=utf-8",
+        borrow ""
+    );
+}
+
+control route(
+    ref string authority,
+    string method,
+    string target,
+    map<string, string> headers,
+    string body
+)
+    exits response { u32 status, string content, string allow }
+{
+    delta map_get(borrow headers, borrow "host") {
+        found { ref string host } => host,
+        missing => exit response { 400, "Host required", "" }
+    }
+    [host]: delta (deref host == deref authority) {
+        true => local,
+        false => exit response { 403, "Foreign authority", "" }
+    }
+    [local]: delta map_get(borrow headers, borrow "origin") {
+        found { ref string origin } => exit response { 403, "Browser origin unsupported", "" },
+        missing => local_client
+    }
+    [local_client]: delta (target == "/hello") {
+        true => hello,
+        false => exit response { 404, "Unknown endpoint", "" }
+    }
+    [hello]: delta (method == "GET" || method == "HEAD") {
+        true => readable,
+        false => exit response { 405, "Method not allowed", "GET, HEAD" }
+    }
+    [readable]: delta (body == "") {
+        true => exit response { 200, "Hello from Tellur 🙂", "" },
+        false => exit response { 400, "Expected an empty body", "" }
+    }
+}
