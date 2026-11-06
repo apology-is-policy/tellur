@@ -5766,3 +5766,39 @@ repair independent unsaved implementations, suppress stale hover and recover
 checked hover/native execution. This closes the dedicated P2 location series.
 The accepted async-host call model (same task model, staged admission) is recorded
 in the revision plan and async design; no async behavior changes in this release.
+
+
+## Async host operations, reference interpreter (0.217 / E1g.1)
+
+A manifest primitive may declare `"async": true`. Validation admits resource
+borrows, Copy values, consumed owned data and owned outcome payloads, and rejects
+borrowed data, consumed resources, non-Copy values passed by value, resource or
+reference payloads, contingent/pure operations and Rust bindings. Each invoked
+operation gets a generated async control, `op$host`, that forwards the single host
+leaf. Every source invocation is routed to it before admission, so only direct
+`await` passes; plain calls, `run`, `defer` and `spawn` report `E_ASYNC` naming
+the operation. Contributor evidence and diagnostics name the operation, not the
+generated control. The verifier keeps async host leaves in their own generated
+control and admits it only through `Operation::Await`. Unused declarations
+generate nothing.
+
+The reference interpreter binds a scripted completion when the operation starts.
+An optional per-call `waits` parks the task through the readiness registry. One
+operation is signalled per idle point in FIFO order and re-polled without fuel or
+quota. The event is published once, at completion. Owning faults retire pending
+operations without events. Synchronous primitives reject `waits`. Native source
+generation reports `E_BACKEND`.
+
+Nine integration tests cover scripted interleavings with original/expanded
+agreement, every fuel cut under three quotas, borrowed resources across sequential
+waits, pending and ready operations beside a faulting sibling, script errors,
+admission messages and locations, generated-control visibility, native rejection
+and manifest limits. A unit test tampers with the IR: a moved host leaf, a
+deferred generated control and an orphaned control are each rejected. LSP covers
+operation hover, keyword hover and unsaved rejection without generated names.
+Isolated VS Code repairs `E_ASYNC` forms, recovers hover and reports the native
+limit. The playground manifest adds `receive`. The baseline check compares every
+maintained `.tellur` source with the 0.216 compiler and finds identical reports.
+`playground/guarded_task_captures.tellur` now declares an `@exit` contract for
+its executable entry; the maintained-playground exit-code test had been failing
+since that file was added.

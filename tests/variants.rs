@@ -54,6 +54,7 @@ fn call(name: &str, outcome: &str, fields: Vec<Value>) -> ScriptCall {
         operation: name.into(),
         outcome: outcome.into(),
         fields,
+        waits: 0,
     }
 }
 fn equivalent(p: &tellur::CheckedProgram, s: &Scenario) -> tellur::runtime::Execution {

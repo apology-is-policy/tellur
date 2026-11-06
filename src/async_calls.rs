@@ -20,6 +20,23 @@ impl Admission<'_> {
         let fail = |message| Diagnostic::new("E_ASYNC", at, message).with_range(e.range);
         if let ExprKind::Call(name, args) = &e.kind {
             let asynchronous = self.controls.contains(name);
+            if let Some(operation) = crate::host_operations::operation(name) {
+                let message = match e.call_mode {
+                    CallMode::Direct => format!(
+                        "async host operation `{operation}` must be invoked with await inside an async control"
+                    ),
+                    CallMode::Run => format!(
+                        "run of async host operation `{operation}` is not yet admitted; await it inside an async control"
+                    ),
+                    CallMode::Defer | CallMode::Spawn => format!(
+                        "defer and spawn of async host operation `{operation}` are not yet admitted; await it directly"
+                    ),
+                    CallMode::Await => String::new(),
+                };
+                if !message.is_empty() {
+                    return Err(Diagnostic::new("E_ASYNC", at, message).with_range(e.range));
+                }
+            }
             if matches!(e.call_mode, CallMode::Run | CallMode::Await) && usage != Usage::Operation {
                 return Err(fail(
                     "run and await expose outcomes; use delta, capture, forward or a call statement",

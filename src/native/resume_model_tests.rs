@@ -224,6 +224,7 @@ fn compare_fixture(
                             operation: "parse_u32".into(),
                             outcome: "number".into(),
                             fields: vec![Value::U32(*n)],
+                            waits: 0,
                         })
                         .collect(),
                 };

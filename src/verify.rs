@@ -908,6 +908,13 @@ impl Verifier<'_> {
                             if !valid_mode {
                                 return Err(error("invalid async invocation permission"));
                             }
+                            if crate::host_operations::operation(name).is_some()
+                                && !matches!(operation, Operation::Await(_))
+                            {
+                                return Err(error(
+                                    "async host operations are admitted only by direct await",
+                                ));
+                            }
                             if r.entry_only() {
                                 return Err(error("entry-only control used as an ordinary call"));
                             }
@@ -1033,6 +1040,16 @@ impl Verifier<'_> {
                             {
                                 return Err(error("noncontingent primitive in contingent code"));
                             }
+                            // Only its generated async control performs a host operation.
+                            if p.asynchronous
+                                && (!self.region.asynchronous
+                                    || crate::host_operations::operation(&self.region.name)
+                                        != Some(name.as_str()))
+                            {
+                                return Err(error(
+                                    "async host operation outside its generated control",
+                                ));
+                            }
                             self.args(
                                 args,
                                 &p.parameters
@@ -1134,6 +1151,16 @@ impl CheckedProgram {
             }
         }
         for r in self.regions() {
+            if let Some(operation) = crate::host_operations::operation(&r.name)
+                && (!r.asynchronous
+                    || !self
+                        .manifest
+                        .primitives
+                        .iter()
+                        .any(|p| p.name == operation && p.asynchronous))
+            {
+                return Err(error("generated host control has no async host operation"));
+            }
             if r.contingency && (!r.contingent || r.boundary.is_some() || !r.exits.is_empty()) {
                 return Err(error("invalid contingency control contract"));
             }

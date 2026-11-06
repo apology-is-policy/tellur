@@ -435,6 +435,7 @@ fn pending_delivery_preserves_original_and_expanded_fuel_and_reports() {
                 operation: "sample".into(),
                 outcome: "ready".into(),
                 fields: vec![Value::String("unused:AB".into())],
+                waits: 0,
             }],
             ..scenario()
         };

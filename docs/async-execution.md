@@ -4625,3 +4625,40 @@ resources and resource-bearing results, event-publication timing, deregistration
 failure policy, whether a ready result is a scheduling handoff, and `run` of a host
 operation from synchronous code. Cancellation (E1e) remains a separate design.
 The roadmap row is E1g in the [revision plan](language-revision.md).
+
+
+## Public direct await of async host operations (E1g.1, 0.217)
+
+The first stage of the accepted call model is public in the reference interpreter.
+A manifest primitive declares `"async": true`. The flag belongs to the Tellur-facing
+contract, not to a Rust binding: scripted-only manifests such as the playground can
+declare async operations, and Rust `execution` remains `immediate` or `blocking`
+for synchronous primitives. The first profile borrows only resources, receives Copy
+values or consumed owned data, and completes with owned data. It rejects contingent
+and pure async primitives, and Rust bindings until native support exists.
+
+`await op(args)` lowers to a direct await of a generated async control,
+`op$host`, whose body forwards the single host leaf. The name cannot be written in
+source. All invocation forms of the operation are routed to it before admission:
+only direct `await` is admitted, and plain calls, `run`, `defer` and `spawn`
+report specific `E_ASYNC` messages. Because the generated control is an ordinary
+async control, the existing task identities, suspension, FIFO handoff, fault-domain
+membership and settlement apply unchanged. Contributor evidence names the
+operation, not the generated control. The verifier keeps an async host leaf inside
+its own generated control and admits that control only through `Operation::Await`.
+
+The reference interpreter binds the scripted completion when the operation starts.
+A scenario call's optional `waits` count reports pending that many times. Each
+pending report parks the operation's task through the readiness registry. When the
+source runnable queue is empty, one parked operation is signalled in FIFO order and
+re-polled without instruction fuel or host quota. The completion event is published
+once, at completion, with the arguments captured at start. A stopped operation
+retires its prepared arguments and completion before its suppliers, and publishes
+nothing. Synchronous primitives reject nonzero `waits`. With no other runnable
+work, waiting does not change the observable result.
+
+Native builds report `E_BACKEND` for a program that awaits an async host operation.
+An unused declaration generates no control and leaves native generation unchanged.
+E1g.2 adds native lowering, generated adapter glue and an idle re-poll loop without
+new dependencies; E1g.3 adds internal fd readiness. The private E1f models remain
+the evidence for those native stages.

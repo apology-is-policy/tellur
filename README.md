@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.216.0** implements the v0.1 checked core and the current language
+Compiler release **0.217.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -16,6 +16,13 @@ a reference interpreter, graph expansion, native compiler, language server, and
 VS Code build/run commands. The [revision plan](docs/language-revision.md) separates
 delivered features from the remaining reference, slice, outcome-expression and async work. The language is still
 fluid; this is an experimental implementation, not a production compiler.
+
+Release 0.217 admits async host operations. A manifest primitive marked
+`"async": true` is awaited directly inside async controls; the reference
+interpreter runs it with scripted readiness (`"waits"`) and the existing task,
+handoff and fault-settlement rules. `run`, `defer`, `spawn` and plain calls of
+host operations are rejected for now, and native builds report that async host
+operations are not yet supported.
 
 Release 0.216 selects the written `@contingent` annotation when an implementation
 enlarges the contingency subset its trait grants. Comments inside the annotation

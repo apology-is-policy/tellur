@@ -377,6 +377,7 @@ control main() exits done {
                 operation: "next_request".into(),
                 outcome: if i == REQUESTS { "finished" } else { "more" }.into(),
                 fields: vec![],
+                waits: 0,
             })
             .collect();
         let mut session = p.start_execution(&s, 10_000);

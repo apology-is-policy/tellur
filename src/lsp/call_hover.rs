@@ -812,6 +812,11 @@ pub(super) fn hover(
                 crate::rust_host::Execution::Blocking => "\n\nHost execution: blocking.",
             })
             .unwrap_or("");
+        let asynchronous = if p.asynchronous {
+            "\n\nAsync host operation: invoke it with `await` inside an async control. The awaiting caller is suspended, and its borrowed inputs stay live, until the single completion. `run`, `defer` and `spawn` of host operations are not yet admitted; native builds do not yet support them."
+        } else {
+            ""
+        };
         let pure = if p.pure {
             "\n\nPure builtin: expression use returns the sole payload; delta use retains its declared outcome."
         } else {
@@ -834,7 +839,7 @@ pub(super) fn hover(
             "\n\nThe manifest declares no normal return."
         };
         format!(
-            "**Manifest primitive**\n\n```tellur\n{}({params}){}\n```\n\nEffects: {effects}.{execution}{contingent}{pure}{ownership}{returns}",
+            "**Manifest primitive**\n\n```tellur\n{}({params}){}\n```\n\nEffects: {effects}.{execution}{asynchronous}{contingent}{pure}{ownership}{returns}",
             display_type(written),
             completion_description(&exit_description(&p.outcomes), false)
         )

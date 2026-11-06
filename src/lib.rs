@@ -23,6 +23,7 @@ pub mod format;
 mod generic_controls;
 mod generics;
 mod history;
+mod host_operations;
 mod inference;
 pub mod ir;
 pub mod launch;

@@ -149,12 +149,27 @@ struct PreparedInvocation<'a> {
     diagnostic_name: String,
 }
 
+/// One scripted async host operation, prepared exactly once. Its arguments are
+/// snapshotted for the completion event; a stopped operation publishes none.
+struct HostOperation<'a> {
+    operation: &'a str,
+    arms: &'a [Arm],
+    arguments: Vec<Value>,
+    outcome: String,
+    fields: Vec<Value>,
+    effects: Vec<String>,
+    waits: u32,
+}
+
 // Continuations represent sequential control flow, including consuming task awaits.
 // Blocks borrow immutable checked code; only active invocation/loop state is kept.
 enum Continuation<'a> {
     /// Test-only operation lifetime model; no public adapter suspension is admitted.
     #[cfg(test)]
     AdapterOperation(adapter_operation_model::Pending<'a>),
+    /// A prepared async host operation that reported pending. Its completion was
+    /// bound at preparation and is delivered once, after its remaining waits.
+    HostOperation(HostOperation<'a>),
     Block {
         code: &'a [Instruction],
         next: usize,
@@ -577,6 +592,15 @@ impl<'a> Machine<'a> {
                     Ok(Flow::Fallthrough) => {}
                     result => self.context.flow = Some(result),
                 }
+            } else if matches!(continuation, Continuation::HostOperation(_))
+                && self.context.flow.is_none()
+            {
+                let Continuation::HostOperation(operation) = continuation else {
+                    unreachable!()
+                };
+                if let Err(diagnostic) = self.poll_host_operation(operation) {
+                    self.context.flow = Some(Err(diagnostic));
+                }
             } else if let Continuation::Dispatch = continuation {
                 // A source await requests dispatch. Host quota exhaustion alone
                 // never selects another ready context.
@@ -733,7 +757,6 @@ impl<'a> Machine<'a> {
     }
     /// Internal safe-point admission only. Source/adapter wiring waits for owning
     /// fault-domain settlement; host quota exhaustion must never call this method.
-    #[allow(dead_code)]
     fn park_for_readiness(&mut self) -> Result<Readiness> {
         self.require_live_process()?;
         if self.context.frame.owner.is_none()
@@ -762,7 +785,6 @@ impl<'a> Machine<'a> {
     }
     /// Readiness changes eligibility only. Validate registry and context storage
     /// before consuming the one-use registration; dispatch remains explicit.
-    #[allow(dead_code)]
     fn signal_readiness(&mut self, token: &Readiness) -> Result<()> {
         self.require_live_process()?;
         let task = self.shared.tasks.waiting_task(token)?;
@@ -797,6 +819,13 @@ impl<'a> Machine<'a> {
             Continuation::AdapterOperation(pending) => {
                 assert!(matches!(flow, Err(_) | Ok(Flow::Process(_))));
                 pending.retire(self)?;
+                self.context.flow = Some(flow);
+            }
+            Continuation::HostOperation(operation) => {
+                assert!(matches!(flow, Err(_) | Ok(Flow::Process(_))));
+                for value in operation.arguments.into_iter().chain(operation.fields) {
+                    retire_value(&mut self.shared.tasks, value, true)?;
+                }
                 self.context.flow = Some(flow);
             }
             Continuation::Block { .. } | Continuation::Dispatch => unreachable!(),
@@ -1402,6 +1431,13 @@ impl<'a> Machine<'a> {
                 }
             }
             Action::Decide {
+                operation: Operation::Primitive(name),
+                args,
+                arms,
+            } if self.host_operation(name).is_some() => {
+                self.start_host_operation(name, args, arms)?;
+            }
+            Action::Decide {
                 operation: Operation::Region(name) | Operation::Run(name),
                 args,
                 arms,
@@ -1413,6 +1449,90 @@ impl<'a> Machine<'a> {
             _ => return self.leaf(instruction),
         }
         Ok(Flow::Fallthrough)
+    }
+    fn host_operation(&self, name: &str) -> Option<&'a crate::manifest::Primitive> {
+        let program: &'a CheckedProgram = self.shared.program;
+        program
+            .manifest
+            .primitives
+            .iter()
+            .find(|p| p.name == name && p.asynchronous)
+    }
+    /// Validate and consume the scripted completion when the operation starts.
+    /// Pending reports never consume or replay script entries.
+    fn start_host_operation(
+        &mut self,
+        name: &'a str,
+        args: &[Expr],
+        arms: &'a [Arm],
+    ) -> Result<()> {
+        let primitive = self.host_operation(name).unwrap();
+        let arguments = self.arguments(args)?;
+        let call = self
+            .shared
+            .calls
+            .get(self.shared.cursor)
+            .ok_or_else(|| error(format!("script exhausted before `{name}`")))?;
+        if call.operation != *name {
+            return Err(error(format!(
+                "expected script operation `{name}`, found `{}`",
+                call.operation
+            )));
+        }
+        let outcome = primitive
+            .outcomes
+            .iter()
+            .find(|o| o.name == call.outcome)
+            .ok_or_else(|| error(format!("undeclared driver outcome `{}`", call.outcome)))?;
+        if outcome.fields.len() != call.fields.len() {
+            return Err(error("driver outcome payload arity mismatch"));
+        }
+        for (field, value) in outcome.fields.iter().zip(&call.fields) {
+            validate(value, &field.ty, &self.shared.program.manifest)?;
+        }
+        let operation = HostOperation {
+            operation: name,
+            arms,
+            arguments,
+            outcome: call.outcome.clone(),
+            fields: call.fields.clone(),
+            effects: primitive.effects.clone(),
+            waits: call.waits,
+        };
+        self.shared.cursor += 1;
+        if operation.waits == 0 {
+            return self.complete_host_operation(operation);
+        }
+        self.context
+            .stack
+            .push(Continuation::HostOperation(operation));
+        self.park_host_operation()
+    }
+    /// A woken operation polls once without instruction fuel or host quota.
+    fn poll_host_operation(&mut self, mut operation: HostOperation<'a>) -> Result<()> {
+        operation.waits -= 1;
+        if operation.waits == 0 {
+            return self.complete_host_operation(operation);
+        }
+        self.context
+            .stack
+            .push(Continuation::HostOperation(operation));
+        self.park_host_operation()
+    }
+    fn complete_host_operation(&mut self, operation: HostOperation<'a>) -> Result<()> {
+        self.bind(
+            operation.arms,
+            operation.outcome.clone(),
+            operation.fields.clone(),
+        )?;
+        self.shared.events.push(Event::Primitive {
+            operation: operation.operation.into(),
+            arguments: operation.arguments,
+            outcome: operation.outcome,
+            fields: operation.fields,
+            effects: operation.effects,
+        });
+        Ok(())
     }
     fn leaf(&mut self, instruction: &Instruction) -> Result<Flow> {
         let values = &mut self.shared.values;
@@ -1631,6 +1751,11 @@ impl<'a> Machine<'a> {
                                 return Err(error(format!(
                                     "expected script operation `{name}`, found `{}`",
                                     call.operation
+                                )));
+                            }
+                            if call.waits != 0 {
+                                return Err(error(format!(
+                                    "scripted waits require an async host operation; `{name}` completes immediately"
                                 )));
                             }
                             self.shared.cursor += 1;

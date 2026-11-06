@@ -219,6 +219,7 @@ fn resource_container_must_be_drained_and_removed_values_completed() {
             operation: "close".into(),
             outcome: "closed".into(),
             fields: vec![],
+            waits: 0,
         }],
     };
     let r = p.run(&s).unwrap();

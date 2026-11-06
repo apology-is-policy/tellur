@@ -1843,6 +1843,50 @@ fn call_hover_keeps_public_grouped_result_mappings() {
 }
 
 #[test]
+fn async_host_operation_hover_names_the_operation_and_await_admission() {
+    let mut f = Fixture::new();
+    fs::write(
+        f.root.join("manifest.json"),
+        include_str!("../playground/manifest.json"),
+    )
+    .unwrap();
+    let source =
+        "async control next(ref handle input) exits auto {\n    forward await receive(input);\n}\n";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let h = hover_at(&f, source, "receive(").to_string();
+    assert!(
+        h.contains("Manifest primitive") && h.contains("receive(ref handle handle)"),
+        "{h}"
+    );
+    assert!(
+        h.contains("Async host operation: invoke it with `await` inside an async control")
+            && h.contains("native builds do not yet support them")
+            && !h.contains("$host"),
+        "{h}"
+    );
+    let keyword = hover_at(&f, source, "async").to_string();
+    assert!(
+        keyword.contains("Manifest async host operations are awaited directly"),
+        "{keyword}"
+    );
+    let awaited = hover_at(&f, source, "await").to_string();
+    assert!(
+        awaited.contains("manifest async host operation"),
+        "{awaited}"
+    );
+    let rejected =
+        "async control next(ref handle input) exits auto {\n    forward receive(input);\n}\n";
+    f.change(rejected, 2);
+    let diagnostics = f.diagnostics().to_string();
+    assert!(
+        diagnostics.contains("async host operation `receive` must be invoked with await")
+            && !diagnostics.contains("$host"),
+        "{diagnostics}"
+    );
+}
+
+#[test]
 fn primitive_call_hover_includes_modes_effects_and_host_execution() {
     let mut f = Fixture::new();
     fs::write(

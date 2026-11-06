@@ -213,6 +213,7 @@ fn compare_queue(
                 ty: "http_connection".into(),
                 token: format!("rust:{id}"),
             }],
+            waits: 0,
         })
         .collect::<Vec<_>>();
     // Left has completed and closed before the fault only in the immediate case.
@@ -221,6 +222,7 @@ fn compare_queue(
             operation: "close_test".into(),
             outcome: "done".into(),
             fields: vec![],
+            waits: 0,
         });
     }
     if stop {
@@ -228,6 +230,7 @@ fn compare_queue(
             operation: "checkpoint".into(),
             outcome: "done".into(),
             fields: vec![],
+            waits: 0,
         });
     }
     for _ in 0..if stop { 1 } else { 3 } {
@@ -235,6 +238,7 @@ fn compare_queue(
             operation: "close_test".into(),
             outcome: "done".into(),
             fields: vec![],
+            waits: 0,
         });
     }
     let scenario = Scenario {

@@ -41,6 +41,7 @@ fn run(
                 ty: "http_connection".into(),
                 token: format!("rust:{id}"),
             }],
+            waits: 0,
         })
         .collect::<Vec<_>>();
     for operation in ["checkpoint", "close_test"] {
@@ -48,6 +49,7 @@ fn run(
             operation: operation.into(),
             outcome: "done".into(),
             fields: vec![],
+            waits: 0,
         });
     }
     let scenario = Scenario {

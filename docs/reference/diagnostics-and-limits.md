@@ -2162,3 +2162,19 @@ or async invocation in contingency code. Use `run` from a synchronous control an
 `await` from an async control; both require an async callee. Errors on calls select
 the complete invocation. These declaration-phase checks report the first async
 admission error per control; see [direct async execution](async-execution.md).
+
+Since 0.217, a manifest async host operation (`"async": true`) is admitted only by
+direct `await` inside an async control. A plain call, `run`, `defer` or `spawn` of
+it reports `E_ASYNC` naming the operation, at the complete invocation. The manifest
+loader rejects async primitives outside the first profile: borrowed data,
+consumed resources, non-Copy values passed by value, resource or reference
+outcome payloads, contingent or pure operations and Rust bindings. Native builds
+report `E_BACKEND` for programs that await one. See
+[async host operations](async-execution.md#async-host-operations).
+
+<!-- tellur:reject E_ASYNC -->
+```tellur
+async control early(ref handle input) exits done {
+    forward run receive(input);
+}
+```

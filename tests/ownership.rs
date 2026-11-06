@@ -62,6 +62,7 @@ fn manifest() -> Manifest {
         ),
     ] {
         m.primitives.push(Primitive {
+            asynchronous: false,
             contingent: false,
             name: name.into(),
             parameters: params
@@ -119,6 +120,7 @@ fn close(outcome: &str, token: &str) -> ScriptCall {
         } else {
             vec![opaque("CloseError", token)]
         },
+        waits: 0,
     }
 }
 fn s(args: Vec<Value>, calls: Vec<ScriptCall>) -> Scenario {

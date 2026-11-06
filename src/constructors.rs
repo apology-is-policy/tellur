@@ -114,7 +114,7 @@ fn statement(
     }
     Ok(())
 }
-fn items(
+pub(crate) fn items(
     body: &mut [Item],
     rewrite: &mut impl FnMut(&mut Statement, Span) -> Result<()>,
     f: &mut impl FnMut(&mut Expr, Span) -> Result<()>,

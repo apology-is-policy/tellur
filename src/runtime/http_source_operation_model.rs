@@ -194,6 +194,7 @@ fn run_http(
             operation: "close_test".into(),
             outcome: "done".into(),
             fields: vec![],
+            waits: 0,
         })
         .collect();
     let scenario = Scenario {

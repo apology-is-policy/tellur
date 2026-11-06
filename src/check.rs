@@ -5227,6 +5227,7 @@ fn compile_unit_inner(
     let mut visibility = visibility.clone();
     let mut unit = crate::traits::lower(unit, &manifest, &mut visibility)?;
     crate::constructors::rewrite_calls(&mut unit, &visibility)?;
+    crate::host_operations::prepare(&mut unit, &manifest)?;
     crate::generic_controls::compile(unit, manifest, &visibility)
 }
 pub(crate) fn compile_concrete_unit(

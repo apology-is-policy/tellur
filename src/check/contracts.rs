@@ -102,18 +102,24 @@ impl Checker<'_> {
             .outcomes
             .iter()
             .map(|outcome| {
-                let mut notes = signature
-                    .contributors
-                    .get(&outcome.name)
-                    .cloned()
-                    .unwrap_or_default();
+                // A generated host-operation control is the operation itself.
+                let host = crate::host_operations::operation(callee);
+                let mut notes = if host.is_some() {
+                    vec![]
+                } else {
+                    signature
+                        .contributors
+                        .get(&outcome.name)
+                        .cloned()
+                        .unwrap_or_default()
+                };
                 crate::absorption::append(
                     &mut notes,
                     Contributor {
                         span,
                         kind: ContributorKind::Forwarded,
                         control: self.result.name.clone(),
-                        operation: Some(callee.into()),
+                        operation: Some(host.unwrap_or(callee).into()),
                         outcome: outcome.name.clone(),
                     },
                 );
@@ -129,6 +135,9 @@ impl Checker<'_> {
     ) -> Diagnostic {
         for outcome in outcomes {
             for note in signature.contributors.get(outcome).into_iter().flatten() {
+                if crate::host_operations::operation(&note.control).is_some() {
+                    continue;
+                }
                 append(&mut diagnostic.notes, note.diagnostic());
             }
         }

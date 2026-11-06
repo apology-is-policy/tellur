@@ -29,6 +29,7 @@ fn call(operation: &str, outcome: &str, fields: Vec<Value>) -> ScriptCall {
         operation: operation.into(),
         outcome: outcome.into(),
         fields,
+        waits: 0,
     }
 }
 fn loader_calls(open: &str, read_bad: bool, close_bad: bool, token: &str) -> Vec<ScriptCall> {

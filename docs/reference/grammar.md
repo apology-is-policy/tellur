@@ -231,7 +231,9 @@ see [contingency](contingency.md) for placement and recovery restrictions.
 
 In an operation position (delta, capture, forward or a call statement), a call may
 be prefixed with `run` or `await`. `run` requires a synchronous caller and an async
-callee; `await` requires both to be async. Trait signatures and implementations
+callee; `await` requires both to be async. An async control may also `await` a manifest
+primitive marked `"async": true` (an async host operation); a plain call, `run`,
+`defer` or `spawn` of such an operation is rejected. Trait signatures and implementations
 match the `async` permission. These prefixes do not make calls value expressions.
 An immutable local `auto name = defer call;` binding creates a cold task inside an
 async control. `await name` consumes that task in an operation position. Owned captures including contained references and direct borrowed captures of

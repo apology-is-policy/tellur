@@ -54,6 +54,7 @@ fn scenario() -> Scenario {
             operation: "parse_u32".into(),
             outcome: "number".into(),
             fields: vec![Value::U32(1)],
+            waits: 0,
         }],
     }
 }
@@ -335,6 +336,7 @@ fn imported_entry_failures_use_the_same_source_name_in_both_executors() {
         operation: "parse_u32".into(),
         outcome: "number".into(),
         fields: vec![Value::U32(1)],
+        waits: 0,
     };
     let extra = Scenario {
         calls: vec![call.clone(), call],

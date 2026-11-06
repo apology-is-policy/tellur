@@ -173,11 +173,13 @@ control work(bool choice) exits done {
                 operation: "sample".into(),
                 outcome: "ready".into(),
                 fields: vec![Value::String("first sample".into())],
+                waits: 0,
             },
             ScriptCall {
                 operation: "sample".into(),
                 outcome: "ready".into(),
                 fields: vec![Value::String("second sample".into())],
+                waits: 0,
             },
         ],
     };

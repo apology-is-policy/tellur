@@ -42,6 +42,9 @@ pub struct Primitive {
     pub returns: bool,
     #[serde(default)]
     pub pure: bool,
+    /// Suspending host operation: source invokes it with direct `await` only.
+    #[serde(default, rename = "async", skip_serializing_if = "crate::ir::is_false")]
+    pub asynchronous: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rust: Option<crate::rust_host::Binding>,
 }
@@ -876,6 +879,65 @@ impl Manifest {
                 unique(o.fields.iter().map(|f| f.name.as_str()))?;
                 for f in &o.fields {
                     self.check_type(&f.ty)?;
+                }
+            }
+            if p.asynchronous {
+                self.check_async_primitive(p)?;
+            }
+        }
+        Ok(())
+    }
+    /// The first async host-operation profile: the operation borrows resources
+    /// for its whole wait, receives owned data, and completes with owned data.
+    fn check_async_primitive(&self, p: &Primitive) -> Result<()> {
+        let fail =
+            |detail: String| Err(error(format!("async host operation `{}` {detail}", p.name)));
+        if p.pure || p.contingent {
+            return fail("cannot be pure or contingent".into());
+        }
+        if p.rust.is_some() {
+            return fail(
+                "cannot have a Rust binding yet; native async host operations are not yet supported"
+                    .into(),
+            );
+        }
+        for param in &p.parameters {
+            if self.contains_references(&param.ty) {
+                return fail(format!(
+                    "parameter `{}` cannot contain references",
+                    param.name
+                ));
+            }
+            let linear = self.linear(&param.ty);
+            match param.mode {
+                Mode::Borrow if !linear => {
+                    return fail(format!(
+                        "parameter `{}` borrows data; async host operations borrow only resources and receive data by value or consume",
+                        param.name
+                    ));
+                }
+                Mode::Value if !self.is_copy(&param.ty) => {
+                    return fail(format!(
+                        "parameter `{}` passes non-Copy data by value; use consume mode",
+                        param.name
+                    ));
+                }
+                Mode::Consume if linear => {
+                    return fail(format!(
+                        "parameter `{}` consumes a resource; async host operations currently borrow resources",
+                        param.name
+                    ));
+                }
+                _ => {}
+            }
+        }
+        for o in &p.outcomes {
+            for f in &o.fields {
+                if self.linear(&f.ty) || self.contains_references(&f.ty) {
+                    return fail(format!(
+                        "outcome field `{}.{}` must be owned data without resources or references",
+                        o.name, f.name
+                    ));
                 }
             }
         }

@@ -557,6 +557,14 @@ pub struct NativeBuild {
 impl CheckedProgram {
     pub fn native_source(&self, entry: &str) -> Result<String> {
         self.verify()?;
+        if let Some(operation) = self
+            .regions()
+            .find_map(|r| crate::host_operations::operation(&r.name))
+        {
+            return Err(error(format!(
+                "native builds do not yet support async host operation `{operation}`; use the reference interpreter (tellurc run)"
+            )));
+        }
         if self.region(entry).is_none() {
             return Err(error(format!("unknown entry region {entry}")));
         }

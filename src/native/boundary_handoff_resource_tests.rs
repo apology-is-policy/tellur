@@ -180,6 +180,7 @@ fn reference_models(spawned: bool) {
                                 ty: "counter".into(),
                                 token: id.to_string(),
                             }],
+                            waits: 0,
                         })
                         .collect();
                     let effects = if stop {
@@ -191,6 +192,7 @@ fn reference_models(spawned: bool) {
                         operation: name.into(),
                         outcome: "done".into(),
                         fields: vec![],
+                        waits: 0,
                     }));
                     let scenario = Scenario {
                         entry: "main".into(),

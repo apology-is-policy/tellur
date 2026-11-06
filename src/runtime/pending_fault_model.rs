@@ -16,6 +16,7 @@ pub(crate) fn pending_fault_model(
                 ty: "probe".into(),
                 token: format!("rust:{id}"),
             }],
+            waits: 0,
         })
         .collect();
     for operation in ["checkpoint", "close"] {
@@ -23,6 +24,7 @@ pub(crate) fn pending_fault_model(
             operation: operation.into(),
             outcome: "done".into(),
             fields: vec![],
+            waits: 0,
         });
     }
     let s = Scenario {

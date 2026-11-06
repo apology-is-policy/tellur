@@ -320,6 +320,7 @@ fn entry_driver_and_result_failures_keep_their_phase_and_cannot_resume() {
         operation: "parse_u32".into(),
         outcome: "number".into(),
         fields: vec![Value::U32(1)],
+        waits: 0,
     };
     let mut scenarios = vec![scenario()];
     let valid = Scenario {
@@ -452,6 +453,7 @@ fn resource_handover_and_failed_cleanup_outcomes_are_preserved_between_steps() {
                 operation: "close".into(),
                 outcome: outcome.into(),
                 fields,
+                waits: 0,
             }],
             ..scenario()
         };

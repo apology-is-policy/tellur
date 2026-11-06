@@ -49,6 +49,7 @@ fn scenario() -> Scenario {
                 operation: "sample".into(),
                 outcome: "ready".into(),
                 fields: vec![Value::String(text.into())],
+                waits: 0,
             })
             .collect(),
     }

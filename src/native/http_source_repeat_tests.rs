@@ -66,6 +66,7 @@ fn compare_repeated(
                 ty: "http_connection".into(),
                 token: format!("rust:{id}"),
             }],
+            waits: 0,
         })
         .collect::<Vec<_>>();
     if stop {
@@ -73,6 +74,7 @@ fn compare_repeated(
             operation: "checkpoint".into(),
             outcome: "done".into(),
             fields: vec![],
+            waits: 0,
         });
     }
     for _ in 0..if stop { 1 } else { 3 } {
@@ -80,6 +82,7 @@ fn compare_repeated(
             operation: "close_test".into(),
             outcome: "done".into(),
             fields: vec![],
+            waits: 0,
         });
     }
     let scenario = Scenario {

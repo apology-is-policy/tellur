@@ -13,6 +13,8 @@ pub(super) struct Scheduler<'a> {
     #[cfg(test)]
     pub(super) operations: Option<adapter_operation_model::SourceOperations>,
     runnable: VecDeque<Runnable<'a>>,
+    /// Pending async host operations, signalled one per idle point in FIFO order.
+    host_waits: VecDeque<(TaskId, Readiness)>,
     handles: BTreeMap<TaskId, started::StartedTask<'a>>,
     joins: BTreeMap<TaskId, (Context<'a>, started::StartedJoin<'a>, &'a [Arm])>,
 }
@@ -228,7 +230,6 @@ impl<'a> Machine<'a> {
         assert!(self.shared.scheduler.handles.is_empty());
         assert!(self.shared.scheduler.joins.is_empty());
     }
-    #[cfg(test)]
     pub(super) fn queue_operation_readiness(&mut self, task: TaskId) {
         self.shared
             .scheduler
@@ -257,12 +258,45 @@ impl<'a> Machine<'a> {
                     if self.pump_source_operations(true)? {
                         continue;
                     }
+                    if self.signal_host_operation()? {
+                        continue;
+                    }
                     return Err(error("source task wait has no runnable producer"));
                 }
             }
         }
     }
+    /// Park the selected host-operation task until a later idle point. Readiness
+    /// changes eligibility only; the woken task rejoins the source FIFO.
+    pub(super) fn park_host_operation(&mut self) -> Result<()> {
+        let task = self
+            .context
+            .task
+            .ok_or_else(|| error("async host operation requires an admitted task"))?
+            .0;
+        let token = self.park_for_readiness()?;
+        self.shared.scheduler.enabled = true;
+        self.shared.scheduler.host_waits.push_back((task, token));
+        self.select_source()
+    }
+    fn signal_host_operation(&mut self) -> Result<bool> {
+        while let Some((task, token)) = self.shared.scheduler.host_waits.pop_front() {
+            // Owning settlement may already have retired this operation's task.
+            if !self.shared.waiting.contains_key(&task) {
+                continue;
+            }
+            self.signal_readiness(&token)?;
+            self.queue_operation_readiness(task);
+            return Ok(true);
+        }
+        Ok(false)
+    }
     pub(super) fn prune_source(&mut self) {
+        let waiting = &self.shared.waiting;
+        self.shared
+            .scheduler
+            .host_waits
+            .retain(|(task, _)| waiting.contains_key(task));
         self.shared
             .scheduler
             .handles

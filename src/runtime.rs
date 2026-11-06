@@ -16,6 +16,13 @@ pub struct ScriptCall {
     pub operation: String,
     pub outcome: String,
     pub fields: Vec<Value>,
+    /// Scripted readiness for an async host operation: how many times it reports
+    /// pending before this completion. Synchronous primitives require zero.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub waits: u32,
+}
+fn is_zero(value: &u32) -> bool {
+    *value == 0
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

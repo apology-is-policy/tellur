@@ -121,6 +121,7 @@ fn scenario(stop: bool, nested: bool) -> Scenario {
         operation: operation.into(),
         outcome: outcome.into(),
         fields,
+        waits: 0,
     };
     let mut calls = vec![call(
         "make",

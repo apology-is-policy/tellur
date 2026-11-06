@@ -265,6 +265,7 @@ fn http_outcomes_and_deadlines_match_retained_continuations_at_all_fuel_cuts() {
                         operation: e["operation"].as_str().unwrap().into(),
                         outcome: e["outcome"].as_str().unwrap().into(),
                         fields: serde_json::from_value(e["fields"].clone()).unwrap(),
+                        waits: 0,
                     })
                     .collect::<Vec<_>>();
                 assert_eq!(calls.len(), 4);

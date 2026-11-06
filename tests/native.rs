@@ -18,6 +18,7 @@ fn call(op: &str, out: &str, fields: Vec<Value>) -> ScriptCall {
         operation: op.into(),
         outcome: out.into(),
         fields,
+        waits: 0,
     }
 }
 fn scenario(entry: &str, arguments: Vec<Value>, calls: Vec<ScriptCall>) -> Scenario {

@@ -6,7 +6,9 @@
 Compiler 0.189 supports `async control`, synchronous entry with `run`, direct
 `await`, cold tasks with owned and borrowed captures, and a bounded cooperative
 scheduler for `spawn` tasks with owned values, direct borrows and nested owned record/option/variant/named-outcome captures/results, plus borrowed record/option/variant/named-outcome captures and whole borrowed record/option/variant/named-outcome results, plus reference chains through records. Source handoffs occur at `await` and `yield`.
-Async host I/O, cancellation and LLVM coroutine lowering remain later work.
+Compiler 0.217 adds [async host operations](#async-host-operations) awaited
+directly in the reference interpreter. Native async host I/O, cancellation and LLVM
+coroutine lowering remain later work.
 
 The private E1f.1 reference and E1f.2a native models retain unfinished adapter
 operations through readiness waits and fault settlement. The native model also
@@ -1030,6 +1032,72 @@ control main() exits done { forward work(); }
 
 Repair the call above to `forward run work();`. Inside an async control, use
 `forward await work();` instead.
+
+## Async host operations
+
+Compiler 0.217 admits **async host operations**. A manifest primitive marked
+`"async": true` is a suspending operation: an async control invokes it with direct
+`await`, exactly as it awaits another async control. The caller is suspended until
+the operation's single completion. Its declared outcomes are handled through the
+same `delta`, `capture` and forwarding forms, and faults are never outcomes.
+
+<!-- tellur:check -->
+```tellur
+async control next_chunk(ref handle input) exits chunk { bytes data }, finished {} {
+    delta await receive(input) {
+        data { bytes data } => received,
+        closed => closed,
+        failed { read_error error } => failed
+    }
+
+    [received]: exit chunk { data };
+    [closed | failed]: exit finished;
+}
+```
+
+The playground manifest declares `receive` this way:
+
+```json
+{"name": "receive", "async": true,
+ "parameters": [{"name": "handle", "type": "handle", "mode": "borrow"}],
+ "outcomes": [{"name": "data", "fields": [{"name": "value0", "type": "bytes"}]},
+              {"name": "closed", "fields": []},
+              {"name": "failed", "fields": [{"name": "value0", "type": "read_error"}]}],
+ "effects": ["file.receive"], "returns": true}
+```
+
+Awaiting a host operation is a cooperative handoff, like awaiting an async control.
+When the operation completes immediately, the awaiting caller continues after
+already runnable tasks in FIFO order. While it is pending, other runnable tasks
+proceed, and its borrowed resources remain borrowed until completion. An owning
+fault stops a pending operation before its suppliers retire; a stopped operation
+publishes no completion.
+
+This first profile has deliberate limits:
+
+- Only direct `await` is admitted. A plain call, `run`, `defer` and `spawn` of a
+  host operation are rejected with `E_ASYNC`. Wrap the operation in an async
+  control to enter it with `run`, or to defer or spawn it.
+- Borrowed parameters must be resources; data parameters are Copy values or
+  consumed owned values. Consuming resources, resource-bearing outcome payloads,
+  references, and contingent or pure async primitives are rejected when the
+  manifest is validated.
+- The reference interpreter executes host operations from scripted scenarios.
+  A scenario call may add `"waits": N` to report pending `N` times before
+  completing. Each idle point readies one pending operation in FIFO order. The
+  completion is bound when the operation starts, so scripts list operations in
+  start order. Events appear in completion order.
+- Native builds do not yet support async host operations. They report
+  `E_BACKEND`, and async primitives cannot have Rust bindings yet.
+
+<!-- tellur:reject E_ASYNC -->
+```tellur
+async control early(ref handle input) exits done {
+    auto pending = spawn receive(input);
+    await pending;
+    exit done;
+}
+```
 
 ## Local cold tasks
 

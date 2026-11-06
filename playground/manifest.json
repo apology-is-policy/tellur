@@ -220,6 +220,45 @@
       "returns": true
     },
     {
+      "name": "receive",
+      "async": true,
+      "parameters": [
+        {
+          "name": "handle",
+          "type": "handle",
+          "mode": "borrow"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "data",
+          "fields": [
+            {
+              "name": "value0",
+              "type": "bytes"
+            }
+          ]
+        },
+        {
+          "name": "closed",
+          "fields": []
+        },
+        {
+          "name": "failed",
+          "fields": [
+            {
+              "name": "value0",
+              "type": "read_error"
+            }
+          ]
+        }
+      ],
+      "effects": [
+        "file.receive"
+      ],
+      "returns": true
+    },
+    {
       "name": "close",
       "parameters": [
         {

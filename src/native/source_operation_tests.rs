@@ -93,6 +93,7 @@ fn resource_scenario(stop: bool) -> Scenario {
         operation: operation.into(),
         outcome: "done".into(),
         fields: vec![],
+        waits: 0,
     };
     let mut calls = (0..6)
         .map(|id| ScriptCall {
@@ -102,6 +103,7 @@ fn resource_scenario(stop: bool) -> Scenario {
                 ty: "probe".into(),
                 token: format!("rust:{id}"),
             }],
+            waits: 0,
         })
         .collect::<Vec<_>>();
     if stop {

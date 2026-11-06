@@ -173,11 +173,13 @@ fn selected_nested_effect_runs_once_and_keeps_both_failure_origins() {
                         ty: "handle".into(),
                         token: "f".into(),
                     }],
+                    waits: 0,
                 },
                 ScriptCall {
                     operation: "close".into(),
                     outcome: "closed".into(),
                     fields: vec![],
+                    waits: 0,
                 },
             ]
         } else {
@@ -185,6 +187,7 @@ fn selected_nested_effect_runs_once_and_keeps_both_failure_origins() {
                 operation: "open".into(),
                 outcome: "not_found".into(),
                 fields: vec![],
+                waits: 0,
             }]
         };
         let s = Scenario {

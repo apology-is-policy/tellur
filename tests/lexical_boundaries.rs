@@ -319,6 +319,7 @@ fn retained_resources_are_completed_and_supervisor_owners_survive_recovery() {
         }
     }"#;
     m.primitives.push(tellur::manifest::Primitive {
+        asynchronous: false,
         returns: true,
         rust: None,
         name: "acquire".into(),
@@ -351,11 +352,13 @@ fn retained_resources_are_completed_and_supervisor_owners_survive_recovery() {
                 ty: "handle".into(),
                 token: "connection".into(),
             }],
+            waits: 0,
         })
         .chain((0..2).map(|_| ScriptCall {
             operation: "close".into(),
             outcome: "closed".into(),
             fields: vec![],
+            waits: 0,
         }))
         .collect(),
     };

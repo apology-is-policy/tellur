@@ -201,6 +201,7 @@ fn retained_must_complete_resource_requires_handover_and_contingent_cleanup() {
             operation: "close".into(),
             outcome: "closed".into(),
             fields: vec![],
+            waits: 0,
         }],
     };
     assert_eq!(p.run(&s).unwrap().outcome, "done");

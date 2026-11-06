@@ -167,6 +167,7 @@ fn group_end_does_not_drop_or_complete_resources() {
                 } else {
                     vec![]
                 },
+                waits: 0,
             }],
         };
         let result = program.run(&input).unwrap();

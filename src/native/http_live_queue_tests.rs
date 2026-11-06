@@ -179,6 +179,7 @@ fn deadline_case(p: &CheckedProgram, binary: &Path, root: &Path, quotas: &str) {
                 ty: "http_connection".into(),
                 token: format!("rust:{id}"),
             }],
+            waits: 0,
         })
         .collect::<Vec<_>>();
     for _ in 0..3 {
@@ -186,6 +187,7 @@ fn deadline_case(p: &CheckedProgram, binary: &Path, root: &Path, quotas: &str) {
             operation: "close_test".into(),
             outcome: "done".into(),
             fields: vec![],
+            waits: 0,
         });
     }
     let scenario = Scenario {
