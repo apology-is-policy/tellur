@@ -817,6 +817,41 @@ The async-host call-model design question is unaffected. Unsaved imported repair
 restore checked hover only after the whole source validates.
 
 
+## Implementation fault-permission locations
+
+Since 0.215, the existing `E_FAULT_CONTRACT` rejection of an implementation that
+adds fault permission selects its written `faults` keyword. This applies both to
+`exits … faults` and to a fault-only contract. The token excludes surrounding
+comments, annotations, normal completion clauses and the body. Its original range
+survives imported source remapping and rewritten method names.
+
+<!-- tellur:reject E_FAULT_CONTRACT -->
+```tellur
+trait reader {
+    control read() exits done;
+}
+implement reader for u32 {
+    control read() faults {
+        fault "stopped";
+    }
+}
+```
+
+Permission subsets are unchanged: an implementation may require less fault
+permission and still inherits its trait contract. Async equality remains earlier
+than fault permission, and contingency permission remains later. Profile, identity
+and associated preparation, canonical implementation and written method order,
+independent error batches and diagnostic/implementation limits retain their rules.
+Bounds, signature/origin conformance and body checking remain later phases.
+
+Missing fault-keyword metadata keeps the method point without borrowing an async,
+control or completion range. Generated boundary and constructor signatures carry no
+invented control-fault range, even when they permit faults. Metadata alone does not
+reject equal or narrower permissions. Ordinary fault diagnostics and parser barriers
+are unchanged. Unsaved imported repairs between fault-only and suffix contracts keep
+fresh locations and restore checked hover only after the source fully validates.
+
+
 ## Implementation conformance batches
 
 Since 0.200, independent implementations can report conformance failures together,

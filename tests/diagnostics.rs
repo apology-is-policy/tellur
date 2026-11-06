@@ -7467,7 +7467,8 @@ fn implementation_async_ranges_keep_permission_and_phase_priorities() {
     let source = source.replace("async control", "control");
     let e = &check_errors(&source).errors[0];
     assert_eq!(e.code, "E_FAULT_CONTRACT");
-    assert!(e.end.is_none());
+    assert_eq!(e.span.column, source.find("faults").unwrap() + 1);
+    assert_eq!(e.end.as_ref().unwrap().column, e.span.column + 6);
     let source = source.replace("done faults", "done");
     let e = &check_errors(&source).errors[0];
     assert_eq!(e.code, "E_CONTINGENT");
@@ -7596,5 +7597,218 @@ fn implementation_async_ranges_leave_ordinary_async_and_parser_barriers_separate
         ),
     ] {
         assert_eq!(check_errors(source).errors[0].code, code);
+    }
+}
+
+#[test]
+fn implementation_fault_ranges_select_suffix_and_fault_only_keywords() {
+    let f = Fixture::new();
+    for contract in [
+        "exits done // before\r\n faults // after\r\n {exit done;}",
+        "exits {done,missing} faults {exit done;}",
+        "faults // fault-only\r\n {fault \"stopped\";}",
+    ] {
+        for prefix in ["", "@contingent // 😀\r\n "] {
+            let source = format!(
+                "trait reader {{control read() exits done;}} implement reader for u32 {{{prefix}control read() {contract}}}"
+            );
+            f.write("main.tellur", &source);
+            let report = f.report(&["check", "main.tellur", "--json"], false);
+            let errors = report["diagnostics"].as_array().unwrap();
+            assert_eq!(errors.len(), 1, "{report}");
+            let e = &errors[0];
+            assert_eq!(e["code"], "E_FAULT_CONTRACT");
+            assert_eq!(
+                e["message"],
+                "implementation cannot add faults to a trait control that does not permit them"
+            );
+            assert_eq!(e["range"], selected_range(&source, "faults"));
+            assert_eq!(e["position"], e["range"]["start"]);
+            assert_eq!(
+                compile(
+                    &source,
+                    Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
+                )
+                .unwrap_err(),
+                check_errors(&source).errors[0]
+            );
+        }
+    }
+}
+
+#[test]
+fn implementation_fault_ranges_preserve_imported_forms_coordinates_and_repairs() {
+    let f = Fixture::new();
+    f.write("middle.tellur", "import \"worker.tellur\" as worker;");
+    f.write(
+        "main.tellur",
+        "import \"middle.tellur\" as middle;control main() exits done {exit done;}",
+    );
+    let valid = "pub trait reader {@contingent control read(self input) exits done;}\r\nimplement reader for u32 {control read(self first) exits done {string note=\"😀\";drop(note);exit done;}} implement reader for string {control read(self second) exits done {exit done;}}\r\npub control work() exits done {reader<u32>.read(1);reader<string>.read(\"x\");exit done;}";
+    for (needle, replacement) in [
+        (
+            "control read(self first) exits done",
+            "@contingent // 😀\r\n control read(self first) exits done // suffix\r\n faults",
+        ),
+        (
+            "control read(self second) exits done {exit done;}",
+            "@contingent control read(self second) faults // 😀\r\n {fault \"stopped\";}",
+        ),
+    ] {
+        let source = valid.replace(needle, replacement);
+        f.write("worker.tellur", &source);
+        let report = f.report(&["check", "main.tellur", "--json"], false);
+        let e = &report["diagnostics"][0];
+        assert_eq!(
+            report["diagnostics"].as_array().unwrap().len(),
+            1,
+            "{report}"
+        );
+        assert_eq!(e["code"], "E_FAULT_CONTRACT");
+        assert_eq!(
+            e["path"],
+            f.root.join("worker.tellur").to_string_lossy().as_ref()
+        );
+        assert_eq!(e["range"], selected_range(&source, "faults"));
+        let first = tellur::compile_file(
+            f.root.join("main.tellur"),
+            Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(first.path, f.root.join("worker.tellur"));
+        let end = first.diagnostic.end.as_ref().unwrap();
+        assert_eq!(
+            json!({"line":end.line,"column":end.column}),
+            e["range"]["end"]
+        );
+        f.write("worker.tellur", valid);
+        f.report(&["check", "main.tellur", "--json"], true);
+    }
+}
+
+#[test]
+fn implementation_fault_ranges_keep_async_subset_and_phase_priorities() {
+    let source = "trait reader {type item:copy;control read(self input) exits done;} implement reader for u32 {type item=ref string;@contingent async control read(ref self input) exits done faults {exit done;}}";
+    assert_eq!(check_errors(source).errors[0].code, "E_LIFETIME");
+    let source = source.replace("item=ref string", "item=string");
+    let e = &check_errors(&source).errors[0];
+    assert_eq!(e.code, "E_ASYNC");
+    assert_eq!(e.span.column, source.find("async").unwrap() + 1);
+    let source = source.replace("async control", "control");
+    let e = &check_errors(&source).errors[0];
+    assert_eq!(e.code, "E_FAULT_CONTRACT");
+    assert_eq!(e.span.column, source.find("faults").unwrap() + 1);
+    let source = source.replace("done faults", "done");
+    let e = &check_errors(&source).errors[0];
+    assert_eq!(e.code, "E_CONTINGENT");
+    assert!(e.end.is_none());
+    let source = source.replace("@contingent ", "");
+    assert_eq!(check_errors(&source).errors[0].code, "E_BOUND");
+    let source = source.replace("item=string", "item=u32");
+    assert_eq!(check_errors(&source).errors[0].code, "E_TRAIT_SIGNATURE");
+    compile(
+        &source.replace("ref self input", "self input"),
+        Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+    )
+    .unwrap();
+    for (prefix, code) in [
+        (
+            "trait bad {control work() exits auto;}",
+            "E_TRAIT_SIGNATURE",
+        ),
+        ("implement absent for bool {}", "E_TRAIT"),
+        (
+            "trait bad {type item;} implement bad for bool {}",
+            "E_TRAIT",
+        ),
+    ] {
+        let source = format!(
+            "{prefix} trait reader {{control read() exits done;}} implement reader for u32 {{control read() exits done faults {{exit done;}}}}"
+        );
+        assert_eq!(check_errors(&source).errors[0].code, code);
+    }
+    let source = "trait reader {control read() exits done;} implement reader for u32 {control read() exits done faults {exit done;}} implement reader for u32 {control read() exits done {exit done;}}";
+    assert_eq!(check_errors(source).errors[0].code, "E_COHERENCE");
+    let source = "trait reader {control read() exits done;} implement reader for u32 {control read() exits auto faults {exit done;}}";
+    assert_eq!(check_errors(source).errors[0].code, "E_TRAIT_SIGNATURE");
+}
+
+#[test]
+fn implementation_fault_ranges_keep_canonical_batches_written_order_and_limits() {
+    let source = "trait a_reader {control first() exits done;control second() exits done;} trait b_reader {control first() exits done;}\nimplement b_reader for u32 {control first() faults {fault \"x\";}}\nimplement a_reader for u32 {control second() exits done faults {exit done;} control first() exits done faults {exit done;}}";
+    let errors = check_errors(source);
+    assert_eq!(errors.errors.len(), 2);
+    assert_eq!(errors.errors[0].span.line, 3);
+    assert_eq!(errors.errors[1].span.line, 2);
+    assert_eq!(
+        errors.errors[0].span.column,
+        source.lines().nth(2).unwrap().find("faults").unwrap() + 1
+    );
+    for contract in ["exits done faults {exit done;}", "faults {fault \"x\";}"] {
+        let mut source = "trait reader {control read() exits done;}\n".to_owned();
+        for n in (0..36).rev() {
+            source.push_str(&format!("struct value_{n:02} {{u32 value;}} implement reader for value_{n:02} {{control read() {contract}}}\n"));
+        }
+        let errors = check_errors(&source);
+        assert_eq!(errors.errors.len(), 32);
+        assert!(errors.limit_reached);
+        for (n, e) in errors.errors.iter().enumerate() {
+            assert_eq!(e.code, "E_FAULT_CONTRACT");
+            assert_eq!(e.span.line, 37 - n);
+            let line = source.lines().nth(e.span.line - 1).unwrap();
+            assert_eq!(e.span.column, line.find("faults").unwrap() + 1);
+            assert_eq!(e.end.as_ref().unwrap().column, e.span.column + 6);
+        }
+        assert_eq!(
+            compile(
+                &source,
+                Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
+            )
+            .unwrap_err(),
+            errors.errors[0]
+        );
+    }
+    let source = format!(
+        "trait reader {{control read() exits done;}}{}",
+        "implement reader for u32 {control read() exits done faults {exit done;}}".repeat(1025)
+    );
+    let errors = check_errors(&source);
+    assert_eq!(errors.errors.len(), 1);
+    assert!(errors.errors[0].message.contains("1024-implementation"));
+    assert!(errors.errors[0].end.is_none());
+}
+
+#[test]
+fn implementation_fault_ranges_keep_inherited_permissions_and_ordinary_fault_errors() {
+    let source = "trait reader {control read(self input) exits done faults;} implement reader for u32 {control read(self input) exits done {exit done;}} control work<t:reader>(t input) exits done faults {reader<t>.read(input);exit done;} control main() exits done faults {work<u32>(1);exit done;}";
+    let p = compile(
+        source,
+        Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+    )
+    .unwrap();
+    let scenario = tellur::runtime::Scenario {
+        entry: "main".into(),
+        arguments: vec![],
+        calls: vec![],
+    };
+    assert_eq!(
+        p.run(&scenario).unwrap(),
+        p.expanded("main").unwrap().run(&scenario).unwrap()
+    );
+    let source = "pub control work() exits done {fault \"not declared\";}";
+    let e = &check_errors(source).errors[0];
+    assert_eq!(e.code, "E_FAULT_CONTRACT");
+    assert!(!e.message.contains("implementation cannot"));
+    let f = Fixture::new();
+    f.write(
+        "main.tellur",
+        "control work() faults {fault \"declared\";} control main() exits done {exit done;}",
+    );
+    f.report(&["check", "main.tellur", "--json"], true);
+    for source in [
+        "trait reader {region read() faults;}",
+        "trait reader {control read() exits done faults faults;}",
+    ] {
+        assert_eq!(check_errors(source).errors[0].code, "E_PARSE");
     }
 }

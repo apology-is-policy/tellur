@@ -267,6 +267,8 @@ pub struct Region {
     pub public: bool,
     /// None infers a private control's permission; public/trait contracts are explicit.
     pub fault_contract: Option<bool>,
+    /// Written control faults modifier, including the fault-only contract form.
+    pub fault_keyword_range: SourceRange,
     pub span: Span,
     pub end: Span,
     pub name_span: Span,
@@ -983,12 +985,18 @@ impl Parser {
         } else {
             SourceRange::default()
         };
+        let fault_start = self.here();
         let fault_contract = if modern && self.eat("faults") {
             Some(true)
         } else if public || signature {
             Some(false)
         } else {
             None
+        };
+        let fault_keyword_range = if fault_contract == Some(true) {
+            self.range_from(fault_start)
+        } else {
+            SourceRange::default()
         };
         if !fault_only {
             self.layout.contracts.push((contract_start, self.pos));
@@ -1015,6 +1023,7 @@ impl Parser {
             type_bindings: Default::default(),
             public,
             fault_contract,
+            fault_keyword_range,
             span,
             end: self.tokens[self.pos - 1].span,
             name_span,
@@ -2035,6 +2044,7 @@ pub(crate) fn parse_with_layout(source: &str) -> Result<(Unit, Vec<Token>, crate
                 type_parameters_range: SourceRange::default(),
                 declaration_keyword_range: SourceRange::default(),
                 async_keyword_range: SourceRange::default(),
+                fault_keyword_range: SourceRange::default(),
                 type_bounds: Default::default(),
                 type_bindings: Default::default(),
                 public,
@@ -2214,6 +2224,7 @@ pub(crate) fn parse_with_layout(source: &str) -> Result<(Unit, Vec<Token>, crate
                             type_parameters_range: SourceRange::default(),
                             declaration_keyword_range: SourceRange::default(),
                             async_keyword_range: SourceRange::default(),
+                            fault_keyword_range: SourceRange::default(),
                             type_bounds: type_parameters
                                 .iter()
                                 .map(|p| (p.clone(), vec![]))

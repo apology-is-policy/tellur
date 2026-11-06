@@ -238,11 +238,16 @@ fn implementation_permissions(i: &Implementation, d: &TraitDeclaration) -> Resul
             });
         }
         if method.fault_contract == Some(true) && !declared.fault_contract.unwrap_or(false) {
-            return Err(Diagnostic::new(
+            let diagnostic = Diagnostic::new(
                 "E_FAULT_CONTRACT",
                 method.span,
                 "implementation cannot add faults to a trait control that does not permit them",
-            ));
+            );
+            return Err(if method.fault_keyword_range.start.line != 0 {
+                diagnostic.with_range(method.fault_keyword_range)
+            } else {
+                diagnostic
+            });
         }
         if method.contingent_contract == Some(true) && declared.contingent_contract != Some(true) {
             return Err(Diagnostic::new(
@@ -1067,6 +1072,63 @@ pub(crate) fn abstract_witness(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn implementation_fault_ranges_keep_missing_metadata_without_other_range_fallback() {
+        for contract in ["exits done faults {exit done;}", "faults {fault \"x\";}"] {
+            let source = format!(
+                "trait reader {{async control read() exits done;}} implement reader for u32 {{async control read() {contract}}}"
+            );
+            let mut unit = crate::syntax::parse_unit(&source).unwrap();
+            let i = &mut unit.implementations[0];
+            let method = &mut i.methods[0];
+            assert_ne!(method.fault_keyword_range.start.line, 0);
+            assert_ne!(method.async_keyword_range.start.line, 0);
+            assert_ne!(method.declaration_keyword_range.start.line, 0);
+            method.fault_keyword_range = SourceRange::default();
+            let point = method.span;
+            let e = implementation_permissions(i, &unit.traits[0]).unwrap_err();
+            assert_eq!(e.span, point);
+            assert!(e.end.is_none());
+        }
+    }
+
+    #[test]
+    fn implementation_fault_ranges_survive_rewriting_and_permission_narrowing() {
+        let mut unit=crate::syntax::parse_unit("trait reader {control read() exits done;} implement reader for u32 {control read() exits done // 😀\r\n faults {exit done;}}").unwrap();
+        let d = &mut unit.traits[0];
+        let i = &mut unit.implementations[0];
+        let range = i.methods[0].fault_keyword_range;
+        assert_eq!(range.start.line, 2);
+        assert_eq!(range.end.column - range.start.column, 6);
+        d.methods[0].name = "rewritten".into();
+        i.methods[0].name = "rewritten".into();
+        let e = implementation_permissions(i, d).unwrap_err();
+        assert_eq!(e.span, range.start);
+        assert_eq!(*e.end.unwrap(), range.end);
+        d.methods[0].fault_contract = Some(true);
+        implementation_permissions(i, d).unwrap();
+        i.methods[0].fault_contract = Some(false);
+        implementation_permissions(i, d).unwrap();
+        d.methods[0].fault_contract = Some(false);
+        implementation_permissions(i, d).unwrap();
+    }
+
+    #[test]
+    fn implementation_fault_ranges_keep_generated_and_implicit_metadata_empty() {
+        let unit=crate::syntax::parse_unit("control marked() faults {fault \"x\";} control ordinary() exits done {exit done;} pub control explicit() exits done {exit done;} struct wrapper<t> {t value;constructor(t input) faults {self.value=move input;}} boundary guarded() {} contingency(string reason) {drop(reason);}").unwrap();
+        for region in &unit.regions {
+            if region.name == "marked" {
+                assert_eq!(region.fault_keyword_range.start.column, 18);
+                assert_eq!(region.fault_keyword_range.end.column, 24);
+            } else {
+                assert_eq!(region.fault_keyword_range, SourceRange::default());
+            }
+        }
+        let constructor = unit.data[0].constructor.as_ref().unwrap();
+        assert_eq!(constructor.fault_contract, Some(true));
+        assert_eq!(constructor.fault_keyword_range, SourceRange::default());
+    }
 
     #[test]
     fn implementation_async_ranges_keep_selected_metadata_fallbacks() {

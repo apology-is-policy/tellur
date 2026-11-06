@@ -5724,3 +5724,22 @@ imports, withholding stale hover until repair and then running the native progra
 The first imported fixture incorrectly marked an async trait contingent; correction
 preserves the existing separate rejection without changing production semantics.
 Public async-host admission remains pending its recorded decision.
+
+
+## Implementation fault-permission locations (0.215 / P2aw)
+
+The common parsed `faults` consumption retains a token range for both suffix and
+fault-only control contracts. Absent/inferred permissions and generated boundary or
+constructor signatures use empty metadata. Both module paths remap endpoints. Only
+the existing implementation fault-permission rejection selects that range.
+
+Five CLI cases cover the two forms, annotations/comments, Unicode/CRLF imports,
+repair, first-error compatibility, async/fault/contingency/bound/conformance replay,
+earlier preparation and profile barriers, canonical implementation and written method
+order, diagnostic/implementation limits, inherited narrower permissions and separate
+ordinary fault/parser behavior. Three units cover missing metadata without selecting
+other available ranges, rewriting and permission narrowing, and generated/implicit
+metadata. One previous async-priority regression now expects the faults range.
+LSP and isolated VS Code repair independent unsaved implementations through fault-only
+and suffix forms, suppress stale hover and recover checked hover/native execution.
+Public async-host admission remains pending its recorded design decision.
