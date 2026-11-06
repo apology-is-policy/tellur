@@ -798,9 +798,20 @@ pub trait HostPoll {
 }
 pub enum HostProgress {
     Ready(Outcome),
-    /// Do not poll again before this delay elapses.
-    Pending(std::time::Duration),
+    /// Poll again after the delay, when the descriptor is readable, or both.
+    Pending {
+        delay: Option<std::time::Duration>,
+        readable: Option<std::os::fd::RawFd>,
+    },
 }
+/// Internal descriptor readiness for live host operations (Mio in generated crates).
+pub trait ReadinessBackend {
+    fn register(&mut self, token: u64, fd: std::os::fd::RawFd) -> R<()>;
+    fn deregister(&mut self, fd: std::os::fd::RawFd) -> R<()>;
+    /// Tokens that became readable, after at most `timeout` (None waits indefinitely).
+    fn wait(&mut self, timeout: Option<std::time::Duration>) -> R<Vec<u64>>;
+}
+pub type RustReadiness = fn() -> R<Option<Box<dyn ReadinessBackend>>>;
 /// How a started async host operation completes.
 pub enum HostStart {
     Scripted {
@@ -838,6 +849,8 @@ pub struct Host {
     contingencies: Vec<String>,
     pub rust_adapter: Option<RustAdapter>,
     pub rust_start: Option<RustStart>,
+    pub readiness: Option<Box<dyn ReadinessBackend>>,
+    pub next_readiness_token: u64,
     pub manifest: Json,
     script: Option<Vec<ScriptCall>>,
     cursor: usize,
@@ -869,6 +882,8 @@ impl Host {
         Self {
             rust_adapter: None,
             rust_start: None,
+            readiness: None,
+            next_readiness_token: 0,
             manifest,
             script,
             cursor: 0,
@@ -1804,6 +1819,7 @@ pub fn launch(
     entries: &[Entry],
     rust_adapter: Option<RustAdapter>,
     rust_start: Option<RustStart>,
+    rust_readiness: RustReadiness,
     sites: &str,
 ) -> R<u8> {
     let manifest: Json = serde_json::from_str(manifest).map_err(|e| e.to_string())?;
@@ -1920,6 +1936,7 @@ pub fn launch(
     let mut host = Host::new(manifest, script, json_output, fuel);
     host.rust_adapter = rust_adapter;
     host.rust_start = rust_start;
+    host.readiness = rust_readiness()?;
     host.activations = fault::Tracker::new(
         serde_json::from_str(sites).map_err(|e| format!("E_NATIVE: invalid source table: {e}"))?,
     );

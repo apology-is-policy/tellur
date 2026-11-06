@@ -5859,3 +5859,25 @@ execution kinds and a mismatched adapter signature at build time. The scripted
 differential tests from 0.218 pass unchanged. A first implementation polled
 scripted operations once at start, consuming a wait early. The scripted
 comparison caught it before release.
+
+
+## Descriptor readiness for polled adapters (0.220 / E1g.3)
+
+`rust_api::Wait` gains `readable(&impl AsRawFd)` and `or_after(delay)`.
+`HostProgress::Pending` carries an optional delay and descriptor. A pending report
+with neither is a host error. Generated crates with polled adapters add the renamed
+`tellur_mio` dependency (`os-poll`, `os-ext`; the name is reserved) and emit
+`rust_readiness`, a Mio `ReadinessBackend`. Other crates emit a stub, and `launch`
+installs the backend. A live operation registers its descriptor once under a fresh
+token, re-registers when the descriptor changes, and deregisters on completion and
+when unwinding stops it (`HostOperation::stop`). Idle points block on the backend
+up to the earliest delay and mark reported tokens due. The sequential driver waits
+for its single operation the same way.
+
+The adapter integration tests now resolve their lockfile with `lock-native`. A new
+test uses socket-pair resources with delayed writer threads. Two concurrent receives
+complete in readiness order with exactly two polls each (the start `WouldBlock` and
+the readable poll), and no retry loop. A sibling fault stops a registered receive
+without waiting for its data, dropping state before the channel. The earlier delay,
+sequential, fault and binding tests, the scripted differential tests and all Rust
+adapter tests pass.

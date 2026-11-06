@@ -201,14 +201,30 @@ enum HostSource {
     },
     Live {
         operation: Box<dyn HostPoll>,
-        due: std::time::Instant,
+        due: Option<std::time::Instant>,
+        /// Readiness token and descriptor registered with the host backend.
+        registered: Option<(u64, std::os::fd::RawFd)>,
+        readable: bool,
     },
     Ready(Outcome),
 }
 /// When a pending host operation may next be polled.
 pub enum HostWait {
-    Scripted,
-    Live(std::time::Instant),
+    Due,
+    At(std::time::Instant),
+    Readable {
+        token: u64,
+        at: Option<std::time::Instant>,
+    },
+}
+fn deregister(host: &mut Host, registered: &mut Option<(u64, std::os::fd::RawFd)>) -> R<()> {
+    if let Some((_, fd)) = registered.take() {
+        host.readiness
+            .as_mut()
+            .ok_or("E_NATIVE: readiness registration without a backend")?
+            .deregister(fd)?;
+    }
+    Ok(())
 }
 impl HostOperation {
     fn start(
@@ -234,7 +250,9 @@ impl HostOperation {
             },
             HostStart::Live(operation) => HostSource::Live {
                 operation,
-                due: std::time::Instant::now(),
+                due: None,
+                registered: None,
+                readable: false,
             },
         };
         let mut started = Self {
@@ -266,13 +284,43 @@ impl HostOperation {
                         HostSource::Ready((std::mem::take(outcome), std::mem::take(fields)));
                 }
             }
-            HostSource::Live { operation, due } => {
+            HostSource::Live {
+                operation,
+                due,
+                registered,
+                readable,
+            } => {
+                *readable = false;
                 match host.poll_host_operation(self.operation, operation)? {
                     HostProgress::Ready(outcome) => {
+                        deregister(host, registered)?;
                         // Adapter state is destroyed before the result is delivered.
                         self.source = HostSource::Ready(outcome);
                     }
-                    HostProgress::Pending(delay) => *due = std::time::Instant::now() + delay,
+                    HostProgress::Pending {
+                        delay,
+                        readable: fd,
+                    } => {
+                        if delay.is_none() && fd.is_none() {
+                            return Err(format!(
+                                "E_HOST: pending `{}` requested neither a delay nor readiness",
+                                self.operation
+                            ));
+                        }
+                        *due = delay.map(|delay| std::time::Instant::now() + delay);
+                        if registered.is_some_and(|(_, old)| Some(old) != fd) {
+                            deregister(host, registered)?;
+                        }
+                        if let (None, Some(fd)) = (*registered, fd) {
+                            host.next_readiness_token += 1;
+                            let token = host.next_readiness_token;
+                            host.readiness
+                                .as_mut()
+                                .ok_or("E_HOST: readiness requires a polled Rust adapter backend")?
+                                .register(token, fd)?;
+                            *registered = Some((token, fd));
+                        }
+                    }
                 }
             }
             HostSource::Ready(_) => {}
@@ -282,10 +330,27 @@ impl HostOperation {
     fn waiting(&self) -> Option<HostWait> {
         match &self.source {
             _ if self.poll => None,
-            HostSource::Scripted { .. } => Some(HostWait::Scripted),
-            HostSource::Live { due, .. } => Some(HostWait::Live(*due)),
+            HostSource::Scripted { .. } => Some(HostWait::Due),
+            HostSource::Live { readable: true, .. } => Some(HostWait::Due),
+            HostSource::Live {
+                due,
+                registered: Some((token, _)),
+                ..
+            } => Some(HostWait::Readable {
+                token: *token,
+                at: *due,
+            }),
+            HostSource::Live { due, .. } => Some(due.map_or(HostWait::Due, HostWait::At)),
             HostSource::Ready(_) => None,
         }
+    }
+    /// A stopped operation releases its readiness registration before its state
+    /// and any supplier resource; it publishes nothing.
+    fn stop(mut self, host: &mut Host) -> R<()> {
+        if let HostSource::Live { registered, .. } = &mut self.source {
+            deregister(host, registered)?;
+        }
+        Ok(())
     }
     /// Publish the completion event with the arguments captured at start, then
     /// bind the outcome. Neither consumes instruction fuel.
@@ -1084,7 +1149,10 @@ impl Machine {
             if matches!(&frame.pending, Some(Pending::Host(_))) {
                 // A stopped host operation publishes nothing. Its borrowed
                 // resource arguments are supplier handles, never released here.
-                drop(frame.pending.take());
+                let Some(Pending::Host(operation)) = frame.pending.take() else {
+                    unreachable!()
+                };
+                operation.stop(host)?;
             }
             if let Some(Pending::Await(pending)) = &mut frame.pending {
                 // Captures may still be queued after failed admission; returned
@@ -1262,6 +1330,21 @@ impl Machine {
         match self.stack.last().and_then(|a| a.pending.as_ref()) {
             Some(Pending::Host(operation)) => operation.waiting(),
             _ => None,
+        }
+    }
+    /// Descriptor readiness reported for these tokens makes a live operation due.
+    pub fn host_readable(&mut self, tokens: &[u64]) {
+        if let Some(Pending::Host(HostOperation {
+            source:
+                HostSource::Live {
+                    registered: Some((token, _)),
+                    readable,
+                    ..
+                },
+            ..
+        })) = self.stack.last_mut().and_then(|a| a.pending.as_mut())
+        {
+            *readable |= tokens.contains(token);
         }
     }
     /// Readiness for the pending host operation: its next turn polls once.

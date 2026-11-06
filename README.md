@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.219.0** implements the v0.1 checked core and the current language
+Compiler release **0.220.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -16,6 +16,10 @@ a reference interpreter, graph expansion, native compiler, language server, and
 VS Code build/run commands. The [revision plan](docs/language-revision.md) separates
 delivered features from the remaining reference, slice, outcome-expression and async work. The language is still
 fluid; this is an experimental implementation, not a production compiler.
+
+Release 0.220 wakes polled adapters on descriptor readiness. An adapter returns
+`Wait::readable(&socket)` after a nonblocking read would block, and the runtime
+parks the operation until the descriptor is readable, without retry loops.
 
 Release 0.219 lets Rust adapters implement async host operations. An adapter
 bound with `"execution": "poll"` returns per-operation state that the native

@@ -4702,3 +4702,17 @@ adapter state before publishing the event and delivering the outcome. Fault
 unwinding drops a pending operation's state before supplier frames retire. No new
 dependencies are added. E1g.3 replaces delays with internal fd readiness where an
 adapter registers interest.
+
+### Descriptor readiness (E1g.3, 0.220)
+
+`Wait::readable(&source)` (optionally `.or_after(delay)`) registers the descriptor
+with an internal readiness backend. Generated crates with polled adapters depend on
+Mio through the renamed `tellur_mio` dependency, so an adapter's own `mio`
+dependency cannot collide. Each pending operation keeps at most one registration
+under a fresh token. Changing the descriptor re-registers it; completion and stop
+deregister it before the state drops. At an idle point with no due operation, the
+source driver blocks on readiness up to the earliest delay and marks reported
+tokens due. It then signals the oldest due parked operation as before. The
+sequential driver waits for its single operation the same way. Readiness is
+edge-triggered, so adapters report it only after `WouldBlock`. Write readiness and
+deadline-only timers beyond `Wait::after` remain outside this stage.

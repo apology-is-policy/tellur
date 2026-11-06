@@ -8,8 +8,8 @@ Compiler 0.189 supports `async control`, synchronous entry with `run`, direct
 scheduler for `spawn` tasks with owned values, direct borrows and nested owned record/option/variant/named-outcome captures/results, plus borrowed record/option/variant/named-outcome captures and whole borrowed record/option/variant/named-outcome results, plus reference chains through records. Source handoffs occur at `await` and `yield`.
 Compiler 0.217 adds [async host operations](#async-host-operations) awaited
 directly, 0.218 runs them in native executables from scripted scenarios, and 0.219
-polls Rust adapters for them. File-descriptor readiness, cancellation and LLVM
-coroutine lowering remain later work.
+polls Rust adapters for them, waking them on descriptor readiness since 0.220.
+Cancellation and LLVM coroutine lowering remain later work.
 
 The private E1f.1 reference and E1f.2a native models retain unfinished adapter
 operations through readiness waits and fault settlement. The native model also
@@ -1093,7 +1093,7 @@ This first profile has deliberate limits:
 - Since 0.219 a native executable without a scenario runs a Rust adapter bound
   with `"execution": "poll"`. The adapter is started once and polled until
   complete; pending operations are re-polled at idle points after the delay they
-  request. See [polled async operations](../rust-adapters.md#polled-async-operations-0219).
+  request or, since 0.220, when a descriptor they wait on becomes readable. See [polled async operations](../rust-adapters.md#polled-async-operations-0219).
   An unbound async primitive still stops with `E_HOST` without a scenario.
 
 <!-- tellur:reject E_ASYNC -->

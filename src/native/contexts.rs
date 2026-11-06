@@ -123,18 +123,34 @@ impl<'a> Contexts<'a> {
     }
     /// A sequential chain has no other source work to observe pending reports:
     /// scripted waits elapse together; a live operation is re-polled when due.
-    fn elapse_host_operation(&mut self, key: &ContextKey) {
+    fn elapse_host_operation(&mut self, key: &ContextKey) -> R<()> {
         let Some(wait) = self.host_operation_waiting(key) else {
-            return;
+            return Ok(());
         };
-        if let HostWait::Live(due) = wait {
-            std::thread::sleep(due.saturating_duration_since(std::time::Instant::now()));
+        match wait {
+            HostWait::Due => {}
+            HostWait::At(due) => {
+                std::thread::sleep(due.saturating_duration_since(std::time::Instant::now()))
+            }
+            HostWait::Readable { token, at } => loop {
+                let timeout = at.map(|at| at.saturating_duration_since(std::time::Instant::now()));
+                let tokens = self
+                    .host
+                    .readiness
+                    .as_mut()
+                    .ok_or("E_NATIVE: readiness registration without a backend")?
+                    .wait(timeout)?;
+                if tokens.contains(&token) || at.is_some_and(|at| at <= std::time::Instant::now()) {
+                    break;
+                }
+            },
         }
         self.parked
             .get_mut(&key.id)
             .unwrap()
             .machine
             .host_ready(true);
+        Ok(())
     }
     fn park_host_operation(&mut self, key: &ContextKey) -> R<()> {
         let token = self.park_for_readiness(key)?;
@@ -159,20 +175,50 @@ impl<'a> Contexts<'a> {
             }
             let now = std::time::Instant::now();
             let mut earliest: Option<std::time::Instant> = None;
+            let mut readiness = false;
             let mut selected = None;
             for (index, (key, _)) in self.host_waits.iter().enumerate() {
-                match self.parked[&key.id].machine.host_waiting() {
-                    Some(HostWait::Live(due)) if due > now => {
-                        earliest = Some(earliest.map_or(due, |e| e.min(due)));
+                let at = match self.parked[&key.id].machine.host_waiting() {
+                    Some(HostWait::At(at)) => at,
+                    Some(HostWait::Readable { at, .. }) => {
+                        readiness = true;
+                        match at {
+                            Some(at) => at,
+                            None => continue,
+                        }
                     }
                     _ => {
                         selected = Some(index);
                         break;
                     }
+                };
+                if at <= now {
+                    selected = Some(index);
+                    break;
                 }
+                earliest = Some(earliest.map_or(at, |e| e.min(at)));
             }
             let Some(index) = selected else {
-                std::thread::sleep(earliest.unwrap().saturating_duration_since(now));
+                let timeout = earliest.map(|at| at.saturating_duration_since(now));
+                if readiness {
+                    let tokens = self
+                        .host
+                        .readiness
+                        .as_mut()
+                        .ok_or("E_NATIVE: readiness registration without a backend")?
+                        .wait(timeout)?;
+                    for (key, _) in &self.host_waits {
+                        self.parked
+                            .get_mut(&key.id)
+                            .unwrap()
+                            .machine
+                            .host_readable(&tokens);
+                    }
+                } else {
+                    std::thread::sleep(
+                        timeout.ok_or("E_NATIVE: pending host operations cannot become ready")?,
+                    );
+                }
                 continue;
             };
             let (key, token) = self.host_waits.remove(index).unwrap();
@@ -1525,7 +1571,7 @@ fn drive_sequential(
             }
         }
         if let Some(key) = chain.last() {
-            contexts.elapse_host_operation(&key.clone());
+            contexts.elapse_host_operation(&key.clone())?;
         }
     };
     if !contexts.parked.is_empty()

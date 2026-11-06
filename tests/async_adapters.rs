@@ -1,6 +1,6 @@
-//! E1g.2b: Rust adapters for async host operations. Native executables start a
-//! bound operation once and poll it until completion, re-polling only when its
-//! adapter's delay has elapsed and no other source work is runnable.
+//! Rust adapters for async host operations. Native executables start a bound
+//! operation once and poll it until completion (E1g.2b), re-polling only at idle
+//! points after its delay or when its descriptor becomes readable (E1g.3).
 use serde_json::{Value as Json, json};
 use std::{fs, path::PathBuf, process::Command};
 use tellur::{CheckedProgram, compile, manifest::Manifest};
@@ -35,11 +35,11 @@ impl Fixture {
             .iter()
             .map(|o| (o.name.clone(), 0))
             .collect();
-        p.clone()
-            .with_entry_exit_codes("main", codes)
-            .unwrap()
-            .build_native("main", &binary, 0)
+        let p = p.clone().with_entry_exit_codes("main", codes).unwrap();
+        // Polled adapters add the internal readiness dependency; resolve it offline.
+        p.lock_native("main", &self.root.join(format!("{name}-lock")))
             .unwrap();
+        p.build_native("main", &binary, 0).unwrap();
         binary
     }
     /// Run live (no scenario), returning JSON stdout or stderr and the adapter log.
@@ -336,10 +336,181 @@ fn adapter_bindings_match_the_async_contract() {
     .unwrap();
     let p = compile(CONCURRENT, f.manifest(&config())).unwrap();
     let codes = [("done".to_string(), 0)].into_iter().collect();
-    assert!(
-        p.with_entry_exit_codes("main", codes)
-            .unwrap()
-            .build_native("main", &f.root.join("mismatch"), 0)
-            .is_err()
+    let p = p.with_entry_exit_codes("main", codes).unwrap();
+    p.lock_native("main", &f.root.join("mismatch-lock"))
+        .unwrap();
+    assert!(p.build_native("main", &f.root.join("mismatch"), 0).is_err());
+}
+
+fn channel_config() -> Json {
+    json!({"version":"0.1",
+    "types":[{"name":"channel","kind":"opaque","linear":true,"fault":"release"}],
+    "rust":{"source":"host.rs","lockfile":"Cargo.lock","resources":{"channel":"Channel"}},
+    "primitives":[
+        {"name":"open_channel","parameters":[{"name":"path","type":"string","mode":"borrow"},
+            {"name":"name","type":"string","mode":"borrow"},{"name":"delay","type":"u32","mode":"value"}],
+         "outcomes":[{"name":"opened","fields":[{"name":"value","type":"channel"}]}],
+         "effects":["open"],"returns":true,"rust":{"execution":"immediate"}},
+        {"name":"receive","async":true,
+         "parameters":[{"name":"channel","type":"channel","mode":"borrow"}],
+         "outcomes":[{"name":"data","fields":[{"name":"text","type":"string"}]},{"name":"closed","fields":[]}],
+         "effects":["receive"],"returns":true,"rust":{"execution":"poll"}},
+        {"name":"close_channel","parameters":[{"name":"value","type":"channel","mode":"consume"}],
+         "outcomes":[{"name":"closed","fields":[]}],
+         "effects":["close"],"returns":true,"rust":{"execution":"immediate"}}
+    ]})
+}
+
+const CHANNEL_HOST: &str = r#"
+use crate::rust_api;
+use std::{io::{Read, Write}, os::unix::net::UnixStream, time::Duration};
+fn log(path: &str, line: String) {
+    let mut file = std::fs::OpenOptions::new().create(true).append(true).open(path).unwrap();
+    writeln!(file, "{line}").unwrap();
+}
+pub struct Channel { reader: UnixStream, path: String, name: String }
+impl Drop for Channel { fn drop(&mut self) { log(&self.path, format!("channel drop {}", self.name)); } }
+pub fn open_channel(path: &str, name: &str, delay: u32) -> rust_api::open_channel_outcome {
+    let (reader, mut writer) = UnixStream::pair().unwrap();
+    reader.set_nonblocking(true).unwrap();
+    let message = name.to_string();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(delay.into()));
+        let _ = writer.write_all(message.as_bytes());
+        std::thread::sleep(Duration::from_secs(5));
+    });
+    rust_api::open_channel_outcome::opened(Channel { reader, path: path.into(), name: name.into() })
+}
+pub fn close_channel(value: Channel) -> rust_api::close_channel_outcome {
+    drop(value);
+    rust_api::close_channel_outcome::closed
+}
+pub struct Receiving { path: String, name: String, polls: u32 }
+impl Drop for Receiving {
+    fn drop(&mut self) { log(&self.path, format!("state drop {} after {} polls", self.name, self.polls)); }
+}
+pub fn receive(channel: &Channel) -> Box<dyn rust_api::receive_operation> {
+    Box::new(Receiving { path: channel.path.clone(), name: channel.name.clone(), polls: 0 })
+}
+impl rust_api::receive_operation for Receiving {
+    fn poll(&mut self, channel: &Channel) -> rust_api::Poll<rust_api::receive_outcome> {
+        self.polls += 1;
+        let mut buffer = [0u8; 64];
+        match (&channel.reader).read(&mut buffer) {
+            Ok(0) => rust_api::Poll::Ready(rust_api::receive_outcome::closed),
+            Ok(n) => rust_api::Poll::Ready(rust_api::receive_outcome::data(
+                String::from_utf8_lossy(&buffer[..n]).into_owned(),
+            )),
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                rust_api::Poll::Pending(rust_api::Wait::readable(&channel.reader))
+            }
+            Err(e) => panic!("{e}"),
+        }
+    }
+}
+"#;
+
+const CHANNELS: &str = r#"
+async control listen(ref channel c) exits done {
+    delta await receive(c) {
+        data { string text } => got,
+        closed => ended
+    }
+
+    [got]: emit(text);
+    [got | ended]: exit done;
+}
+async control startup(ref channel slow, ref channel fast) exits done {
+    auto first = spawn listen(slow);
+    auto second = spawn listen(fast);
+    emit("queued");
+    await first;
+    await second;
+    exit done;
+}
+control main(string path) exits done {
+    delta open_channel(borrow path, borrow "slow", 150) {
+        opened { channel slow } => slow_ready
+    }
+    [slow_ready]:
+        delta open_channel(borrow path, borrow "fast", 20) {
+            opened { channel fast } => fast_ready
+        }
+    [slow_ready & fast_ready]:
+        run startup(borrow slow, borrow fast);
+        delta close_channel(move slow) {
+            closed => slow_closed
+        }
+    [slow_ready & fast_ready & slow_closed]:
+        delta close_channel(move fast) {
+            closed => fast_closed
+        }
+    [slow_ready & fast_ready & slow_closed & fast_closed]: exit done;
+}
+"#;
+
+#[test]
+fn readable_descriptors_wake_polled_operations_without_retry_loops() {
+    let f = Fixture::new("channels");
+    fs::write(f.root.join("host.rs"), CHANNEL_HOST).unwrap();
+    let p = compile(CHANNELS, f.manifest(&channel_config())).unwrap();
+    let binary = f.build(&p, "channels");
+    let started = std::time::Instant::now();
+    let (ok, result, log) = f.run(&binary, "channels.log");
+    assert!(ok, "{result}");
+    assert!(started.elapsed() < std::time::Duration::from_secs(4));
+    assert_eq!(
+        messages(&result["events"]),
+        [
+            "open_channel",
+            "open_channel",
+            "queued",
+            "receive:fast",
+            "fast",
+            "receive:slow",
+            "slow",
+            "close_channel",
+            "close_channel"
+        ]
     );
+    // Each operation polls once at start (WouldBlock) and once when readable.
+    assert_eq!(
+        log,
+        [
+            "state drop fast after 2 polls",
+            "state drop slow after 2 polls",
+            "channel drop slow",
+            "channel drop fast"
+        ]
+    );
+    // An owning fault stops a registered operation without waiting for its data.
+    let faulting = CHANNELS
+        .replace(
+            "    auto second = spawn listen(fast);",
+            "    auto second = spawn failing();",
+        )
+        .replace(
+            "async control startup(ref channel slow, ref channel fast) exits done {",
+            "async control failing() exits done faults {\n    yield;\n    fault \"sibling failed\";\n}\nasync control startup(ref channel slow, ref channel fast) exits done faults {",
+        )
+        .replace("open_channel(borrow path, borrow \"slow\", 150)", "open_channel(borrow path, borrow \"slow\", 3000)")
+        .replace("control main(string path) exits done {", "control main(string path) exits done faults {");
+    let p = compile(&faulting, f.manifest(&channel_config())).unwrap();
+    let binary = f.build(&p, "channel-fault");
+    let started = std::time::Instant::now();
+    let (ok, report, log) = f.run(&binary, "channel-fault.log");
+    assert!(!ok);
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(2),
+        "stopped operation waited for data"
+    );
+    assert!(
+        report["message"]
+            .as_str()
+            .unwrap()
+            .contains("sibling failed"),
+        "{report}"
+    );
+    assert_eq!(log[0], "state drop slow after 1 polls");
+    assert!(log.contains(&"channel drop slow".to_string()), "{log:?}");
 }

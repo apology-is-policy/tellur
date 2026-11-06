@@ -103,7 +103,8 @@ pub(crate) fn validate(manifest: &Manifest) -> Result<()> {
                 .bytes()
                 .all(|c| c.is_ascii_alphanumeric() || c == b'_' || c == b'-')
                 || name.is_empty()
-                || ["serde", "serde_json", "tellur_adapter_lock"].contains(&name.as_str())
+                || ["serde", "serde_json", "tellur_adapter_lock", "tellur_mio"]
+                    .contains(&name.as_str())
                 || name.starts_with("path_generated_")
             {
                 return Err(error(format!(
@@ -207,7 +208,7 @@ fn collect_type(t: &str, all: &mut BTreeSet<String>) {
 /// that checks Tellur callers. No arbitrary dynamic wire-value API reaches wrappers.
 pub(crate) fn source(manifest: &Manifest) -> Result<String> {
     let Some(config) = &manifest.rust else {
-        return Ok("fn rust_dispatch(_: &mut Resources, _: &str, _: Vec<V>) -> R<Outcome> { Err(\"E_HOST: no Rust adapter\".into()) }\nfn rust_start(_: &mut Resources, _: &str, _: Vec<V>) -> R<Box<dyn HostPoll>> { Err(\"E_HOST: no Rust adapter\".into()) }\n".into());
+        return Ok("fn rust_dispatch(_: &mut Resources, _: &str, _: Vec<V>) -> R<Outcome> { Err(\"E_HOST: no Rust adapter\".into()) }\nfn rust_start(_: &mut Resources, _: &str, _: Vec<V>) -> R<Box<dyn HostPoll>> { Err(\"E_HOST: no Rust adapter\".into()) }\n".to_string() + NO_READINESS);
     };
     if !config.source.is_absolute()
         || !config.lockfile.is_absolute()
@@ -464,10 +465,60 @@ pub(crate) fn source(manifest: &Manifest) -> Result<String> {
     }
     code.push_str("_=>Err(format!(\"E_HOST: unbound Rust operation {name}\")),}}\n");
     start_source(manifest, resources, &ids, &mut code);
+    if manifest
+        .primitives
+        .iter()
+        .any(|p| p.asynchronous && p.rust.is_some())
+    {
+        code.push_str(MIO_READINESS);
+    } else {
+        code.push_str(NO_READINESS);
+    }
     Ok(code)
 }
 /// Readiness vocabulary shared by every polled async host operation.
-const POLL_API: &str = "/// One poll of a started async host operation.\npub enum Poll<T> { Ready(T), Pending(Wait) }\n/// When the runtime may poll a pending operation again. It never polls earlier.\n#[derive(Clone, Copy, Debug, PartialEq, Eq)]\npub struct Wait { pub(crate) retry_after: std::time::Duration }\nimpl Wait { pub fn after(delay: std::time::Duration) -> Self { Self { retry_after: delay } } }\n";
+const POLL_API: &str = r#"/// One poll of a started async host operation.
+pub enum Poll<T> { Ready(T), Pending(Wait) }
+/// When the runtime may poll a pending operation again: after a delay, when a
+/// descriptor becomes readable, or whichever comes first. It never polls earlier.
+/// Readability is edge-triggered: report it only after a nonblocking read
+/// returned `WouldBlock`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Wait { pub(crate) retry_after: Option<std::time::Duration>, pub(crate) readable: Option<std::os::fd::RawFd> }
+impl Wait {
+    pub fn after(delay: std::time::Duration) -> Self { Self { retry_after: Some(delay), readable: None } }
+    pub fn readable(source: &impl std::os::fd::AsRawFd) -> Self { Self { retry_after: None, readable: Some(source.as_raw_fd()) } }
+    pub fn or_after(self, delay: std::time::Duration) -> Self { Self { retry_after: Some(delay), ..self } }
+}
+"#;
+const NO_READINESS: &str =
+    "fn rust_readiness() -> R<Option<Box<dyn ReadinessBackend>>> { Ok(None) }\n";
+/// The internal readiness backend for polled adapters; Mio stays out of the adapter API.
+const MIO_READINESS: &str = r#"struct MioReadiness { poll: tellur_mio::Poll, events: tellur_mio::Events }
+impl ReadinessBackend for MioReadiness {
+    fn register(&mut self, token: u64, fd: std::os::fd::RawFd) -> R<()> {
+        self.poll.registry().register(&mut tellur_mio::unix::SourceFd(&fd), tellur_mio::Token(token as usize), tellur_mio::Interest::READABLE)
+            .map_err(|e| format!("E_HOST: readiness registration failed: {e}"))
+    }
+    fn deregister(&mut self, fd: std::os::fd::RawFd) -> R<()> {
+        self.poll.registry().deregister(&mut tellur_mio::unix::SourceFd(&fd))
+            .map_err(|e| format!("E_HOST: readiness deregistration failed: {e}"))
+    }
+    fn wait(&mut self, timeout: Option<std::time::Duration>) -> R<Vec<u64>> {
+        loop {
+            match self.poll.poll(&mut self.events, timeout) {
+                Ok(()) => return Ok(self.events.iter().map(|e| e.token().0 as u64).collect()),
+                Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+                Err(e) => return Err(format!("E_HOST: readiness wait failed: {e}")),
+            }
+        }
+    }
+}
+fn rust_readiness() -> R<Option<Box<dyn ReadinessBackend>>> {
+    let poll = tellur_mio::Poll::new().map_err(|e| format!("E_HOST: readiness backend failed: {e}"))?;
+    Ok(Some(Box::new(MioReadiness { poll, events: tellur_mio::Events::with_capacity(64) })))
+}
+"#;
 /// Start async host operations and adapt their typed polls to the runtime.
 fn start_source(
     manifest: &Manifest,
@@ -586,7 +637,7 @@ fn start_source(
         }
         writeln!(
             code,
-            "match self.operation.poll({}){{rust_api::Poll::Pending(wait)=>Ok(HostProgress::Pending(wait.retry_after)),rust_api::Poll::Ready(outcome)=>Ok(HostProgress::Ready(match outcome{{",
+            "match self.operation.poll({}){{rust_api::Poll::Pending(wait)=>Ok(HostProgress::Pending{{delay:wait.retry_after,readable:wait.readable}}),rust_api::Poll::Ready(outcome)=>Ok(HostProgress::Ready(match outcome{{",
             borrowed
                 .iter()
                 .map(|(i, _)| format!("p{i}"))
@@ -626,6 +677,15 @@ fn start_source(
 }
 pub(crate) fn cargo(manifest: &Manifest, template: &str) -> String {
     let mut dependencies = String::new();
+    if manifest
+        .primitives
+        .iter()
+        .any(|p| p.asynchronous && p.rust.is_some())
+    {
+        dependencies.push_str(
+            "tellur_mio = { package = \"mio\", version = \"1\", features = [\"os-poll\", \"os-ext\"] }\n",
+        );
+    }
     if let Some(config) = &manifest.rust {
         for (name, d) in &config.dependencies {
             writeln!(

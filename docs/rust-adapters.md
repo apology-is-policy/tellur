@@ -191,7 +191,11 @@ types and one trait per operation:
 ```rust
 pub enum Poll<T> { Ready(T), Pending(Wait) }
 pub struct Wait { /* private */ }
-impl Wait { pub fn after(delay: std::time::Duration) -> Self }
+impl Wait {
+    pub fn after(delay: std::time::Duration) -> Self
+    pub fn readable(source: &impl std::os::fd::AsRawFd) -> Self   // 0.220
+    pub fn or_after(self, delay: std::time::Duration) -> Self      // 0.220
+}
 pub trait tick_operation {
     fn poll(&mut self, counter: &crate::rust_host::Counter) -> Poll<tick_outcome>;
 }
@@ -231,9 +235,19 @@ The completion event is published once, at completion, with the start arguments.
 The operation state is dropped when it completes, before the outcome is delivered.
 When an owning fault stops the awaiting task, the state is dropped without a poll
 or event, before any supplier resource retires. Scenario runs never start or poll
-adapters; they script completions with `"waits"`. There is no file-descriptor
-readiness yet (E1g.3), so an adapter reading a nonblocking socket chooses its own
-retry delay.
+adapters; they script completions with `"waits"`.
+
+Since 0.220, `Wait::readable(&stream)` parks the operation until the descriptor
+becomes readable, optionally bounded by `.or_after(delay)`. Readability is
+edge-triggered: return it only after a nonblocking read reported `WouldBlock`,
+and read until `WouldBlock` again when polled. The descriptor must stay open while
+the operation is pending; it normally belongs to a borrowed resource, which
+outlives the operation. The runtime registers the descriptor with an internal
+readiness backend (Mio) and deregisters it on completion or stop, before the
+state drops. Registration failures stop the host with `E_HOST`. A build with polled
+adapters adds that internal dependency, so rerun `tellurc lock-native` after
+upgrading. Idle waiting blocks on readiness up to the earliest delay instead of
+sleeping.
 
 ## Dependency and build workflow
 
