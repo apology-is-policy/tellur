@@ -142,7 +142,7 @@ fn drive_source(
         }
         // A pending host operation parks its task; quota pauses never do.
         if let Some(current) = selected.clone()
-            && contexts.host_operation_waiting(&current)
+            && contexts.host_operation_waiting(&current).is_some()
         {
             contexts.park_host_operation(&current)?;
             selected = None;

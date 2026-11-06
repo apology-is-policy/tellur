@@ -789,6 +789,27 @@ impl Resources {
     }
 }
 pub type RustAdapter = fn(&mut Resources, &str, Vec<V>) -> R<Outcome>;
+/// Starts a Rust-bound async host operation from its validated arguments.
+pub type RustStart = fn(&mut Resources, &str, Vec<V>) -> R<Box<dyn HostPoll>>;
+/// A started live async host operation. Adapter state is dropped on completion or
+/// when its owning context stops, before any supplier resource retires.
+pub trait HostPoll {
+    fn poll(&mut self, resources: &mut Resources) -> R<HostProgress>;
+}
+pub enum HostProgress {
+    Ready(Outcome),
+    /// Do not poll again before this delay elapses.
+    Pending(std::time::Duration),
+}
+/// How a started async host operation completes.
+pub enum HostStart {
+    Scripted {
+        outcome: String,
+        fields: Vec<V>,
+        waits: u32,
+    },
+    Live(Box<dyn HostPoll>),
+}
 /// Retained boundary lifecycle; no value arena or executable continuation is cloned.
 /// The currently executing tracker remains in Host until a context handoff exists.
 pub struct BoundaryState {
@@ -816,6 +837,7 @@ pub struct ContextRoot {
 pub struct Host {
     contingencies: Vec<String>,
     pub rust_adapter: Option<RustAdapter>,
+    pub rust_start: Option<RustStart>,
     pub manifest: Json,
     script: Option<Vec<ScriptCall>>,
     cursor: usize,
@@ -846,6 +868,7 @@ impl Host {
     ) -> Self {
         Self {
             rust_adapter: None,
+            rust_start: None,
             manifest,
             script,
             cursor: 0,
@@ -1272,7 +1295,7 @@ impl Host {
     }
     /// Start an async host operation. Its scripted completion is bound and
     /// validated now; pending reports never consume or replay script entries.
-    pub fn start_host_operation(&mut self, name: &str, args: &[V]) -> R<(String, Vec<V>, u32)> {
+    pub fn start_host_operation(&mut self, name: &str, args: &[V]) -> R<HostStart> {
         let p = self.declared_primitive(name)?;
         if p["async"] != true {
             return Err(format!("E_NATIVE: `{name}` is not an async host operation"));
@@ -1285,6 +1308,16 @@ impl Host {
             .collect::<Vec<_>>();
         validate_args(args, &types, &self.manifest)?;
         let Some(script) = &self.script else {
+            if p["rust"].is_object() {
+                let start = self
+                    .rust_start
+                    .ok_or("E_HOST: Rust adapter is not linked")?;
+                return Ok(HostStart::Live(start(
+                    &mut self.resources,
+                    name,
+                    args.to_vec(),
+                )?));
+            }
             return Err(format!(
                 "E_HOST: no live adapter for async host operation `{name}`; supply --scenario"
             ));
@@ -1311,9 +1344,38 @@ impl Host {
             .map(|f| f["type"].as_str().unwrap().into())
             .collect::<Vec<_>>();
         validate_args(&call.fields, &types, &self.manifest)?;
-        let started = (call.outcome.clone(), call.fields.clone(), call.waits);
+        let started = HostStart::Scripted {
+            outcome: call.outcome.clone(),
+            fields: call.fields.clone(),
+            waits: call.waits,
+        };
         self.cursor += 1;
         Ok(started)
+    }
+    /// One poll of a live operation; a completion must match its declared outcome.
+    pub fn poll_host_operation(
+        &mut self,
+        name: &str,
+        operation: &mut Box<dyn HostPoll>,
+    ) -> R<HostProgress> {
+        let progress = operation.poll(&mut self.resources)?;
+        if let HostProgress::Ready((outcome, fields)) = &progress {
+            let p = self.declared_primitive(name)?;
+            let o = p["outcomes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|o| o["name"] == outcome.as_str())
+                .ok_or_else(|| format!("E_DRIVER: undeclared outcome {outcome}"))?;
+            let types = o["fields"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|f| f["type"].as_str().unwrap().into())
+                .collect::<Vec<_>>();
+            validate_args(fields, &types, &self.manifest)?;
+        }
+        Ok(progress)
     }
     /// Publish a completed host operation once, with its start-time arguments.
     pub fn finish_host_operation(
@@ -1741,6 +1803,7 @@ pub fn launch(
     default_entry: &str,
     entries: &[Entry],
     rust_adapter: Option<RustAdapter>,
+    rust_start: Option<RustStart>,
     sites: &str,
 ) -> R<u8> {
     let manifest: Json = serde_json::from_str(manifest).map_err(|e| e.to_string())?;
@@ -1856,6 +1919,7 @@ pub fn launch(
     }
     let mut host = Host::new(manifest, script, json_output, fuel);
     host.rust_adapter = rust_adapter;
+    host.rust_start = rust_start;
     host.activations = fault::Tracker::new(
         serde_json::from_str(sites).map_err(|e| format!("E_NATIVE: invalid source table: {e}"))?,
     );

@@ -2168,9 +2168,10 @@ direct `await` inside an async control. A plain call, `run`, `defer` or `spawn` 
 it reports `E_ASYNC` naming the operation, at the complete invocation. The manifest
 loader rejects async primitives outside the first profile: borrowed data,
 consumed resources, non-Copy values passed by value, resource or reference
-outcome payloads, contingent or pure operations and Rust bindings. Since 0.218
-native executables run them from `--scenario` scripts; without one they report
-that no live adapter exists. See
+outcome payloads and contingent or pure operations; a Rust binding must use
+`"execution": "poll"`. Native executables run them from `--scenario` scripts or,
+since 0.219, through polled Rust adapters; an unbound operation without a scenario
+reports that no live adapter exists. See
 [async host operations](async-execution.md#async-host-operations).
 
 <!-- tellur:reject E_ASYNC -->

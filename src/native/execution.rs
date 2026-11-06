@@ -1,5 +1,8 @@
 //! Shared retained compiled continuations; no checked graph is interpreted here.
-use super::{BoundaryState, Completion, Frames, Host, R, V, frames::Frame};
+use super::{
+    BoundaryState, Completion, Frames, Host, HostPoll, HostProgress, HostStart, Outcome, R, V,
+    frames::Frame,
+};
 use domains::{DomainKey, DomainScope, Domains, Membership};
 
 #[cfg(test)]
@@ -180,22 +183,118 @@ enum Pending {
     Supervise(Supervision),
     Host(HostOperation),
 }
-/// A started async host operation. Its scripted completion was bound and
-/// validated at start; it is delivered once, after its remaining waits.
+/// A started async host operation, delivered once when it completes. A scripted
+/// completion was bound and validated at start; a live adapter is polled.
 struct HostOperation {
     operation: &'static str,
     arguments: Vec<V>,
-    outcome: String,
-    fields: Vec<V>,
-    waits: u32,
+    source: HostSource,
+    /// Readiness was signalled: the next turn polls once without fuel.
+    poll: bool,
     deliver: HostDeliver,
 }
+enum HostSource {
+    Scripted {
+        outcome: String,
+        fields: Vec<V>,
+        waits: u32,
+    },
+    Live {
+        operation: Box<dyn HostPoll>,
+        due: std::time::Instant,
+    },
+    Ready(Outcome),
+}
+/// When a pending host operation may next be polled.
+pub enum HostWait {
+    Scripted,
+    Live(std::time::Instant),
+}
 impl HostOperation {
+    fn start(
+        host: &mut Host,
+        operation: &'static str,
+        arguments: Vec<V>,
+        deliver: HostDeliver,
+    ) -> R<Self> {
+        let source = match host.start_host_operation(operation, &arguments)? {
+            HostStart::Scripted {
+                outcome,
+                fields,
+                waits: 0,
+            } => HostSource::Ready((outcome, fields)),
+            HostStart::Scripted {
+                outcome,
+                fields,
+                waits,
+            } => HostSource::Scripted {
+                outcome,
+                fields,
+                waits,
+            },
+            HostStart::Live(operation) => HostSource::Live {
+                operation,
+                due: std::time::Instant::now(),
+            },
+        };
+        let mut started = Self {
+            operation,
+            arguments,
+            // A live operation is polled once while its start is selected; a
+            // scripted one reports its first pending wait now.
+            poll: matches!(source, HostSource::Live { .. }),
+            source,
+            deliver,
+        };
+        started.progress(host)?;
+        Ok(started)
+    }
+    /// Consume one readiness report: a scripted wait or one live adapter poll.
+    fn progress(&mut self, host: &mut Host) -> R<()> {
+        if !std::mem::take(&mut self.poll) {
+            return Ok(());
+        }
+        match &mut self.source {
+            HostSource::Scripted {
+                outcome,
+                fields,
+                waits,
+            } => {
+                *waits -= 1;
+                if *waits == 0 {
+                    self.source =
+                        HostSource::Ready((std::mem::take(outcome), std::mem::take(fields)));
+                }
+            }
+            HostSource::Live { operation, due } => {
+                match host.poll_host_operation(self.operation, operation)? {
+                    HostProgress::Ready(outcome) => {
+                        // Adapter state is destroyed before the result is delivered.
+                        self.source = HostSource::Ready(outcome);
+                    }
+                    HostProgress::Pending(delay) => *due = std::time::Instant::now() + delay,
+                }
+            }
+            HostSource::Ready(_) => {}
+        }
+        Ok(())
+    }
+    fn waiting(&self) -> Option<HostWait> {
+        match &self.source {
+            _ if self.poll => None,
+            HostSource::Scripted { .. } => Some(HostWait::Scripted),
+            HostSource::Live { due, .. } => Some(HostWait::Live(*due)),
+            HostSource::Ready(_) => None,
+        }
+    }
     /// Publish the completion event with the arguments captured at start, then
     /// bind the outcome. Neither consumes instruction fuel.
     fn complete(self, host: &mut Host, values: &mut Frames, frame: &mut Activation) -> R<()> {
-        host.finish_host_operation(self.operation, self.arguments, &self.outcome, &self.fields)?;
-        (self.deliver)(frame, values, self.outcome, self.fields)
+        let HostSource::Ready((outcome, fields)) = self.source else {
+            return Err("E_NATIVE: host operation has no completion".into());
+        };
+        host.finish_host_operation(self.operation, self.arguments, &outcome, &fields)?;
+        (self.deliver)(frame, values, outcome, fields)
     }
 }
 struct AwaitContinuation {
@@ -661,9 +760,10 @@ impl Machine {
             operation.deliver(values, frame)?;
             return Ok((false, None));
         }
-        // A pending host operation completes administratively once its waits elapse.
-        if let Some(Pending::Host(operation)) = &frame.pending {
-            if operation.waits > 0 {
+        // A pending host operation polls and completes administratively.
+        if let Some(Pending::Host(operation)) = &mut frame.pending {
+            operation.progress(host)?;
+            if !matches!(operation.source, HostSource::Ready(_)) {
                 return Ok((false, None));
             }
             let Some(Pending::Host(operation)) = frame.pending.take() else {
@@ -740,16 +840,8 @@ impl Machine {
                 if frame.pending.is_some() {
                     return Err("E_NATIVE: duplicate host operation continuation".into());
                 }
-                let (outcome, fields, waits) = host.start_host_operation(operation, &arguments)?;
-                let operation = HostOperation {
-                    operation,
-                    arguments,
-                    outcome,
-                    fields,
-                    waits,
-                    deliver,
-                };
-                if waits == 0 {
+                let operation = HostOperation::start(host, operation, arguments, deliver)?;
+                if matches!(operation.source, HostSource::Ready(_)) {
                     operation.complete(host, values, frame)?;
                 } else {
                     frame.pending = Some(Pending::Host(operation));
@@ -1166,23 +1258,22 @@ impl Machine {
         }
     }
     /// The selected activation awaits readiness of a started host operation.
-    pub fn host_waiting(&self) -> bool {
-        matches!(
-            self.stack.last().and_then(|a| a.pending.as_ref()),
-            Some(Pending::Host(operation)) if operation.waits > 0
-        )
+    pub fn host_waiting(&self) -> Option<HostWait> {
+        match self.stack.last().and_then(|a| a.pending.as_ref()) {
+            Some(Pending::Host(operation)) => operation.waiting(),
+            _ => None,
+        }
     }
-    /// One readiness report for the pending host operation; `all` elapses every
-    /// remaining wait when no other source work can observe the difference.
-    pub fn host_progress(&mut self, all: bool) {
+    /// Readiness for the pending host operation: its next turn polls once.
+    /// `elapse` completes scripted waits when no other source work can observe them.
+    pub fn host_ready(&mut self, elapse: bool) {
         if let Some(Pending::Host(operation)) =
             self.stack.last_mut().and_then(|a| a.pending.as_mut())
         {
-            operation.waits = if all {
-                0
-            } else {
-                operation.waits.saturating_sub(1)
-            };
+            if let (true, HostSource::Scripted { waits, .. }) = (elapse, &mut operation.source) {
+                *waits = 1;
+            }
+            operation.poll = true;
         }
     }
     pub fn advance(
@@ -1211,7 +1302,7 @@ impl Machine {
             {
                 return Ok(Poll::Paused);
             }
-            if self.host_waiting() {
+            if self.host_waiting().is_some() {
                 return Ok(Poll::Paused);
             }
             let delivery =

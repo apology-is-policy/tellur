@@ -1861,7 +1861,7 @@ fn async_host_operation_hover_names_the_operation_and_await_admission() {
     );
     assert!(
         h.contains("Async host operation: invoke it with `await` inside an async control")
-            && h.contains("Reference and native executions use scripted completions")
+            && h.contains("native executables also poll Rust adapters bound with `poll` execution")
             && !h.contains("$host"),
         "{h}"
     );
@@ -1884,6 +1884,32 @@ fn async_host_operation_hover_names_the_operation_and_await_admission() {
             && !diagnostics.contains("$host"),
         "{diagnostics}"
     );
+}
+
+#[test]
+fn polled_rust_adapter_hover_reports_host_execution() {
+    let mut f = Fixture::new();
+    fs::write(
+        f.root.join("manifest.json"),
+        json!({"version":"0.1",
+            "types":[{"name":"counter","kind":"opaque","linear":true}],
+            "rust":{"source":"host.rs","lockfile":"Cargo.lock","resources":{"counter":"Counter"}},
+            "primitives":[{"name":"tick","async":true,
+                "parameters":[{"name":"counter","type":"counter","mode":"borrow"}],
+                "outcomes":[{"name":"ticked","fields":[]}],
+                "effects":["tick"],"returns":true,"rust":{"execution":"poll"}}]})
+        .to_string(),
+    )
+    .unwrap();
+    let source = "async control next(ref counter c) exits auto {\n    forward await tick(c);\n}\n";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let h = hover_at(&f, source, "tick(").to_string();
+    assert!(
+        h.contains("Host execution: polled Rust adapter") && h.contains("Async host operation"),
+        "{h}"
+    );
+    assert!(!f.root.join("host.rs").exists());
 }
 
 #[test]

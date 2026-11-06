@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.218.0** implements the v0.1 checked core and the current language
+Compiler release **0.219.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -17,10 +17,14 @@ VS Code build/run commands. The [revision plan](docs/language-revision.md) separ
 delivered features from the remaining reference, slice, outcome-expression and async work. The language is still
 fluid; this is an experimental implementation, not a production compiler.
 
+Release 0.219 lets Rust adapters implement async host operations. An adapter
+bound with `"execution": "poll"` returns per-operation state that the native
+runtime polls; pending operations let other tasks run and are re-polled after
+the delay they request.
+
 Release 0.218 runs async host operations in native executables. A native
 `--scenario` script uses the same `"waits"` readiness as the reference
-interpreter, with matching schedules, fuel limits and fault settlement. Rust
-adapters for async host operations are the next step.
+interpreter, with matching schedules, fuel limits and fault settlement.
 
 Release 0.217 admits async host operations. A manifest primitive marked
 `"async": true` is awaited directly inside async controls; the reference

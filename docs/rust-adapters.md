@@ -57,13 +57,11 @@ A payload-bearing alternative is a tuple variant, with fields in manifest order:
 the function and tuple types are checked by Rust during a native build. Rust code
 must implement all Rust-bound primitives in the manifest, including unused ones.
 
-Each binding must declare `execution` as `immediate` or `blocking`. This records a
-host execution contract; neither introduces suspension. Since 0.217 a primitive may
-declare `"async": true` instead, making it an async host operation awaited from
-async controls; such primitives cannot have Rust bindings until the adapter poll
-contract arrives (see [async host operations](reference/async-execution.md#async-host-operations)).
-Native executables run them from `--scenario` scripts since 0.218. `immediate` is not a purity
-proof. Foreign wrappers cannot opt into Tellur pure-expression evaluation. Effects
+Each synchronous binding must declare `execution` as `immediate` or `blocking`. This
+records a host execution contract; neither introduces suspension. An async host
+operation (`"async": true`, awaited from async controls) binds with
+`"execution": "poll"` instead; see [polled async operations](#polled-async-operations-0219).
+`immediate` is not a purity proof. Foreign wrappers cannot opt into Tellur pure-expression evaluation. Effects
 and execution classification remain promises made by the adapter author.
 
 ## Data and ownership
@@ -183,6 +181,59 @@ Retained storage currently belongs to one synchronous invocation, with no global
 object registry, thread-safety requirement, Rust future or executor contract. Future
 Tellur tasks will need explicit resource/frame ownership and cancellation rules;
 this facility does not settle them or constrain LLVM coroutine lowering.
+
+## Polled async operations (0.219)
+
+A primitive declared `"async": true` with `"rust": {"execution": "poll"}` is started
+once and then polled. The generated `rust_api` module adds the shared readiness
+types and one trait per operation:
+
+```rust
+pub enum Poll<T> { Ready(T), Pending(Wait) }
+pub struct Wait { /* private */ }
+impl Wait { pub fn after(delay: std::time::Duration) -> Self }
+pub trait tick_operation {
+    fn poll(&mut self, counter: &crate::rust_host::Counter) -> Poll<tick_outcome>;
+}
+```
+
+The adapter function receives the start arguments and returns the operation state:
+
+```rust
+pub fn tick(counter: &Counter, label: String) -> Box<dyn rust_api::tick_operation> {
+    Box::new(Ticking { label, remaining: 3 })
+}
+impl rust_api::tick_operation for Ticking {
+    fn poll(&mut self, counter: &Counter) -> rust_api::Poll<rust_api::tick_outcome> {
+        if self.remaining == 0 {
+            return rust_api::Poll::Ready(rust_api::tick_outcome::ticked(self.label.clone()));
+        }
+        self.remaining -= 1;
+        rust_api::Poll::Pending(rust_api::Wait::after(std::time::Duration::from_millis(5)))
+    }
+}
+```
+
+Start receives borrowed resources and owned data; `poll` receives the same borrowed
+resources again on every call. The state cannot keep references to them. Copy and
+consumed data arrive only at start. Outcomes carry owned data; the first async
+profile has no resource-bearing results.
+
+The runtime polls once while the awaiting task's `await` is selected. A pending
+operation parks its task. Other runnable tasks continue, and the operation is
+polled again only at an idle point (no runnable source work) after its `Wait`
+delay. Among due operations, the oldest parked one is polled first. When none is
+due, the executable sleeps until the earliest delay. A sequential program, with no
+other source work, sleeps and polls directly. A poll should return promptly: it
+runs on the single executor thread, and a blocking poll stops every task.
+
+The completion event is published once, at completion, with the start arguments.
+The operation state is dropped when it completes, before the outcome is delivered.
+When an owning fault stops the awaiting task, the state is dropped without a poll
+or event, before any supplier resource retires. Scenario runs never start or poll
+adapters; they script completions with `"waits"`. There is no file-descriptor
+readiness yet (E1g.3), so an adapter reading a nonblocking socket chooses its own
+retry delay.
 
 ## Dependency and build workflow
 

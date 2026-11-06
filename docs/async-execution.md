@@ -4681,3 +4681,24 @@ operations (original and expanded programs, every fuel cut), sequential borrowed
 resources and owning faults while operations are pending or ready. E1g.2b adds
 the Rust adapter poll contract and an idle re-poll loop without new dependencies;
 E1g.3 adds internal fd readiness.
+
+### Polled Rust adapters (E1g.2b, 0.219)
+
+An async primitive may bind a Rust adapter with `"execution": "poll"`. The adapter
+function receives the start arguments and returns a boxed per-operation trait
+object, whose `poll` method receives the borrowed resources again and returns
+`Poll::Ready(outcome)` or `Poll::Pending(Wait::after(delay))`. Generated glue keeps
+the borrowed resource handles and re-resolves them through the resource table on
+every poll, so adapter state cannot retain references. Mio and other readiness
+mechanisms stay out of the contract.
+
+The runtime starts and polls once during the start instruction. Readiness is
+in-turn for scripted and live operations alike: a signal marks the operation for
+one poll, which runs when its context is selected, without fuel. At an idle point
+the source driver signals the oldest parked operation whose delay has elapsed
+(scripted operations are always due). When none is due it sleeps until the
+earliest. The sequential driver sleeps and polls directly. Completion drops the
+adapter state before publishing the event and delivering the outcome. Fault
+unwinding drops a pending operation's state before supplier frames retire. No new
+dependencies are added. E1g.3 replaces delays with internal fd readiness where an
+adapter registers interest.

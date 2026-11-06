@@ -113,49 +113,77 @@ impl<'a> Contexts<'a> {
         }
     }
     /// The context ran and its started host operation reported pending.
-    fn host_operation_waiting(&self, key: &ContextKey) -> bool {
-        !self.waits.contains_key(&key.id)
-            && self
-                .parked
-                .get(&key.id)
-                .is_some_and(|parked| parked.machine.host_waiting())
-    }
-    /// A sequential chain has no other source work to observe pending reports.
-    fn elapse_host_operation(&mut self, key: &ContextKey) {
-        if self.host_operation_waiting(key) {
-            self.parked
-                .get_mut(&key.id)
-                .unwrap()
-                .machine
-                .host_progress(true);
+    fn host_operation_waiting(&self, key: &ContextKey) -> Option<HostWait> {
+        if self.waits.contains_key(&key.id) {
+            return None;
         }
+        self.parked
+            .get(&key.id)
+            .and_then(|parked| parked.machine.host_waiting())
+    }
+    /// A sequential chain has no other source work to observe pending reports:
+    /// scripted waits elapse together; a live operation is re-polled when due.
+    fn elapse_host_operation(&mut self, key: &ContextKey) {
+        let Some(wait) = self.host_operation_waiting(key) else {
+            return;
+        };
+        if let HostWait::Live(due) = wait {
+            std::thread::sleep(due.saturating_duration_since(std::time::Instant::now()));
+        }
+        self.parked
+            .get_mut(&key.id)
+            .unwrap()
+            .machine
+            .host_ready(true);
     }
     fn park_host_operation(&mut self, key: &ContextKey) -> R<()> {
         let token = self.park_for_readiness(key)?;
         self.host_waits.push_back((key.clone(), token));
         Ok(())
     }
-    /// Signal the oldest live pending operation at an idle point. Readiness only
-    /// changes eligibility; the operation completes when its context is selected.
+    /// At an idle point, signal the oldest pending operation that may be polled.
+    /// Scripted operations are always due; live ones after their adapter's delay.
+    /// If none is due yet, wait for the earliest. Readiness only changes
+    /// eligibility; the operation polls when its context is selected.
     fn signal_host_operation(&mut self) -> R<Option<ContextKey>> {
-        while let Some((key, token)) = self.host_waits.pop_front() {
-            // Owning settlement may already have retired this operation's context.
-            if !self
-                .waits
-                .get(&key.id)
-                .is_some_and(|wait| wait.generation == token.generation && !wait.signalled)
-            {
-                continue;
+        loop {
+            // Owning settlement may already have retired an operation's context.
+            let waits = &self.waits;
+            self.host_waits.retain(|(key, token)| {
+                waits
+                    .get(&key.id)
+                    .is_some_and(|wait| wait.generation == token.generation && !wait.signalled)
+            });
+            if self.host_waits.is_empty() {
+                return Ok(None);
             }
+            let now = std::time::Instant::now();
+            let mut earliest: Option<std::time::Instant> = None;
+            let mut selected = None;
+            for (index, (key, _)) in self.host_waits.iter().enumerate() {
+                match self.parked[&key.id].machine.host_waiting() {
+                    Some(HostWait::Live(due)) if due > now => {
+                        earliest = Some(earliest.map_or(due, |e| e.min(due)));
+                    }
+                    _ => {
+                        selected = Some(index);
+                        break;
+                    }
+                }
+            }
+            let Some(index) = selected else {
+                std::thread::sleep(earliest.unwrap().saturating_duration_since(now));
+                continue;
+            };
+            let (key, token) = self.host_waits.remove(index).unwrap();
             self.signal_readiness(&token)?;
             self.parked
                 .get_mut(&key.id)
                 .unwrap()
                 .machine
-                .host_progress(false);
+                .host_ready(false);
             return Ok(Some(key));
         }
-        Ok(None)
     }
     pub fn start(&mut self, control: &'static Control, arguments: Vec<V>) -> R<ContextKey> {
         self.start_root(control, arguments, false)

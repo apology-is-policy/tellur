@@ -895,12 +895,6 @@ impl Manifest {
         if p.pure || p.contingent {
             return fail("cannot be pure or contingent".into());
         }
-        if p.rust.is_some() {
-            return fail(
-                "cannot have a Rust binding yet; Rust adapters for async host operations are not yet supported"
-                    .into(),
-            );
-        }
         for param in &p.parameters {
             if self.contains_references(&param.ty) {
                 return fail(format!(

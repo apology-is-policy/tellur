@@ -710,7 +710,7 @@ impl CheckedProgram {
         }
         let _ = writeln!(
             g.code,
-            "];\nmatch launch({}, {}, &entries, Some(rust_dispatch), {}) {{ Ok(code) => std::process::ExitCode::from(code), Err(error) => {{ eprintln!(\"{{error}}\"); std::process::ExitCode::FAILURE }} }}\n}}",
+            "];\nmatch launch({}, {}, &entries, Some(rust_dispatch), Some(rust_start), {}) {{ Ok(code) => std::process::ExitCode::from(code), Err(error) => {{ eprintln!(\"{{error}}\"); std::process::ExitCode::FAILURE }} }}\n}}",
             string(&manifest),
             string(entry),
             string(

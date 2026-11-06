@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-darwin-arm64-0.218.0.vsix` using **Extensions:
+1. Install the supplied `tellur-language-darwin-arm64-0.219.0.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1758,3 +1758,6 @@ operation.
 Compiler 0.218 runs async host operations in native executables from scripted
 scenarios. Pass `--scenario FILE` in the **Build and Run** program arguments; scenario
 calls may include `"waits"`.
+
+Compiler 0.219 runs async host operations through polled Rust adapters
+(`"execution": "poll"`). Call hover reports the polled host execution.

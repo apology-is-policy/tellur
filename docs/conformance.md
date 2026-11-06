@@ -5829,3 +5829,33 @@ fixture, reports the missing adapter when a live `open` reaches the operation wi
 a scenario, and runs it with a scripted `waits` scenario. The full native library
 suite (184 models) exposed one exhaustive pending-state match in the private
 selection model; it now names `Pending::Host`, and its ten models were rerun.
+
+
+## Polled Rust adapters for async host operations (0.219 / E1g.2b)
+
+An async primitive may bind `"rust": {"execution": "poll"}`. Validation rejects
+`poll` on synchronous primitives and `immediate`/`blocking` on async ones. Generated
+`rust_api` code adds `Poll<T>`, `Wait::after` and one `{op}_operation` trait per
+operation. The adapter function is checked with Rust as
+`fn(start arguments) -> Box<dyn rust_api::{op}_operation>`. Generated glue keeps the
+borrowed resource handles, re-resolves them for every poll and validates outcomes
+as declared. `rust_dispatch` covers only synchronous bindings, and `rust_start`
+covers async ones; without a Rust configuration both are stubs. Native hosts prefer
+a scenario, then the adapter, then report a missing adapter.
+
+The runtime polls once during the start instruction. A signal marks a pending
+operation for one in-turn poll, without fuel, for both scripted and live
+operations. The source driver signals the oldest due parked operation at idle
+points and sleeps until the earliest delay when none is due. The sequential driver
+sleeps and polls directly. Completion drops adapter state before the event and the
+outcome; fault unwinding drops it before supplier frames.
+
+Three integration tests use a real Rust adapter with a retained resource. The first
+runs two interleaved polled operations, checking events, poll and drop order, and
+compares a scripted scenario with the reference interpreter. The second covers a
+sequential polled operation and an owning fault that stops a pending operation
+(state drop, no event, supplier released last). The third rejects mismatched
+execution kinds and a mismatched adapter signature at build time. The scripted
+differential tests from 0.218 pass unchanged. A first implementation polled
+scripted operations once at start, consuming a wait early. The scripted
+comparison caught it before release.

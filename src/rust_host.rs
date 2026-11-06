@@ -55,6 +55,8 @@ pub struct Binding {
 pub enum Execution {
     Immediate,
     Blocking,
+    /// An async host operation: started once, then polled until it completes.
+    Poll,
 }
 fn error(message: impl Into<String>) -> Diagnostic {
     Diagnostic::new("E_RUST_ADAPTER", Span::default(), message)
@@ -150,6 +152,13 @@ pub(crate) fn validate(manifest: &Manifest) -> Result<()> {
                 "Rust adapters cannot declare pure expression evaluation",
             ));
         }
+        let polled = matches!(p.rust.as_ref().unwrap().execution, Execution::Poll);
+        if polled != p.asynchronous {
+            return Err(error(format!(
+                "Rust adapter `{}`: async host operations use `\"execution\": \"poll\"`; synchronous primitives use `immediate` or `blocking`",
+                p.name
+            )));
+        }
         for ty in p.parameters.iter().map(|p| p.ty.as_str()).chain(
             p.outcomes
                 .iter()
@@ -198,7 +207,7 @@ fn collect_type(t: &str, all: &mut BTreeSet<String>) {
 /// that checks Tellur callers. No arbitrary dynamic wire-value API reaches wrappers.
 pub(crate) fn source(manifest: &Manifest) -> Result<String> {
     let Some(config) = &manifest.rust else {
-        return Ok("fn rust_dispatch(_: &mut Resources, _: &str, _: Vec<V>) -> R<Outcome> { Err(\"E_HOST: no Rust adapter\".into()) }\n".into());
+        return Ok("fn rust_dispatch(_: &mut Resources, _: &str, _: Vec<V>) -> R<Outcome> { Err(\"E_HOST: no Rust adapter\".into()) }\nfn rust_start(_: &mut Resources, _: &str, _: Vec<V>) -> R<Box<dyn HostPoll>> { Err(\"E_HOST: no Rust adapter\".into()) }\n".into());
     };
     if !config.source.is_absolute()
         || !config.lockfile.is_absolute()
@@ -243,6 +252,28 @@ pub(crate) fn source(manifest: &Manifest) -> Result<String> {
         for f in &p.parameters {
             collect_type(&f.ty, &mut all);
         }
+        if p.asynchronous {
+            let borrowed = p
+                .parameters
+                .iter()
+                .filter(|f| f.mode == Mode::Borrow)
+                .map(|f| format!("{}: &{}", f.name, rust_type(&f.ty, resources)))
+                .collect::<Vec<_>>();
+            writeln!(
+                code,
+                "/// A started `{0}` operation, polled with its borrowed resources until it completes.\npub trait {0}_operation {{ fn poll(&mut self{1}) -> Poll<{0}_outcome>; }}",
+                p.name,
+                borrowed.iter().map(|b| format!(", {b}")).collect::<String>()
+            )
+            .unwrap();
+        }
+    }
+    if manifest
+        .primitives
+        .iter()
+        .any(|p| p.asynchronous && p.rust.is_some())
+    {
+        code.push_str(POLL_API);
     }
     code.push_str("}\nmod rust_host {\n");
     code.push_str(&source);
@@ -303,7 +334,11 @@ pub(crate) fn source(manifest: &Manifest) -> Result<String> {
         writeln!(code,"fn decode_{id}(value:V)->R<{ty}>{{{decode}}}\nfn encode_{id}(value:{ty})->V{{{encode}}}").unwrap();
     }
     code.push_str("fn rust_dispatch(resources:&mut Resources,name:&str,args:Vec<V>)->R<Outcome>{let mut args=args.into_iter();match name{\n");
-    for p in manifest.primitives.iter().filter(|p| p.rust.is_some()) {
+    for p in manifest
+        .primitives
+        .iter()
+        .filter(|p| p.rust.is_some() && !p.asynchronous)
+    {
         writeln!(code, "{:?}=>{{", p.name).unwrap();
         for i in 0..p.parameters.len() {
             writeln!(
@@ -428,7 +463,166 @@ pub(crate) fn source(manifest: &Manifest) -> Result<String> {
         code.push_str("}},\n");
     }
     code.push_str("_=>Err(format!(\"E_HOST: unbound Rust operation {name}\")),}}\n");
+    start_source(manifest, resources, &ids, &mut code);
     Ok(code)
+}
+/// Readiness vocabulary shared by every polled async host operation.
+const POLL_API: &str = "/// One poll of a started async host operation.\npub enum Poll<T> { Ready(T), Pending(Wait) }\n/// When the runtime may poll a pending operation again. It never polls earlier.\n#[derive(Clone, Copy, Debug, PartialEq, Eq)]\npub struct Wait { pub(crate) retry_after: std::time::Duration }\nimpl Wait { pub fn after(delay: std::time::Duration) -> Self { Self { retry_after: delay } } }\n";
+/// Start async host operations and adapt their typed polls to the runtime.
+fn start_source(
+    manifest: &Manifest,
+    resources: &BTreeMap<String, String>,
+    ids: &BTreeMap<String, usize>,
+    code: &mut String,
+) {
+    let operations = manifest
+        .primitives
+        .iter()
+        .filter(|p| p.rust.is_some() && p.asynchronous)
+        .collect::<Vec<_>>();
+    code.push_str("fn rust_start(resources:&mut Resources,name:&str,args:Vec<V>)->R<Box<dyn HostPoll>>{let mut args=args.into_iter();match name{\n");
+    for p in &operations {
+        writeln!(code, "{:?}=>{{", p.name).unwrap();
+        for i in 0..p.parameters.len() {
+            writeln!(
+                code,
+                "let a{i}=args.next().ok_or(\"E_HOST: missing adapter argument\")?;"
+            )
+            .unwrap();
+        }
+        code.push_str(
+            "if args.next().is_some(){return Err(\"E_HOST: extra adapter argument\".into());}\n",
+        );
+        let borrowed = p
+            .parameters
+            .iter()
+            .enumerate()
+            .filter(|(_, f)| f.mode == Mode::Borrow)
+            .collect::<Vec<_>>();
+        writeln!(
+            code,
+            "resources.validate_call(&[{}])?;",
+            borrowed
+                .iter()
+                .map(|(i, f)| format!("(&a{i},{:?},false)", f.ty))
+                .collect::<Vec<_>>()
+                .join(",")
+        )
+        .unwrap();
+        for (i, f) in p.parameters.iter().enumerate() {
+            if f.mode == Mode::Borrow {
+                writeln!(
+                    code,
+                    "let p{i}=resources.get::<{}>(&a{i},{:?})?;",
+                    rust_type(&f.ty, resources),
+                    f.ty
+                )
+                .unwrap();
+            } else {
+                writeln!(code, "let p{i}=decode_{}(a{i})?;", ids[&f.ty]).unwrap();
+            }
+        }
+        let types = p
+            .parameters
+            .iter()
+            .map(|f| {
+                let ty = rust_type(&f.ty, resources);
+                if f.mode == Mode::Borrow {
+                    format!("&{ty}")
+                } else {
+                    ty
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(",");
+        let args = (0..p.parameters.len())
+            .map(|i| format!("p{i}"))
+            .collect::<Vec<_>>()
+            .join(",");
+        writeln!(
+            code,
+            "let start:fn({types})->Box<dyn rust_api::{0}_operation>=rust_host::r#{0};let operation=start({args});Ok(Box::new({0}_glue{{operation{1}}}))}},",
+            p.name,
+            borrowed
+                .iter()
+                .map(|(i, _)| format!(",a{i}"))
+                .collect::<String>()
+        )
+        .unwrap();
+    }
+    code.push_str("_=>Err(format!(\"E_HOST: unbound async Rust operation {name}\")),}}\n");
+    for p in &operations {
+        let borrowed = p
+            .parameters
+            .iter()
+            .enumerate()
+            .filter(|(_, f)| f.mode == Mode::Borrow)
+            .collect::<Vec<_>>();
+        writeln!(
+            code,
+            "#[allow(non_camel_case_types)]\nstruct {}_glue{{operation:Box<dyn rust_api::{}_operation>{}}}",
+            p.name,
+            p.name,
+            borrowed
+                .iter()
+                .map(|(i, _)| format!(",a{i}:V"))
+                .collect::<String>()
+        )
+        .unwrap();
+        writeln!(
+            code,
+            "impl HostPoll for {}_glue{{fn poll(&mut self,resources:&mut Resources)->R<HostProgress>{{",
+            p.name
+        )
+        .unwrap();
+        for (i, f) in &borrowed {
+            writeln!(
+                code,
+                "let p{i}=resources.get::<{}>(&self.a{i},{:?})?;",
+                rust_type(&f.ty, resources),
+                f.ty
+            )
+            .unwrap();
+        }
+        writeln!(
+            code,
+            "match self.operation.poll({}){{rust_api::Poll::Pending(wait)=>Ok(HostProgress::Pending(wait.retry_after)),rust_api::Poll::Ready(outcome)=>Ok(HostProgress::Ready(match outcome{{",
+            borrowed
+                .iter()
+                .map(|(i, _)| format!("p{i}"))
+                .collect::<Vec<_>>()
+                .join(",")
+        )
+        .unwrap();
+        for o in &p.outcomes {
+            let pattern = if o.fields.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    "({})",
+                    (0..o.fields.len())
+                        .map(|i| format!("v{i}"))
+                        .collect::<Vec<_>>()
+                        .join(",")
+                )
+            };
+            writeln!(
+                code,
+                "rust_api::{}_outcome::r#{}{pattern}=>({:?}.into(),vec![{}]),",
+                p.name,
+                o.name,
+                o.name,
+                o.fields
+                    .iter()
+                    .enumerate()
+                    .map(|(i, f)| format!("encode_{}(v{i})", ids[&f.ty]))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            )
+            .unwrap();
+        }
+        code.push_str("}))}}}\n");
+    }
 }
 pub(crate) fn cargo(manifest: &Manifest, template: &str) -> String {
     let mut dependencies = String::new();
