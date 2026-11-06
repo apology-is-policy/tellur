@@ -852,6 +852,45 @@ are unchanged. Unsaved imported repairs between fault-only and suffix contracts 
 fresh locations and restore checked hover only after the source fully validates.
 
 
+## Implementation contingency-permission locations
+
+Since 0.216, the existing `E_CONTINGENT` rejection of an implementation that
+enlarges its trait's contingency subset selects the written `@contingent`
+annotation. The range runs from `@` through `contingent`, so a comment or line
+break written between them stays inside it. Comments after the annotation, `async`,
+the `control` keyword, completion clauses and the body are excluded. The original
+range survives imported source remapping and rewritten method names.
+
+<!-- tellur:reject E_CONTINGENT -->
+```tellur
+trait cleanup {
+    control finish() exits done;
+}
+implement cleanup for u32 {
+    @contingent
+    control finish() exits done {
+        exit done;
+    }
+}
+```
+
+Permission subsets are unchanged: an implementation without the annotation still
+inherits the trait's contingency permission, and an equal subset is accepted. Async
+equality and added fault permission are reported first. Profile, identity and
+associated preparation, canonical implementation and written method order,
+independent error batches and diagnostic/implementation limits retain their rules.
+Bounds, signature/origin conformance and body checking remain later phases.
+
+Missing annotation metadata keeps the method point without borrowing an async,
+control, fault or completion range. Generated boundary handlers and constructor
+signatures carry no invented annotation range, even when they grant contingency
+permission. Metadata alone never rejects an equal or narrower permission. Ordinary
+contingency diagnostics, such as contingency code calling a public control that
+lacks `@contingent`, and the parser's repeated-annotation barrier are unchanged.
+Unsaved imported repairs keep fresh locations and restore checked hover only after
+the source fully validates.
+
+
 ## Implementation conformance batches
 
 Since 0.200, independent implementations can report conformance failures together,

@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-darwin-arm64-0.215.0.vsix` using **Extensions:
+1. Install the supplied `tellur-language-darwin-arm64-0.216.0.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1744,3 +1744,8 @@ Compiler 0.215 selects the written `faults` keyword when an implementation adds
 forbidden fault permission. Annotated imported suffix and fault-only contracts retain
 exact UTF-16 locations during unsaved repairs; hover and native execution return
 after the complete source validates.
+
+Compiler 0.216 selects the written `@contingent` annotation when an implementation
+enlarges its trait's contingency subset. Imported annotations, including comments
+between `@` and `contingent`, retain exact UTF-16 locations during unsaved repairs;
+hover and native execution return after the complete source validates.

@@ -8713,3 +8713,92 @@ fn implementation_fault_ranges_follow_unsaved_partial_repairs_and_restore_hover(
     );
     assert_eq!(f.diagnostics(), json!([]));
 }
+
+#[test]
+fn implementation_contingent_ranges_follow_unsaved_partial_repairs_and_restore_hover() {
+    let mut f = Fixture::new();
+    let path = f.root.join("worker.tellur");
+    let uri = url::Url::from_file_path(&path).unwrap().to_string();
+    let valid = "pub trait reader {control read(self input) exits done;}\r\nimplement reader for u32 {control read(self first) exits done {string note=\"😀\";drop(note);exit done;}} implement reader for string {control read(self second) exits done {exit done;}}\r\npub control work() exits done {reader<u32>.read(1);reader<string>.read(\"x\");exit done;}";
+    fs::write(&path, valid).unwrap();
+    let source = "import \"worker.tellur\" as worker;control main() exits done {auto text=\"x\";drop(text);worker.work();worker.reader<u32>.read(1);exit done;}";
+    f.open(source);
+    assert_eq!(f.diagnostics(), json!([]));
+    let initial = hover_at(&f, source, "auto text");
+    assert!(initial.to_string().contains("string"));
+    let trait_hover = hover_at(&f, source, "worker.reader<u32>.read");
+    assert!(trait_hover.to_string().contains("input"), "{trait_hover}");
+    assert!(!trait_hover.to_string().contains("first"), "{trait_hover}");
+    let last = valid.replace(
+        "control read(self second) exits done {exit done;}",
+        "@contingent // only 😀\r\n control read(self second) exits done {exit done;}",
+    );
+    let split = valid.replace(
+        "control read(self second) exits done {exit done;}",
+        "@ // split 😀\r\n contingent control read(self second) exits done {exit done;}",
+    );
+    let broken = last.replace(
+        "control read(self first) exits done",
+        "@contingent // first\r\n control read(self first) exits done",
+    );
+    for (version, text, selected) in [
+        (
+            1,
+            broken.as_str(),
+            vec![
+                ("@contingent // only", "@contingent"),
+                ("@contingent // first", "@contingent"),
+            ],
+        ),
+        (
+            2,
+            last.as_str(),
+            vec![("@contingent // only", "@contingent")],
+        ),
+        (
+            3,
+            split.as_str(),
+            vec![("@ // split", "@ // split 😀\r\n contingent")],
+        ),
+    ] {
+        if version == 1 {
+            f.server.notification(
+                "textDocument/didOpen",
+                &json!({"textDocument":{"uri":uri,"version":version,"text":text}}),
+            );
+        } else {
+            f.server.notification("textDocument/didChange",&json!({"textDocument":{"uri":uri,"version":version},"contentChanges":[{"text":text}]}));
+        }
+        let errors = f.diagnostics();
+        assert_eq!(errors.as_array().unwrap().len(), selected.len(), "{errors}");
+        for (error, (selected, written)) in errors.as_array().unwrap().iter().zip(selected) {
+            assert_eq!(error["code"], "E_CONTINGENT");
+            let location = &error["relatedInformation"][0]["location"];
+            assert_eq!(location["uri"], uri);
+            let at = text.find(selected).unwrap();
+            let position = |offset| {
+                let prefix = &text[..offset];
+                json!({"line":prefix.bytes().filter(|b|*b==b'\n').count(),"character":prefix.rsplit('\n').next().unwrap().encode_utf16().count()})
+            };
+            assert_eq!(
+                location["range"],
+                json!({"start":position(at),"end":position(at+written.len())}),
+                "{errors}"
+            );
+        }
+        assert!(hover_at(&f, source, "auto text").is_null());
+        assert!(hover_at(&f, source, "worker.reader<u32>.read").is_null());
+    }
+    f.server.notification(
+        "textDocument/didChange",
+        &json!({"textDocument":{"uri":uri,"version":4},"contentChanges":[{"text":valid}]}),
+    );
+    assert_eq!(f.diagnostics(), json!([]));
+    assert_eq!(hover_at(&f, source, "auto text"), initial);
+    assert_eq!(hover_at(&f, source, "worker.reader<u32>.read"), trait_hover);
+    f.server.notification(
+        "textDocument/didClose",
+        &json!({"textDocument":{"uri":uri}}),
+    );
+    assert_eq!(f.diagnostics(), json!([]));
+}

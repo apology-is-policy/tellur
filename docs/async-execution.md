@@ -4604,3 +4604,24 @@ updated live checkpoint.
 This closes the observed pending-first fixture gap without adding source handoffs,
 a public asynchronous host contract or a cleanup-error policy. Compiler/LSP/VSIX
 remains 0.189, and public call admission still awaits its recorded decision.
+
+
+## Accepted host-operation call model (6 November)
+
+The recorded fork (`async_host_task_call_model`) is answered: async host operations
+follow the same task model as async controls, so `await op()` remains equivalent to
+`defer` plus `await` for every async target. Admission is staged. Public direct
+`await` comes first, for the shape the E1f evidence covers: shared retained-resource
+borrows and owned results, with production polling, registration identity and
+disposal when stopped. `defer` and `spawn` of host operations follow later, lowered
+through compiler-generated async wrapper controls that reuse the existing control
+task identities, captures and settlement. Until that stage, such forms are rejected
+as not yet admitted.
+
+The runtime prerequisites are the same as for wrapper-only admission and are
+audited per stage: holding manifest `borrow` arguments for a whole operation,
+overlapping operations on one resource and physical registration, consuming
+resources and resource-bearing results, event-publication timing, deregistration
+failure policy, whether a ready result is a scheduling handoff, and `run` of a host
+operation from synchronous code. Cancellation (E1e) remains a separate design.
+The roadmap row is E1g in the [revision plan](language-revision.md).

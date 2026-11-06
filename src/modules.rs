@@ -646,6 +646,10 @@ impl Resolver<'_> {
             region.fault_keyword_range.start.line += self.offset;
             region.fault_keyword_range.end.line += self.offset;
         }
+        if region.contingent_annotation_range.start.line != 0 {
+            region.contingent_annotation_range.start.line += self.offset;
+            region.contingent_annotation_range.end.line += self.offset;
+        }
         if region.async_keyword_range.start.line != 0 {
             region.async_keyword_range.start.line += self.offset;
             region.async_keyword_range.end.line += self.offset;
@@ -1106,6 +1110,10 @@ fn resolve(
             if region.fault_keyword_range.start.line != 0 {
                 region.fault_keyword_range.start.line += offset;
                 region.fault_keyword_range.end.line += offset;
+            }
+            if region.contingent_annotation_range.start.line != 0 {
+                region.contingent_annotation_range.start.line += offset;
+                region.contingent_annotation_range.end.line += offset;
             }
             if region.async_keyword_range.start.line != 0 {
                 region.async_keyword_range.start.line += offset;

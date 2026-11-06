@@ -269,6 +269,8 @@ pub struct Region {
     pub fault_contract: Option<bool>,
     /// Written control faults modifier, including the fault-only contract form.
     pub fault_keyword_range: SourceRange,
+    /// Written `@contingent` annotation, from `@` through `contingent`.
+    pub contingent_annotation_range: SourceRange,
     pub span: Span,
     pub end: Span,
     pub name_span: Span,
@@ -825,6 +827,7 @@ impl Parser {
         Ok(field)
     }
     fn control(&mut self, span: Span, public: bool, signature: bool) -> Result<Region> {
+        let annotation_start = self.here();
         let contingent_contract = if self.eat("@") {
             self.need("contingent")?;
             self.layout.starts.insert(self.pos);
@@ -833,6 +836,11 @@ impl Parser {
             Some(false)
         } else {
             None
+        };
+        let contingent_annotation_range = if contingent_contract == Some(true) {
+            self.range_from(annotation_start)
+        } else {
+            SourceRange::default()
         };
         let async_start = self.here();
         let asynchronous = self.eat("async");
@@ -1024,6 +1032,7 @@ impl Parser {
             public,
             fault_contract,
             fault_keyword_range,
+            contingent_annotation_range,
             span,
             end: self.tokens[self.pos - 1].span,
             name_span,
@@ -1986,14 +1995,18 @@ pub(crate) fn parse_with_layout(source: &str) -> Result<(Unit, Vec<Token>, crate
             continue;
         }
         let annotated = p.at("@") && p.tokens.get(p.pos + 1).is_some_and(|t| t.is("contingent"));
+        let mut annotation_range = SourceRange::default();
         if annotated {
+            let annotation_start = p.here();
             p.pos += 2;
+            annotation_range = p.range_from(annotation_start);
             p.layout.starts.insert(p.pos);
         }
         let public = p.eat("pub");
         if annotated {
             let mut control = p.control(span, public, false)?;
             control.contingent_contract = Some(true);
+            control.contingent_annotation_range = annotation_range;
             regions.push(control);
             continue;
         }
@@ -2045,6 +2058,7 @@ pub(crate) fn parse_with_layout(source: &str) -> Result<(Unit, Vec<Token>, crate
                 declaration_keyword_range: SourceRange::default(),
                 async_keyword_range: SourceRange::default(),
                 fault_keyword_range: SourceRange::default(),
+                contingent_annotation_range: SourceRange::default(),
                 type_bounds: Default::default(),
                 type_bindings: Default::default(),
                 public,
@@ -2225,6 +2239,7 @@ pub(crate) fn parse_with_layout(source: &str) -> Result<(Unit, Vec<Token>, crate
                             declaration_keyword_range: SourceRange::default(),
                             async_keyword_range: SourceRange::default(),
                             fault_keyword_range: SourceRange::default(),
+                            contingent_annotation_range: SourceRange::default(),
                             type_bounds: type_parameters
                                 .iter()
                                 .map(|p| (p.clone(), vec![]))

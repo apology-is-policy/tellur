@@ -250,11 +250,16 @@ fn implementation_permissions(i: &Implementation, d: &TraitDeclaration) -> Resul
             });
         }
         if method.contingent_contract == Some(true) && declared.contingent_contract != Some(true) {
-            return Err(Diagnostic::new(
+            let diagnostic = Diagnostic::new(
                 "E_CONTINGENT",
                 method.span,
                 "implementation cannot enlarge the trait contingency subset",
-            ));
+            );
+            return Err(if method.contingent_annotation_range.start.line != 0 {
+                diagnostic.with_range(method.contingent_annotation_range)
+            } else {
+                diagnostic
+            });
         }
     }
     Ok(())
@@ -1128,6 +1133,88 @@ mod tests {
         let constructor = unit.data[0].constructor.as_ref().unwrap();
         assert_eq!(constructor.fault_contract, Some(true));
         assert_eq!(constructor.fault_keyword_range, SourceRange::default());
+    }
+
+    #[test]
+    fn implementation_contingent_ranges_keep_missing_metadata_without_other_range_fallback() {
+        let source = "trait reader {async control read() exits done faults;} implement reader for u32 {@contingent async control read() exits done faults {exit done;}}";
+        let mut unit = crate::syntax::parse_unit(source).unwrap();
+        let i = &mut unit.implementations[0];
+        let method = &mut i.methods[0];
+        assert_ne!(method.contingent_annotation_range.start.line, 0);
+        assert_ne!(method.async_keyword_range.start.line, 0);
+        assert_ne!(method.declaration_keyword_range.start.line, 0);
+        assert_ne!(method.fault_keyword_range.start.line, 0);
+        method.contingent_annotation_range = SourceRange::default();
+        let point = method.span;
+        let e = implementation_permissions(i, &unit.traits[0]).unwrap_err();
+        assert_eq!(e.code, "E_CONTINGENT");
+        assert_eq!(e.span, point);
+        assert!(e.end.is_none());
+    }
+
+    #[test]
+    fn implementation_contingent_ranges_survive_rewriting_and_permission_narrowing() {
+        let mut unit = crate::syntax::parse_unit("trait reader {control read() exits done;} implement reader for u32 {@ // 😀\r\n contingent // after\r\n control read() exits done {exit done;}}").unwrap();
+        let d = &mut unit.traits[0];
+        let i = &mut unit.implementations[0];
+        let range = i.methods[0].contingent_annotation_range;
+        assert_eq!((range.start.line, range.start.column), (1, 69));
+        assert_eq!((range.end.line, range.end.column), (2, 12));
+        assert_eq!(i.methods[0].span, range.start);
+        d.methods[0].name = "rewritten".into();
+        i.methods[0].name = "rewritten".into();
+        let e = implementation_permissions(i, d).unwrap_err();
+        assert_eq!(e.code, "E_CONTINGENT");
+        assert_eq!(e.span, range.start);
+        assert_eq!(*e.end.unwrap(), range.end);
+        // Metadata alone never rejects: an equal trait subset accepts it, and
+        // narrower implementations remain valid whatever metadata they retain.
+        d.methods[0].contingent_contract = Some(true);
+        implementation_permissions(i, d).unwrap();
+        i.methods[0].contingent_contract = Some(false);
+        implementation_permissions(i, d).unwrap();
+        d.methods[0].contingent_contract = Some(false);
+        implementation_permissions(i, d).unwrap();
+    }
+
+    #[test]
+    fn implementation_contingent_ranges_keep_generated_and_implicit_metadata_empty() {
+        let unit = crate::syntax::parse_unit("@contingent control marked() exits done {exit done;} @contingent // top\n pub control exposed() exits done {exit done;} control ordinary() exits done {exit done;} pub control explicit() exits done {exit done;} struct wrapper<t> {t value;@contingent constructor(t input) {self.value=move input;}} boundary guarded() {} contingency(string reason) {drop(reason);} trait reader {@contingent control read() exits done;}").unwrap();
+        let mut handlers = 0;
+        for region in &unit.regions {
+            match region.name.as_str() {
+                "marked" => {
+                    assert_eq!(region.contingent_annotation_range.start.column, 1);
+                    assert_eq!(region.contingent_annotation_range.end.column, 12);
+                }
+                "exposed" => {
+                    let range = region.contingent_annotation_range;
+                    assert_eq!((range.start.line, range.start.column), (1, 54));
+                    assert_eq!((range.end.line, range.end.column), (1, 65));
+                }
+                _ => {
+                    if region.contingent_contract == Some(true) {
+                        handlers += 1;
+                    }
+                    assert_eq!(region.contingent_annotation_range, SourceRange::default());
+                }
+            }
+        }
+        assert_eq!(
+            handlers, 1,
+            "the generated boundary handler grants contingency"
+        );
+        let constructor = unit.data[0].constructor.as_ref().unwrap();
+        assert_eq!(constructor.contingent_contract, Some(true));
+        assert_eq!(
+            constructor.contingent_annotation_range,
+            SourceRange::default()
+        );
+        let declared = &unit.traits[0].methods[0];
+        let range = declared.contingent_annotation_range;
+        assert_eq!((range.start.line, range.start.column), (2, 303));
+        assert_eq!((range.end.line, range.end.column), (2, 314));
     }
 
     #[test]

@@ -7472,7 +7472,8 @@ fn implementation_async_ranges_keep_permission_and_phase_priorities() {
     let source = source.replace("done faults", "done");
     let e = &check_errors(&source).errors[0];
     assert_eq!(e.code, "E_CONTINGENT");
-    assert!(e.end.is_none());
+    assert_eq!(e.span.column, source.find("@contingent").unwrap() + 1);
+    assert_eq!(e.end.as_ref().unwrap().column, e.span.column + 11);
     let source = source.replace("@contingent ", "");
     assert_eq!(check_errors(&source).errors[0].code, "E_BOUND");
     let source = source.replace("item=string", "item=u32");
@@ -7701,7 +7702,8 @@ fn implementation_fault_ranges_keep_async_subset_and_phase_priorities() {
     let source = source.replace("done faults", "done");
     let e = &check_errors(&source).errors[0];
     assert_eq!(e.code, "E_CONTINGENT");
-    assert!(e.end.is_none());
+    assert_eq!(e.span.column, source.find("@contingent").unwrap() + 1);
+    assert_eq!(e.end.as_ref().unwrap().column, e.span.column + 11);
     let source = source.replace("@contingent ", "");
     assert_eq!(check_errors(&source).errors[0].code, "E_BOUND");
     let source = source.replace("item=string", "item=u32");
@@ -7808,6 +7810,271 @@ fn implementation_fault_ranges_keep_inherited_permissions_and_ordinary_fault_err
     for source in [
         "trait reader {region read() faults;}",
         "trait reader {control read() exits done faults faults;}",
+    ] {
+        assert_eq!(check_errors(source).errors[0].code, "E_PARSE");
+    }
+}
+
+#[test]
+fn implementation_contingent_ranges_select_written_annotations() {
+    let f = Fixture::new();
+    for (declaration, implementation, selected) in [
+        (
+            "control read() exits done;",
+            "@contingent control read() exits done {exit done;}",
+            "@contingent",
+        ),
+        (
+            "control read() exits done;",
+            "@contingent // before 😀\r\n control read() exits done // after\r\n {exit done;}",
+            "@contingent",
+        ),
+        (
+            "control read() exits done;",
+            "@ // between 😀\r\n contingent control read() exits done {exit done;}",
+            "@ // between 😀\r\n contingent",
+        ),
+        (
+            "async control read() exits done;",
+            "@contingent async control read() exits done {exit done;}",
+            "@contingent",
+        ),
+        (
+            "control read() exits done faults;",
+            "@contingent control read() exits done faults {exit done;}",
+            "@contingent",
+        ),
+        (
+            "control read() faults;",
+            "@contingent control read() faults {fault \"stopped\";}",
+            "@contingent",
+        ),
+    ] {
+        let source =
+            format!("trait reader {{{declaration}}} implement reader for u32 {{{implementation}}}");
+        f.write("main.tellur", &source);
+        let report = f.report(&["check", "main.tellur", "--json"], false);
+        let errors = report["diagnostics"].as_array().unwrap();
+        assert_eq!(errors.len(), 1, "{report}");
+        let e = &errors[0];
+        assert_eq!(e["code"], "E_CONTINGENT");
+        assert_eq!(
+            e["message"],
+            "implementation cannot enlarge the trait contingency subset"
+        );
+        assert_eq!(e["range"], selected_range(&source, selected), "{source}");
+        assert_eq!(e["position"], e["range"]["start"]);
+        assert_eq!(
+            compile(
+                &source,
+                Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
+            )
+            .unwrap_err(),
+            check_errors(&source).errors[0]
+        );
+    }
+}
+
+#[test]
+fn implementation_contingent_ranges_preserve_imported_coordinates_and_repairs() {
+    let f = Fixture::new();
+    f.write("middle.tellur", "import \"worker.tellur\" as worker;");
+    f.write(
+        "main.tellur",
+        "import \"middle.tellur\" as middle;control main() exits done {exit done;}",
+    );
+    let valid = "pub trait reader {control read(self input) exits done;}\r\nimplement reader for u32 {control read(self first) exits done {string note=\"😀\";drop(note);exit done;}} implement reader for string {control read(self second) exits done {exit done;}}\r\npub control work() exits done {reader<u32>.read(1);reader<string>.read(\"x\");exit done;}";
+    for (needle, replacement, selected) in [
+        (
+            "control read(self first) exits done",
+            "@contingent // 😀\r\n control read(self first) exits done",
+            "@contingent",
+        ),
+        (
+            "control read(self second) exits done {exit done;}",
+            "@ // 😀\r\n contingent async control read(self second) exits done {exit done;}",
+            "async",
+        ),
+        (
+            "control read(self second) exits done {exit done;}",
+            "@ // 😀\r\n contingent control read(self second) exits done faults {exit done;}",
+            "faults",
+        ),
+        (
+            "control read(self second) exits done {exit done;}",
+            "@ // 😀\r\n contingent control read(self second) exits done {exit done;}",
+            "@ // 😀\r\n contingent",
+        ),
+    ] {
+        let source = valid.replace(needle, replacement);
+        f.write("worker.tellur", &source);
+        let report = f.report(&["check", "main.tellur", "--json"], false);
+        let errors = report["diagnostics"].as_array().unwrap();
+        assert_eq!(errors.len(), 1, "{report}");
+        let e = &errors[0];
+        let code = match selected {
+            "async" => "E_ASYNC",
+            "faults" => "E_FAULT_CONTRACT",
+            _ => "E_CONTINGENT",
+        };
+        assert_eq!(e["code"], code);
+        assert_eq!(
+            e["path"],
+            f.root.join("worker.tellur").to_string_lossy().as_ref()
+        );
+        assert_eq!(e["range"], selected_range(&source, selected));
+        let first = tellur::compile_file(
+            f.root.join("main.tellur"),
+            Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(first.path, f.root.join("worker.tellur"));
+        let end = first.diagnostic.end.as_ref().unwrap();
+        assert_eq!(
+            json!({"line":end.line,"column":end.column}),
+            e["range"]["end"]
+        );
+        f.write("worker.tellur", valid);
+        f.report(&["check", "main.tellur", "--json"], true);
+    }
+}
+
+#[test]
+fn implementation_contingent_ranges_keep_permission_and_phase_priorities() {
+    let source = "trait reader {control read() exits done;} implement reader for u32 {@contingent async control read() exits done faults {exit done;}}";
+    assert_eq!(check_errors(source).errors[0].code, "E_ASYNC");
+    let source = source.replace("async control", "control");
+    assert_eq!(check_errors(&source).errors[0].code, "E_FAULT_CONTRACT");
+    let source = source.replace("done faults", "done");
+    let e = &check_errors(&source).errors[0];
+    assert_eq!(e.code, "E_CONTINGENT");
+    assert_eq!(e.span.column, source.find("@contingent").unwrap() + 1);
+    assert_eq!(e.end.as_ref().unwrap().column, e.span.column + 11);
+    for (prefix, code) in [
+        (
+            "trait bad {control work() exits auto;}",
+            "E_TRAIT_SIGNATURE",
+        ),
+        ("implement absent for bool {}", "E_TRAIT"),
+        (
+            "trait bad {type item;} implement bad for bool {}",
+            "E_TRAIT",
+        ),
+    ] {
+        let source = format!(
+            "{prefix} trait reader {{control read() exits done;}} implement reader for u32 {{@contingent control read() exits done {{exit done;}}}}"
+        );
+        assert_eq!(check_errors(&source).errors[0].code, code);
+    }
+    let source = "trait reader {control read() exits done;} implement reader for u32 {@contingent control read() exits done {exit done;}} implement reader for u32 {control read() exits done {exit done;}}";
+    assert_eq!(check_errors(source).errors[0].code, "E_COHERENCE");
+    let source = "trait reader {control read() exits done;} implement reader for u32 {@contingent control read() exits auto {exit done;}}";
+    assert_eq!(check_errors(source).errors[0].code, "E_TRAIT_SIGNATURE");
+    // Bounds and conformance replay only after the annotation is repaired.
+    let source = "trait reader {type item:copy;control read(self input) exits done;} implement reader for u32 {type item=string;@contingent control read(ref self input) exits done {exit done;}}";
+    assert_eq!(check_errors(source).errors[0].code, "E_CONTINGENT");
+    let source = source.replace("@contingent ", "");
+    assert_eq!(check_errors(&source).errors[0].code, "E_BOUND");
+    let source = source.replace("item=string", "item=u32");
+    assert_eq!(check_errors(&source).errors[0].code, "E_TRAIT_SIGNATURE");
+    compile(
+        &source.replace("ref self input", "self input"),
+        Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+    )
+    .unwrap();
+}
+
+#[test]
+fn implementation_contingent_ranges_keep_canonical_batches_written_order_and_limits() {
+    let source = "trait a_reader {control first() exits done;control second() exits done;} trait b_reader {control first() exits done;}\nimplement b_reader for u32 {@contingent control first() exits done {exit done;}}\nimplement a_reader for u32 {control second() exits done {exit done;} @contingent control first() exits done {exit done;}}";
+    let errors = check_errors(source);
+    assert_eq!(errors.errors.len(), 2, "{errors}");
+    assert_eq!(errors.errors[0].span.line, 3);
+    assert_eq!(errors.errors[1].span.line, 2);
+    assert_eq!(
+        errors.errors[0].span.column,
+        source.lines().nth(2).unwrap().find("@contingent").unwrap() + 1
+    );
+    let written = source.replace(
+        "control second() exits done {exit done;} @contingent control first()",
+        "@contingent control second() exits done {exit done;} @contingent control first()",
+    );
+    let errors = check_errors(&written);
+    assert_eq!(errors.errors.len(), 2, "{errors}");
+    assert_eq!(
+        errors.errors[0].span.column,
+        written
+            .lines()
+            .nth(2)
+            .unwrap()
+            .find("@contingent control second")
+            .unwrap()
+            + 1,
+        "within one implementation the first written method reports"
+    );
+    let mut source = "trait reader {control read() exits done;}\n".to_owned();
+    for n in (0..36).rev() {
+        source.push_str(&format!("struct value_{n:02} {{u32 value;}} implement reader for value_{n:02} {{@contingent control read() exits done {{exit done;}}}}\n"));
+    }
+    let errors = check_errors(&source);
+    assert_eq!(errors.errors.len(), 32);
+    assert!(errors.limit_reached);
+    for (n, e) in errors.errors.iter().enumerate() {
+        assert_eq!(e.code, "E_CONTINGENT");
+        assert_eq!(e.span.line, 37 - n);
+        let line = source.lines().nth(e.span.line - 1).unwrap();
+        assert_eq!(e.span.column, line.find("@contingent").unwrap() + 1);
+        assert_eq!(e.end.as_ref().unwrap().column, e.span.column + 11);
+    }
+    assert_eq!(
+        compile(
+            &source,
+            Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
+        )
+        .unwrap_err(),
+        errors.errors[0]
+    );
+    let source = format!(
+        "trait reader {{control read() exits done;}}{}",
+        "implement reader for u32 {@contingent control read() exits done {exit done;}}"
+            .repeat(1025)
+    );
+    let errors = check_errors(&source);
+    assert_eq!(errors.errors.len(), 1);
+    assert!(errors.errors[0].message.contains("1024-implementation"));
+    assert!(errors.errors[0].end.is_none());
+}
+
+#[test]
+fn implementation_contingent_ranges_keep_inherited_subsets_and_ordinary_contingency_errors() {
+    let source = "trait cleanup {@contingent control finish(self input) exits done;} implement cleanup for string {control finish(self input) exits done {emit(input);exit done;}} implement cleanup for u32 {@contingent control finish(self input) exits done {exit done;}} @contingent control finish<t:cleanup>(t input) exits done {cleanup<t>.finish(input);exit done;} control main() exits done {finish<string>(\"finished\");finish<u32>(1);exit done;}";
+    let p = compile(
+        source,
+        Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+    )
+    .unwrap();
+    let scenario = tellur::runtime::Scenario {
+        entry: "main".into(),
+        arguments: vec![],
+        calls: vec![],
+    };
+    assert_eq!(
+        p.run(&scenario).unwrap(),
+        p.expanded("main").unwrap().run(&scenario).unwrap()
+    );
+    let source = "pub control helper() exits done {exit done;} @contingent control main() exits done {helper();exit done;}";
+    let e = &check_errors(source).errors[0];
+    assert_eq!(e.code, "E_CONTINGENT");
+    assert!(!e.message.contains("trait contingency subset"));
+    let f = Fixture::new();
+    f.write(
+        "main.tellur",
+        "@contingent // kept\n control work() exits done {exit done;} control main() exits done {work();exit done;}",
+    );
+    f.report(&["check", "main.tellur", "--json"], true);
+    for source in [
+        "trait reader {control read() exits done;} implement reader for u32 {@contingent @contingent control read() exits done {exit done;}}",
+        "trait reader {control read() exits done;} implement reader for u32 {@ control read() exits done {exit done;}}",
     ] {
         assert_eq!(check_errors(source).errors[0].code, "E_PARSE");
     }

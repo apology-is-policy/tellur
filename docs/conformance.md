@@ -5743,3 +5743,26 @@ metadata. One previous async-priority regression now expects the faults range.
 LSP and isolated VS Code repair independent unsaved implementations through fault-only
 and suffix forms, suppress stale hover and recover checked hover/native execution.
 Public async-host admission remains pending its recorded design decision.
+
+
+## Implementation contingency-permission locations (0.216 / P2ax)
+
+`Parser::control` retains the full `@contingent` range from `@` through
+`contingent`, including intervening comments and line breaks; top-level annotated
+controls retain the same range. Unannotated, inherited, generated boundary-handler
+and constructor signatures use empty metadata. Both module paths remap endpoints.
+Only the existing implementation contingency-permission rejection selects it.
+
+Five CLI cases cover compact, separated and split annotations with async, fault and
+fault-only contracts, Unicode/CRLF imports and repair, first-error compatibility,
+async/fault/contingency priority, earlier preparation and coherence barriers,
+bound/conformance replay after repair, canonical implementation and written method
+order, diagnostic/implementation limits, inherited and equal subsets with
+reference/expanded execution, and separate ordinary contingency/parser behavior.
+Three units cover missing metadata without selecting other available ranges,
+rewriting and permission narrowing, and generated/implicit metadata. Two earlier
+priority regressions now expect the annotation range. LSP and isolated VS Code
+repair independent unsaved implementations, suppress stale hover and recover
+checked hover/native execution. This closes the dedicated P2 location series.
+The accepted async-host call model (same task model, staged admission) is recorded
+in the revision plan and async design; no async behavior changes in this release.
