@@ -6234,7 +6234,7 @@ fn source_task_hovers_and_diagnostics_describe_explicit_handoffs() {
 fn task_set_hovers_and_unsaved_drain_diagnostics() {
     let mut f = Fixture::new();
     // The editor fixture manifest has no text builtins; keep the task operations.
-    let text = &include_str!("fixtures/task_sets.tellur")
+    let text = &include_str!("../playground/task_sets.tellur")
         .replace("    emit(u32_text(count(borrow active)));\n", "")
         .replace("emit(concat(\"joined \", name));", "emit(name);");
     f.open(text);

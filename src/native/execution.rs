@@ -560,6 +560,19 @@ pub enum Step {
         producer: &'static Control,
         deliver: Deliver,
     },
+    /// Queue a child and add its handle to the moved task set.
+    SpawnInto {
+        task: QueuedTask,
+        set: V,
+        slot: usize,
+        ty: &'static str,
+    },
+    /// Join the earliest completed member of a nonempty moved task set.
+    Next {
+        set: V,
+        producer: &'static Control,
+        deliver: Deliver,
+    },
     Yield,
     Await {
         task: QueuedTask,
@@ -608,6 +621,17 @@ enum SourceHandoff {
     },
     Join {
         value: V,
+        producer: &'static Control,
+        deliver: Deliver,
+    },
+    SpawnInto {
+        task: QueuedTask,
+        set: V,
+        slot: usize,
+        ty: &'static str,
+    },
+    Next {
+        set: V,
         producer: &'static Control,
         deliver: Deliver,
     },
@@ -922,6 +946,30 @@ impl Machine {
             } => {
                 self.source_handoff = Some(SourceHandoff::Join {
                     value,
+                    producer,
+                    deliver,
+                });
+            }
+            Step::SpawnInto {
+                task,
+                set,
+                slot,
+                ty,
+            } => {
+                self.source_handoff = Some(SourceHandoff::SpawnInto {
+                    task,
+                    set,
+                    slot,
+                    ty,
+                });
+            }
+            Step::Next {
+                set,
+                producer,
+                deliver,
+            } => {
+                self.source_handoff = Some(SourceHandoff::Next {
+                    set,
                     producer,
                     deliver,
                 });

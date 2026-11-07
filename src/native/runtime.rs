@@ -2025,9 +2025,15 @@ pub fn collection_length(value: V, values: &mut [Option<V>]) -> R<V> {
     let V::Reference { root, fields, .. } = value else {
         return Err("invalid collection length argument".into());
     };
-    Ok(V::U32(collection_support::length(mutable_place(
-        values, root, &fields,
-    )?)?))
+    let value = mutable_place(values, root, &fields)?;
+    if let V::Construct { ty, fields, .. } = &*value
+        && ty.starts_with("$tasks<")
+    {
+        return u32::try_from(fields.len())
+            .map(V::U32)
+            .map_err(|_| "E_NATIVE: task set count exceeds u32".into());
+    }
+    Ok(V::U32(collection_support::length(value)?))
 }
 pub fn collection(name: &str, args: Vec<V>, values: &mut [Option<V>]) -> R<Outcome> {
     let mut args = args.into_iter();

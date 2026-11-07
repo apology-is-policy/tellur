@@ -811,6 +811,27 @@ fn compiled_source_grandchild_fault() {
         include_str!("../../tests/fixtures/source_task_grandchild_fault.tellur"),
     );
 }
+#[test]
+fn compiled_source_task_sets() {
+    compare(
+        "task_sets",
+        include_str!("../../playground/task_sets.tellur"),
+    );
+}
+#[test]
+fn compiled_source_task_set_fault() {
+    compare(
+        "task_set_fault",
+        include_str!("../../tests/fixtures/source_task_set_fault.tellur"),
+    );
+}
+#[test]
+fn compiled_source_task_set_parent_fault() {
+    compare(
+        "task_set_parent_fault",
+        include_str!("../../tests/fixtures/source_task_set_parent_fault.tellur"),
+    );
+}
 fn compare(label: &str, text: &str) {
     let original = crate::compile(
         text,

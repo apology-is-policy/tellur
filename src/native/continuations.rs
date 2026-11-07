@@ -405,6 +405,29 @@ fn generate(program: &CheckedProgram, _pending_operation: Option<(&str, &str)>) 
                 continue;
             }
             if let Action::Decide {
+                operation: Operation::SpawnInto(name),
+                args,
+                arms,
+            } = &instruction.action
+            {
+                let p = &instruction.provenance;
+                let target = names[name.as_str()];
+                let _ = writeln!(
+                    g.code,
+                    "host.at({});host.tick({}, {})?;if {} {{let mut arguments={};let set=arguments.pop().ok_or(\"E_NATIVE: missing task set\")?;let mut value=Some(state.defer_task(host,&MODEL_{target},{},&mut arguments)?);let task=state.queue_started(host,&MODEL_{target},&mut value)?;state.facts[{}]=true;return Ok(Step::SpawnInto{{task,set,slot:{},ty:{}}});}}Ok(Step::Continue)}} ,",
+                    instruction.id,
+                    p.span.line,
+                    p.span.column,
+                    guard(&instruction.guard, &g.layout),
+                    expressions(args, &g.layout),
+                    string(&crate::manifest::task_type(name)),
+                    g.layout.atoms[&arms[0].atom],
+                    g.layout.slots[&arms[0].slots[0]],
+                    string(&crate::manifest::started_type(name))
+                );
+                continue;
+            }
+            if let Action::Decide {
                 operation: Operation::Defer(name),
                 args,
                 arms,
@@ -435,7 +458,8 @@ fn generate(program: &CheckedProgram, _pending_operation: Option<(&str, &str)>) 
                         | Operation::Run(name)
                         | Operation::Await(name)
                         | Operation::AwaitTask(name)
-                        | Operation::Join(name),
+                        | Operation::Join(name)
+                        | Operation::Next(name),
                     args,
                     arms,
                 } => Some((name, args, arms)),
@@ -466,6 +490,23 @@ fn generate(program: &CheckedProgram, _pending_operation: Option<(&str, &str)>) 
                 };
                 let target = names[name.as_str()];
                 if matches!(
+                    &instruction.action,
+                    Action::Decide {
+                        operation: Operation::Next(_),
+                        ..
+                    }
+                ) {
+                    // An empty set selects `empty` without a source handoff.
+                    let empty = arms
+                        .iter()
+                        .find(|arm| arm.outcome == "empty")
+                        .expect("await next has an empty alternative");
+                    let _ = writeln!(
+                        g.code,
+                        "let mut arguments={arguments};let set=arguments.pop().ok_or(\"E_NATIVE: missing task set\")?;if matches!(&set,V::Construct{{fields,..}} if fields.is_empty()){{state.facts[{}]=true;}}else{{return Ok(Step::Next{{set,producer:&MODEL_{target},deliver:deliver_{id}_{pc}}});}}\n}}Ok(Step::Continue)\n}},",
+                        g.layout.atoms[&empty.atom]
+                    );
+                } else if matches!(
                     &instruction.action,
                     Action::Decide {
                         operation: Operation::Join(_),

@@ -9,6 +9,14 @@ enum Runnable {
     Run(ContextKey),
     Await(ContextKey),
 }
+/// A caller suspended by `await next`; members stay in set order.
+struct SetWait {
+    parent: ContextKey,
+    set: V,
+    members: Vec<TaskId>,
+    producer: &'static Control,
+    deliver: Deliver,
+}
 fn live(contexts: &Contexts<'_>, key: &ContextKey) -> bool {
     contexts.parked.contains_key(&key.id) || contexts.terminal.contains_key(&key.id)
 }
@@ -38,6 +46,10 @@ fn drive_source(
     let mut handles: BTreeMap<TaskId, StartedTask> = BTreeMap::new();
     let mut joins: BTreeMap<u64, (ContextKey, TaskJoin, Deliver)> = BTreeMap::new();
     let mut awaits: BTreeMap<u64, ContextKey> = BTreeMap::new();
+    let mut set_waits: Vec<SetWait> = Vec::new();
+    // Source completion order of started children, keyed by context identity.
+    let mut completions: BTreeMap<u64, u64> = BTreeMap::new();
+    let mut clock = 0u64;
     let result = loop {
         let key = if let Some(key) = selected.take() {
             key
@@ -104,6 +116,57 @@ fn drive_source(
                         contexts.values[frame.base() + slot] = Some(value);
                         selected = Some(key); // spawn queues; it is not a source handoff.
                     }
+                    Some(SourceHandoff::SpawnInto {
+                        task,
+                        set,
+                        slot,
+                        ty,
+                    }) => {
+                        let V::Construct {
+                            ty: set_ty,
+                            name,
+                            mut fields,
+                        } = set
+                        else {
+                            return Err("E_NATIVE: task set spawn requires an owned set".into());
+                        };
+                        let (id, value) = task.source_handle(ty);
+                        let child = contexts.retain_task(&key, &mut Some(task))?;
+                        push(&mut runnable, child.context().clone());
+                        assert!(handles.insert(id, child).is_none());
+                        fields.push(value);
+                        let parent = &contexts.parked[&key.id];
+                        let frame = parent.machine.stack.last().unwrap();
+                        contexts.values[frame.base() + slot] = Some(V::Construct {
+                            ty: set_ty,
+                            name,
+                            fields,
+                        });
+                        selected = Some(key); // spawn queues; it is not a source handoff.
+                    }
+                    Some(SourceHandoff::Next {
+                        set,
+                        producer,
+                        deliver,
+                    }) => {
+                        let V::Construct { fields, .. } = &set else {
+                            return Err("E_NATIVE: await next requires an owned set".into());
+                        };
+                        let frame = contexts.parked[&key.id].machine.stack.last().unwrap();
+                        let members = fields
+                            .iter()
+                            .map(|member| {
+                                frame.source_task_identity(contexts.host, member, producer)
+                            })
+                            .collect::<R<Vec<_>>>()?;
+                        set_waits.push(SetWait {
+                            parent: key,
+                            set,
+                            members,
+                            producer,
+                            deliver,
+                        });
+                    }
                     Some(SourceHandoff::Yield) => push(&mut runnable, key),
                     Some(SourceHandoff::Join {
                         value,
@@ -122,6 +185,8 @@ fn drive_source(
             }
             ContextPoll::Ready if key.id == root.id => break Ok(contexts.join(None, &root)?),
             ContextPoll::Ready => {
+                clock += 1;
+                completions.insert(key.id, clock);
                 if let Some(parent) = awaits.remove(&key.id) {
                     contexts.return_await(&parent, &key)?;
                     selected = Some(parent);
@@ -168,6 +233,55 @@ fn drive_source(
             deliver(activation, &mut contexts.values, result)?;
             push(&mut runnable, parent);
         }
+        // A set waiter joins its earliest completed member, then rejoins the FIFO.
+        let mut index = 0;
+        while index < set_waits.len() {
+            let earliest = set_waits[index]
+                .members
+                .iter()
+                .enumerate()
+                .filter_map(|(position, id)| {
+                    let context = handles.get(id)?.context().id;
+                    contexts.completed.contains_key(&context).then(|| {
+                        (
+                            completions.get(&context).copied().unwrap_or(u64::MAX),
+                            position,
+                        )
+                    })
+                })
+                .min();
+            let Some((_, position)) = earliest else {
+                index += 1;
+                continue;
+            };
+            let mut wait = set_waits.remove(index);
+            let id = wait.members.remove(position);
+            let mut task = handles.remove(&id);
+            let join = contexts.claim_task(&wait.parent, wait.producer, &mut task)?;
+            completions.remove(&join.context().id);
+            let (outcome, mut payload) = contexts
+                .join_task(&wait.parent, &mut Some(join))?
+                .outcome()?;
+            let V::Construct { fields, .. } = &mut wait.set else {
+                unreachable!()
+            };
+            fields.remove(position);
+            payload.push(wait.set);
+            let activation = contexts
+                .parked
+                .get_mut(&wait.parent.id)
+                .unwrap()
+                .machine
+                .stack
+                .last_mut()
+                .unwrap();
+            (wait.deliver)(
+                activation,
+                &mut contexts.values,
+                Completion::Outcome((outcome, payload)),
+            )?;
+            push(&mut runnable, wait.parent);
+        }
         // Owning settlement can retire many descendants and recover an ancestor.
         // Retired joins/awaits do not resume normal code or deliver phantom results.
         let stopped: Vec<_> = joins
@@ -200,7 +314,28 @@ fn drive_source(
                 Runnable::Run(key) | Runnable::Await(key) => key.id != selected.id,
             });
         }
+        // Settlement that abandons a member or its waiting owner retires the wait.
+        let mut index = 0;
+        while index < set_waits.len() {
+            let wait = &set_waits[index];
+            if live(&contexts, &wait.parent)
+                && wait
+                    .members
+                    .iter()
+                    .all(|id| contexts.host.tasks.contains(*id))
+            {
+                index += 1;
+                continue;
+            }
+            let wait = set_waits.remove(index);
+            if live(&contexts, &wait.parent)
+                && selected.as_ref().is_none_or(|s| s.id != wait.parent.id)
+            {
+                push(&mut runnable, wait.parent);
+            }
+        }
         handles.retain(|id, _| contexts.host.tasks.contains(*id));
+        completions.retain(|id, _| contexts.completed.contains_key(id));
     };
     if !contexts.parked.is_empty()
         || !contexts.completed.is_empty()

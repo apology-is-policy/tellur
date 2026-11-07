@@ -5945,3 +5945,22 @@ Every run is compared across original and expanded programs and four host quotas
 The runtime census retires every context at every fuel cut for the example, the
 fault fixture and their variants. LSP hover and diagnostic repair, and the
 contextual grammar scopes, are tested too.
+
+## Native task sets (0.223 / E1g stage c, part 2)
+
+Native executables now run task sets. The generated step for `spawn producer(..) into set;`
+pops the moved set, starts the child and hands the queued task to the source scheduler,
+which records the handle in the set and restores the set to its slot. `await next set`
+selects `empty` directly for an empty set; otherwise the caller parks on a set wait.
+After each scheduler step the wait joins its earliest completed member (by source
+completion order), delivers the member payload followed by the remaining set, and
+returns the caller to the FIFO. Owning settlement that abandons a member or the
+waiting owner retires the wait, so faults follow the spawned-children rules. The
+`E_BACKEND` gate is gone, `count(borrow set)` counts members natively, and the
+example is back at `playground/task_sets.tellur`.
+
+`tests/task_sets.rs` compares native `--scenario` output with the reference executor
+for the example, the member-fault fixture and the owner-fault fixture. The
+source-scheduler unit tests compare the same three programs, original and expanded at
+O0 and O2, across every fuel cut and host quota. Existing playground and exit-code
+tests now build the example natively.

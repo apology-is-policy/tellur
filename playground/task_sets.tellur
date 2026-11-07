@@ -32,6 +32,10 @@ async control startup() exits done {
     }
 }
 
-control main() exits done {
+control main() exits program_result {
     forward run startup();
+}
+
+outcome program_result {
+    @exit 0 done
 }

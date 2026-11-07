@@ -230,8 +230,8 @@ async operations or hand off, including through synchronous helper calls.
 
 A spawned handle is one named local. A *task set* holds any number of started
 children of one async producer, so the count of live children no longer depends on
-the source text. Since 0.222 the reference executor runs task sets. Native builds report
-`E_BACKEND` until the native runtime gains them.
+the source text. The reference executor runs task sets since 0.222 and native
+executables since 0.223, with the same completion order and fault settlement.
 
 - `tasks<producer> set = tasks();` declares an empty set. The producer must be one
   async control.
@@ -289,7 +289,7 @@ handle, it may not be in scope at a direct inline fault boundary. Put per-member
 isolation inside the producer instead.
 
 Bound the number of live members with an ordinary decision on
-`count(borrow set)`, as in [the task-set example](../../tests/fixtures/task_sets.tellur) (it moves to the playground once native builds support task sets).
+`count(borrow set)`, as in [the task-set example](../../playground/task_sets.tellur).
 Faults follow the spawned-children rules:
 
 - An escaping member fault stops the owning boundary.

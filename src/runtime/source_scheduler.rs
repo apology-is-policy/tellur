@@ -831,7 +831,7 @@ mod tests {
             include_str!("../../tests/fixtures/source_borrowed_task_fault.tellur"),
             include_str!("../../tests/fixtures/source_inline_helper_fault.tellur"),
             include_str!("../../tests/fixtures/source_parent_await_fault.tellur"),
-            include_str!("../../tests/fixtures/task_sets.tellur"),
+            include_str!("../../playground/task_sets.tellur"),
             include_str!("../../tests/fixtures/source_task_set_fault.tellur"),
             include_str!("../../tests/fixtures/source_task_set_parent_fault.tellur"),
         ]
@@ -839,7 +839,7 @@ mod tests {
         .map(str::to_owned)
         // Members complete or fault before the parent first awaits its set.
         .chain([
-            include_str!("../../tests/fixtures/task_sets.tellur").replace(
+            include_str!("../../playground/task_sets.tellur").replace(
                 "    loop reap(",
                 "    yield;\n    yield;\n    yield;\n    yield;\n    loop reap(",
             ),

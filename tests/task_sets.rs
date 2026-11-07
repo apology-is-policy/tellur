@@ -345,9 +345,45 @@ async control startup() exits done { tasks<odd> active = tasks(); exit done; }",
 }
 
 #[test]
-fn native_builds_report_task_sets_as_not_yet_supported() {
-    let p = compile(include_str!("fixtures/task_sets.tellur"), manifest()).unwrap();
-    let error = p.native_source("main").unwrap_err();
-    assert_eq!(error.code, "E_BACKEND");
-    assert!(error.message.contains("task sets"), "{error}");
+fn native_task_sets_match_reference() {
+    use std::{collections::BTreeMap, fs, process::Command};
+    let root = std::env::temp_dir().join(format!("tellur-task-sets-{}", std::process::id()));
+    fs::create_dir_all(&root).unwrap();
+    let input = root.join("scenario.json");
+    let run = scenario(vec![]);
+    fs::write(&input, serde_json::to_vec(&run).unwrap()).unwrap();
+    for (label, source) in [
+        ("sets", include_str!("../playground/task_sets.tellur")),
+        (
+            "fault",
+            include_str!("fixtures/source_task_set_fault.tellur"),
+        ),
+        (
+            "parent_fault",
+            include_str!("fixtures/source_task_set_parent_fault.tellur"),
+        ),
+    ] {
+        let p = compile(source, manifest())
+            .unwrap()
+            .with_entry_exit_codes("main", BTreeMap::from([("done".into(), 0)]))
+            .unwrap();
+        let binary = root.join(label);
+        p.build_native("main", &binary, 0).unwrap();
+        let out = Command::new(&binary)
+            .arg("--scenario")
+            .arg(&input)
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "{label}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&out.stdout).unwrap(),
+            serde_json::to_value(p.run(&run).unwrap()).unwrap(),
+            "{label}"
+        );
+    }
+    fs::remove_dir_all(root).unwrap();
 }
