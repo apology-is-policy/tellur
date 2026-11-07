@@ -898,8 +898,9 @@ impl Manifest {
         }
         Ok(())
     }
-    /// The first async host-operation profile: the operation borrows resources
-    /// for its whole wait, receives owned data, and completes with owned data.
+    /// The async host-operation profile: the operation borrows resources for its
+    /// whole wait, receives owned data, and completes with owned data or owned
+    /// resources whose types declare a fault disposition.
     fn check_async_primitive(&self, p: &Primitive) -> Result<()> {
         let fail =
             |detail: String| Err(error(format!("async host operation `{}` {detail}", p.name)));
@@ -936,11 +937,19 @@ impl Manifest {
                 _ => {}
             }
         }
+        // An owned resource result may wait, completed but unjoined, while its
+        // owner is stopped; it therefore needs a declared fault disposition.
         for o in &p.outcomes {
             for f in &o.fields {
-                if self.linear(&f.ty) || self.contains_references(&f.ty) {
+                if self.contains_references(&f.ty) {
                     return fail(format!(
-                        "outcome field `{}.{}` must be owned data without resources or references",
+                        "outcome field `{}.{}` must be owned data or resources without references",
+                        o.name, f.name
+                    ));
+                }
+                if self.linear(&f.ty) && !self.permits_fault(&f.ty) {
+                    return fail(format!(
+                        "outcome field `{}.{}` returns a resource without a fault disposition; declare `\"fault\": \"release\"` on its type",
                         o.name, f.name
                     ));
                 }

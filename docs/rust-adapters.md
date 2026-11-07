@@ -220,8 +220,10 @@ impl rust_api::tick_operation for Ticking {
 
 Start receives borrowed resources and owned data; `poll` receives the same borrowed
 resources again on every call. The state cannot keep references to them. Copy and
-consumed data arrive only at start. Outcomes carry owned data; the first async
-profile has no resource-bearing results.
+consumed data arrive only at start. Outcomes carry owned data and, since 0.224,
+owned resources whose manifest types declare `"fault": "release"`. A returned
+resource enters the executable's resource table when the poll completes, after the
+borrowed resources of that poll end; from then on it is an ordinary owner.
 
 The runtime polls once while the awaiting task's `await` is selected. A pending
 operation parks its task. Other runnable tasks continue, and the operation is

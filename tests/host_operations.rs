@@ -595,7 +595,7 @@ fn manifest_validation_limits_the_first_async_profile() {
         ),
         (
             serde_json::json!({"name":"bad","async":true,"parameters":[],"outcomes":[{"name":"opened","fields":[{"name":"h","type":"handle"}]}],"effects":[],"returns":true}),
-            "outcome field `opened.h` must be owned data",
+            "outcome field `opened.h` returns a resource without a fault disposition",
         ),
         (
             serde_json::json!({"name":"bad","async":true,"contingent":true,"parameters":[],"outcomes":[{"name":"done","fields":[]}],"effects":[],"returns":true}),

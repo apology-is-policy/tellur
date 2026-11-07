@@ -38,7 +38,7 @@ control run(ref http_listener listener, ref string authority, u32 limit, u32 idl
             difference { u32 next } => available,
             underflow => exit completed
         }
-        [available]: delta http.accept(listener, idle_ms) {
+        [available]: delta run http.accept(listener, idle_ms) {
             accepted { http_connection connection } => accepted,
             idle => exit idle,
             failed { string message } => exit failed { message }

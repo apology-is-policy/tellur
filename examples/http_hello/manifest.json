@@ -9,7 +9,8 @@
     {
       "name": "http_connection",
       "kind": "opaque",
-      "linear": true
+      "linear": true,
+      "fault": "release"
     }
   ],
   "primitives": [
@@ -56,6 +57,7 @@
     },
     {
       "name": "http_accept",
+      "async": true,
       "parameters": [
         {
           "name": "listener",
@@ -97,7 +99,7 @@
       ],
       "returns": true,
       "rust": {
-        "execution": "blocking"
+        "execution": "poll"
       }
     },
     {
@@ -406,7 +408,8 @@
     },
     "modules": {
       "http": "../../library/host/loopback_http.rs",
-      "http_receive": "../../library/host/loopback_http_receive.rs"
+      "http_receive": "../../library/host/loopback_http_receive.rs",
+      "http_accept": "../../library/host/loopback_http_accept.rs"
     }
   }
 }

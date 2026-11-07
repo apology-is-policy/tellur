@@ -102,7 +102,7 @@ and [settings server](../applications/settings/server.tellur) use the same sourc
 | Control | Inputs | Result contract |
 | --- | --- | --- |
 | `listen` | `u32 port` | `listen_result`: owned listener and authority, or `failed` |
-| `accept` | `ref http_listener listener, u32 idle_ms` | `accept_result`: owned connection, `idle`, or `failed` |
+| `accept` (async) | `ref http_listener listener, u32 idle_ms` | `accept_result`: owned connection, `idle`, or `failed` |
 | `receive` | `ref http_connection connection` | `receive_result`: owned method, target, headers and UTF-8 body, or a distinct framing, limit, deadline, disconnect or I/O outcome |
 | `send` | shared connection, status, shared body/media/Allow text | `send_result`: `sent` or `failed` |
 | `close` | owned connection | `close_result`: `closed` or `failed`; consumes the owner either way |
@@ -149,17 +149,23 @@ The caller chooses Host matching, browser-origin policy and route interpretation
 `async control` over the async host operation `http_receive`: await it from async
 code, or `run transport.receive(connection)` from synchronous code. While the
 socket would block, the awaiting task parks on descriptor readiness, bounded by the
-same two-second deadline, and other tasks can run. Listen, accept, write and
-completion operations remain blocking. There is no TLS or authentication, and the
-maintained settings service still handles one connection at a time.
+same two-second deadline, and other tasks can run. Since 0.224 `accept` is async
+too: `http_accept` parks on the listener's readability, bounded by the idle
+timeout, and returns an owned connection. Manifests binding it declare
+`"fault": "release"` on `http_connection`, so a stopped task that owns a connection
+closes its descriptor. Listen, write and completion operations remain blocking.
+There is no TLS or authentication, and the maintained settings service still
+handles one connection at a time.
 
-[host/loopback_http.rs](host/loopback_http.rs) and the polled receive in
-[host/loopback_http_receive.rs](host/loopback_http_receive.rs) are embedded by explicit
+[host/loopback_http.rs](host/loopback_http.rs), the polled receive in
+[host/loopback_http_receive.rs](host/loopback_http_receive.rs) and the polled accept in
+[host/loopback_http_accept.rs](host/loopback_http_accept.rs) are embedded by explicit
 `rust.modules` and depend on the project's locked `httparse` version (and, for the
 polled adapter, the internal readiness dependency; rerun `tellurc lock-native`). The
 root adapter re-exports `Listener`, `Connection` and the seven primitive functions,
-taking `http_receive` from the polled module. The blocking `http_receive` stays in
-`loopback_http.rs` as the baseline for the private receive experiments. See the standalone
+taking `http_receive` and `http_accept` from the polled modules. The blocking
+`http_receive` and `http_accept` stay in `loopback_http.rs` as baselines for the
+private receive experiments and internal tests. See the standalone
 [manifest](../examples/http_hello/manifest.json) and [adapter](../examples/http_hello/host.rs).
 This uses the existing typed Rust source boundary and retained-resource rules;
 it creates no stable Rust binary ABI, future/executor contract or coroutine restriction.

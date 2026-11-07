@@ -70,7 +70,7 @@ control run(
             underflow => finished
         }
         [finished]: exit completed;
-        [available]: delta transport.accept(listener, idle_ms) {
+        [available]: delta run transport.accept(listener, idle_ms) {
             accepted { http_connection connection } => accepted,
             idle => idle,
             failed { string accept_message } => unavailable

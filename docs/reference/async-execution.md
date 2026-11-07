@@ -1172,9 +1172,13 @@ This first profile has deliberate limits:
   host operation are rejected with `E_ASYNC`. Wrap the operation in an async
   control to enter it with `run`, or to defer or spawn it.
 - Borrowed parameters must be resources; data parameters are Copy values or
-  consumed owned values. Consuming resources, resource-bearing outcome payloads,
-  references, and contingent or pure async primitives are rejected when the
-  manifest is validated.
+  consumed owned values. Consuming resources, references, and contingent or pure
+  async primitives are rejected when the manifest is validated.
+- Since 0.224 an outcome payload may own resources, as `http_accept` returns an
+  `http_connection`. Each such resource type must declare `"fault": "release"`:
+  the result can be owned by a task that a fault later stops, for example a
+  completed child that has not been joined yet, or a member holding it across a
+  handoff. Settlement releases it before the task's borrowed suppliers retire.
 - The reference interpreter and, since 0.218, native executables run host
   operations from scripted scenarios (`tellurc run`, or `--scenario FILE` for a
   native executable). A scenario call may add `"waits": N` to report pending `N`

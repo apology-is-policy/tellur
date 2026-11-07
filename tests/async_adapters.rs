@@ -98,10 +98,10 @@ fn log(path: &str, line: String) {
     let mut file = std::fs::OpenOptions::new().create(true).append(true).open(path).unwrap();
     writeln!(file, "{line}").unwrap();
 }
-pub struct Counter { path: String }
-impl Drop for Counter { fn drop(&mut self) { log(&self.path, "counter drop".into()); } }
+pub struct Counter { path: String, name: String }
+impl Drop for Counter { fn drop(&mut self) { log(&self.path, format!("{} drop", self.name)); } }
 pub fn make(path: &str) -> rust_api::make_outcome {
-    rust_api::make_outcome::made(Counter { path: path.into() })
+    rust_api::make_outcome::made(Counter { path: path.into(), name: "counter".into() })
 }
 pub fn close(value: Counter) -> rust_api::close_outcome {
     drop(value);
@@ -110,7 +110,7 @@ pub fn close(value: Counter) -> rust_api::close_outcome {
 pub struct Ticking { label: String, remaining: u32, path: String }
 impl Drop for Ticking { fn drop(&mut self) { log(&self.path, format!("state drop {}", self.label)); } }
 pub fn tick(counter: &Counter, label: String) -> Box<dyn rust_api::tick_operation> {
-    let remaining = match label.as_str() { "slow" => 3, "fast" => 1, _ => 0 };
+    let remaining = match label.as_str() { "hold" => 50, "slow" => 3, "fast" => 1, _ => 0 };
     log(&counter.path, format!("start {label}"));
     Box::new(Ticking { label, remaining, path: counter.path.clone() })
 }
@@ -513,4 +513,171 @@ fn readable_descriptors_wake_polled_operations_without_retry_loops() {
     );
     assert_eq!(log[0], "state drop slow after 1 polls");
     assert!(log.contains(&"channel drop slow".to_string()), "{log:?}");
+}
+
+/// `split` is a polled operation whose completion owns a new resource.
+fn split_config() -> Json {
+    let mut config = config();
+    config["primitives"].as_array_mut().unwrap().push(json!(
+        {"name":"split","async":true,
+         "parameters":[{"name":"counter","type":"counter","mode":"borrow"},
+                       {"name":"label","type":"string","mode":"consume"}],
+         "outcomes":[{"name":"parted","fields":[{"name":"piece","type":"counter"}]}],
+         "effects":["split"],"returns":true,"rust":{"execution":"poll"}}));
+    config
+}
+const SPLIT_HOST: &str = r#"
+pub struct Splitting { label: String, remaining: u32, path: String }
+pub fn split(counter: &Counter, label: String) -> Box<dyn rust_api::split_operation> {
+    let remaining = if label == "slow" { 3 } else { 1 };
+    Box::new(Splitting { label, remaining, path: counter.path.clone() })
+}
+impl rust_api::split_operation for Splitting {
+    fn poll(&mut self, _: &Counter) -> rust_api::Poll<rust_api::split_outcome> {
+        if self.remaining == 0 {
+            log(&self.path, format!("parted {}", self.label));
+            let name = format!("piece {}", self.label);
+            return rust_api::Poll::Ready(rust_api::split_outcome::parted(Counter { path: self.path.clone(), name }));
+        }
+        self.remaining -= 1;
+        rust_api::Poll::Pending(rust_api::Wait::after(Duration::from_millis(2)))
+    }
+}
+"#;
+const SPLITS: &str = r#"
+async control part(ref counter c, string label) exits done {
+    delta await split(c, move label) {
+        parted { counter piece } => parted
+    }
+
+    [parted]:
+        yield;
+        delta close(move piece) {
+            closed => closed
+        }
+    [parted & closed]: exit done;
+}
+async control startup(ref counter c) exits done {
+    auto first = spawn part(c, "slow");
+    auto second = spawn part(c, "fast");
+    await first;
+    await second;
+    exit done;
+}
+control main(string path) exits done {
+    delta make(borrow path) {
+        made { counter c } => made
+    }
+
+    [made]:
+        run startup(borrow c);
+        delta close(move c) {
+            closed => closed
+        }
+    [made & closed]: exit done;
+}
+"#;
+
+#[test]
+fn polled_operations_return_owned_resources_released_by_faults() {
+    let f = Fixture::new("split");
+    fs::write(f.root.join("host.rs"), format!("{HOST}{SPLIT_HOST}")).unwrap();
+    let p = compile(SPLITS, f.manifest(&split_config())).unwrap();
+    let binary = f.build(&p, "split");
+    let (ok, result, log) = f.run(&binary, "split.log");
+    assert!(ok, "{result}");
+    assert_eq!(
+        log,
+        [
+            "parted fast",
+            "piece fast drop",
+            "parted slow",
+            "piece slow drop",
+            "counter drop"
+        ]
+    );
+    // Scripted resource results match the reference executor.
+    let scenario = f.root.join("split.json");
+    let piece = |token: &str| json!({"kind":"opaque","value":{"ty":"counter","token":token}});
+    fs::write(
+        &scenario,
+        json!({"entry":"main","arguments":[{"kind":"string","value":"unused"}],"calls":[
+            {"operation":"make","outcome":"made","fields":[piece("c")]},
+            {"operation":"split","outcome":"parted","fields":[piece("a")],"waits":2},
+            {"operation":"split","outcome":"parted","fields":[piece("b")]},
+            {"operation":"close","outcome":"closed","fields":[]},
+            {"operation":"close","outcome":"closed","fields":[]},
+            {"operation":"close","outcome":"closed","fields":[]}
+        ]})
+        .to_string(),
+    )
+    .unwrap();
+    let output = Command::new(&binary)
+        .arg("--scenario")
+        .arg(&scenario)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let s: tellur::runtime::Scenario =
+        serde_json::from_slice(&fs::read(&scenario).unwrap()).unwrap();
+    assert_eq!(
+        serde_json::from_slice::<Json>(&output.stdout).unwrap(),
+        serde_json::to_value(p.run(&s).unwrap()).unwrap()
+    );
+    // A sibling fault stops a member that owns a returned resource across a
+    // handoff; the resource is released before the borrowed supplier.
+    let faulting = SPLITS
+        .replace(
+            "    auto second = spawn part(c, \"fast\");",
+            "    auto second = spawn failing(c);",
+        )
+        .replace("\"slow\"", "\"fast\"")
+        .replace(
+            "async control startup(ref counter c) exits done {",
+            "async control failing(ref counter c) exits done faults {\n    delta await tick(c, \"slow\") {\n        ticked { string label } => ticked\n    }\n\n    [ticked]: fault \"sibling failed\";\n}\nasync control startup(ref counter c) exits done faults {",
+        )
+        .replace(
+            "[parted]:\n        yield;",
+            "[parted]:\n        delta await tick(c, \"hold\") {\n            ticked { string waited_label } => waited\n        }",
+        )
+        .replace("[parted & closed]", "[parted & waited & closed]")
+        .replace("control main(string path) exits done {", "control main(string path) exits done faults {");
+    let p = compile(&faulting, f.manifest(&split_config())).unwrap();
+    let binary = f.build(&p, "split-fault");
+    let (ok, report, log) = f.run(&binary, "split-fault.log");
+    assert!(!ok);
+    assert!(
+        report["message"]
+            .as_str()
+            .unwrap()
+            .contains("sibling failed"),
+        "{report}"
+    );
+    let at = |line: &str| {
+        log.iter()
+            .position(|l| l == line)
+            .unwrap_or_else(|| panic!("{line}: {log:?}"))
+    };
+    assert!(at("parted fast") < at("state drop hold"), "{log:?}");
+    assert!(at("state drop hold") < at("piece fast drop"), "{log:?}");
+    assert_eq!(log.last().unwrap(), "counter drop");
+    // Without a fault disposition the async result is rejected by the manifest.
+    let mut unsettled = split_config();
+    unsettled["types"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("fault");
+    let error = Manifest::from_json_at(&unsettled.to_string(), &f.root.join("manifest.json"))
+        .expect_err("resource result without fault disposition");
+    assert!(
+        error
+            .message
+            .contains("returns a resource without a fault disposition"),
+        "{}",
+        error.message
+    );
 }

@@ -4716,3 +4716,21 @@ tokens due. It then signals the oldest due parked operation as before. The
 sequential driver waits for its single operation the same way. Readiness is
 edge-triggered, so adapters report it only after `WouldBlock`. Write readiness and
 deadline-only timers beyond `Wait::after` remain outside this stage.
+
+### Resource-bearing async results (E1g stage c, part 3a, 0.224)
+
+An async host operation may now complete with owned resources. The manifest
+requires every resource in its outcome payloads to declare `"fault": "release"`,
+because the result is owned by an async invocation that may be stopped later: as a
+completed but unjoined child, or across a handoff in its new owner. There is no new
+in-flight state. The reference executor binds scripted opaque results when the
+operation completes. A native polled adapter returns its Rust resource in the
+outcome; the generated glue ends the poll's borrows, then inserts the resource into
+the resource table before delivery. Pending stops still drop adapter state before
+suppliers and publish nothing.
+
+The loopback library's `accept` is the first user: an `async control` over the
+polled `http_accept` (`library/host/loopback_http_accept.rs`), which parks on the
+nonblocking listener's readability bounded by the idle timeout. `http_connection`
+declares `"fault": "release"`. The blocking `http_accept` stays in
+`loopback_http.rs` as the baseline used by internal tests.

@@ -229,8 +229,10 @@ two-second deadline and 2 MiB size limit. Oversized headers return 431, oversize
 bodies 413, and expired request reads 408 when a reply can still be sent. Queued
 pipelined requests are never executed. These bounds do not bound filesystem I/O
 latency. Since 0.221 request reception is an async host operation, entered with
-`run transport.receive(connection)` and parked on socket readiness; the service still
-handles one client at a time.
+`run transport.receive(connection)` and parked on socket readiness. Since 0.224
+acceptance is async as well (`run transport.accept(listener, idle_ms)`), and
+`http_connection` declares `"fault": "release"`. The service still handles one
+client at a time.
 
 The connection completion operation half-closes the write side, drains at most
 1 MiB + 16 KiB for at most 100 ms, and releases the descriptor. Bounded staged

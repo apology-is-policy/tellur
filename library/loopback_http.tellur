@@ -1,5 +1,5 @@
-// Transport contracts; `receive` is async (await it, or `run` it from synchronous
-// code). Routing, supervision and status policy belong to callers. Supply the
+// Transport contracts; `accept` and `receive` are async (await them, or `run` them
+// from synchronous code). Routing, supervision and status policy belong to callers. Supply the
 // matching retained-resource primitives in the manifest.
 pub outcome listen_result {
     listening { http_listener listener, string authority },
@@ -44,8 +44,8 @@ pub control listen(u32 port) exits listen_result {
     forward http_listen(port);
 }
 
-pub control accept(ref http_listener listener, u32 idle_ms) exits accept_result {
-    forward http_accept(listener, idle_ms);
+pub async control accept(ref http_listener listener, u32 idle_ms) exits accept_result {
+    forward await http_accept(listener, idle_ms);
 }
 
 pub async control receive(ref http_connection connection) exits receive_result {

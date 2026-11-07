@@ -5964,3 +5964,25 @@ for the example, the member-fault fixture and the owner-fault fixture. The
 source-scheduler unit tests compare the same three programs, original and expanded at
 O0 and O2, across every fuel cut and host quota. Existing playground and exit-code
 tests now build the example natively.
+
+## Resource-bearing async results and async accept (0.224 / E1g stage c, part 3a)
+
+Async host operations may complete with owned resources. Manifest validation
+requires each resource type in an async outcome payload to declare
+`"fault": "release"`, since a stopped completed-but-unjoined child, or a task
+holding the result across a handoff, must release it. Polled Rust glue ends the
+poll's borrowed resources before inserting returned resources into the resource
+table. The loopback library's `accept` is an async control over the polled
+`http_accept` in `library/host/loopback_http_accept.rs`, which parks on listener
+readability bounded by the idle timeout. The settings and HTTP example manifests
+bind it with `"execution": "poll"`, declare `"fault": "release"` on
+`http_connection`, and enter it with `run`. The blocking adapter stays as the
+internal baseline.
+
+`tests/async_adapters.rs` builds a polled operation that returns a resource. Two
+concurrent members receive and close their pieces in completion order; the
+scripted run matches the reference executor; a sibling fault stops a member that
+owns a returned piece across a pending wait, dropping the wait state, then the
+piece, then the borrowed supplier; and a resource result without a fault
+disposition is rejected. `tests/host_operations.rs` updates the manifest-profile
+rejection. The live settings and HTTP library suites run with async accept.

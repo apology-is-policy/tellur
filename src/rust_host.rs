@@ -626,6 +626,9 @@ fn start_source(
             p.name
         )
         .unwrap();
+        // Borrowed resources end with the poll; owned resource results are then
+        // inserted into the same table.
+        code.push_str("let progress={");
         for (i, f) in &borrowed {
             writeln!(
                 code,
@@ -637,7 +640,7 @@ fn start_source(
         }
         writeln!(
             code,
-            "match self.operation.poll({}){{rust_api::Poll::Pending(wait)=>Ok(HostProgress::Pending{{delay:wait.retry_after,readable:wait.readable}}),rust_api::Poll::Ready(outcome)=>Ok(HostProgress::Ready(match outcome{{",
+            "self.operation.poll({})}};match progress{{rust_api::Poll::Pending(wait)=>Ok(HostProgress::Pending{{delay:wait.retry_after,readable:wait.readable}}),rust_api::Poll::Ready(outcome)=>Ok(HostProgress::Ready(match outcome{{",
             borrowed
                 .iter()
                 .map(|(i, _)| format!("p{i}"))
@@ -666,7 +669,11 @@ fn start_source(
                 o.fields
                     .iter()
                     .enumerate()
-                    .map(|(i, f)| format!("encode_{}(v{i})", ids[&f.ty]))
+                    .map(|(i, f)| if resources.contains_key(&f.ty) {
+                        format!("resources.insert({:?},v{i})?", f.ty)
+                    } else {
+                        format!("encode_{}(v{i})", ids[&f.ty])
+                    })
                     .collect::<Vec<_>>()
                     .join(",")
             )

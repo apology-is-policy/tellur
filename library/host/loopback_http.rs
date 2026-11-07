@@ -14,6 +14,17 @@ pub struct Connection {
     pub(crate) head: std::cell::Cell<bool>,
     response_started: std::cell::Cell<bool>,
 }
+impl Connection {
+    // Shared with the polled accept module (loopback_http_accept.rs).
+    pub(crate) fn new(stream: std::net::TcpStream) -> Self {
+        Self {
+            stream,
+            receive_started: std::cell::Cell::new(false),
+            head: std::cell::Cell::new(false),
+            response_started: std::cell::Cell::new(false),
+        }
+    }
+}
 const HEADER_LIMIT: usize = 16384;
 const BODY_LIMIT: usize = 1048576;
 const IO_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
@@ -47,12 +58,7 @@ pub fn http_accept(listener: &Listener, idle_ms: u32) -> rust_api::http_accept_o
                 if let Err(e) = stream.set_nonblocking(false) {
                     return failed(e.to_string());
                 }
-                return accepted(Connection {
-                    stream,
-                    receive_started: std::cell::Cell::new(false),
-                    head: std::cell::Cell::new(false),
-                    response_started: std::cell::Cell::new(false),
-                });
+                return accepted(Connection::new(stream));
             }
             Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                 std::thread::sleep(
