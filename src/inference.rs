@@ -97,7 +97,9 @@ pub(crate) fn dependency_order(
                 visit(inner, calls, manifest, seen);
                 return;
             }
-            if let Some(producer) = crate::manifest::outcome_inner(ty) {
+            if let Some(producer) =
+                crate::manifest::outcome_inner(ty).or(crate::manifest::task_set_inner(ty))
+            {
                 calls.insert(producer.into());
                 return;
             }

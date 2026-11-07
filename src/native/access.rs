@@ -249,6 +249,8 @@ fn plan(action: &Action, region: &Region, constructors: &BTreeSet<&str>) -> Plan
                 | Operation::AwaitTask(_)
                 | Operation::Join(_)
                 | Operation::Spawn(_)
+                | Operation::SpawnInto(_)
+                | Operation::Next(_)
                 | Operation::Yield => true,
                 Operation::Defer(_)
                 | Operation::Primitive(_)

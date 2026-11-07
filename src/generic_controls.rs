@@ -160,7 +160,7 @@ fn type_calls(ty: &str, at: Span, visit: &mut Visit<'_>) -> Result<()> {
     if let Some((_, inner)) = manifest::reference_inner(ty) {
         return type_calls(inner, at, visit);
     }
-    if let Some(producer) = manifest::outcome_inner(ty) {
+    if let Some(producer) = manifest::outcome_inner(ty).or(manifest::task_set_inner(ty)) {
         visit(producer, at)?;
     }
     if let Some((_, args)) = generic(ty) {

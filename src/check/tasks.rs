@@ -8,6 +8,7 @@ pub(super) fn handoffs(body: &[Instruction], signatures: &BTreeMap<String, Signa
             Operation::Await(_)
             | Operation::AwaitTask(_)
             | Operation::Join(_)
+            | Operation::Next(_)
             | Operation::Yield => true,
             Operation::Region(name) | Operation::Run(name) => {
                 signatures.get(name).is_none_or(|s| s.handoffs)
@@ -494,5 +495,254 @@ impl Checker<'_> {
             stored.expression,
             sig.outcomes,
         ))
+    }
+
+    /// Register `tasks<producer>` after checking the first task-set profile:
+    /// owned reference-free captures and results, stoppable producers and at
+    /// least one normal outcome, none named `empty`.
+    pub(super) fn task_set(&mut self, ty: &str, span: Span) -> Result<String> {
+        let producer = manifest::task_set_inner(ty).unwrap().to_string();
+        let shown = manifest::display_type(&producer);
+        let sig = self
+            .signatures
+            .get(&producer)
+            .filter(|sig| sig.region)
+            .cloned()
+            .ok_or_else(|| {
+                self.error(
+                    "E_ASYNC",
+                    span,
+                    format!("tasks<{shown}> requires an async control producer"),
+                )
+            })?;
+        if !sig.stoppable {
+            return Err(self.error("E_ASYNC", span,
+                "spawn requires fault dispositions for every owner retained across a handoff in its producer or callees; complete such owners before awaiting or yielding"));
+        }
+        if sig
+            .parameters
+            .iter()
+            .map(|p| &p.ty)
+            .chain(sig.outcomes.iter().flat_map(|o| &o.fields).map(|f| &f.ty))
+            .any(|ty| self.manifest.contains_references(ty))
+        {
+            return Err(self.error(
+                "E_ASYNC",
+                span,
+                format!("tasks<{shown}> members currently capture and return owned reference-free values; borrowed captures and results remain gated"),
+            ));
+        }
+        if sig.outcomes.is_empty() || sig.outcomes.iter().any(|o| o.name == "empty") {
+            return Err(self.error(
+                "E_ASYNC",
+                span,
+                format!("tasks<{shown}> requires normal outcomes other than the reserved `empty` alternative of await next"),
+            ));
+        }
+        if self.manifest.type_def(ty).is_none() {
+            self.manifest.types.push(manifest::TypeDef::Opaque {
+                name: ty.into(),
+                linear: true,
+                fault: None,
+            });
+            self.manifest.task_captures.insert(
+                ty.into(),
+                sig.parameters
+                    .iter()
+                    .map(|p| p.ty.clone())
+                    .chain(
+                        sig.outcomes
+                            .iter()
+                            .flat_map(|o| &o.fields)
+                            .map(|f| f.ty.clone()),
+                    )
+                    .collect(),
+            );
+        }
+        Ok(producer)
+    }
+    /// `tasks()` creates an empty set where a `tasks<producer>` value is expected.
+    pub(super) fn task_set_value(
+        &mut self,
+        name: &str,
+        args: &[syntax::Expr],
+        domain: Formula,
+        span: Span,
+        expected: Option<&str>,
+    ) -> Result<Option<(Expr, String)>> {
+        if name == "count" && !self.signatures.contains_key(name) {
+            let [
+                syntax::Expr {
+                    kind: syntax::ExprKind::Borrow(set),
+                    ..
+                },
+            ] = args
+            else {
+                return Ok(None);
+            };
+            let Some(place) = self.resolve_place(set, span)? else {
+                return Ok(None);
+            };
+            if manifest::task_set_inner(&place.ty).is_none() {
+                return Ok(None);
+            }
+            let parameters = vec![manifest::Parameter {
+                name: "set".into(),
+                ty: format!("&{}", place.ty),
+                mode: Mode::Borrow,
+            }];
+            let mut values = self.arguments(args, &parameters, domain, span)?;
+            return Ok(Some((
+                Expr::Length(Box::new(values.remove(0))),
+                "U32".into(),
+            )));
+        }
+        if name != "tasks" || self.signatures.contains_key(name) {
+            return Ok(None);
+        }
+        let Some(ty) = expected.filter(|ty| manifest::task_set_inner(ty).is_some()) else {
+            return Err(self.error(
+                "E_ASYNC",
+                span,
+                "tasks() creates an empty task set where a tasks<producer> value is declared",
+            ));
+        };
+        if !args.is_empty() {
+            return Err(self.error("E_ARITY", span, "tasks() takes no arguments"));
+        }
+        self.task_set(ty, span)?;
+        Ok(Some((
+            Expr::Construct(ty.into(), "tasks".into(), vec![]),
+            ty.into(),
+        )))
+    }
+    fn task_set_place(
+        &mut self,
+        set: &syntax::Expr,
+        producer: Option<&str>,
+        span: Span,
+    ) -> Result<ResolvedPlace> {
+        let place = match &set.kind {
+            syntax::ExprKind::Name(_) => self.resolve_place(set, span)?,
+            _ => None,
+        }
+        .filter(|place| place.place.fields.is_empty() && !place.place.indirect)
+        .filter(|place| manifest::task_set_inner(&place.ty).is_some())
+        .ok_or_else(|| {
+            self.error(
+                "E_ASYNC",
+                span,
+                "task set operations require a local tasks<producer> binding",
+            )
+        })?;
+        if let Some(producer) = producer
+            && manifest::task_set_inner(&place.ty) != Some(producer)
+        {
+            return Err(self.error(
+                "E_ASYNC",
+                span,
+                format!(
+                    "`{}` is a {}; spawn into it only with that producer",
+                    place.name,
+                    manifest::display_type(&place.ty)
+                ),
+            ));
+        }
+        Ok(place)
+    }
+    /// The set is consumed by the operation and re-owned by its result slot.
+    fn reown_task_set(&mut self, set: &ResolvedPlace, domain: Formula) {
+        let binding = self.scopes[set.scope].values.get_mut(&set.name).unwrap();
+        for moved in binding.moved.values_mut() {
+            *moved = self.bdd.minus(*moved, domain);
+        }
+        for owned in binding.owned.values_mut() {
+            *owned = self.bdd.or(*owned, domain);
+        }
+    }
+    /// Only the `empty` completion of await next retires its set.
+    pub(super) fn retire_task_set(&mut self, set: &ResolvedPlace, domain: Formula) {
+        let binding = self.scopes[set.scope].values.get_mut(&set.name).unwrap();
+        for owned in binding.owned.values_mut() {
+            *owned = self.bdd.minus(*owned, domain);
+        }
+        let moved = binding.moved.entry(vec![]).or_insert(FALSE);
+        *moved = self.bdd.or(*moved, domain);
+    }
+    pub(super) fn spawn_into(
+        &mut self,
+        set: &syntax::Expr,
+        operand: &syntax::Expr,
+        guard: Guard,
+        domain: Formula,
+        span: Span,
+    ) -> Result<()> {
+        let syntax::ExprKind::Call(operation, args) = &operand.kind else {
+            return Err(self.error("E_ASYNC", span, "spawn into requires a producer call"));
+        };
+        let place = self.task_set_place(set, Some(operation), span)?;
+        let sig = self
+            .signature(operation, args, span)?
+            .ok_or_else(|| self.error("E_ASYNC", span, "unknown spawned control"))?;
+        self.contingent_call(false, span)?;
+        self.task_set(&place.ty, span)?;
+        if sig.faults {
+            self.fault_permission(domain, span)?;
+        }
+        let (mut values, loans) = self.task_arguments(args, &sig.parameters, domain, span)?;
+        if !loans.is_empty() {
+            return Err(self.error(
+                "E_ASYNC",
+                span,
+                "task set members currently capture owned reference-free values",
+            ));
+        }
+        // Captures are evaluated first; the set is then moved and re-owned.
+        let (set_value, _) = self.use_place(place.clone(), domain, true, span)?;
+        self.reown_task_set(&place, domain);
+        values.push(set_value);
+        let atom = self.fresh();
+        self.result.atoms.insert(atom, "$spawned".into());
+        self.emit(
+            guard,
+            Action::Decide {
+                operation: Operation::SpawnInto(operation.clone()),
+                args: values,
+                arms: vec![ir::Arm {
+                    outcome: "$spawned".into(),
+                    atom,
+                    slots: vec![place.place.root],
+                }],
+            },
+            span,
+        );
+        Ok(())
+    }
+    pub(super) fn await_next(
+        &mut self,
+        operand: &syntax::Expr,
+        domain: Formula,
+        span: Span,
+    ) -> Result<(Operation, Expr, Vec<manifest::Outcome>, ResolvedPlace)> {
+        let mut set = operand.clone();
+        set.call_mode = syntax::CallMode::Direct;
+        let place = self.task_set_place(&set, None, span)?;
+        let producer = self.task_set(&place.ty, span)?;
+        let sig = self.signatures[&producer].clone();
+        self.record_stop_obligations(domain);
+        self.stoppable &= sig.stoppable;
+        self.started_fault_permission(domain, span)?;
+        self.contingent_call(false, span)?;
+        if sig.faults {
+            self.fault_permission(domain, span)?;
+        }
+        let (value, _) = self.use_place(place.clone(), domain, true, span)?;
+        self.reown_task_set(&place, domain);
+        let mut outcomes = sig.outcomes;
+        outcomes.push(manifest::Outcome {
+            name: "empty".into(),
+            fields: vec![],
+        });
+        Ok((Operation::Next(producer), value, outcomes, place))
     }
 }

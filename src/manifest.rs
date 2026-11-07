@@ -145,6 +145,13 @@ pub(crate) fn started_type(operation: &str) -> String {
 pub(crate) fn is_started(ty: &str) -> bool {
     ty.starts_with("$started<") && task_inner(ty).is_some()
 }
+/// An invocation-owned dynamic set of started children of one producer.
+pub(crate) fn task_set_type(operation: &str) -> String {
+    format!("$tasks<{operation}>")
+}
+pub(crate) fn task_set_inner(ty: &str) -> Option<&str> {
+    ty.strip_prefix("$tasks<").and_then(|s| s.strip_suffix('>'))
+}
 pub(crate) fn task_inner(ty: &str) -> Option<&str> {
     ty.strip_prefix("$task<")
         .or_else(|| ty.strip_prefix("$started<"))
@@ -200,6 +207,9 @@ pub fn canonical_type(name: &str) -> String {
 pub fn display_type(name: &str) -> String {
     if let Some(operation) = task_inner(name) {
         return format!("task<{}>", display_type(operation));
+    }
+    if let Some(operation) = task_set_inner(name) {
+        return format!("tasks<{}>", display_type(operation));
     }
     if let Some((application, member)) = crate::collection_support::qualified_member(name) {
         return format!("{}.{member}", display_type(application));
@@ -728,7 +738,8 @@ impl Manifest {
                         && !["outcome", "Option", "array", "vector", "map"].contains(&base)
                         && args.iter().all(|arg| self.valid_type(arg))
                 });
-            let internal_task = task_inner(ty.name()).is_some()
+            let internal_task = (task_inner(ty.name()).is_some()
+                || task_set_inner(ty.name()).is_some())
                 && self.task_captures.contains_key(ty.name())
                 && matches!(
                     ty,
@@ -1160,6 +1171,9 @@ impl Manifest {
             *remaining -= 1;
             if let Some(operation) = task_inner(ty) {
                 return format!("task<{}>", format(m, operation, depth + 1, remaining));
+            }
+            if let Some(operation) = task_set_inner(ty) {
+                return format!("tasks<{}>", format(m, operation, depth + 1, remaining));
             }
             if let Some((mutable, inner)) = reference_inner(ty) {
                 return format!(

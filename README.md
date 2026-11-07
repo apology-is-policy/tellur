@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.221.0** implements the v0.1 checked core and the current language
+Compiler release **0.222.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -16,6 +16,12 @@ a reference interpreter, graph expansion, native compiler, language server, and
 VS Code build/run commands. The [revision plan](docs/language-revision.md) separates
 delivered features from the remaining reference, slice, outcome-expression and async work. The language is still
 fluid; this is an experimental implementation, not a production compiler.
+
+Release 0.222 adds dynamic task sets. `tasks<producer>` holds any number of
+spawned children of one async control. `spawn producer(..) into set;` adds a member,
+`delta await next set { ..., empty => ... }` joins members in completion order, and
+`count(borrow set)` bounds how many run at once. The reference executor runs them;
+native support follows in 0.223.
 
 Release 0.221 receives loopback HTTP requests asynchronously. The library's
 `receive` is an async control over a polled adapter that parks on socket

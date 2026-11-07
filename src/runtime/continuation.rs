@@ -1353,6 +1353,20 @@ impl<'a> Machine<'a> {
                 self.source_join(name, args, arms)?;
             }
             Action::Decide {
+                operation: Operation::SpawnInto(name),
+                args,
+                arms,
+            } => {
+                self.source_spawn_into(name, args, arms)?;
+            }
+            Action::Decide {
+                operation: Operation::Next(name),
+                args,
+                arms,
+            } => {
+                self.source_next(name, args, arms)?;
+            }
+            Action::Decide {
                 operation: Operation::Yield,
                 arms,
                 ..
@@ -1669,6 +1683,8 @@ impl<'a> Machine<'a> {
                     Operation::AwaitTask(_)
                     | Operation::Join(_)
                     | Operation::Spawn(_)
+                    | Operation::SpawnInto(_)
+                    | Operation::Next(_)
                     | Operation::Yield => unreachable!("task operation has a continuation"),
                     Operation::Collection(name) => collection(name, args, values)?,
                     Operation::Region(name) | Operation::Run(name) | Operation::Await(name) => {

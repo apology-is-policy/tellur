@@ -5905,3 +5905,43 @@ receive. LSP and format checks of the maintained sources stay clean.
 The private E1f receive models splice the blocking baseline into generated code, so
 they now compile a frozen synchronous copy of the HTTP example and facade
 (`tests/fixtures/http_sync`).
+
+
+## Dynamic task sets (0.222 / E1g stage c, part 1)
+
+Accepted design (7 November 2026): `tasks<C>` is a linear local set of started
+children of one async control. `spawn C(arguments) into set;` queues a member with
+ordinary spawn admission. `delta await next set { ..., empty => ... }` joins the earliest
+completed member, or waits for one, and delivers the producer's outcome. The
+compiler-added `empty` alternative selects without suspending and is the only path
+that retires the set. `count(borrow set)` returns the number of unjoined members. Sets move
+locally and through loop parameters only, never across direct inline fault boundaries,
+helper calls or outcomes. A member fault stops the owning boundary and settles every
+member, including completed but unjoined ones, before the owning contingency.
+
+In this release, members capture and return owned, reference-free values. The checker
+lowers task sets to two IR operations: `SpawnInto` takes the captures followed by the
+set and re-owns the set; `Next` takes the moved set, and member arms receive the payload
+and then the remaining set. The verifier checks the producer profile, argument
+types and arm shapes. The reference executor keeps a waiting caller's set in its
+slot, so emergency retirement abandons the members. It records completion order
+and routes faults and settlement through these waits. Native builds report
+`E_BACKEND`.
+
+`tests/task_sets.rs` covers:
+- completion-order joins, including members that complete before the first await;
+- bounded width;
+- an empty set draining immediately;
+- loop-carried sets;
+- resource-owning members;
+- fault settlement with running and completed members;
+- the rejections listed in the reference (set leaks, a missing `empty` path, inline
+  boundaries, `drop`, outer sets in loops, untyped `tasks()`, `forward await next`,
+  a wrong producer, synchronous controls, parameters and outcomes, borrowed profiles,
+  an `empty` outcome name, and bare `spawn` statements);
+- the native gate.
+
+Every run is compared across original and expanded programs and four host quotas.
+The runtime census retires every context at every fuel cut for the example, the
+fault fixture and their variants. LSP hover and diagnostic repair, and the
+contextual grammar scopes, are tested too.

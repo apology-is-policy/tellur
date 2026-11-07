@@ -1,0 +1,56 @@
+// A faulting member stops its set's owning boundary. The completed but unjoined
+// and still-running members settle before the contingency; nothing else runs.
+async control work(string name, bool broken) exits done { string name } {
+    emit(borrow name);
+    yield;
+    delta broken {
+        true => failing,
+        false => healthy
+    }
+    [failing]:
+        yield;
+        fault "member failed";
+    [healthy]:
+        yield;
+        yield;
+        yield;
+        emit(concat("finished ", clone(borrow name)));
+        exit done { name };
+}
+
+async control startup() exits done {
+    tasks<work> active = tasks();
+    spawn work("slow", false) into active;
+    spawn work("broken", true) into active;
+    loop reap(tasks<work> pending = move active) {
+        delta await next pending {
+            done { string name } => finished,
+            empty => drained
+        }
+
+        [finished]:
+            emit(concat("joined ", name));
+            again reap(pending);
+        [drained]: exit done;
+    }
+}
+
+control main() exits done {
+    supervised loop attempt(mutable bool first = true) {
+        delta first {
+            true => start,
+            false => stop
+        }
+        [stop]: exit done;
+        [start]:
+            first = false;
+            fault boundary {
+                run startup();
+                emit("unreachable");
+                exit done;
+            } contingency [] {
+                emit(borrow @fault.message);
+                recover again attempt;
+            }
+    }
+}

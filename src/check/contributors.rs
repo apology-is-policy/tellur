@@ -217,7 +217,10 @@ impl Trace<'_> {
         span: Span,
     ) -> ValueTrace {
         match operation {
-            Operation::Defer(_) | Operation::Spawn(_) | Operation::Yield => ValueTrace::default(),
+            Operation::Defer(_)
+            | Operation::Spawn(_)
+            | Operation::SpawnInto(_)
+            | Operation::Yield => ValueTrace::default(),
             Operation::Variant(value) => self.value(value, flow, domain, span),
             Operation::BorrowedVariant(expression) => {
                 if let Expr::Reference(place, _) = expression.without_reference_evidence() {
@@ -233,6 +236,7 @@ impl Trace<'_> {
             | Operation::Await(name)
             | Operation::AwaitTask(name)
             | Operation::Join(name)
+            | Operation::Next(name)
             | Operation::Primitive(name)
             | Operation::Collection(name) => {
                 let Some(sig) = self.signatures.get(name) else {

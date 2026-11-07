@@ -1953,6 +1953,9 @@ impl Checker<'_> {
                 if crate::constructors::is_control(name) {
                     return self.constructor_value(expr, domain, span);
                 }
+                if let Some(value) = self.task_set_value(name, args, domain, span, expected)? {
+                    return Ok(value);
+                }
                 if crate::collections::is_length(name) {
                     if args.len()!=1 { return Err(self.error("E_ARITY",span,"length expects one borrowed collection")); }
                     let ty=self.collection_type(&args[0],span)?;
@@ -2568,7 +2571,9 @@ impl Checker<'_> {
                     }
                 }
                 syntax::ExprKind::Call(name, args)
-                    if name == "clone" || crate::collections::is_length(name) =>
+                    if name == "clone"
+                        || crate::collections::is_length(name)
+                        || (name == "count" && !self.signatures.contains_key(name)) =>
                 {
                     let mut reads = vec![];
                     for arg in args {
@@ -3087,6 +3092,12 @@ impl Checker<'_> {
                         span,
                     );
                 }
+                if let Some(ty) = annotation
+                    .as_deref()
+                    .filter(|ty| manifest::task_set_inner(ty).is_some())
+                {
+                    self.task_set(ty, span)?;
+                }
                 let projected = self.materialize_projection(expression, domain, span)?;
                 let expression = projected.as_ref().unwrap_or(expression);
                 if name.starts_with("$field_")
@@ -3206,6 +3217,11 @@ impl Checker<'_> {
                     ));
                 }
                 self.emit(guard, Action::Drop(expr), span);
+            }
+            Statement::Assign(target, expression)
+                if expression.call_mode == syntax::CallMode::Spawn =>
+            {
+                self.spawn_into(target, expression, guard, domain, span)?;
             }
             Statement::Assign(target, expression) => {
                 self.assignment(target, expression, guard, domain, span)?;
@@ -4125,8 +4141,14 @@ impl Checker<'_> {
                 }
             }
         }
+        let mut task_set = None;
         let (operation, args, outcomes, variant_type) = if operand.call_mode
-            == syntax::CallMode::Await
+            == syntax::CallMode::Next
+        {
+            let (operation, value, outcomes, set) = self.await_next(operand, domain, span)?;
+            task_set = Some(set);
+            (operation, vec![value], outcomes, None)
+        } else if operand.call_mode == syntax::CallMode::Await
             && matches!(operand.kind, syntax::ExprKind::Name(_))
         {
             let (operation, value, outcomes) = self.await_task(operand, domain, span)?;
@@ -4172,7 +4194,9 @@ impl Checker<'_> {
                         syntax::CallMode::Direct => Operation::Region(name.clone()),
                         syntax::CallMode::Run => Operation::Run(name.clone()),
                         syntax::CallMode::Await => Operation::Await(name.clone()),
-                        syntax::CallMode::Defer | syntax::CallMode::Spawn => {
+                        syntax::CallMode::Defer
+                        | syntax::CallMode::Spawn
+                        | syntax::CallMode::Next => {
                             unreachable!("task creation is a binding initializer")
                         }
                     }
@@ -4707,6 +4731,13 @@ impl Checker<'_> {
                         .extend(bindings.into_iter().map(|(id, value)| (atom, id, value)));
                 }
             }
+            if let Some(set) = &task_set {
+                if arm.outcome == "empty" {
+                    self.retire_task_set(set, selected);
+                } else {
+                    slots.push(set.place.root);
+                }
+            }
             branch_scopes.push(if local {
                 Some((self.scopes.pop().unwrap(), atom, selected))
             } else {
@@ -4938,6 +4969,11 @@ impl Checker<'_> {
                         ));
                     }
                     self.record_selection(*span, syntax::SelectionKind::Loop, &outer, domain);
+                    for p in parameters {
+                        if manifest::task_set_inner(&p.field.ty).is_some() {
+                            self.task_set(&p.field.ty, *span)?;
+                        }
+                    }
                     let params: Vec<_> = parameters
                         .iter()
                         .map(|p| manifest::Parameter {
@@ -5933,8 +5969,10 @@ pub(crate) fn compile_concrete_unit(
                             | Operation::Await(name)
                             | Operation::Defer(name)
                             | Operation::Spawn(name)
+                            | Operation::SpawnInto(name)
                             | Operation::AwaitTask(name)
-                            | Operation::Join(name),
+                            | Operation::Join(name)
+                            | Operation::Next(name),
                         ..
                     } => result.push(name.as_str()),
                     Action::Loop { body, .. } => result.extend(callees(body)),

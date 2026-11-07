@@ -167,8 +167,16 @@ fn evaluate(expr: &Expr, values: &mut BTreeMap<Id, Value>, base: Id) -> Result<V
             let Value::Reference { place, .. } = evaluate(e, values, base)? else {
                 return Err(error("invalid collection length argument"));
             };
+            let value = place_mut(&place, values)?;
+            if let Value::Construct { ty, fields, .. } = value
+                && crate::manifest::task_set_inner(ty).is_some()
+            {
+                return u32::try_from(fields.len())
+                    .map(Value::U32)
+                    .map_err(|_| error("task set count exceeds u32"));
+            }
             Ok(Value::U32(
-                crate::collection_support::length(place_mut(&place, values)?).map_err(error)?,
+                crate::collection_support::length(value).map_err(error)?,
             ))
         }
         Expr::Value(value) => Ok(value.clone()),

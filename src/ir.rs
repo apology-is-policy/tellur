@@ -198,6 +198,13 @@ pub enum Operation {
     Spawn(String),
     /// Consume a started handle and observe its completion.
     Join(String),
+    /// Add a queued child to an owned task set: arguments are the producer's
+    /// captures, then the set; the single `$spawned` arm receives the extended set.
+    SpawnInto(String),
+    /// Join the earliest completed member of an owned task set, suspending while
+    /// members are live. Member arms receive the producer's payload followed by
+    /// the remaining set; the final `empty` arm retires the empty set.
+    Next(String),
     /// Explicit cooperative source handoff.
     Yield,
     /// Consume a local cold task and deliver the producer's normal outcomes.

@@ -31,7 +31,7 @@ impl Admission<'_> {
                     CallMode::Defer | CallMode::Spawn => format!(
                         "defer and spawn of async host operation `{operation}` are not yet admitted; await it directly"
                     ),
-                    CallMode::Await => String::new(),
+                    CallMode::Await | CallMode::Next => String::new(),
                 };
                 if !message.is_empty() {
                     return Err(Diagnostic::new("E_ASYNC", at, message).with_range(e.range));
@@ -83,6 +83,14 @@ impl Admission<'_> {
                 self.expression(arg, Usage::Value, contingent, at)?;
             }
         } else {
+            if e.call_mode == CallMode::Next {
+                if usage != Usage::Operation || !self.asynchronous || contingent {
+                    return Err(fail(
+                        "await next joins a task set only in an async control's ordinary delta",
+                    ));
+                }
+                return Ok(());
+            }
             if e.call_mode == CallMode::Await && matches!(e.kind, ExprKind::Name(_)) {
                 if usage != Usage::Operation || !self.asynchronous || contingent {
                     return Err(fail(
@@ -151,6 +159,14 @@ impl Admission<'_> {
                 }
             }
             Statement::Invoke(e) | Statement::Forward(e) | Statement::Capture(_, _, e, _) => {
+                if e.call_mode == CallMode::Next {
+                    return Err(Diagnostic::new(
+                        "E_ASYNC",
+                        e.span(at),
+                        "await next needs a delta that handles every member outcome and `empty`",
+                    )
+                    .with_range(e.range));
+                }
                 self.expression(e, Usage::Operation, contingent, at)?;
             }
             Statement::Delta(_, e, arms) => {
@@ -162,7 +178,10 @@ impl Admission<'_> {
                     }
                 }
             }
-            Statement::Bind(_, _, e, _) => {
+            Statement::Bind(_, annotation, e, _) => {
+                if let Some(annotation) = annotation {
+                    self.task_set_type(&annotation.ty, at)?;
+                }
                 self.expression(e, Usage::Initializer, contingent, at)?
             }
             Statement::Drop(e)
@@ -170,6 +189,11 @@ impl Admission<'_> {
             | Statement::Fault(e)
             | Statement::Supervise(e) => {
                 self.expression(e, Usage::Value, contingent, at)?;
+            }
+            Statement::Assign(left, right) if right.call_mode == CallMode::Spawn => {
+                // `spawn producer(arguments) into set;`
+                self.expression(left, Usage::Value, contingent, at)?;
+                self.expression(right, Usage::Initializer, contingent, at)?;
             }
             Statement::Assign(left, right) => {
                 self.expression(left, Usage::Value, contingent, at)?;
@@ -191,6 +215,30 @@ impl Admission<'_> {
         }
         Ok(())
     }
+    /// A task set is an async invocation's local value of one async producer.
+    fn task_set_type(&self, ty: &str, at: Span) -> Result<()> {
+        let Some(producer) = crate::manifest::task_set_inner(ty) else {
+            return Ok(());
+        };
+        let shown = crate::manifest::display_type(ty);
+        if !self.asynchronous {
+            return Err(Diagnostic::new(
+                "E_ASYNC",
+                at,
+                format!("{shown} belongs to an async control; enter it with run"),
+            ));
+        }
+        if !self.controls.contains(producer)
+            || crate::host_operations::operation(producer).is_some()
+        {
+            return Err(Diagnostic::new(
+                "E_ASYNC",
+                at,
+                format!("{shown} requires an async control producer"),
+            ));
+        }
+        Ok(())
+    }
     fn items(&self, items: &[Item], contingent: bool) -> Result<()> {
         for item in items {
             match item {
@@ -202,6 +250,7 @@ impl Admission<'_> {
                 Item::Group(_, _, body) | Item::Over(_, _, body) => self.items(body, contingent)?,
                 Item::Loop(at, _, parameters, body, _) => {
                     for parameter in parameters {
+                        self.task_set_type(&parameter.field.ty, *at)?;
                         self.expression(&parameter.initial, Usage::Value, contingent, *at)?;
                     }
                     self.items(body, contingent)?;
@@ -220,6 +269,26 @@ pub(crate) fn validate(region: &Region, controls: &BTreeSet<String>) -> Result<(
             "async controls cannot be contingent in the direct async profile",
         ));
     }
+    for field in region.exits.iter().flat_map(|o| &o.fields) {
+        if crate::manifest::task_set_inner(&field.ty).is_some() {
+            return Err(Diagnostic::new(
+                "E_ASYNC",
+                region.name_span,
+                "task sets stay local to their async invocation; drain them with await next before exiting",
+            )
+            .with_range(field.type_range));
+        }
+    }
+    for parameter in &region.parameters {
+        if crate::manifest::task_set_inner(&parameter.ty).is_some() {
+            return Err(Diagnostic::new(
+                "E_ASYNC",
+                region.name_span,
+                "task sets stay local to their async invocation; pass them only as loop parameters",
+            )
+            .with_range(parameter.type_range));
+        }
+    }
     Admission {
         asynchronous: region.asynchronous,
         controls,
@@ -237,7 +306,9 @@ pub(crate) fn contains_task(manifest: &crate::manifest::Manifest, ty: &str) -> b
         if !seen.insert(ty.into()) {
             return false;
         }
-        if crate::manifest::task_inner(ty).is_some() {
+        if crate::manifest::task_inner(ty).is_some()
+            || crate::manifest::task_set_inner(ty).is_some()
+        {
             return true;
         }
         if let Some((_, inner)) = crate::manifest::reference_inner(ty) {
@@ -284,6 +355,8 @@ pub(crate) fn started_producers(
         }
         if crate::manifest::is_started(ty) {
             result.insert(crate::manifest::task_inner(ty).unwrap().into());
+        } else if let Some(producer) = crate::manifest::task_set_inner(ty) {
+            result.insert(producer.into());
         } else if let Some((_, inner)) = crate::manifest::reference_inner(ty) {
             visit(m, inner, seen, result);
         } else if let Some(inner) = crate::manifest::option_inner(ty) {

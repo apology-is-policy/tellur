@@ -226,6 +226,98 @@ execution to follow this rule. The runnable
 `local recovery` before `outside finished`. Contingencies themselves cannot invoke
 async operations or hand off, including through synchronous helper calls.
 
+## Task sets
+
+A spawned handle is one named local. A *task set* holds any number of started
+children of one async producer, so the count of live children no longer depends on
+the source text. Since 0.222 the reference executor runs task sets. Native builds report
+`E_BACKEND` until the native runtime gains them.
+
+- `tasks<producer> set = tasks();` declares an empty set. The producer must be one
+  async control.
+- `spawn producer(arguments) into set;` queues a child and adds it to the set. Argument
+  evaluation and admission are the same as `auto child = spawn producer(arguments);`.
+  It is not a handoff.
+- `delta await next set { ..., empty => ... }` is a handoff. It joins the **earliest
+  completed** member and delivers that member's outcome. If members are live but none
+  has completed, it suspends until one completes. With no members it selects `empty`
+  without suspending. Completion order is deterministic: members are ordered by when
+  they reach their final normal exit in the cooperative schedule.
+- `count(borrow set)` returns the number of members that have not been joined, both
+  running and completed, as `u32`.
+
+<!-- tellur:check -->
+```tellur
+async control work(string name, u32 rounds) exits done { string name } {
+    yield;
+    delta (rounds >= 2) { true => longer, false => short }
+    [short]: exit done { name };
+    [longer]:
+        yield;
+        exit done { name };
+}
+
+async control startup() exits done {
+    tasks<work> active = tasks();
+    spawn work("slow", 2) into active;
+    spawn work("fast", 1) into active;
+    emit(u32_text(count(borrow active)));
+    loop reap(tasks<work> pending = move active) {
+        delta await next pending {
+            done { string name } => finished,
+            empty => drained
+        }
+
+        [finished]:
+            emit(name);
+            again reap(pending);
+        [drained]: exit done;
+    }
+}
+
+control main() exits done { forward run startup(); }
+```
+
+This emits `2`, `fast`, `slow`. A set is linear. Every member path keeps it live,
+and only the `empty` alternative retires it, so every normal path must drain the set.
+There is no detach and no implicit cancellation.
+
+A set may move locally and travel as an ordinary or supervised **loop parameter**.
+That is how an accept loop keeps a growing set across `again`. It may not be a control
+parameter, an outcome field, a helper argument or a collection element. Like a live
+handle, it may not be in scope at a direct inline fault boundary. Put per-member
+isolation inside the producer instead.
+
+Bound the number of live members with an ordinary decision on
+`count(borrow set)`, as in [the task-set example](../../tests/fixtures/task_sets.tellur) (it moves to the playground once native builds support task sets).
+Faults follow the spawned-children rules:
+
+- An escaping member fault stops the owning boundary.
+- Every member is then settled, including members that completed but were not yet
+  joined. Their resource fault dispositions apply, and their nested contingencies do
+  not run.
+- Only the owning contingency runs.
+
+A member fault is never an `await next` outcome.
+
+In this release, members capture and return owned, reference-free values; this
+includes resources whose fault disposition permits stop settlement. Borrowed
+captures and results remain gated. The producer may not declare an outcome named
+`empty`. Owners retained across the producer's handoffs need fault dispositions,
+exactly as for `spawn`.
+
+<!-- tellur:reject E_RESOURCE -->
+```tellur
+async control work() exits done { yield; exit done; }
+async control startup() exits done {
+    tasks<work> active = tasks();
+    spawn work() into active;
+    exit done;
+}
+```
+
+The set is still owned at `exit`. Drain it with `await next` until `empty`.
+
 ## Direct borrowed captures
 
 A spawned child may borrow existing storage whose type contains no references.

@@ -9,6 +9,8 @@ pub enum CallMode {
     Await,
     Defer,
     Spawn,
+    /// `await next set`: join the earliest completed member of a task set.
+    Next,
 }
 #[derive(Clone, Debug)]
 pub struct Expr {
@@ -709,6 +711,12 @@ impl Parser {
                 self.layout.angles.push((open, self.pos - 1));
                 return Ok(format!("outcome<{producer}>"));
             }
+            if name == "tasks" {
+                let producer = self.qualified()?;
+                self.need(">")?;
+                self.layout.angles.push((open, self.pos - 1));
+                return Ok(crate::manifest::task_set_type(&producer));
+            }
             let mut args = vec![self.ty()?];
             while self.eat(",") {
                 if let Kind::Number(n) = self.tokens[self.pos].kind.clone() {
@@ -1332,6 +1340,20 @@ impl Parser {
         {
             self.pos += 1;
             CallMode::Run
+        } else if self.at("await")
+            && self.tokens.get(self.pos + 1).is_some_and(|t| t.is("next"))
+            && self
+                .tokens
+                .get(self.pos + 2)
+                .is_some_and(|t| matches!(t.kind, Kind::Word(_)))
+        {
+            self.pos += 2;
+            let set = self.here();
+            let name = self.id()?;
+            let mut expression = ExprKind::Name(name).at(self.range_from(set));
+            expression.call_mode = CallMode::Next;
+            expression.range = self.range_from(start);
+            return Ok(expression);
         } else if self.eat("await") {
             CallMode::Await
         } else if self.eat("spawn") {
@@ -1580,6 +1602,29 @@ impl Parser {
     }
     fn statement_inner(&mut self) -> Result<Statement> {
         let start = self.here();
+        // `spawn producer(arguments) into set;` adds a member to a task set. It is
+        // carried as an internal assignment the checker admits only in this form.
+        if self.at("spawn") {
+            let saved = self.pos;
+            let angles = self.layout.angles.len();
+            if let Ok(call) = self.expr(0)
+                && call.call_mode == CallMode::Spawn
+                && self.eat("into")
+            {
+                let set = self.here();
+                let name = self.id()?;
+                let target = ExprKind::Name(name).at(self.range_from(set));
+                self.need(";")?;
+                return Ok(Statement::Assign(target, call));
+            }
+            self.pos = saved;
+            self.layout.angles.truncate(angles);
+            return Err(Diagnostic::new(
+                "E_UNSUPPORTED",
+                start,
+                "a spawn statement adds a task-set member as `spawn producer(arguments) into set;`; bind a single child with `auto child = spawn producer(arguments);`",
+            ));
+        }
         if ["async", "spawn", "defer", "capture", "vary", "flux"]
             .iter()
             .any(|word| self.at(word))

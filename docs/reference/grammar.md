@@ -143,6 +143,7 @@ statement        = "supervise" call ";" | "terminate" ";" | "escalate" ";"
                  | binding | assignment | flat_delta | exit | forwarding
                  | "fault" expression ";" | call ";" | "emit" "(" expression ")" ";"
                  | "drop" "(" expression ")" ";" | "yield" ";"
+                 | "spawn" call "into" name ";"
                  | "again" name ("(" trailing_list(expression)? ")")? ";"
                  | lexical_boundary | recovery | process_termination ;
 binding          = "mutable"? type name "=" initializer ";" ;
@@ -248,3 +249,10 @@ Its captures and normal results must be reference-free in the first source profi
 async chain to queued work. Every normal path joins its children. Before entering
 another source control or fault boundary, the parent must join its started children.
 See [async execution](async-execution.md).
+
+`tasks<name>` is the type of a task set of the named async control; `tasks()` creates
+an empty set. `spawn call into name;` adds a queued member, and the operand
+`await next name` (only in a `delta` operation position) joins the earliest completed
+member, with the producer's alternatives plus `empty`. `count(borrow name)` is the
+number of unjoined members. `next` and `into` are contextual, and stay ordinary
+names elsewhere. See [task sets](async-execution.md#task-sets).

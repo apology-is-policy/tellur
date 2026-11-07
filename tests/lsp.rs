@@ -6231,6 +6231,33 @@ fn source_task_hovers_and_diagnostics_describe_explicit_handoffs() {
 }
 
 #[test]
+fn task_set_hovers_and_unsaved_drain_diagnostics() {
+    let mut f = Fixture::new();
+    // The editor fixture manifest has no text builtins; keep the task operations.
+    let text = &include_str!("fixtures/task_sets.tellur")
+        .replace("    emit(u32_text(count(borrow active)));\n", "")
+        .replace("emit(concat(\"joined \", name));", "emit(name);");
+    f.open(text);
+    assert_eq!(f.diagnostics(), json!([]));
+    let set = hover_at(&f, text, "tasks<work> active").to_string();
+    assert!(set.contains("invocation-owned set"), "{set}");
+    let into = hover_at(&f, text, "into active").to_string();
+    assert!(into.contains("not a handoff"), "{into}");
+    let next = hover_at(&f, text, "next pending").to_string();
+    assert!(
+        next.contains("earliest completed member") && next.contains("`empty`"),
+        "{next}"
+    );
+    // Leaving a member path without restarting the drain leaks the set.
+    let broken = text.replace("again reap(pending);", "exit done;");
+    f.change(&broken, 2);
+    let diagnostics = f.diagnostics().to_string();
+    assert!(diagnostics.contains("E_RESOURCE"), "{diagnostics}");
+    f.change(text, 3);
+    assert_eq!(f.diagnostics(), json!([]));
+}
+
+#[test]
 fn pending_children_recheck_unsaved_helper_inline_boundaries() {
     let mut f = Fixture::new();
     let path = f.root.join("helpers.tellur");

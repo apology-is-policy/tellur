@@ -1,0 +1,37 @@
+// A task set holds any number of children of one async producer. `await next`
+// joins the earliest completed member; `empty` retires the drained set.
+async control work(string name, u32 rounds) exits done { string name } {
+    emit(borrow name);
+    yield;
+    delta (rounds >= 2) {
+        true => longer,
+        false => short
+    }
+    [short]: exit done { name };
+    [longer]:
+        yield;
+        yield;
+        exit done { name };
+}
+
+async control startup() exits done {
+    tasks<work> active = tasks();
+    spawn work("slow", 2) into active;
+    spawn work("fast", 1) into active;
+    emit(u32_text(count(borrow active)));
+    loop reap(tasks<work> pending = move active) {
+        delta await next pending {
+            done { string name } => finished,
+            empty => drained
+        }
+
+        [finished]:
+            emit(concat("joined ", name));
+            again reap(pending);
+        [drained]: exit done;
+    }
+}
+
+control main() exits done {
+    forward run startup();
+}

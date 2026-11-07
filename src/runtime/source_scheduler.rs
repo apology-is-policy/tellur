@@ -17,6 +17,18 @@ pub(super) struct Scheduler<'a> {
     host_waits: VecDeque<(TaskId, Readiness)>,
     handles: BTreeMap<TaskId, started::StartedTask<'a>>,
     joins: BTreeMap<TaskId, (Context<'a>, started::StartedJoin<'a>, &'a [Arm])>,
+    /// Callers suspended by `await next` on a task set with no completed member.
+    /// The set stays in the caller's slot, so emergency retirement still sees it.
+    set_waits: Vec<SetWait<'a>>,
+    /// Source completion order of started children, for `await next`.
+    completions: BTreeMap<TaskId, u64>,
+    clock: u64,
+}
+struct SetWait<'a> {
+    context: Context<'a>,
+    producer: &'a str,
+    slot: Id,
+    arms: &'a [Arm],
 }
 fn contains_owner(context: &Context<'_>, owner: OwnerId) -> bool {
     context.frame.owner == Some(owner)
@@ -48,6 +60,11 @@ impl<'a> Machine<'a> {
         for (context, _, _) in self.shared.scheduler.joins.values_mut() {
             if context.task.is_some_and(|(id, _)| id == task) {
                 return Ok(context);
+            }
+        }
+        for wait in &mut self.shared.scheduler.set_waits {
+            if wait.context.task.is_some_and(|(id, _)| id == task) {
+                return Ok(&mut wait.context);
             }
         }
         for call in self.shared.suspended.calls.values_mut() {
@@ -215,6 +232,164 @@ impl<'a> Machine<'a> {
             .push_back(Runnable::Context(caller));
         Ok(())
     }
+    pub(super) fn source_spawn_into(
+        &mut self,
+        name: &str,
+        args: &[Expr],
+        arms: &'a [Arm],
+    ) -> Result<()> {
+        let mut arguments = self.arguments(args)?;
+        let Some(Value::Construct {
+            ty,
+            name: constructor,
+            mut fields,
+        }) = arguments.pop()
+        else {
+            return Err(error("task set spawn requires an owned set"));
+        };
+        if ty != crate::manifest::task_set_type(name) {
+            return Err(error("task set producer differs"));
+        }
+        let id = self
+            .shared
+            .tasks
+            .defer(self.context.frame.owner.unwrap(), name)?;
+        let mut cold = Some(Value::Task {
+            id: id.0,
+            ty: crate::manifest::task_type(name),
+            operation: name.into(),
+            arguments,
+        });
+        let handle = self.queue_started(name, &mut cold)?;
+        self.shared.scheduler.enabled = true;
+        self.shared.scheduler.handles.insert(id, handle);
+        self.shared.scheduler.runnable.push_back(Runnable::Task(id));
+        fields.push(Value::Task {
+            id: id.0,
+            ty: crate::manifest::started_type(name),
+            operation: name.into(),
+            arguments: vec![],
+        });
+        self.bind(
+            arms,
+            "$spawned".into(),
+            vec![Value::Construct {
+                ty,
+                name: constructor,
+                fields,
+            }],
+        )
+    }
+    /// `await next`: an empty set selects `empty` without a handoff. Otherwise the
+    /// earliest completed member is joined, or the caller waits for one; either
+    /// way the caller then rejoins the source FIFO like any consuming await.
+    pub(super) fn source_next(
+        &mut self,
+        name: &'a str,
+        args: &[Expr],
+        arms: &'a [Arm],
+    ) -> Result<()> {
+        let [Expr::Move(place)] = args else {
+            return Err(error("await next requires an owned task set"));
+        };
+        let slot = place.root;
+        let members = self.task_set_members(name, slot)?;
+        if members.is_empty() {
+            self.shared
+                .values
+                .remove(&(self.context.frame.base + slot))
+                .unwrap();
+            return self.bind(arms, "empty".into(), vec![]);
+        }
+        let caller = std::mem::replace(&mut self.context, Context::new(Default::default()));
+        self.shared.scheduler.set_waits.push(SetWait {
+            context: caller,
+            producer: name,
+            slot,
+            arms,
+        });
+        let index = self.shared.scheduler.set_waits.len() - 1;
+        if let Some(member) = self.earliest_completed(&members) {
+            self.deliver_set_member(index, member)?;
+        }
+        self.select_source()
+    }
+    fn task_set_members(&self, name: &str, slot: Id) -> Result<Vec<TaskId>> {
+        let Some(Value::Construct { ty, fields, .. }) =
+            self.shared.values.get(&(self.context.frame.base + slot))
+        else {
+            return Err(error("await next requires an owned task set"));
+        };
+        if *ty != crate::manifest::task_set_type(name) {
+            return Err(error("task set producer differs"));
+        }
+        fields
+            .iter()
+            .map(|member| match member {
+                Value::Task { id, .. } => Ok(TaskId(*id)),
+                _ => Err(error("task set member is not a started task")),
+            })
+            .collect()
+    }
+    fn earliest_completed(&self, members: &[TaskId]) -> Option<TaskId> {
+        members
+            .iter()
+            .filter_map(|id| self.shared.scheduler.completions.get(id).map(|n| (*n, *id)))
+            .min()
+            .map(|(_, id)| id)
+    }
+    /// Wake a set waiter whose set contains this newly completed child.
+    fn wake_source_set(&mut self, task: TaskId) -> Result<()> {
+        let mut found = None;
+        for (index, wait) in self.shared.scheduler.set_waits.iter().enumerate() {
+            let base = wait.context.frame.base;
+            if let Some(Value::Construct { fields, .. }) =
+                self.shared.values.get(&(base + wait.slot))
+                && fields
+                    .iter()
+                    .any(|m| matches!(m, Value::Task { id, .. } if TaskId(*id) == task))
+            {
+                found = Some(index);
+                break;
+            }
+        }
+        match found {
+            Some(index) => self.deliver_set_member(index, task),
+            None => Ok(()),
+        }
+    }
+    fn deliver_set_member(&mut self, index: usize, member: TaskId) -> Result<()> {
+        let wait = self.shared.scheduler.set_waits.remove(index);
+        let selected = std::mem::replace(&mut self.context, wait.context);
+        let key = self.context.frame.base + wait.slot;
+        let Some(Value::Construct {
+            ty,
+            name: constructor,
+            mut fields,
+        }) = self.shared.values.remove(&key)
+        else {
+            return Err(error("task set wait lost its set"));
+        };
+        fields.retain(|m| !matches!(m, Value::Task { id, .. } if TaskId(*id) == member));
+        let mut handle = self.shared.scheduler.handles.remove(&member);
+        let join = self.claim_started(wait.producer, &mut handle)?;
+        self.shared.scheduler.completions.remove(&member);
+        let Flow::Exit(outcome, mut payload) = self.join_started(&mut Some(join))? else {
+            unreachable!()
+        };
+        payload.push(Value::Construct {
+            ty,
+            name: constructor,
+            fields,
+        });
+        self.bind(wait.arms, outcome, payload)?;
+        let caller = std::mem::replace(&mut self.context, selected);
+        self.shared
+            .scheduler
+            .runnable
+            .push_back(Runnable::Context(caller));
+        Ok(())
+    }
     pub(super) fn yield_source(&mut self) -> Result<()> {
         self.shared.scheduler.enabled = true;
         let caller = std::mem::replace(&mut self.context, Context::new(Default::default()));
@@ -229,6 +404,7 @@ impl<'a> Machine<'a> {
         assert!(self.shared.scheduler.runnable.is_empty());
         assert!(self.shared.scheduler.handles.is_empty());
         assert!(self.shared.scheduler.joins.is_empty());
+        assert!(self.shared.scheduler.set_waits.is_empty());
     }
     pub(super) fn queue_operation_readiness(&mut self, task: TaskId) {
         self.shared
@@ -301,6 +477,11 @@ impl<'a> Machine<'a> {
             .scheduler
             .handles
             .retain(|id, _| self.shared.tasks.contains(*id));
+        let completed = &self.shared.completed;
+        self.shared
+            .scheduler
+            .completions
+            .retain(|id, _| completed.contains_key(id));
         self.shared.scheduler.runnable.retain(|r| match r {
             Runnable::Task(id) => self.shared.ready.contains_key(id),
             Runnable::Context(_) => true,
@@ -312,7 +493,11 @@ impl<'a> Machine<'a> {
         }
         let (task, owner) = self.context.task.unwrap();
         self.retain_task_completion(task, owner)?;
+        self.shared.scheduler.clock += 1;
+        let clock = self.shared.scheduler.clock;
+        self.shared.scheduler.completions.insert(task, clock);
         self.wake_source_join(task)?;
+        self.wake_source_set(task)?;
         self.select_source()?;
         Ok(true)
     }
@@ -359,8 +544,16 @@ impl<'a> Machine<'a> {
                 .joins
                 .iter()
                 .find_map(|(task, (c, _, _))| contains_owner(c, owner).then_some(*task));
+            let set = self
+                .shared
+                .scheduler
+                .set_waits
+                .iter()
+                .position(|w| contains_owner(&w.context, owner));
             if let Some(task) = task {
                 self.shared.scheduler.joins.remove(&task).unwrap().0
+            } else if let Some(index) = set {
+                self.shared.scheduler.set_waits.remove(index).context
             } else {
                 self.restore_source_await(owner)?
             }
@@ -404,6 +597,12 @@ impl<'a> Machine<'a> {
             .joins
             .values()
             .any(|(c, _, _)| c.domain == Some(domain))
+            || self
+                .shared
+                .scheduler
+                .set_waits
+                .iter()
+                .any(|w| w.context.domain == Some(domain))
     }
     pub(super) fn settle_source(&mut self, domain: Option<DomainId>) -> bool {
         let selected = |c: &Context<'a>| {
@@ -427,17 +626,33 @@ impl<'a> Machine<'a> {
             .scheduler
             .joins
             .iter()
-            .filter_map(|(id, (c, _, _))| selected(c).then_some((c.task.map_or(0, |t| t.0.0), *id)))
-            .max();
+            .filter_map(|(id, (c, _, _))| {
+                selected(c).then_some((c.task.map_or(0, |t| t.0.0), Ok(*id)))
+            })
+            .chain(
+                self.shared
+                    .scheduler
+                    .set_waits
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(i, w)| {
+                        selected(&w.context)
+                            .then_some((w.context.task.map_or(0, |t| t.0.0), Err(i)))
+                    }),
+            )
+            .max_by_key(|(task, _)| *task);
         let context = if let Some((_, i)) =
-            runnable.filter(|(id, _)| blocked.is_none_or(|(b, _)| *id >= b))
+            runnable.filter(|(id, _)| blocked.as_ref().is_none_or(|(b, _)| *id >= *b))
         {
             let Runnable::Context(c) = self.shared.scheduler.runnable.remove(i).unwrap() else {
                 unreachable!()
             };
             c
-        } else if let Some((_, id)) = blocked {
-            self.shared.scheduler.joins.remove(&id).unwrap().0
+        } else if let Some((_, waiting)) = blocked {
+            match waiting {
+                Ok(id) => self.shared.scheduler.joins.remove(&id).unwrap().0,
+                Err(i) => self.shared.scheduler.set_waits.remove(i).context,
+            }
         } else {
             return false;
         };
@@ -465,6 +680,7 @@ pub(crate) fn census_model(p: &CheckedProgram, scenario: &Scenario) -> RunComple
             super::settlement_tests::retired(&m);
             assert!(m.shared.scheduler.runnable.is_empty());
             assert!(m.shared.scheduler.joins.is_empty());
+            assert!(m.shared.scheduler.set_waits.is_empty());
             assert!(m.shared.scheduler.handles.is_empty());
             let observation = match m.finish(&scenario.entry) {
                 Ok(result) => {
@@ -530,6 +746,7 @@ mod tests {
                             assert!(
                                 m.shared.scheduler.runnable.is_empty()
                                     && m.shared.scheduler.joins.is_empty()
+                                    && m.shared.scheduler.set_waits.is_empty()
                                     && m.shared.scheduler.handles.is_empty()
                             );
                             finished = m.finish("main").is_ok();
@@ -614,9 +831,28 @@ mod tests {
             include_str!("../../tests/fixtures/source_borrowed_task_fault.tellur"),
             include_str!("../../tests/fixtures/source_inline_helper_fault.tellur"),
             include_str!("../../tests/fixtures/source_parent_await_fault.tellur"),
+            include_str!("../../tests/fixtures/task_sets.tellur"),
+            include_str!("../../tests/fixtures/source_task_set_fault.tellur"),
+            include_str!("../../tests/fixtures/source_task_set_parent_fault.tellur"),
         ]
         .into_iter()
         .map(str::to_owned)
+        // Members complete or fault before the parent first awaits its set.
+        .chain([
+            include_str!("../../tests/fixtures/task_sets.tellur").replace(
+                "    loop reap(",
+                "    yield;\n    yield;\n    yield;\n    yield;\n    loop reap(",
+            ),
+            include_str!("../../tests/fixtures/source_task_set_fault.tellur")
+                .replace(
+                    "spawn work(\"slow\", false) into active;",
+                    "spawn work(\"slow\", false) into active;\n    spawn work(\"fast\", false) into active;",
+                )
+                .replace(
+                    "    loop reap(",
+                    "    yield;\n    yield;\n    yield;\n    yield;\n    yield;\n    loop reap(",
+                ),
+        ])
         .chain(
             [
                 "auto nested=spawn idle();await nested;",
@@ -725,6 +961,8 @@ mod tests {
                         assert!(
                             m.shared.scheduler.runnable.is_empty()
                                 && m.shared.scheduler.joins.is_empty()
+                                && m.shared.scheduler.set_waits.is_empty()
+                                && m.shared.scheduler.completions.is_empty()
                                 && m.shared.scheduler.handles.is_empty()
                         );
                         assert_eq!(m.shared.domains.count(), 0);

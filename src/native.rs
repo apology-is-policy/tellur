@@ -480,7 +480,11 @@ impl Generator<'_> {
                         continue;
                     }
                     let call = match operation {
-                        Operation::Spawn(_) | Operation::Join(_) | Operation::Yield => {
+                        Operation::Spawn(_)
+                        | Operation::Join(_)
+                        | Operation::Yield
+                        | Operation::SpawnInto(_)
+                        | Operation::Next(_) => {
                             unreachable!("source scheduling uses compiled continuations")
                         }
                         Operation::Defer(name) => format!(
@@ -557,6 +561,22 @@ pub struct NativeBuild {
 impl CheckedProgram {
     pub fn native_source(&self, entry: &str) -> Result<String> {
         self.verify()?;
+        fn task_sets(code: &[Instruction]) -> bool {
+            code.iter().any(|i| match &i.action {
+                Action::Decide {
+                    operation: Operation::SpawnInto(_) | Operation::Next(_),
+                    ..
+                } => true,
+                Action::Loop { body, .. } => task_sets(body),
+                Action::Boundary { body, handler, .. } => task_sets(body) || task_sets(handler),
+                _ => false,
+            })
+        }
+        if self.regions().any(|r| task_sets(&r.code)) {
+            return Err(error(
+                "task sets (spawn into, await next) are not yet supported by the native backend; use the reference executor",
+            ));
+        }
         if self.region(entry).is_none() {
             return Err(error(format!("unknown entry region {entry}")));
         }

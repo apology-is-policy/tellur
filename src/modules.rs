@@ -468,6 +468,11 @@ impl Resolver<'_> {
         if let Some(producer) = crate::manifest::outcome_inner(ty) {
             return Ok(format!("outcome<{}>", self.constructor(producer, span)?));
         }
+        if let Some(producer) = crate::manifest::task_set_inner(ty) {
+            return Ok(crate::manifest::task_set_type(
+                &self.constructor(producer, span)?,
+            ));
+        }
         if let Some((application, member)) = crate::collection_support::qualified_member(ty) {
             return Ok(format!("{}.{member}", self.ty(application, span)?));
         }
@@ -873,7 +878,8 @@ fn type_leaves(ty: &str) -> Vec<String> {
     if let Some((_, inner)) = crate::manifest::reference_inner(ty) {
         return type_leaves(inner);
     }
-    if crate::manifest::outcome_inner(ty).is_some() {
+    if crate::manifest::outcome_inner(ty).is_some() || crate::manifest::task_set_inner(ty).is_some()
+    {
         return vec![ty.into()];
     }
     if let Some((base, args)) = crate::collection_support::generic(ty) {
@@ -1369,7 +1375,10 @@ impl PublicInterfaces {
                 if parameters.contains(&leaf) {
                     continue;
                 }
-                if self.private.contains(&leaf) || crate::manifest::outcome_inner(&leaf).is_some() {
+                if self.private.contains(&leaf)
+                    || crate::manifest::outcome_inner(&leaf).is_some()
+                    || crate::manifest::task_set_inner(&leaf).is_some()
+                {
                     return Err(Diagnostic::new(
                         "E_VISIBILITY",
                         span,

@@ -467,7 +467,10 @@ impl Verifier<'_> {
                 let ty = self.expr(e)?;
                 let (mutable, inner) = crate::manifest::reference_inner(&ty)
                     .ok_or_else(|| error("length needs a reference"))?;
-                if mutable || crate::collection_support::Collection::parse(inner).is_none() {
+                if mutable
+                    || (crate::collection_support::Collection::parse(inner).is_none()
+                        && crate::manifest::task_set_inner(inner).is_none())
+                {
                     return Err(error("invalid length operand"));
                 }
                 "U32".into()
@@ -534,6 +537,12 @@ impl Verifier<'_> {
                     .ok_or_else(|| error("invalid projection"))?
                     .ty
                     .clone()
+            }
+            Expr::Construct(ty, name, args) if crate::manifest::task_set_inner(ty).is_some() => {
+                if name != "tasks" || !args.is_empty() || m.task_captures.get(ty).is_none() {
+                    return Err(error("invalid empty task set"));
+                }
+                ty.clone()
             }
             Expr::Construct(ty, name, args) => {
                 m.check_local_storage(ty)?;
@@ -603,6 +612,71 @@ impl Verifier<'_> {
                 "Bool".into()
             }
         })
+    }
+    /// Task sets hold reference-free started members of exactly one producer.
+    /// Member completions carry the remaining set after the producer payload.
+    fn task_set(
+        &self,
+        operation: &Operation,
+        name: &str,
+        r: &Region,
+        args: &[Expr],
+    ) -> Result<Vec<crate::manifest::Outcome>> {
+        let m = self.program.manifest();
+        let ty = crate::manifest::task_set_type(name);
+        let obligations: Vec<_> = r
+            .parameters
+            .iter()
+            .map(|p| p.ty.clone())
+            .chain(r.exits.iter().flat_map(|o| &o.fields).map(|f| f.ty.clone()))
+            .collect();
+        if !matches!(
+            m.type_def(&ty),
+            Some(crate::manifest::TypeDef::Opaque { linear: true, .. })
+        ) || m.task_captures.get(&ty) != Some(&obligations)
+            || obligations.iter().any(|ty| m.contains_references(ty))
+            || r.exits.iter().any(|o| o.name == "empty")
+            || m.permits_fault(&ty) != obligations.iter().all(|ty| m.permits_fault(ty))
+        {
+            return Err(error("task set member profile differs"));
+        }
+        let set = Field {
+            name: "$set".into(),
+            ty: ty.clone(),
+        };
+        if matches!(operation, Operation::SpawnInto(_)) {
+            let (last, captures) = args
+                .split_last()
+                .ok_or_else(|| error("task set spawn lacks its set"))?;
+            same(&self.expr(last)?, &ty)?;
+            self.args(
+                captures,
+                &r.parameters
+                    .iter()
+                    .map(|p| Field {
+                        name: p.name.clone(),
+                        ty: p.ty.clone(),
+                    })
+                    .collect::<Vec<_>>(),
+            )?;
+            return Ok(vec![crate::manifest::Outcome {
+                name: "$spawned".into(),
+                fields: vec![set],
+            }]);
+        }
+        self.args(args, std::slice::from_ref(&set))?;
+        Ok(r.exits
+            .iter()
+            .map(|o| {
+                let mut o = o.clone();
+                o.fields.push(set.clone());
+                o
+            })
+            .chain([crate::manifest::Outcome {
+                name: "empty".into(),
+                fields: vec![],
+            }])
+            .collect())
     }
     fn args(&self, args: &[Expr], fields: &[Field]) -> Result<()> {
         if args.len() != fields.len() {
@@ -848,6 +922,7 @@ impl Verifier<'_> {
                     args,
                     arms,
                 } => {
+                    let mut return_outcomes = None;
                     let outcomes = match operation {
                         Operation::Yield => {
                             if !self.region.asynchronous
@@ -886,6 +961,8 @@ impl Verifier<'_> {
                         | Operation::Defer(name)
                         | Operation::Spawn(name)
                         | Operation::Join(name)
+                        | Operation::SpawnInto(name)
+                        | Operation::Next(name)
                         | Operation::AwaitTask(name) => {
                             let r = self
                                 .program
@@ -900,6 +977,8 @@ impl Verifier<'_> {
                                 | Operation::Defer(_)
                                 | Operation::Spawn(_)
                                 | Operation::Join(_)
+                                | Operation::SpawnInto(_)
+                                | Operation::Next(_)
                                 | Operation::AwaitTask(_) => {
                                     r.asynchronous && self.region.asynchronous
                                 }
@@ -944,7 +1023,15 @@ impl Verifier<'_> {
                                     "spawn capture/result is outside the direct-reference, owned record/option/variant/named-outcome payload and borrowed record/option/variant/named-outcome capture or whole borrowed record/option/variant/named-outcome result or record/option/variant/named-outcome reference-chain profile",
                                 ));
                             }
-                            if matches!(operation, Operation::AwaitTask(_) | Operation::Join(_)) {
+                            if matches!(operation, Operation::SpawnInto(_) | Operation::Next(_)) {
+                                if self.region.contingent || self.handler {
+                                    return Err(error("task set operation in contingent code"));
+                                }
+                                return_outcomes = Some(self.task_set(operation, name, r, args)?);
+                            } else if matches!(
+                                operation,
+                                Operation::AwaitTask(_) | Operation::Join(_)
+                            ) {
                                 self.args(
                                     args,
                                     &[Field {
@@ -968,7 +1055,10 @@ impl Verifier<'_> {
                                         .collect::<Vec<_>>(),
                                 )?;
                             }
-                            if matches!(operation, Operation::Defer(_) | Operation::Spawn(_)) {
+                            if let Some(outcomes) = return_outcomes.take() {
+                                outcomes
+                            } else if matches!(operation, Operation::Defer(_) | Operation::Spawn(_))
+                            {
                                 let ty = if matches!(operation, Operation::Spawn(_)) {
                                     crate::manifest::started_type(name)
                                 } else {

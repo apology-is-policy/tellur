@@ -1,0 +1,48 @@
+// The parent faults while its set has live members. The owning boundary settles
+// both members before its contingency; the recovered attempt drains normally.
+async control work(string name) exits done { string name } {
+    emit(borrow name);
+    yield;
+    yield;
+    emit(concat("finished ", clone(borrow name)));
+    exit done { name };
+}
+
+async control startup(bool early) exits done {
+    tasks<work> active = tasks();
+    spawn work("a") into active;
+    spawn work("b") into active;
+    yield;
+    delta early {
+        true => failing,
+        false => fine
+    }
+    [failing]: fault "parent failed";
+    [fine]: emit("draining");
+    loop reap(tasks<work> pending = move active) {
+        delta await next pending {
+            done { string name } => joined,
+            empty => drained
+        }
+
+        [joined]:
+            emit(concat("joined ", name));
+            again reap(pending);
+        [drained]: exit done;
+    }
+}
+
+control main() exits done {
+    supervised loop attempt(mutable bool first = true) {
+        bool early = first;
+        first = false;
+        fault boundary {
+            run startup(early);
+            emit("completed");
+            exit done;
+        } contingency [] {
+            emit(borrow @fault.message);
+            recover again attempt;
+        }
+    }
+}

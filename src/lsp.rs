@@ -551,6 +551,26 @@ impl Server {
                     "spawn" => Some(
                         "`auto child = spawn operation(arguments);` queues an invocation-owned child without running it. Direct borrows of reference-free storage stay live until the consuming join. Owned record, option, variant and named outcome captures/results may nest; reference leaves must point to reference-free storage. Capture leaf loans stay live until join; selected result leaf loans last through final use. Named outcomes retain mandatory handling. Borrowed record captures retain whole-holder storage and contained direct leaves through join; selected results preserve any detached holder guards. Borrowed option/variant captures also retain tag-specific origins and holder guards, including empty alternatives. Borrowed named outcomes retain the owning caller handling obligation, even when empty. Whole borrowed record results retain holder storage and contained permissions after join. Whole borrowed option/variant results retain active or empty holder storage and tag-specific contained permissions after join. Whole borrowed named-outcome results retain holder storage and contained permissions without discharging the owning caller handling obligation, even when empty. Record-only reference chains retain every intermediate holder and supplier through capture, join and final result use. Option and closed-variant reference chains retain active or empty holder storage and selected supplier origins. Named-outcome reference chains retain every holder and selected supplier without discharging owning caller handling, including empty and nested outcomes. Anonymous outcomes and collections remain gated. Direct borrowed results retain their declared origins after join. Fault dispositions are required for producer owners retained across handoffs. Move handles locally and await every child on every normal path. Synchronous helpers may enter named or lexical boundaries and reach explicit handoffs while children remain owned by the original invocation. Every helper owner retained across a handoff must permit fault settlement. A sibling fault reaches its original owning boundary, skips intervening contingencies and retires borrowers before helper storage. Direct inline boundaries still require joining children first. Only their reached await/yield sites hand off; run enters inline. Cold/direct awaits may retain parent borrows beside children when their producer permits fault settlement at handoffs. Escaping faults settle the owning boundary before contingency.",
                     ),
+                    "tasks"
+                        if tokens
+                            .get(index + 1)
+                            .is_some_and(|t| t.is("<") || t.is("(")) =>
+                    {
+                        Some(
+                            "`tasks<producer> set = tasks();` declares an invocation-owned set of started children of one async control. Add members with `spawn producer(arguments) into set;`, join the earliest completed member with `delta await next set { ..., empty => ... }` and read `count(borrow set)`. The set is linear: it may move locally or through loop parameters, never into a direct inline fault boundary, helper call or outcome. Only the `empty` alternative retires it. Members currently capture and return owned reference-free values.",
+                        )
+                    }
+                    "into"
+                        if index > 0
+                            && tokens[..index].iter().rev().take(64).any(|t| t.is("spawn")) =>
+                    {
+                        Some(
+                            "`spawn producer(arguments) into set;` queues a child of this invocation and adds it to a `tasks<producer>` set. Like `spawn`, it is not a handoff and requires fault dispositions for producer owners retained across handoffs.",
+                        )
+                    }
+                    "next" if index > 0 && tokens[index - 1].is("await") => Some(
+                        "`await next set` joins the earliest completed member of a task set, suspending while members are still running. Arms handle every producer outcome plus `empty`, which selects without suspending when the set has no members and retires the set. Member faults stop the owning boundary; they are never outcomes.",
+                    ),
                     "yield" => Some(
                         "`yield;` explicitly lets already runnable tasks proceed, placing this async invocation behind them. It is unavailable in synchronous or contingency code. Host quotas do not cause source handoffs.",
                     ),

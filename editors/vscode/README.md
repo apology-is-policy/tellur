@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-darwin-arm64-0.221.0.vsix` using **Extensions:
+1. Install the supplied `tellur-language-darwin-arm64-0.222.0.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1763,3 +1763,7 @@ Compiler 0.219 runs async host operations through polled Rust adapters
 (`"execution": "poll"`). Call hover reports the polled host execution. Compiler 0.220
 wakes such adapters on descriptor readiness. Compiler 0.221 makes the loopback HTTP
 library's `receive` async.
+
+Compiler 0.222 adds task sets. Hover `tasks`, `into` (in `spawn … into set;`) and
+`next` (in `await next set`) for their rules. The grammar highlights `into` and `next`
+only in those positions.
