@@ -4752,3 +4752,25 @@ adapter and parks on writability within the two-second deadline. The new async
 `finish` forwards `http_connection_finish`, which half-closes, drains on
 readability for at most 100 ms and releases the descriptor. Contingency code cannot
 enter async controls, so handlers keep the blocking `close` and `reply_failure`.
+
+### Concurrent settings server (E1g stage c, part 3c, 0.226)
+
+`applications/settings/server.tellur` now enters an async `serve` loop with `run`.
+Its loop parameters are the remaining budget, an `admission` variant (`open`,
+`exhausted`, `quiet`, `broken { message }`) and `tasks<serve_connection>`. While
+admission is open and `count(borrow active) < 64`, it awaits `transport.accept`
+and spawns each connection with owned copies of the path and authority; otherwise
+it reaps one member with `await next`. Draining reaches `empty`, and the admission
+state selects `completed`, `idle` or `failed`. Each member supervises the named
+boundary `request(connection, path, authority) retains connection`. The lexical form
+does not apply, because the connection is a member parameter rather than a value
+created inside a supervised loop iteration. The existing synchronous `exchange`
+helper hands off at its `run` entries of the async transport controls, so a member
+parks on socket readiness while other members and the loop run.
+
+Scripts list host operations in start order. After an accept, the loop's next budget
+step runs before the member starts; with budget remaining, the member's first
+operation starts before the next accept. The settings HTTP tests derive that order
+from their sequential case descriptions. A live test holds a slow client mid-headers
+while a fast client is served in under a second; the 0.225 sequential server makes
+the fast client wait about 1.9 seconds, until the slow request's deadline.

@@ -61,7 +61,41 @@ fn call(operation: &str, outcome: &str, fields: Vec<Value>) -> ScriptCall {
         waits: 0,
     }
 }
+/// Scripts list host operations in start order. Cases below are written in the
+/// order one connection's work happens; since 0.226 the accept loop runs that work
+/// as a task-set member. After a connection is accepted, the loop's next budget
+/// step runs before the member starts. If budget remains, the member's first
+/// operation starts before the next accept, then the member continues.
+fn concurrent(mut calls: Vec<ScriptCall>) -> Vec<ScriptCall> {
+    let Some(accepted) = calls
+        .iter()
+        .position(|c| c.operation == "http_accept" && c.outcome == "accepted")
+    else {
+        return calls;
+    };
+    let Some(step) = calls[accepted + 1..]
+        .iter()
+        .position(|c| c.operation == "checked_sub")
+    else {
+        return calls;
+    };
+    let step = calls.remove(accepted + 1 + step);
+    let more = step.outcome == "difference";
+    calls.insert(accepted + 1, step);
+    if more {
+        let next = accepted
+            + 2
+            + calls[accepted + 2..]
+                .iter()
+                .position(|c| c.operation == "http_accept")
+                .unwrap();
+        let next = calls.remove(next);
+        calls.insert(accepted + 3, next);
+    }
+    calls
+}
 fn scenario(calls: Vec<ScriptCall>) -> Scenario {
+    let calls = concurrent(calls);
     Scenario {
         entry: "serve".into(),
         arguments: vec![
@@ -1073,5 +1107,36 @@ fn native_http_source_fault_sends_500_then_serves_next_request() {
         404,
         false,
     );
+    server.finish(0, "completed");
+}
+
+#[test]
+fn native_http_slow_client_does_not_delay_a_fast_client() {
+    let p = program();
+    let f = Fixture::new();
+    let binary = f.0.join("concurrent");
+    p.build_native("serve", &binary, 0).unwrap();
+    let server = Server::start(&binary, &f.0.join("settings.json"), 2, 3000);
+    let full = request(&server.authority, "GET", "/settings", "", "");
+    // The slow client is accepted first and stalls in the middle of its headers.
+    let mut slow = TcpStream::connect(&server.authority).unwrap();
+    slow.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+    slow.write_all(&full[..12]).unwrap();
+    std::thread::sleep(Duration::from_millis(200));
+    // A fast client is served while the slow member waits for readable input.
+    let started = Instant::now();
+    let fast = exchange(&server.authority, &full);
+    let elapsed = started.elapsed();
+    assert_eq!(response(&fast, 200, false), "{}");
+    assert!(
+        elapsed < Duration::from_millis(1000),
+        "the fast client waited {elapsed:?} behind the slow one"
+    );
+    // The slow client then completes within its own request deadline.
+    slow.write_all(&full[12..]).unwrap();
+    slow.shutdown(Shutdown::Write).unwrap();
+    let mut reply = vec![];
+    slow.read_to_end(&mut reply).unwrap();
+    assert_eq!(response(&reply, 200, false), "{}");
     server.finish(0, "completed");
 }

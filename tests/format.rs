@@ -346,7 +346,7 @@ fn user_server_style_keeps_labels_and_indents_nested_adapter_bodies() {
     assert!(result.contains("    [invalid]: exit invalid_configuration;"));
     assert!(result.contains("    [listening]:\n        emit("));
     assert!(result.contains("[failed]: emit(message);"));
-    assert!(result.contains("[entry]: recover again accept_next;"));
+    assert!(result.contains("    [entry]: terminate;"));
     assert!(
         result.contains(
             "\n                sent => sent {},\n                failed { string message }"

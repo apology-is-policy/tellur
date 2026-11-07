@@ -34,7 +34,8 @@ Since compiler 0.54, validation and storage failures use direct arm exits such a
 public contracts and host mechanisms are unchanged.
 
 `http.tellur` owns endpoint policy, request validation and HTTP response choices.
-`server.tellur` owns acceptance, connection budgets and explicit completion. Rust
+`server.tellur` owns acceptance, connection budgets, concurrency and explicit
+completion. Rust
 provides sockets, bounded HTTP parsing through pinned `httparse` 1.10.1, and response
 framing; it does not route requests or decide which settings to change.
 
@@ -233,8 +234,17 @@ latency. Since 0.221 request reception is an async host operation, entered with
 acceptance is async as well (`run transport.accept(listener, idle_ms)`), and
 `http_connection` declares `"fault": "release"`. Since 0.225 responses are sent with
 `run transport.send(...)` and normal completion uses `run transport.finish(connection)`;
-the contingency keeps the blocking `reply_failure` and `close`. The service still
-handles one client at a time.
+the contingency keeps the blocking `reply_failure` and `close`.
+
+Since 0.226 the service handles connections concurrently. The async `serve` loop
+keeps a task set of accepted connections (`tasks<serve_connection>`) and admits a
+new one only while `count(borrow active) < 64`. Each member owns its connection,
+receives, routes, responds and finishes it; while it waits for socket readiness the
+loop and the other members keep running. A slow client therefore does not delay a
+fast one. The budget and idle timeout stay global: the loop stops admitting after
+the budget, an idle accept or an accept failure, then drains the remaining members
+before it reports its result. Filesystem reads and writes inside a request still
+block the executor briefly (bounded local files under 1 MiB).
 
 The connection completion operation half-closes the write side, drains at most
 1 MiB + 16 KiB for at most 100 ms, and releases the descriptor. Bounded staged
@@ -247,13 +257,14 @@ writing failed. If both exchange and completion fail, both details are retained 
 reported. Listener release runs after the accept loop completes or fails. Descriptor
 release does not claim an observable OS close-error result or write durability.
 
-The loop stops after its connection budget or after an idle accept timeout. Every
-accepted connection counts, including malformed and disconnected clients. Normal
-completion is `completed` or `idle` (status 0). Read/write/cleanup failures are
-reported inside the request while the supervisor continues. The supervisor does
-not aggregate a request success/fault result. HTTP 4xx/5xx responses do not make
-the server process fail. Accept failures end the loop as
-`failed` (status 1). A clean peer disconnect is an ordinary connection completion.
+The loop stops admitting after its connection budget or after an idle accept
+timeout, and finishes once every admitted connection has completed. Every accepted
+connection counts, including malformed and disconnected clients. Normal completion
+is `completed` or `idle` (status 0). Read/write/cleanup failures are reported inside
+the request while the other connections continue. The loop does not aggregate a
+request success/fault result. HTTP 4xx/5xx responses do not make the server process
+fail. Accept failures end admission and, after draining, report `failed`
+(status 1). A clean peer disconnect is an ordinary connection completion.
 
 For VS Code, select entry `serve` and arguments such as
 `["/tmp/tellur-settings.json", "8080", "100", "60000"]`. Build and Run currently
@@ -263,9 +274,9 @@ Use small budgets for `--json`: it retains request/response traces, which can co
 settings values and grow with the number of connections.
 
 Budget/idle completion is the graceful stop mechanism in this checkpoint. Ctrl-C
-is process termination, not a Tellur cancellation protocol. Async tasks, concurrent
-requests, signal-driven graceful shutdown and cancellation remain roadmap work;
-no Rust future or executor ABI has been introduced.
+is process termination, not a Tellur cancellation protocol. Signal-driven graceful
+shutdown and cancellation (stopping in-flight connections) remain roadmap work; no
+Rust future or executor ABI has been introduced.
 
 Changing dependencies is explicit:
 
@@ -280,7 +291,8 @@ uncertain replacement and cleanup details. Scripted failures agree with interpre
 and expanded execution, including native O0/O2 builds.
 The [HTTP tests](../../tests/settings_http.rs) add real socket exchanges, framing
 and deadline limits, occupied ports, persistence across restarts, clean disconnects,
-graceful listener release and scripted read/write/cleanup failures.
+graceful listener release, scripted read/write/cleanup failures, and a slow client
+that does not delay a fast one.
 
 ## Review the library's public contract
 
@@ -316,15 +328,17 @@ equal recorded evidence does not prove unchanged behavior. See
 
 ## Request contingency
 
-Each accepted connection enters a lexical `fault boundary` inside the supervised
-`accept_next` loop. The remaining-request budget is decremented before entry;
-request inputs are owned copies, and `contingency [connection]` retains the channel.
-A source fault retires normal request work and transfers the retained connection
-to its contingency. The restricted host operation `http_reply_failure` attempts a
-generic 500 only before a response starts; otherwise it reports `unavailable`.
+Each accepted connection runs as a task-set member, `serve_connection`, which
+supervises the named boundary `request(connection, path, authority) retains
+connection`. Request inputs are owned copies made at spawn. A source fault retires
+the member's normal request work and transfers the retained connection to the
+boundary's contingency. The restricted host operation `http_reply_failure` attempts
+a generic 500 only before a response starts; otherwise it reports `unavailable`.
 The contingency closes the connection, accounts for write/close failures locally,
-and uses `recover again accept_next;`. The next iteration preserves the already
-updated budget. Normal completion falls through to the ordinary loop restart.
+and terminates; the member then completes normally. A request fault therefore
+stays inside its member: it never reaches the accept loop and never stops sibling
+connections. (A lexical boundary cannot be used here, because the connection is a
+member parameter rather than a value created inside a supervised loop iteration.)
 
 `completed` and `idle` now describe the service lifecycle without aggregating
 request results. Per-request problems appear in responses and diagnostic events.

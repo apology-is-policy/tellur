@@ -318,17 +318,19 @@ Diagnostic activation identities continue increasing across supervised requests.
 
 ## Current scope and the settings server
 
-The [settings server](../../applications/settings/server.tellur) retains each
-accepted connection. Its contingency calls the trusted `http_reply_failure`
+The [settings server](../../applications/settings/server.tellur) runs each accepted
+connection as a task-set member that supervises the named boundary `request`, which
+retains the connection. Its contingency calls the trusted `http_reply_failure`
 operation, then closes the connection. That operation attempts a fixed generic
 500 only before response transmission has started. It reports `unavailable` after
 any previous write attempt, including a partial one. Network failure remains
 possible and is handled inside the contingency. Request internals are not sent to
-the client. The accept loop can serve the next connection afterwards.
+the client. The fault stays inside its member: the accept loop and the other
+connections keep running.
 
 Service `completed` and `idle` describe the accept loop's lifecycle. They do not
 aggregate request failures. Responses and diagnostic events describe individual
-requests; no failure outcome crosses the recovery edge.
+requests; no failure outcome crosses the boundary.
 
 This release handles explicit Tellur source faults. Driver errors, fuel exhaustion,
 foreign panics, aborts and forced termination do not become recoverable source

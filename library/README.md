@@ -159,8 +159,8 @@ closes its descriptor. Since 0.225 `send` and `finish` are async: the response
 write parks on write readiness within its two-second deadline, and `finish` parks
 on readability while draining for at most 100 ms. Listening and the contingency
 forms (`close`, `reply_failure`) remain blocking. There is no TLS or
-authentication, and the maintained settings service still handles one connection
-at a time.
+authentication. Since 0.226 the maintained settings service serves connections
+concurrently as task-set members.
 
 [host/loopback_http.rs](host/loopback_http.rs), the polled receive in
 [host/loopback_http_receive.rs](host/loopback_http_receive.rs), the polled accept in

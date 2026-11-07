@@ -8,17 +8,6 @@ pub outcome service_result {
     @exit 2 invalid_configuration
 }
 
-// Prepare owned request data before entering the isolated boundary.
-struct request_context {
-    string path;
-    string authority;
-
-    constructor(ref string path, ref string authority) {
-        self.path = clone(path);
-        self.authority = clone(authority);
-    }
-}
-
 pub control start(
     ref string path,
     u32 port,
@@ -42,7 +31,7 @@ pub control start(
     [unavailable]: exit failed { listen_message };
     [listening]:
         emit(concat("http://", clone(borrow authority)));
-        auto result = capture run(
+        auto result = capture run serve(
             path,
             borrow listener,
             borrow authority,
@@ -57,71 +46,120 @@ pub control start(
         };
 }
 
-control run(
+// Why the accept loop stopped admitting connections.
+variant admission {
+    open,
+    exhausted,
+    quiet,
+    broken { string message }
+}
+
+// One global budget and idle timeout. Accepted connections run as members of one
+// task set, at most `width` at a time; the loop stops admitting after the budget,
+// an idle accept or an accept failure, then drains the set.
+async control serve(
     ref string path,
     ref http_listener listener,
     ref string authority,
     u32 limit,
     u32 idle_ms
-) exits auto {
-    supervised loop accept_next(mutable u32 remaining = limit) {
-        delta checked_sub(remaining, 1) {
-            difference { u32 next } => available,
-            underflow => finished
+) exits completed, idle, failed { string message } {
+    loop serve_next(
+        mutable u32 remaining = limit,
+        admission state = admission.open {},
+        tasks<serve_connection> active = tasks()
+    ) {
+        delta borrow state {
+            open => admitting,
+            exhausted => exhausted,
+            quiet => quiet,
+            broken { ref string reason } => broken
         }
-        [finished]: exit completed;
-        [available]: delta run transport.accept(listener, idle_ms) {
-            accepted { http_connection connection } => accepted,
-            idle => idle,
-            failed { string accept_message } => unavailable
+        [admitting]: delta (count(borrow active) < 64) {
+            true => room,
+            false => full
         }
-        [idle]: exit idle;
-        [unavailable]: exit failed { accept_message };
-        [accepted]:
-            // Update supervisor state before isolating the request.
-            remaining = next;
-            auto context = request_context(path, authority);
-            fault boundary {
-                auto exchange_result = capture exchange(
-                    borrow context.path,
-                    borrow context.authority,
-                    borrow connection
-                );
-                auto close_result = capture run transport.finish(connection);
-
-                delta exchange_result {
-                    sent => sent,
-                    disconnected => disconnected,
-                    failed { string message } => failed
-                }
-                delta close_result {
-                    closed => closed,
-                    failed { string cleanup } => cleanup_failed
-                }
-
-                [failed]: emit(message);
-                [cleanup_failed]: emit(cleanup);
-            } contingency [connection] {
-                emit(borrow @fault.message);
-                auto reply_result = capture transport.reply_failure(borrow connection);
-                auto close_result = capture transport.close(connection);
-
-                delta reply_result {
-                    sent => sent,
-                    unavailable => unavailable,
-                    failed { string message } => failed
-                }
-                delta close_result {
-                    closed => closed,
-                    failed { string cleanup } => cleanup_failed
-                }
-
-                [failed]: emit(message);
-                [cleanup_failed]: emit(cleanup);
-                [entry]: recover again accept_next;
+        [broken]: drop(reason);
+        [exhausted | quiet | broken | full]:
+            delta await next active {
+                handled => reaped,
+                empty => drained
             }
-            again accept_next(remaining);
+        [reaped]: again serve_next(remaining, state, active);
+        [drained]:
+            exit delta state {
+                open => completed {},
+                exhausted => completed {},
+                quiet => idle {},
+                broken { string message } => failed { message }
+            };
+        [room]:
+            delta checked_sub(remaining, 1) {
+                difference { u32 next } => available,
+                underflow => finished
+            }
+        [finished]: again serve_next(remaining, admission.exhausted {}, active);
+        [available]:
+            delta await transport.accept(listener, idle_ms) {
+                accepted { http_connection connection } => accepted,
+                idle => idle,
+                failed { string accept_message } => unavailable
+            }
+        [idle]: again serve_next(remaining, admission.quiet {}, active);
+        [unavailable]: again serve_next(remaining, admission.broken { accept_message }, active);
+        [accepted]:
+            spawn serve_connection(move connection, clone(path), clone(authority)) into active;
+            again serve_next(next, state, active);
     }
+}
+
+// A member owns its connection and isolates its own request: a fault is handled
+// by the named boundary and never stops sibling connections.
+async control serve_connection(
+    http_connection connection,
+    string path,
+    string authority
+) exits handled {
+    supervise request(connection, path, authority);
+    exit handled;
+}
+
+boundary request(http_connection connection, string path, string authority) retains connection {
+    auto exchange_result = capture exchange(borrow path, borrow authority, borrow connection);
+    auto close_result = capture run transport.finish(connection);
+
+    delta exchange_result {
+        sent => sent,
+        disconnected => disconnected,
+        failed { string message } => failed
+    }
+    delta close_result {
+        closed => closed,
+        failed { string cleanup } => cleanup_failed
+    }
+
+    [failed]: emit(message);
+    [cleanup_failed]: emit(cleanup);
+    [entry]: terminate;
+}
+contingency(string reason) {
+    emit(reason);
+    auto reply_result = capture transport.reply_failure(borrow connection);
+    auto close_result = capture transport.close(connection);
+
+    delta reply_result {
+        sent => sent,
+        unavailable => unavailable,
+        failed { string message } => failed
+    }
+    delta close_result {
+        closed => closed,
+        failed { string cleanup } => cleanup_failed
+    }
+
+    [failed]: emit(message);
+    [cleanup_failed]: emit(cleanup);
+    [entry]: terminate;
 }
 
 control exchange(

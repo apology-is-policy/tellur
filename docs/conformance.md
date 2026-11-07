@@ -6010,3 +6010,21 @@ fault disposition. The settings and HTTP library scripts now expect
 `http_connection_finish` on normal paths, the fault-injection tests wrap the async
 send, and the contingency-permission test expects `E_ASYNC` for an async send in a
 handler. The live settings and HTTP library suites run with async send and finish.
+
+## Concurrent settings server (0.226 / E1g stage c, part 3c)
+
+The settings service serves connections concurrently with a task set. The async
+`serve` loop keeps one global budget and idle timeout, admits a connection only
+while `count(borrow active) < 64`, and drains the set after admission stops; the
+admission state then selects `completed`, `idle` or `failed`. Each member owns its
+connection and supervises a named boundary that retains it, so a request fault is
+handled locally with `http_reply_failure` and `close` and never stops siblings.
+
+`tests/settings_http.rs` adds a live test: a slow client stalls mid-headers while a
+fast client receives its response in under a second, then the slow client completes;
+against the 0.225 server the fast client waits about 1.9 seconds and the test fails.
+The scripted cases keep their sequential descriptions and are converted to the
+concurrent start order by one documented helper. The existing live suites (persistent
+settings, framing and deadlines, removal, injected source fault followed by the next
+request) pass with the concurrent server. `tests/format.rs` follows the server's
+new contingency terminal line.

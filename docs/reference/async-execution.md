@@ -289,7 +289,9 @@ handle, it may not be in scope at a direct inline fault boundary. Put per-member
 isolation inside the producer instead.
 
 Bound the number of live members with an ordinary decision on
-`count(borrow set)`, as in [the task-set example](../../playground/task_sets.tellur).
+`count(borrow set)`, as in [the task-set example](../../playground/task_sets.tellur)
+and, since 0.226, the [settings server](../../applications/settings/server.tellur), which
+serves up to 64 connections at once.
 Faults follow the spawned-children rules:
 
 - An escaping member fault stops the owning boundary.
