@@ -93,7 +93,7 @@ its original application, including fault contingency and subsequent requests.
 ## Bounded loopback HTTP
 
 Import [loopback_http.tellur](loopback_http.tellur) under a local namespace. Its
-seven public controls expose the transport's closed outcomes without choosing routes,
+eight public controls expose the transport's closed outcomes without choosing routes,
 ordinary response statuses or supervision policy. The retained opaque types
 `http_listener` and `http_connection` and matching `http_*` primitives must be supplied
 by the project manifest. The [independent hello service](../examples/http_hello/README.md)
@@ -104,8 +104,9 @@ and [settings server](../applications/settings/server.tellur) use the same sourc
 | `listen` | `u32 port` | `listen_result`: owned listener and authority, or `failed` |
 | `accept` (async) | `ref http_listener listener, u32 idle_ms` | `accept_result`: owned connection, `idle`, or `failed` |
 | `receive` | `ref http_connection connection` | `receive_result`: owned method, target, headers and UTF-8 body, or a distinct framing, limit, deadline, disconnect or I/O outcome |
-| `send` | shared connection, status, shared body/media/Allow text | `send_result`: `sent` or `failed` |
-| `close` | owned connection | `close_result`: `closed` or `failed`; consumes the owner either way |
+| `send` (async) | shared connection, status, owned body/media/Allow text | `send_result`: `sent` or `failed` |
+| `finish` (async) | owned connection | `close_result`: `closed` or `failed`; consumes the owner either way |
+| `close` | owned connection | `close_result`: as `finish`, but blocks the executor while draining; for contingencies and synchronous code |
 | `release` | owned listener | `released`; consumes the owner |
 | `reply_failure` | shared connection | `failure_reply_result`: `sent`, `unavailable` or `failed` |
 
@@ -120,7 +121,8 @@ A second call returns `failed` immediately without reading or changing the first
 request's state. Send is likewise attempted at most once after metadata validation.
 
 Only `close` and `reply_failure` are marked `@contingent`; they remain callable in
-ordinary work as well. A contingency may use a retained connection to attempt a fixed
+ordinary work as well. Contingency code cannot enter async controls, so handlers use
+these blocking forms; normal paths use `send` and `finish`. A contingency may use a retained connection to attempt a fixed
 generic 500 and complete it before recovery. `reply_failure` returns `unavailable`
 when transmission has already started, preventing a second response. A failed send
 may already have written bytes, so it does not promise rollback or retryability.
@@ -153,19 +155,24 @@ same two-second deadline, and other tasks can run. Since 0.224 `accept` is async
 too: `http_accept` parks on the listener's readability, bounded by the idle
 timeout, and returns an owned connection. Manifests binding it declare
 `"fault": "release"` on `http_connection`, so a stopped task that owns a connection
-closes its descriptor. Listen, write and completion operations remain blocking.
-There is no TLS or authentication, and the maintained settings service still
-handles one connection at a time.
+closes its descriptor. Since 0.225 `send` and `finish` are async: the response
+write parks on write readiness within its two-second deadline, and `finish` parks
+on readability while draining for at most 100 ms. Listening and the contingency
+forms (`close`, `reply_failure`) remain blocking. There is no TLS or
+authentication, and the maintained settings service still handles one connection
+at a time.
 
 [host/loopback_http.rs](host/loopback_http.rs), the polled receive in
-[host/loopback_http_receive.rs](host/loopback_http_receive.rs) and the polled accept in
-[host/loopback_http_accept.rs](host/loopback_http_accept.rs) are embedded by explicit
+[host/loopback_http_receive.rs](host/loopback_http_receive.rs), the polled accept in
+[host/loopback_http_accept.rs](host/loopback_http_accept.rs) and the polled send and
+finish in [host/loopback_http_send.rs](host/loopback_http_send.rs) are embedded by explicit
 `rust.modules` and depend on the project's locked `httparse` version (and, for the
 polled adapter, the internal readiness dependency; rerun `tellurc lock-native`). The
-root adapter re-exports `Listener`, `Connection` and the seven primitive functions,
-taking `http_receive` and `http_accept` from the polled modules. The blocking
-`http_receive` and `http_accept` stay in `loopback_http.rs` as baselines for the
-private receive experiments and internal tests. See the standalone
+root adapter re-exports `Listener`, `Connection` and the eight primitive functions,
+taking `http_receive`, `http_accept`, `http_send` and `http_connection_finish` from
+the polled modules. The blocking `http_receive`, `http_accept` and `http_send` stay
+in `loopback_http.rs` as baselines for the private receive experiments, internal
+tests and `reply_failure`. See the standalone
 [manifest](../examples/http_hello/manifest.json) and [adapter](../examples/http_hello/host.rs).
 This uses the existing typed Rust source boundary and retained-resource rules;
 it creates no stable Rust binary ABI, future/executor contract or coroutine restriction.

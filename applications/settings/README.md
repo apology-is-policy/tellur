@@ -231,8 +231,10 @@ pipelined requests are never executed. These bounds do not bound filesystem I/O
 latency. Since 0.221 request reception is an async host operation, entered with
 `run transport.receive(connection)` and parked on socket readiness. Since 0.224
 acceptance is async as well (`run transport.accept(listener, idle_ms)`), and
-`http_connection` declares `"fault": "release"`. The service still handles one
-client at a time.
+`http_connection` declares `"fault": "release"`. Since 0.225 responses are sent with
+`run transport.send(...)` and normal completion uses `run transport.finish(connection)`;
+the contingency keeps the blocking `reply_failure` and `close`. The service still
+handles one client at a time.
 
 The connection completion operation half-closes the write side, drains at most
 1 MiB + 16 KiB for at most 100 ms, and releases the descriptor. Bounded staged

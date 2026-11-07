@@ -1,7 +1,7 @@
 //! Shared retained compiled continuations; no checked graph is interpreted here.
 use super::{
-    BoundaryState, Completion, Frames, Host, HostPoll, HostProgress, HostStart, Outcome, R, V,
-    frames::Frame,
+    BoundaryState, Completion, Descriptor, Frames, Host, HostPoll, HostProgress, HostStart,
+    Outcome, R, V, frames::Frame,
 };
 use domains::{DomainKey, DomainScope, Domains, Membership};
 
@@ -203,7 +203,7 @@ enum HostSource {
         operation: Box<dyn HostPoll>,
         due: Option<std::time::Instant>,
         /// Readiness token and descriptor registered with the host backend.
-        registered: Option<(u64, std::os::fd::RawFd)>,
+        registered: Option<(u64, Descriptor)>,
         readable: bool,
     },
     Ready(Outcome),
@@ -217,12 +217,12 @@ pub enum HostWait {
         at: Option<std::time::Instant>,
     },
 }
-fn deregister(host: &mut Host, registered: &mut Option<(u64, std::os::fd::RawFd)>) -> R<()> {
-    if let Some((_, fd)) = registered.take() {
+fn deregister(host: &mut Host, registered: &mut Option<(u64, Descriptor)>) -> R<()> {
+    if let Some((_, descriptor)) = registered.take() {
         host.readiness
             .as_mut()
             .ok_or("E_NATIVE: readiness registration without a backend")?
-            .deregister(fd)?;
+            .deregister(descriptor.fd)?;
     }
     Ok(())
 }
@@ -299,7 +299,7 @@ impl HostOperation {
                     }
                     HostProgress::Pending {
                         delay,
-                        readable: fd,
+                        descriptor: fd,
                     } => {
                         if delay.is_none() && fd.is_none() {
                             return Err(format!(

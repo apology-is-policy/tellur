@@ -1172,8 +1172,11 @@ This first profile has deliberate limits:
   host operation are rejected with `E_ASYNC`. Wrap the operation in an async
   control to enter it with `run`, or to defer or spawn it.
 - Borrowed parameters must be resources; data parameters are Copy values or
-  consumed owned values. Consuming resources, references, and contingent or pure
-  async primitives are rejected when the manifest is validated.
+  consumed owned values. References and contingent or pure async primitives are
+  rejected when the manifest is validated.
+- Since 0.225 an operation may consume a resource whose type declares
+  `"fault": "release"`, as `http_connection_finish` consumes an `http_connection`.
+  The pending operation owns it; a stopped operation releases it with its state.
 - Since 0.224 an outcome payload may own resources, as `http_accept` returns an
   `http_connection`. Each such resource type must declare `"fault": "release"`:
   the result can be owned by a task that a fault later stops, for example a

@@ -87,7 +87,7 @@ control run(
                     borrow context.authority,
                     borrow connection
                 );
-                auto close_result = capture transport.close(connection);
+                auto close_result = capture run transport.finish(connection);
 
                 delta exchange_result {
                     sent => sent,
@@ -131,7 +131,7 @@ control exchange(
 ) exits sent, disconnected, failed { string message } {
     exit delta prepare(path, authority, connection) {
         prepared { u32 status, string body, string media, string allow } => [prepared]:
-            delta transport.send(connection, status, borrow body, borrow media, borrow allow) {
+            delta run transport.send(connection, status, body, media, allow) {
                 sent => sent {},
                 failed { string message } => failed { message }
             },

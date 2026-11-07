@@ -681,3 +681,281 @@ fn polled_operations_return_owned_resources_released_by_faults() {
         error.message
     );
 }
+
+/// `retire` is a polled operation that consumes a resource; a stopped operation
+/// drops it with its state.
+fn retire_config() -> Json {
+    let mut config = config();
+    config["primitives"].as_array_mut().unwrap().push(json!(
+        {"name":"retire","async":true,
+         "parameters":[{"name":"value","type":"counter","mode":"consume"},
+                       {"name":"label","type":"string","mode":"consume"}],
+         "outcomes":[{"name":"retired","fields":[]}],
+         "effects":["retire"],"returns":true,"rust":{"execution":"poll"}}));
+    config
+}
+const RETIRE_HOST: &str = r#"
+pub struct Retiring { value: Option<Counter>, label: String, remaining: u32 }
+impl Drop for Retiring {
+    fn drop(&mut self) {
+        if let Some(value) = &self.value { log(&value.path, format!("retiring drop {}", self.label)); }
+    }
+}
+pub fn retire(value: Counter, label: String) -> Box<dyn rust_api::retire_operation> {
+    let remaining = if label == "hold" { 50 } else { 2 };
+    Box::new(Retiring { value: Some(value), label, remaining })
+}
+impl rust_api::retire_operation for Retiring {
+    fn poll(&mut self) -> rust_api::Poll<rust_api::retire_outcome> {
+        if self.remaining == 0 {
+            let value = self.value.take().unwrap();
+            log(&value.path, format!("retired {}", self.label));
+            drop(value);
+            return rust_api::Poll::Ready(rust_api::retire_outcome::retired);
+        }
+        self.remaining -= 1;
+        rust_api::Poll::Pending(rust_api::Wait::after(Duration::from_millis(2)))
+    }
+}
+"#;
+const RETIRES: &str = r#"
+async control finish(string path, string label) exits done {
+    delta make(borrow path) {
+        made { counter c } => made
+    }
+
+    [made]:
+        delta await retire(move c, move label) {
+            retired => retired
+        }
+    [made & retired]: exit done;
+}
+async control startup(ref string path) exits done {
+    auto first = spawn finish(clone(path), "slow");
+    auto second = spawn finish(clone(path), "fast");
+    await first;
+    await second;
+    exit done;
+}
+control main(string path) exits done {
+    run startup(borrow path);
+    exit done;
+}
+"#;
+
+#[test]
+fn polled_operations_consume_resources_and_drop_them_when_stopped() {
+    let f = Fixture::new("retire");
+    fs::write(f.root.join("host.rs"), format!("{HOST}{RETIRE_HOST}")).unwrap();
+    let p = compile(RETIRES, f.manifest(&retire_config())).unwrap();
+    let binary = f.build(&p, "retire");
+    let (ok, result, log) = f.run(&binary, "retire.log");
+    assert!(ok, "{result}");
+    assert_eq!(
+        log,
+        [
+            "retired slow",
+            "counter drop",
+            "retired fast",
+            "counter drop"
+        ]
+    );
+    let scenario = f.root.join("retire.json");
+    let counter = |token: &str| json!({"kind":"opaque","value":{"ty":"counter","token":token}});
+    fs::write(
+        &scenario,
+        json!({"entry":"main","arguments":[{"kind":"string","value":"unused"}],"calls":[
+            {"operation":"make","outcome":"made","fields":[counter("a")]},
+            {"operation":"make","outcome":"made","fields":[counter("b")]},
+            {"operation":"retire","outcome":"retired","fields":[],"waits":2},
+            {"operation":"retire","outcome":"retired","fields":[]}
+        ]})
+        .to_string(),
+    )
+    .unwrap();
+    let output = Command::new(&binary)
+        .arg("--scenario")
+        .arg(&scenario)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let s: tellur::runtime::Scenario =
+        serde_json::from_slice(&fs::read(&scenario).unwrap()).unwrap();
+    assert_eq!(
+        serde_json::from_slice::<Json>(&output.stdout).unwrap(),
+        serde_json::to_value(p.run(&s).unwrap()).unwrap()
+    );
+    // A sibling fault stops the pending operation, which owns the consumed counter.
+    let faulting = RETIRES
+        .replace(
+            "    auto second = spawn finish(clone(path), \"fast\");\n",
+            "    auto second = spawn failing();\n",
+        )
+        .replace("\"slow\"", "\"hold\"")
+        .replace(
+            "async control startup(ref string path) exits done {",
+            "async control failing() exits done faults {\n    yield;\n    fault \"sibling failed\";\n}\nasync control startup(ref string path) exits done faults {",
+        )
+        .replace("control main(string path) exits done {", "control main(string path) exits done faults {");
+    let p = compile(&faulting, f.manifest(&retire_config())).unwrap();
+    let binary = f.build(&p, "retire-fault");
+    let (ok, report, log) = f.run(&binary, "retire-fault.log");
+    assert!(!ok);
+    assert!(
+        report["message"]
+            .as_str()
+            .unwrap()
+            .contains("sibling failed"),
+        "{report}"
+    );
+    assert_eq!(log, ["retiring drop hold", "counter drop"]);
+    // Without a fault disposition a consumed resource is rejected.
+    let mut unsettled = retire_config();
+    unsettled["types"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("fault");
+    let error = Manifest::from_json_at(&unsettled.to_string(), &f.root.join("manifest.json"))
+        .expect_err("consumed resource without fault disposition");
+    assert!(
+        error
+            .message
+            .contains("consumes a resource without a fault disposition"),
+        "{}",
+        error.message
+    );
+}
+
+/// `push` writes more than a socket buffer holds to a slowly read pipe; it parks
+/// on write readiness instead of blocking the executor or polling on a timer.
+fn pipe_config() -> Json {
+    json!({"version":"0.1",
+    "types":[{"name":"pipe","kind":"opaque","linear":true,"fault":"release"}],
+    "rust":{"source":"host.rs","lockfile":"Cargo.lock","resources":{"pipe":"Pipe"}},
+    "primitives":[
+        {"name":"open_pipe","parameters":[{"name":"path","type":"string","mode":"borrow"}],
+         "outcomes":[{"name":"opened","fields":[{"name":"value","type":"pipe"}]}],
+         "effects":["open"],"returns":true,"rust":{"execution":"immediate"}},
+        {"name":"push","async":true,
+         "parameters":[{"name":"pipe","type":"pipe","mode":"borrow"}],
+         "outcomes":[{"name":"pushed","fields":[]}],
+         "effects":["push"],"returns":true,"rust":{"execution":"poll"}},
+        {"name":"close_pipe","parameters":[{"name":"value","type":"pipe","mode":"consume"}],
+         "outcomes":[{"name":"closed","fields":[]}],
+         "effects":["close"],"returns":true,"rust":{"execution":"immediate"}}
+    ]})
+}
+const PIPE_HOST: &str = r#"
+use crate::rust_api;
+use std::{io::{Read, Write}, os::unix::net::UnixStream, time::Duration};
+fn log(path: &str, line: String) {
+    let mut file = std::fs::OpenOptions::new().create(true).append(true).open(path).unwrap();
+    writeln!(file, "{line}").unwrap();
+}
+const SIZE: usize = 4 << 20;
+pub struct Pipe { writer: UnixStream, path: String, reader: Option<std::thread::JoinHandle<usize>> }
+impl Drop for Pipe {
+    fn drop(&mut self) {
+        let _ = self.writer.shutdown(std::net::Shutdown::Both);
+        if let Some(reader) = self.reader.take() { let _ = reader.join(); }
+    }
+}
+pub fn open_pipe(path: &str) -> rust_api::open_pipe_outcome {
+    let (mut reader, writer) = UnixStream::pair().unwrap();
+    writer.set_nonblocking(true).unwrap();
+    let reader = std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(200));
+        let mut total = 0;
+        let mut chunk = [0; 65536];
+        while total < SIZE {
+            match reader.read(&mut chunk) { Ok(0) | Err(_) => break, Ok(n) => total += n }
+        }
+        total
+    });
+    rust_api::open_pipe_outcome::opened(Pipe { writer, path: path.into(), reader: Some(reader) })
+}
+pub fn close_pipe(value: Pipe) -> rust_api::close_pipe_outcome {
+    drop(value);
+    rust_api::close_pipe_outcome::closed
+}
+pub struct Pushing { written: usize, blocked: bool }
+pub fn push(_: &Pipe) -> Box<dyn rust_api::push_operation> {
+    Box::new(Pushing { written: 0, blocked: false })
+}
+impl rust_api::push_operation for Pushing {
+    fn poll(&mut self, pipe: &Pipe) -> rust_api::Poll<rust_api::push_outcome> {
+        let chunk = [7u8; 65536];
+        while self.written < SIZE {
+            let end = (SIZE - self.written).min(chunk.len());
+            match (&pipe.writer).write(&chunk[..end]) {
+                Ok(n) => self.written += n,
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    if !std::mem::replace(&mut self.blocked, true) { log(&pipe.path, "blocked".into()); }
+                    return rust_api::Poll::Pending(rust_api::Wait::writable(&pipe.writer).or_after(Duration::from_secs(10)));
+                }
+                Err(e) => panic!("{e}"),
+            }
+        }
+        log(&pipe.path, "pushed".into());
+        rust_api::Poll::Ready(rust_api::push_outcome::pushed)
+    }
+}
+"#;
+const PUSHES: &str = r#"
+async control send_all(ref pipe p) exits done {
+    delta await push(p) {
+        pushed => pushed
+    }
+
+    [pushed]:
+        emit("pushed");
+        exit done;
+}
+async control other() exits done {
+    emit("other");
+    exit done;
+}
+async control startup(ref pipe p) exits done {
+    auto writer = spawn send_all(p);
+    auto quick = spawn other();
+    await writer;
+    await quick;
+    exit done;
+}
+control main(string path) exits done {
+    delta open_pipe(borrow path) {
+        opened { pipe p } => opened
+    }
+
+    [opened]:
+        run startup(borrow p);
+        delta close_pipe(move p) {
+            closed => closed
+        }
+    [opened & closed]: exit done;
+}
+"#;
+
+#[test]
+fn writable_descriptors_wake_polled_writes() {
+    let f = Fixture::new("pipe");
+    fs::write(f.root.join("host.rs"), PIPE_HOST).unwrap();
+    let p = compile(PUSHES, f.manifest(&pipe_config())).unwrap();
+    let binary = f.build(&p, "pipe");
+    let started = std::time::Instant::now();
+    let (ok, result, log) = f.run(&binary, "pipe.log");
+    assert!(ok, "{result}");
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(5),
+        "write readiness did not wake the parked operation"
+    );
+    assert_eq!(log, ["blocked", "pushed"]);
+    assert_eq!(
+        messages(&result["events"]),
+        ["open_pipe", "other", "push", "pushed", "close_pipe"]
+    );
+}

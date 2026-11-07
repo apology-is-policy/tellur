@@ -4734,3 +4734,21 @@ polled `http_accept` (`library/host/loopback_http_accept.rs`), which parks on th
 nonblocking listener's readability bounded by the idle timeout. `http_connection`
 declares `"fault": "release"`. The blocking `http_accept` stays in
 `loopback_http.rs` as the baseline used by internal tests.
+
+### Write readiness and consumed resources (E1g stage c, part 3b, 0.225)
+
+`Wait::writable(&source)` joins `Wait::readable`. The native `HostProgress::Pending`
+carries one optional `Descriptor { fd, writable }`; the Mio backend registers it with
+`WRITABLE` or `READABLE` interest, and a change of descriptor or interest
+re-registers it. Async host operations may consume resources whose types declare
+`"fault": "release"`: the generated start takes the owner from the resource table
+before shared references are created, and the operation state owns it until it
+completes or is stopped and dropped. The reference executor moves the scripted
+argument into the pending operation.
+
+The loopback library's `send` is an async control over the polled `http_send`
+(owned body, media and Allow text), which shares validation with the blocking
+adapter and parks on writability within the two-second deadline. The new async
+`finish` forwards `http_connection_finish`, which half-closes, drains on
+readability for at most 100 ms and releases the descriptor. Contingency code cannot
+enter async controls, so handlers keep the blocking `close` and `reply_failure`.

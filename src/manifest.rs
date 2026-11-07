@@ -899,8 +899,8 @@ impl Manifest {
         Ok(())
     }
     /// The async host-operation profile: the operation borrows resources for its
-    /// whole wait, receives owned data, and completes with owned data or owned
-    /// resources whose types declare a fault disposition.
+    /// whole wait, receives owned data, and may consume or return owned resources
+    /// whose types declare a fault disposition.
     fn check_async_primitive(&self, p: &Primitive) -> Result<()> {
         let fail =
             |detail: String| Err(error(format!("async host operation `{}` {detail}", p.name)));
@@ -928,9 +928,11 @@ impl Manifest {
                         param.name
                     ));
                 }
-                Mode::Consume if linear => {
+                // The operation owns a consumed resource until it completes; a
+                // stopped operation drops it, so the type needs a fault disposition.
+                Mode::Consume if linear && !self.permits_fault(&param.ty) => {
                     return fail(format!(
-                        "parameter `{}` consumes a resource; async host operations currently borrow resources",
+                        "parameter `{}` consumes a resource without a fault disposition; declare `\"fault\": \"release\"` on its type",
                         param.name
                     ));
                 }

@@ -214,6 +214,43 @@ pub fn http_send(
     allow: &str,
 ) -> rust_api::http_send_outcome {
     use rust_api::http_send_outcome::*;
+    let bytes = match response(connection, status, body, media, allow) {
+        Ok(bytes) => bytes,
+        Err(message) => return failed(message),
+    };
+    let until = std::time::Instant::now() + IO_TIMEOUT;
+    let result = (|| -> std::io::Result<()> {
+        let mut stream = &connection.stream;
+        let mut remaining = bytes.as_slice();
+        while !remaining.is_empty() {
+            let timeout = until
+                .checked_duration_since(std::time::Instant::now())
+                .filter(|d| !d.is_zero())
+                .ok_or_else(|| std::io::Error::from(std::io::ErrorKind::TimedOut))?;
+            stream.set_write_timeout(Some(timeout))?;
+            match stream.write(remaining) {
+                Ok(0) => return Err(std::io::ErrorKind::WriteZero.into()),
+                Ok(n) => remaining = &remaining[n..],
+                Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(())
+    })();
+    match result {
+        Ok(()) => sent,
+        Err(e) => failed(e.to_string()),
+    }
+}
+/// Validate a response and mark it started: the complete bytes to transmit
+/// (no body for HEAD), or the `failed` message. Shared with the polled send.
+pub(crate) fn response(
+    connection: &Connection,
+    status: u32,
+    body: &str,
+    media: &str,
+    allow: &str,
+) -> Result<Vec<u8>, String> {
     let reason = match status {
         200 => "OK",
         400 => "Bad Request",
@@ -227,7 +264,7 @@ pub fn http_send(
         431 => "Request Header Fields Too Large",
         500 => "Internal Server Error",
         501 => "Not Implemented",
-        _ => return failed("unsupported response status".into()),
+        _ => return Err("unsupported response status".into()),
     };
     let valid_allow = allow.is_empty()
         || (allow.len() <= 256
@@ -242,51 +279,25 @@ pub fn http_send(
         || !valid_allow
         || body.len() > 2 * BODY_LIMIT
     {
-        return failed("unsupported response metadata or response exceeds 2 MiB".into());
+        return Err("unsupported response metadata or response exceeds 2 MiB".into());
     }
     if connection.response_started.replace(true) {
-        return failed("response already started".into());
+        return Err("response already started".into());
     }
     let allow = if allow.is_empty() {
         String::new()
     } else {
         format!("Allow: {allow}\r\n")
     };
-    let header = format!(
+    let mut bytes = format!(
         "HTTP/1.1 {status} {reason}\r\nContent-Length: {}\r\nContent-Type: {media}\r\nConnection: close\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\n{allow}\r\n",
         body.len()
-    );
-    let until = std::time::Instant::now() + IO_TIMEOUT;
-    let result = (|| -> std::io::Result<()> {
-        let mut stream = &connection.stream;
-        for mut remaining in [
-            header.as_bytes(),
-            if connection.head.get() {
-                b""
-            } else {
-                body.as_bytes()
-            },
-        ] {
-            while !remaining.is_empty() {
-                let timeout = until
-                    .checked_duration_since(std::time::Instant::now())
-                    .filter(|d| !d.is_zero())
-                    .ok_or_else(|| std::io::Error::from(std::io::ErrorKind::TimedOut))?;
-                stream.set_write_timeout(Some(timeout))?;
-                match stream.write(remaining) {
-                    Ok(0) => return Err(std::io::ErrorKind::WriteZero.into()),
-                    Ok(n) => remaining = &remaining[n..],
-                    Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
-                    Err(e) => return Err(e),
-                }
-            }
-        }
-        Ok(())
-    })();
-    match result {
-        Ok(()) => sent,
-        Err(e) => failed(e.to_string()),
+    )
+    .into_bytes();
+    if !connection.head.get() {
+        bytes.extend_from_slice(body.as_bytes());
     }
+    Ok(bytes)
 }
 // Trusted contingency operation: fixed generic response, at most once, with
 // the same deadline and HEAD handling as ordinary response transmission.

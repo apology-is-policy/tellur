@@ -5986,3 +5986,27 @@ owns a returned piece across a pending wait, dropping the wait state, then the
 piece, then the borrowed supplier; and a resource result without a fault
 disposition is rejected. `tests/host_operations.rs` updates the manifest-profile
 rejection. The live settings and HTTP library suites run with async accept.
+
+## Write readiness, consumed resources and async send/finish (0.225 / E1g stage c, part 3b)
+
+Polled adapters gain `Wait::writable`. Native pending progress carries one
+descriptor with its interest, registered with Mio as readable or writable and
+re-registered when either changes. Async host operations may consume resources
+whose types declare `"fault": "release"`; manifest validation rejects other
+consumed resources. Generated start code takes consumed owners from the resource
+table before borrowing, and the operation state releases them when dropped. The
+loopback library's `send` is async over the polled `http_send` with owned text,
+and the new async `finish` forwards the polled `http_connection_finish`. The
+settings service and HTTP example use them on normal paths; contingencies keep
+the blocking `close` and `reply_failure`, since async invocation is unavailable in
+contingency code.
+
+`tests/async_adapters.rs` adds a write that blocks on a slowly read pipe: it parks
+on write readiness while another task runs, and finishes well before its
+ten-second fallback timer. Another test consumes resources in a polled operation,
+compares the scripted run with the reference executor, drops the consumed resource
+with the stopped operation's state, and rejects a consumed resource without a
+fault disposition. The settings and HTTP library scripts now expect
+`http_connection_finish` on normal paths, the fault-injection tests wrap the async
+send, and the contingency-permission test expects `E_ASYNC` for an async send in a
+handler. The live settings and HTTP library suites run with async send and finish.

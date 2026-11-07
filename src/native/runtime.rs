@@ -798,15 +798,21 @@ pub trait HostPoll {
 }
 pub enum HostProgress {
     Ready(Outcome),
-    /// Poll again after the delay, when the descriptor is readable, or both.
+    /// Poll again after the delay, when the descriptor is ready, or both.
     Pending {
         delay: Option<std::time::Duration>,
-        readable: Option<std::os::fd::RawFd>,
+        descriptor: Option<Descriptor>,
     },
+}
+/// One descriptor a pending operation waits on, for reading or for writing.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Descriptor {
+    pub fd: std::os::fd::RawFd,
+    pub writable: bool,
 }
 /// Internal descriptor readiness for live host operations (Mio in generated crates).
 pub trait ReadinessBackend {
-    fn register(&mut self, token: u64, fd: std::os::fd::RawFd) -> R<()>;
+    fn register(&mut self, token: u64, descriptor: Descriptor) -> R<()>;
     fn deregister(&mut self, fd: std::os::fd::RawFd) -> R<()>;
     /// Tokens that became readable, after at most `timeout` (None waits indefinitely).
     fn wait(&mut self, timeout: Option<std::time::Duration>) -> R<Vec<u64>>;

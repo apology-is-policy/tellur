@@ -388,6 +388,7 @@
     },
     {
       "name": "http_send",
+      "async": true,
       "parameters": [
         {
           "name": "connection",
@@ -402,17 +403,17 @@
         {
           "name": "body",
           "type": "string",
-          "mode": "borrow"
+          "mode": "consume"
         },
         {
           "name": "media",
           "type": "string",
-          "mode": "borrow"
+          "mode": "consume"
         },
         {
           "name": "allow",
           "type": "string",
-          "mode": "borrow"
+          "mode": "consume"
         }
       ],
       "outcomes": [
@@ -435,7 +436,7 @@
       ],
       "returns": true,
       "rust": {
-        "execution": "blocking"
+        "execution": "poll"
       }
     },
     {
@@ -472,6 +473,41 @@
         "execution": "blocking"
       },
       "contingent": true
+    },
+    {
+      "name": "http_connection_finish",
+      "async": true,
+      "parameters": [
+        {
+          "name": "connection",
+          "type": "http_connection",
+          "mode": "consume"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "closed",
+          "fields": []
+        },
+        {
+          "name": "failed",
+          "fields": [
+            {
+              "name": "message",
+              "type": "string"
+            }
+          ]
+        }
+      ],
+      "effects": [
+        "net.shutdown",
+        "net.read",
+        "net.release"
+      ],
+      "returns": true,
+      "rust": {
+        "execution": "poll"
+      }
     },
     {
       "name": "http_listener_release",
@@ -612,7 +648,8 @@
       "json": "../../library/host/json_string_map.rs",
       "http": "../../library/host/loopback_http.rs",
       "http_receive": "../../library/host/loopback_http_receive.rs",
-      "http_accept": "../../library/host/loopback_http_accept.rs"
+      "http_accept": "../../library/host/loopback_http_accept.rs",
+      "http_send": "../../library/host/loopback_http_send.rs"
     }
   },
   "launch": {

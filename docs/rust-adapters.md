@@ -194,6 +194,7 @@ pub struct Wait { /* private */ }
 impl Wait {
     pub fn after(delay: std::time::Duration) -> Self
     pub fn readable(source: &impl std::os::fd::AsRawFd) -> Self   // 0.220
+    pub fn writable(source: &impl std::os::fd::AsRawFd) -> Self   // 0.225
     pub fn or_after(self, delay: std::time::Duration) -> Self      // 0.220
 }
 pub trait tick_operation {
@@ -250,6 +251,18 @@ state drops. Registration failures stop the host with `E_HOST`. A build with pol
 adapters adds that internal dependency, so rerun `tellurc lock-native` after
 upgrading. Idle waiting blocks on readiness up to the earliest delay instead of
 sleeping.
+
+Since 0.225, `Wait::writable(&stream)` parks the operation until the descriptor
+becomes writable, with the same edge-triggered contract: return it only after a
+nonblocking write reported `WouldBlock`. One wait names at most one descriptor and
+one interest; changing either re-registers it.
+
+Since 0.225 an async operation may also consume a resource whose type declares
+`"fault": "release"`. The generated start function receives the owned Rust value
+(`fn finish(connection: Connection)`); it leaves the resource table when the
+operation starts, so `poll` receives only the borrowed resources. The state owns
+it: dropping the state, on completion or when a fault stops the operation,
+releases it.
 
 ## Dependency and build workflow
 

@@ -48,7 +48,7 @@ control run(ref http_listener listener, ref string authority, u32 limit, u32 idl
             string request_authority = clone(authority);
             fault boundary {
                 auto result = capture exchange(borrow connection, borrow request_authority);
-                auto cleanup = capture http.close(connection);
+                auto cleanup = capture run http.finish(connection);
                 delta result {
                     sent => sent,
                     disconnected => disconnected,
@@ -109,12 +109,12 @@ control exchange(ref http_connection connection, ref string authority)
         delta route(authority, method, target, headers, body) {
             response { u32 status, string content, string allow } => response
         }
-    [response]: forward http.send(
+    [response]: forward run http.send(
         connection,
         status,
-        borrow content,
-        borrow "text/plain; charset=utf-8",
-        borrow allow
+        content,
+        "text/plain; charset=utf-8",
+        allow
     );
     [malformed]: forward reply(connection, 400, "Malformed request");
     [headers_too_large]: forward reply(connection, 431, "Headers too large");
@@ -125,13 +125,7 @@ control exchange(ref http_connection connection, ref string authority)
 }
 
 control reply(ref http_connection connection, u32 status, string body) exits http.send_result {
-    forward http.send(
-        connection,
-        status,
-        borrow body,
-        borrow "text/plain; charset=utf-8",
-        borrow ""
-    );
+    forward run http.send(connection, status, body, "text/plain; charset=utf-8", "");
 }
 
 control route(

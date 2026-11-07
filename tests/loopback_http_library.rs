@@ -118,7 +118,7 @@ fn public_transport_outcomes_preserve_cleanup_and_independent_errors() {
         }
         calls.extend([
             call(
-                "http_connection_close",
+                "http_connection_finish",
                 "failed",
                 vec![text("close failed")],
             ),
@@ -172,11 +172,16 @@ fn imported_transport_keeps_completion_and_contingency_permissions() {
     let missing_release = program(|s| *s = s.replace("http.release(listener);", ""));
     assert_eq!(missing_release.unwrap_err().diagnostic.code, "E_RESOURCE");
     let ordinary_in_handler = program(|s| {
-        *s=s.replace("auto result = capture http.reply_failure(borrow connection);", "auto result = capture http.send(borrow connection, 500, borrow \"error\", borrow \"text/plain; charset=utf-8\", borrow \"\");")
+        *s=s.replace("auto result = capture http.reply_failure(borrow connection);", "auto result = capture run http.send(borrow connection, 500, \"error\", \"text/plain; charset=utf-8\", \"\");")
     });
-    assert_eq!(
-        ordinary_in_handler.unwrap_err().diagnostic.code,
-        "E_CONTINGENT"
+    // Ordinary transmission is async since 0.225, so contingency code cannot enter it.
+    let diagnostic = ordinary_in_handler.unwrap_err().diagnostic;
+    assert_eq!(diagnostic.code, "E_ASYNC");
+    assert!(
+        diagnostic
+            .message
+            .contains("not available in contingency code"),
+        "{diagnostic:?}"
     );
     let moved_twice = program(|s| {
         *s = s.replace(
@@ -337,14 +342,14 @@ fn imported_contingency_handles_fault_then_restarts_without_a_second_response() 
             "fault \"injected routing invariant\"",
         );
         *s = s.replace(
-            "[response]: forward http.send(",
-            "[response]: forward checked_send(",
+            "[response]: forward run http.send(",
+            "[response]: forward run checked_send(",
         );
         s.push_str(
             r#"
-            control checked_send(ref http_connection connection, u32 status, ref string body,
-                ref string media, ref string allow) exits http.send_result {
-                delta http.send(connection,status,body,media,allow) {
+            async control checked_send(ref http_connection connection, u32 status, string body,
+                string media, string allow) exits http.send_result {
+                delta await http.send(connection,status,move body,move media,move allow) {
                     sent=>sent, failed {string message}=>exit failed {message}
                 }
                 [sent]:delta (status==405) {true=>fault "injected after response",false=>exit sent}

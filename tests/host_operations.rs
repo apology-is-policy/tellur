@@ -587,7 +587,7 @@ fn manifest_validation_limits_the_first_async_profile() {
         ),
         (
             serde_json::json!({"name":"bad","async":true,"parameters":[{"name":"h","type":"handle","mode":"consume"}],"outcomes":[{"name":"done","fields":[]}],"effects":[],"returns":true}),
-            "parameter `h` consumes a resource",
+            "parameter `h` consumes a resource without a fault disposition",
         ),
         (
             serde_json::json!({"name":"bad","async":true,"parameters":[{"name":"text","type":"string","mode":"value"}],"outcomes":[{"name":"done","fields":[]}],"effects":[],"returns":true}),

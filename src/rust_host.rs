@@ -480,14 +480,15 @@ pub(crate) fn source(manifest: &Manifest) -> Result<String> {
 const POLL_API: &str = r#"/// One poll of a started async host operation.
 pub enum Poll<T> { Ready(T), Pending(Wait) }
 /// When the runtime may poll a pending operation again: after a delay, when a
-/// descriptor becomes readable, or whichever comes first. It never polls earlier.
-/// Readability is edge-triggered: report it only after a nonblocking read
-/// returned `WouldBlock`.
+/// descriptor becomes readable or writable, or whichever comes first. It never
+/// polls earlier. Readiness is edge-triggered: report it only after a nonblocking
+/// read or write returned `WouldBlock`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Wait { pub(crate) retry_after: Option<std::time::Duration>, pub(crate) readable: Option<std::os::fd::RawFd> }
+pub struct Wait { pub(crate) retry_after: Option<std::time::Duration>, pub(crate) readable: Option<std::os::fd::RawFd>, pub(crate) writable: Option<std::os::fd::RawFd> }
 impl Wait {
-    pub fn after(delay: std::time::Duration) -> Self { Self { retry_after: Some(delay), readable: None } }
-    pub fn readable(source: &impl std::os::fd::AsRawFd) -> Self { Self { retry_after: None, readable: Some(source.as_raw_fd()) } }
+    pub fn after(delay: std::time::Duration) -> Self { Self { retry_after: Some(delay), readable: None, writable: None } }
+    pub fn readable(source: &impl std::os::fd::AsRawFd) -> Self { Self { retry_after: None, readable: Some(source.as_raw_fd()), writable: None } }
+    pub fn writable(source: &impl std::os::fd::AsRawFd) -> Self { Self { retry_after: None, readable: None, writable: Some(source.as_raw_fd()) } }
     pub fn or_after(self, delay: std::time::Duration) -> Self { Self { retry_after: Some(delay), ..self } }
 }
 "#;
@@ -496,8 +497,9 @@ const NO_READINESS: &str =
 /// The internal readiness backend for polled adapters; Mio stays out of the adapter API.
 const MIO_READINESS: &str = r#"struct MioReadiness { poll: tellur_mio::Poll, events: tellur_mio::Events }
 impl ReadinessBackend for MioReadiness {
-    fn register(&mut self, token: u64, fd: std::os::fd::RawFd) -> R<()> {
-        self.poll.registry().register(&mut tellur_mio::unix::SourceFd(&fd), tellur_mio::Token(token as usize), tellur_mio::Interest::READABLE)
+    fn register(&mut self, token: u64, descriptor: Descriptor) -> R<()> {
+        let interest = if descriptor.writable { tellur_mio::Interest::WRITABLE } else { tellur_mio::Interest::READABLE };
+        self.poll.registry().register(&mut tellur_mio::unix::SourceFd(&descriptor.fd), tellur_mio::Token(token as usize), interest)
             .map_err(|e| format!("E_HOST: readiness registration failed: {e}"))
     }
     fn deregister(&mut self, fd: std::os::fd::RawFd) -> R<()> {
@@ -553,14 +555,32 @@ fn start_source(
         writeln!(
             code,
             "resources.validate_call(&[{}])?;",
-            borrowed
+            p.parameters
                 .iter()
-                .map(|(i, f)| format!("(&a{i},{:?},false)", f.ty))
+                .enumerate()
+                .filter(|(_, f)| resources.contains_key(&f.ty))
+                .map(|(i, f)| format!("(&a{i},{:?},{})", f.ty, f.mode == Mode::Consume))
                 .collect::<Vec<_>>()
                 .join(",")
         )
         .unwrap();
+        // A consumed resource leaves the table before shared references are taken;
+        // the started operation owns it and drops it if stopped.
         for (i, f) in p.parameters.iter().enumerate() {
+            if f.mode == Mode::Consume && resources.contains_key(&f.ty) {
+                writeln!(
+                    code,
+                    "let p{i}=resources.take::<{}>(&a{i},{:?})?;",
+                    rust_type(&f.ty, resources),
+                    f.ty
+                )
+                .unwrap();
+            }
+        }
+        for (i, f) in p.parameters.iter().enumerate() {
+            if f.mode == Mode::Consume && resources.contains_key(&f.ty) {
+                continue;
+            }
             if f.mode == Mode::Borrow {
                 writeln!(
                     code,
@@ -640,7 +660,7 @@ fn start_source(
         }
         writeln!(
             code,
-            "self.operation.poll({})}};match progress{{rust_api::Poll::Pending(wait)=>Ok(HostProgress::Pending{{delay:wait.retry_after,readable:wait.readable}}),rust_api::Poll::Ready(outcome)=>Ok(HostProgress::Ready(match outcome{{",
+            "self.operation.poll({})}};match progress{{rust_api::Poll::Pending(wait)=>Ok(HostProgress::Pending{{delay:wait.retry_after,descriptor:wait.readable.map(|fd|Descriptor{{fd,writable:false}}).or(wait.writable.map(|fd|Descriptor{{fd,writable:true}}))}}),rust_api::Poll::Ready(outcome)=>Ok(HostProgress::Ready(match outcome{{",
             borrowed
                 .iter()
                 .map(|(i, _)| format!("p{i}"))

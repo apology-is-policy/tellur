@@ -1,5 +1,6 @@
-// Transport contracts; `accept` and `receive` are async (await them, or `run` them
-// from synchronous code). Routing, supervision and status policy belong to callers. Supply the
+// Transport contracts; `accept`, `receive`, `send` and `finish` are async (await
+// them, or `run` them from synchronous code). `close` and `reply_failure` stay
+// synchronous for contingencies. Routing, supervision and status policy belong to callers. Supply the
 // matching retained-resource primitives in the manifest.
 pub outcome listen_result {
     listening { http_listener listener, string authority },
@@ -52,14 +53,20 @@ pub async control receive(ref http_connection connection) exits receive_result {
     forward await http_receive(connection);
 }
 
-pub control send(
+pub async control send(
     ref http_connection connection,
     u32 status,
-    ref string body,
-    ref string media,
-    ref string allow
+    string body,
+    string media,
+    string allow
 ) exits send_result {
-    forward http_send(connection, status, body, media, allow);
+    forward await http_send(connection, status, move body, move media, move allow);
+}
+
+// Completes a connection like `close`, but parks while draining instead of
+// blocking the executor. Use it on normal paths; contingencies use `close`.
+pub async control finish(http_connection connection) exits close_result {
+    forward await http_connection_finish(move connection);
 }
 
 @contingent

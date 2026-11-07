@@ -154,7 +154,7 @@ fn failures() -> Vec<(Scenario, &'static str, Option<u32>)> {
                 accepted(),
                 call("http_receive", receive, fields),
                 call("http_send", "sent", vec![]),
-                call("http_connection_close", "closed", vec![]),
+                call("http_connection_finish", "closed", vec![]),
                 call("checked_sub", "underflow", vec![]),
                 call("http_listener_release", "released", vec![]),
             ]),
@@ -177,12 +177,12 @@ fn failures() -> Vec<(Scenario, &'static str, Option<u32>)> {
                 },
                 if close_failed {
                     call(
-                        "http_connection_close",
+                        "http_connection_finish",
                         "failed",
                         vec![text("cleanup failure")],
                     )
                 } else {
-                    call("http_connection_close", "closed", vec![])
+                    call("http_connection_finish", "closed", vec![])
                 },
                 call("checked_sub", "underflow", vec![]),
                 call("http_listener_release", "released", vec![]),
@@ -204,7 +204,7 @@ fn failures() -> Vec<(Scenario, &'static str, Option<u32>)> {
             received,
             call("http_send", "failed", vec![text("send failure")]),
             call(
-                "http_connection_close",
+                "http_connection_finish",
                 "failed",
                 vec![text("cleanup failure")],
             ),
@@ -219,7 +219,7 @@ fn failures() -> Vec<(Scenario, &'static str, Option<u32>)> {
         sub(1),
         accepted(),
         call("http_receive", "failed", vec![text("read failure")]),
-        call("http_connection_close", "closed", vec![]),
+        call("http_connection_finish", "closed", vec![]),
         sub(0),
         call("http_accept", "idle", vec![]),
         call("http_listener_release", "released", vec![]),
@@ -264,7 +264,7 @@ fn failures() -> Vec<(Scenario, &'static str, Option<u32>)> {
                     },
                 ),
                 call("http_send", "sent", vec![]),
-                call("http_connection_close", "closed", vec![]),
+                call("http_connection_finish", "closed", vec![]),
                 call("checked_sub", "underflow", vec![]),
                 call("http_listener_release", "released", vec![]),
             ]),
@@ -320,7 +320,7 @@ fn removal_cases() -> Vec<(Scenario, u32, &'static str)> {
         calls.extend(operations);
         calls.extend([
             call("http_send", "sent", vec![]),
-            call("http_connection_close", "closed", vec![]),
+            call("http_connection_finish", "closed", vec![]),
             call("checked_sub", "underflow", vec![]),
             call("http_listener_release", "released", vec![]),
         ]);
@@ -1025,11 +1025,11 @@ fn native_http_source_fault_sends_500_then_serves_next_request() {
             source=source.replace("exits response faults {", "exits response faults { delta (target == \"/injected-fault\") {true=>broken,false=>valid} [broken]: fault \"injected routing invariant\"; [valid]:");
         }
         if path.ends_with("server.tellur") {
-            source = source.replace("delta transport.send(", "delta checked_send(");
+            source = source.replace("delta run transport.send(", "delta run checked_send(");
             source.push_str(r#"
-                control checked_send(ref http_connection connection, u32 status, ref string body,
-                    ref string media, ref string allow) exits sent, failed {string message} {
-                    delta http_send(connection,status,body,media,allow) {
+                async control checked_send(ref http_connection connection, u32 status, string body,
+                    string media, string allow) exits sent, failed {string message} {
+                    delta await http_send(connection,status,move body,move media,move allow) {
                         sent=>sent, failed {string message}=>failed
                     }
                     [failed]:exit failed {message};

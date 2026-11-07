@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.224.0** implements the v0.1 checked core and the current language
+Compiler release **0.225.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -21,6 +21,11 @@ Release 0.222 added dynamic task sets. `tasks<producer>` holds any number of
 spawned children of one async control. `spawn producer(..) into set;` adds a member,
 `delta await next set { ..., empty => ... }` joins members in completion order, and
 `count(borrow set)` bounds how many run at once.
+
+Release 0.225 adds write readiness (`Wait::writable`) for polled adapters and lets
+async host operations consume resources that declare `"fault": "release"`. The
+loopback HTTP library's `send` is async, and the new async `finish` completes a
+connection without blocking the executor; contingencies keep the blocking `close`.
 
 Release 0.224 lets async host operations return owned resources whose types declare
 `"fault": "release"`. The loopback HTTP library's `accept` is now async: it parks

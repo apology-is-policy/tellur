@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-darwin-arm64-0.224.0.vsix` using **Extensions:
+1. Install the supplied `tellur-language-darwin-arm64-0.225.0.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1773,3 +1773,7 @@ Compiler 0.223 builds task sets natively, so **Tellur: Build and Run** works on
 
 Compiler 0.224 accepts async host operations that return resources. In the HTTP
 example and settings service, `accept` is async and is entered with `run`.
+
+Compiler 0.225 makes the HTTP library's `send` async and adds the async `finish`.
+Contingency code cannot enter async controls and reports `E_ASYNC`; use `close`
+and `reply_failure` there.
