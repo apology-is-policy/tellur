@@ -91,6 +91,9 @@ pub struct QueuedTask {
     arguments: Option<Vec<V>>,
 }
 impl QueuedTask {
+    pub(in super::super) fn task_id(&self) -> TaskId {
+        self.binding.task
+    }
     pub(super) fn source_handle(&self, ty: &str) -> (TaskId, V) {
         (
             self.binding.task,
@@ -267,6 +270,19 @@ impl Activation {
             return Err("E_NATIVE: source join authority differs".into());
         }
         Ok(binding.task)
+    }
+
+    /// `cancel target;`: flag one started child or every current set member.
+    pub fn cancel_tasks(&self, host: &mut Host, producer: &'static Control, target: &V) -> R<()> {
+        let members = match target {
+            V::Construct { fields, .. } => fields.iter().collect::<Vec<_>>(),
+            task => vec![task],
+        };
+        for member in members {
+            let task = self.source_task_identity(host, member, producer)?;
+            host.tasks.cancel(task);
+        }
+        Ok(())
     }
 
     pub(super) fn require_task_host(&self, host: &Host) -> R<()> {

@@ -845,6 +845,8 @@ pub struct HostContext {
     tracker: fault::Tracker,
     contingencies: Vec<String>,
     scope: Option<ResourceScope>,
+    /// The task this context executes; a root context has none.
+    task: Option<tasks::TaskId>,
 }
 /// A live independent ownership root, distinct from diagnostics and frame IDs.
 pub struct ContextRoot {
@@ -868,6 +870,8 @@ pub struct Host {
     resources: Resources,
     tasks: tasks::Registry,
     activations: fault::Tracker,
+    /// The task of the selected context, exchanged with its host context.
+    current_task: Option<tasks::TaskId>,
 }
 impl Drop for Host {
     fn drop(&mut self) {
@@ -902,6 +906,7 @@ impl Host {
             tasks: tasks::Registry::default(),
             contingencies: vec![],
             activations: fault::Tracker::default(),
+            current_task: None,
         }
     }
     pub fn enter(&mut self, control: &str) -> R<()> {
@@ -922,6 +927,7 @@ impl Host {
             tracker,
             contingencies: vec![],
             scope: Some(scope.clone()),
+            task: None,
         };
         Ok((
             ContextRoot {
@@ -971,6 +977,33 @@ impl Host {
         context.scope = previous;
         std::mem::swap(&mut context.tracker, &mut self.activations);
         std::mem::swap(&mut context.contingencies, &mut self.contingencies);
+        std::mem::swap(&mut context.task, &mut self.current_task);
+        Ok(())
+    }
+    /// The selected context's task, or a task beneath which it was created, has a
+    /// cancellation request.
+    pub fn task_cancelled(&self) -> bool {
+        self.current_task
+            .is_some_and(|task| self.tasks.is_cancelled(task))
+    }
+    /// An owner admitted by the selected context belongs to its task.
+    fn record_owner(&mut self, owner: tasks::OwnerId) {
+        if let Some(task) = self.current_task {
+            self.tasks.record_owner_task(owner, task);
+        }
+    }
+    /// Release the resources an unstarted host operation would have consumed.
+    pub fn release_consumed(&mut self, name: &str, args: &[V]) -> R<()> {
+        let p = self.declared_primitive(name)?;
+        let consumed: Vec<_> = p["parameters"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .zip(args)
+            .filter(|(param, _)| param["mode"] == "consume")
+            .map(|(_, value)| Some(value.clone()))
+            .collect();
+        self.release_frame(&consumed);
         Ok(())
     }
     /// Retire the selected root after all nested work has settled. Normal outgoing

@@ -226,13 +226,14 @@ fn generate(program: &CheckedProgram, _pending_operation: Option<(&str, &str)>) 
                 let p = &instruction.provenance;
                 let _ = writeln!(
                     g.code,
-                    "host.at({});host.tick({}, {})?;if {} {{let arguments={};return Ok(Step::Host{{operation:{},arguments,deliver:host_{id}_{pc}}});}}Ok(Step::Continue)}},",
+                    "host.at({});host.tick({}, {})?;if {} {{let arguments={};return Ok(Step::Host{{operation:{},arguments,deliver:host_{id}_{pc},cancellable:{}}});}}Ok(Step::Continue)}},",
                     instruction.id,
                     p.span.line,
                     p.span.column,
                     guard(&instruction.guard, &g.layout),
                     expressions(args, &g.layout),
-                    string(name)
+                    string(name),
+                    crate::host_operations::is_cancellable(&region.name)
                 );
                 let _ = writeln!(
                     deliveries,
@@ -401,6 +402,29 @@ fn generate(program: &CheckedProgram, _pending_operation: Option<(&str, &str)>) 
                     g.layout.atoms[&arms[0].atom],
                     g.layout.slots[&arms[0].slots[0]],
                     string(&crate::manifest::started_type(name))
+                );
+                continue;
+            }
+            if let Action::Decide {
+                operation: Operation::Cancel(name),
+                args,
+                arms,
+            } = &instruction.action
+            {
+                // Flag the started child or every current member, then hand the
+                // value back. The driver wakes pending operations that observe it.
+                let p = &instruction.provenance;
+                let target = names[name.as_str()];
+                let _ = writeln!(
+                    g.code,
+                    "host.at({});host.tick({}, {})?;if {} {{let mut arguments={};let target=arguments.pop().ok_or(\"E_NATIVE: missing cancellation target\")?;state.cancel_tasks(host,&MODEL_{target},&target)?;v[base+{}]=Some(target);state.facts[{}]=true;return Ok(Step::Cancel);}}Ok(Step::Continue)}} ,",
+                    instruction.id,
+                    p.span.line,
+                    p.span.column,
+                    guard(&instruction.guard, &g.layout),
+                    expressions(args, &g.layout),
+                    g.layout.slots[&arms[0].slots[0]],
+                    g.layout.atoms[&arms[0].atom],
                 );
                 continue;
             }

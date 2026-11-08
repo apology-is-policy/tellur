@@ -6065,3 +6065,19 @@ and small host quotas. `tests/host_operations.rs` adds reference and native
 evidence that `run` of a pending operation parks a root chain beside started
 children and that child faults reach owners parked by `run`. The grammar and LSP
 tests cover the contextual keyword and hovers.
+
+## Native cancellation (0.229 / E1e.2)
+
+Native executables run `cancel child;`, `cancel set;` and `cancelled`
+alternatives; the `E_BACKEND` gate is removed. An `await` or `run` that lists
+`cancelled` now enters a cancellable generated control, and both executors decide
+observation at its leaf.
+
+Every scenario in `tests/cancellation.rs` now also runs as a native executable and
+must produce the same JSON as the reference executor, including pending,
+unstarted and completed operations, set members, later descendants and
+synchronous-helper runs. `tests/async_adapters.rs` cancels a pending live polled
+operation: its state drops before the supplier and it never completes.
+`tests/host_operations.rs` adds native parity for a child fault reaching a root
+chain parked by `run`, which previously stopped with `E_NATIVE: source task wait
+has no runnable producer`.

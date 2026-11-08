@@ -159,6 +159,9 @@ struct HostOperation<'a> {
     fields: Vec<Value>,
     effects: Vec<String>,
     waits: u32,
+    /// Entered through a cancellable generated control: a cancelled task stops
+    /// it and selects `cancelled`.
+    cancellable: bool,
 }
 
 // Continuations represent sequential control flow, including consuming task awaits.
@@ -1459,14 +1462,6 @@ impl<'a> Machine<'a> {
                 args,
                 arms,
             } if self.host_operation(name).is_some() => {
-                if self.observes_cancellation(&self.context) {
-                    // A cancelled operation does not start: no script entry is
-                    // consumed and no completion event is published.
-                    for value in self.arguments(args)? {
-                        retire_value(&mut self.shared.tasks, value, true)?;
-                    }
-                    return Ok(Flow::Exit("cancelled".into(), vec![]));
-                }
                 self.start_host_operation(name, args, arms)?;
             }
             Action::Decide {
@@ -1500,6 +1495,24 @@ impl<'a> Machine<'a> {
     ) -> Result<()> {
         let primitive = self.host_operation(name).unwrap();
         let arguments = self.arguments(args)?;
+        let cancellable = self
+            .context
+            .stack
+            .iter()
+            .rev()
+            .find_map(|c| match c {
+                Continuation::Call { region, .. } => Some(region),
+                _ => None,
+            })
+            .is_some_and(|region| crate::host_operations::is_cancellable(&region.name));
+        if cancellable && self.task_cancelled(&self.context) {
+            // A cancelled operation does not start: no script entry is consumed
+            // and no completion event is published.
+            for value in arguments {
+                retire_value(&mut self.shared.tasks, value, true)?;
+            }
+            return self.bind(arms, crate::host_operations::CANCELLED.into(), vec![]);
+        }
         let call = self
             .shared
             .calls
@@ -1530,6 +1543,7 @@ impl<'a> Machine<'a> {
             fields: call.fields.clone(),
             effects: primitive.effects.clone(),
             waits: call.waits,
+            cancellable,
         };
         self.shared.cursor += 1;
         if operation.waits == 0 {
@@ -1542,13 +1556,16 @@ impl<'a> Machine<'a> {
     }
     /// A woken operation polls once without instruction fuel or host quota.
     fn poll_host_operation(&mut self, mut operation: HostOperation<'a>) -> Result<()> {
-        if self.observes_cancellation(&self.context) {
+        if operation.cancellable && self.task_cancelled(&self.context) {
             // The pending operation stops without publishing its completion.
             for value in operation.arguments.into_iter().chain(operation.fields) {
                 retire_value(&mut self.shared.tasks, value, true)?;
             }
-            self.context.flow = Some(Ok(Flow::Exit("cancelled".into(), vec![])));
-            return Ok(());
+            return self.bind(
+                operation.arms,
+                crate::host_operations::CANCELLED.into(),
+                vec![],
+            );
         }
         operation.waits -= 1;
         if operation.waits == 0 {

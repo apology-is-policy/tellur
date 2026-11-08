@@ -1,6 +1,13 @@
 //! E1e.1 cancellation: `cancel child;` and `cancel set;` request cancellation of
 //! started work. A host operation entered by await or run observes it only where
 //! its decision lists the `cancelled` alternative; joins never interrupt.
+use std::{
+    collections::BTreeMap,
+    hash::{DefaultHasher, Hash, Hasher},
+    path::PathBuf,
+    process::Command,
+    sync::Mutex,
+};
 use tellur::{
     CheckedProgram, compile,
     ir::Value,
@@ -62,10 +69,60 @@ fn trace(events: &[Event]) -> Vec<String> {
         })
         .collect()
 }
-/// Runs the reference executor, its expansion and every small host quota.
+/// One native executable per checked program, built on first use.
+fn native(p: &CheckedProgram) -> PathBuf {
+    static BUILT: Mutex<BTreeMap<u64, PathBuf>> = Mutex::new(BTreeMap::new());
+    let codes = p
+        .region("main")
+        .unwrap()
+        .exits
+        .iter()
+        .map(|o| (o.name.clone(), 0))
+        .collect();
+    let p = p.clone().with_entry_exit_codes("main", codes).unwrap();
+    let mut hasher = DefaultHasher::new();
+    p.native_source("main").unwrap().hash(&mut hasher);
+    let key = hasher.finish();
+    let mut built = BUILT
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    built
+        .entry(key)
+        .or_insert_with(|| {
+            let root = std::env::temp_dir().join(format!("tellur-cancel-{}", std::process::id()));
+            std::fs::create_dir_all(&root).unwrap();
+            let binary = root.join(format!("program-{key:x}"));
+            p.build_native("main", &binary, 0).unwrap();
+            binary
+        })
+        .clone()
+}
+fn native_run(p: &CheckedProgram, s: &Scenario) -> serde_json::Value {
+    let binary = native(p);
+    let input = binary.with_extension(format!("{}.json", std::process::id()));
+    std::fs::write(&input, serde_json::to_vec(s).unwrap()).unwrap();
+    let output = Command::new(&binary)
+        .arg("--scenario")
+        .arg(&input)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    serde_json::from_slice(&output.stdout).unwrap()
+}
+/// Runs the reference executor, its expansion, every small host quota and the
+/// native executable; all must agree.
 fn run(p: &CheckedProgram, s: &Scenario) -> Vec<String> {
     let result = p.run(s).unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(result.outcome, "done");
+    assert_eq!(
+        native_run(p, s),
+        serde_json::to_value(&result).unwrap(),
+        "native differs"
+    );
     let expanded = p.expanded("main").unwrap().run(s).unwrap();
     assert_eq!(expanded.events, result.events);
     for quota in [1, 2, 5] {
@@ -378,14 +435,6 @@ control main() exits done { forward run startup(); }"#,
         error.message.contains("reserved for cancellation"),
         "{error:?}"
     );
-}
-
-#[test]
-fn native_backend_reports_cancellation_as_unsupported() {
-    let p = checked(&handle_program(3));
-    let error = p.native_source("main").unwrap_err();
-    assert_eq!(error.code, "E_BACKEND");
-    assert!(error.message.contains("cancellation"), "{error:?}");
 }
 
 #[test]

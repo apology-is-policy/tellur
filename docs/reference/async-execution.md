@@ -1217,7 +1217,8 @@ async control early(ref handle input) exits done {
 
 ## Cancellation
 
-Compiler 0.228 adds explicit, cooperative cancellation to the reference executor.
+Compiler 0.228 adds explicit, cooperative cancellation to the reference executor,
+and 0.229 to native executables, with the same schedules and events.
 Cancellation is a request, not a fault and not an outcome of the cancelled task: the
 task decides how it finishes, and its owner still joins it.
 
@@ -1286,8 +1287,11 @@ async control startup() exits done {
 }
 ```
 
-Native executables reject cancellation with `E_BACKEND` until E1e.2. Process
-signals that cancel an entry's tasks follow in E1e.3.
+In native executables a cancelled live operation is stopped like an operation of a
+stopped task: its readiness registration is withdrawn and the adapter state is
+dropped before its supplier resources, without a completion. Resources it would
+have consumed are released. Process signals that cancel an entry's tasks follow in
+E1e.3.
 
 ## Local cold tasks
 

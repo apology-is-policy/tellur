@@ -188,6 +188,10 @@ enum Pending {
 struct HostOperation {
     operation: &'static str,
     arguments: Vec<V>,
+    /// A cancelled task stops the operation and selects `cancelled`.
+    cancellable: bool,
+    /// Stopped by cancellation: completes without publishing an event.
+    cancelled: bool,
     source: HostSource,
     /// Readiness was signalled: the next turn polls once without fuel.
     poll: bool,
@@ -232,7 +236,21 @@ impl HostOperation {
         operation: &'static str,
         arguments: Vec<V>,
         deliver: HostDeliver,
+        cancellable: bool,
     ) -> R<Self> {
+        if cancellable && host.task_cancelled() {
+            // A cancelled operation does not start: no script entry or adapter.
+            host.release_consumed(operation, &arguments)?;
+            return Ok(Self {
+                operation,
+                arguments: vec![],
+                cancellable,
+                cancelled: true,
+                poll: false,
+                source: HostSource::Ready(("cancelled".into(), vec![])),
+                deliver,
+            });
+        }
         let source = match host.start_host_operation(operation, &arguments)? {
             HostStart::Scripted {
                 outcome,
@@ -258,6 +276,8 @@ impl HostOperation {
         let mut started = Self {
             operation,
             arguments,
+            cancellable,
+            cancelled: false,
             // A live operation is polled once while its start is selected; a
             // scripted one reports its first pending wait now.
             poll: matches!(source, HostSource::Live { .. }),
@@ -270,6 +290,17 @@ impl HostOperation {
     /// Consume one readiness report: a scripted wait or one live adapter poll.
     fn progress(&mut self, host: &mut Host) -> R<()> {
         if !std::mem::take(&mut self.poll) {
+            return Ok(());
+        }
+        if self.cancellable && host.task_cancelled() {
+            // The pending operation stops before its state and supplier resources.
+            if let HostSource::Live { registered, .. } = &mut self.source {
+                deregister(host, registered)?;
+            }
+            host.release_consumed(self.operation, &self.arguments)?;
+            self.arguments.clear();
+            self.cancelled = true;
+            self.source = HostSource::Ready(("cancelled".into(), vec![]));
             return Ok(());
         }
         match &mut self.source {
@@ -358,7 +389,9 @@ impl HostOperation {
         let HostSource::Ready((outcome, fields)) = self.source else {
             return Err("E_NATIVE: host operation has no completion".into());
         };
-        host.finish_host_operation(self.operation, self.arguments, &outcome, &fields)?;
+        if !self.cancelled {
+            host.finish_host_operation(self.operation, self.arguments, &outcome, &fields)?;
+        }
         (self.deliver)(frame, values, outcome, fields)
     }
 }
@@ -549,7 +582,11 @@ pub enum Step {
         operation: &'static str,
         arguments: Vec<V>,
         deliver: HostDeliver,
+        /// Entered through a cancellable generated control.
+        cancellable: bool,
     },
+    /// A cancellation request was recorded; the driver wakes observing operations.
+    Cancel,
     Spawn {
         task: QueuedTask,
         slot: usize,
@@ -636,6 +673,7 @@ enum SourceHandoff {
         deliver: Deliver,
     },
     Yield,
+    Cancel,
 }
 pub struct Machine {
     source_checked: bool,
@@ -686,6 +724,7 @@ impl Machine {
             return Err(error);
         }
         host.tasks.commit_owner(owner);
+        host.record_owner(owner);
         for (slot, value) in control.parameters.iter().zip(args) {
             values[frame.base() + slot] = Some(value);
         }
@@ -925,11 +964,13 @@ impl Machine {
                 operation,
                 arguments,
                 deliver,
+                cancellable,
             } => {
                 if frame.pending.is_some() {
                     return Err("E_NATIVE: duplicate host operation continuation".into());
                 }
-                let operation = HostOperation::start(host, operation, arguments, deliver)?;
+                let operation =
+                    HostOperation::start(host, operation, arguments, deliver, cancellable)?;
                 if matches!(operation.source, HostSource::Ready(_)) {
                     operation.complete(host, values, frame)?;
                 } else {
@@ -975,6 +1016,7 @@ impl Machine {
                 });
             }
             Step::Yield => self.source_handoff = Some(SourceHandoff::Yield),
+            Step::Cancel => self.source_handoff = Some(SourceHandoff::Cancel),
             Step::Await { task, deliver } => {
                 if frame.pending.is_some() {
                     return Err("E_NATIVE: duplicate compiled await continuation".into());
@@ -1372,6 +1414,13 @@ impl Machine {
             instruction,
             faulted,
         }
+    }
+    /// The pending host operation was entered through a cancellable control.
+    pub fn host_cancellable(&self) -> bool {
+        matches!(
+            self.stack.last().and_then(|a| a.pending.as_ref()),
+            Some(Pending::Host(operation)) if operation.cancellable
+        )
     }
     /// The selected activation awaits readiness of a started host operation.
     pub fn host_waiting(&self) -> Option<HostWait> {

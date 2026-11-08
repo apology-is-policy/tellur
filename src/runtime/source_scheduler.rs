@@ -351,46 +351,20 @@ impl<'a> Machine<'a> {
         self.shared.scheduler.host_waits = retained;
         Ok(())
     }
-    /// A host operation observes cancellation only when its task, or a task
-    /// beneath which it was created, is cancelled and the await or run entering
-    /// its generated control lists the `cancelled` alternative.
-    pub(super) fn observes_cancellation(&self, context: &Context<'a>) -> bool {
-        let Some((task, _)) = context.task else {
-            return false;
-        };
-        if !self.shared.tasks.is_cancelled(task) {
-            return false;
-        }
-        let Some(index) = context
-            .stack
-            .iter()
-            .rposition(|c| matches!(c, Continuation::Call { .. }))
-        else {
-            return false;
-        };
-        let Continuation::Call { region, .. } = &context.stack[index] else {
-            unreachable!()
-        };
-        if crate::host_operations::operation(&region.name).is_none() {
-            return false;
-        }
-        let arms = match index.checked_sub(1).map(|i| &context.stack[i]) {
-            Some(Continuation::Decision(arms)) => *arms,
-            Some(Continuation::ResumeAwait { task, wait, caller }) => {
-                match self
-                    .shared
-                    .suspended
-                    .get(*caller, *task, *wait)
-                    .ok()
-                    .and_then(|caller| caller.stack.last())
-                {
-                    Some(Continuation::TaskDecision { arms, .. }) => *arms,
-                    _ => return false,
-                }
-            }
-            _ => return false,
-        };
-        arms.iter().any(|arm| arm.outcome == "cancelled")
+    /// A task is cancelled when it, or a task beneath which it was created, has a
+    /// cancellation request. A root chain has no task.
+    pub(super) fn task_cancelled(&self, context: &Context<'a>) -> bool {
+        context
+            .task
+            .is_some_and(|(task, _)| self.shared.tasks.is_cancelled(task))
+    }
+    /// A parked chain observes cancellation when its pending operation was entered
+    /// through a cancellable generated control and its task is cancelled.
+    fn observes_cancellation(&self, context: &Context<'a>) -> bool {
+        matches!(
+            context.stack.last(),
+            Some(Continuation::HostOperation(operation)) if operation.cancellable
+        ) && self.task_cancelled(context)
     }
     /// `await next`: an empty set selects `empty` without a handoff. Otherwise the
     /// earliest completed member is joined, or the caller waits for one; either

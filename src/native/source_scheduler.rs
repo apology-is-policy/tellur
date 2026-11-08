@@ -168,6 +168,14 @@ fn drive_source(
                         });
                     }
                     Some(SourceHandoff::Yield) => push(&mut runnable, key),
+                    Some(SourceHandoff::Cancel) => {
+                        // Not a handoff: pending operations that observe the
+                        // request rejoin the FIFO in their wait order.
+                        for woken in contexts.wake_cancelled()? {
+                            push(&mut runnable, woken);
+                        }
+                        selected = Some(key);
+                    }
                     Some(SourceHandoff::Join {
                         value,
                         producer,
@@ -304,6 +312,24 @@ fn drive_source(
             let parent = awaits.remove(&id).unwrap();
             if live(&contexts, &parent) {
                 push(&mut runnable, parent);
+            }
+        }
+        // A root chain parked by run of a pending host operation is in no join,
+        // await or set wait. When settlement finishes it with a terminal failure,
+        // its readiness registration is gone: select it to report that failure.
+        let terminal: Vec<_> = contexts.terminal.keys().copied().collect();
+        for id in terminal {
+            let queued = runnable.iter().any(|r| match r {
+                Runnable::Run(k) | Runnable::Await(k) => k.id == id,
+            });
+            if !queued && selected.as_ref().is_none_or(|s| s.id != id) {
+                push(
+                    &mut runnable,
+                    ContextKey {
+                        session: contexts.identity.clone(),
+                        id,
+                    },
+                );
             }
         }
         // A restored owner may already have an old runnable/await queue entry.

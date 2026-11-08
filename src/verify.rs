@@ -1116,20 +1116,7 @@ impl Verifier<'_> {
                                     }],
                                 }]
                             } else {
-                                let mut exits = r.exits.clone();
-                                // Host operations admit the cancellation alternative
-                                // only where a decision lists it.
-                                if matches!(operation, Operation::Await(_) | Operation::Run(_))
-                                    && crate::host_operations::operation(name).is_some()
-                                    && arms.iter().any(|arm| arm.outcome == "cancelled")
-                                    && !exits.iter().any(|o| o.name == "cancelled")
-                                {
-                                    exits.push(crate::manifest::Outcome {
-                                        name: "cancelled".into(),
-                                        fields: vec![],
-                                    });
-                                }
-                                exits
+                                r.exits.clone()
                             }
                         }
                         Operation::Collection(name) => {
@@ -1175,6 +1162,16 @@ impl Verifier<'_> {
                                     "async host operation outside its generated control",
                                 ));
                             }
+                            let mut outcomes = p.outcomes.clone();
+                            // Only a cancellable generated control selects `cancelled`.
+                            if p.asynchronous
+                                && crate::host_operations::is_cancellable(&self.region.name)
+                            {
+                                outcomes.push(crate::manifest::Outcome {
+                                    name: crate::host_operations::CANCELLED.into(),
+                                    fields: vec![],
+                                });
+                            }
                             self.args(
                                 args,
                                 &p.parameters
@@ -1185,7 +1182,7 @@ impl Verifier<'_> {
                                     })
                                     .collect::<Vec<_>>(),
                             )?;
-                            p.outcomes.clone()
+                            outcomes
                         }
                     };
                     let mut seen = BTreeSet::new();

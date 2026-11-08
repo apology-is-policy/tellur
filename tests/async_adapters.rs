@@ -1039,3 +1039,82 @@ fn polled_operations_are_spawned_into_sets_deferred_and_run() {
     // The cold operation starts at its await, while both members are pending.
     assert_eq!(emitted, ["first!", "cold!", "fast!", "slow!"]);
 }
+
+const CANCELLED: &str = r#"
+async control step(ref counter c, string label) exits done, stopped {
+    emit(borrow label);
+    delta await tick(c, move label) {
+        ticked { string result } => ticked,
+        cancelled => cancelled
+    }
+
+    [ticked]:
+        emit(result);
+        exit done;
+    [cancelled]:
+        emit("cancelled");
+        exit stopped;
+}
+async control startup(ref counter c) exits done {
+    auto held = spawn step(c, "hold");
+    auto fast = spawn step(c, "fast");
+    delta await fast {
+        done => fast_done,
+        stopped => fast_stopped
+    }
+
+    [fast_done | fast_stopped]: cancel held;
+    delta await held {
+        done => finished,
+        stopped => halted
+    }
+
+    [finished]:
+        emit("finished");
+        exit done;
+    [halted]:
+        emit("halted");
+        exit done;
+}
+control main(string path) exits done {
+    delta make(borrow path) {
+        made { counter c } => made
+    }
+
+    [made]:
+        run startup(borrow c);
+        delta close(move c) {
+            closed => closed
+        }
+    [made & closed]: exit done;
+}
+"#;
+
+#[test]
+fn cancellation_stops_a_pending_polled_operation_and_drops_its_state() {
+    let f = Fixture::new("cancelled");
+    let p = compile(CANCELLED, f.manifest(&config())).unwrap();
+    let binary = f.build(&p, "cancelled");
+    let (ok, result, log) = f.run(&binary, "cancelled.log");
+    assert!(ok, "{result}");
+    assert_eq!(
+        messages(&result["events"]),
+        [
+            "make",
+            "hold",
+            "fast",
+            "tick:fast!",
+            "fast!",
+            "cancelled",
+            "halted",
+            "close"
+        ]
+    );
+    // The held operation is stopped while pending: its state drops before the
+    // supplier, without completing.
+    assert_eq!(log.first().map(String::as_str), Some("start hold"));
+    let stop = log.iter().position(|l| l == "state drop hold").unwrap();
+    assert!(!log.iter().any(|l| l == "poll hold 0"), "{log:?}");
+    assert_eq!(log.last().map(String::as_str), Some("counter drop"));
+    assert!(stop < log.len() - 1);
+}

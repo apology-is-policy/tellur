@@ -1888,7 +1888,18 @@ impl Checker<'_> {
                 "a control with process termination can only be selected as an executable entry",
             ));
         }
-        Ok(self.signatures.get(name).cloned())
+        let mut signature = self.signatures.get(name).cloned();
+        // The leaf of a cancellable generated control may select `cancelled`.
+        if let Some(sig) = &mut signature
+            && !sig.region
+            && self.result.name == crate::host_operations::cancellable_name(name)
+        {
+            sig.outcomes.push(manifest::Outcome {
+                name: crate::host_operations::CANCELLED.into(),
+                fields: vec![],
+            });
+        }
+        Ok(signature)
     }
     fn expr_expected(
         &mut self,
@@ -4279,18 +4290,6 @@ impl Checker<'_> {
             })?;
             (Operation::Variant(expr), vec![], outcomes, Some(ty))
         };
-        // A host operation entered by await or run observes cancellation only
-        // where the decision lists the compiler-recognized `cancelled` alternative.
-        let mut outcomes = outcomes;
-        if let Operation::Await(name) | Operation::Run(name) = &operation
-            && crate::host_operations::operation(name).is_some()
-            && arms.iter().any(|arm| arm.outcome == "cancelled")
-        {
-            outcomes.push(manifest::Outcome {
-                name: "cancelled".into(),
-                fields: vec![],
-            });
-        }
         let mut arms = arms.to_vec();
         let mut authored_outcomes = BTreeMap::new();
         for arm in &mut arms {

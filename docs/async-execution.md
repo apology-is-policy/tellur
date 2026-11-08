@@ -4818,3 +4818,23 @@ from synchronous code: a root chain without a task can now park while it is
 pending, and a child fault reaches an owner parked that way. Both match native
 executables. Native cancellation (E1e.2) and signal-driven cancellation with a
 graceful settings shutdown (E1e.3) follow.
+
+## Native cancellation (E1e.2, 0.229)
+
+Observation is now decided when the program is prepared rather than by inspecting
+the caller at run time. An `await` or `run` of a host operation whose decision
+lists `cancelled` enters a second generated control, `op$host$cancel`, which has
+the extra exit `cancelled`; its leaf may select that alternative. The checker and
+verifier admit `cancelled` only on the leaf of that control, so ordinary callers
+and every other entry form are unchanged. Both executors decide at the leaf: when
+the operation would start, or when a pending operation is polled, a cancelled task
+selects `cancelled` without consuming a scenario call or publishing an event.
+
+Native executables record each context's task and, for every invocation owner,
+the task that admitted it, so propagation uses the shared registry exactly as the
+reference does. `cancel` returns to the source driver without a handoff; the
+driver signals parked operations that observe the request in FIFO order, and each
+stops when polled. A live operation withdraws its readiness registration and drops
+its adapter state before its suppliers; resources it would have consumed at start
+are released. Native executables also now report a child fault to a root chain
+parked by `run` of a pending host operation, matching the reference executor.

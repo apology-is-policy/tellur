@@ -847,14 +847,19 @@ fn native_run_entered_operations_match_reference() {
             "waits {waits}"
         );
     }
-    let p = checked(&format!("{RUN_HELPER}{TASK_RUN_FAULT}"));
-    let binary = native(&p, &w.0, "task-run-fault");
-    for waits in [0, 1, 5] {
-        let s = scenario(vec![tick("direct", waits)]);
-        let reference = p.run_detailed(&s, 10_000).unwrap_err();
-        same_failure(
-            &native_run(&binary, &input, &s, None).unwrap_err(),
-            &reference.report,
-        );
+    for (name, source) in [
+        ("task-run-fault", TASK_RUN_FAULT),
+        ("root-run-fault", ROOT_RUN_FAULT),
+    ] {
+        let p = checked(&format!("{RUN_HELPER}{source}"));
+        let binary = native(&p, &w.0, name);
+        for waits in [0, 1, 5] {
+            let s = scenario(vec![tick("direct", waits)]);
+            let reference = p.run_detailed(&s, 10_000).unwrap_err();
+            same_failure(
+                &native_run(&binary, &input, &s, None).unwrap_err(),
+                &reference.report,
+            );
+        }
     }
 }

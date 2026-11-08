@@ -11,16 +11,29 @@ use crate::{
 use std::collections::BTreeSet;
 
 const SUFFIX: &str = "$host";
+/// The variant entered where an await or run decision lists `cancelled`. It has
+/// the extra exit `cancelled`, selected when its task is cancelled.
+const CANCELLABLE_SUFFIX: &str = "$host$cancel";
 
 pub(crate) fn wrapper_name(operation: &str) -> String {
     format!("{operation}{SUFFIX}")
 }
+pub(crate) fn cancellable_name(operation: &str) -> String {
+    format!("{operation}{CANCELLABLE_SUFFIX}")
+}
 /// The host operation performed by a generated wrapper control.
 pub(crate) fn operation(name: &str) -> Option<&str> {
-    name.strip_suffix(SUFFIX)
+    name.strip_suffix(CANCELLABLE_SUFFIX)
+        .or_else(|| name.strip_suffix(SUFFIX))
 }
+/// Whether a generated control observes cancellation of its task.
+pub(crate) fn is_cancellable(name: &str) -> bool {
+    name.ends_with(CANCELLABLE_SUFFIX)
+}
+/// The compiler-recognized alternative of a cancelled host operation.
+pub(crate) const CANCELLED: &str = "cancelled";
 
-fn wrapper_source(p: &Primitive) -> String {
+fn wrapper_source(p: &Primitive, cancellable: bool) -> String {
     let parameters = p
         .parameters
         .iter()
@@ -42,6 +55,7 @@ fn wrapper_source(p: &Primitive) -> String {
                 .join(", ");
             format!("{} {{{fields}}}", o.name)
         })
+        .chain(cancellable.then(|| format!("{CANCELLED} {{}}")))
         .collect::<Vec<_>>()
         .join(", ");
     let arguments = p
@@ -80,6 +94,10 @@ pub(crate) fn prepare(unit: &mut Unit, manifest: &Manifest) -> crate::CheckResul
     // Generate only the controls a program invokes; an unused declaration keeps
     // every other backend's program unchanged.
     let mut used = BTreeSet::new();
+    let mut cancellable = BTreeSet::new();
+    for region in &mut unit.regions {
+        route_cancellable(&mut region.body, &names, &mut cancellable);
+    }
     // `tasks<op>` is a set of the generated control's children.
     let route = |ty: &mut String, used: &mut BTreeSet<String>| {
         if let Some(producer) = crate::manifest::task_set_inner(ty)
@@ -101,8 +119,18 @@ pub(crate) fn prepare(unit: &mut Unit, manifest: &Manifest) -> crate::CheckResul
         })?;
         retype(&mut region.body, &mut |ty| route(ty, &mut used));
     }
-    for p in operations.iter().filter(|p| used.contains(&p.name)) {
-        let mut regions = crate::syntax::parse(&wrapper_source(p)).map_err(|e| {
+    let wrappers = operations
+        .iter()
+        .filter(|p| used.contains(&p.name))
+        .map(|p| (p, false))
+        .chain(
+            operations
+                .iter()
+                .filter(|p| cancellable.contains(&p.name))
+                .map(|p| (p, true)),
+        );
+    for (p, observes) in wrappers {
+        let mut regions = crate::syntax::parse(&wrapper_source(p, observes)).map_err(|e| {
             Diagnostic::new(
                 "E_MANIFEST",
                 crate::Span::default(),
@@ -113,10 +141,84 @@ pub(crate) fn prepare(unit: &mut Unit, manifest: &Manifest) -> crate::CheckResul
             )
         })?;
         let mut region = regions.pop().expect("one generated wrapper");
-        region.name = wrapper_name(&p.name);
+        region.name = if observes {
+            cancellable_name(&p.name)
+        } else {
+            wrapper_name(&p.name)
+        };
         unit.regions.push(region);
     }
     Ok(())
+}
+
+/// Route an `await` or `run` of a host operation whose decision lists the
+/// `cancelled` alternative to the operation's cancellable control.
+fn route_cancellable(
+    body: &mut [crate::syntax::Item],
+    names: &BTreeSet<String>,
+    used: &mut BTreeSet<String>,
+) {
+    use crate::syntax::{CallMode, Expr, Item, OutcomeExpr, Statement};
+    fn lists(outcomes: impl IntoIterator<Item = String>) -> bool {
+        outcomes
+            .into_iter()
+            .any(|o| o.rsplit('.').next() == Some(CANCELLED))
+    }
+    fn route(e: &mut Expr, names: &BTreeSet<String>, used: &mut BTreeSet<String>) {
+        if matches!(e.call_mode, CallMode::Await | CallMode::Run)
+            && let ExprKind::Call(name, _) = &mut e.kind
+            && names.contains(name.as_str())
+        {
+            used.insert(name.clone());
+            *name = cancellable_name(name);
+        }
+    }
+    fn outcome(o: &mut OutcomeExpr, names: &BTreeSet<String>, used: &mut BTreeSet<String>) {
+        if let OutcomeExpr::Delta(_, e, arms) = o {
+            if lists(arms.iter().map(|a| a.pattern.outcome.clone())) {
+                route(e, names, used);
+            }
+            for arm in arms {
+                outcome(&mut arm.result, names, used);
+            }
+        }
+    }
+    fn statement(s: &mut Statement, names: &BTreeSet<String>, used: &mut BTreeSet<String>) {
+        match s {
+            Statement::Delta(_, e, arms) => {
+                if lists(arms.iter().map(|a| a.outcome.clone())) {
+                    route(e, names, used);
+                }
+                for arm in arms {
+                    route_cancellable(&mut arm.body, names, used);
+                    if let Some(termination) = &mut arm.termination {
+                        statement(&mut termination.1, names, used);
+                    }
+                }
+            }
+            Statement::BindOutcome(_, _, o, _) | Statement::ExitOutcome(o) => {
+                outcome(o, names, used)
+            }
+            Statement::Boundary { body, handler, .. } => {
+                route_cancellable(body, names, used);
+                route_cancellable(handler, names, used);
+            }
+            _ => {}
+        }
+    }
+    for item in body {
+        match item {
+            Item::Guard(_, statements) => {
+                for (_, s) in statements {
+                    statement(s, names, used);
+                }
+            }
+            Item::Group(_, _, b) | Item::Over(_, _, b) | Item::Loop(_, _, _, b, _) => {
+                route_cancellable(b, names, used)
+            }
+            Item::Alias(..) => {}
+        }
+    }
 }
 
 /// Rewrite the declared types of local bindings and loop parameters.

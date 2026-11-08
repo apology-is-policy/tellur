@@ -152,6 +152,39 @@ impl<'a> Contexts<'a> {
             .host_ready(true);
         Ok(())
     }
+    /// Signal every parked operation that observes a cancellation request, in
+    /// FIFO order. Each polls once when selected and selects `cancelled`.
+    pub(super) fn wake_cancelled(&mut self) -> R<Vec<ContextKey>> {
+        let mut woken = vec![];
+        let mut retained = std::collections::VecDeque::new();
+        for (key, token) in std::mem::take(&mut self.host_waits) {
+            let live = self
+                .waits
+                .get(&key.id)
+                .is_some_and(|wait| wait.generation == token.generation && !wait.signalled);
+            let observes = live
+                && self.parked.get(&key.id).is_some_and(|parked| {
+                    parked.machine.host_cancellable()
+                        && parked
+                            .host
+                            .task
+                            .is_some_and(|task| self.host.tasks.is_cancelled(task))
+                });
+            if observes {
+                self.signal_readiness(&token)?;
+                self.parked
+                    .get_mut(&key.id)
+                    .unwrap()
+                    .machine
+                    .host_ready(false);
+                woken.push(key);
+            } else {
+                retained.push_back((key, token));
+            }
+        }
+        self.host_waits = retained;
+        Ok(woken)
+    }
     fn park_host_operation(&mut self, key: &ContextKey) -> R<()> {
         let token = self.park_for_readiness(key)?;
         self.host_waits.push_back((key.clone(), token));
@@ -534,6 +567,8 @@ impl<'a> Contexts<'a> {
         };
         let frame = self.values.commit(frame).expect("prevalidated child frame");
         self.host.tasks.commit_owner(owner);
+        let task_id = task.task_id();
+        self.host.tasks.record_owner_task(owner, task_id);
         let resource_scope = self.host.resources.register_scope(scope);
         let member = self
             .domains
@@ -576,6 +611,7 @@ impl<'a> Contexts<'a> {
                     tracker,
                     contingencies: vec![],
                     scope: Some(resource_scope.clone()),
+                    task: Some(task_id),
                 },
                 root: ContextRoot {
                     scope: resource_scope,
