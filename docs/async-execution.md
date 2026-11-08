@@ -4838,3 +4838,29 @@ stops when polled. A live operation withdraws its readiness registration and dro
 its adapter state before its suppliers; resources it would have consumed at start
 are released. Native executables also now report a child fault to a root chain
 parked by `run` of a pending host operation, matching the reference executor.
+
+## Signal cancellation (E1e.3, 0.230)
+
+A launch signal cancels the *entry*, which has no task of its own. The registry
+gains a root request: an invocation chain that ends without a task is cancelled when
+the root is, so every task inherits it through the existing propagation, and the
+entry's own operations observe it too. A request wakes pending operations that
+observe it, including a root chain parked by `run`.
+
+Both executors deliver scripted `$signal` entries at the same two points: before
+the next host operation starts (before its arguments are bound) and at an idle
+point where no task can run. Native executables install SIGINT and SIGTERM handlers
+only for an entry with the policy and no scenario. The handler records the first
+signal and writes to a self-pipe registered with the readiness backend under a
+reserved token, so an idle wait wakes; the driver then cancels the entry before
+polling. A second signal calls `_exit(128 + signal)` from the handler, which uses
+only async-signal-safe operations.
+
+The settings service is the first user. `accept_cancellable` and
+`receive_cancellable` add the `cancelled` alternative to the library's accept and
+receive; the accept loop answers it with `cancel active;` and a `stopped` admission,
+and a member still waiting for its request replies 503 before finishing. Sends and
+finishes are not cancellable, so responses already started complete. Known
+limitations: the sequential native driver does not deliver idle-point scripted
+signals, and a live signal during a delay-only adapter wait is noticed when the
+delay ends.

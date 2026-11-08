@@ -4,6 +4,7 @@ import "../../library/loopback_http.tellur" as transport;
 pub outcome service_result {
     @exit 0 completed,
     @exit 0 idle,
+    @exit 0 stopped,
     @exit 1 failed { string message },
     @exit 2 invalid_configuration
 }
@@ -42,6 +43,7 @@ pub control start(
         exit delta result {
             completed => completed {},
             idle => idle {},
+            stopped => stopped {},
             failed { string message } => failed { message }
         };
 }
@@ -51,19 +53,22 @@ variant admission {
     open,
     exhausted,
     quiet,
+    stopped,
     broken { string message }
 }
 
 // One global budget and idle timeout. Accepted connections run as members of one
 // task set, at most `width` at a time; the loop stops admitting after the budget,
-// an idle accept or an accept failure, then drains the set.
+// an idle accept, an accept failure or cancellation, then drains the set. With
+// `launch.serve.signals = "cancel"`, SIGINT or SIGTERM cancels the entry: the
+// accept stops, waiting members reply 503 and finish, and the service stops.
 async control serve(
     ref string path,
     ref http_listener listener,
     ref string authority,
     u32 limit,
     u32 idle_ms
-) exits completed, idle, failed { string message } {
+) exits completed, idle, stopped, failed { string message } {
     loop serve_next(
         mutable u32 remaining = limit,
         admission state = admission.open {},
@@ -73,6 +78,7 @@ async control serve(
             open => admitting,
             exhausted => exhausted,
             quiet => quiet,
+            stopped => stopped,
             broken { ref string reason } => broken
         }
         [admitting]: delta (count(borrow active) < 64) {
@@ -80,7 +86,7 @@ async control serve(
             false => full
         }
         [broken]: drop(reason);
-        [exhausted | quiet | broken | full]:
+        [exhausted | quiet | stopped | broken | full]:
             delta await next active {
                 handled => reaped,
                 empty => drained
@@ -91,6 +97,7 @@ async control serve(
                 open => completed {},
                 exhausted => completed {},
                 quiet => idle {},
+                stopped => stopped {},
                 broken { string message } => failed { message }
             };
         [room]:
@@ -100,12 +107,16 @@ async control serve(
             }
         [finished]: again serve_next(remaining, admission.exhausted {}, active);
         [available]:
-            delta await transport.accept(listener, idle_ms) {
+            delta await transport.accept_cancellable(listener, idle_ms) {
                 accepted { http_connection connection } => accepted,
                 idle => idle,
-                failed { string accept_message } => unavailable
+                failed { string accept_message } => unavailable,
+                cancelled => cancelled
             }
         [idle]: again serve_next(remaining, admission.quiet {}, active);
+        [cancelled]:
+            cancel active;
+            again serve_next(remaining, admission.stopped {}, active);
         [unavailable]: again serve_next(remaining, admission.broken { accept_message }, active);
         [accepted]:
             spawn serve_connection(move connection, clone(path), clone(authority)) into active;
@@ -191,7 +202,7 @@ control prepare(
     disconnected,
     failed { string message }
 {
-    exit delta run transport.receive(connection) {
+    exit delta run transport.receive_cancellable(connection) {
         request {
             string method,
             string target,
@@ -245,6 +256,7 @@ control prepare(
         },
         timed_out => prepared { 408, "Request deadline exceeded", "text/plain; charset=utf-8", "" },
         disconnected => disconnected {},
-        failed { string message } => failed { message }
+        failed { string message } => failed { message },
+        cancelled => prepared { 503, "Service is shutting down", "text/plain; charset=utf-8", "" }
     };
 }

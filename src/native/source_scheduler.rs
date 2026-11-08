@@ -59,9 +59,22 @@ fn drive_source(
                 // operation becomes ready in FIFO order.
                 if !runnable.iter().any(|r| match r {
                     Runnable::Run(k) | Runnable::Await(k) => live(&contexts, k),
-                }) && let Some(key) = contexts.signal_host_operation()?
-                {
-                    runnable.push_back(Runnable::Run(key));
+                }) {
+                    // A launch signal is delivered before readiness.
+                    if contexts.host.deliver_script_signals()?
+                        || contexts.host.deliver_live_signal()
+                    {
+                        contexts.host.take_signal_wake();
+                        for woken in contexts.wake_cancelled()? {
+                            push(&mut runnable, woken);
+                        }
+                        continue;
+                    }
+                    if let Some(key) = contexts.signal_host_operation()? {
+                        runnable.push_back(Runnable::Run(key));
+                    } else if contexts.host.live_signal_pending() {
+                        continue;
+                    }
                 }
                 match runnable.pop_front() {
                     Some(Runnable::Run(key)) if live(&contexts, &key) => break key,
@@ -95,7 +108,15 @@ fn drive_source(
                 }
             }
         };
-        match contexts.advance_retained(&key, quota())? {
+        let poll = contexts.advance_retained(&key, quota())?;
+        // A signal delivered during this turn wakes observing operations first.
+        contexts.host.deliver_live_signal();
+        if contexts.host.take_signal_wake() {
+            for woken in contexts.wake_cancelled()? {
+                push(&mut runnable, woken);
+            }
+        }
+        match poll {
             ContextPoll::Paused => selected = Some(key),
             ContextPoll::Await => {
                 let handoff = contexts

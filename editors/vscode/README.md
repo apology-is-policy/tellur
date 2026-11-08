@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-darwin-arm64-0.229.0.vsix` using **Extensions:
+1. Install the supplied `tellur-language-darwin-arm64-0.230.0.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1789,4 +1789,5 @@ operation, never its generated control.
 Compiler 0.228 adds `cancel child;` and `cancel set;`. The grammar highlights `cancel`
 only in that statement form, and hovering `cancel` or a `cancelled =>` arm explains
 how cancellation is requested and where it is observed. Since 0.229, Build and Run
-executes cancellation natively.
+executes cancellation natively. Since 0.230, an entry can opt into cancellation by
+SIGINT or SIGTERM through `launch.<entry>.signals` in the manifest.

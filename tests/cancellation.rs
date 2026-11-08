@@ -487,3 +487,117 @@ control main() exits done {
         ["tick:helper", "helper", "finished"]
     );
 }
+
+fn signal(name: &str) -> ScriptCall {
+    ScriptCall {
+        operation: tellur::runtime::SCRIPT_SIGNAL.into(),
+        outcome: name.into(),
+        fields: vec![],
+        waits: 0,
+    }
+}
+const SERVING: &str = r#"
+async control member(string label) exits done {
+    delta await tick(move label) {
+        ticked { string result } => ticked,
+        cancelled => cancelled
+    }
+
+    [ticked]:
+        emit(result);
+        exit done;
+    [cancelled]:
+        emit("member stopped");
+        exit done;
+}
+async control serve() exits stopped {
+    tasks<member> active = tasks();
+    spawn member("member") into active;
+    loop accept_next(bool stopping = false, tasks<member> members = move active) {
+        delta (stopping) {
+            true => draining,
+            false => accepting
+        }
+        [draining]:
+            delta await next members {
+                done => joined,
+                empty => drained
+            }
+        [joined]: again accept_next(stopping, members);
+        [drained]: exit stopped;
+        [accepting]:
+            delta await tick("accept") {
+                ticked { string label } => accepted,
+                cancelled => cancelled
+            }
+        [accepted]:
+            emit(label);
+            again accept_next(stopping, members);
+        [cancelled]:
+            emit("stopping");
+            again accept_next(true, members);
+    }
+}
+control main() exits stopped {
+    forward run serve();
+}
+"#;
+
+#[test]
+fn a_launch_signal_cancels_the_entry_and_everything_beneath_it() {
+    let mut config: serde_json::Value =
+        serde_json::from_str(&manifest_json(serde_json::json!([]))).unwrap();
+    config["launch"] = serde_json::json!({"main": {"signals": "cancel"}});
+    let p = compile(SERVING, Manifest::from_json(&config.to_string()).unwrap())
+        .unwrap_or_else(|e| panic!("{e}"));
+    assert!(p.entry_cancels_on_signal("main"));
+    // The member and a second accept are pending when the signal arrives at an
+    // idle point; both observe it and the entry completes normally.
+    let events = p
+        .run(&scenario(vec![
+            tick("first", 0),
+            tick("member", 5),
+            tick("second", 5),
+            signal("SIGTERM"),
+        ]))
+        .unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(events.outcome, "stopped");
+    assert_eq!(
+        trace(&events.events),
+        ["tick:first", "first", "member stopped", "stopping"]
+    );
+    assert_eq!(
+        run_stopped(
+            &p,
+            &scenario(vec![
+                tick("first", 0),
+                tick("member", 5),
+                tick("second", 5),
+                signal("SIGTERM"),
+            ])
+        ),
+        events.events
+    );
+    // Without the policy, and for a second signal, the process terminates.
+    let plain = checked(SERVING);
+    let error = plain
+        .run(&scenario(vec![tick("first", 0), signal("SIGINT")]))
+        .unwrap_err();
+    assert!(error.message.contains("status 130"), "{error:?}");
+    let error = p
+        .run(&scenario(vec![
+            tick("first", 0),
+            tick("member", 5),
+            tick("second", 5),
+            signal("SIGTERM"),
+            signal("SIGTERM"),
+        ]))
+        .unwrap_err();
+    assert!(error.message.contains("a second signal"), "{error:?}");
+}
+/// The native executable must publish the same events and outcome.
+fn run_stopped(p: &CheckedProgram, s: &Scenario) -> Vec<Event> {
+    let reference = p.run(s).unwrap();
+    assert_eq!(native_run(p, s), serde_json::to_value(&reference).unwrap());
+    reference.events
+}

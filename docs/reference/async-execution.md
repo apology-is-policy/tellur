@@ -1290,8 +1290,36 @@ async control startup() exits done {
 In native executables a cancelled live operation is stopped like an operation of a
 stopped task: its readiness registration is withdrawn and the adapter state is
 dropped before its supplier resources, without a completion. Resources it would
-have consumed are released. Process signals that cancel an entry's tasks follow in
-E1e.3.
+have consumed are released.
+
+### Launch signals
+
+Since 0.230 an executable entry can opt into cancellation by process signals in the
+manifest's `launch` section:
+
+```json
+{ "launch": { "serve": { "signals": "cancel" } } }
+```
+
+The first SIGINT or SIGTERM then cancels the entry itself: every task beneath it,
+including tasks started later, observes the request exactly as if its owner had
+cancelled it, and the entry's own `cancelled` arms are selected too. The program
+finishes through its ordinary outcomes and exit-status mapping. A second SIGINT or
+SIGTERM terminates the process immediately with status 128 + signal number (130 or
+143), without cleanup. There is no cleanup deadline. Without the policy, signals
+keep their default disposition.
+
+Scenarios reproduce a signal deterministically with an entry
+`{"operation": "$signal", "outcome": "SIGTERM", "fields": [], "waits": 0}`
+(or `"SIGINT"`). It is delivered when it is reached: before the next host operation
+starts, or when no task can run. Both executors deliver it at the same point. If
+the entry has no `signals` policy, or the signal is the second one, the run ends
+with an `E_DRIVER` error naming the termination status.
+
+Two limitations remain. Native executables without source tasks (the sequential
+driver) do not deliver scripted signals at idle points, only before a host
+operation starts. A live signal that arrives while a polled adapter waits only for a
+delay, without a descriptor, is noticed when that delay ends.
 
 ## Local cold tasks
 

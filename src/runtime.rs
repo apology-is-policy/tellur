@@ -67,6 +67,18 @@ pub enum RunCompletion {
     Outcome(Execution),
     Process(ProcessTermination),
 }
+/// A scenario entry with this operation delivers a launch signal (outcome
+/// `SIGINT` or `SIGTERM`) when reached: before the next host operation starts or
+/// at an idle point.
+pub const SCRIPT_SIGNAL: &str = "$signal";
+/// Process status of a terminating launch signal: 128 plus its number.
+pub(crate) fn signal_status(name: &str) -> Result<u8> {
+    match name {
+        "SIGINT" => Ok(130),
+        "SIGTERM" => Ok(143),
+        other => Err(error(format!("unknown scenario signal `{other}`"))),
+    }
+}
 fn error(message: impl Into<String>) -> Diagnostic {
     Diagnostic::new("E_DRIVER", Span::default(), message)
 }

@@ -7,8 +7,17 @@ use std::collections::BTreeMap;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EntryConfiguration {
-    #[serde(deserialize_with = "unique_map")]
+    #[serde(default, deserialize_with = "unique_map")]
     pub exit_codes: BTreeMap<String, u8>,
+    /// `"cancel"`: the first SIGINT or SIGTERM cancels the entry's tasks; a second
+    /// terminates the process with status 128 + signal number.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signals: Option<SignalPolicy>,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SignalPolicy {
+    Cancel,
 }
 
 // Duplicate contract metadata keys must not silently select a different binding.
@@ -109,12 +118,28 @@ impl CheckedProgram {
         exit_codes: BTreeMap<String, u8>,
     ) -> Result<Self> {
         let mut program = self.clone();
-        program
+        let signals = program
             .manifest
             .launch
-            .insert(entry.into(), EntryConfiguration { exit_codes });
+            .get(entry)
+            .and_then(|config| config.signals);
+        program.manifest.launch.insert(
+            entry.into(),
+            EntryConfiguration {
+                exit_codes,
+                signals,
+            },
+        );
         program.entry_exit_codes(entry)?;
         Ok(program)
+    }
+
+    /// Whether the entry opted into cooperative cancellation on signals.
+    pub fn entry_cancels_on_signal(&self, entry: &str) -> bool {
+        self.manifest
+            .launch
+            .get(entry)
+            .is_some_and(|config| config.signals == Some(SignalPolicy::Cancel))
     }
 
     pub(crate) fn executable_entries(

@@ -82,6 +82,27 @@ annotation syntax but executable-entry validation happens during native generati
 The Rust embedding API exposes `CheckedProgram::entry_exit_codes` for resolving
 and validating a mapping, and `with_entry_exit_codes` for supplying one explicitly.
 
+## Signal cancellation
+
+Since 0.230 an entry may also declare `"signals": "cancel"` (the only policy):
+
+```json
+{
+  "launch": {
+    "serve": {
+      "signals": "cancel"
+    }
+  }
+}
+```
+
+The first SIGINT or SIGTERM cancels the entry and all of its tasks, which then
+finish through their declared outcomes, so the normal status mapping applies. A
+second signal terminates the process immediately with status 128 + signal number.
+`exit_codes` may be omitted when declaration defaults are complete. See
+[launch signals](async-execution.md#launch-signals) for the scenario `$signal`
+entry and current limitations.
+
 ## Final-contract semantics
 
 Only the final entry contract determines process status. If an adapter converts
@@ -125,4 +146,4 @@ and [settings application](../../applications/settings/README.md) have been migr
 
 Future asynchronous launchers can apply this same mapping after receiving the
 entry's final outcome. These annotations define neither an executor nor a coroutine
-ABI, and do not yet define cancellation or shutdown behavior.
+ABI; shutdown is the opt-in signal cancellation above.

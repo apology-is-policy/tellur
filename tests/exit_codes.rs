@@ -179,6 +179,7 @@ fn manifest_policies_reject_duplicate_keys_bad_ranges_and_unknown_entries() {
         "typo".into(),
         tellur::launch::EntryConfiguration {
             exit_codes: codes(&[("done", 0)]),
+            signals: None,
         },
     );
     let p = compile(

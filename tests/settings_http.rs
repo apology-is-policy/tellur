@@ -1140,3 +1140,116 @@ fn native_http_slow_client_does_not_delay_a_fast_client() {
     assert_eq!(response(&reply, 200, false), "{}");
     server.finish(0, "completed");
 }
+
+fn signal(server: &Server, name: &str) {
+    let pid = server.child.as_ref().unwrap().id().to_string();
+    let status = Command::new("kill")
+        .args([&format!("-{name}"), &pid])
+        .status()
+        .unwrap();
+    assert!(status.success(), "kill -{name} {pid}");
+}
+
+#[test]
+fn native_http_launch_signal_replies_503_to_waiting_members_and_stops() {
+    let p = program();
+    let f = Fixture::new();
+    let binary = f.0.join("stopping");
+    p.build_native("serve", &binary, 0).unwrap();
+    let server = Server::start(&binary, &f.0.join("settings.json"), 8, 30000);
+    // A served request first, then a member that waits for a request that never comes.
+    let full = request(&server.authority, "GET", "/settings", "", "");
+    assert_eq!(
+        response(&exchange(&server.authority, &full), 200, false),
+        "{}"
+    );
+    let mut waiting = TcpStream::connect(&server.authority).unwrap();
+    waiting
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .unwrap();
+    std::thread::sleep(Duration::from_millis(300));
+    let started = Instant::now();
+    signal(&server, "TERM");
+    let mut reply = vec![];
+    waiting.read_to_end(&mut reply).unwrap();
+    assert_eq!(response(&reply, 503, false), "Service is shutting down");
+    assert!(started.elapsed() < Duration::from_secs(5));
+    // The listener is no longer accepting once the service has stopped.
+    server.finish(0, "stopped");
+}
+
+#[test]
+fn native_http_second_launch_signal_terminates_immediately() {
+    let p = program();
+    let f = Fixture::new();
+    let binary = f.0.join("terminating");
+    p.build_native("serve", &binary, 0).unwrap();
+    let server = Server::start(&binary, &f.0.join("settings.json"), 8, 30000);
+    // Both signals are pending when the process resumes, so the second arrives
+    // before the cancelled service can stop and the process exits with 128 + signal.
+    signal(&server, "STOP");
+    signal(&server, "INT");
+    signal(&server, "TERM");
+    signal(&server, "CONT");
+    let mut server = server;
+    let until = Instant::now() + Duration::from_secs(15);
+    let status = loop {
+        if let Some(status) = server.child.as_mut().unwrap().try_wait().unwrap() {
+            break status;
+        }
+        assert!(Instant::now() < until, "server did not terminate");
+        std::thread::sleep(Duration::from_millis(10));
+    };
+    server.child = None;
+    assert!(matches!(status.code(), Some(130 | 143)), "{status:?}");
+}
+
+#[test]
+fn scripted_launch_signal_stops_the_service_and_replies_503() {
+    let p = program();
+    let signal = ScriptCall {
+        operation: tellur::runtime::SCRIPT_SIGNAL.into(),
+        outcome: "SIGTERM".into(),
+        fields: vec![],
+        waits: 0,
+    };
+    // The signal arrives while the member waits for its request and the loop
+    // waits for the next connection; neither wait consumes a script entry.
+    let mut s = scenario(vec![]);
+    s.arguments[2] = Value::U32(2);
+    s.calls = vec![
+        listener(),
+        sub(1),
+        accepted(),
+        sub(0),
+        signal,
+        call("http_send", "sent", vec![]),
+        call("http_connection_finish", "closed", vec![]),
+        call("http_listener_release", "released", vec![]),
+    ];
+    let result = report(&p, &s);
+    assert_eq!(result["outcome"], "stopped", "{result}");
+    assert_eq!(result, report(&p.expanded("serve").unwrap(), &s));
+    let sent = result["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["operation"] == "http_send")
+        .unwrap();
+    assert_eq!(sent["arguments"][1], json!({"kind":"u32","value":503}));
+    // The generated executable delivers the scripted signal at the same point.
+    let f = Fixture::new();
+    let binary = f.0.join("scripted-signal");
+    p.build_native("serve", &binary, 0).unwrap();
+    let path = f.0.join("signal.json");
+    fs::write(&path, serde_json::to_vec(&s).unwrap()).unwrap();
+    let output = Command::new(&binary)
+        .arg("--scenario")
+        .arg(path)
+        .output()
+        .unwrap();
+    let actual: Json = serde_json::from_slice(&output.stdout)
+        .unwrap_or_else(|_| panic!("{}", String::from_utf8_lossy(&output.stderr)));
+    assert_eq!(actual, result);
+    assert_eq!(output.status.code(), Some(0));
+}

@@ -344,19 +344,53 @@ impl<'a> Machine<'a> {
                     self.signal_readiness(&token)?;
                     self.queue_operation_readiness(task);
                 }
-                // Root chains have no task and are not cancelled by a request.
+                // A root chain observes only a cancelled entry (a launch signal).
+                HostWait::Root(context) if self.observes_cancellation(&context) => self
+                    .shared
+                    .scheduler
+                    .runnable
+                    .push_back(Runnable::Context(context)),
                 wait => retained.push_back(wait),
             }
         }
         self.shared.scheduler.host_waits = retained;
         Ok(())
     }
+    /// Deliver scripted launch signals that precede the next script entry. With
+    /// `launch.<entry>.signals = "cancel"` the first cancels the entry chain and
+    /// wakes pending operations that observe it.
+    pub(super) fn deliver_script_signals(&mut self) -> Result<bool> {
+        let mut delivered = false;
+        while let Some(call) = self.shared.calls.get(self.shared.cursor)
+            && call.operation == crate::runtime::SCRIPT_SIGNAL
+        {
+            let status = crate::runtime::signal_status(&call.outcome)?;
+            self.shared.cursor += 1;
+            if !self.shared.cancels_on_signal {
+                return Err(error(format!(
+                    "{} terminates the process with status {status}; declare launch.<entry>.signals = \"cancel\" to cancel the entry instead",
+                    call.outcome
+                )));
+            }
+            if self.shared.tasks.root_cancelled() {
+                return Err(error(format!(
+                    "a second signal ({}) terminates the process with status {status}",
+                    call.outcome
+                )));
+            }
+            self.shared.tasks.cancel_root();
+            self.wake_cancelled()?;
+            delivered = true;
+        }
+        Ok(delivered)
+    }
     /// A task is cancelled when it, or a task beneath which it was created, has a
     /// cancellation request. A root chain has no task.
     pub(super) fn task_cancelled(&self, context: &Context<'a>) -> bool {
-        context
-            .task
-            .is_some_and(|(task, _)| self.shared.tasks.is_cancelled(task))
+        match context.task {
+            Some((task, _)) => self.shared.tasks.is_cancelled(task),
+            None => self.shared.tasks.root_cancelled(),
+        }
     }
     /// A parked chain observes cancellation when its pending operation was entered
     /// through a cancellable generated control and its task is cancelled.
@@ -518,6 +552,10 @@ impl<'a> Machine<'a> {
                 None => {
                     #[cfg(test)]
                     if self.pump_source_operations(true)? {
+                        continue;
+                    }
+                    // An idle point delivers a scripted launch signal first.
+                    if self.deliver_script_signals()? {
                         continue;
                     }
                     if self.signal_host_operation()? {

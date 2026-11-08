@@ -63,6 +63,8 @@ pub(crate) struct Registry {
     owner_tasks: BTreeMap<OwnerId, TaskId>,
     /// Sticky cancellation requests. A request never completes or retires a task.
     cancelled: BTreeSet<TaskId>,
+    /// A launch signal cancelled the entry chain and everything beneath it.
+    root_cancelled: bool,
 }
 impl Registry {
     /// Check capacity before diagnostic activation admission. Commit is infallible
@@ -94,7 +96,7 @@ impl Registry {
         }
     }
     /// A task is cancelled when it, or any task beneath which it was created,
-    /// has a cancellation request.
+    /// has a cancellation request, or when its chain reaches a cancelled entry.
     #[allow(dead_code)]
     pub(crate) fn is_cancelled(&self, task: TaskId) -> bool {
         let mut current = task;
@@ -107,10 +109,19 @@ impl Registry {
                 .get(&current)
                 .and_then(|task| self.owner_tasks.get(&task.owner))
             else {
-                return false;
+                return self.root_cancelled;
             };
             current = *parent;
         }
+    }
+    /// A launch signal cancels the entry chain, which has no task.
+    #[allow(dead_code)]
+    pub(crate) fn cancel_root(&mut self) {
+        self.root_cancelled = true;
+    }
+    #[allow(dead_code)]
+    pub(crate) fn root_cancelled(&self) -> bool {
+        self.root_cancelled
     }
     fn prepare_task(&self, owner: OwnerId) -> Result<TaskId> {
         if !self.owners.contains_key(&owner) {

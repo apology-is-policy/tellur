@@ -509,6 +509,52 @@ unsafe extern "C" {
     fn ferror(file: *mut c_void) -> c_int;
     fn fclose(file: *mut c_void) -> c_int;
 }
+/// Opt-in launch signals (`launch.<entry>.signals = "cancel"`). The first SIGINT
+/// or SIGTERM is recorded and wakes the readiness backend through a self-pipe; the
+/// executor then cancels the entry. A second terminates at once with 128 + signal.
+mod launch_signals {
+    use std::sync::atomic::{AtomicI32, AtomicUsize, Ordering};
+    static RECEIVED: AtomicUsize = AtomicUsize::new(0);
+    static WAKE: AtomicI32 = AtomicI32::new(-1);
+    unsafe extern "C" {
+        fn signal(signum: i32, handler: extern "C" fn(i32)) -> usize;
+        fn write(fd: i32, buffer: *const u8, count: usize) -> isize;
+        fn pipe(fds: *mut i32) -> i32;
+        fn _exit(status: i32) -> !;
+    }
+    extern "C" fn handle(signum: i32) {
+        // Only async-signal-safe operations: an atomic update, write and _exit.
+        if RECEIVED.fetch_add(1, Ordering::SeqCst) > 0 {
+            unsafe { _exit(128 + signum) }
+        }
+        let fd = WAKE.load(Ordering::SeqCst);
+        if fd >= 0 {
+            unsafe {
+                write(fd, [1u8].as_ptr(), 1);
+            }
+        }
+    }
+    /// Install handlers for SIGINT and SIGTERM; returns the self-pipe read end.
+    pub fn install() -> Option<i32> {
+        let mut fds = [-1i32; 2];
+        let read = if unsafe { pipe(fds.as_mut_ptr()) } == 0 {
+            WAKE.store(fds[1], Ordering::SeqCst);
+            Some(fds[0])
+        } else {
+            None
+        };
+        unsafe {
+            signal(2, handle);
+            signal(15, handle);
+        }
+        read
+    }
+    pub fn received() -> bool {
+        RECEIVED.load(Ordering::SeqCst) > 0
+    }
+}
+/// Readiness token of the launch-signal self-pipe; never a host-operation token.
+pub const SIGNAL_TOKEN: u64 = u64::MAX;
 /// A live resource scope, unrelated to invocation or diagnostic identities.
 #[derive(Clone, Debug)]
 struct ResourceScope {
@@ -872,6 +918,12 @@ pub struct Host {
     activations: fault::Tracker,
     /// The task of the selected context, exchanged with its host context.
     current_task: Option<tasks::TaskId>,
+    /// The entry declared `launch.<entry>.signals = "cancel"`.
+    cancels_on_signal: bool,
+    /// Live signal handlers are installed for this run.
+    live_signals: bool,
+    /// A delivered signal cancelled the entry; the driver wakes observing waits.
+    signal_wake: bool,
 }
 impl Drop for Host {
     fn drop(&mut self) {
@@ -907,6 +959,9 @@ impl Host {
             contingencies: vec![],
             activations: fault::Tracker::default(),
             current_task: None,
+            cancels_on_signal: false,
+            live_signals: false,
+            signal_wake: false,
         }
     }
     pub fn enter(&mut self, control: &str) -> R<()> {
@@ -983,8 +1038,59 @@ impl Host {
     /// The selected context's task, or a task beneath which it was created, has a
     /// cancellation request.
     pub fn task_cancelled(&self) -> bool {
-        self.current_task
-            .is_some_and(|task| self.tasks.is_cancelled(task))
+        match self.current_task {
+            Some(task) => self.tasks.is_cancelled(task),
+            None => self.tasks.root_cancelled(),
+        }
+    }
+    /// Deliver scripted launch signals that precede the next script entry: before
+    /// a host operation starts and at idle points, as the reference executor does.
+    pub fn deliver_script_signals(&mut self) -> R<bool> {
+        let mut delivered = false;
+        while let Some(call) = self.script.as_ref().and_then(|s| s.get(self.cursor))
+            && call.operation == "$signal"
+        {
+            let status = match call.outcome.as_str() {
+                "SIGINT" => 130,
+                "SIGTERM" => 143,
+                other => return Err(format!("E_DRIVER: unknown scenario signal `{other}`")),
+            };
+            let name = call.outcome.clone();
+            self.cursor += 1;
+            if !self.cancels_on_signal {
+                return Err(format!(
+                    "E_DRIVER: {name} terminates the process with status {status}; declare launch.<entry>.signals = \"cancel\" to cancel the entry instead"
+                ));
+            }
+            if self.tasks.root_cancelled() {
+                return Err(format!(
+                    "E_DRIVER: a second signal ({name}) terminates the process with status {status}"
+                ));
+            }
+            self.cancel_entry();
+            delivered = true;
+        }
+        Ok(delivered)
+    }
+    /// A live launch signal arrived and the entry is not yet cancelled.
+    pub fn live_signal_pending(&self) -> bool {
+        self.live_signals && launch_signals::received() && !self.tasks.root_cancelled()
+    }
+    /// Deliver a pending live launch signal: cancel the entry.
+    pub fn deliver_live_signal(&mut self) -> bool {
+        if self.live_signal_pending() {
+            self.cancel_entry();
+            return true;
+        }
+        false
+    }
+    /// Cancel the entry chain and everything beneath it.
+    pub fn cancel_entry(&mut self) {
+        self.tasks.cancel_root();
+        self.signal_wake = true;
+    }
+    pub fn take_signal_wake(&mut self) -> bool {
+        std::mem::take(&mut self.signal_wake)
     }
     /// An owner admitted by the selected context belongs to its task.
     fn record_owner(&mut self, owner: tasks::OwnerId) {
@@ -1972,10 +2078,26 @@ pub fn launch(
     {
         return Err("E_HOST: live resource arguments cannot be supplied as JSON; acquire resources inside the executable entry".into());
     }
+    let cancels_on_signal = manifest["launch"][entry.as_str()]["signals"] == "cancel";
     let mut host = Host::new(manifest, script, json_output, fuel);
+    host.cancels_on_signal = cancels_on_signal;
     host.rust_adapter = rust_adapter;
     host.rust_start = rust_start;
     host.readiness = rust_readiness()?;
+    if cancels_on_signal && host.script.is_none() {
+        host.live_signals = true;
+        if let Some(fd) = launch_signals::install()
+            && let Some(readiness) = host.readiness.as_mut()
+        {
+            readiness.register(
+                SIGNAL_TOKEN,
+                Descriptor {
+                    fd,
+                    writable: false,
+                },
+            )?;
+        }
+    }
     host.activations = fault::Tracker::new(
         serde_json::from_str(sites).map_err(|e| format!("E_NATIVE: invalid source table: {e}"))?,
     );

@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.229.0** implements the v0.1 checked core and the current language
+Compiler release **0.230.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -21,6 +21,11 @@ Release 0.222 added dynamic task sets. `tasks<producer>` holds any number of
 spawned children of one async control. `spawn producer(..) into set;` adds a member,
 `delta await next set { ..., empty => ... }` joins members in completion order, and
 `count(borrow set)` bounds how many run at once.
+
+Release 0.230 adds opt-in signal cancellation: with `launch.<entry>.signals` set to
+`"cancel"`, the first SIGINT or SIGTERM cancels the entry and all its tasks, and a
+second exits with 128 + signal. The settings service uses it to shut down
+gracefully, replying 503 to connections still waiting for a request.
 
 Release 0.229 runs cancellation in native executables too, including live polled
 adapters, with the same schedules as the reference executor.

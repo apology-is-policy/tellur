@@ -238,6 +238,7 @@ impl HostOperation {
         deliver: HostDeliver,
         cancellable: bool,
     ) -> R<Self> {
+        host.deliver_script_signals()?;
         if cancellable && host.task_cancelled() {
             // A cancelled operation does not start: no script entry or adapter.
             host.release_consumed(operation, &arguments)?;

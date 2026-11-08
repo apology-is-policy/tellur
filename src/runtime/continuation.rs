@@ -87,6 +87,7 @@ impl CheckedProgram {
                     steps_left: steps,
                     values: BTreeMap::new(),
                     tasks: Registry::default(),
+                    cancels_on_signal: false,
                     domains: Domains::default(),
                     suspended: SuspendedCalls::default(),
                     ready: BTreeMap::new(),
@@ -236,6 +237,8 @@ struct SharedExecution<'a> {
     steps_left: usize,
     values: BTreeMap<Id, Value>,
     tasks: Registry,
+    /// The entry declared `launch.<entry>.signals = "cancel"`.
+    cancels_on_signal: bool,
     domains: Domains,
     suspended: SuspendedCalls<'a>,
     ready: BTreeMap<TaskId, ReadyCall<'a>>,
@@ -362,6 +365,8 @@ fn completion(flow: Flow) -> Result<Completion> {
 }
 impl<'a> Machine<'a> {
     fn enter(&mut self, scenario: &Scenario) -> Result<()> {
+        self.shared.cancels_on_signal =
+            self.shared.program.entry_cancels_on_signal(&scenario.entry);
         let region = self.shared.program.region(&scenario.entry);
         if region.is_some_and(|r| r.asynchronous) {
             return Err(error(
@@ -1494,6 +1499,7 @@ impl<'a> Machine<'a> {
         arms: &'a [Arm],
     ) -> Result<()> {
         let primitive = self.host_operation(name).unwrap();
+        self.deliver_script_signals()?;
         let arguments = self.arguments(args)?;
         let cancellable = self
             .context

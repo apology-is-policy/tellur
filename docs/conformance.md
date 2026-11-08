@@ -6081,3 +6081,22 @@ operation: its state drops before the supplier and it never completes.
 `tests/host_operations.rs` adds native parity for a child fault reaching a root
 chain parked by `run`, which previously stopped with `E_NATIVE: source task wait
 has no runnable producer`.
+
+## Signal cancellation and graceful settings shutdown (0.230 / E1e.3)
+
+An entry whose manifest launch configuration sets `"signals": "cancel"` is
+cancelled by the first SIGINT or SIGTERM; a second terminates with 128 + signal.
+Scenario `$signal` entries reproduce this deterministically in both executors.
+The loopback HTTP library adds `accept_cancellable` and `receive_cancellable`, and
+the settings service uses them to stop gracefully. Its HTTP adapter now sends
+status 503.
+
+`tests/cancellation.rs` cancels an entry with a pending set member and a pending
+accept, in the reference executor and as a native executable with identical JSON,
+and checks that a scripted signal without the policy, or a second signal, ends the
+run with the termination status. `tests/settings_http.rs` scripts a SIGTERM while a
+member waits for its request and the loop waits to accept: the member replies 503,
+the service reports `stopped`, and the native executable matches. Two live tests
+send real signals to a native server: after a served request, SIGTERM makes an idle
+connection receive 503 and the process exit 0 with `stopped`; two pending signals
+terminate it with 130 or 143.

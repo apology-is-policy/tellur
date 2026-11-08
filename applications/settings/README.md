@@ -273,10 +273,13 @@ build and launch from the integrated terminal to see a port-0 URL immediately.
 Use small budgets for `--json`: it retains request/response traces, which can contain
 settings values and grow with the number of connections.
 
-Budget/idle completion is the graceful stop mechanism in this checkpoint. Ctrl-C
-is process termination, not a Tellur cancellation protocol. Signal-driven graceful
-shutdown and cancellation (stopping in-flight connections) remain roadmap work; no
-Rust future or executor ABI has been introduced.
+Besides budget and idle completion, the service stops gracefully on Ctrl-C or
+SIGTERM (since 0.230; the manifest sets `launch.serve.signals` to `"cancel"`). The
+signal cancels the entry: the accept loop stops admitting and cancels its members,
+members still waiting for a request reply `503 Service is shutting down`, responses
+already being sent complete, and after draining the service reports `stopped`
+(status 0). A second signal terminates at once with status 130 or 143. No Rust future
+or executor ABI has been introduced.
 
 Changing dependencies is explicit:
 

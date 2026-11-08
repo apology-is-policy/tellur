@@ -73,8 +73,8 @@ pub(super) fn pump_scheduler() -> String {
     );
     replace(
         &mut scheduler,
-        "        match contexts.advance_retained(&key, quota())? {",
-        "        let quantum=quota();\n        if quantum>0 && pump.poll_ready(&mut contexts,&key)? {continue;}\n        match contexts.advance_retained(&key, quantum)? {",
+        "        let poll = contexts.advance_retained(&key, quota())?;",
+        "        let quantum=quota();\n        if quantum>0 && pump.poll_ready(&mut contexts,&key)? {continue;}\n        let poll = contexts.advance_retained(&key, quantum)?;",
     );
     replace(
         &mut scheduler,

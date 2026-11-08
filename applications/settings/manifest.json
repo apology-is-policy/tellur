@@ -653,6 +653,9 @@
     }
   },
   "launch": {
+    "serve": {
+      "signals": "cancel"
+    },
     "set": {
       "exit_codes": {
         "saved": 0,

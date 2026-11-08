@@ -24,8 +24,8 @@ fn live_source(p: &CheckedProgram) -> String {
     );
     replace(
         &mut code,
-        "        match contexts.advance_retained(&key, quantum)? {",
-        "        let reads=crate::rust_host::live_read_count();\n        let progress=contexts.advance_retained(&key, quantum)?;\n        if quantum==0 {assert_eq!(reads,crate::rust_host::live_read_count(),\"zero quota read from socket\");}\n        match progress {",
+        "        let poll = contexts.advance_retained(&key, quantum)?;",
+        "        let reads=crate::rust_host::live_read_count();\n        let poll=contexts.advance_retained(&key, quantum)?;\n        if quantum==0 {assert_eq!(reads,crate::rust_host::live_read_count(),\"zero quota read from socket\");}",
     );
     code
 }

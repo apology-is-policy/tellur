@@ -25,6 +25,28 @@ pub outcome receive_result {
     failed { string message }
 }
 
+// The same alternatives plus `cancelled`, selected when the caller's task (or the
+// entry, after a launch signal) is cancelled while the operation waits.
+pub outcome cancellable_accept_result {
+    accepted { http_connection connection },
+    idle,
+    failed { string message },
+    cancelled
+}
+
+pub outcome cancellable_receive_result {
+    request { string method, string target, map<string, string> headers, string body },
+    malformed { string message },
+    headers_too_large,
+    body_too_large,
+    unsupported_transfer,
+    unsupported_expectation,
+    timed_out,
+    disconnected,
+    failed { string message },
+    cancelled
+}
+
 pub outcome send_result {
     sent,
     failed { string message }
@@ -51,6 +73,42 @@ pub async control accept(ref http_listener listener, u32 idle_ms) exits accept_r
 
 pub async control receive(ref http_connection connection) exits receive_result {
     forward await http_receive(connection);
+}
+
+// `accept` that stops waiting when cancelled.
+pub async control accept_cancellable(
+    ref http_listener listener,
+    u32 idle_ms
+) exits cancellable_accept_result {
+    exit delta await http_accept(listener, idle_ms) {
+        accepted { http_connection connection } => accepted { connection },
+        idle => idle {},
+        failed { string message } => failed { message },
+        cancelled => cancelled {}
+    };
+}
+
+// `receive` that stops reading when cancelled; the connection stays open.
+pub async control receive_cancellable(
+    ref http_connection connection
+) exits cancellable_receive_result {
+    exit delta await http_receive(connection) {
+        request {
+            string method,
+            string target,
+            map<string, string> headers,
+            string body
+        } => request { method, target, headers, body },
+        malformed { string message } => malformed { message },
+        headers_too_large => headers_too_large {},
+        body_too_large => body_too_large {},
+        unsupported_transfer => unsupported_transfer {},
+        unsupported_expectation => unsupported_expectation {},
+        timed_out => timed_out {},
+        disconnected => disconnected {},
+        failed { string message } => failed { message },
+        cancelled => cancelled {}
+    };
 }
 
 pub async control send(

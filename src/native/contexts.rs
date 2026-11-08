@@ -165,10 +165,10 @@ impl<'a> Contexts<'a> {
             let observes = live
                 && self.parked.get(&key.id).is_some_and(|parked| {
                     parked.machine.host_cancellable()
-                        && parked
-                            .host
-                            .task
-                            .is_some_and(|task| self.host.tasks.is_cancelled(task))
+                        && match parked.host.task {
+                            Some(task) => self.host.tasks.is_cancelled(task),
+                            None => self.host.tasks.root_cancelled(),
+                        }
                 });
             if observes {
                 self.signal_readiness(&token)?;
@@ -196,6 +196,10 @@ impl<'a> Contexts<'a> {
     /// eligibility; the operation polls when its context is selected.
     fn signal_host_operation(&mut self) -> R<Option<ContextKey>> {
         loop {
+            // A live launch signal is delivered by the driver before readiness.
+            if self.host.live_signal_pending() {
+                return Ok(None);
+            }
             // Owning settlement may already have retired an operation's context.
             let waits = &self.waits;
             self.host_waits.retain(|(key, token)| {

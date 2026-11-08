@@ -144,8 +144,8 @@ fn queue_source(p: &CheckedProgram) -> String {
     let mut scheduler = super::super::source_tests::pump_scheduler();
     replace(
         &mut scheduler,
-        "        match contexts.advance_retained(&key, quantum)? {",
-        "        let reads=crate::rust_host::read_count();\n        let step=contexts.advance_retained(&key, quantum)?;\n        if quantum==0 {assert_eq!(reads,crate::rust_host::read_count());}\n        match step {",
+        "        let poll = contexts.advance_retained(&key, quantum)?;",
+        "        let reads=crate::rust_host::read_count();\n        let poll=contexts.advance_retained(&key, quantum)?;\n        if quantum==0 {assert_eq!(reads,crate::rust_host::read_count());}",
     );
     replace(&mut code, include_str!("source_scheduler.rs"), &scheduler);
     code
