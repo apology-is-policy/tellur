@@ -487,6 +487,9 @@ impl Generator<'_> {
                         | Operation::Next(_) => {
                             unreachable!("source scheduling uses compiled continuations")
                         }
+                        Operation::Cancel(_) => {
+                            unreachable!("native cancellation is rejected before generation")
+                        }
                         Operation::Defer(name) => format!(
                             "(String::from({}), vec![V::Task {{binding: None, ty: {}.into(), operation: {}.into(), arguments: {}}}])",
                             string("$pending"),
@@ -563,6 +566,30 @@ impl CheckedProgram {
         self.verify()?;
         if self.region(entry).is_none() {
             return Err(error(format!("unknown entry region {entry}")));
+        }
+        fn cancels(code: &[Instruction]) -> bool {
+            code.iter().any(|i| match &i.action {
+                Action::Decide {
+                    operation: Operation::Cancel(_),
+                    ..
+                } => true,
+                Action::Decide {
+                    operation: Operation::Await(name) | Operation::Run(name),
+                    arms,
+                    ..
+                } => {
+                    crate::host_operations::operation(name).is_some()
+                        && arms.iter().any(|arm| arm.outcome == "cancelled")
+                }
+                Action::Loop { body, .. } => cancels(body),
+                Action::Boundary { body, handler, .. } => cancels(body) || cancels(handler),
+                _ => false,
+            })
+        }
+        if self.regions().any(|r| cancels(&r.code)) {
+            return Err(error(
+                "cancellation is not yet supported by the native backend; use the reference executor",
+            ));
         }
         let launch_entries = self.executable_entries(entry)?;
         let names: BTreeMap<_, _> = self

@@ -253,6 +253,7 @@ fn plan(action: &Action, region: &Region, constructors: &BTreeSet<&str>) -> Plan
                 | Operation::Next(_)
                 | Operation::Yield => true,
                 Operation::Defer(_)
+                | Operation::Cancel(_)
                 | Operation::Primitive(_)
                 | Operation::Collection(_)
                 | Operation::Variant(_)

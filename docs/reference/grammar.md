@@ -143,7 +143,7 @@ statement        = "supervise" call ";" | "terminate" ";" | "escalate" ";"
                  | binding | assignment | flat_delta | exit | forwarding
                  | "fault" expression ";" | call ";" | "emit" "(" expression ")" ";"
                  | "drop" "(" expression ")" ";" | "yield" ";"
-                 | "spawn" call "into" name ";"
+                 | "spawn" call "into" name ";" | "cancel" name ";"
                  | "again" name ("(" trailing_list(expression)? ")")? ";"
                  | lexical_boundary | recovery | process_termination ;
 binding          = "mutable"? type name "=" initializer ";" ;
@@ -256,3 +256,8 @@ an empty set. `spawn call into name;` adds a queued member, and the operand
 member, with the producer's alternatives plus `empty`. `count(borrow name)` is the
 number of unjoined members. `next` and `into` are contextual, and stay ordinary
 names elsewhere. See [task sets](async-execution.md#task-sets).
+
+`cancel name;` (0.228) requests cancellation of a started child or of every current
+member of a task set. `cancel` is contextual: only `cancel` followed by a name and `;`
+is the statement. A `cancelled` arm is admitted on a host operation entered by `await`
+or `run`. See [cancellation](async-execution.md#cancellation).

@@ -168,6 +168,7 @@ pub(crate) fn dependency_order(
             }
             Statement::Bind(_, _, e, _)
             | Statement::Drop(e)
+            | Statement::Cancel(e)
             | Statement::Emit(e)
             | Statement::Supervise(e)
             | Statement::Fault(e)

@@ -6046,3 +6046,22 @@ also checks the remaining rejections and that their messages never name `$host`.
 `tests/async_adapters.rs` builds a polled adapter with `run`, `defer` and two
 set members that complete in readiness order. The LSP test checks the new hover
 text and that a borrowed-resource task set reports `tasks<receive>`.
+
+## Cooperative cancellation (0.228 / E1e.1)
+
+`cancel child;` and `cancel set;` are checked and run in the reference executor.
+The checker accepts the contextual statement only in async controls outside
+contingencies, on a local started handle or task set, and rejects deferred tasks.
+A `cancelled` arm is admitted only on a host operation entered by `await` or
+`run`; the verifier admits it only there, and manifests may not declare it.
+Native builds report `E_BACKEND`.
+
+`tests/cancellation.rs` covers a child cancelled while its operation is pending,
+before it starts (no scenario call consumed) and after it completed; operations
+without the arm and joins that are not interrupted; a set whose current members
+are cancelled while a later member completes normally; and propagation to a
+grandchild spawned after the request. Every run matches the expanded program
+and small host quotas. `tests/host_operations.rs` adds reference and native
+evidence that `run` of a pending operation parks a root chain beside started
+children and that child faults reach owners parked by `run`. The grammar and LSP
+tests cover the contextual keyword and hovers.

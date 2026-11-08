@@ -4789,3 +4789,32 @@ appears only inside its own generated control. `display_type` shows a generated
 control as its operation, so hovers and diagnostics say `tasks<receive>`, never
 the internal name. Scripts still list operations in start order. A deferred
 operation starts at its await, and a spawned one at its next scheduling turn.
+
+## Cooperative cancellation (E1e.1, 0.228)
+
+The cancellation design accepted on 8 November keeps cancellation a request that
+the cancelled work completes through its own outcomes. E1e.1 implements it in the
+checker and the reference executor.
+
+- `cancel name;` lowers to the decision `Cancel(producer)` with one internal
+  `$cancel` arm. Like `spawn … into`, it moves the started handle or task set
+  through the operation and re-owns it in place, so ownership, joins and set
+  draining are unchanged. Deferred tasks are rejected: they have not started.
+- The registry records, for each invocation owner, the task whose execution
+  admitted it. A task is cancelled when it, or any task on that chain, has a
+  request. Requests are sticky, idempotent and removed with their task.
+- A host operation entered by `await` or `run` observes cancellation only when its
+  decision lists `cancelled`. The checker adds that outcome to the generated
+  control's alternatives for such a decision, and the verifier admits the extra
+  arm only for host-operation controls. Manifests may not declare it.
+- Observation happens when the operation would start (no scenario call is
+  consumed) and whenever a pending operation is polled. A request wakes pending
+  operations that observe it, in their FIFO order. The stopped operation releases
+  its consumed and returned resources as a stopped operation does, publishes no
+  event, and exits its generated control with `cancelled`.
+
+The same release fixes two reference-executor gaps in `run` of a host operation
+from synchronous code: a root chain without a task can now park while it is
+pending, and a child fault reaches an owner parked that way. Both match native
+executables. Native cancellation (E1e.2) and signal-driven cancellation with a
+graceful settings shutdown (E1e.3) follow.

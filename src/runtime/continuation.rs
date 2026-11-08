@@ -446,6 +446,9 @@ impl<'a> Machine<'a> {
             self.context.domain = Some(scope.id);
         }
         self.shared.tasks.commit_owner(owner);
+        if let Some((task, _)) = self.context.task {
+            self.shared.tasks.record_owner_task(owner, task);
+        }
         self.shared.next_base = next_base;
         for (param, value) in region.parameters.iter().zip(arguments) {
             self.shared.values.insert(base + param.id, value);
@@ -1367,6 +1370,13 @@ impl<'a> Machine<'a> {
                 self.source_next(name, args, arms)?;
             }
             Action::Decide {
+                operation: Operation::Cancel(name),
+                args,
+                arms,
+            } => {
+                self.source_cancel(name, args, arms)?;
+            }
+            Action::Decide {
                 operation: Operation::Yield,
                 arms,
                 ..
@@ -1449,6 +1459,14 @@ impl<'a> Machine<'a> {
                 args,
                 arms,
             } if self.host_operation(name).is_some() => {
+                if self.observes_cancellation(&self.context) {
+                    // A cancelled operation does not start: no script entry is
+                    // consumed and no completion event is published.
+                    for value in self.arguments(args)? {
+                        retire_value(&mut self.shared.tasks, value, true)?;
+                    }
+                    return Ok(Flow::Exit("cancelled".into(), vec![]));
+                }
                 self.start_host_operation(name, args, arms)?;
             }
             Action::Decide {
@@ -1524,6 +1542,14 @@ impl<'a> Machine<'a> {
     }
     /// A woken operation polls once without instruction fuel or host quota.
     fn poll_host_operation(&mut self, mut operation: HostOperation<'a>) -> Result<()> {
+        if self.observes_cancellation(&self.context) {
+            // The pending operation stops without publishing its completion.
+            for value in operation.arguments.into_iter().chain(operation.fields) {
+                retire_value(&mut self.shared.tasks, value, true)?;
+            }
+            self.context.flow = Some(Ok(Flow::Exit("cancelled".into(), vec![])));
+            return Ok(());
+        }
         operation.waits -= 1;
         if operation.waits == 0 {
             return self.complete_host_operation(operation);
@@ -1685,6 +1711,7 @@ impl<'a> Machine<'a> {
                     | Operation::Spawn(_)
                     | Operation::SpawnInto(_)
                     | Operation::Next(_)
+                    | Operation::Cancel(_)
                     | Operation::Yield => unreachable!("task operation has a continuation"),
                     Operation::Collection(name) => collection(name, args, values)?,
                     Operation::Region(name) | Operation::Run(name) | Operation::Await(name) => {

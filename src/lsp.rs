@@ -571,6 +571,19 @@ impl Server {
                     "next" if index > 0 && tokens[index - 1].is("await") => Some(
                         "`await next set` joins the earliest completed member of a task set, suspending while members are still running. Arms handle every producer outcome plus `empty`, which selects without suspending when the set has no members and retires the set. Member faults stop the owning boundary; they are never outcomes.",
                     ),
+                    "cancel"
+                        if tokens.get(index + 2).is_some_and(|t| t.is(";"))
+                            && tokens
+                                .get(index + 1)
+                                .is_some_and(|t| matches!(&t.kind, syntax::Kind::Word(_))) =>
+                    {
+                        Some(
+                            "`cancel child;` or `cancel set;` requests cancellation of a started child or of every current member of a task set, including the tasks they start later. The request is sticky and idempotent; it neither suspends nor consumes the handle, which must still be joined. Work observes it only at a host operation entered by await whose decision lists `cancelled`; joins and other operations are never interrupted. Deferred tasks have not started and cannot be cancelled.",
+                        )
+                    }
+                    "cancelled" if tokens.get(index + 1).is_some_and(|t| t.is("=>")) => Some(
+                        "`cancelled => label` is the cancellation alternative of a manifest async host operation entered by await or run. When the operation's task, or a task it was created beneath, has been cancelled, the pending operation stops without publishing its completion and this arm is selected. Without the arm, the operation is not interrupted.",
+                    ),
                     "yield" => Some(
                         "`yield;` explicitly lets already runnable tasks proceed, placing this async invocation behind them. It is unavailable in synchronous or contingency code. Host quotas do not cause source handoffs.",
                     ),

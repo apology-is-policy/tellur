@@ -157,6 +157,15 @@ impl Admission<'_> {
                     ));
                 }
             }
+            Statement::Cancel(_) => {
+                if !self.asynchronous || contingent {
+                    return Err(Diagnostic::new(
+                        "E_ASYNC",
+                        at,
+                        "cancel requires an async control outside contingency code",
+                    ));
+                }
+            }
             Statement::Invoke(e) | Statement::Forward(e) | Statement::Capture(_, _, e, _) => {
                 if e.call_mode == CallMode::Next {
                     return Err(Diagnostic::new(

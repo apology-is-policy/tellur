@@ -280,7 +280,8 @@ control main() exits done { forward run startup(); }
 
 This emits `2`, `fast`, `slow`. A set is linear. Every member path keeps it live,
 and only the `empty` alternative retires it, so every normal path must drain the set.
-There is no detach and no implicit cancellation.
+There is no detach and no implicit cancellation. Since 0.228, `cancel set;` explicitly
+requests cancellation of every current member; see [cancellation](#cancellation).
 
 A set may move locally and travel as an ordinary or supervised **loop parameter**.
 That is how an accept loop keeps a growing set across `again`. It may not be a control
@@ -1213,6 +1214,80 @@ async control early(ref handle input) exits done {
     exit done;
 }
 ```
+
+## Cancellation
+
+Compiler 0.228 adds explicit, cooperative cancellation to the reference executor.
+Cancellation is a request, not a fault and not an outcome of the cancelled task: the
+task decides how it finishes, and its owner still joins it.
+
+- `cancel child;` requests cancellation of a started child held in a local
+  `spawn` handle. `cancel set;` requests it for every current member of a
+  `tasks<producer>` set; members added later are not affected.
+- The request is sticky and idempotent. It does not suspend, does not consume the
+  handle or set, and does not change what the owner must do: every child is still
+  joined, and every set is still drained.
+- It reaches everything the cancelled task starts or awaits, at any depth, including
+  children started after the request.
+- Deferred (`defer`) tasks have not started and cannot be cancelled. `cancel` is
+  available in async controls outside contingency code. Outside `cancel name;`,
+  `cancel` remains an ordinary identifier.
+
+Cancelled work observes the request only at a manifest **async host operation**
+entered by `await` or `run` whose decision lists the `cancelled` alternative. When
+the operation's task, or a task beneath which it was created, has been cancelled,
+a pending operation stops without publishing its completion. An operation that has
+not started yet does not start and consumes no scenario call. The `cancelled` arm
+is then selected. An operation that already completed delivers its ordinary
+outcome. Joins, `await next`, `yield` and operations without the arm are never
+interrupted, so the cancelled task reports cancellation through its own outcomes:
+
+<!-- tellur:check -->
+```tellur
+async control reader(ref handle input) exits chunk { bytes data }, stopped {
+    delta await receive(input) {
+        data { bytes data } => received,
+        closed => ended,
+        failed { read_error error } => failed,
+        cancelled => cancelled
+    }
+
+    [received]: exit chunk { data };
+    [ended | failed | cancelled]: exit stopped;
+}
+
+async control watch(ref handle input) exits done {
+    auto child = spawn reader(input);
+    yield;
+    cancel child;
+    delta await child {
+        chunk { bytes data } => read,
+        stopped => stopped
+    }
+
+    [read | stopped]: exit done;
+}
+```
+
+`cancelled` is not a declared outcome. It is admitted only on a host operation, and a
+manifest async primitive may not declare an outcome with that name. Awaiting an async
+control with a `cancelled` arm is an ordinary unknown-outcome error:
+
+<!-- tellur:reject E_ARMS -->
+```tellur
+async control work() exits done { yield; exit done; }
+async control startup() exits done {
+    delta await work() {
+        done => finished,
+        cancelled => cancelled
+    }
+
+    [finished | cancelled]: exit done;
+}
+```
+
+Native executables reject cancellation with `E_BACKEND` until E1e.2. Process
+signals that cancel an entry's tasks follow in E1e.3.
 
 ## Local cold tasks
 

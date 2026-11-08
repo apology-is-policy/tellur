@@ -688,3 +688,173 @@ fn manifest_validation_limits_the_first_async_profile() {
         );
     }
 }
+
+const RUN_HELPER: &str = r#"
+control helper() exits done {
+    delta run tick("direct") {
+        ticked { string label } => ticked
+    }
+
+    [ticked]:
+        emit(label);
+        exit done;
+}
+"#;
+/// A root chain enters an operation with run beside a started child.
+const ROOT_RUN: &str = r#"
+async control step(string label) exits done {
+    emit(borrow label);
+    yield;
+    emit("step after");
+    yield;
+    emit("step last");
+    exit done;
+}
+async control startup() exits done {
+    auto child = spawn step("child");
+    yield;
+    delta helper() {
+        done => helped
+    }
+
+    [helped]:
+        emit("helped");
+        await child;
+        exit done;
+}
+control main() exits done {
+    forward run startup();
+}
+"#;
+/// A started task enters an operation with run while owning a faulting child.
+const TASK_RUN_FAULT: &str = r#"
+async control failing() exits done faults {
+    yield;
+    emit("failing");
+    fault "grandchild failed";
+}
+async control middle() exits done faults {
+    auto grandchild = spawn failing();
+    delta helper() {
+        done => helped
+    }
+
+    [helped]:
+        emit("helped");
+        await grandchild;
+        exit done;
+}
+async control startup() exits done faults {
+    auto child = spawn middle();
+    await child;
+    exit done;
+}
+control main() exits done faults {
+    forward run startup();
+}
+"#;
+/// The root chain owns the faulting child while parked by run.
+const ROOT_RUN_FAULT: &str = r#"
+async control failing() exits done faults {
+    yield;
+    emit("failing");
+    fault "child failed";
+}
+async control startup() exits done faults {
+    auto child = spawn failing();
+    delta helper() {
+        done => helped
+    }
+
+    [helped]:
+        emit("helped");
+        await child;
+        exit done;
+}
+control main() exits done faults {
+    forward run startup();
+}
+"#;
+
+#[test]
+fn run_entered_operations_park_root_and_task_chains() {
+    let p = checked(&format!("{RUN_HELPER}{ROOT_RUN}"));
+    for (waits, expected) in [
+        (
+            0,
+            vec![
+                "child",
+                "tick:direct",
+                "direct",
+                "helped",
+                "step after",
+                "step last",
+            ],
+        ),
+        (
+            2,
+            vec![
+                "child",
+                "step after",
+                "step last",
+                "tick:direct",
+                "direct",
+                "helped",
+            ],
+        ),
+    ] {
+        let s = scenario(vec![tick("direct", waits)]);
+        let result = p.run(&s).unwrap();
+        assert_eq!(trace(&result.events), expected, "waits {waits}");
+        let expanded = p.expanded("main").unwrap().run(&s).unwrap();
+        assert_eq!(expanded.events, result.events);
+    }
+    // A sequential root chain has no other work: its waits elapse in turn.
+    let p = checked(&format!(
+        "{RUN_HELPER}control main() exits done {{\n    forward helper();\n}}\n"
+    ));
+    let result = p.run(&scenario(vec![tick("direct", 3)])).unwrap();
+    assert_eq!(trace(&result.events), ["tick:direct", "direct"]);
+    // Child faults reach owners parked by run, stopping the pending operation.
+    for (source, message) in [
+        (TASK_RUN_FAULT, "grandchild failed"),
+        (ROOT_RUN_FAULT, "child failed"),
+    ] {
+        let p = checked(&format!("{RUN_HELPER}{source}"));
+        for waits in [0, 1, 5] {
+            let failure = p
+                .run_detailed(&scenario(vec![tick("direct", waits)]), 10_000)
+                .unwrap_err();
+            assert!(
+                failure.diagnostic.message.contains(message),
+                "waits {waits}: {failure:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn native_run_entered_operations_match_reference() {
+    let w = Workspace::new("run-parking");
+    let input = w.0.join("scenario.json");
+    let p = checked(&format!("{RUN_HELPER}{ROOT_RUN}"));
+    let binary = native(&p, &w.0, "root-run");
+    for waits in [0, 1, 2, 5] {
+        let s = scenario(vec![tick("direct", waits)]);
+        assert_eq!(
+            native_run(&binary, &input, &s, None).unwrap(),
+            serde_json::to_value(p.run(&s).unwrap()).unwrap(),
+            "waits {waits}"
+        );
+    }
+    let p = checked(&format!("{RUN_HELPER}{TASK_RUN_FAULT}"));
+    let binary = native(&p, &w.0, "task-run-fault");
+    for waits in [0, 1, 5] {
+        let s = scenario(vec![tick("direct", waits)]);
+        let reference = p.run_detailed(&s, 10_000).unwrap_err();
+        same_failure(
+            &native_run(&binary, &input, &s, None).unwrap_err(),
+            &reference.report,
+        );
+    }
+}

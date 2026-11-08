@@ -14,7 +14,7 @@ pub(super) struct Scheduler<'a> {
     pub(super) operations: Option<adapter_operation_model::SourceOperations>,
     runnable: VecDeque<Runnable<'a>>,
     /// Pending async host operations, signalled one per idle point in FIFO order.
-    host_waits: VecDeque<(TaskId, Readiness)>,
+    host_waits: VecDeque<HostWait<'a>>,
     handles: BTreeMap<TaskId, started::StartedTask<'a>>,
     joins: BTreeMap<TaskId, (Context<'a>, started::StartedJoin<'a>, &'a [Arm])>,
     /// Callers suspended by `await next` on a task set with no completed member.
@@ -23,6 +23,25 @@ pub(super) struct Scheduler<'a> {
     /// Source completion order of started children, for `await next`.
     completions: BTreeMap<TaskId, u64>,
     clock: u64,
+}
+/// A task parks through registry readiness. A root chain entering an operation
+/// with run has no task; its context is retained here until signalled.
+enum HostWait<'a> {
+    Task(TaskId, Readiness),
+    Root(Context<'a>),
+}
+impl<'a> HostWait<'a> {
+    fn root(&self) -> Option<&Context<'a>> {
+        match self {
+            HostWait::Root(context) => Some(context),
+            HostWait::Task(..) => None,
+        }
+    }
+}
+enum Blocked {
+    Join(TaskId),
+    Set(usize),
+    Host(usize),
 }
 struct SetWait<'a> {
     context: Context<'a>,
@@ -280,6 +299,99 @@ impl<'a> Machine<'a> {
             }],
         )
     }
+    /// `cancel target;` flags a started child or every current set member. It
+    /// never suspends; parked host operations that observe it are woken in FIFO order.
+    pub(super) fn source_cancel(
+        &mut self,
+        name: &str,
+        args: &[Expr],
+        arms: &'a [Arm],
+    ) -> Result<()> {
+        let mut arguments = self.arguments(args)?;
+        let target = arguments
+            .pop()
+            .filter(|_| arguments.is_empty())
+            .ok_or_else(|| error("cancellation requires one task or set"))?;
+        match &target {
+            Value::Task { id, ty, .. } if *ty == crate::manifest::started_type(name) => {
+                self.shared.tasks.cancel(TaskId(*id));
+            }
+            Value::Construct { ty, fields, .. } if *ty == crate::manifest::task_set_type(name) => {
+                for member in fields {
+                    let Value::Task { id, .. } = member else {
+                        return Err(error("task set member is not a started task"));
+                    };
+                    self.shared.tasks.cancel(TaskId(*id));
+                }
+            }
+            _ => return Err(error("cancellation target is not a started task")),
+        }
+        self.bind(arms, "$cancel".into(), vec![target])?;
+        self.wake_cancelled()
+    }
+    fn wake_cancelled(&mut self) -> Result<()> {
+        let waits = std::mem::take(&mut self.shared.scheduler.host_waits);
+        let mut retained = VecDeque::new();
+        for wait in waits {
+            match wait {
+                HostWait::Task(task, token)
+                    if self
+                        .shared
+                        .waiting
+                        .get(&task)
+                        .is_some_and(|context| self.observes_cancellation(context)) =>
+                {
+                    self.signal_readiness(&token)?;
+                    self.queue_operation_readiness(task);
+                }
+                // Root chains have no task and are not cancelled by a request.
+                wait => retained.push_back(wait),
+            }
+        }
+        self.shared.scheduler.host_waits = retained;
+        Ok(())
+    }
+    /// A host operation observes cancellation only when its task, or a task
+    /// beneath which it was created, is cancelled and the await or run entering
+    /// its generated control lists the `cancelled` alternative.
+    pub(super) fn observes_cancellation(&self, context: &Context<'a>) -> bool {
+        let Some((task, _)) = context.task else {
+            return false;
+        };
+        if !self.shared.tasks.is_cancelled(task) {
+            return false;
+        }
+        let Some(index) = context
+            .stack
+            .iter()
+            .rposition(|c| matches!(c, Continuation::Call { .. }))
+        else {
+            return false;
+        };
+        let Continuation::Call { region, .. } = &context.stack[index] else {
+            unreachable!()
+        };
+        if crate::host_operations::operation(&region.name).is_none() {
+            return false;
+        }
+        let arms = match index.checked_sub(1).map(|i| &context.stack[i]) {
+            Some(Continuation::Decision(arms)) => *arms,
+            Some(Continuation::ResumeAwait { task, wait, caller }) => {
+                match self
+                    .shared
+                    .suspended
+                    .get(*caller, *task, *wait)
+                    .ok()
+                    .and_then(|caller| caller.stack.last())
+                {
+                    Some(Continuation::TaskDecision { arms, .. }) => *arms,
+                    _ => return false,
+                }
+            }
+            _ => return false,
+        };
+        arms.iter().any(|arm| arm.outcome == "cancelled")
+    }
     /// `await next`: an empty set selects `empty` without a handoff. Otherwise the
     /// earliest completed member is joined, or the caller waits for one; either
     /// way the caller then rejoins the source FIFO like any consuming await.
@@ -445,34 +557,59 @@ impl<'a> Machine<'a> {
     /// Park the selected host-operation task until a later idle point. Readiness
     /// changes eligibility only; the woken task rejoins the source FIFO.
     pub(super) fn park_host_operation(&mut self) -> Result<()> {
-        let task = self
-            .context
-            .task
-            .ok_or_else(|| error("async host operation requires an admitted task"))?
-            .0;
-        let token = self.park_for_readiness()?;
+        let wait = if let Some((task, _)) = self.context.task {
+            HostWait::Task(task, self.park_for_readiness()?)
+        } else {
+            // A root chain entered the operation with run. It may own started
+            // children, which keep running while it waits.
+            self.require_live_process()?;
+            if self.context.frame.owner.is_none()
+                || self.context.flow.is_some()
+                || !self.context.contingencies.is_empty()
+            {
+                return Err(error("readiness requires a live normal continuation"));
+            }
+            self.shared.domains.require_open(
+                self.context
+                    .domain
+                    .ok_or_else(|| error("running context has no fault domain"))?,
+            )?;
+            HostWait::Root(std::mem::replace(
+                &mut self.context,
+                Context::new(Default::default()),
+            ))
+        };
         self.shared.scheduler.enabled = true;
-        self.shared.scheduler.host_waits.push_back((task, token));
+        self.shared.scheduler.host_waits.push_back(wait);
         self.select_source()
     }
     fn signal_host_operation(&mut self) -> Result<bool> {
-        while let Some((task, token)) = self.shared.scheduler.host_waits.pop_front() {
-            // Owning settlement may already have retired this operation's task.
-            if !self.shared.waiting.contains_key(&task) {
-                continue;
+        while let Some(wait) = self.shared.scheduler.host_waits.pop_front() {
+            match wait {
+                HostWait::Task(task, token) => {
+                    // Owning settlement may already have retired this operation's task.
+                    if !self.shared.waiting.contains_key(&task) {
+                        continue;
+                    }
+                    self.signal_readiness(&token)?;
+                    self.queue_operation_readiness(task);
+                }
+                HostWait::Root(context) => self
+                    .shared
+                    .scheduler
+                    .runnable
+                    .push_back(Runnable::Context(context)),
             }
-            self.signal_readiness(&token)?;
-            self.queue_operation_readiness(task);
             return Ok(true);
         }
         Ok(false)
     }
     pub(super) fn prune_source(&mut self) {
         let waiting = &self.shared.waiting;
-        self.shared
-            .scheduler
-            .host_waits
-            .retain(|(task, _)| waiting.contains_key(task));
+        self.shared.scheduler.host_waits.retain(|wait| match wait {
+            HostWait::Task(task, _) => waiting.contains_key(task),
+            HostWait::Root(_) => true,
+        });
         self.shared
             .scheduler
             .handles
@@ -550,10 +687,45 @@ impl<'a> Machine<'a> {
                 .set_waits
                 .iter()
                 .position(|w| contains_owner(&w.context, owner));
+            let host = self
+                .shared
+                .scheduler
+                .host_waits
+                .iter()
+                .position(|w| w.root().is_some_and(|c| contains_owner(c, owner)));
+            let waiting = self
+                .shared
+                .waiting
+                .iter()
+                .find_map(|(task, c)| contains_owner(c, owner).then_some(*task));
             if let Some(task) = task {
                 self.shared.scheduler.joins.remove(&task).unwrap().0
             } else if let Some(index) = set {
                 self.shared.scheduler.set_waits.remove(index).context
+            } else if let Some(index) = host {
+                // A chain parked by run keeps its pending operation on its stack;
+                // the routed fault stops it before the owner's unwind.
+                let Some(HostWait::Root(context)) = self.shared.scheduler.host_waits.remove(index)
+                else {
+                    unreachable!()
+                };
+                context
+            } else if let Some(task) = waiting {
+                // A task parked by run resumes running to unwind; its readiness
+                // registration is withdrawn so no later signal can select it.
+                let index = self
+                    .shared
+                    .scheduler
+                    .host_waits
+                    .iter()
+                    .position(|w| matches!(w, HostWait::Task(t, _) if *t == task))
+                    .ok_or_else(|| error("parked owner has no host readiness"))?;
+                let Some(HostWait::Task(_, token)) = self.shared.scheduler.host_waits.remove(index)
+                else {
+                    unreachable!()
+                };
+                self.shared.tasks.withdraw(&token)?;
+                self.shared.waiting.remove(&task).unwrap()
             } else {
                 self.restore_source_await(owner)?
             }
@@ -603,6 +775,13 @@ impl<'a> Machine<'a> {
                 .set_waits
                 .iter()
                 .any(|w| w.context.domain == Some(domain))
+            || self
+                .shared
+                .scheduler
+                .host_waits
+                .iter()
+                .filter_map(HostWait::root)
+                .any(|c| c.domain == Some(domain))
     }
     pub(super) fn settle_source(&mut self, domain: Option<DomainId>) -> bool {
         let selected = |c: &Context<'a>| {
@@ -627,7 +806,7 @@ impl<'a> Machine<'a> {
             .joins
             .iter()
             .filter_map(|(id, (c, _, _))| {
-                selected(c).then_some((c.task.map_or(0, |t| t.0.0), Ok(*id)))
+                selected(c).then_some((c.task.map_or(0, |t| t.0.0), Blocked::Join(*id)))
             })
             .chain(
                 self.shared
@@ -637,7 +816,19 @@ impl<'a> Machine<'a> {
                     .enumerate()
                     .filter_map(|(i, w)| {
                         selected(&w.context)
-                            .then_some((w.context.task.map_or(0, |t| t.0.0), Err(i)))
+                            .then_some((w.context.task.map_or(0, |t| t.0.0), Blocked::Set(i)))
+                    }),
+            )
+            .chain(
+                self.shared
+                    .scheduler
+                    .host_waits
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(i, w)| {
+                        w.root()
+                            .filter(|c| selected(c))
+                            .map(|c| (c.task.map_or(0, |t| t.0.0), Blocked::Host(i)))
                     }),
             )
             .max_by_key(|(task, _)| *task);
@@ -650,8 +841,15 @@ impl<'a> Machine<'a> {
             c
         } else if let Some((_, waiting)) = blocked {
             match waiting {
-                Ok(id) => self.shared.scheduler.joins.remove(&id).unwrap().0,
-                Err(i) => self.shared.scheduler.set_waits.remove(i).context,
+                Blocked::Join(id) => self.shared.scheduler.joins.remove(&id).unwrap().0,
+                Blocked::Set(i) => self.shared.scheduler.set_waits.remove(i).context,
+                Blocked::Host(i) => {
+                    let Some(HostWait::Root(context)) = self.shared.scheduler.host_waits.remove(i)
+                    else {
+                        unreachable!()
+                    };
+                    context
+                }
             }
         } else {
             return false;

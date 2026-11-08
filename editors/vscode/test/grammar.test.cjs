@@ -335,6 +335,14 @@ test('task set keywords are contextual', () => {
   assert.ok(!plain.some(t => (t.text === 'next' || t.text === 'into') && t.scopes.includes('keyword.control.tellur')), JSON.stringify(plain));
 });
 
+test('cancel is a keyword only as a cancellation statement', () => {
+  const ts = tokens('async control work() exits done { auto child = spawn helper(); cancel child; await child; exit done; }');
+  has(ts, 'cancel', 'keyword.control.tellur');
+  assert.ok(!ts.some(t => t.text === 'child' && t.scopes.includes('variable.other.definition.tellur') && t.scopes.includes('storage.type.tellur')), JSON.stringify(ts));
+  const plain = tokens('control main() exits done { u32 cancel = 1; auto value = cancel; exit done; }');
+  assert.ok(!plain.some(t => t.text === 'cancel' && t.scopes.includes('keyword.control.tellur')), JSON.stringify(plain));
+});
+
 test('owned spawn and explicit yield retain control keyword scopes', () => {
   const ts = tokens('async control work() exits done { auto child = spawn helper(); yield; await child; exit done; }');
   has(ts, 'spawn', 'keyword.control.tellur');

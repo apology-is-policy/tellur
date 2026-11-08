@@ -3226,6 +3226,7 @@ impl Checker<'_> {
             Statement::Assign(target, expression) => {
                 self.assignment(target, expression, guard, domain, span)?;
             }
+            Statement::Cancel(target) => self.cancel(target, guard, domain, span)?,
             Statement::Yield => {
                 self.record_stop_obligations(domain);
                 self.started_fault_permission(domain, span)?;
@@ -4278,6 +4279,18 @@ impl Checker<'_> {
             })?;
             (Operation::Variant(expr), vec![], outcomes, Some(ty))
         };
+        // A host operation entered by await or run observes cancellation only
+        // where the decision lists the compiler-recognized `cancelled` alternative.
+        let mut outcomes = outcomes;
+        if let Operation::Await(name) | Operation::Run(name) = &operation
+            && crate::host_operations::operation(name).is_some()
+            && arms.iter().any(|arm| arm.outcome == "cancelled")
+        {
+            outcomes.push(manifest::Outcome {
+                name: "cancelled".into(),
+                fields: vec![],
+            });
+        }
         let mut arms = arms.to_vec();
         let mut authored_outcomes = BTreeMap::new();
         for arm in &mut arms {

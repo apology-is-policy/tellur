@@ -718,6 +718,53 @@ impl Checker<'_> {
         );
         Ok(())
     }
+    /// `cancel name;` flags a started child or every current set member. The
+    /// value is moved through the operation and re-owned in place.
+    pub(super) fn cancel(
+        &mut self,
+        target: &syntax::Expr,
+        guard: Guard,
+        domain: Formula,
+        span: Span,
+    ) -> Result<()> {
+        let place = match &target.kind {
+            syntax::ExprKind::Name(_) => self.resolve_place(target, span)?,
+            _ => None,
+        }
+        .filter(|place| place.place.fields.is_empty() && !place.place.indirect)
+        .filter(|place| {
+            manifest::task_set_inner(&place.ty).is_some() || manifest::is_started(&place.ty)
+        })
+        .ok_or_else(|| {
+            self.error(
+                "E_ASYNC",
+                span,
+                "cancel requires a local started child or tasks<producer> binding; deferred tasks have not started",
+            )
+        })?;
+        let producer = manifest::task_set_inner(&place.ty)
+            .or_else(|| manifest::task_inner(&place.ty))
+            .unwrap()
+            .to_string();
+        let (value, _) = self.use_place(place.clone(), domain, true, span)?;
+        self.reown_task_set(&place, domain);
+        let atom = self.fresh();
+        self.result.atoms.insert(atom, "$cancel".into());
+        self.emit(
+            guard,
+            Action::Decide {
+                operation: Operation::Cancel(producer),
+                args: vec![value],
+                arms: vec![ir::Arm {
+                    outcome: "$cancel".into(),
+                    atom,
+                    slots: vec![place.place.root],
+                }],
+            },
+            span,
+        );
+        Ok(())
+    }
     pub(super) fn await_next(
         &mut self,
         operand: &syntax::Expr,

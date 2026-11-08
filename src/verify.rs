@@ -937,6 +937,35 @@ impl Verifier<'_> {
                                 fields: vec![],
                             }]
                         }
+                        Operation::Cancel(name) => {
+                            let r = self
+                                .program
+                                .region(name)
+                                .ok_or_else(|| error("unknown callee"))?;
+                            if !r.asynchronous
+                                || !self.region.asynchronous
+                                || self.region.contingent
+                                || self.handler
+                            {
+                                return Err(error("invalid cancellation request"));
+                            }
+                            let [target] = args.as_slice() else {
+                                return Err(error("cancellation takes one task or set"));
+                            };
+                            let ty = self.expr(target)?;
+                            if ty != crate::manifest::started_type(name)
+                                && ty != crate::manifest::task_set_type(name)
+                            {
+                                return Err(error("cancellation target is not a started task"));
+                            }
+                            vec![crate::manifest::Outcome {
+                                name: "$cancel".into(),
+                                fields: vec![Field {
+                                    name: "$target".into(),
+                                    ty,
+                                }],
+                            }]
+                        }
                         Operation::Variant(e) => {
                             if !args.is_empty() {
                                 return Err(error("variant decision has call args"));
@@ -1087,7 +1116,20 @@ impl Verifier<'_> {
                                     }],
                                 }]
                             } else {
-                                r.exits.clone()
+                                let mut exits = r.exits.clone();
+                                // Host operations admit the cancellation alternative
+                                // only where a decision lists it.
+                                if matches!(operation, Operation::Await(_) | Operation::Run(_))
+                                    && crate::host_operations::operation(name).is_some()
+                                    && arms.iter().any(|arm| arm.outcome == "cancelled")
+                                    && !exits.iter().any(|o| o.name == "cancelled")
+                                {
+                                    exits.push(crate::manifest::Outcome {
+                                        name: "cancelled".into(),
+                                        fields: vec![],
+                                    });
+                                }
+                                exits
                             }
                         }
                         Operation::Collection(name) => {

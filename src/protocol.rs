@@ -175,6 +175,7 @@ impl Graph {
                         | Operation::Join(_)
                         | Operation::SpawnInto(_)
                         | Operation::Next(_)
+                        | Operation::Cancel(_)
                         | Operation::Yield => {
                             return Err(error(
                                 "protocol analysis cannot erase run or await boundaries",

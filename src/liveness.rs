@@ -82,6 +82,7 @@ pub fn statement(stmt: &Statement, names: &mut BTreeSet<String>) {
         Statement::ExitOutcome(e) | Statement::BindOutcome(_, _, e, _) => outcome(e, names),
         Statement::Bind(_, _, e, _)
         | Statement::Drop(e)
+        | Statement::Cancel(e)
         | Statement::Emit(e)
         | Statement::Supervise(e)
         | Statement::Fault(e) => expression(e, names),

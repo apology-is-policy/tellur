@@ -210,7 +210,7 @@
           }
         },
         {
-          "match": "\\b((?!(?:async|run|await|defer|spawn|into|yield|forward|mutable|borrow|deref|move|from|ref|fault|faults|retains|supervise|supervised|recover|process|terminate|escalate|contingency)\\b)(?:auto|[a-z_][a-z_0-9]*)(?:\\.[a-z_][a-z_0-9]*)*(?:<[^;{}\\n]*>(?:\\.[a-z_][a-z_0-9]*)?)?)\\s+([a-z_][a-z_0-9]*)(?=\\s*(?:from\\b|<-|=|[,)};]))",
+          "match": "\\b((?!(?:async|run|await|defer|spawn|into|yield|forward|mutable|borrow|deref|move|from|ref|fault|faults|retains|supervise|supervised|recover|process|terminate|escalate|contingency)\\b|cancel\\s+[a-z_][a-z_0-9]*\\s*;)(?:auto|[a-z_][a-z_0-9]*)(?:\\.[a-z_][a-z_0-9]*)*(?:<[^;{}\\n]*>(?:\\.[a-z_][a-z_0-9]*)?)?)\\s+([a-z_][a-z_0-9]*)(?=\\s*(?:from\\b|<-|=|[,)};]))",
           "captures": {
             "1": {
               "name": "storage.type.tellur"
@@ -367,9 +367,9 @@
           "match": "\\b(mutable|pub)\\b"
         },
         {
-          "comment": "Task set keywords are contextual: `await next set` and `spawn ... into set;`.",
+          "comment": "Task set and cancellation keywords are contextual: `await next set`, `spawn ... into set;` and `cancel name;`.",
           "name": "keyword.control.tellur",
-          "match": "(?<=\\bawait\\s)next\\b(?=\\s+[a-z_])|\\binto\\b(?=\\s+[a-z_][a-z_0-9]*\\s*;)"
+          "match": "(?<=\\bawait\\s)next\\b(?=\\s+[a-z_])|\\binto\\b(?=\\s+[a-z_][a-z_0-9]*\\s*;)|\\bcancel\\b(?=\\s+[a-z_][a-z_0-9]*\\s*;)"
         },
         {
           "name": "keyword.control.tellur",

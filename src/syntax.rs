@@ -227,6 +227,7 @@ pub enum Statement {
     Drop(Expr),
     Emit(Expr),
     Yield,
+    Cancel(Expr),
     Fault(Expr),
     Exit(String, Vec<Expr>),
     ExitOutcome(OutcomeExpr),
@@ -1639,6 +1640,18 @@ impl Parser {
             if self.at("forward") && !self.tokens.get(self.pos + 1).is_some_and(|t| t.is("(")) {
                 self.pos += 1;
                 Statement::Forward(self.expr(0)?)
+            } else if self.at("cancel")
+                && matches!(
+                    self.tokens.get(self.pos + 1).map(|token| &token.kind),
+                    Some(Kind::Word(_))
+                )
+                && self.tokens.get(self.pos + 2).is_some_and(|t| t.is(";"))
+            {
+                // `cancel name;` requests cancellation of a started child or set.
+                self.pos += 1;
+                let target = self.here();
+                let name = self.id()?;
+                Statement::Cancel(ExprKind::Name(name).at(self.range_from(target)))
             } else if self.eat("yield") {
                 Statement::Yield
             } else if self.eat("supervise") {

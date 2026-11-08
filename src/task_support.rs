@@ -58,6 +58,11 @@ pub(crate) struct Registry {
     owners: BTreeMap<OwnerId, BTreeSet<TaskId>>,
     tasks: BTreeMap<TaskId, Task>,
     ready: VecDeque<TaskId>,
+    /// The task whose execution admitted each invocation owner. Cancellation
+    /// propagates from a task to every task created beneath it.
+    owner_tasks: BTreeMap<OwnerId, TaskId>,
+    /// Sticky cancellation requests. A request never completes or retires a task.
+    cancelled: BTreeSet<TaskId>,
 }
 impl Registry {
     /// Check capacity before diagnostic activation admission. Commit is infallible
@@ -72,6 +77,40 @@ impl Registry {
         assert_eq!(self.next_owner.checked_add(1), Some(owner.0));
         self.next_owner = owner.0;
         assert!(self.owners.insert(owner, BTreeSet::new()).is_none());
+    }
+    /// Records the task executing an invocation's admission. Root invocations
+    /// have none and are never cancelled.
+    #[allow(dead_code)]
+    pub(crate) fn record_owner_task(&mut self, owner: OwnerId, task: TaskId) {
+        if self.owners.contains_key(&owner) {
+            self.owner_tasks.insert(owner, task);
+        }
+    }
+    /// Idempotent, non-consuming request. Retired tasks have nothing to cancel.
+    #[allow(dead_code)]
+    pub(crate) fn cancel(&mut self, task: TaskId) {
+        if self.tasks.contains_key(&task) {
+            self.cancelled.insert(task);
+        }
+    }
+    /// A task is cancelled when it, or any task beneath which it was created,
+    /// has a cancellation request.
+    #[allow(dead_code)]
+    pub(crate) fn is_cancelled(&self, task: TaskId) -> bool {
+        let mut current = task;
+        loop {
+            if self.cancelled.contains(&current) {
+                return true;
+            }
+            let Some(parent) = self
+                .tasks
+                .get(&current)
+                .and_then(|task| self.owner_tasks.get(&task.owner))
+            else {
+                return false;
+            };
+            current = *parent;
+        }
     }
     fn prepare_task(&self, owner: OwnerId) -> Result<TaskId> {
         if !self.owners.contains_key(&owner) {
@@ -266,6 +305,14 @@ impl Registry {
         }
         Ok(token.task)
     }
+    /// An owner parked for readiness resumes running without being signalled,
+    /// for example to unwind a routed child fault. The token becomes stale.
+    #[allow(dead_code)]
+    pub(crate) fn withdraw(&mut self, token: &Readiness) -> Result<()> {
+        let id = self.waiting_task(token)?;
+        self.tasks.get_mut(&id).unwrap().phase = Phase::Running;
+        Ok(())
+    }
     pub(crate) fn wake(&mut self, token: &Readiness) -> Result<()> {
         let id = self.waiting_task(token)?;
         self.tasks.get_mut(&id).unwrap().phase = Phase::Ready;
@@ -303,6 +350,7 @@ impl Registry {
     }
     /// Emergency retirement does not manufacture a completion or run a cold body.
     pub(crate) fn abandon(&mut self, id: TaskId) {
+        self.cancelled.remove(&id);
         if let Some(task) = self.tasks.remove(&id) {
             if task.phase == Phase::Ready {
                 self.ready.retain(|queued| *queued != id);
@@ -334,7 +382,9 @@ impl Registry {
         self.require_retire_owner(owner, abrupt)?;
         for task in self.owners.remove(&owner).unwrap() {
             self.tasks.remove(&task);
+            self.cancelled.remove(&task);
         }
+        self.owner_tasks.remove(&owner);
         self.ready.retain(|task| self.tasks.contains_key(task));
         Ok(())
     }
@@ -359,7 +409,11 @@ impl Registry {
     }
     #[allow(dead_code)]
     pub(crate) fn is_empty(&self) -> bool {
-        self.owners.is_empty() && self.tasks.is_empty() && self.ready.is_empty()
+        self.owners.is_empty()
+            && self.tasks.is_empty()
+            && self.ready.is_empty()
+            && self.owner_tasks.is_empty()
+            && self.cancelled.is_empty()
     }
 }
 

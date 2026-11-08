@@ -220,6 +220,7 @@ impl Trace<'_> {
             Operation::Defer(_)
             | Operation::Spawn(_)
             | Operation::SpawnInto(_)
+            | Operation::Cancel(_)
             | Operation::Yield => ValueTrace::default(),
             Operation::Variant(value) => self.value(value, flow, domain, span),
             Operation::BorrowedVariant(expression) => {

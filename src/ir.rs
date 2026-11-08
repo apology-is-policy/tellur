@@ -201,6 +201,10 @@ pub enum Operation {
     /// Add a queued child to an owned task set: arguments are the producer's
     /// captures, then the set; the single `$spawned` arm receives the extended set.
     SpawnInto(String),
+    /// Request cancellation of a started child (`$started<producer>`) or of every
+    /// current member of a set (`$tasks<producer>`). The single `$cancel` arm
+    /// receives the same value back; the operation never suspends.
+    Cancel(String),
     /// Join the earliest completed member of an owned task set, suspending while
     /// members are live. Member arms receive the producer's payload followed by
     /// the remaining set; the final `empty` arm retires the empty set.

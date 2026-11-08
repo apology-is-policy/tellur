@@ -943,6 +943,13 @@ impl Manifest {
                 _ => {}
             }
         }
+        // `cancelled` is the compiler-recognized alternative of a cancelled wait.
+        if p.outcomes.iter().any(|o| o.name == "cancelled") {
+            return fail(
+                "cannot declare the outcome `cancelled`; it is reserved for cancellation, which the compiler adds where an await lists it"
+                    .into(),
+            );
+        }
         // An owned resource result may wait, completed but unjoined, while its
         // owner is stopped; it therefore needs a declared fault disposition.
         for o in &p.outcomes {

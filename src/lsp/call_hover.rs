@@ -65,6 +65,7 @@ fn statement<'a>(s: &'a Statement, out: &mut Vec<&'a Expr>) {
         | Statement::Invoke(e)
         | Statement::Emit(e)
         | Statement::Drop(e)
+        | Statement::Cancel(e)
         | Statement::Fault(e)
         | Statement::Supervise(e)
         | Statement::Bind(_, _, e, _)

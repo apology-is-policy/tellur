@@ -90,6 +90,7 @@ fn rewrite_statement(s: &mut Statement, b: &BTreeMap<String, String>) {
         Statement::Forward(e)
         | Statement::Invoke(e)
         | Statement::Drop(e)
+        | Statement::Cancel(e)
         | Statement::Emit(e)
         | Statement::Supervise(e)
         | Statement::Fault(e) => rewrite_expr(e, b),
@@ -254,6 +255,7 @@ fn statement_calls(s: &Statement, at: Span, v: &mut Visit<'_>) -> Result<()> {
         Statement::Forward(e)
         | Statement::Invoke(e)
         | Statement::Drop(e)
+        | Statement::Cancel(e)
         | Statement::Emit(e)
         | Statement::Supervise(e)
         | Statement::Fault(e) => expr_calls(e, at, v)?,

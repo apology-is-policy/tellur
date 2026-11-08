@@ -8910,3 +8910,24 @@ fn implementation_contingent_ranges_follow_unsaved_partial_repairs_and_restore_h
     );
     assert_eq!(f.diagnostics(), json!([]));
 }
+
+#[test]
+fn cancellation_hovers_describe_requests_and_the_observing_alternative() {
+    let mut f = Fixture::new();
+    let text = "async control work() exits done {\n    yield;\n    exit done;\n}\nasync control startup() exits done {\n    auto child = spawn work();\n    cancel child;\n    await child;\n    exit done;\n}\ncontrol main() exits done {\n    forward run startup();\n}\n";
+    f.open(text);
+    assert_eq!(f.diagnostics(), json!([]));
+    let request = hover_at(&f, text, "cancel child").to_string();
+    assert!(
+        request.contains("requests cancellation of a started child")
+            && request.contains("never interrupted"),
+        "{request}"
+    );
+    let arm = "async control work() exits done {\n    delta await wait() {\n        done => done,\n        cancelled => stopped\n    }\n\n    [done | stopped]: exit done;\n}\n";
+    f.change(arm, 2);
+    let alternative = hover_at(&f, arm, "cancelled =>").to_string();
+    assert!(
+        alternative.contains("cancellation alternative"),
+        "{alternative}"
+    );
+}
