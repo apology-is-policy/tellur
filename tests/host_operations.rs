@@ -355,42 +355,117 @@ fn script_errors_name_the_host_operation() {
     );
 }
 
+/// Every async invocation form of a host operation (E1g stage d, 0.227).
+const FORMS: &str = r#"
+async control startup() exits done {
+    auto first = spawn tick("one");
+    auto cold = defer tick("two");
+    tasks<tick> active = tasks();
+    spawn tick("three") into active;
+    spawn tick("four") into active;
+    delta await first {
+        ticked { string label } => joined
+    }
+    [joined]:
+        emit(label);
+        delta await cold {
+            ticked { string late } => cold_joined
+        }
+    [joined & cold_joined]:
+        emit(late);
+        loop reap(tasks<tick> pending = move active) {
+            delta await next pending {
+                ticked { string finished } => member,
+                empty => drained
+            }
+
+            [member]:
+                emit(finished);
+                again reap(pending);
+            [drained]: exit done;
+        }
+}
+
+control main() exits done {
+    delta run tick("direct") {
+        ticked { string label } => ran
+    }
+    [ran]:
+        emit(label);
+        forward run startup();
+}
+"#;
+
 #[test]
-fn host_operations_are_admitted_only_by_direct_await() {
-    for (body, message) in [
+fn host_operations_are_entered_like_async_controls() {
+    let p = checked(FORMS);
+    let w = Workspace::new("forms");
+    let input = w.0.join("scenario.json");
+    // Scripts list operations in start order; completion order follows waits.
+    let s = scenario(vec![
+        tick("direct!", 0),
+        tick("one!", 2),
+        tick("three!", 3),
+        tick("four!", 0),
+        tick("two!", 0),
+    ]);
+    let reference = p.run(&s).unwrap();
+    assert_eq!(
+        trace(&reference.events),
+        [
+            "tick:direct!",
+            "direct!",
+            "tick:four!",
+            "tick:one!",
+            "one!",
+            "tick:two!",
+            "two!",
+            "four!",
+            "tick:three!",
+            "three!"
+        ]
+    );
+    for (expanded, p) in [(false, p.clone()), (true, p.expanded("main").unwrap())] {
+        assert_eq!(
+            serde_json::to_value(p.run(&s).unwrap()).unwrap(),
+            serde_json::to_value(&reference).unwrap()
+        );
+        let binary = native(&p, &w.0, &format!("forms-{expanded}"));
+        assert_eq!(
+            native_run(&binary, &input, &s, None).unwrap(),
+            serde_json::to_value(&reference).unwrap(),
+            "expanded {expanded}"
+        );
+    }
+    // A plain call is still rejected, with the entry form for its context.
+    for (source, message) in [
         (
-            "delta tick(\"x\") { ticked { string label } => ticked }",
-            "async host operation `tick` must be invoked with await inside an async control",
+            "async control work() exits done {\n    delta tick(\"x\") { ticked { string label } => ticked }\n    exit done;\n}\n",
+            "async host operation `tick` must be invoked with await",
         ),
         (
-            "delta run tick(\"x\") { ticked { string label } => ticked }",
-            "run of async host operation `tick` is not yet admitted",
+            "control work() exits done {\n    delta tick(\"x\") { ticked { string label } => ticked }\n    exit done;\n}\n",
+            "async host operation `tick` must be entered with run",
         ),
         (
-            "auto pending = defer tick(\"x\");",
-            "defer and spawn of async host operation `tick` are not yet admitted",
+            "control work() exits done {\n    delta await tick(\"x\") { ticked { string label } => ticked }\n    exit done;\n}\n",
+            "require an async control",
         ),
         (
-            "auto pending = spawn tick(\"x\");",
-            "defer and spawn of async host operation `tick` are not yet admitted",
+            "async control work() exits done {\n    delta run tick(\"x\") { ticked { string label } => ticked }\n    exit done;\n}\n",
+            "run belongs in synchronous controls",
         ),
     ] {
-        let source =
-            format!("async control work() exits done {{\n    {body}\n    exit done;\n}}\n");
-        let error = rejected(&source);
+        let error = rejected(source);
         assert_eq!(error.code, "E_ASYNC", "{source}");
         assert!(
             error.message.contains(message),
             "{}\n{source}",
             error.message
         );
+        assert!(!error.message.contains("$host"), "{}", error.message);
         assert_eq!(error.span.line, 2, "{source}");
     }
-    let error = rejected(
-        "control work() exits done {\n    delta await tick(\"x\") { ticked { string label } => ticked }\n    exit done;\n}\n",
-    );
-    assert_eq!(error.code, "E_ASYNC");
-    assert!(error.message.contains("require an async control"));
 }
 
 #[test]

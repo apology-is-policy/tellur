@@ -4774,3 +4774,18 @@ operation starts before the next accept. The settings HTTP tests derive that ord
 from their sequential case descriptions. A live test holds a slow client mid-headers
 while a fast client is served in under a second; the 0.225 sequential server makes
 the fast client wait about 1.9 seconds, until the slow request's deadline.
+
+## Run, defer and spawn of host operations (E1g stage d, 0.227)
+
+Every source invocation of an async host operation now enters its generated
+control, so the existing async-control rules apply unchanged. Lowering renames each
+call to `op$host`, as before, and also rewrites `tasks<op>` in local annotations
+and loop parameters to `tasks<op$host>`. Admission rejects only a plain call, with
+the entry form for its context: `await` inside an async control, `run` from
+synchronous code. `run`, `defer`, `spawn` and `spawn … into` follow the ordinary
+checks, including the task-set member profile, so a set of an operation that
+borrows a resource remains gated. The verifier keeps one rule: the primitive leaf
+appears only inside its own generated control. `display_type` shows a generated
+control as its operation, so hovers and diagnostics say `tasks<receive>`, never
+the internal name. Scripts still list operations in start order. A deferred
+operation starts at its await, and a spawned one at its next scheduling turn.

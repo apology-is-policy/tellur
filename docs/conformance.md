@@ -6028,3 +6028,21 @@ concurrent start order by one documented helper. The existing live suites (persi
 settings, framing and deadlines, removal, injected source fault followed by the next
 request) pass with the concurrent server. `tests/format.rs` follows the server's
 new contingency terminal line.
+
+## Run, defer and spawn of host operations (0.227 / E1g stage d)
+
+Async host operations are entered like async controls. Admission no longer
+rejects `run`, `defer`, `spawn` or `spawn … into` of a host operation; a plain call
+reports `must be invoked with await` in async controls and `must be entered with
+run` in synchronous ones. `tasks<op>` annotations and loop parameters are routed to
+the generated control, and type display hides the generated name. The verifier's
+direct-await-only rule for generated controls is removed; its leaf-placement rule
+stays.
+
+`tests/host_operations.rs` runs one program that uses `run` from `main`, `spawn`,
+`defer`, `spawn … into` and `await next` over a scripted operation with mixed
+waits. The reference, expanded and native runs agree on completion order. The test
+also checks the remaining rejections and that their messages never name `$host`.
+`tests/async_adapters.rs` builds a polled adapter with `run`, `defer` and two
+set members that complete in readiness order. The LSP test checks the new hover
+text and that a borrowed-resource task set reports `tasks<receive>`.

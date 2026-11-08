@@ -959,3 +959,83 @@ fn writable_descriptors_wake_polled_writes() {
         ["open_pipe", "other", "push", "pushed", "close_pipe"]
     );
 }
+
+/// Polled adapters are spawned directly (0.227): `spawn tick(..) into set` and
+/// `defer tick(..)` start the generated controls, and `run tick(..)` enters one
+/// from synchronous code.
+const SPAWNED: &str = r#"
+async control startup(string path) exits done {
+    tasks<tick> active = tasks();
+    spawn tick("slow") into active;
+    spawn tick("fast") into active;
+    auto later = defer tick("cold");
+    delta await later {
+        ticked { string label } => joined
+    }
+    [joined]:
+        emit(label);
+        loop reap(tasks<tick> pending = move active) {
+            delta await next pending {
+                ticked { string finished } => member,
+                empty => drained
+            }
+
+            [member]:
+                emit(finished);
+                again reap(pending);
+            [drained]: exit done;
+        }
+}
+control main(string path) exits done {
+    delta run tick("first") {
+        ticked { string label } => ran
+    }
+    [ran]:
+        emit(label);
+        forward run startup(path);
+}
+"#;
+fn spawn_config() -> Json {
+    json!({"version":"0.1","types":[],
+    "rust":{"source":"host.rs","lockfile":"Cargo.lock"},
+    "primitives":[
+        {"name":"tick","async":true,
+         "parameters":[{"name":"label","type":"string","mode":"consume"}],
+         "outcomes":[{"name":"ticked","fields":[{"name":"label","type":"string"}]}],
+         "effects":["tick"],"returns":true,"rust":{"execution":"poll"}}
+    ]})
+}
+const SPAWN_HOST: &str = r#"
+use crate::rust_api;
+use std::time::Duration;
+pub struct Ticking { label: String, remaining: u32 }
+pub fn tick(label: String) -> Box<dyn rust_api::tick_operation> {
+    let remaining = match label.as_str() { "slow" => 6, "fast" => 1, _ => 0 };
+    Box::new(Ticking { label, remaining })
+}
+impl rust_api::tick_operation for Ticking {
+    fn poll(&mut self) -> rust_api::Poll<rust_api::tick_outcome> {
+        if self.remaining == 0 {
+            return rust_api::Poll::Ready(rust_api::tick_outcome::ticked(format!("{}!", self.label)));
+        }
+        self.remaining -= 1;
+        rust_api::Poll::Pending(rust_api::Wait::after(Duration::from_millis(3)))
+    }
+}
+"#;
+
+#[test]
+fn polled_operations_are_spawned_into_sets_deferred_and_run() {
+    let f = Fixture::new("spawned");
+    fs::write(f.root.join("host.rs"), SPAWN_HOST).unwrap();
+    let p = compile(SPAWNED, f.manifest(&spawn_config())).unwrap();
+    let binary = f.build(&p, "spawned");
+    let (ok, result, _) = f.run(&binary, "spawned.log");
+    assert!(ok, "{result}");
+    let emitted: Vec<_> = messages(&result["events"])
+        .into_iter()
+        .filter(|m| !m.starts_with("tick:"))
+        .collect();
+    // The cold operation starts at its await, while both members are pending.
+    assert_eq!(emitted, ["first!", "cold!", "fast!", "slow!"]);
+}

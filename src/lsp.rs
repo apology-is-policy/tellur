@@ -540,7 +540,7 @@ impl Server {
                 };
                 let info = match text {
                     "async" => Some(
-                        "`async control` permits `await`, cold `defer` tasks and owned `spawn` children. `yield` and `await` are explicit cooperative handoffs; `spawn` only queues work. Synchronous callers enter with `run`. Manifest async host operations are awaited directly inside async controls.",
+                        "`async control` permits `await`, cold `defer` tasks and owned `spawn` children. `yield` and `await` are explicit cooperative handoffs; `spawn` only queues work. Synchronous callers enter with `run`. Manifest async host operations are invoked like async controls.",
                     ),
                     "run" => Some(
                         "`run operation(arguments)` enters an async control from synchronous code and waits for its completion. It exposes only normal outcomes and preserves the surrounding fault boundary. It does not catch faults or detach work.",

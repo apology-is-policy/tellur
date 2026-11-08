@@ -1168,11 +1168,14 @@ proceed, and its borrowed resources remain borrowed until completion. An owning
 fault stops a pending operation before its suppliers retire; a stopped operation
 publishes no completion.
 
-This first profile has deliberate limits:
+The profile has deliberate limits:
 
-- Only direct `await` is admitted. A plain call, `run`, `defer` and `spawn` of a
-  host operation are rejected with `E_ASYNC`. Wrap the operation in an async
-  control to enter it with `run`, or to defer or spawn it.
+- Since 0.227 a host operation is entered exactly like an async control: `await`,
+  `defer`, `spawn` and `spawn op(..) into set` inside an async control, and `run`
+  from synchronous code. `tasks<op>` holds started operations, and `await next`
+  joins them in completion order. A plain call is rejected with `E_ASYNC`. Before
+  0.227 only direct `await` was admitted. A task set of an operation that borrows
+  a resource is still gated, like other borrowed task-set captures.
 - Borrowed parameters must be resources; data parameters are Copy values or
   consumed owned values. References and contingent or pure async primitives are
   rejected when the manifest is validated.
@@ -1197,11 +1200,16 @@ This first profile has deliberate limits:
   request or, since 0.220, when a descriptor they wait on becomes readable. See [polled async operations](../rust-adapters.md#polled-async-operations-0219).
   An unbound async primitive still stops with `E_HOST` without a scenario.
 
+A plain call of a host operation is rejected, as for an async control:
+
 <!-- tellur:reject E_ASYNC -->
 ```tellur
 async control early(ref handle input) exits done {
-    auto pending = spawn receive(input);
-    await pending;
+    delta receive(input) {
+        data { bytes data } => received,
+        closed => closed,
+        failed { read_error error } => failed
+    }
     exit done;
 }
 ```

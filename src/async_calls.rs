@@ -20,22 +20,21 @@ impl Admission<'_> {
         let fail = |message| Diagnostic::new("E_ASYNC", at, message).with_range(e.range);
         if let ExprKind::Call(name, args) = &e.kind {
             let asynchronous = self.controls.contains(name);
-            if let Some(operation) = crate::host_operations::operation(name) {
-                let message = match e.call_mode {
-                    CallMode::Direct => format!(
-                        "async host operation `{operation}` must be invoked with await inside an async control"
-                    ),
-                    CallMode::Run => format!(
-                        "run of async host operation `{operation}` is not yet admitted; await it inside an async control"
-                    ),
-                    CallMode::Defer | CallMode::Spawn => format!(
-                        "defer and spawn of async host operation `{operation}` are not yet admitted; await it directly"
-                    ),
-                    CallMode::Await | CallMode::Next => String::new(),
-                };
-                if !message.is_empty() {
-                    return Err(Diagnostic::new("E_ASYNC", at, message).with_range(e.range));
-                }
+            // A host operation is entered like an async control: await, defer and
+            // spawn inside one, or run from synchronous code.
+            if let Some(operation) = crate::host_operations::operation(name)
+                && e.call_mode == CallMode::Direct
+            {
+                return Err(Diagnostic::new(
+                    "E_ASYNC",
+                    at,
+                    if self.asynchronous {
+                        format!("async host operation `{operation}` must be invoked with await")
+                    } else {
+                        format!("async host operation `{operation}` must be entered with run")
+                    },
+                )
+                .with_range(e.range));
             }
             if matches!(e.call_mode, CallMode::Run | CallMode::Await) && usage != Usage::Operation {
                 return Err(fail(
@@ -228,9 +227,7 @@ impl Admission<'_> {
                 format!("{shown} belongs to an async control; enter it with run"),
             ));
         }
-        if !self.controls.contains(producer)
-            || crate::host_operations::operation(producer).is_some()
-        {
+        if !self.controls.contains(producer) {
             return Err(Diagnostic::new(
                 "E_ASYNC",
                 at,

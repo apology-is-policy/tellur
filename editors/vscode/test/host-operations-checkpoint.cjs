@@ -38,7 +38,8 @@ exports.run = async function (root) {
   assert.ok(initial.includes('receive(ref handle handle)') && !initial.includes('$host'), initial);
   for (const [form, message] of [
     ['delta receive(input)', 'async host operation `receive` must be invoked with await'],
-    ['delta run receive(input)', 'run of async host operation `receive` is not yet admitted'],
+    // Since 0.227 host operations follow the async-control entry rules.
+    ['delta run receive(input)', 'run belongs in synchronous controls; use await inside an async control'],
   ]) {
     const text = original.replace('delta await receive(input)', form);
     await replace(text);

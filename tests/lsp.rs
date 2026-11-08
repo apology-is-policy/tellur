@@ -1860,14 +1860,14 @@ fn async_host_operation_hover_names_the_operation_and_await_admission() {
         "{h}"
     );
     assert!(
-        h.contains("Async host operation: invoke it with `await` inside an async control")
+        h.contains("Async host operation: invoke it like an async control")
             && h.contains("native executables also poll Rust adapters bound with `poll` execution")
             && !h.contains("$host"),
         "{h}"
     );
     let keyword = hover_at(&f, source, "async").to_string();
     assert!(
-        keyword.contains("Manifest async host operations are awaited directly"),
+        keyword.contains("Manifest async host operations are invoked like async controls"),
         "{keyword}"
     );
     let awaited = hover_at(&f, source, "await").to_string();
@@ -1881,6 +1881,17 @@ fn async_host_operation_hover_names_the_operation_and_await_admission() {
     let diagnostics = f.diagnostics().to_string();
     assert!(
         diagnostics.contains("async host operation `receive` must be invoked with await")
+            && !diagnostics.contains("$host"),
+        "{diagnostics}"
+    );
+    // Since 0.227 host operations are spawned into sets like async controls.
+    let spawned = "async control drain(ref handle input) exits done {\n    tasks<receive> active = tasks();\n    spawn receive(input) into active;\n    loop reap(tasks<receive> pending = move active) {\n        delta await next pending {\n            data { bytes data } => data,\n            closed => closed,\n            failed { read_error error } => failed,\n            empty => drained\n        }\n\n        [data | closed | failed]: again reap(pending);\n        [drained]: exit done;\n    }\n}\n";
+    f.change(spawned, 3);
+    // `receive` borrows its handle, and task-set members are reference-free for now;
+    // the diagnostic names the operation, not its generated control.
+    let diagnostics = f.diagnostics().to_string();
+    assert!(
+        diagnostics.contains("tasks<receive> members currently capture")
             && !diagnostics.contains("$host"),
         "{diagnostics}"
     );

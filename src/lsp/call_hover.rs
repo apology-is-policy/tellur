@@ -816,7 +816,7 @@ pub(super) fn hover(
             })
             .unwrap_or("");
         let asynchronous = if p.asynchronous {
-            "\n\nAsync host operation: invoke it with `await` inside an async control. The awaiting caller is suspended, and its borrowed inputs stay live, until the single completion. `run`, `defer` and `spawn` of host operations are not yet admitted. Scenarios script completions in reference and native executions; native executables also poll Rust adapters bound with `poll` execution."
+            "\n\nAsync host operation: invoke it like an async control, with `await`, `defer`, `spawn` or `spawn … into` inside an async control, or with `run` from synchronous code; `tasks<operation>` holds started operations. The awaiting caller is suspended, and its borrowed inputs stay live, until the single completion. Scenarios script completions in reference and native executions; native executables also poll Rust adapters bound with `poll` execution."
         } else {
             ""
         };

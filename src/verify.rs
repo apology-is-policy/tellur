@@ -987,13 +987,6 @@ impl Verifier<'_> {
                             if !valid_mode {
                                 return Err(error("invalid async invocation permission"));
                             }
-                            if crate::host_operations::operation(name).is_some()
-                                && !matches!(operation, Operation::Await(_))
-                            {
-                                return Err(error(
-                                    "async host operations are admitted only by direct await",
-                                ));
-                            }
                             if r.entry_only() {
                                 return Err(error("entry-only control used as an ordinary call"));
                             }

@@ -1,7 +1,8 @@
-//! Async host operations. A source `await op(args)` is a direct await of a
-//! compiler-generated async control whose body is the single suspending host leaf.
-//! The generated name cannot be written in source, and every other invocation
-//! form is rejected by async admission before lowering.
+//! Async host operations. Every source invocation of `op(args)` (`await`, `run`,
+//! `defer`, `spawn` and `spawn … into`) enters a compiler-generated async control
+//! whose body is the single suspending host leaf, and `tasks<op>` names a set of
+//! that control. The generated name cannot be written in source; a plain call is
+//! rejected by async admission before lowering.
 use crate::{
     Diagnostic,
     manifest::{Manifest, Mode, Primitive, display_type},
@@ -79,6 +80,15 @@ pub(crate) fn prepare(unit: &mut Unit, manifest: &Manifest) -> crate::CheckResul
     // Generate only the controls a program invokes; an unused declaration keeps
     // every other backend's program unchanged.
     let mut used = BTreeSet::new();
+    // `tasks<op>` is a set of the generated control's children.
+    let route = |ty: &mut String, used: &mut BTreeSet<String>| {
+        if let Some(producer) = crate::manifest::task_set_inner(ty)
+            && names.contains(producer)
+        {
+            used.insert(producer.to_owned());
+            *ty = crate::manifest::task_set_type(&wrapper_name(producer));
+        }
+    };
     for region in &mut unit.regions {
         crate::constructors::items(&mut region.body, &mut |_, _| Ok(()), &mut |e, _| {
             if let ExprKind::Call(name, _) = &mut e.kind
@@ -89,6 +99,7 @@ pub(crate) fn prepare(unit: &mut Unit, manifest: &Manifest) -> crate::CheckResul
             }
             Ok(())
         })?;
+        retype(&mut region.body, &mut |ty| route(ty, &mut used));
     }
     for p in operations.iter().filter(|p| used.contains(&p.name)) {
         let mut regions = crate::syntax::parse(&wrapper_source(p)).map_err(|e| {
@@ -106,6 +117,40 @@ pub(crate) fn prepare(unit: &mut Unit, manifest: &Manifest) -> crate::CheckResul
         unit.regions.push(region);
     }
     Ok(())
+}
+
+/// Rewrite the declared types of local bindings and loop parameters.
+fn retype(body: &mut [crate::syntax::Item], f: &mut impl FnMut(&mut String)) {
+    use crate::syntax::{Item, Statement};
+    for item in body {
+        match item {
+            Item::Guard(_, statements) => {
+                for (_, s) in statements {
+                    match s {
+                        Statement::Bind(_, Some(annotation), _, _) => f(&mut annotation.ty),
+                        Statement::Delta(_, _, arms) => {
+                            for arm in arms {
+                                retype(&mut arm.body, f);
+                            }
+                        }
+                        Statement::Boundary { body, handler, .. } => {
+                            retype(body, f);
+                            retype(handler, f);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            Item::Group(_, _, b) | Item::Over(_, _, b) => retype(b, f),
+            Item::Loop(_, _, parameters, b, _) => {
+                for p in parameters {
+                    f(&mut p.field.ty);
+                }
+                retype(b, f);
+            }
+            _ => {}
+        }
+    }
 }
 
 #[cfg(test)]
@@ -170,7 +215,8 @@ mod tests {
             error.message.contains("outside its generated control"),
             "{error}"
         );
-        // A generated control is reached only by direct await.
+        // Since 0.227 generated controls follow the ordinary async invocation
+        // rules; swapping only the operation leaves await-shaped arms on a defer.
         let mut deferred = p.clone();
         *awaited(&mut deferred) = Operation::Defer("tick$host".into());
         assert!(deferred.verify().is_err());

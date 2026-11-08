@@ -205,6 +205,10 @@ pub fn canonical_type(name: &str) -> String {
     .into()
 }
 pub fn display_type(name: &str) -> String {
+    // A generated host-operation control is shown as the operation it performs.
+    if let Some(operation) = crate::host_operations::operation(name) {
+        return display_type(operation);
+    }
     if let Some(operation) = task_inner(name) {
         return format!("task<{}>", display_type(operation));
     }
