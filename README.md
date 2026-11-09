@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.232.0** implements the v0.1 checked core and the current language
+Compiler release **0.233.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -21,6 +21,11 @@ Release 0.222 added dynamic task sets. `tasks<producer>` holds any number of
 spawned children of one async control. `spawn producer(..) into set;` adds a member,
 `delta await next set { ..., empty => ... }` joins members in completion order, and
 `count(borrow set)` bounds how many run at once.
+
+Release 0.233 begins the single-binary LLVM backend arc. The runtime is now a
+library compiled once, not source pasted into every program. A `hello` build goes from
+2.7 s to about 0.2 s once the runtime is cached, and its generated source from 391 KB
+to 13 KB. Behaviour is unchanged.
 
 Release 0.232 adds a standalone [LLVM coroutine experiment](experiments/coroutines/README.md)
 (E2.1). Hand-lowered switched-resume coroutines for the cancellation specimen, a
@@ -706,7 +711,11 @@ From this directory, use the supplied binaries:
 ```
 
 `build` emits an executable, LLVM IR (`name.ll`), and the generated intermediate
-source (`name.tellur-build/src/main.rs`). `--expanded` expands the chosen entry before
+source (`name.tellur-build/src/main.rs`). Since 0.233 the runtime is a separate crate,
+`tellur_runtime`. It is compiled once per optimization level in the native target
+directory (`TELLUR_NATIVE_TARGET_DIR`, default `.tellur-cache` beside the output) and
+shared by every program built there. The generated source and `name.ll` therefore
+contain only the program. `--expanded` expands the chosen entry before
 lowering; `--release` optimizes at LLVM level 2. Native executables accept `--json`,
 `--entry`, `--scenario FILE`, and an optional `--fuel N` host limit. All declared
 outcomes are normal completions; host errors return nonzero process status.

@@ -6082,6 +6082,19 @@ operation: its state drops before the supplier and it never completes.
 chain parked by `run`, which previously stopped with `E_NATIVE: source task wait
 has no runnable producer`.
 
+## Runtime library crate (0.233 / B1.1)
+
+Native builds no longer paste the runtime into each generated program. The same
+module tree is written once per content hash, as the crate `tellur_runtime` under the
+native target directory. Generated programs depend on it as a path dependency, and
+the lockfile entry is added at build time, including for adapter lockfiles saved by
+`lock-native`. The runtime is compiled with the program's optimization level, codegen
+units and debug settings, as before.
+
+`CheckedProgram::native_source` still returns the self-contained, pasted form, and it
+is unchanged byte for byte. Runtime evidence tests that instrument the runtime's text
+keep building that form. Every native, adapter and parity suite passes unchanged.
+
 ## LLVM coroutine experiment (0.232 / E2.1)
 
 `tests/coroutine_experiment.rs` builds the hand-lowered coroutine specimens in

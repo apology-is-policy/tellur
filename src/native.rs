@@ -561,8 +561,145 @@ pub struct NativeBuild {
     pub llvm: PathBuf,
     pub generated: PathBuf,
 }
+/// The shared Cargo target directory of generated programs.
+fn native_target_dir(output: &Path) -> PathBuf {
+    std::env::var_os("TELLUR_NATIVE_TARGET_DIR")
+        .or_else(|| std::env::var_os("PATH_NATIVE_TARGET_DIR"))
+        .map(PathBuf::from)
+        .unwrap_or_else(|| output.parent().unwrap().join(".tellur-cache"))
+}
+const RUNTIME_CARGO: &str = "[package]
+name = \"tellur_runtime\"
+version = \"0.1.0\"
+edition = \"2024\"
+
+[lib]
+path = \"lib.rs\"
+
+[dependencies]
+serde = { version = \"1\", features = [\"derive\"] }
+serde_json = \"1\"
+";
+/// Writes the runtime crate once per content hash under the target directory, so
+/// every program built there reuses one compiled runtime.
+fn runtime_crate(target: &Path) -> Result<PathBuf> {
+    let lib = format!(
+        "#![allow(unused, unreachable_code, unused_labels, dead_code)]\n{}",
+        runtime_modules()
+    );
+    let mut hasher = std::hash::DefaultHasher::new();
+    (RUNTIME_CARGO, &lib).hash(&mut hasher);
+    let directory = target.join(format!("tellur-runtime/{:016x}", hasher.finish()));
+    if !directory.join("lib.rs").exists() {
+        fs::create_dir_all(&directory).map_err(|e| error(e.to_string()))?;
+        // Concurrent builds may race here: each file appears whole, by rename, and
+        // the manifest before the library that marks the crate complete.
+        for (name, contents) in [("Cargo.toml", RUNTIME_CARGO), ("lib.rs", lib.as_str())] {
+            let partial = directory.join(format!("{name}.{}.partial", std::process::id()));
+            fs::write(&partial, contents).map_err(|e| error(e.to_string()))?;
+            fs::rename(partial, directory.join(name)).map_err(|e| error(e.to_string()))?;
+        }
+    }
+    Ok(directory)
+}
+/// Adds the path-dependency runtime to a lockfile in Cargo's own sorted form, so
+/// `--locked` builds accept it (including adapter lockfiles).
+fn lock_runtime(lock: &str, package: &str) -> Result<String> {
+    const ENTRY: &str = "[[package]]\nname = \"tellur_runtime\"\nversion = \"0.1.0\"\ndependencies = [\n \"serde\",\n \"serde_json\",\n]\n";
+    let mut blocks: Vec<String> = lock.split("\n[[package]]\n").map(String::from).collect();
+    let header = blocks.remove(0);
+    // A lockfile resolved by `lock-native` already names the runtime; start clean.
+    let mut packages: Vec<String> = blocks
+        .into_iter()
+        .map(|b| format!("[[package]]\n{}", b.replace(" \"tellur_runtime\",\n", "")))
+        .filter(|b| !b.starts_with("[[package]]\nname = \"tellur_runtime\"\n"))
+        .collect();
+    let own = packages
+        .iter_mut()
+        .find(|b| b.starts_with(&format!("[[package]]\nname = {package:?}\n")))
+        .ok_or_else(|| error("lockfile does not describe the generated package"))?;
+    let start = own
+        .find("dependencies = [\n")
+        .map(|i| i + "dependencies = [\n".len());
+    match start {
+        Some(start) => {
+            let end = start + own[start..].find(']').unwrap();
+            let mut deps: Vec<String> = own[start..end].lines().map(String::from).collect();
+            deps.push(" \"tellur_runtime\",".into());
+            deps.sort();
+            own.replace_range(start..end, &format!("{}\n", deps.join("\n")));
+        }
+        None => {
+            let body = own.trim_end().to_string();
+            *own = format!("{body}\ndependencies = [\n \"tellur_runtime\",\n]\n");
+        }
+    }
+    packages.push(ENTRY.into());
+    packages.sort_by_key(|b| {
+        let name = b.lines().nth(1).unwrap_or_default().to_string();
+        let version = b.lines().nth(2).unwrap_or_default().to_string();
+        (name, version)
+    });
+    let packages: Vec<String> = packages.iter().map(|b| b.trim_end().to_string()).collect();
+    Ok(format!(
+        "{}\n{}\n",
+        header.trim_end(),
+        packages
+            .iter()
+            .map(|b| format!("\n{b}"))
+            .collect::<String>()
+    ))
+}
+/// How a generated program reaches the runtime library.
+#[derive(Clone, Copy)]
+enum RuntimeLink {
+    /// Pasted into the program as `mod support`.
+    Pasted,
+    /// The separately compiled `tellur_runtime` crate, built once per target directory.
+    Crate,
+}
+/// The runtime library's module tree, shared by both link forms.
+fn runtime_modules() -> String {
+    let mut code = String::new();
+    let mut module = |name: &str, source: &str| {
+        code.push_str(&format!("{name} {{\n{source}\n}}\n"));
+    };
+    module(
+        "mod collection_support",
+        include_str!("collection_support.rs"),
+    );
+    module("mod fault", include_str!("fault.rs"));
+    module("mod frames", include_str!("native/frames.rs"));
+    module(
+        "mod tasks",
+        &format!(
+            "{}\nmod protocol {{\n{}\n}}",
+            include_str!("native/tasks.rs"),
+            include_str!("task_support.rs")
+        ),
+    );
+    let execution = format!(
+        "{EXECUTION}\npub mod access_resolution {{\n{}\n}}\npub mod dependencies {{\n{}\n}}\npub mod reference_evidence {{\n{}\n}}\n\nmod task_payload {{\n{}\n}}\nmod domains {{\n{}\n}}\nmod contexts {{\n{CONTEXTS}\nmod source_scheduler {{\n{}\n}}\n\nmod started_tasks {{\n{}\n}}\n\nmod borrower_coverage {{\n{}\n}}\n\n}}",
+        include_str!("native/access_resolution.rs"),
+        include_str!("native/dependencies.rs"),
+        include_str!("native/reference_evidence.rs"),
+        include_str!("native/task_payload.rs"),
+        include_str!("native/domains.rs"),
+        include_str!("native/source_scheduler.rs"),
+        include_str!("native/started_tasks.rs"),
+        include_str!("native/borrower_coverage.rs"),
+    );
+    module("pub mod execution", &execution);
+    code.push_str(SUPPORT);
+    code
+}
 impl CheckedProgram {
+    /// The generated program with the runtime pasted in as modules: one self-contained
+    /// file. Tests that instrument runtime text use this form.
     pub fn native_source(&self, entry: &str) -> Result<String> {
+        self.program_source(entry, RuntimeLink::Pasted)
+    }
+    fn program_source(&self, entry: &str, runtime: RuntimeLink) -> Result<String> {
         self.verify()?;
         if self.region(entry).is_none() {
             return Err(error(format!("unknown entry region {entry}")));
@@ -607,51 +744,19 @@ impl CheckedProgram {
                 .enumerate()
                 .map(|(i, r)| (r.name.as_str(), i))
                 .collect(),
-            code: String::from("#![allow(unused,unreachable_code,unused_labels)]\nmod support {\n"),
+            code: String::from("#![allow(unused,unreachable_code,unused_labels)]\n"),
         };
-        g.code.push_str("mod collection_support {\n");
-        g.code.push_str(include_str!("collection_support.rs"));
-        g.code.push_str("\n}\n");
-        g.code.push_str("mod fault {\n");
-        g.code.push_str(include_str!("fault.rs"));
-        g.code.push_str("\n}\n");
-        g.code.push_str("mod frames {\n");
-        g.code.push_str(include_str!("native/frames.rs"));
-        g.code.push_str("\n}\n");
-        g.code.push_str("mod tasks {\n");
-        g.code.push_str(include_str!("native/tasks.rs"));
-        g.code.push_str("\nmod protocol {\n");
-        g.code.push_str(include_str!("task_support.rs"));
-        g.code.push_str("\n}\n}\n");
-        g.code.push_str("pub mod execution {\n");
-        g.code.push_str(EXECUTION);
-        g.code.push_str("\npub mod access_resolution {\n");
-        g.code.push_str(include_str!("native/access_resolution.rs"));
-        g.code.push_str("\n}\npub mod dependencies {\n");
-        g.code.push_str(include_str!("native/dependencies.rs"));
-        g.code.push_str("\n}\npub mod reference_evidence {\n");
-        g.code
-            .push_str(include_str!("native/reference_evidence.rs"));
-        g.code.push_str("\n}\n");
-        g.code.push_str("\nmod task_payload {\n");
-        g.code.push_str(include_str!("native/task_payload.rs"));
-        g.code.push_str("\n}\nmod domains {\n");
-        g.code.push_str(include_str!("native/domains.rs"));
-        g.code.push_str("\n}\nmod contexts {\n");
-        g.code.push_str(CONTEXTS);
-        g.code.push_str("\nmod source_scheduler {\n");
-        g.code.push_str(include_str!("native/source_scheduler.rs"));
-        g.code.push_str("\n}\n");
-        g.code.push_str("\nmod started_tasks {\n");
-        g.code.push_str(include_str!("native/started_tasks.rs"));
-        g.code.push_str("\n}\n");
-        g.code.push_str("\nmod borrower_coverage {\n");
-        g.code.push_str(include_str!("native/borrower_coverage.rs"));
-        g.code.push_str("\n}\n");
-        g.code.push_str("\n}\n}\n");
-        g.code.push_str(SUPPORT);
-        g.code
-            .push_str("\n}\nuse support::*; use support::execution::*;\n");
+        match runtime {
+            RuntimeLink::Pasted => {
+                g.code.push_str("mod support {\n");
+                g.code.push_str(&runtime_modules());
+                g.code
+                    .push_str("\n}\nuse support::*; use support::execution::*;\n");
+            }
+            RuntimeLink::Crate => g.code.push_str(
+                "use tellur_runtime as support; use support::*; use support::execution::*;\n",
+            ),
+        }
         g.code.push_str(&crate::rust_host::source(self.manifest())?);
         g.code.push_str(&continuations::source(self));
         fn schedules(code: &[Instruction]) -> bool {
@@ -747,13 +852,23 @@ impl CheckedProgram {
         let mut hasher = std::hash::DefaultHasher::new();
         directory.hash(&mut hasher);
         let package = format!("path_generated_{:016x}", hasher.finish());
-        let source = self.native_source(entry)?;
+        let runtime = runtime_crate(&native_target_dir(&output))?;
+        let source = self.program_source(entry, RuntimeLink::Crate)?;
         fs::create_dir_all(directory.join("src")).map_err(|e| error(e.to_string()))?;
         let generated = directory.join("src/main.rs");
         fs::write(&generated, source).map_err(|e| error(e.to_string()))?;
         fs::write(
             directory.join("Cargo.toml"),
-            crate::rust_host::cargo(self.manifest(), CARGO).replace("path_generated", &package),
+            crate::rust_host::cargo(self.manifest(), CARGO)
+                .replace("path_generated", &package)
+                .replacen(
+                    "[dependencies]\n",
+                    &format!(
+                        "[dependencies]\ntellur_runtime = {{ path = {} }}\n",
+                        string(&runtime.display().to_string())
+                    ),
+                    1,
+                ),
         )
         .map_err(|e| error(e.to_string()))?;
         Ok((output, directory, generated, package))
@@ -784,6 +899,13 @@ impl CheckedProgram {
             &format!("name = {package:?}"),
             "name = \"tellur_adapter_lock\"",
         );
+        // The runtime is added at build time; saved adapter locks stay independent of it.
+        let lock = lock
+            .split("\n[[package]]\n")
+            .filter(|b| !b.starts_with("name = \"tellur_runtime\"\n"))
+            .collect::<Vec<_>>()
+            .join("\n[[package]]\n")
+            .replace(" \"tellur_runtime\",\n", "");
         fs::write(&config.lockfile, lock)
             .map_err(|e| error(format!("cannot save {}: {e}", config.lockfile.display())))?;
         Ok(config.lockfile.clone())
@@ -814,13 +936,15 @@ impl CheckedProgram {
         } else {
             LOCK.replace("path_generated", &package)
         };
+        let lock = lock_runtime(&lock, &package)?;
         fs::write(directory.join("Cargo.lock"), lock).map_err(|e| error(e.to_string()))?;
         let llvm = PathBuf::from(format!("{}.ll", output.display()));
-        let target = std::env::var_os("TELLUR_NATIVE_TARGET_DIR")
-            .or_else(|| std::env::var_os("PATH_NATIVE_TARGET_DIR"))
-            .map(PathBuf::from)
-            .unwrap_or_else(|| output.parent().unwrap().join(".tellur-cache"));
+        let target = native_target_dir(&output);
+        // The runtime crate is a dependency: build it with the program's settings.
         let result = cargo_command()
+            .env("CARGO_PROFILE_DEV_OPT_LEVEL", opt.to_string())
+            .env("CARGO_PROFILE_DEV_CODEGEN_UNITS", "1")
+            .env("CARGO_PROFILE_DEV_DEBUG", "0")
             .arg("rustc")
             .arg("--locked")
             .arg("--manifest-path")
