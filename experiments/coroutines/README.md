@@ -45,6 +45,10 @@ specimen at O0 and O2. It derives the script from the same scenario it gives the
 reference executor, and requires identical events and process status. It skips
 when the toolchain is absent, unless `TELLUR_REQUIRE_COROUTINE_EXPERIMENT=1` is set.
 
+Since 0.234, with the cargo feature `llvm`, the test also builds every specimen with
+the LLVM and LLD embedded in `tellurc` (`tellurc llvm-smoke [--release] OUT IN.ll...`).
+The C runtime is lowered to IR once by the clang above; the rest happens in-process.
+
 ## Evidence
 
 - **Cancellation specimen:** 12 schedules agree at O0 and O2:

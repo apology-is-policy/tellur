@@ -85,7 +85,7 @@ fn specimen_ir() -> String {
     std::fs::read_to_string(root().join("experiments/coroutines/cancellation.ll")).unwrap()
 }
 /// Both optimization levels of an unmodified specimen, built once.
-fn binaries(specimen: &'static str) -> Option<[PathBuf; 2]> {
+fn clang_binaries(specimen: &'static str) -> Option<[PathBuf; 2]> {
     static BUILT: OnceLock<std::sync::Mutex<std::collections::BTreeMap<&str, [PathBuf; 2]>>> =
         OnceLock::new();
     let clang = clang()?;
@@ -97,6 +97,60 @@ fn binaries(specimen: &'static str) -> Option<[PathBuf; 2]> {
         [0, 2].map(|opt| build(&clang, specimen, &ir, opt))
     });
     Some(paths.clone())
+}
+/// Every build of a specimen: the pinned clang at O0/O2 and, with the `llvm`
+/// feature, `tellurc llvm-smoke` (embedded LLVM and LLD) at O0/O2.
+fn binaries(specimen: &'static str) -> Option<Vec<PathBuf>> {
+    let all = clang_binaries(specimen)?.to_vec();
+    #[cfg(feature = "llvm")]
+    let all = [all, embedded_binaries(specimen).to_vec()].concat();
+    Some(all)
+}
+#[cfg(feature = "llvm")]
+fn embedded_binaries(specimen: &str) -> [PathBuf; 2] {
+    let dir = std::env::temp_dir().join(format!("tellur-embedded-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let experiment = root().join("experiments/coroutines");
+    // The C runtime is test tooling: lowered to IR once by the pinned clang, then
+    // compiled with every specimen in-process.
+    let runtime = dir.join("runtime.ll");
+    if !runtime.exists() {
+        let output = Command::new(Path::new(LLVM).join("clang"))
+            .arg("-isysroot")
+            .arg(sysroot())
+            .args(["-S", "-emit-llvm", "-O0", "-Xclang", "-disable-O0-optnone"])
+            .arg(experiment.join("runtime.c"))
+            .arg("-o")
+            .arg(&runtime)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    ["", "--release"].map(|opt| {
+        let binary = dir.join(format!("{specimen}-embedded{opt}"));
+        let mut command = Command::new(env!("CARGO_BIN_EXE_tellurc"));
+        command.arg("llvm-smoke");
+        if !opt.is_empty() {
+            command.arg(opt);
+        }
+        let output = command
+            .arg(&binary)
+            .arg(&runtime)
+            .arg(experiment.join("intrinsics.ll"))
+            .arg(experiment.join(format!("{specimen}.ll")))
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        binary
+    })
 }
 
 fn program() -> CheckedProgram {

@@ -32,6 +32,24 @@ fn run(args: Vec<String>) -> std::result::Result<ExitCode, Box<dyn std::error::E
     if args.len() < 2 {
         return Err(USAGE.into());
     }
+    // Development command of the embedded LLVM backend (feature `llvm`):
+    // `llvm-smoke [--release] OUT INPUT.ll...` links a host executable in-process.
+    #[cfg(feature = "llvm")]
+    if args[0] == "llvm-smoke" {
+        let mut rest: Vec<&String> = args[1..].iter().collect();
+        let opt = if rest.first().is_some_and(|a| *a == "--release") {
+            rest.remove(0);
+            2
+        } else {
+            0
+        };
+        let (output, inputs) = rest
+            .split_first()
+            .ok_or("usage: llvm-smoke [--release] OUT INPUT.ll...")?;
+        let inputs: Vec<&Path> = inputs.iter().map(|s| Path::new(s.as_str())).collect();
+        tellur::llvm::smoke(&inputs, Path::new(output.as_str()), opt)?;
+        return Ok(ExitCode::SUCCESS);
+    }
     if args[0] == "absorption-diff" {
         if args.len() < 3 || args.len() > 4 || (args.len() == 4 && args[3] != "--check") {
             return Err("usage: tellurc absorption-diff BEFORE_JSON AFTER_JSON [--check]".into());

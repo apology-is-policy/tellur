@@ -29,6 +29,8 @@ pub mod ir;
 pub mod launch;
 mod lifetimes;
 mod liveness;
+#[cfg(feature = "llvm")]
+pub mod llvm;
 pub mod lsp;
 pub mod manifest;
 pub mod modules;

@@ -40,6 +40,11 @@ impl Fixture {
         p.lock_native("main", &self.root.join(format!("{name}-lock")))
             .unwrap();
         p.build_native("main", &binary, 0).unwrap();
+        // macOS checks a newly linked executable on its first launch, one binary at a
+        // time: about 0.4 s here, and several seconds while other tests launch fresh
+        // binaries. Launch once untimed so the timing bounds below measure the program.
+        let help = Command::new(&binary).arg("--help").output().unwrap();
+        assert!(help.status.success());
         binary
     }
     /// Run live (no scenario), returning JSON stdout or stderr and the adapter log.

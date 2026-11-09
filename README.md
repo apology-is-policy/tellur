@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.233.0** implements the v0.1 checked core and the current language
+Compiler release **0.234.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -21,6 +21,10 @@ Release 0.222 added dynamic task sets. `tasks<producer>` holds any number of
 spawned children of one async control. `spawn producer(..) into set;` adds a member,
 `delta await next set { ..., empty => ... }` joins members in completion order, and
 `count(borrow set)` bounds how many run at once.
+
+Release 0.234 embeds LLVM and LLD 22.1.8 in `tellurc` behind the `llvm` cargo
+feature. IR is compiled and linked in-process, and the coroutine experiment's specimens
+built this way match the reference executor. The default backend is unchanged.
 
 Release 0.233 begins the single-binary LLVM backend arc. The runtime is now a
 library compiled once, not source pasted into every program. A `hello` build goes from
@@ -743,6 +747,13 @@ Tests include native compilation, so Cargo/Rust must be available. Set
 `TELLUR_NATIVE_TARGET_DIR` to share a native dependency cache across builds; otherwise
 it lives in `.tellur-cache` beside output binaries. `--offline` can be used for Cargo
 commands once dependencies are cached. Compilation artifacts are ignored by Git.
+
+The optional `llvm` feature embeds LLVM and LLD. It needs a static LLVM 22.1.8 install
+that includes LLD (built with `-DLLVM_ENABLE_PROJECTS=lld`, static libraries):
+
+```sh
+LLVM_SYS_221_PREFIX=/path/to/llvm-22.1.8 cargo test --features llvm --test coroutine_experiment
+```
 
 The [conformance inventory](docs/conformance.md) maps the draft's requirements and
 C01–C24 cases to implementation and evidence. Tests cover ownership, loops,

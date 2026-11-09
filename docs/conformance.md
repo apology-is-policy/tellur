@@ -6082,6 +6082,20 @@ operation: its state drops before the supplier and it never completes.
 chain parked by `run`, which previously stopped with `E_NATIVE: source task wait
 has no runnable producer`.
 
+## Embedded LLVM and LLD (0.234 / B1.2)
+
+With the cargo feature `llvm` (off by default), `tellurc` contains LLVM and LLD
+22.1.8, linked statically from a build of the pinned release. `src/llvm.rs` parses
+textual IR modules, links them, verifies the result, runs the new pass manager's
+`default<O0|O2>` pipeline with verification after every pass, and emits the object
+in memory. LLD's Mach-O, ELF and COFF drivers run in-process through a small C++ shim.
+
+Under the feature, `tests/coroutine_experiment.rs` also builds every E2.1 specimen
+through `tellurc llvm-smoke` at O0 and O2, in addition to the external clang builds.
+All four builds of each specimen match the reference executor on every schedule.
+Linking still uses the SDK's `libSystem` stub; a bundled stub is planned. Default
+builds and every other suite are unaffected.
+
 ## Runtime library crate (0.233 / B1.1)
 
 Native builds no longer paste the runtime into each generated program. The same

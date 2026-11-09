@@ -1,6 +1,6 @@
 [package]
 name = "tellur"
-version = "0.233.0"
+version = "0.234.0"
 edition = "2024"
 license = "Apache-2.0"
 repository = "https://github.com/apology-is-policy/tellur"
@@ -12,6 +12,14 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 lsp-server = "0.10"
 url = "2"
+# The embedded LLVM backend (single-binary arc); off until it replaces the Rust backend.
+llvm-sys = { version = "=221.1.2", optional = true, features = ["prefer-static"] }
+
+[build-dependencies]
+cc = { version = "1", optional = true }
+
+[features]
+llvm = ["dep:llvm-sys", "dep:cc"]
 
 [[bin]]
 name = "tellurc"
