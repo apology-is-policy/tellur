@@ -6082,6 +6082,24 @@ operation: its state drops before the supplier and it never completes.
 chain parked by `run`, which previously stopped with `E_NATIVE: source task wait
 has no runnable producer`.
 
+## LLVM coroutine experiment (0.232 / E2.1)
+
+`tests/coroutine_experiment.rs` builds the hand-lowered coroutine specimens in
+`experiments/coroutines` with Homebrew LLVM 22 at O0 and O2. It requires the same
+events and status as the reference executor:
+
+- `playground/cancellation.tellur`: 12 schedules.
+- `experiments/coroutines/sets.tellur`: all 64 delay combinations for three task-set
+  members, the first completion cancelling the rest.
+- `experiments/coroutines/fault.tellur`: six delays of a pending or completed
+  operation at a sibling fault; status 1 and the fault message.
+
+The runtime fails if a frame is released twice or is still allocated at exit, or if
+a handle is closed while borrowed. Two IR mutations are caught: closing early, and
+skipping a cancelled child's join. Without the pinned toolchain the tests skip,
+unless `TELLUR_REQUIRE_COROUTINE_EXPERIMENT=1` is set. The release validation ran
+them with the toolchain present. The production backend is unchanged.
+
 ## Milestone 5 acceptance specimen (0.231)
 
 `playground/cancellation.tellur` is the specimen: two concurrent receives, the

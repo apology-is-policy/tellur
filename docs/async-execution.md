@@ -4839,6 +4839,33 @@ its adapter state before its suppliers; resources it would have consumed at star
 are released. Native executables also now report a child fault to a root chain
 parked by `run` of a pending host operation, matching the reference executor.
 
+## LLVM coroutine experiment (E2.1, 0.232)
+
+The author chose a standalone experiment before any production lowering. Three
+Tellur programs were lowered by hand to switched-resume coroutines and linked with
+a small C runtime: the Milestone 5 specimen, a task set whose first completion
+cancels the rest, and a sibling fault. See
+[the experiment report](../experiments/coroutines/README.md).
+
+The runtime reproduces the reference rules that decide observable order:
+- FIFO runnable tasks.
+- An await of a host operation is a handoff, so the task requeues before the
+  operation starts.
+- At an idle point the front pending operation is signalled, and if still pending
+  it parks again at the back.
+- Cancellation is sticky and inherited, observed only by cancellable operations,
+  which stop without an event.
+- Joins are never interrupted.
+- `await next` joins in completion order.
+- Fault settlement stops pending operations and destroys frames, children first.
+
+Frames hold only control state and spilled values. A frame is destroyed after its
+join, or by settlement after a fault, and never as a way to cancel.
+
+Writing the runtime corrected one assumption: idle readiness is round-robin, not
+oldest-until-complete. The task-set matrix, which covers all 64 delay
+combinations, depends on it.
+
 ## Milestone 5 acceptance specimen (0.231)
 
 The specimen needed no new language feature. It combines spawned children with

@@ -1,0 +1,45 @@
+// Three members tick concurrently; the first completion cancels the rest, and
+// every member is still joined in completion order.
+async control worker(string label) exits done { string label }, stopped {
+    delta await tick(move label) {
+        ticked { string result } => ticked,
+        cancelled => cancelled
+    }
+
+    [ticked]: exit done { result };
+    [cancelled]: exit stopped;
+}
+
+async control gather() exits done {
+    tasks<worker> members = tasks();
+    spawn worker("a") into members;
+    spawn worker("b") into members;
+    spawn worker("c") into members;
+    loop drain(bool first = true, tasks<worker> active = members) {
+        delta await next active {
+            done { string label } => finished,
+            stopped => halted,
+            empty => drained
+        }
+        [finished]: emit(label);
+        [halted]: emit("stopped");
+        [finished | halted]:
+            delta first {
+                true => winner,
+                false => other
+            }
+        [winner]:
+            cancel active;
+            again drain(false, active);
+        [other]: again drain(false, active);
+        [drained]: exit done;
+    }
+}
+
+control main() exits process_result {
+    forward run gather();
+}
+
+outcome process_result {
+    @exit 0 done
+}
