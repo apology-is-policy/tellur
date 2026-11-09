@@ -1287,6 +1287,14 @@ async control startup() exits done {
 }
 ```
 
+The [cancellation example](../../playground/cancellation.tellur) is the Milestone 5
+acceptance specimen. Two readers receive concurrently through borrowed handles; the
+first answer cancels the other reader, which is still joined. If the other reader
+had already completed, its ordinary outcome is delivered instead. Both handles are
+closed only after the join, and a close failure is the program's result. Run it
+with a scenario that lists the `open`, `receive`, `close` and `decode_utf8` calls,
+as in `tests/cancellation_specimen.rs`.
+
 In native executables a cancelled live operation is stopped like an operation of a
 stopped task: its readiness registration is withdrawn and the adapter state is
 dropped before its supplier resources, without a completion. Resources it would

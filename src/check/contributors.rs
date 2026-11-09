@@ -412,6 +412,9 @@ impl Checker<'_> {
         domain: Formula,
     ) -> Diagnostic {
         for (_, note) in self.contributor_trace().flow(guard, domain) {
+            if note.generated() {
+                continue;
+            }
             contracts::append(&mut diagnostic.notes, note.diagnostic());
         }
         diagnostic
@@ -441,6 +444,9 @@ impl Checker<'_> {
             .operation(operation, &vec![], domain, diagnostic.span);
         for name in missing {
             for (_, note) in value.tags.get(name).into_iter().flat_map(|t| &t.notes) {
+                if note.generated() {
+                    continue;
+                }
                 contracts::append(&mut diagnostic.notes, note.diagnostic());
             }
         }

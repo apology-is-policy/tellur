@@ -49,7 +49,11 @@ impl Raw {
                 } else {
                     "forwarded"
                 },
-                self.operation.as_deref().unwrap(),
+                // A generated host-operation control is named as its operation.
+                self.operation
+                    .as_deref()
+                    .map(|name| crate::host_operations::operation(name).unwrap_or(name))
+                    .unwrap(),
                 self.control
             ),
             Kind::Omitted => OMITTED.into(),
@@ -60,6 +64,11 @@ impl Raw {
             path: None,
             message,
         }
+    }
+    /// Notes located in a generated host-operation control are not shown: it has no
+    /// source of its own, and the caller's note already names the operation.
+    pub(crate) fn generated(&self) -> bool {
+        crate::host_operations::operation(&self.control).is_some()
     }
     pub(crate) fn omitted(&self) -> Self {
         Self {

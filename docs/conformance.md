@@ -6082,6 +6082,24 @@ operation: its state drops before the supplier and it never completes.
 chain parked by `run`, which previously stopped with `E_NATIVE: source task wait
 has no runnable producer`.
 
+## Milestone 5 acceptance specimen (0.231)
+
+`playground/cancellation.tellur` is the specimen: two concurrent receives, the
+cancellation of one, borrowed handles held across suspension and a cleanup failure.
+`tests/cancellation_specimen.rs` runs it under scenarios in which the slower
+receive is pending when cancelled (it stops and reports `stopped`), both receives
+complete before the request is observed (the ordinary outcome wins the race), the
+primary ends without data (the backup answers), neither answers, and every
+combination of close failures. Each run must give identical events in the reference
+executor, its certified expansion and three small host quotas, and identical JSON
+and process status in a native executable. Two rejections check that a handle
+cannot be closed while a started task borrows it (`E_LOAN`) and that a cancelled
+child cannot be left unjoined (`E_RESOURCE`).
+
+Contributor notes no longer name generated host-operation controls such as
+`receive$host$cancel`, nor point at their placeholder locations; a note now says
+the outcome is received from `receive`.
+
 ## Signal cancellation and graceful settings shutdown (0.230 / E1e.3)
 
 An entry whose manifest launch configuration sets `"signals": "cancel"` is

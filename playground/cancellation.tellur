@@ -1,0 +1,126 @@
+// Milestone 5 acceptance specimen: two concurrent receives, cancellation of one,
+// borrowed handles held across suspension, and a cleanup failure that stays
+// visible. Run it with a scenario that lists `open`, `receive` and `close` calls;
+// see tests/cancellation_specimen.rs.
+
+// A reader reports cancellation through its own declared outcome.
+async control reader(ref handle input) exits chunk { bytes data }, ended, stopped {
+    delta await receive(input) {
+        data { bytes data } => received,
+        closed => ended,
+        failed { read_error error } => failed,
+        cancelled => cancelled
+    }
+
+    [received]: exit chunk { data };
+    [ended | failed]: exit ended;
+    [cancelled]: exit stopped;
+}
+
+// Both readers borrow their handle until they are joined. The first answer wins;
+// the other reader is cancelled and still joined. If it had already completed, its
+// ordinary outcome is delivered instead.
+async control first_answer(
+    ref handle primary,
+    ref handle backup
+) exits answered { bytes data }, unanswered {
+    auto first = spawn reader(primary);
+    auto second = spawn reader(backup);
+    delta await first {
+        chunk { bytes data } => primary,
+        ended => primary_ended,
+        stopped => primary_stopped
+    }
+
+    [primary]:
+        cancel second;
+        delta await second {
+            chunk { bytes late } => late,
+            ended => backup_ended,
+            stopped => backup_stopped
+        }
+    [late]: emit("The backup answered before its cancellation was observed.");
+    [backup_stopped]: emit("The backup stopped.");
+    [late | backup_ended | backup_stopped]: exit answered { data };
+
+    [primary_ended | primary_stopped]: exit delta await second {
+        chunk { bytes backup_data } => answered { backup_data },
+        ended => unanswered {},
+        stopped => unanswered {}
+    };
+}
+
+// The loans end at the join, so both handles are closed afterwards. Both closes
+// are attempted, and a close failure is reported rather than hidden.
+async control fetch(
+    handle primary,
+    handle backup
+) exits fetched { bytes data }, unanswered, cleanup_failed { pair_close_error error } {
+    auto answer = capture await first_answer(borrow primary, borrow backup);
+    delta close(primary) {
+        closed => primary_closed,
+        failed { close_error error } => primary_failed
+    }
+    delta close(backup) {
+        closed => backup_closed,
+        failed { close_error backup_error } => backup_failed
+    }
+    delta answer {
+        answered { bytes data } => answered,
+        unanswered => unanswered
+    }
+
+    [answered & primary_closed & backup_closed]: exit fetched { data };
+    [unanswered & primary_closed & backup_closed]: exit unanswered;
+    [primary_failed & backup_closed]:
+        exit cleanup_failed { pair_close_error.left_close_failure { error } };
+    [primary_closed & backup_failed]:
+        exit cleanup_failed { pair_close_error.right_close_failure { backup_error } };
+    [primary_failed & backup_failed]:
+        exit cleanup_failed { pair_close_error.two_close_failures { error, backup_error } };
+}
+
+control main() exits process_result {
+    delta open("primary.txt") {
+        opened { handle primary } => primary_open,
+        not_found => primary_missing,
+        denied => primary_denied
+    }
+    [primary_open]:
+        delta open("backup.txt") {
+            opened { handle backup } => both_open,
+            not_found => backup_missing,
+            denied => backup_denied
+        }
+    [backup_missing | backup_denied]:
+        delta close(primary) {
+            closed => closed_alone,
+            failed { close_error close_error } => close_failed
+        }
+    [both_open]:
+        delta run fetch(primary, backup) {
+            fetched { bytes data } => fetched,
+            unanswered => unanswered,
+            cleanup_failed { pair_close_error error } => cleanup_failed
+        }
+    [fetched]:
+        delta decode_utf8(data) {
+            text { string text } => decoded,
+            invalid => invalid
+        }
+
+    [decoded]: emit(text);
+        exit answered;
+    [invalid | unanswered]: exit unanswered;
+    [primary_missing | primary_denied | closed_alone]: exit unavailable;
+    [cleanup_failed | close_failed]: emit("Closing a handle failed.");
+        exit cleanup_failed;
+}
+
+// Process status policy for this runnable example.
+outcome process_result {
+    @exit 0 answered,
+    @exit 3 unanswered,
+    @exit 2 unavailable,
+    @exit 1 cleanup_failed
+}

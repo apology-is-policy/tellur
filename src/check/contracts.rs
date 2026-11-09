@@ -135,7 +135,7 @@ impl Checker<'_> {
     ) -> Diagnostic {
         for outcome in outcomes {
             for note in signature.contributors.get(outcome).into_iter().flatten() {
-                if crate::host_operations::operation(&note.control).is_some() {
+                if note.generated() {
                     continue;
                 }
                 append(&mut diagnostic.notes, note.diagnostic());

@@ -4839,6 +4839,17 @@ its adapter state before its suppliers; resources it would have consumed at star
 are released. Native executables also now report a child fault to a root chain
 parked by `run` of a pending host operation, matching the reference executor.
 
+## Milestone 5 acceptance specimen (0.231)
+
+The specimen needed no new language feature. It combines spawned children with
+direct borrowed captures, `cancel`, a `cancelled` arm on a borrowing host operation,
+consuming joins and path-algebra cleanup (`[primary_failed & backup_failed]`). The
+checker enforces the two safety properties: a handle borrowed by a started reader
+cannot be closed before the join, and a cancelled child must still be joined. Writing
+it found one diagnostic defect: contributor notes named the generated control
+`receive$host$cancel` (or `receive$host`) at a placeholder location. Those notes
+are now omitted, and the caller's note names the operation.
+
 ## Signal cancellation (E1e.3, 0.230)
 
 A launch signal cancels the *entry*, which has no task of its own. The registry
