@@ -1,4 +1,4 @@
-//! First direct LLVM emitter: scalar, synchronous controls and Boolean path facts.
+//! First direct LLVM emitter: scalar and owned-record synchronous controls and Boolean path facts.
 //! Admission is explicit and occurs before writing/building anything. Every value
 //! operation goes through the runtime's private C ABI; guards are native branches.
 use super::*;
@@ -8,6 +8,10 @@ declare i32 @tellur_rt_v1_launch(ptr, i64, ptr, i64)
 declare i32 @tellur_rt_v1_ok(ptr)
 declare i64 @tellur_rt_v1_value(ptr, i32, i64, ptr, i64)
 declare i64 @tellur_rt_v1_copy(ptr, i64)
+declare i64 @tellur_rt_v1_record(ptr, ptr, i64, ptr, i64)
+declare i64 @tellur_rt_v1_field(ptr, i64, ptr, i64, i32)
+declare void @tellur_rt_v1_assign(ptr, i64, ptr, i64, i64)
+declare i64 @tellur_rt_v1_project(ptr, i64, i64)
 declare void @tellur_rt_v1_drop(ptr, i64)
 declare void @tellur_rt_v1_release(ptr, i64)
 declare i32 @tellur_rt_v1_bool(ptr, i64)
@@ -21,50 +25,73 @@ declare i64 @tellur_rt_v1_call(ptr, ptr, ptr, i64, ptr, i64)
 declare i32 @tellur_rt_v1_route(ptr, i64, ptr, i64, ptr, i64)
 declare void @tellur_rt_v1_unmatched(ptr, i64)
 "#;
-fn scalar(ty: &str) -> bool {
-    matches!(ty, "Bool" | "U32" | "String" | "Bytes" | "Unit")
+fn admitted_types(manifest: &crate::manifest::Manifest) -> BTreeSet<String> {
+    let mut types: BTreeSet<String> = ["Bool", "U32", "String", "Bytes", "Unit"]
+        .into_iter()
+        .map(String::from)
+        .collect();
+    loop {
+        let before = types.len();
+        for ty in &manifest.types {
+            if let crate::manifest::TypeDef::Record { name, fields } = ty {
+                if fields.iter().all(|f| types.contains(&f.ty)) {
+                    types.insert(name.clone());
+                }
+            }
+        }
+        if types.len() == before {
+            return types;
+        }
+    }
 }
 fn place(p: &Place) -> bool {
-    p.fields.is_empty() && !p.indirect
+    !p.indirect
 }
-fn expression_supported(e: &Expr) -> bool {
+fn expression_supported(e: &Expr, types: &BTreeSet<String>) -> bool {
     match e {
         Expr::Value(v) => matches!(
             v,
             Value::Bool(_) | Value::U32(_) | Value::String(_) | Value::Bytes(_) | Value::Unit
         ),
         Expr::Move(p) | Expr::Place(p) => place(p),
-        Expr::Pure(_, args) => args.iter().all(expression_supported),
-        Expr::Not(e) => expression_supported(e),
-        Expr::Binary(_, a, b) => expression_supported(a) && expression_supported(b),
+        Expr::Pure(_, args) => args.iter().all(|e| expression_supported(e, types)),
+        Expr::Construct(ty, name, args) => {
+            types.contains(ty) && name == ty && args.iter().all(|e| expression_supported(e, types))
+        }
+        Expr::Record(ty, fields) => {
+            types.contains(ty) && fields.iter().all(|(_, e)| expression_supported(e, types))
+        }
+        Expr::Project(e, _) => expression_supported(e, types),
+        Expr::Not(e) => expression_supported(e, types),
+        Expr::Binary(_, a, b) => expression_supported(a, types) && expression_supported(b, types),
         _ => false,
     }
 }
-fn supported(i: &Instruction) -> bool {
+fn supported(i: &Instruction, types: &BTreeSet<String>) -> bool {
     match &i.action {
         Action::Bind(_, e) | Action::Drop(e) | Action::Emit(e) | Action::Fault(e) => {
-            expression_supported(e)
+            expression_supported(e, types)
         }
-        Action::Assign(p, e) => place(p) && expression_supported(e),
+        Action::Assign(p, e) => place(p) && expression_supported(e, types),
         Action::Release(_) => true,
-        Action::Exit(_, args) => args.iter().all(expression_supported),
+        Action::Exit(_, args) => args.iter().all(|e| expression_supported(e, types)),
         Action::Complete {
             bindings,
             unwind: None,
             ..
-        } => bindings.iter().all(|(_, e)| expression_supported(e)),
+        } => bindings.iter().all(|(_, e)| expression_supported(e, types)),
         Action::Decide {
             operation: Operation::Region(_),
             args,
             ..
-        } => args.iter().all(expression_supported),
+        } => args.iter().all(|e| expression_supported(e, types)),
         Action::Decide {
             operation: Operation::Variant(e),
             args,
             arms,
         } => {
             args.is_empty()
-                && expression_supported(e)
+                && expression_supported(e, types)
                 && arms
                     .iter()
                     .all(|a| matches!(a.outcome.as_str(), "true" | "false") && a.slots.is_empty())
@@ -183,6 +210,14 @@ impl Emitter {
             "call void @tellur_rt_v1_unmatched(ptr %ctx, i64 {result})\nbr label %error\n{delivered}:"
         ));
     }
+    fn record(&mut self, ty: &str, values: &[String]) -> String {
+        let args = self.handles(values);
+        let (ty, len) = self.text(ty);
+        self.call(format!(
+            "call i64 @tellur_rt_v1_record(ptr %ctx, ptr {ty}, i64 {len}, ptr {args}, i64 {})",
+            values.len()
+        ))
+    }
     fn boolean(&mut self, value: &str) -> String {
         let v = self.call(format!(
             "call i32 @tellur_rt_v1_bool(ptr %ctx, i64 {value})"
@@ -202,12 +237,34 @@ impl Emitter {
             Expr::Place(p) | Expr::Move(p) => {
                 let slot = self.layout.slots[&p.root];
                 let v = self.value(format!("load i64, ptr %s{slot}"));
-                if matches!(e, Expr::Move(_)) {
+                if !p.fields.is_empty() {
+                    let path =
+                        self.handles(&p.fields.iter().map(usize::to_string).collect::<Vec<_>>());
+                    self.call(format!("call i64 @tellur_rt_v1_field(ptr %ctx, i64 {v}, ptr {path}, i64 {}, i32 {})", p.fields.len(), u8::from(matches!(e, Expr::Move(_)))))
+                } else if matches!(e, Expr::Move(_)) {
                     self.line(format!("store i64 0, ptr %s{slot}"));
                     v
                 } else {
                     self.call(format!("call i64 @tellur_rt_v1_copy(ptr %ctx, i64 {v})"))
                 }
+            }
+            Expr::Construct(ty, _, args) => {
+                let values = args.iter().map(|a| self.expr(a)).collect::<Vec<_>>();
+                self.record(ty, &values)
+            }
+            Expr::Record(ty, fields) => {
+                let mut values = vec![String::new(); fields.len()];
+                for (index, expression) in fields {
+                    // Evaluation order is written order, storage order is declaration order.
+                    values[*index] = self.expr(expression);
+                }
+                self.record(ty, &values)
+            }
+            Expr::Project(e, index) => {
+                let value = self.expr(e);
+                self.call(format!(
+                    "call i64 @tellur_rt_v1_project(ptr %ctx, i64 {value}, i64 {index})"
+                ))
             }
             Expr::Pure(name, args) => {
                 let values = args.iter().map(|a| self.expr(a)).collect::<Vec<_>>();
@@ -329,7 +386,15 @@ impl Emitter {
                 }
                 Action::Assign(p, e) => {
                     let v = self.expr(e);
-                    self.store(p.root, &v)
+                    if p.fields.is_empty() {
+                        self.store(p.root, &v)
+                    } else {
+                        let root =
+                            self.value(format!("load i64, ptr %s{}", self.layout.slots[&p.root]));
+                        let path = self
+                            .handles(&p.fields.iter().map(usize::to_string).collect::<Vec<_>>());
+                        self.effect(format!("call void @tellur_rt_v1_assign(ptr %ctx, i64 {root}, ptr {path}, i64 {}, i64 {v})", p.fields.len()));
+                    }
                 }
                 Action::Release(ids) => {
                     for id in ids {
@@ -486,6 +551,7 @@ impl CheckedProgram {
             ));
         }
         let entries = self.executable_entries(entry)?;
+        let types = admitted_types(self.manifest());
         let mut emitter = Emitter {
             globals: String::new(),
             body: String::new(),
@@ -504,20 +570,20 @@ impl CheckedProgram {
                 || region.boundary.is_some()
                 || region.contingency
                 || region.is_constructor()
-                || region.slots.values().any(|s| !scalar(&s.ty))
-                || region.parameters.iter().any(|s| !scalar(&s.ty))
+                || region.slots.values().any(|s| !types.contains(&s.ty))
+                || region.parameters.iter().any(|s| !types.contains(&s.ty))
                 || region
                     .exits
                     .iter()
                     .flat_map(|e| &e.fields)
-                    .any(|f| !scalar(&f.ty))
+                    .any(|f| !types.contains(&f.ty))
             {
                 return Err(error(format!(
-                    "LLVM backend currently supports only synchronous scalar controls: {}",
+                    "LLVM backend currently supports only synchronous scalar/owned-record controls: {}",
                     self.runtime_name(&region.name)
                 )));
             }
-            if let Some(instruction) = region.code.iter().find(|i| !supported(i)) {
+            if let Some(instruction) = region.code.iter().find(|i| !supported(i, &types)) {
                 return Err(Diagnostic::new(
                     "E_BACKEND",
                     instruction.provenance.span,

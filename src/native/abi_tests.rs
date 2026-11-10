@@ -247,3 +247,127 @@ fn ffi_values_preserve_unicode_nuls_bytes_and_reject_invalid_scalars() {
         assert!(c.error.as_ref().unwrap().contains("invalid ABI scalar"));
     }
 }
+
+fn record_manifest() -> Json {
+    json!({"types":[
+        {"kind":"record","name":"pair","fields":[{"name":"text","type":"String"},{"name":"n","type":"U32"}]},
+        {"kind":"record","name":"nested","fields":[{"name":"inner","type":"pair"}]},
+        {"kind":"record","name":"empty","fields":[]}
+    ]})
+}
+fn pair() -> V {
+    V::Construct {
+        ty: "pair".into(),
+        name: "pair".into(),
+        fields: vec![V::String("original".into()), V::U32(7)],
+    }
+}
+
+#[test]
+fn records_transfer_fields_without_cloning_and_reinitialize_partial_moves() {
+    let mut host = Host::new(record_manifest(), None, true, None);
+    let mut c = context(&mut host);
+    let text = String::from("owned 😀\0text");
+    let allocation = text.as_ptr();
+    let args = [c.put(V::String(text)), c.put(V::U32(9))];
+    unsafe {
+        let pair = tellur_rt_v1_record(&mut c, b"pair".as_ptr(), 4, args.as_ptr(), 2);
+        let root = tellur_rt_v1_record(&mut c, b"nested".as_ptr(), 6, [pair].as_ptr(), 1);
+        assert!(args.iter().chain([pair].iter()).all(|h| c.get(*h).is_err()));
+        let copy = tellur_rt_v1_field(&mut c, root, [0, 1].as_ptr(), 2, 0);
+        assert_eq!(c.take(copy).unwrap(), V::U32(9));
+        let moved = tellur_rt_v1_field(&mut c, root, [0, 0].as_ptr(), 2, 1);
+        let V::String(text) = c.get(moved).unwrap() else {
+            panic!()
+        };
+        assert_eq!(text.as_ptr(), allocation);
+        assert_eq!(project(c.get(root).unwrap(), &[0, 0]).unwrap(), V::Unit);
+        tellur_rt_v1_assign(&mut c, root, [0, 0].as_ptr(), 2, moved);
+        assert!(c.get(moved).is_err());
+        let temporary = tellur_rt_v1_project(&mut c, root, 0);
+        let text = tellur_rt_v1_project(&mut c, temporary, 0);
+        let V::String(value) = c.get(text).unwrap() else {
+            panic!()
+        };
+        assert_eq!(value.as_ptr(), allocation);
+        assert!(c.get(root).is_err() && c.get(temporary).is_err());
+        let empty = tellur_rt_v1_record(&mut c, b"empty".as_ptr(), 5, std::ptr::null(), 0);
+        tellur_rt_v1_drop(&mut c, empty);
+        tellur_rt_v1_drop(&mut c, text);
+        assert_eq!(tellur_rt_v1_ok(&mut c), 1);
+    }
+}
+
+#[test]
+fn invalid_record_shapes_do_not_consume_arguments() {
+    for case in ["arity", "type", "unknown", "duplicate", "stale", "zero"] {
+        let mut host = Host::new(record_manifest(), None, true, None);
+        let mut c = context(&mut host);
+        let text = c.put(V::String("keep".into()));
+        let number = c.put(V::U32(3));
+        let stale = c.put(V::U32(0));
+        c.take(stale).unwrap();
+        let args = match case {
+            "arity" => vec![text],
+            "type" => vec![number, text],
+            "duplicate" => vec![text, text],
+            "stale" => vec![text, stale],
+            "zero" => vec![text, 0],
+            _ => vec![text, number],
+        };
+        let ty = if case == "unknown" { "absent" } else { "pair" };
+        unsafe {
+            assert_eq!(
+                tellur_rt_v1_record(&mut c, ty.as_ptr(), ty.len(), args.as_ptr(), args.len()),
+                0,
+                "{case}"
+            );
+        }
+        assert_eq!(c.get(text).unwrap(), &V::String("keep".into()), "{case}");
+        assert_eq!(c.get(number).unwrap(), &V::U32(3), "{case}");
+        assert!(c.error.is_some(), "{case}");
+    }
+}
+
+#[test]
+fn invalid_field_operations_leave_roots_and_rhs_owned() {
+    for case in [
+        "read", "move", "assign", "project", "deep", "alias", "stale", "zero", "mode",
+    ] {
+        let mut host = Host::new(record_manifest(), None, true, None);
+        let mut c = context(&mut host);
+        let root = c.put(pair());
+        let rhs = c.put(V::String("replacement".into()));
+        let stale = c.put(V::Unit);
+        c.take(stale).unwrap();
+        unsafe {
+            match case {
+                "read" => {
+                    tellur_rt_v1_field(&mut c, root, [2].as_ptr(), 1, 0);
+                }
+                "move" => {
+                    tellur_rt_v1_field(&mut c, root, [2].as_ptr(), 1, 1);
+                }
+                "assign" => tellur_rt_v1_assign(&mut c, root, [2].as_ptr(), 1, rhs),
+                "project" => {
+                    tellur_rt_v1_project(&mut c, root, 2);
+                }
+                "deep" => tellur_rt_v1_assign(&mut c, root, [0, 0].as_ptr(), 2, rhs),
+                "alias" => tellur_rt_v1_assign(&mut c, root, [0].as_ptr(), 1, root),
+                "stale" => tellur_rt_v1_assign(&mut c, root, [0].as_ptr(), 1, stale),
+                "zero" => tellur_rt_v1_assign(&mut c, 0, [0].as_ptr(), 1, rhs),
+                "mode" => {
+                    tellur_rt_v1_field(&mut c, root, [0].as_ptr(), 1, 2);
+                }
+                _ => unreachable!(),
+            }
+        }
+        assert_eq!(c.get(root).unwrap(), &pair(), "{case}");
+        assert_eq!(
+            c.get(rhs).unwrap(),
+            &V::String("replacement".into()),
+            "{case}"
+        );
+        assert!(c.error.is_some(), "{case}");
+    }
+}

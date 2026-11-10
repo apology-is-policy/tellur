@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.236.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.237.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -23,8 +23,9 @@ See [owned spawned children](async-execution.md#owned-spawned-children).
 ## Native backends
 
 The default Rust backend implements the language profile below. Since 0.235 the
-opt-in direct LLVM backend admits a [bounded synchronous scalar profile](llvm-backend.md)
-on macOS arm64, extended in 0.236 to nested scalar calls and outcome payloads;
+opt-in direct LLVM backend admits a [bounded synchronous scalar/owned-record profile](llvm-backend.md)
+on macOS arm64, extended in 0.236 to nested calls and in 0.237 to owned records, field-sensitive
+moves, assignment and temporary projections;
 unsupported checked programs fail with `E_BACKEND` before build
 outputs are created. Backend selection does not change language checking.
 

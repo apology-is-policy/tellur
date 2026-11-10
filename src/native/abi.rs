@@ -113,6 +113,106 @@ pub unsafe extern "C" fn tellur_rt_v1_copy(ctx: *mut Context<'_>, handle: u64) -
         Ok(c.put(value))
     })
 }
+/// Record fields arrive in declaration order after evaluation in source order.
+/// Validate the complete shape and handle batch before transferring any owner.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_record(
+    ctx: *mut Context<'_>,
+    ty: *const u8,
+    len: usize,
+    args: *const u64,
+    count: usize,
+) -> u64 {
+    unsafe { &mut *ctx }.perform(|c| {
+        let ty = unsafe { text(ty, len)? };
+        let record = c.host.manifest["types"]
+            .as_array()
+            .and_then(|types| {
+                types
+                    .iter()
+                    .find(|t| t["name"] == ty && t["kind"] == "record")
+            })
+            .ok_or("E_NATIVE: invalid ABI record type")?;
+        let expected = record["fields"]
+            .as_array()
+            .ok_or("E_NATIVE: invalid ABI record shape")?;
+        if expected.len() != count {
+            return Err("E_NATIVE: ABI record field count mismatch".into());
+        }
+        let handles = unsafe { slice(args, count) };
+        for (&handle, field) in handles.iter().zip(expected) {
+            let ty = field["type"]
+                .as_str()
+                .ok_or("E_NATIVE: invalid ABI field type")?;
+            validate(c.get(handle)?, ty, &c.host.manifest)
+                .map_err(|e| format!("E_NATIVE: invalid ABI record payload: {e}"))?;
+        }
+        let fields = c.take_many(handles)?;
+        Ok(c.put(V::Construct {
+            ty: ty.into(),
+            name: ty.into(),
+            fields,
+        }))
+    })
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_field(
+    ctx: *mut Context<'_>,
+    handle: u64,
+    path: *const usize,
+    count: usize,
+    moving: u32,
+) -> u64 {
+    unsafe { &mut *ctx }.perform(|c| {
+        c.get(handle)?;
+        let path = unsafe { slice(path, count) };
+        let root = handle as usize - 1;
+        let value = match moving {
+            0 => read_place(&c.values, root, path, false)?,
+            1 => take_place(&mut c.values, root, path, false)?,
+            _ => return Err("E_NATIVE: invalid ABI field transfer mode".into()),
+        };
+        Ok(c.put(value))
+    })
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_assign(
+    ctx: *mut Context<'_>,
+    handle: u64,
+    path: *const usize,
+    count: usize,
+    value: u64,
+) {
+    unsafe { &mut *ctx }.perform(|c| {
+        c.get(handle)?;
+        c.get(value)?;
+        if handle == value {
+            return Err("E_NATIVE: aliased ABI assignment transfer".into());
+        }
+        let root = handle as usize - 1;
+        let path = unsafe { slice(path, count) };
+        // Validate the destination before consuming the RHS. No value is cloned.
+        mutable_place(&mut c.values, root, path)?;
+        let value = c.take(value)?;
+        assign_place(&mut c.values, root, path, false, value)
+    })
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_project(
+    ctx: *mut Context<'_>,
+    handle: u64,
+    index: usize,
+) -> u64 {
+    unsafe { &mut *ctx }.perform(|c| {
+        c.get(handle)?;
+        mutable_place(&mut c.values, handle as usize - 1, &[index])?;
+        let value = project_owned(c.take(handle)?, index)?;
+        Ok(c.put(value))
+    })
+}
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tellur_rt_v1_drop(ctx: *mut Context<'_>, handle: u64) {
     unsafe { &mut *ctx }.perform(|c| {

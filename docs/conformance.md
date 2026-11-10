@@ -6082,6 +6082,32 @@ operation: its state drops before the supplier and it never completes.
 chain parked by `run`, which previously stopped with `E_NATIVE: source task wait
 has no runnable producer`.
 
+## Direct LLVM owned records (0.237 / B1.3c)
+
+The opt-in LLVM emitter admits ordinary records whose leaves are scalar values,
+including empty/nested records and imported concrete generic layouts. Construction,
+direct field reads/moves/assignment and temporary projection reuse the runtime's
+existing value operations. Named initializers evaluate in written order before
+placing handles in declaration order; moving a field retains its enclosing root
+and sibling fields. Calls and outcomes carry records through the existing ABI.
+
+Focused ABI tests cover allocation-preserving transfers, field reinitialization,
+empty records and invalid shape/path/handle/alias failures without partial owner
+consumption. The LLVM suite compares original and expanded O0/O2 code against Rust
+and reference results, including reordered initializers that read a field before
+moving its whole owner, nested calls, partial releases, temporary projections,
+record launch arguments and malformed launch payloads. Faults and every tested
+fuel cut compare status, stdout and stderr. Negative cases retain rejection of
+reference/tagged/collection/opaque-containing records before output creation.
+`playground/llvm_records.tellur` is the runnable source fixture.
+
+Default checker/runtime/Rust-generator/LSP production sources are unchanged.
+Affected native-host, LLVM, LSP/manual, baseline and isolated editor/release checks
+run freshly; unchanged full default-suite and coroutine evidence is reused with
+source-input proof. This does not claim a fresh full-suite run or whole-language
+LLVM parity. Tagged values, references, loops, boundaries and async lowering remain
+later slices; Rust stays the default.
+
 ## Direct LLVM scalar calls (0.236 / B1.3b)
 
 The LLVM emitter admits checked synchronous `Operation::Region` calls and emits

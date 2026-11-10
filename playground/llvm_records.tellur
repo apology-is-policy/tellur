@@ -1,0 +1,46 @@
+struct greeting {
+    string text;
+    u32 count;
+}
+struct parcel {
+    greeting message;
+    string note;
+}
+struct snapshot {
+    parcel value;
+    u32 previous;
+}
+struct empty {}
+
+control main(bool fail, string name) exits result faults {
+    auto marker = empty {};
+    drop(marker);
+    mutable parcel item = parcel { greeting { name, 7 }, "retained" };
+    string original = item.message.text;
+    item.message.text = concat(original, "!");
+    item.message.count = 9;
+    // Copy the count before moving the whole parcel, in written order.
+    auto saved = snapshot { previous: item.message.count, value: item };
+    delta relay(saved.value) {
+        ready { auto returned } => ready
+    }
+    [ready]:
+        emit(u32_text(saved.previous));
+        emit(greeting { "temporary", 0 }.text);
+        delta fail {
+            true => bad,
+            false => good
+        }
+    [bad]: fault "record stopped";
+    [good]: exit done { returned };
+}
+control relay(parcel input) exits ready { parcel value } {
+    delta identity(input);
+    [ready]: exit ready { value };
+}
+control identity(parcel value) exits ready { parcel value } {
+    exit ready { value };
+}
+outcome result {
+    @exit 0 done { parcel value }
+}
