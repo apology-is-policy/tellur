@@ -1104,50 +1104,218 @@ outcome result {@exit 0 done}
     }
 
     #[test]
-    fn unsupported_primitive_signatures_fail_before_output_creation() {
-        for borrowed in [false, true] {
-            let f = Fixture::new(if borrowed {
-                "control main(string input) exits result {delta custom(borrow input) {done=>done} [done]:exit done;} outcome result {@exit 0 done}"
-            } else {
-                "control main() exits result {delta custom() {done=>done,bad {auto ignored}=>bad} [done|bad]:exit done;} outcome result {@exit 0 done}"
-            });
-            let mut manifest: Json =
-                serde_json::from_str(&fs::read_to_string(&f.manifest).unwrap()).unwrap();
-            let (parameters, outcomes) = if borrowed {
-                (
-                    json!([{"name":"input","type":"String","mode":"borrow"}]),
-                    json!([{"name":"done","fields":[]}]),
-                )
-            } else {
-                (
-                    json!([]),
-                    json!([{"name":"done","fields":[]},{"name":"bad","fields":[{"name":"error","type":"read_error"}]}]),
-                )
-            };
-            manifest["primitives"].as_array_mut().unwrap().push(json!({"name":"custom","parameters":parameters,"outcomes":outcomes,"effects":[],"returns":true}));
-            fs::write(&f.manifest, manifest.to_string()).unwrap();
-            let checked = compile_file(
-                &f.source,
-                Manifest::from_json(&manifest.to_string()).unwrap(),
-            )
-            .unwrap();
-            assert_eq!(checked.llvm_source("main").unwrap_err().code, "E_BACKEND");
-            let out = f.command("llvm", 0).output().unwrap();
-            assert!(!out.status.success());
-            assert!(String::from_utf8_lossy(&out.stderr).contains("E_BACKEND"));
-            assert!(!f.root.join("llvm-0.tellur-build").exists());
-            assert!(!f.root.join("llvm-0.ll").exists());
+    fn live_resources_borrow_read_and_consume_close_through_owned_records() {
+        let f = Fixture::new(include_str!("../playground/llvm_resources.tellur"));
+        let file = f.root.join("input.dat");
+        let bytes = vec![0, 65, 255, 10];
+        fs::write(&file, &bytes).unwrap();
+        let checked = compile_file(
+            &f.source,
+            Manifest::from_json(&fs::read_to_string(&f.manifest).unwrap()).unwrap(),
+        )
+        .unwrap();
+        let handle = json!({"kind":"opaque","value":{"ty":"handle","token":"file-0"}});
+        for expanded in [false, true] {
+            for opt in [0, 2] {
+                build_pair(&f, expanded, opt);
+                for (filename, status, calls) in [
+                    (
+                        file.clone(),
+                        0,
+                        vec![
+                            json!({"operation":"open","outcome":"opened","fields":[handle.clone()]}),
+                            json!({"operation":"read","outcome":"data","fields":[{"kind":"bytes","value":bytes}]}),
+                            json!({"operation":"close","outcome":"closed","fields":[]}),
+                        ],
+                    ),
+                    (
+                        f.root.join("absent"),
+                        3,
+                        vec![json!({"operation":"open","outcome":"not_found","fields":[]})],
+                    ),
+                ] {
+                    let args = [filename.to_str().unwrap(), "false"];
+                    let a = Command::new(f.root.join(format!("llvm-{opt}")))
+                        .arg("--json")
+                        .args(args)
+                        .output()
+                        .unwrap();
+                    let b = Command::new(f.root.join(format!("rust-{opt}")))
+                        .arg("--json")
+                        .args(args)
+                        .output()
+                        .unwrap();
+                    assert_eq!(a.status.code(), Some(status), "{a:?}");
+                    assert_eq!(a.status.code(), b.status.code(), "{a:?}; {b:?}");
+                    assert_eq!(a.stdout, b.stdout);
+                    assert_eq!(a.stderr, b.stderr);
+                    let scenario = json!({"entry":"main","arguments":[{"kind":"string","value":filename},{"kind":"bool","value":false}],"calls":calls});
+                    assert_eq!(
+                        report(&a),
+                        serde_json::to_value(
+                            checked
+                                .run(&serde_json::from_value(scenario).unwrap())
+                                .unwrap()
+                        )
+                        .unwrap()
+                    );
+                }
+            }
         }
+    }
+
+    #[test]
+    fn scripted_resources_errors_faults_and_fuel_match_both_executors() {
+        let f = Fixture::new(include_str!("../playground/llvm_resources.tellur"));
+        let checked = compile_file(
+            &f.source,
+            Manifest::from_json(&fs::read_to_string(&f.manifest).unwrap()).unwrap(),
+        )
+        .unwrap();
+        let handle = json!({"kind":"opaque","value":{"ty":"handle","token":"owned-token"}});
+        let mut scenarios = vec![];
+        for read_ok in [false, true] {
+            for close_ok in [false, true] {
+                for fail in [false, true] {
+                    let read = if read_ok {
+                        json!({"operation":"read","outcome":"data","fields":[{"kind":"bytes","value":[42]}]})
+                    } else {
+                        json!({"operation":"read","outcome":"failed","fields":[{"kind":"opaque","value":{"ty":"read_error","token":"read failed"}}]})
+                    };
+                    let close = if close_ok {
+                        json!({"operation":"close","outcome":"closed","fields":[]})
+                    } else {
+                        json!({"operation":"close","outcome":"failed","fields":[{"kind":"opaque","value":{"ty":"close_error","token":"close failed"}}]})
+                    };
+                    scenarios.push(json!({"entry":"main","arguments":[{"kind":"string","value":"scripted"},{"kind":"bool","value":fail}],"calls":[{"operation":"open","outcome":"opened","fields":[handle.clone()]},read,close]}));
+                }
+            }
+        }
+        for outcome in ["not_found", "denied"] {
+            scenarios.push(json!({"entry":"main","arguments":[{"kind":"string","value":"scripted"},{"kind":"bool","value":false}],"calls":[{"operation":"open","outcome":outcome,"fields":[]}]}));
+        }
+        let mut malformed = scenarios[0].clone();
+        malformed["calls"][1]["fields"][0]["value"]["ty"] = json!("close_error");
+        scenarios.push(malformed);
+        for expanded in [false, true] {
+            for opt in [0, 2] {
+                build_pair(&f, expanded, opt);
+                for (index, scenario) in scenarios.iter().enumerate() {
+                    let path = f.root.join("scenario.json");
+                    fs::write(&path, scenario.to_string()).unwrap();
+                    for fuel in (0..=35).map(Some).chain([None]) {
+                        let a = execute(&f.root.join(format!("llvm-{opt}")), &path, fuel);
+                        let b = execute(&f.root.join(format!("rust-{opt}")), &path, fuel);
+                        assert_eq!(
+                            a.status.code(),
+                            b.status.code(),
+                            "{expanded}/{opt}/{index}/{fuel:?}: {a:?}; {b:?}"
+                        );
+                        assert_eq!(a.stdout, b.stdout);
+                        assert_eq!(a.stderr, b.stderr);
+                        if fuel.is_none() && index < 10 && !(index == 7) {
+                            assert_eq!(
+                                report(&a),
+                                serde_json::to_value(
+                                    checked
+                                        .run(&serde_json::from_value(scenario.clone()).unwrap())
+                                        .unwrap()
+                                )
+                                .unwrap()
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn resource_options_and_references_retain_owner_until_consuming_call() {
+        let source = r#"
+control maybe(handle input,bool keep) exits ready {option<handle> value} {
+    [entry]:delta keep {true=>keep,false=>discard}
+    [keep]:exit ready {some {input}};
+    [discard]:delta close(input) {closed=>closed,failed {auto error}=>failed}
+    [closed|failed]:exit ready {none};
+}
+control read_ref(ref handle input) exits done {
+    delta read(input) {data {auto bytes}=>data,failed {auto error}=>failed}
+    [entry]:exit done;
+}
+control main(bool keep) exits result {
+    delta open("scripted") {opened {auto owner}=>opened,not_found=>absent,denied=>denied}
+    [opened]:delta maybe(owner,keep) {ready {auto value}=>ready}
+    [ready]:delta value {some {auto file}=>some,none=>none}
+    [some]:read_ref(borrow file);delta close(file) {closed=>closed,failed {auto error}=>failed}
+    [entry]:exit done;
+}
+outcome result {@exit 0 done}
+"#;
+        let mut scenarios = vec![];
+        for keep in [false, true] {
+            let mut calls = vec![
+                json!({"operation":"open","outcome":"opened","fields":[{"kind":"opaque","value":{"ty":"handle","token":"owner"}}]}),
+            ];
+            if keep {
+                calls.push(json!({"operation":"read","outcome":"data","fields":[{"kind":"bytes","value":[65]}]}));
+            }
+            calls.push(json!({"operation":"close","outcome":"closed","fields":[]}));
+            scenarios.push(
+                json!({"entry":"main","arguments":[{"kind":"bool","value":keep}],"calls":calls}),
+            );
+        }
+        carrier_matrix(source, &scenarios, &[None]);
+        for bad in [
+            source.replace(
+                "read_ref(borrow file);delta close(file)",
+                "read_ref(borrow file);drop(file);delta close(file)",
+            ),
+            source.replace(
+                "read_ref(borrow file);delta close(file)",
+                "auto duplicate=clone(borrow file);read_ref(borrow file);delta close(file)",
+            ),
+        ] {
+            assert!(
+                tellur::compile(
+                    &bad,
+                    Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
+                )
+                .is_err()
+            );
+        }
+    }
+
+    #[test]
+    fn unsupported_primitive_signatures_fail_before_output_creation() {
+        let f = Fixture::new(
+            "control main() exits result {delta custom() {done=>done,bad {auto ignored}=>bad} [done|bad]:exit done;} outcome result {@exit 0 done}",
+        );
+        let mut manifest: Json =
+            serde_json::from_str(&fs::read_to_string(&f.manifest).unwrap()).unwrap();
+        manifest["primitives"].as_array_mut().unwrap().push(json!({"name":"custom","parameters":[],"outcomes":[{"name":"done","fields":[]},{"name":"bad","fields":[{"name":"error","type":"vector<U32>"}]}],"effects":[],"returns":true}));
+        fs::write(&f.manifest, manifest.to_string()).unwrap();
+        let checked = compile_file(
+            &f.source,
+            Manifest::from_json(&manifest.to_string()).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(checked.llvm_source("main").unwrap_err().code, "E_BACKEND");
+        let out = f.command("llvm", 0).output().unwrap();
+        assert!(!out.status.success());
+        assert!(String::from_utf8_lossy(&out.stderr).contains("E_BACKEND"));
+        assert!(!f.root.join("llvm-0.tellur-build").exists());
+        assert!(!f.root.join("llvm-0.ll").exists());
     }
 
     #[test]
     fn unsupported_checked_operations_create_no_build_outputs() {
         for source in [
             "struct ticket {u32 value;constructor(u32 input){self.value=input;}} control main() exits result {drop(ticket(1));exit done;} outcome result {@exit 0 done}",
-            "struct box {option<read_error> value;} control main() exits result {drop(box {none});exit done;} outcome result {@exit 0 done}",
-            "variant choice {one {read_error error},two} control main() exits result {drop(choice.two {});exit done;} outcome result {@exit 0 done}",
+            "struct box {option<vector<u32>> value;} control main() exits result {drop(box {none});exit done;} outcome result {@exit 0 done}",
+            "variant choice {one {vector<u32> error},two} control main() exits result {drop(choice.two {});exit done;} outcome result {@exit 0 done}",
             "struct box {vector<u32> value;} control main() exits result {drop(box {[1,2]});exit done;} outcome result {@exit 0 done}",
-            "struct box {read_error value;} control main(read_error e) exits result {drop(box {e});exit done;} outcome result {@exit 0 done}",
+            "struct box {vector<u32> value;} control main(vector<u32> e) exits result {drop(box {e});exit done;} outcome result {@exit 0 done}",
             "control main() exits result {exit done;} async control helper() exits done {exit done;} outcome result {@exit 0 done}",
             "control main() exits result {loop L(){again L();}} outcome result {@exit 0 done}",
             "control main() exits result {fault boundary {exit done;} contingency [] {terminate process 1;}} outcome result {@exit 0 done}",

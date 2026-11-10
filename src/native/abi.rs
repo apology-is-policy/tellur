@@ -653,8 +653,10 @@ pub unsafe extern "C" fn tellur_rt_v1_complete(
 
 pub type Callback = unsafe extern "C" fn(*mut Context<'_>, *const u64, usize);
 
-/// Synchronous owned host calls retain the existing runtime's live/scripted
-/// dispatch, tracing and failures. They do not create a control activation.
+/// Synchronous host calls retain the existing runtime's live/scripted
+/// dispatch, tracing and failures. Borrowed parameters are already lowered to
+/// checked value reads; consuming this temporary handle does not consume the
+/// source owner. They do not create a control activation.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tellur_rt_v1_primitive(
     ctx: *mut Context<'_>,
@@ -672,7 +674,6 @@ pub unsafe extern "C" fn tellur_rt_v1_primitive(
         if declaration["async"] == true
             || declaration["rust"].is_object()
             || declaration["returns"] != true
-            || parameters.iter().any(|p| p["mode"] == "borrow")
         {
             return Err("E_NATIVE: primitive requires unsupported ABI invocation mode".into());
         }

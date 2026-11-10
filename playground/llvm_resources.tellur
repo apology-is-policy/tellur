@@ -1,0 +1,41 @@
+// Borrow the handle for reading, then transfer it exactly once to close.
+struct file_owner {
+    handle file;
+}
+control read_owned(file_owner input) exits ready { bytes data }, failed {
+    delta read(borrow input.file) {
+        data { auto bytes } => read,
+        failed { auto problem } => read_bad
+    }
+    delta close(input.file) {
+        closed => closed,
+        failed { auto close_problem } => close_bad
+    }
+    [read & closed]: exit ready { bytes };
+    [read_bad | close_bad]: exit failed;
+}
+control main(string filename, bool fail) exits process_result {
+    delta open(filename) {
+        opened { auto file } => opened,
+        not_found => missing,
+        denied => denied
+    }
+    [opened]: delta read_owned(file_owner { file }) {
+        ready { auto data } => read,
+        failed => failed
+    }
+    [read]:
+        delta fail {
+            true => faulted,
+            false => done
+        }
+    [faulted]: fault "after closing file";
+    [done]: exit done { data };
+    [missing]: exit missing;
+    [denied | failed]: exit failed;
+}
+outcome process_result {
+    @exit 0 done { bytes data },
+    @exit 3 missing,
+    @exit 1 failed
+}

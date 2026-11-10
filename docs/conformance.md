@@ -6346,3 +6346,21 @@ returned caller identities after child retirement and rejection after storage re
 A focused feature unit test gates reference-bearing primitive signatures even if
 frontend host admission later broadens. Existing resource/async/loop/boundary
 backend rejections remain; language ownership and origin checks are unchanged.
+
+
+## Direct LLVM synchronous resources (0.243 / B1.3i)
+
+Opaque values and must-complete resources compose with the existing synchronous
+LLVM aggregate/call profile. Returning borrowed primitives use checked value reads;
+consuming a temporary ABI handle does not consume the source owner. Signature
+admission stays reference-free and still rejects async operations/Rust adapters.
+
+`tests/llvm_backend.rs` covers live file open/read/close through an owning record,
+missing files, original/expanded O0/O2 comparisons with Rust and scripted reference
+reports, all read/close error combinations, faults after close, malformed replies
+and every tested fuel cutoff. Resource options and direct references preserve owner
+loans until consuming close; source drop/clone restrictions remain checked.
+`src/native/abi_tests.rs` checks actual file-table ownership and retained file
+position, owner survival across repeated borrowed reads, consuming close, and
+invalid borrow batches that preserve handles and never invoke the host.
+`playground/llvm_resources.tellur` is the formatted runnable example.

@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.242.0** implements the v0.1 checked core and the current language
+Compiler release **0.243.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -22,11 +22,16 @@ spawned children of one async control. `spawn producer(..) into set;` adds a mem
 `delta await next set { ..., empty => ... }` joins members in completion order, and
 `count(borrow set)` bounds how many run at once.
 
+Release 0.243 adds opaque/resource values and returning synchronous borrowed host
+operations to direct LLVM emission. The [resource example](playground/llvm_resources.tellur)
+passes a file owner through a record, borrows it for reading, and consumes it when
+closing. Scripted and live host behavior share the existing runtime. Async host
+operations and Rust adapters remain later slices; Rust remains the default backend.
+
 Release 0.242 adds reference-bearing records, options, variants and named outcomes
 to the direct LLVM backend, including whole borrowed carriers and guarded leaf
 reborrows. The [carrier example](playground/llvm_carriers.tellur) returns a nested
-carrier, edits a returned exclusive leaf and restores parent access. Borrowed host
-operations remain a later slice; Rust stays the default backend.
+carrier, edits a returned exclusive leaf and restores parent access. Rust stays the default backend.
 
 Release 0.240 gives LLVM locals stable activation storage shared across nested
 synchronous calls. Temporary handles remain separate, and failed calls retire their

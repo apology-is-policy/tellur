@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.242.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.243.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -32,7 +32,8 @@ Compiler 0.240 gives admitted locals stable activation storage, shared by synchr
 children and retired on completion/failure; 0.241 adds direct shared/exclusive references to reference-free values, borrowed
 control arguments/results and borrowed decisions with existing origin evidence.
 Compiler 0.242 adds reference-bearing aggregates, whole borrowed carriers and guarded
-leaf evidence. Borrowed host operations remain gated.
+leaf evidence. Compiler 0.243 adds opaque/resource values and returning synchronous
+borrowed host signatures; async host operations and Rust adapters remain gated.
 Unsupported checked programs fail with `E_BACKEND` before build
 outputs are created. Backend selection does not change language checking.
 

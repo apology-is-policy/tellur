@@ -1174,6 +1174,137 @@ fn malformed_tagged_transfers_do_not_consume_values_or_publish_outcomes() {
     }
 }
 
+fn file_manifest() -> Json {
+    let mut m = json!({"types":[{"kind":"opaque","name":"handle","linear":true},{"kind":"opaque","name":"read_error","linear":false},{"kind":"opaque","name":"close_error","linear":false}],"primitives":[]});
+    let ty = |t: &str| {
+        if ["Handle", "ReadError", "CloseError"].contains(&t) {
+            snake_name(t)
+        } else {
+            t.to_owned()
+        }
+    };
+    for name in ["open", "read", "close"] {
+        let (parameters, outcomes, effects) = contract(name).unwrap();
+        let parameters = parameters
+            .iter()
+            .enumerate()
+            .map(|(i, (t, mode))| json!({"name":format!("arg{i}"),"type":ty(t),"mode":mode}))
+            .collect::<Vec<_>>();
+        let outcomes=outcomes.iter().map(|(name,fields)|json!({"name":snake_name(name),"fields":fields.iter().enumerate().map(|(i,t)|json!({"name":format!("field{i}"),"type":ty(t)})).collect::<Vec<_>>()})).collect::<Vec<_>>();
+        m["primitives"].as_array_mut().unwrap().push(json!({"name":name,"parameters":parameters,"outcomes":outcomes,"effects":effects,"returns":true}));
+    }
+    m
+}
+fn abi_file(name: &str) -> std::path::PathBuf {
+    let file = std::env::temp_dir().join(format!("tellur-abi-{name}-{}", std::process::id()));
+    std::fs::write(&file, b"retained owner\0").unwrap();
+    file
+}
+#[test]
+fn live_borrowed_primitive_snapshots_keep_the_original_file_until_consumed() {
+    let file = abi_file("borrow-close");
+    let mut host = Host::new(file_manifest(), None, true, Some(0));
+    let mut c = context(&mut host);
+    unsafe {
+        tellur_rt_v1_frame(&mut c, 1);
+        let path = c.put(V::String(file.to_str().unwrap().into()));
+        let opened = tellur_rt_v1_primitive(&mut c, b"open".as_ptr(), 4, [path].as_ptr(), 1);
+        let mut payload = [0];
+        assert_eq!(
+            tellur_rt_v1_route(
+                &mut c,
+                opened,
+                b"opened".as_ptr(),
+                6,
+                payload.as_mut_ptr(),
+                1
+            ),
+            1
+        );
+        let owner = c.get(payload[0]).unwrap().clone();
+        tellur_rt_v1_store(&mut c, 0, std::ptr::null(), 0, payload[0]);
+        for expected in [b"retained owner\0".to_vec(), vec![]] {
+            let snapshot = tellur_rt_v1_local(&mut c, 0, std::ptr::null(), 0, 0);
+            let read = tellur_rt_v1_primitive(&mut c, b"read".as_ptr(), 4, [snapshot].as_ptr(), 1);
+            assert!(c.get(snapshot).is_err());
+            assert_eq!(c.storage.values()[0], Some(owner.clone()));
+            assert_eq!(c.host.files.len(), 1);
+            assert_eq!(
+                tellur_rt_v1_route(&mut c, read, b"data".as_ptr(), 4, payload.as_mut_ptr(), 1),
+                1
+            );
+            assert_eq!(c.take(payload[0]).unwrap(), V::Bytes(expected));
+        }
+        let moved = tellur_rt_v1_local(&mut c, 0, std::ptr::null(), 0, 1);
+        let closed = tellur_rt_v1_primitive(&mut c, b"close".as_ptr(), 5, [moved].as_ptr(), 1);
+        assert_eq!(
+            tellur_rt_v1_route(
+                &mut c,
+                closed,
+                b"closed".as_ptr(),
+                6,
+                std::ptr::null_mut(),
+                0
+            ),
+            1
+        );
+        assert!(c.storage.values()[0].is_none() && c.host.files.is_empty());
+        assert!(c.get(moved).is_err());
+        assert!(c.error.is_none());
+        assert_eq!(c.host.fuel, Some(0));
+        assert_eq!(
+            c.host
+                .events
+                .iter()
+                .map(|e| e["operation"].as_str().unwrap())
+                .collect::<Vec<_>>(),
+            vec!["open", "read", "read", "close"]
+        );
+    }
+    drop(c);
+    drop(host);
+    std::fs::remove_file(file).unwrap();
+}
+#[test]
+fn invalid_borrowed_primitive_batches_preserve_physical_resource_and_file_position() {
+    let file = abi_file("invalid-borrow");
+    for malformed in ["arity", "type", "stale"] {
+        let mut host = Host::new(file_manifest(), None, true, None);
+        let (_, values) = host
+            .primitive("open", vec![V::String(file.to_str().unwrap().into())])
+            .unwrap();
+        let owner = values[0].clone();
+        let mut c = context(&mut host);
+        let handle = c.put(owner.clone());
+        let stale = c.put(V::Unit);
+        c.take(stale).unwrap();
+        let wrong = c.put(V::String("wrong".into()));
+        let args = match malformed {
+            "arity" => vec![handle, handle],
+            "type" => vec![wrong],
+            _ => vec![stale],
+        };
+        assert_eq!(
+            unsafe {
+                tellur_rt_v1_primitive(&mut c, b"read".as_ptr(), 4, args.as_ptr(), args.len())
+            },
+            0
+        );
+        assert_eq!(c.get(handle).unwrap(), &owner);
+        assert!(c.get(wrong).is_ok());
+        assert_eq!(c.host.files.len(), 1);
+        assert_eq!(c.host.events.len(), 1);
+        drop(c);
+        assert_eq!(
+            host.primitive("read", vec![owner.clone()]).unwrap().1,
+            vec![V::Bytes(b"retained owner\0".to_vec())]
+        );
+        host.primitive("close", vec![owner]).unwrap();
+        assert!(host.files.is_empty());
+    }
+    std::fs::remove_file(file).unwrap();
+}
+
 fn primitive_manifest() -> Json {
     json!({"types":[],"primitives":[{"name":"checked_add","parameters":[
         {"name":"a","type":"U32","mode":"value"},{"name":"b","type":"U32","mode":"value"}],
@@ -1216,13 +1347,13 @@ fn malformed_primitive_calls_do_not_transfer_or_invoke_the_host() {
         "arity",
         "type",
         "unknown",
-        "borrow",
+        "adapter",
         "async",
         "nonreturning",
     ] {
         let mut manifest = primitive_manifest();
         match case {
-            "borrow" => manifest["primitives"][0]["parameters"][0]["mode"] = json!("borrow"),
+            "adapter" => manifest["primitives"][0]["rust"] = json!({"operation":"custom"}),
             "async" => manifest["primitives"][0]["async"] = json!(true),
             "nonreturning" => manifest["primitives"][0]["returns"] = json!(false),
             _ => {}

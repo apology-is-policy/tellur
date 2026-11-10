@@ -10,6 +10,7 @@ payloads. Compiler 0.239 adds synchronous primitive calls with owned arguments
 and supported payload types. Compiler 0.240 moves locals into stable runtime activation storage.
 Compiler 0.241 adds direct shared/exclusive references and borrowed decisions.
 Compiler 0.242 adds reference-bearing aggregates and whole borrowed carrier results.
+Compiler 0.243 adds opaque/resource values and synchronous borrowed host parameters.
 The default remains `--backend rust`. Both start from the same checked program;
 backend selection does not relax ownership, origins, outcomes or path rules.
 
@@ -36,7 +37,7 @@ the Rust backend. Multiple eligible executable entries are supported.
 
 Direct references and reference-bearing aggregates compose recursively; shared/exclusive
 parameters, borrowed results, carrier reborrows and indirect fields are supported.
-Collections, opaque/resource values, user constructors, loops, fault
+Collections, user constructors, loops, fault
 boundaries, contingencies, task operations and adapters remain outside this
 profile. Launch signal policies are also rejected. Admission checks all checked
 regions, including unused helpers. Unsupported programs receive `E_BACKEND`
@@ -82,8 +83,7 @@ cannot make an earlier storage identity refer to a later invocation. Fault repor
 still retain the failed control's activation chain. Storage operations add no fuel
 ticks or scheduling handoffs.
 
-Storage identity does not add an alternative ownership or lifetime rule. Borrowed
-primitive parameters remain rejected pending their host-operation lowering.
+Storage identity does not add an alternative ownership or lifetime rule.
 
 ## Direct references
 
@@ -101,8 +101,7 @@ Reference formation and checked partial/complete/incoming origin annotations use
 the same runtime metadata as Rust generation; incomplete incoming evidence is
 never promoted by a callee annotation. Metadata does not grant execution permission.
 
-This slice excludes borrowed host operations and the remaining resource/task/boundary
-forms. Backend
+This slice excludes async host operations and the remaining task/boundary forms. Backend
 admission does not relax lifetime, aliasing, origin or outcome checks.
 
 The [reference example](../../playground/llvm_references.tellur) mutates a record,
@@ -206,12 +205,12 @@ The first emits `42` and returns `delivered` with status 0. The next two return
 
 ## Synchronous primitives
 
-Returning synchronous primitives can take owned `value` or `consume` arguments
-and return reference-free scalar/record/tagged payloads. The primitive type profile
+Returning synchronous primitives can take `value`, `borrow` or `consume` arguments
+and return reference-free scalar/record/tagged/opaque payloads. The primitive type profile
 remains reference-free even when controls use reference-bearing carriers. Arguments are
 evaluated once in written order and their handles transfer as one validated batch.
 The whole declared signature must be supported, including unselected outcomes.
-Borrowed parameters, async operations, Rust adapters and unsupported payload types
+Async operations, Rust adapters and unsupported payload types
 remain rejected before output creation.
 
 Dispatch uses the existing host runtime. Live builtin contracts, scripted outcomes,
@@ -236,6 +235,37 @@ status 7 on addition overflow. The decode entry returns `text` with `AB`; malfor
 UTF-8 selects `invalid` with status 7. Scalar CLI arguments and JSON byte arguments
 use the same launch validation as the Rust backend.
 
+## Resource ownership and borrowed host operations
+
+Opaque host values, including must-complete resources, can travel through locals,
+records, options, variants, synchronous control calls and outcomes. Borrowing a
+resource for a host call preserves its owner; a consuming parameter transfers it
+on every selected completion, including a declared failure. The checker still
+rejects dropping or cloning resource-containing values, unfinished obligations,
+and conflicting live borrows. There is no implicit fallible protocol completion.
+
+Borrowed host arguments are lowered to the same checked value reads as in Rust
+emission. The ABI transfers that temporary snapshot, while the source owner and
+physical host object remain available. Live builtin file operations share the
+existing host table: `read` retains the open file and `close` removes it. Scripted
+opaque identities, errors and tracing keep their ordinary representation. Invalid
+ABI batches reject before host dispatch and value transfer. Host shutdown retains
+the existing cleanup behavior on execution failure; this does not declare a
+resource successfully closed by its protocol.
+
+The [resource example](../../playground/llvm_resources.tellur) wraps the file owner
+in a record, reads through a borrow, closes it, then returns bytes or faults:
+
+```sh
+./bin/tellurc build playground/llvm_resources.tellur playground/manifest.json --backend llvm --out /tmp/tellur-resources
+/tmp/tellur-resources playground/message.txt false
+/tmp/tellur-resources playground/message.txt true
+```
+
+The first returns `done` and the file bytes with status 0. The second faults after
+closing the file. Missing files return `missing` with status 3; ordinary read/close
+failures return `failed` with status 1. The example only reads the named file.
+
 ## Build artifacts and requirements
 
 The compiler emits `OUTPUT.ll` and `OUTPUT.tellur-build/program.ll` directly,
@@ -243,7 +273,7 @@ then compiles `program.o` and links `OUTPUT` with its embedded LLVM/LLD 22.1.8.
 Path guards are LLVM branches. Runtime faults retain Tellur source provenance;
 native debugger information is not yet emitted.
 
-The distributed 0.242 compiler includes the `llvm` feature. When building the
+The distributed 0.243 compiler includes the `llvm` feature. When building the
 compiler from source, enable it and set `LLVM_SYS_221_PREFIX` to the static pinned
 LLVM/LLD installation, as described in the repository README. A compiler built
 without that feature reports a clear error for `--backend llvm`.
@@ -255,6 +285,6 @@ handles and shares the existing runtime's launch, fuel, fault and result logic.
 The resulting executable is standalone. Shipping a precompiled runtime and target
 link packs belongs to the later single-binary checkpoint.
 
-The next synchronous slices add resource and collection operations, loops and
+The next synchronous slices add collection operations, loops and
 boundaries. Async lowering follows using frontend state machines, before the
 whole-language parity gate permits changing the default backend.

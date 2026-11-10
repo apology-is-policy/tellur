@@ -53,7 +53,7 @@ fn admitted_types(manifest: &crate::manifest::Manifest, references: bool) -> BTr
                 | crate::manifest::TypeDef::Outcome { name, constructors } => {
                     (name, constructors.iter().flat_map(|c| &c.fields).collect())
                 }
-                _ => continue,
+                crate::manifest::TypeDef::Opaque { name, .. } => (name, vec![]),
             };
             if fields.iter().all(|f| {
                 if references {
@@ -150,10 +150,9 @@ fn supported(
                         !p.asynchronous
                             && p.rust.is_none()
                             && p.returns
-                            && p.parameters.iter().all(|p| {
-                                p.mode != crate::manifest::Mode::Borrow
-                                    && owned_type_supported(&p.ty, primitive_types)
-                            })
+                            && p.parameters
+                                .iter()
+                                .all(|p| owned_type_supported(&p.ty, primitive_types))
                             && p.outcomes
                                 .iter()
                                 .flat_map(|o| &o.fields)
