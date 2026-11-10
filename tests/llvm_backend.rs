@@ -471,10 +471,145 @@ outcome logic_result {@exit 0 done {bool value}}
     }
 
     #[test]
+    fn tagged_values_and_captured_outcomes_preserve_branches_faults_and_fuel() {
+        let f = Fixture::new(include_str!("../playground/llvm_tagged.tellur"));
+        let checked = compile_file(
+            &f.source,
+            Manifest::from_json(&fs::read_to_string(&f.manifest).unwrap()).unwrap(),
+        )
+        .unwrap();
+        for expanded in [false, true] {
+            for opt in [0, 2] {
+                for backend in ["llvm", "rust"] {
+                    let mut cmd = f.command(backend, opt);
+                    if expanded {
+                        cmd.arg("--expanded");
+                    }
+                    let output = cmd.output().unwrap();
+                    assert!(
+                        output.status.success(),
+                        "{}",
+                        String::from_utf8_lossy(&output.stderr)
+                    );
+                }
+                for mode in 0..=2 {
+                    for keep in [true, false] {
+                        for fail in [false, true] {
+                            let scenario = json!({"entry":"main","arguments":[{"kind":"u32","value":mode},{"kind":"bool","value":keep},{"kind":"bool","value":fail},{"kind":"string","value":"tag 😀\u{0}"}],"calls":[]});
+                            let path = f.root.join("scenario.json");
+                            fs::write(&path, scenario.to_string()).unwrap();
+                            let fuels: Vec<_> = if mode == 0 && keep {
+                                (0..=80).map(Some).chain([None]).collect()
+                            } else {
+                                vec![None]
+                            };
+                            for fuel in fuels {
+                                let a = execute(&f.root.join(format!("llvm-{opt}")), &path, fuel);
+                                let b = execute(&f.root.join(format!("rust-{opt}")), &path, fuel);
+                                let case =
+                                    format!("{expanded}/{opt}/{mode}/{keep}/{fail}/{fuel:?}");
+                                assert_eq!(a.status.code(), b.status.code(), "{case}");
+                                assert_eq!(a.stdout, b.stdout, "{case}");
+                                assert_eq!(a.stderr, b.stderr, "{case}");
+                                if fuel.is_none() && !(mode == 0 && keep && fail) {
+                                    assert_eq!(
+                                        a.status.code(),
+                                        Some(if mode == 0 && keep { 0 } else { 7 })
+                                    );
+                                    let expected = checked
+                                        .run(&serde_json::from_value(scenario.clone()).unwrap())
+                                        .unwrap();
+                                    assert_eq!(report(&a), serde_json::to_value(expected).unwrap());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn imported_generic_tags_and_copy_decisions_match_reference() {
+        let f = Fixture::new(
+            r#"
+            import "helpers.tellur" as helpers;
+            variant bit {on,off}
+            outcome result {@exit 0 done {option<bytes> data}}
+            control main(bool pick, bytes data) exits result {
+                bit flag=bit.on {};
+                delta flag {on=>first,off=>other}
+                [first|other]: delta flag {on=>second,off=>unused}
+                [second|unused]: delta helpers.run(pick,data) {ready {auto value}=>ready}
+                [ready]: exit done {value};
+            }
+        "#,
+        );
+        fs::write(
+            f.root.join("helpers.tellur"),
+            r#"
+            struct wrapper<t> {option<t> value;}
+            variant maybe<t> {yes {wrapper<t> value},no}
+            outcome response<t> {value {maybe<t> data},missing}
+            pub control run(bool pick, bytes input) exits ready {option<bytes> value} {
+                response<bytes> captured=capture hidden(pick,input);
+                delta captured {value {auto data}=>value,missing=>missing}
+                [value]: delta data {yes {auto box}=>yes,no=>no}
+                [yes]: exit ready {box.value};
+                [no|missing]: exit ready {none};
+            }
+            control hidden(bool pick, bytes input) exits response<bytes> {
+                delta pick {true=>yes,false=>no}
+                [yes]: exit value {maybe<bytes>.yes {wrapper<bytes> {some {input}}}};
+                [no]: exit missing;
+            }
+        "#,
+        )
+        .unwrap();
+        let checked = compile_file(
+            &f.source,
+            Manifest::from_json(&fs::read_to_string(&f.manifest).unwrap()).unwrap(),
+        )
+        .unwrap();
+        for expanded in [false, true] {
+            for opt in [0, 2] {
+                for backend in ["llvm", "rust"] {
+                    let mut cmd = f.command(backend, opt);
+                    if expanded {
+                        cmd.arg("--expanded");
+                    }
+                    let output = cmd.output().unwrap();
+                    assert!(
+                        output.status.success(),
+                        "{}",
+                        String::from_utf8_lossy(&output.stderr)
+                    );
+                }
+                for pick in [true, false] {
+                    let scenario = json!({"entry":"main","arguments":[{"kind":"bool","value":pick},{"kind":"bytes","value":[0,255,128]}],"calls":[]});
+                    let path = f.root.join("scenario.json");
+                    fs::write(&path, scenario.to_string()).unwrap();
+                    let a = execute(&f.root.join(format!("llvm-{opt}")), &path, None);
+                    let b = execute(&f.root.join(format!("rust-{opt}")), &path, None);
+                    assert!(a.status.success(), "{}", String::from_utf8_lossy(&a.stderr));
+                    assert_eq!(a.status.code(), b.status.code());
+                    assert_eq!(a.stdout, b.stdout);
+                    assert_eq!(a.stderr, b.stderr);
+                    let expected = checked
+                        .run(&serde_json::from_value(scenario).unwrap())
+                        .unwrap();
+                    assert_eq!(report(&a), serde_json::to_value(expected).unwrap());
+                }
+            }
+        }
+    }
+
+    #[test]
     fn unsupported_checked_operations_create_no_build_outputs() {
         for source in [
-            "struct box {option<u32> value;} control main() exits result {drop(box {some {1}});exit done;} outcome result {@exit 0 done}",
-            "variant choice {one,two} control main() exits result {drop(choice.one {});exit done;} outcome result {@exit 0 done}",
+            "struct ticket {u32 value;constructor(u32 input){self.value=input;}} control main() exits result {drop(ticket(1));exit done;} outcome result {@exit 0 done}",
+            "struct box {option<read_error> value;} control main() exits result {drop(box {none});exit done;} outcome result {@exit 0 done}",
+            "variant choice {one {read_error error},two} control main() exits result {drop(choice.two {});exit done;} outcome result {@exit 0 done}",
             "struct view['a] {ref string value <- 'a;} control main() exits result {string s=\"text\";auto held=view {borrow s};drop(held);exit done;} outcome result {@exit 0 done}",
             "struct box {vector<u32> value;} control main() exits result {drop(box {[1,2]});exit done;} outcome result {@exit 0 done}",
             "struct box {read_error value;} control main(read_error e) exits result {drop(box {e});exit done;} outcome result {@exit 0 done}",

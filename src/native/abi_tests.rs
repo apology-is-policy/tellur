@@ -371,3 +371,185 @@ fn invalid_field_operations_leave_roots_and_rhs_owned() {
         assert!(c.error.is_some(), "{case}");
     }
 }
+
+fn tagged_manifest() -> Json {
+    let mut manifest = record_manifest();
+    manifest["types"].as_array_mut().unwrap().extend([
+        json!({"kind":"variant","name":"choice","constructors":[{"name":"present","fields":[{"name":"value","type":"pair"}]},{"name":"absent","fields":[]}]}),
+        json!({"kind":"outcome","name":"answer","constructors":[{"name":"ready","fields":[{"name":"first","type":"String"},{"name":"second","type":"String"}]},{"name":"empty","fields":[]}]})
+    ]);
+    manifest
+}
+
+#[test]
+fn tagged_construction_and_decisions_transfer_selected_payloads_once() {
+    let mut host = Host::new(tagged_manifest(), None, true, None);
+    let mut c = context(&mut host);
+    unsafe {
+        let owned = c.put(pair());
+        let variant = tellur_rt_v1_construct(
+            &mut c,
+            b"choice".as_ptr(),
+            6,
+            b"present".as_ptr(),
+            7,
+            [owned].as_ptr(),
+            1,
+        );
+        let option = tellur_rt_v1_construct(
+            &mut c,
+            b"Option<choice>".as_ptr(),
+            14,
+            b"Some".as_ptr(),
+            4,
+            [variant].as_ptr(),
+            1,
+        );
+        assert!(c.get(owned).is_err() && c.get(variant).is_err());
+        let outcome = tellur_rt_v1_variant(&mut c, option);
+        assert!(c.get(option).is_err());
+        let mut output = [0];
+        assert_eq!(
+            tellur_rt_v1_route(
+                &mut c,
+                outcome,
+                b"None".as_ptr(),
+                4,
+                std::ptr::null_mut(),
+                0
+            ),
+            0
+        );
+        assert_eq!(
+            tellur_rt_v1_route(&mut c, outcome, b"Some".as_ptr(), 4, output.as_mut_ptr(), 1),
+            1
+        );
+        let outcome = tellur_rt_v1_variant(&mut c, output[0]);
+        assert_eq!(
+            tellur_rt_v1_route(
+                &mut c,
+                outcome,
+                b"present".as_ptr(),
+                7,
+                output.as_mut_ptr(),
+                1
+            ),
+            1
+        );
+        assert_eq!(c.take(output[0]).unwrap(), pair());
+        for (ty, name) in [
+            ("Option<choice>", "None"),
+            ("choice", "absent"),
+            ("answer", "empty"),
+        ] {
+            let value = tellur_rt_v1_construct(
+                &mut c,
+                ty.as_ptr(),
+                ty.len(),
+                name.as_ptr(),
+                name.len(),
+                std::ptr::null(),
+                0,
+            );
+            let outcome = tellur_rt_v1_variant(&mut c, value);
+            assert_eq!(
+                tellur_rt_v1_route(
+                    &mut c,
+                    outcome,
+                    name.as_ptr(),
+                    name.len(),
+                    std::ptr::null_mut(),
+                    0
+                ),
+                1
+            );
+            assert!(c.outcome(outcome).is_err());
+        }
+        let string = String::from("owning outcome");
+        let allocation = string.as_ptr();
+        let arguments = [c.put(V::String(string)), c.put(V::String("second".into()))];
+        let value = tellur_rt_v1_construct(
+            &mut c,
+            b"answer".as_ptr(),
+            6,
+            b"ready".as_ptr(),
+            5,
+            arguments.as_ptr(),
+            2,
+        );
+        let outcome = tellur_rt_v1_variant(&mut c, value);
+        let mut output = [0; 2];
+        assert_eq!(
+            tellur_rt_v1_route(
+                &mut c,
+                outcome,
+                b"ready".as_ptr(),
+                5,
+                output.as_mut_ptr(),
+                2
+            ),
+            1
+        );
+        let V::String(value) = c.get(output[0]).unwrap() else {
+            panic!()
+        };
+        assert_eq!(value.as_ptr(), allocation);
+        assert_eq!(tellur_rt_v1_ok(&mut c), 1);
+    }
+}
+
+#[test]
+fn malformed_tagged_transfers_do_not_consume_values_or_publish_outcomes() {
+    for case in ["tag", "arity", "duplicate", "stale", "decision", "shape"] {
+        let mut host = Host::new(tagged_manifest(), None, true, None);
+        let mut c = context(&mut host);
+        let first = c.put(V::String("retained".into()));
+        let second = c.put(V::String("other".into()));
+        let stale = c.put(V::Unit);
+        c.take(stale).unwrap();
+        unsafe {
+            if case == "decision" || case == "shape" {
+                let value = if case == "decision" {
+                    V::U32(1)
+                } else {
+                    V::Construct {
+                        ty: "choice".into(),
+                        name: "present".into(),
+                        fields: vec![],
+                    }
+                };
+                let h = c.put(value.clone());
+                assert_eq!(tellur_rt_v1_variant(&mut c, h), 0);
+                assert_eq!(c.get(h).unwrap(), &value);
+            } else {
+                let name = if case == "tag" { "absent" } else { "ready" };
+                let args = match case {
+                    "arity" => vec![first],
+                    "duplicate" => vec![first, first],
+                    "stale" => vec![first, stale],
+                    _ => vec![first, second],
+                };
+                assert_eq!(
+                    tellur_rt_v1_construct(
+                        &mut c,
+                        b"answer".as_ptr(),
+                        6,
+                        name.as_ptr(),
+                        name.len(),
+                        args.as_ptr(),
+                        args.len()
+                    ),
+                    0
+                );
+            }
+        }
+        assert_eq!(
+            c.get(first).unwrap(),
+            &V::String("retained".into()),
+            "{case}"
+        );
+        assert_eq!(c.get(second).unwrap(), &V::String("other".into()), "{case}");
+        assert!(c.outcomes.is_empty());
+        assert!(c.error.is_some());
+    }
+}

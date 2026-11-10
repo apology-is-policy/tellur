@@ -1,0 +1,72 @@
+struct message {
+    string text;
+    u32 number;
+}
+variant choice {
+    payload { message value },
+    absent
+}
+outcome selection {
+    ready { choice value },
+    missing
+}
+outcome result {
+    @exit 0 delivered { string text },
+    @exit 7 skipped
+}
+
+control main(u32 mode, bool keep, bool fail, string name) exits result faults {
+    selection selected = capture choose(mode, name);
+    delta selected {
+        ready { auto value } => ready,
+        missing => missing
+    }
+    [ready]: delta wrap(keep, value) {
+        done { auto wrapped } => wrapped
+    }
+    [wrapped]: delta wrapped {
+        some { auto item } => some,
+        none => none
+    }
+    [some]: delta item {
+        payload { auto info } => payload,
+        absent => absent
+    }
+    [payload]:
+        emit(u32_text(info.number));
+        delta finish(fail, info.text) {
+            done { auto text } => finished
+        }
+    [finished]: exit delivered { text };
+    [missing | none | absent]: exit skipped;
+}
+control choose(u32 mode, string text) exits selection {
+    delta mode < 2 {
+        true => selected,
+        false => missing
+    }
+    [selected]: delta mode == 0 {
+        true => payload,
+        false => absent
+    }
+    [payload]: exit ready { choice.payload { message { text, 42 } } };
+    [absent]: exit ready { choice.absent {} };
+    [missing]: exit missing;
+}
+control wrap(bool keep, choice input) exits done { option<choice> value } {
+    delta keep {
+        true => kept,
+        false => discarded
+    }
+    [kept]: exit done { some { input } };
+    [discarded]: drop(input);
+        exit done { none };
+}
+control finish(bool fail, string text) exits done { string value } faults {
+    delta fail {
+        true => bad,
+        false => good
+    }
+    [bad]: fault "tagged stopped";
+    [good]: exit done { text };
+}

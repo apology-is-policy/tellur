@@ -6082,6 +6082,31 @@ operation: its state drops before the supplier and it never completes.
 chain parked by `run`, which previously stopped with `E_NATIVE: source task wait
 has no runnable producer`.
 
+## Direct LLVM tagged values (0.238 / B1.3d)
+
+The opt-in LLVM profile now accepts options, closed variants and named outcome
+values with recursively owned scalar/record/tagged payloads. Constructor metadata
+and the entire transfer batch are validated before consuming handles. Value
+decisions use the same one-use outcome routing as synchronous calls, including
+Boolean decisions; instruction fuel and path guards retain their existing rules.
+Captured outcomes keep the checker's must-complete obligations.
+
+ABI tests exercise nested Some/None, populated/empty variant and outcome tags,
+allocation-preserving ownership, and invalid tag/shape/arity/duplicate/stale
+failures without partial transfer or published outcomes. Source parity includes
+original/expanded O0/O2 execution, every alternative in the runnable
+`playground/llvm_tagged.tellur`, captures through nested calls, imported generic
+record/option/variant/outcome composition and repeated Copy decisions. Exact
+status/output/fault reports match Rust across all tested fuel cuts; successful
+results also match the reference executor. Unsupported leaves remain rejected even
+when only an empty alternative is constructed.
+
+Affected native-host, LLVM, LSP/manual and release/editor checks run freshly.
+Unchanged default-suite and coroutine evidence is reused after source-input audit;
+this is not a fresh full-suite claim. References, opaque/resource values,
+collections, primitives, user constructors, loops, boundaries and tasks remain
+outside this backend profile. Rust remains the default.
+
 ## Direct LLVM owned records (0.237 / B1.3c)
 
 The opt-in LLVM emitter admits ordinary records whose leaves are scalar values,

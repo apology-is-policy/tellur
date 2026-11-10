@@ -57,6 +57,23 @@ impl Context<'_> {
     fn take(&mut self, handle: u64) -> R<V> {
         Ok(self.take_many(&[handle])?.pop().unwrap())
     }
+    fn construct(&mut self, ty: &str, name: &str, handles: &[u64]) -> R<u64> {
+        let expected = fields(&self.host.manifest, ty, name)
+            .map_err(|e| format!("E_NATIVE: invalid ABI constructor: {e}"))?;
+        if expected.len() != handles.len() {
+            return Err("E_NATIVE: ABI constructor field count mismatch".into());
+        }
+        for (&handle, ty) in handles.iter().zip(&expected) {
+            validate(self.get(handle)?, ty, &self.host.manifest)
+                .map_err(|e| format!("E_NATIVE: invalid ABI constructor payload: {e}"))?;
+        }
+        let fields = self.take_many(handles)?;
+        Ok(self.put(V::Construct {
+            ty: ty.into(),
+            name: name.into(),
+            fields,
+        }))
+    }
     fn perform<T: Default>(&mut self, f: impl FnOnce(&mut Self) -> R<T>) -> T {
         if self.error.is_some() {
             return T::default();
@@ -125,7 +142,7 @@ pub unsafe extern "C" fn tellur_rt_v1_record(
 ) -> u64 {
     unsafe { &mut *ctx }.perform(|c| {
         let ty = unsafe { text(ty, len)? };
-        let record = c.host.manifest["types"]
+        c.host.manifest["types"]
             .as_array()
             .and_then(|types| {
                 types
@@ -133,26 +150,43 @@ pub unsafe extern "C" fn tellur_rt_v1_record(
                     .find(|t| t["name"] == ty && t["kind"] == "record")
             })
             .ok_or("E_NATIVE: invalid ABI record type")?;
-        let expected = record["fields"]
-            .as_array()
-            .ok_or("E_NATIVE: invalid ABI record shape")?;
-        if expected.len() != count {
-            return Err("E_NATIVE: ABI record field count mismatch".into());
+        c.construct(ty, ty, unsafe { slice(args, count) })
+    })
+}
+
+/// A tagged value uses the same opaque ownership transfer as an ordinary record.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_construct(
+    ctx: *mut Context<'_>,
+    ty: *const u8,
+    ty_len: usize,
+    name: *const u8,
+    name_len: usize,
+    args: *const u64,
+    count: usize,
+) -> u64 {
+    unsafe { &mut *ctx }.perform(|c| {
+        c.construct(
+            unsafe { text(ty, ty_len)? },
+            unsafe { text(name, name_len)? },
+            unsafe { slice(args, count) },
+        )
+    })
+}
+
+/// Consume a checked value decision into the same one-use outcome table as calls.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_variant(ctx: *mut Context<'_>, handle: u64) -> u64 {
+    unsafe { &mut *ctx }.perform(|c| {
+        let value = c.get(handle)?;
+        if !matches!(value, V::Bool(_) | V::Construct { .. }) {
+            return Err("E_NATIVE: invalid ABI decision value".into());
         }
-        let handles = unsafe { slice(args, count) };
-        for (&handle, field) in handles.iter().zip(expected) {
-            let ty = field["type"]
-                .as_str()
-                .ok_or("E_NATIVE: invalid ABI field type")?;
-            validate(c.get(handle)?, ty, &c.host.manifest)
-                .map_err(|e| format!("E_NATIVE: invalid ABI record payload: {e}"))?;
-        }
-        let fields = c.take_many(handles)?;
-        Ok(c.put(V::Construct {
-            ty: ty.into(),
-            name: ty.into(),
-            fields,
-        }))
+        validate(value, value.ty(), &c.host.manifest)
+            .map_err(|e| format!("E_NATIVE: invalid ABI decision payload: {e}"))?;
+        let outcome = variant(c.take(handle)?)?;
+        c.outcomes.push(Some(outcome));
+        Ok(c.outcomes.len() as u64)
     })
 }
 

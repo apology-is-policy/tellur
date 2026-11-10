@@ -4,7 +4,9 @@ Compiler 0.235 introduces `--backend llvm` for `build` and `exec` on macOS arm64
 Compiler 0.236 adds synchronous calls between scalar controls, including imported
 private helpers, implicit single-completion calls and identity-routed outcomes.
 Compiler 0.237 adds ordinary owned records with scalar leaves, including nested,
-empty, imported and concrete generic records. The default remains `--backend rust`. Both start from the same checked program;
+empty, imported and concrete generic records. Compiler 0.238 adds options, closed
+variants, named outcome values and their decisions/captures with recursively owned
+payloads. The default remains `--backend rust`. Both start from the same checked program;
 backend selection does not relax ownership, origins, outcomes or path rules.
 
 ```sh
@@ -20,13 +22,14 @@ with status 7. Both report the declared outcome and its payload. Native `--json`
 ## Current admission
 
 The current slice accepts synchronous controls using `bool`, `u32`, `string`,
-`bytes`, `unit` and ordinary records composed of those types: declarations, moves/copies, assignment, pure expressions,
+`bytes`, `unit`, records, options, closed variants and named outcome values
+recursively composed of those types: declarations, moves/copies, assignment, pure expressions,
 Boolean decisions, path guards, lexical releases, emit, faults and final exits.
-It also handles expansion completions without unwinding. Scalar and record parameters and
+It also handles expansion completions without unwinding. Admitted parameters and
 outcome payloads use the same launch validation and process-status mappings as
 the Rust backend. Multiple eligible executable entries are supported.
 
-Tagged variants/outcomes, options, collections, references, resources, loops, fault
+Collections, references, opaque/resource values, user constructors, loops, fault
 boundaries, contingencies, task operations and adapters remain outside this
 profile. Launch signal policies are also rejected. Admission checks all checked
 regions, including unused helpers. Unsupported programs receive `E_BACKEND`
@@ -88,6 +91,36 @@ Both emit `9` and `temporary`. The first returns a parcel containing `Ada!` with
 status 0; the second faults with `record stopped` and retains the ordinary source
 and activation report.
 
+## Tagged values and decisions
+
+Options, variants and named outcome values preserve their constructor names and
+payloads. A value decision consumes a moved value, or a copy where the checker
+permits Copy, then routes only the selected alternative's payloads. Empty tags and
+nested generic/imported payloads follow the same rules. Captured control outcomes
+can be stored as named outcome values and later decided; their must-complete
+obligations still come from ordinary checking.
+
+Value decisions and control calls share the one-use outcome routing ABI. Each
+matching arm validates payload arity before publishing handles. Unsupported payload
+types reject the entire aggregate type, even if the source constructs only an empty
+alternative. Boolean decisions use the same runtime routing and native path guards;
+this adds no instruction fuel ticks or scheduling handoffs.
+
+The [tagged-value example](../../playground/llvm_tagged.tellur) captures a named
+outcome, passes a variant through an option and selects its nested record payload:
+
+```sh
+./bin/tellurc build playground/llvm_tagged.tellur playground/manifest.json --backend llvm --out /tmp/tellur-tagged
+/tmp/tellur-tagged 0 true false Ada
+/tmp/tellur-tagged 1 true false Ada
+/tmp/tellur-tagged 2 false false Ada
+/tmp/tellur-tagged 0 true true Ada
+```
+
+The first emits `42` and returns `delivered` with status 0. The next two return
+`skipped` with status 7 via different empty alternatives. The last faults inside
+`finish`, retaining the nested activation and source report.
+
 ## Build artifacts and requirements
 
 The compiler emits `OUTPUT.ll` and `OUTPUT.tellur-build/program.ll` directly,
@@ -95,7 +128,7 @@ then compiles `program.o` and links `OUTPUT` with its embedded LLVM/LLD 22.1.8.
 Path guards are LLVM branches. Runtime faults retain Tellur source provenance;
 native debugger information is not yet emitted.
 
-The distributed 0.237 compiler includes the `llvm` feature. When building the
+The distributed 0.238 compiler includes the `llvm` feature. When building the
 compiler from source, enable it and set `LLVM_SYS_221_PREFIX` to the static pinned
 LLVM/LLD installation, as described in the repository README. A compiler built
 without that feature reports a clear error for `--backend llvm`.
@@ -107,6 +140,6 @@ handles and shares the existing runtime's launch, fuel, fault and result logic.
 The resulting executable is standalone. Shipping a precompiled runtime and target
 link packs belongs to the later single-binary checkpoint.
 
-The next synchronous slices add tagged values, references, loops and
+The next synchronous slices add references, primitive operations, loops and
 boundaries. Async lowering follows using frontend state machines, before the
 whole-language parity gate permits changing the default backend.

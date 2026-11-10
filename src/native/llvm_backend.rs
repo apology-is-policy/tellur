@@ -1,4 +1,4 @@
-//! First direct LLVM emitter: scalar and owned-record synchronous controls and Boolean path facts.
+//! First direct LLVM emitter: owned synchronous values, controls and Boolean path facts.
 //! Admission is explicit and occurs before writing/building anything. Every value
 //! operation goes through the runtime's private C ABI; guards are native branches.
 use super::*;
@@ -9,6 +9,8 @@ declare i32 @tellur_rt_v1_ok(ptr)
 declare i64 @tellur_rt_v1_value(ptr, i32, i64, ptr, i64)
 declare i64 @tellur_rt_v1_copy(ptr, i64)
 declare i64 @tellur_rt_v1_record(ptr, ptr, i64, ptr, i64)
+declare i64 @tellur_rt_v1_construct(ptr, ptr, i64, ptr, i64, ptr, i64)
+declare i64 @tellur_rt_v1_variant(ptr, i64)
 declare i64 @tellur_rt_v1_field(ptr, i64, ptr, i64, i32)
 declare void @tellur_rt_v1_assign(ptr, i64, ptr, i64, i64)
 declare i64 @tellur_rt_v1_project(ptr, i64, i64)
@@ -33,10 +35,18 @@ fn admitted_types(manifest: &crate::manifest::Manifest) -> BTreeSet<String> {
     loop {
         let before = types.len();
         for ty in &manifest.types {
-            if let crate::manifest::TypeDef::Record { name, fields } = ty {
-                if fields.iter().all(|f| types.contains(&f.ty)) {
-                    types.insert(name.clone());
+            let (name, fields) = match ty {
+                crate::manifest::TypeDef::Record { name, fields } => {
+                    (name, fields.iter().collect::<Vec<_>>())
                 }
+                crate::manifest::TypeDef::Variant { name, constructors }
+                | crate::manifest::TypeDef::Outcome { name, constructors } => {
+                    (name, constructors.iter().flat_map(|c| &c.fields).collect())
+                }
+                _ => continue,
+            };
+            if fields.iter().all(|f| type_supported(&f.ty, &types)) {
+                types.insert(name.clone());
             }
         }
         if types.len() == before {
@@ -44,22 +54,35 @@ fn admitted_types(manifest: &crate::manifest::Manifest) -> BTreeSet<String> {
         }
     }
 }
+fn type_supported(ty: &str, types: &BTreeSet<String>) -> bool {
+    types.contains(ty)
+        || ty
+            .strip_prefix("Option<")
+            .and_then(|t| t.strip_suffix('>'))
+            .is_some_and(|inner| type_supported(inner, types))
+}
+fn value_supported(v: &Value, types: &BTreeSet<String>) -> bool {
+    match v {
+        Value::Bool(_) | Value::U32(_) | Value::String(_) | Value::Bytes(_) | Value::Unit => true,
+        Value::Construct { ty, fields, .. } => {
+            type_supported(ty, types) && fields.iter().all(|v| value_supported(v, types))
+        }
+        _ => false,
+    }
+}
 fn place(p: &Place) -> bool {
     !p.indirect
 }
 fn expression_supported(e: &Expr, types: &BTreeSet<String>) -> bool {
     match e {
-        Expr::Value(v) => matches!(
-            v,
-            Value::Bool(_) | Value::U32(_) | Value::String(_) | Value::Bytes(_) | Value::Unit
-        ),
+        Expr::Value(v) => value_supported(v, types),
         Expr::Move(p) | Expr::Place(p) => place(p),
         Expr::Pure(_, args) => args.iter().all(|e| expression_supported(e, types)),
-        Expr::Construct(ty, name, args) => {
-            types.contains(ty) && name == ty && args.iter().all(|e| expression_supported(e, types))
+        Expr::Construct(ty, _, args) => {
+            type_supported(ty, types) && args.iter().all(|e| expression_supported(e, types))
         }
         Expr::Record(ty, fields) => {
-            types.contains(ty) && fields.iter().all(|(_, e)| expression_supported(e, types))
+            type_supported(ty, types) && fields.iter().all(|(_, e)| expression_supported(e, types))
         }
         Expr::Project(e, _) => expression_supported(e, types),
         Expr::Not(e) => expression_supported(e, types),
@@ -88,14 +111,8 @@ fn supported(i: &Instruction, types: &BTreeSet<String>) -> bool {
         Action::Decide {
             operation: Operation::Variant(e),
             args,
-            arms,
-        } => {
-            args.is_empty()
-                && expression_supported(e, types)
-                && arms
-                    .iter()
-                    .all(|a| matches!(a.outcome.as_str(), "true" | "false") && a.slots.is_empty())
-        }
+            ..
+        } => args.is_empty() && expression_supported(e, types),
         _ => false,
     }
 }
@@ -178,6 +195,9 @@ impl Emitter {
             "call i64 @tellur_rt_v1_call(ptr %ctx, ptr @control_{index}, ptr {name}, i64 {len}, ptr {args}, i64 {})",
             values.len()
         ));
+        self.route(&result, arms);
+    }
+    fn route(&mut self, result: &str, arms: &[Arm]) {
         let delivered = self.id();
         for arm in arms {
             let payload = if arm.slots.is_empty() {
@@ -218,6 +238,26 @@ impl Emitter {
             values.len()
         ))
     }
+    fn construct(&mut self, ty: &str, name: &str, values: &[String]) -> String {
+        let args = self.handles(values);
+        let (ty, ty_len) = self.text(ty);
+        let (name, name_len) = self.text(name);
+        self.call(format!("call i64 @tellur_rt_v1_construct(ptr %ctx, ptr {ty}, i64 {ty_len}, ptr {name}, i64 {name_len}, ptr {args}, i64 {})", values.len()))
+    }
+    fn embedded(&mut self, value: &Value) -> String {
+        match value {
+            Value::Bool(b) => self.literal(1, u8::from(*b), b""),
+            Value::U32(n) => self.literal(2, n, b""),
+            Value::String(s) => self.literal(3, 0, s.as_bytes()),
+            Value::Bytes(b) => self.literal(4, 0, b),
+            Value::Unit => self.literal(0, 0, b""),
+            Value::Construct { ty, name, fields } => {
+                let fields = fields.iter().map(|v| self.embedded(v)).collect::<Vec<_>>();
+                self.construct(ty, name, &fields)
+            }
+            _ => unreachable!(),
+        }
+    }
     fn boolean(&mut self, value: &str) -> String {
         let v = self.call(format!(
             "call i32 @tellur_rt_v1_bool(ptr %ctx, i64 {value})"
@@ -226,14 +266,7 @@ impl Emitter {
     }
     fn expr(&mut self, e: &Expr) -> String {
         match e {
-            Expr::Value(v) => match v {
-                Value::Bool(b) => self.literal(1, u8::from(*b), b""),
-                Value::U32(n) => self.literal(2, n, b""),
-                Value::String(s) => self.literal(3, 0, s.as_bytes()),
-                Value::Bytes(b) => self.literal(4, 0, b),
-                Value::Unit => self.literal(0, 0, b""),
-                _ => unreachable!(),
-            },
+            Expr::Value(v) => self.embedded(v),
             Expr::Place(p) | Expr::Move(p) => {
                 let slot = self.layout.slots[&p.root];
                 let v = self.value(format!("load i64, ptr %s{slot}"));
@@ -248,9 +281,9 @@ impl Emitter {
                     self.call(format!("call i64 @tellur_rt_v1_copy(ptr %ctx, i64 {v})"))
                 }
             }
-            Expr::Construct(ty, _, args) => {
+            Expr::Construct(ty, name, args) => {
                 let values = args.iter().map(|a| self.expr(a)).collect::<Vec<_>>();
-                self.record(ty, &values)
+                self.construct(ty, name, &values)
             }
             Expr::Record(ty, fields) => {
                 let mut values = vec![String::new(); fields.len()];
@@ -432,18 +465,9 @@ impl Emitter {
                     ..
                 } => {
                     let v = self.expr(e);
-                    let b = self.boolean(&v);
-                    for arm in arms {
-                        let value = if arm.outcome == "true" {
-                            b.clone()
-                        } else {
-                            self.value(format!("xor i1 {b}, true"))
-                        };
-                        self.line(format!(
-                            "store i1 {value}, ptr %a{}",
-                            self.layout.atoms[&arm.atom]
-                        ));
-                    }
+                    let outcome =
+                        self.call(format!("call i64 @tellur_rt_v1_variant(ptr %ctx, i64 {v})"));
+                    self.route(&outcome, arms);
                 }
                 Action::Complete {
                     atom,
@@ -570,16 +594,22 @@ impl CheckedProgram {
                 || region.boundary.is_some()
                 || region.contingency
                 || region.is_constructor()
-                || region.slots.values().any(|s| !types.contains(&s.ty))
-                || region.parameters.iter().any(|s| !types.contains(&s.ty))
+                || region
+                    .slots
+                    .values()
+                    .any(|s| !type_supported(&s.ty, &types))
+                || region
+                    .parameters
+                    .iter()
+                    .any(|s| !type_supported(&s.ty, &types))
                 || region
                     .exits
                     .iter()
                     .flat_map(|e| &e.fields)
-                    .any(|f| !types.contains(&f.ty))
+                    .any(|f| !type_supported(&f.ty, &types))
             {
                 return Err(error(format!(
-                    "LLVM backend currently supports only synchronous scalar/owned-record controls: {}",
+                    "LLVM backend currently supports only synchronous scalar/owned-aggregate controls: {}",
                     self.runtime_name(&region.name)
                 )));
             }
