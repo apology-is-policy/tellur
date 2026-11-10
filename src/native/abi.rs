@@ -340,6 +340,46 @@ pub unsafe extern "C" fn tellur_rt_v1_complete(
 
 pub type Callback = unsafe extern "C" fn(*mut Context<'_>, *const u64, usize);
 
+/// Synchronous owned host calls retain the existing runtime's live/scripted
+/// dispatch, tracing and failures. They do not create a control activation.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_primitive(
+    ctx: *mut Context<'_>,
+    name: *const u8,
+    len: usize,
+    args: *const u64,
+    count: usize,
+) -> u64 {
+    unsafe { &mut *ctx }.perform(|c| {
+        let name = unsafe { text(name, len)? };
+        let declaration = c.host.declared_primitive(name)?;
+        let parameters = declaration["parameters"]
+            .as_array()
+            .ok_or("E_NATIVE: invalid ABI primitive parameters")?;
+        if declaration["async"] == true
+            || declaration["rust"].is_object()
+            || declaration["returns"] != true
+            || parameters.iter().any(|p| p["mode"] == "borrow")
+        {
+            return Err("E_NATIVE: primitive requires unsupported ABI invocation mode".into());
+        }
+        if parameters.len() != count {
+            return Err("E_NATIVE: ABI primitive argument count mismatch".into());
+        }
+        let handles = unsafe { slice(args, count) };
+        for (&handle, parameter) in handles.iter().zip(parameters) {
+            let ty = parameter["type"]
+                .as_str()
+                .ok_or("E_NATIVE: invalid ABI parameter type")?;
+            validate(c.get(handle)?, ty, &c.host.manifest)?;
+        }
+        let arguments = c.take_many(handles)?;
+        let outcome = c.host.primitive(name, arguments)?;
+        c.outcomes.push(Some(outcome));
+        Ok(c.outcomes.len() as u64)
+    })
+}
+
 /// A synchronous child borrows the Host only while its compiled callback runs.
 /// Failed callbacks retain their activation chain for the launcher's fault report.
 #[unsafe(no_mangle)]

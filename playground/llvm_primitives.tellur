@@ -1,0 +1,39 @@
+outcome result {
+    @exit 0 ready { u32 value },
+    @exit 7 invalid
+}
+outcome decoded {
+    @exit 0 text { string value },
+    @exit 7 invalid
+}
+control main(string input, u32 addend, u32 multiplier) exits result {
+    delta calculate(input, addend, multiplier);
+    [ready]: emit(u32_text(value));
+        exit ready { value };
+    [invalid]: exit invalid;
+}
+control calculate(string input, u32 addend, u32 multiplier) exits ready { u32 value }, invalid {
+    delta parse_u32(input) {
+        number { auto number } => parsed,
+        malformed => malformed,
+        overflow => parse_overflow
+    }
+    [parsed]: delta checked_add(number, addend) {
+        sum { auto sum } => added,
+        overflow => add_overflow
+    }
+    [added]: delta checked_mul(sum, multiplier) {
+        product { auto product } => multiplied,
+        overflow => multiply_overflow
+    }
+    [multiplied]: exit ready { product };
+    [malformed | parse_overflow | add_overflow | multiply_overflow]: exit invalid;
+}
+control decode(bytes input) exits decoded {
+    delta decode_utf8(input) {
+        text { auto text } => text,
+        invalid => invalid
+    }
+    [text]: exit text { text };
+    [invalid]: exit invalid;
+}

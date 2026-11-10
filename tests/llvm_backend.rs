@@ -604,6 +604,293 @@ outcome logic_result {@exit 0 done {bool value}}
         }
     }
 
+    fn build_pair(f: &Fixture, expanded: bool, opt: u8) {
+        for backend in ["llvm", "rust"] {
+            let mut cmd = f.command(backend, opt);
+            if expanded {
+                cmd.arg("--expanded");
+            }
+            let output = cmd.output().unwrap();
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+    }
+
+    #[test]
+    fn live_owned_primitives_match_reference_scripts_and_rust() {
+        let f = Fixture::new(include_str!("../playground/llvm_primitives.tellur"));
+        let checked = compile_file(
+            &f.source,
+            Manifest::from_json(&fs::read_to_string(&f.manifest).unwrap()).unwrap(),
+        )
+        .unwrap();
+        let n = |n: u32| json!({"kind":"u32","value":n});
+        let call = |name: &str, outcome: &str, fields: Vec<Json>| json!({"operation":name,"outcome":outcome,"fields":fields});
+        let cases = [
+            (
+                "12",
+                3,
+                2,
+                0,
+                vec![
+                    call("parse_u32", "number", vec![n(12)]),
+                    call("checked_add", "sum", vec![n(15)]),
+                    call("checked_mul", "product", vec![n(30)]),
+                ],
+            ),
+            ("bad", 0, 1, 7, vec![call("parse_u32", "malformed", vec![])]),
+            (
+                "4294967296",
+                0,
+                1,
+                7,
+                vec![call("parse_u32", "overflow", vec![])],
+            ),
+            (
+                "4294967295",
+                1,
+                1,
+                7,
+                vec![
+                    call("parse_u32", "number", vec![n(u32::MAX)]),
+                    call("checked_add", "overflow", vec![]),
+                ],
+            ),
+            (
+                "2147483648",
+                0,
+                2,
+                7,
+                vec![
+                    call("parse_u32", "number", vec![n(2147483648)]),
+                    call("checked_add", "sum", vec![n(2147483648)]),
+                    call("checked_mul", "overflow", vec![]),
+                ],
+            ),
+        ];
+        for expanded in [false, true] {
+            for opt in [0, 2] {
+                build_pair(&f, expanded, opt);
+                for (input, add, mul, status, calls) in &cases {
+                    let scenario = json!({"entry":"main","arguments":[{"kind":"string","value":input},n(*add),n(*mul)],"calls":calls});
+                    let a = Command::new(f.root.join(format!("llvm-{opt}")))
+                        .args(["--json", input, &add.to_string(), &mul.to_string()])
+                        .output()
+                        .unwrap();
+                    let b = Command::new(f.root.join(format!("rust-{opt}")))
+                        .args(["--json", input, &add.to_string(), &mul.to_string()])
+                        .output()
+                        .unwrap();
+                    assert_eq!(a.status.code(), Some(*status));
+                    assert_eq!(a.status.code(), b.status.code());
+                    assert_eq!(a.stdout, b.stdout);
+                    assert_eq!(a.stderr, b.stderr);
+                    assert_eq!(
+                        report(&a),
+                        serde_json::to_value(
+                            checked
+                                .run(&serde_json::from_value(scenario).unwrap())
+                                .unwrap()
+                        )
+                        .unwrap()
+                    );
+                }
+                for (bytes, text) in [
+                    (vec![65, 0, 240, 159, 152, 128], Some("A\0😀")),
+                    (vec![255], None),
+                ] {
+                    let value = json!({"kind":"bytes","value":bytes});
+                    let calls = vec![call(
+                        "decode_utf8",
+                        if text.is_some() { "text" } else { "invalid" },
+                        text.map(|text| vec![json!({"kind":"string","value":text})])
+                            .unwrap_or_default(),
+                    )];
+                    let scenario =
+                        json!({"entry":"decode","arguments":[value.clone()],"calls":calls});
+                    let a = Command::new(f.root.join(format!("llvm-{opt}")))
+                        .args(["--json", "--entry", "decode", &value.to_string()])
+                        .output()
+                        .unwrap();
+                    let b = Command::new(f.root.join(format!("rust-{opt}")))
+                        .args(["--json", "--entry", "decode", &value.to_string()])
+                        .output()
+                        .unwrap();
+                    assert_eq!(a.status.code(), Some(if text.is_some() { 0 } else { 7 }));
+                    assert_eq!(a.stdout, b.stdout);
+                    assert_eq!(a.stderr, b.stderr);
+                    assert_eq!(
+                        report(&a),
+                        serde_json::to_value(
+                            checked
+                                .run(&serde_json::from_value(scenario).unwrap())
+                                .unwrap()
+                        )
+                        .unwrap()
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn scripted_owned_primitive_payloads_errors_and_fuel_match_both_executors() {
+        let f = Fixture::new(
+            r#"
+            control main(string text) exits result {
+                delta helper(packet {text,9}) {got {auto reply}=>got}
+                [got]: delta reply {some {auto value}=>some,none=>none}
+                [some]: exit ready {value};
+                [none]: exit empty;
+            }
+            control helper(packet input) exits got {option<packet> reply} {
+                delta transfer(input) {ready {auto reply}=>ready,rejected=>rejected}
+                [ready]: exit got {reply};
+                [rejected]: exit got {none};
+            }
+            outcome result {@exit 0 ready {packet value},@exit 7 empty}
+        "#,
+        );
+        let mut manifest: Json =
+            serde_json::from_str(&fs::read_to_string(&f.manifest).unwrap()).unwrap();
+        manifest["types"].as_array_mut().unwrap().push(json!({"kind":"record","name":"packet","fields":[{"name":"text","type":"String"},{"name":"number","type":"U32"}]}));
+        manifest["primitives"].as_array_mut().unwrap().push(json!({"name":"transfer","parameters":[{"name":"input","type":"packet","mode":"consume"}],"outcomes":[{"name":"ready","fields":[{"name":"reply","type":"Option<packet>"}]},{"name":"rejected","fields":[]}],"effects":["transfer"],"returns":true}));
+        fs::write(&f.manifest, manifest.to_string()).unwrap();
+        let checked = compile_file(
+            &f.source,
+            Manifest::from_json(&manifest.to_string()).unwrap(),
+        )
+        .unwrap();
+        let packet = json!({"kind":"construct","value":{"ty":"packet","name":"packet","fields":[{"kind":"string","value":"returned 😀"},{"kind":"u32","value":42}]}});
+        let some = json!({"kind":"construct","value":{"ty":"Option<packet>","name":"Some","fields":[packet]}});
+        let none =
+            json!({"kind":"construct","value":{"ty":"Option<packet>","name":"None","fields":[]}});
+        let good = json!({"operation":"transfer","outcome":"ready","fields":[some]});
+        let mut waits = good.clone();
+        waits["waits"] = json!(1);
+        let mut wrong_operation = good.clone();
+        wrong_operation["operation"] = json!("different");
+        let scripts = [
+            (vec![good], Some(0)),
+            (
+                vec![json!({"operation":"transfer","outcome":"ready","fields":[none]})],
+                Some(7),
+            ),
+            (
+                vec![json!({"operation":"transfer","outcome":"rejected","fields":[]})],
+                Some(7),
+            ),
+            (vec![], None),
+            (vec![waits], None),
+            (vec![wrong_operation], None),
+            (
+                vec![json!({"operation":"transfer","outcome":"unknown","fields":[]})],
+                None,
+            ),
+            (
+                vec![
+                    json!({"operation":"transfer","outcome":"ready","fields":[{"kind":"u32","value":5}]}),
+                ],
+                None,
+            ),
+        ];
+        for expanded in [false, true] {
+            for opt in [0, 2] {
+                build_pair(&f, expanded, opt);
+                for (index, (calls, status)) in scripts.iter().enumerate() {
+                    let scenario = json!({"entry":"main","arguments":[{"kind":"string","value":"sent"}],"calls":calls});
+                    let path = f.root.join("scenario.json");
+                    fs::write(&path, scenario.to_string()).unwrap();
+                    let fuels: Vec<_> = if index == 0 {
+                        (0..=36).map(Some).chain([None]).collect()
+                    } else {
+                        vec![None]
+                    };
+                    for fuel in fuels {
+                        let a = execute(&f.root.join(format!("llvm-{opt}")), &path, fuel);
+                        let b = execute(&f.root.join(format!("rust-{opt}")), &path, fuel);
+                        assert_eq!(
+                            a.status.code(),
+                            b.status.code(),
+                            "{expanded}/{opt}/{index}/{fuel:?}"
+                        );
+                        assert_eq!(a.stdout, b.stdout);
+                        assert_eq!(a.stderr, b.stderr);
+                        if fuel.is_none() {
+                            if let Some(status) = status {
+                                assert_eq!(a.status.code(), Some(*status));
+                                assert_eq!(
+                                    report(&a),
+                                    serde_json::to_value(
+                                        checked
+                                            .run(&serde_json::from_value(scenario.clone()).unwrap())
+                                            .unwrap()
+                                    )
+                                    .unwrap()
+                                );
+                            } else {
+                                assert!(!a.status.success());
+                            }
+                        }
+                    }
+                }
+                // An unknown live adapter still fails through the existing Host diagnostic.
+                let a = Command::new(f.root.join(format!("llvm-{opt}")))
+                    .args(["--json", "sent"])
+                    .output()
+                    .unwrap();
+                let b = Command::new(f.root.join(format!("rust-{opt}")))
+                    .args(["--json", "sent"])
+                    .output()
+                    .unwrap();
+                assert!(!a.status.success());
+                assert_eq!(a.status.code(), b.status.code());
+                assert_eq!(a.stdout, b.stdout);
+                assert_eq!(a.stderr, b.stderr);
+            }
+        }
+    }
+
+    #[test]
+    fn unsupported_primitive_signatures_fail_before_output_creation() {
+        for borrowed in [false, true] {
+            let f = Fixture::new(if borrowed {
+                "control main(string input) exits result {delta custom(borrow input) {done=>done} [done]:exit done;} outcome result {@exit 0 done}"
+            } else {
+                "control main() exits result {delta custom() {done=>done,bad {auto ignored}=>bad} [done|bad]:exit done;} outcome result {@exit 0 done}"
+            });
+            let mut manifest: Json =
+                serde_json::from_str(&fs::read_to_string(&f.manifest).unwrap()).unwrap();
+            let (parameters, outcomes) = if borrowed {
+                (
+                    json!([{"name":"input","type":"String","mode":"borrow"}]),
+                    json!([{"name":"done","fields":[]}]),
+                )
+            } else {
+                (
+                    json!([]),
+                    json!([{"name":"done","fields":[]},{"name":"bad","fields":[{"name":"error","type":"read_error"}]}]),
+                )
+            };
+            manifest["primitives"].as_array_mut().unwrap().push(json!({"name":"custom","parameters":parameters,"outcomes":outcomes,"effects":[],"returns":true}));
+            fs::write(&f.manifest, manifest.to_string()).unwrap();
+            let checked = compile_file(
+                &f.source,
+                Manifest::from_json(&manifest.to_string()).unwrap(),
+            )
+            .unwrap();
+            assert_eq!(checked.llvm_source("main").unwrap_err().code, "E_BACKEND");
+            let out = f.command("llvm", 0).output().unwrap();
+            assert!(!out.status.success());
+            assert!(String::from_utf8_lossy(&out.stderr).contains("E_BACKEND"));
+            assert!(!f.root.join("llvm-0.tellur-build").exists());
+            assert!(!f.root.join("llvm-0.ll").exists());
+        }
+    }
+
     #[test]
     fn unsupported_checked_operations_create_no_build_outputs() {
         for source in [
@@ -614,7 +901,6 @@ outcome logic_result {@exit 0 done {bool value}}
             "struct box {vector<u32> value;} control main() exits result {drop(box {[1,2]});exit done;} outcome result {@exit 0 done}",
             "struct box {read_error value;} control main(read_error e) exits result {drop(box {e});exit done;} outcome result {@exit 0 done}",
             "control main() exits result {exit done;} async control helper() exits done {exit done;} outcome result {@exit 0 done}",
-            "control main() exits result {delta checked_add(1,2) {sum {auto n}=>ok,overflow=>bad} [ok]:exit done; [bad]:exit done;} outcome result {@exit 0 done}",
             "control main() exits result {loop L(){again L();}} outcome result {@exit 0 done}",
             "control main() exits result {fault boundary {exit done;} contingency [] {terminate process 1;}} outcome result {@exit 0 done}",
         ] {

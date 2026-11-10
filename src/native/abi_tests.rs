@@ -553,3 +553,122 @@ fn malformed_tagged_transfers_do_not_consume_values_or_publish_outcomes() {
         assert!(c.error.is_some());
     }
 }
+
+fn primitive_manifest() -> Json {
+    json!({"types":[],"primitives":[{"name":"checked_add","parameters":[
+        {"name":"a","type":"U32","mode":"value"},{"name":"b","type":"U32","mode":"value"}],
+        "outcomes":[{"name":"sum","fields":[{"name":"value","type":"U32"}]},{"name":"overflow","fields":[]}],
+        "effects":[],"returns":true}]})
+}
+
+#[test]
+fn primitive_dispatch_preserves_tracing_and_consumes_each_argument_once() {
+    let mut host = Host::new(primitive_manifest(), None, true, Some(0));
+    let mut c = context(&mut host);
+    let args = [c.put(V::U32(7)), c.put(V::U32(9))];
+    unsafe {
+        let outcome = tellur_rt_v1_primitive(&mut c, b"checked_add".as_ptr(), 11, args.as_ptr(), 2);
+        assert!(args.iter().all(|h| c.get(*h).is_err()));
+        let mut field = [0];
+        assert_eq!(
+            tellur_rt_v1_route(&mut c, outcome, b"sum".as_ptr(), 3, field.as_mut_ptr(), 1),
+            1
+        );
+        assert_eq!(c.take(field[0]).unwrap(), V::U32(16));
+        assert_eq!(tellur_rt_v1_ok(&mut c), 1);
+    }
+    assert_eq!(c.host.events.len(), 1);
+    assert_eq!(c.host.events[0]["kind"], "primitive");
+    assert_eq!(c.host.events[0]["operation"], "checked_add");
+    assert_eq!(
+        c.host.events[0]["arguments"],
+        json!([{"kind":"u32","value":7},{"kind":"u32","value":9}])
+    );
+    assert_eq!(c.host.fuel, Some(0), "ABI dispatch adds no fuel tick");
+}
+
+#[test]
+fn malformed_primitive_calls_do_not_transfer_or_invoke_the_host() {
+    for case in [
+        "duplicate",
+        "stale",
+        "zero",
+        "arity",
+        "type",
+        "unknown",
+        "borrow",
+        "async",
+        "nonreturning",
+    ] {
+        let mut manifest = primitive_manifest();
+        match case {
+            "borrow" => manifest["primitives"][0]["parameters"][0]["mode"] = json!("borrow"),
+            "async" => manifest["primitives"][0]["async"] = json!(true),
+            "nonreturning" => manifest["primitives"][0]["returns"] = json!(false),
+            _ => {}
+        }
+        let mut host = Host::new(manifest, None, true, None);
+        let mut c = context(&mut host);
+        let first = c.put(if case == "type" {
+            V::String("invalid".into())
+        } else {
+            V::U32(1)
+        });
+        let second = c.put(V::U32(2));
+        let stale = c.put(V::Unit);
+        c.take(stale).unwrap();
+        let args = match case {
+            "duplicate" => vec![first, first],
+            "stale" => vec![first, stale],
+            "zero" => vec![first, 0],
+            "arity" => vec![first],
+            _ => vec![first, second],
+        };
+        let name = if case == "unknown" {
+            "missing"
+        } else {
+            "checked_add"
+        };
+        unsafe {
+            assert_eq!(
+                tellur_rt_v1_primitive(
+                    &mut c,
+                    name.as_ptr(),
+                    name.len(),
+                    args.as_ptr(),
+                    args.len()
+                ),
+                0,
+                "{case}"
+            );
+        }
+        assert!(c.get(first).is_ok() && c.get(second).is_ok(), "{case}");
+        assert!(c.outcomes.is_empty() && c.host.events.is_empty(), "{case}");
+        assert!(c.error.is_some());
+    }
+}
+
+#[test]
+fn primitive_host_failure_remains_sticky_without_publishing_payloads() {
+    let script = vec![ScriptCall {
+        operation: "checked_add".into(),
+        outcome: "undeclared".into(),
+        fields: vec![],
+        waits: 0,
+    }];
+    let mut host = Host::new(primitive_manifest(), Some(script), true, None);
+    let mut c = context(&mut host);
+    let args = [c.put(V::U32(1)), c.put(V::U32(2))];
+    let later = c.put(V::String("must not emit".into()));
+    unsafe {
+        assert_eq!(
+            tellur_rt_v1_primitive(&mut c, b"checked_add".as_ptr(), 11, args.as_ptr(), 2),
+            0
+        );
+        let original = c.error.clone();
+        tellur_rt_v1_emit(&mut c, later);
+        assert_eq!(c.error, original);
+    }
+    assert!(c.get(later).is_ok() && c.outcomes.is_empty() && c.host.events.is_empty());
+    assert!(c.error.unwrap().contains("undeclared outcome"));
+}

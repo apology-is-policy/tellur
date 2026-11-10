@@ -24,6 +24,7 @@ declare void @tellur_rt_v1_emit(ptr, i64)
 declare void @tellur_rt_v1_fault(ptr, i64)
 declare void @tellur_rt_v1_complete(ptr, ptr, i64, ptr, i64)
 declare i64 @tellur_rt_v1_call(ptr, ptr, ptr, i64, ptr, i64)
+declare i64 @tellur_rt_v1_primitive(ptr, ptr, i64, ptr, i64)
 declare i32 @tellur_rt_v1_route(ptr, i64, ptr, i64, ptr, i64)
 declare void @tellur_rt_v1_unmatched(ptr, i64)
 "#;
@@ -90,7 +91,11 @@ fn expression_supported(e: &Expr, types: &BTreeSet<String>) -> bool {
         _ => false,
     }
 }
-fn supported(i: &Instruction, types: &BTreeSet<String>) -> bool {
+fn supported(
+    i: &Instruction,
+    types: &BTreeSet<String>,
+    manifest: &crate::manifest::Manifest,
+) -> bool {
     match &i.action {
         Action::Bind(_, e) | Action::Drop(e) | Action::Emit(e) | Action::Fault(e) => {
             expression_supported(e, types)
@@ -108,6 +113,30 @@ fn supported(i: &Instruction, types: &BTreeSet<String>) -> bool {
             args,
             ..
         } => args.iter().all(|e| expression_supported(e, types)),
+        Action::Decide {
+            operation: Operation::Primitive(name),
+            args,
+            ..
+        } => {
+            args.iter().all(|e| expression_supported(e, types))
+                && manifest
+                    .primitives
+                    .iter()
+                    .find(|p| &p.name == name)
+                    .is_some_and(|p| {
+                        !p.asynchronous
+                            && p.rust.is_none()
+                            && p.returns
+                            && p.parameters.iter().all(|p| {
+                                p.mode != crate::manifest::Mode::Borrow
+                                    && type_supported(&p.ty, types)
+                            })
+                            && p.outcomes
+                                .iter()
+                                .flat_map(|o| &o.fields)
+                                .all(|f| type_supported(&f.ty, types))
+                    })
+        }
         Action::Decide {
             operation: Operation::Variant(e),
             args,
@@ -193,6 +222,16 @@ impl Emitter {
         let (name, len) = self.text(&display);
         let result = self.call(format!(
             "call i64 @tellur_rt_v1_call(ptr %ctx, ptr @control_{index}, ptr {name}, i64 {len}, ptr {args}, i64 {})",
+            values.len()
+        ));
+        self.route(&result, arms);
+    }
+    fn primitive(&mut self, name: &str, args: &[Expr], arms: &[Arm]) {
+        let values = args.iter().map(|a| self.expr(a)).collect::<Vec<_>>();
+        let args = self.handles(&values);
+        let (name, len) = self.text(name);
+        let result = self.call(format!(
+            "call i64 @tellur_rt_v1_primitive(ptr %ctx, ptr {name}, i64 {len}, ptr {args}, i64 {})",
             values.len()
         ));
         self.route(&result, arms);
@@ -460,6 +499,11 @@ impl Emitter {
                     arms,
                 } => self.region_call(name, args, arms),
                 Action::Decide {
+                    operation: Operation::Primitive(name),
+                    args,
+                    arms,
+                } => self.primitive(name, args, arms),
+                Action::Decide {
                     operation: Operation::Variant(e),
                     arms,
                     ..
@@ -613,7 +657,11 @@ impl CheckedProgram {
                     self.runtime_name(&region.name)
                 )));
             }
-            if let Some(instruction) = region.code.iter().find(|i| !supported(i, &types)) {
+            if let Some(instruction) = region
+                .code
+                .iter()
+                .find(|i| !supported(i, &types, self.manifest()))
+            {
                 return Err(Diagnostic::new(
                     "E_BACKEND",
                     instruction.provenance.span,

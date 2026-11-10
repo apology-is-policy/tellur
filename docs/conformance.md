@@ -6082,6 +6082,32 @@ operation: its state drops before the supplier and it never completes.
 chain parked by `run`, which previously stopped with `E_NATIVE: source task wait
 has no runnable producer`.
 
+## Direct LLVM owned primitive calls (0.239 / B1.3e)
+
+The LLVM emitter now lowers returning synchronous primitive decisions with owned
+arguments and admitted scalar/record/tagged result types. It audits the complete
+signature, including unselected alternatives, and rejects borrowed parameters,
+async operations, Rust adapters and unsupported types before output creation.
+The C ABI validates arguments before transfer and dispatches through the existing
+`Host::primitive`; no new activation, tick or handoff is introduced.
+
+Focused ABI checks cover live arithmetic, tracing, unchanged fuel, invalid handle
+batches/signatures and sticky host failure without published payloads. Source tests
+compare original/expanded O0/O2 LLVM and Rust executions with reference scenarios
+for live parse/add/multiply success and overflow, malformed numbers, valid/invalid
+UTF-8, and scripted owned record/option payloads through a helper. Driver faults
+cover exhausted/wrong scripts, undeclared outcomes, invalid payload types, waits
+on synchronous calls and absent live adapters. Status/output/fault reports match
+across all tested fuel cuts. Signature rejection checks include a borrowed String
+parameter and an unsupported outcome whose bound payload is unused in source.
+`playground/llvm_primitives.tellur` is the runnable fixture.
+
+Affected ABI/native-host, LLVM, LSP/manual and release/editor checks run freshly.
+The default checker/runtime/Rust generator is unchanged; full default-suite and
+coroutine evidence is reused after source-input review, not claimed as a fresh
+full-suite run. References/resources, collections, user constructors, loops,
+boundaries and async lowering remain later slices; Rust remains the default.
+
 ## Direct LLVM tagged values (0.238 / B1.3d)
 
 The opt-in LLVM profile now accepts options, closed variants and named outcome
