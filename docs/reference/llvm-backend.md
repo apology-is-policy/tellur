@@ -11,6 +11,7 @@ and supported payload types. Compiler 0.240 moves locals into stable runtime act
 Compiler 0.241 adds direct shared/exclusive references and borrowed decisions.
 Compiler 0.242 adds reference-bearing aggregates and whole borrowed carrier results.
 Compiler 0.243 adds opaque/resource values and synchronous borrowed host parameters.
+Compiler 0.244 adds arrays, vectors, maps and synchronous collection operations.
 The default remains `--backend rust`. Both start from the same checked program;
 backend selection does not relax ownership, origins, outcomes or path rules.
 
@@ -27,7 +28,7 @@ with status 7. Both report the declared outcome and its payload. Native `--json`
 ## Current admission
 
 The current slice accepts synchronous controls using `bool`, `u32`, `string`,
-`bytes`, `unit`, records, options, closed variants and named outcome values
+`bytes`, `unit`, opaque/resources, arrays, vectors, maps, records, options, closed variants and named outcome values
 recursively composed of those types: declarations, moves/copies, assignment, pure expressions,
 value decisions, synchronous control/primitive calls, path guards, lexical releases,
 emit, faults and final exits.
@@ -37,7 +38,7 @@ the Rust backend. Multiple eligible executable entries are supported.
 
 Direct references and reference-bearing aggregates compose recursively; shared/exclusive
 parameters, borrowed results, carrier reborrows and indirect fields are supported.
-Collections, user constructors, loops, fault
+User constructors, loops, fault
 boundaries, contingencies, task operations and adapters remain outside this
 profile. Launch signal policies are also rejected. Admission checks all checked
 regions, including unused helpers. Unsupported programs receive `E_BACKEND`
@@ -266,6 +267,41 @@ The first returns `done` and the file bytes with status 0. The second faults aft
 closing the file. Missing files return `missing` with status 3; ordinary read/close
 failures return `failed` with status 1. The example only reads the named file.
 
+## Collections
+
+Arrays, vectors and maps use the existing runtime representation and operations.
+Typed literals, nested owning collections, collection fields in records or tagged
+values, lengths, lookup, replacement, insertion, removal and consuming conversion
+or take operations are admitted. Map keys retain deterministic ascending order.
+Bounds failures return the existing outcomes and rejected replacement values.
+Reference-free collection payloads are also accepted in synchronous host signatures.
+
+Element references retain the caller's stable storage and existing origin evidence.
+Mutation and moves still require conflicting whole-collection loans to have ended.
+Local collections of direct shared references preserve external owners when the
+collection is moved, removed or dropped. Exclusive-reference elements and public
+collection-origin contracts retain their checker restrictions.
+
+Resource collections retain their sealed completion obligation: removing a resource
+transfers that obligation, and the remainder must be transferred or consumed through
+its empty outcome. This slice supports straight-line operations; draining loops are
+still outside the LLVM profile. Literal shapes and handle batches validate before
+ownership transfer. Collection operations introduce no additional fuel ticks.
+
+The [collection example](../../playground/llvm_collections.tellur) edits a vector,
+returns an element borrow through a helper, and removes the smallest map key:
+
+```sh
+./bin/tellurc build playground/llvm_collections.tellur playground/manifest.json --backend llvm --out /tmp/tellur-collections
+/tmp/tellur-collections 1 false
+/tmp/tellur-collections 99 false
+/tmp/tellur-collections 0 true
+```
+
+The first emits `second`, `changed`, `last`, `a`, `7`, `2` and returns the vector
+`["first", "changed"]` with status 0. The second emits `missing` in place of the
+selected element. The third faults after the collection operations.
+
 ## Build artifacts and requirements
 
 The compiler emits `OUTPUT.ll` and `OUTPUT.tellur-build/program.ll` directly,
@@ -273,7 +309,7 @@ then compiles `program.o` and links `OUTPUT` with its embedded LLVM/LLD 22.1.8.
 Path guards are LLVM branches. Runtime faults retain Tellur source provenance;
 native debugger information is not yet emitted.
 
-The distributed 0.243 compiler includes the `llvm` feature. When building the
+The distributed 0.244 compiler includes the `llvm` feature. When building the
 compiler from source, enable it and set `LLVM_SYS_221_PREFIX` to the static pinned
 LLVM/LLD installation, as described in the repository README. A compiler built
 without that feature reports a clear error for `--backend llvm`.
@@ -285,6 +321,6 @@ handles and shares the existing runtime's launch, fuel, fault and result logic.
 The resulting executable is standalone. Shipping a precompiled runtime and target
 link packs belongs to the later single-binary checkpoint.
 
-The next synchronous slices add collection operations, loops and
+The next synchronous slices add loops and
 boundaries. Async lowering follows using frontend state machines, before the
 whole-language parity gate permits changing the default backend.

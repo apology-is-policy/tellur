@@ -740,6 +740,15 @@ outcome result {@exit 0 done {option<string> value}}
             Manifest::from_json(&fs::read_to_string(&f.manifest).unwrap()).unwrap(),
         )
         .unwrap();
+        manifest["launch"]["main"]["exit_codes"] = checked
+            .region("main")
+            .unwrap()
+            .exits
+            .iter()
+            .map(|exit| (exit.name.clone(), json!(0)))
+            .collect::<serde_json::Map<String, Json>>()
+            .into();
+        fs::write(&f.manifest, manifest.to_string()).unwrap();
         for expanded in [false, true] {
             for opt in [0, 2] {
                 build_pair(&f, expanded, opt);
@@ -1287,35 +1296,242 @@ outcome result {@exit 0 done}
     }
 
     #[test]
-    fn unsupported_primitive_signatures_fail_before_output_creation() {
+    fn collection_primitive_payloads_keep_script_validation_and_selected_outcomes() {
         let f = Fixture::new(
-            "control main() exits result {delta custom() {done=>done,bad {auto ignored}=>bad} [done|bad]:exit done;} outcome result {@exit 0 done}",
+            "control main() exits result {delta custom() {done=>done,bad {auto value}=>bad} [bad]:emit(u32_text(vector_length(borrow value))); [done|bad]:exit done;} outcome result {@exit 0 done}",
         );
         let mut manifest: Json =
             serde_json::from_str(&fs::read_to_string(&f.manifest).unwrap()).unwrap();
-        manifest["primitives"].as_array_mut().unwrap().push(json!({"name":"custom","parameters":[],"outcomes":[{"name":"done","fields":[]},{"name":"bad","fields":[{"name":"error","type":"vector<U32>"}]}],"effects":[],"returns":true}));
+        manifest["primitives"].as_array_mut().unwrap().push(json!({"name":"custom","parameters":[],"outcomes":[{"name":"done","fields":[]},{"name":"bad","fields":[{"name":"values","type":"vector<U32>"}]}],"effects":[],"returns":true}));
         fs::write(&f.manifest, manifest.to_string()).unwrap();
         let checked = compile_file(
             &f.source,
             Manifest::from_json(&manifest.to_string()).unwrap(),
         )
         .unwrap();
-        assert_eq!(checked.llvm_source("main").unwrap_err().code, "E_BACKEND");
-        let out = f.command("llvm", 0).output().unwrap();
-        assert!(!out.status.success());
-        assert!(String::from_utf8_lossy(&out.stderr).contains("E_BACKEND"));
-        assert!(!f.root.join("llvm-0.tellur-build").exists());
-        assert!(!f.root.join("llvm-0.ll").exists());
+        for expanded in [false, true] {
+            for opt in [0, 2] {
+                build_pair(&f, expanded, opt);
+                for (index,call) in [
+                json!({"operation":"custom","outcome":"done","fields":[]}),
+                json!({"operation":"custom","outcome":"bad","fields":[{"kind":"construct","value":{"ty":"vector<U32>","name":"vector","fields":[{"kind":"u32","value":7}]}}]}),
+                json!({"operation":"custom","outcome":"bad","fields":[{"kind":"construct","value":{"ty":"vector<U32>","name":"vector","fields":[{"kind":"bool","value":true}]}}]})
+            ].into_iter().enumerate() {
+                let scenario=json!({"entry":"main","arguments":[],"calls":[call]});
+                let path=f.root.join("scenario.json");fs::write(&path,scenario.to_string()).unwrap();
+                let a=execute(&f.root.join(format!("llvm-{opt}")),&path,None);
+                let b=execute(&f.root.join(format!("rust-{opt}")),&path,None);
+                assert_eq!(a.status.code(),b.status.code(),"{a:?}; {b:?}");
+                assert_eq!(a.stdout,b.stdout);assert_eq!(a.stderr,b.stderr);
+                if index<2 {assert!(a.status.success());assert_eq!(report(&a),serde_json::to_value(checked.run(&serde_json::from_value(scenario).unwrap()).unwrap()).unwrap());}
+                else {assert!(!a.status.success());}
+            }
+            }
+        }
+    }
+
+    #[test]
+    fn collections_preserve_mutation_element_borrows_faults_and_fuel() {
+        let scenarios=[0,1,99].into_iter().flat_map(|index| [false,true].map(move |fail|json!({"entry":"main","arguments":[{"kind":"u32","value":index},{"kind":"bool","value":fail}],"calls":[]}))).collect::<Vec<_>>();
+        carrier_matrix(
+            include_str!("../playground/llvm_collections.tellur"),
+            &scenarios,
+            &(0..=55).map(Some).chain([None]).collect::<Vec<_>>(),
+        );
+        carrier_matrix(r#"
+control first(&vector<string> values) exits auto {
+    [entry]: delta vector_get(values,0) {found {&string value}=>yes,out_of_bounds=>no}
+    [yes]: exit found {value}; [no]: exit empty;
+}
+control main(u32 index) exits auto {
+    [entry]: mutable vector<string> words=["one","two"];
+        delta vector_push(&mutable words,"three") {pushed=>added}
+    [added]: delta first(&words) {found {auto view}=>read,empty=>unexpected}
+    [unexpected]: exit failed;
+    [read]: string original=clone(view);
+        delta vector_replace(&mutable words,index,"new") {replaced {string previous}=>changed,out_of_bounds {string rejected}=>outside}
+    [changed]: emit(previous);
+    [outside]: emit(rejected);
+    [changed|outside]: delta vector_get_mut(&mutable words,0) {found {auto edit}=>editing,out_of_bounds=>bad}
+    [bad]: exit failed;
+    [editing]: *edit="edited";
+        mutable map<string,u32> counts=map {};
+        delta map_insert(&mutable counts,"b",2) {inserted=>b_added,replaced {u32 old_b}=>b_replaced}
+    [b_added|b_replaced]: delta map_insert(&mutable counts,"a",1) {inserted=>a_added,replaced {u32 old_a}=>a_replaced}
+    [a_added|a_replaced]: delta map_insert(&mutable counts,"b",20) {inserted=>new_b,replaced {u32 old}=>old_b}
+    [new_b|old_b]: delta map_get_mut(&mutable counts,&"a") {found {auto number}=>number_found,missing=>number_missing}
+    [number_missing]: exit failed;
+    [number_found]: *number=10;
+        array<u32,3> fixed=[4,5,6];
+        u32 length=vector_length(&words);
+        u32 map_size=map_length(&counts); exit done {original,words,counts,fixed,length,array_length(&fixed),map_size};
+}
+"#, &[0,1,99].map(|index|json!({"entry":"main","arguments":[{"kind":"u32","value":index}],"calls":[]})), &[None]);
+        carrier_matrix(
+            r#"control main() exits auto { [entry]:
+        mutable array<u32,1> a=[7];
+        delta array_get_mut(&mutable a,0) {found {auto p}=>yes,out_of_bounds=>no}
+        [no]: exit failed;
+        [yes]: *p=8; delta array_get(&a,9) {found {auto q}=>bad,out_of_bounds=>outside}
+        [bad]: exit failed;
+        [outside]: mutable vector<string> v=["a","b"];
+        delta vector_remove(&mutable v,0) {item {string removed}=>removed,out_of_bounds=>bad_remove}
+        [bad_remove]: exit failed;
+        [removed]: delta vector_pop(&mutable v) {item {string popped}=>popped,empty=>bad_pop}
+        [bad_pop]: exit failed;
+        [popped]: delta vector_pop(&mutable v) {item {auto bad_item}=>bad_empty,empty=>empty}
+        [bad_empty]: exit failed;
+        [empty]: mutable map<u32,string> m=map {};
+        delta map_insert(&mutable m,7,"seven") {inserted=>inserted,replaced {auto old}=>replaced}
+        [inserted|replaced]: delta map_get(&m,&8) {found {auto unexpected}=>bad_get,missing=>missing}
+        [bad_get]: exit failed;
+        [missing]: delta map_remove(&mutable m,&7) {removed {string seven}=>seven,missing=>bad_missing}
+        [bad_missing]: exit failed;
+        [seven]: delta map_take(m) {item {auto k,auto val,auto rest}=>bad_take,empty=>end}
+        [bad_take]: exit failed;
+        [end]: exit done {a,removed,popped,seven};
+    }"#,
+            &[json!({"entry":"main","arguments":[],"calls":[]})],
+            &[None],
+        );
+        carrier_matrix(
+            r#"control main() exits auto { [entry]: array<string,2> a=["a","b"];
+        delta array_into_vector(a) {converted {vector<string> v}=>converted}
+        [converted]: mutable vector<string> work=v;
+        delta vector_remove(&mutable work,5) {item {auto unexpected}=>bad,out_of_bounds=>outside}
+        [bad]: exit failed;
+        [outside]: delta vector_pop(&mutable work) {item {string b}=>popped,empty=>bad_empty}
+        [bad_empty]: exit failed;
+        [popped]: exit done {b,work}; }"#,
+            &[json!({"entry":"main","arguments":[],"calls":[]})],
+            &[None],
+        );
+        carrier_matrix(
+            r#"control main() exits auto { [entry]: mutable vector<vector<string>> rows=[["a"]];
+        delta vector_get_mut(&mutable rows,0) {found {auto row}=>row,out_of_bounds=>no}
+        [no]: exit failed;
+        [row]: delta vector_get_mut(row,0) {found {auto cell}=>cell,out_of_bounds=>empty}
+        [empty]: exit failed;
+        [cell]: *cell="changed"; exit done {rows};
+    }"#,
+            &[json!({"entry":"main","arguments":[],"calls":[]})],
+            &[None],
+        );
+    }
+
+    #[test]
+    fn collections_of_shared_references_keep_external_origins_after_transfer() {
+        carrier_matrix(
+            include_str!("fixtures/borrowed_collections.tellur"),
+            &[json!({"entry":"main","arguments":[],"calls":[]})],
+            &[None],
+        );
+        carrier_matrix(
+            r#"control main() exits done {string first="a";string second="b";
+mutable array<ref string,2> values=[borrow first,borrow second];auto copied=values;
+delta array_get_mut(borrow mutable values,1) {found {auto text}=>found,out_of_bounds=>missing}
+[found]:emit(text);[entry]:delta array_replace(borrow mutable values,0,borrow second) {replaced {auto old}=>replaced,out_of_bounds {auto rejected}=>rejected}
+[replaced]:emit(old);[rejected]:emit(rejected);[entry]:delta array_into_vector(copied) {converted {auto vector}=>converted}
+[converted]:delta vector_take(vector) {item {auto head,auto tail}=>item,empty=>empty}
+[item]:emit(head);drop(tail);[entry]:exit done;}"#,
+            &[json!({"entry":"main","arguments":[],"calls":[]})],
+            &[None],
+        );
+        carrier_matrix(
+            r#"control main() exits done {string first="a";string second="b";mutable map<string,ref string> values=map {};
+delta map_insert(borrow mutable values,"key",borrow first) {inserted=>inserted,replaced {auto old}=>replaced}
+[replaced]:emit(old);[entry]:delta map_insert(borrow mutable values,"key",borrow second) {inserted=>inserted2,replaced {auto previous}=>replaced2}
+[replaced2]:emit(previous);[entry]:delta map_get_mut(borrow mutable values,borrow "key") {found {auto text}=>found,missing=>missing}
+[found]:emit(text);[entry]:delta map_remove(borrow mutable values,borrow "key") {removed {auto removed}=>removed,missing=>missing2}
+[removed]:emit(removed);[entry]:drop(values);exit done;}"#,
+            &[json!({"entry":"main","arguments":[],"calls":[]})],
+            &[None],
+        );
+        carrier_matrix(
+            r#"control first(ref string input) exits found {ref string value from input},missing {vector<ref string> values=[input];exit delta vector_get(borrow values,0) {found {auto text}=>found {text},out_of_bounds=>missing {}};}
+control main() exits done {string text="ok";delta first(borrow text) {found {auto value}=>found,missing=>missing}[found]:emit(value);[entry]:exit done;}"#,
+            &[json!({"entry":"main","arguments":[],"calls":[]})],
+            &[None],
+        );
+        let bad = include_str!("fixtures/borrowed_collections.tellur")
+            .replace("emit(word)", "first=\"early\";emit(word)");
+        assert_eq!(
+            tellur::compile(
+                &bad,
+                Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
+            )
+            .unwrap_err()
+            .code,
+            "E_LOAN"
+        );
+    }
+
+    #[test]
+    fn collection_literals_and_resource_transfers_preserve_nested_owners() {
+        carrier_matrix(
+            r#"control main(handle first,handle second) exits auto { [entry]:
+        mutable map<string,handle> m=map {};
+        delta map_insert(&mutable m,"key",first) {inserted=>inserted,replaced {handle old}=>replaced}
+        [replaced]: exit unexpected {m,old,second};
+        [inserted]: delta map_insert(&mutable m,"key",second) {inserted=>new,replaced {handle previous}=>old}
+        [new]: exit unexpected_new {m};
+        [old]: delta map_take(m) {item {string key,handle current,map<string,handle> rest}=>item,empty=>empty}
+        [empty]: exit unexpected_empty {previous};
+        [item]: delta map_take(rest) {item {auto key2,auto value2,auto rest2}=>extra,empty=>end}
+        [extra]: exit extra {previous,current,value2,rest2};
+        [end]: exit done {previous,current};
+    }"#,
+            &[
+                json!({"entry":"main","arguments":[{"kind":"opaque","value":{"ty":"handle","token":"first"}},{"kind":"opaque","value":{"ty":"handle","token":"second"}}],"calls":[]}),
+            ],
+            &[None],
+        );
+        carrier_matrix(
+            r#"struct packet {option<vector<array<u32,2>>> values;}
+variant choice {one {vector<u32> values},two}
+control main() exits auto {
+    packet p=packet {some {[[1,2],[3,4]]}};
+    choice c=choice.one {[5,6]};
+    array<string,0> empty=[];
+    delta array_into_vector(empty) {converted {auto v}=>ready}
+    [ready]:exit done {p,c,v};
+}"#,
+            &[json!({"entry":"main","arguments":[],"calls":[]})],
+            &[None],
+        );
+        carrier_matrix(
+            r#"control main(handle input) exits auto {
+    array<handle,1> owner=[input];
+    delta array_into_vector(owner) {converted {auto vector}=>converted}
+    [converted]:delta vector_take(vector) {item {auto value,auto rest}=>item,empty=>empty}
+    [empty]:exit absent;
+    [item]:delta vector_take(rest) {item {auto extra,auto tail}=>extra,empty=>done}
+    [extra]:exit extra {value,extra,tail};
+    [done]:exit done {value};
+}"#,
+            &[
+                json!({"entry":"main","arguments":[{"kind":"opaque","value":{"ty":"handle","token":"one"}}],"calls":[]}),
+            ],
+            &[None],
+        );
+        for bad in [
+            "control main(handle h) exits done {vector<handle> owners=[h];drop(owners);exit done;}",
+            "control main() exits done {mutable string s=\"x\";vector<ref mutable string> refs=[borrow mutable s];exit done;}",
+        ] {
+            assert!(
+                tellur::compile(
+                    bad,
+                    Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
+                )
+                .is_err()
+            );
+        }
     }
 
     #[test]
     fn unsupported_checked_operations_create_no_build_outputs() {
         for source in [
             "struct ticket {u32 value;constructor(u32 input){self.value=input;}} control main() exits result {drop(ticket(1));exit done;} outcome result {@exit 0 done}",
-            "struct box {option<vector<u32>> value;} control main() exits result {drop(box {none});exit done;} outcome result {@exit 0 done}",
-            "variant choice {one {vector<u32> error},two} control main() exits result {drop(choice.two {});exit done;} outcome result {@exit 0 done}",
-            "struct box {vector<u32> value;} control main() exits result {drop(box {[1,2]});exit done;} outcome result {@exit 0 done}",
-            "struct box {vector<u32> value;} control main(vector<u32> e) exits result {drop(box {e});exit done;} outcome result {@exit 0 done}",
             "control main() exits result {exit done;} async control helper() exits done {exit done;} outcome result {@exit 0 done}",
             "control main() exits result {loop L(){again L();}} outcome result {@exit 0 done}",
             "control main() exits result {fault boundary {exit done;} contingency [] {terminate process 1;}} outcome result {@exit 0 done}",

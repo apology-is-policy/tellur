@@ -6364,3 +6364,15 @@ loans until consuming close; source drop/clone restrictions remain checked.
 position, owner survival across repeated borrowed reads, consuming close, and
 invalid borrow batches that preserve handles and never invoke the host.
 `playground/llvm_resources.tellur` is the formatted runnable example.
+
+## Direct LLVM collections (0.244 / B1.3j)
+
+The optional LLVM backend now lowers arrays/vectors/maps, typed and nested literals,
+lengths, lookup/mutation and consuming operations through the shared runtime.
+`tests/llvm_backend.rs` compares original/expanded O0/O2 programs with Rust and the
+reference executor: selected element origins, nested mutation, local shared-reference
+transfers, resource replacement/draining, bounds/empty outcomes, sorted maps,
+collection host payloads, faults and instruction fuel. ABI tests reject malformed
+literal shapes, duplicate/stale batches and unsorted/duplicate keys before transfer;
+returned element addresses remain stable. Checker ownership and default execution
+are unchanged. Loops, constructors, boundaries and async remain gated.

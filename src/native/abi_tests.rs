@@ -1423,3 +1423,153 @@ fn primitive_host_failure_remains_sticky_without_publishing_payloads() {
     assert!(c.get(later).is_ok() && c.outcomes.is_empty() && c.host.events.is_empty());
     assert!(c.error.unwrap().contains("undeclared outcome"));
 }
+
+#[test]
+fn collection_literal_shapes_validate_before_transferring_any_fields() {
+    for (ty, name, values) in [
+        ("array<U32,2>", "array", vec![V::U32(1)]),
+        ("vector<U32>", "array", vec![V::U32(1)]),
+        ("vector<U32>", "vector", vec![V::U32(1), V::Bool(true)]),
+        ("map<U32,String>", "map", vec![V::U32(1)]),
+        (
+            "map<U32,String>",
+            "map",
+            vec![
+                V::U32(2),
+                V::String("b".into()),
+                V::U32(1),
+                V::String("a".into()),
+            ],
+        ),
+        (
+            "map<U32,String>",
+            "map",
+            vec![
+                V::U32(1),
+                V::String("a".into()),
+                V::U32(1),
+                V::String("b".into()),
+            ],
+        ),
+    ] {
+        let mut host = Host::new(json!({}), None, true, Some(0));
+        let mut c = context(&mut host);
+        let handles = values.iter().cloned().map(|v| c.put(v)).collect::<Vec<_>>();
+        assert_eq!(
+            unsafe {
+                tellur_rt_v1_construct(
+                    &mut c,
+                    ty.as_ptr(),
+                    ty.len(),
+                    name.as_ptr(),
+                    name.len(),
+                    handles.as_ptr(),
+                    handles.len(),
+                )
+            },
+            0
+        );
+        assert!(c.error.is_some());
+        for (&h, v) in handles.iter().zip(&values) {
+            assert_eq!(c.get(h).unwrap(), v);
+        }
+        assert!(c.outcomes.is_empty());
+        assert_eq!(c.host.fuel, Some(0));
+    }
+    let mut host = Host::new(json!({}), None, true, None);
+    let mut c = context(&mut host);
+    let h = c.put(V::U32(3));
+    assert!(c.construct("vector<U32>", "vector", &[h, h]).is_err());
+    assert!(c.get(h).is_ok());
+    assert!(c.construct("vector<U32>", "vector", &[h, 999]).is_err());
+    assert!(c.get(h).is_ok());
+    let fixed = c.construct("array<U32,1>", "array", &[h]).unwrap();
+    assert!(c.get(h).is_err());
+    let nested = c
+        .construct("vector<array<U32,1>>", "vector", &[fixed])
+        .unwrap();
+    assert!(c.get(fixed).is_err());
+    validate(c.get(nested).unwrap(), "vector<array<U32,1>>", &json!({})).unwrap();
+    let empty = c.construct("map<String,U32>", "map", &[]).unwrap();
+    validate(c.get(empty).unwrap(), "map<String,U32>", &json!({})).unwrap();
+}
+
+#[test]
+fn collection_abi_keeps_element_addresses_and_validates_batches_before_mutation() {
+    let mut host = Host::new(json!({}), None, true, Some(0));
+    let mut c = context(&mut host);
+    unsafe {
+        tellur_rt_v1_frame(&mut c, 2);
+        let a = c.put(V::String("first".into()));
+        let b = c.put(V::String("second".into()));
+        let owner = c.construct("vector<String>", "vector", &[a, b]).unwrap();
+        tellur_rt_v1_store(&mut c, 0, std::ptr::null(), 0, owner);
+        let ty = "&mutable vector<String>";
+        let reference =
+            tellur_rt_v1_reference(&mut c, 0, std::ptr::null(), 0, 0, ty.as_ptr(), ty.len());
+        let reference = annotate(&mut c, reference, &[1, 1, 0, 0, 0]);
+        let index = c.put(V::U32(1));
+        let name = "vector_get_mut";
+        let outcome = tellur_rt_v1_collection(
+            &mut c,
+            name.as_ptr(),
+            name.len(),
+            [reference, index].as_ptr(),
+            2,
+        );
+        assert!(c.get(reference).is_err() && c.get(index).is_err());
+        let result = c.outcome(outcome).unwrap();
+        assert_eq!(result.0, "found");
+        let V::Reference {
+            root,
+            fields,
+            evidence,
+            ..
+        } = &result.1[0]
+        else {
+            panic!()
+        };
+        assert_eq!(*root, c.local(0).unwrap());
+        assert_eq!(fields, &vec![1]);
+        assert!(evidence.origins.is_complete());
+        let element = c.put(result.1[0].clone());
+        tellur_rt_v1_store(&mut c, 1, std::ptr::null(), 0, element);
+        let value = c.put(V::String("changed".into()));
+        tellur_rt_v1_assign_through(&mut c, 1, std::ptr::null(), 0, value);
+        let reference =
+            tellur_rt_v1_reference(&mut c, 0, std::ptr::null(), 0, 0, ty.as_ptr(), ty.len());
+        let length = tellur_rt_v1_length(&mut c, reference);
+        assert_eq!(c.get(length).unwrap(), &V::U32(2));
+        assert!(c.get(reference).is_err());
+        assert_eq!(
+            read_place(c.storage.values(), c.local(0).unwrap(), &[1], false).unwrap(),
+            V::String("changed".into())
+        );
+        assert!(c.error.is_none());
+        assert_eq!(c.host.fuel, Some(0));
+    }
+    // Invalid later handles must not consume a live owner reference or mutate it.
+    for duplicate in [false, true] {
+        let mut host = Host::new(json!({}), None, true, Some(0));
+        let mut c = context(&mut host);
+        unsafe {
+            tellur_rt_v1_frame(&mut c, 1);
+            let owner = c.construct("vector<U32>", "vector", &[]).unwrap();
+            tellur_rt_v1_store(&mut c, 0, std::ptr::null(), 0, owner);
+            let ty = "&mutable vector<U32>";
+            let reference =
+                tellur_rt_v1_reference(&mut c, 0, std::ptr::null(), 0, 0, ty.as_ptr(), ty.len());
+            let args = [reference, if duplicate { reference } else { 999 }];
+            let name = "vector_push";
+            assert_eq!(
+                tellur_rt_v1_collection(&mut c, name.as_ptr(), name.len(), args.as_ptr(), 2),
+                0
+            );
+            assert!(c.get(reference).is_ok());
+            assert!(c.outcomes.is_empty());
+            let value = read_place(c.storage.values(), c.local(0).unwrap(), &[], false).unwrap();
+            assert_eq!(collection_support::length(&value).unwrap(), 0);
+            assert_eq!(c.host.fuel, Some(0));
+        }
+    }
+}

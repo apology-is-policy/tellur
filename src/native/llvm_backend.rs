@@ -34,6 +34,8 @@ declare void @tellur_rt_v1_fault(ptr, i64)
 declare void @tellur_rt_v1_complete(ptr, ptr, i64, ptr, i64)
 declare i64 @tellur_rt_v1_call(ptr, ptr, ptr, i64, ptr, i64)
 declare i64 @tellur_rt_v1_primitive(ptr, ptr, i64, ptr, i64)
+declare i64 @tellur_rt_v1_collection(ptr, ptr, i64, ptr, i64)
+declare i64 @tellur_rt_v1_length(ptr, i64)
 declare i32 @tellur_rt_v1_route(ptr, i64, ptr, i64, ptr, i64)
 declare void @tellur_rt_v1_unmatched(ptr, i64)
 "#;
@@ -72,6 +74,8 @@ fn admitted_types(manifest: &crate::manifest::Manifest, references: bool) -> BTr
 }
 fn type_supported(ty: &str, types: &BTreeSet<String>) -> bool {
     types.contains(ty)
+        || crate::collection_support::Collection::parse(ty)
+            .is_some_and(|c| c.types().iter().all(|t| type_supported(t, types)))
         || ty
             .strip_prefix("&mutable ")
             .or_else(|| ty.strip_prefix('&'))
@@ -80,6 +84,8 @@ fn type_supported(ty: &str, types: &BTreeSet<String>) -> bool {
 }
 fn owned_type_supported(ty: &str, types: &BTreeSet<String>) -> bool {
     types.contains(ty)
+        || crate::collection_support::Collection::parse(ty)
+            .is_some_and(|c| c.types().iter().all(|t| owned_type_supported(t, types)))
         || ty
             .strip_prefix("Option<")
             .and_then(|t| t.strip_suffix('>'))
@@ -107,10 +113,9 @@ fn expression_supported(e: &Expr, types: &BTreeSet<String>) -> bool {
         Expr::Record(ty, fields) => {
             type_supported(ty, types) && fields.iter().all(|(_, e)| expression_supported(e, types))
         }
-        Expr::Project(e, _) => expression_supported(e, types),
+        Expr::Project(e, _) | Expr::Length(e) => expression_supported(e, types),
         Expr::Not(e) => expression_supported(e, types),
         Expr::Binary(_, a, b) => expression_supported(a, types) && expression_supported(b, types),
-        _ => false,
     }
 }
 fn supported(
@@ -132,7 +137,7 @@ fn supported(
             ..
         } => bindings.iter().all(|(_, e)| expression_supported(e, types)),
         Action::Decide {
-            operation: Operation::Region(_),
+            operation: Operation::Region(_) | Operation::Collection(_),
             args,
             ..
         } => args.iter().all(|e| expression_supported(e, types)),
@@ -248,12 +253,12 @@ impl Emitter {
         ));
         self.route(&result, arms);
     }
-    fn primitive(&mut self, name: &str, args: &[Expr], arms: &[Arm]) {
+    fn runtime_operation(&mut self, abi: &str, name: &str, args: &[Expr], arms: &[Arm]) {
         let values = args.iter().map(|a| self.expr(a)).collect::<Vec<_>>();
         let args = self.handles(&values);
         let (name, len) = self.text(name);
         let result = self.call(format!(
-            "call i64 @tellur_rt_v1_primitive(ptr %ctx, ptr {name}, i64 {len}, ptr {args}, i64 {})",
+            "call i64 @tellur_rt_v1_{abi}(ptr %ctx, ptr {name}, i64 {len}, ptr {args}, i64 {})",
             values.len()
         ));
         self.route(&result, arms);
@@ -424,6 +429,12 @@ impl Emitter {
                     "call i64 @tellur_rt_v1_project(ptr %ctx, i64 {value}, i64 {index})"
                 ))
             }
+            Expr::Length(e) => {
+                let value = self.expr(e);
+                self.call(format!(
+                    "call i64 @tellur_rt_v1_length(ptr %ctx, i64 {value})"
+                ))
+            }
             Expr::Pure(name, args) => {
                 let values = args.iter().map(|a| self.expr(a)).collect::<Vec<_>>();
                 let p = self.handles(&values);
@@ -470,7 +481,6 @@ impl Emitter {
                     "call i64 @tellur_rt_v1_binary(ptr %ctx, ptr {op}, i64 {len}, i64 {a}, i64 {b})"
                 ))
             }
-            _ => unreachable!(),
         }
     }
     fn guard(&mut self, guard: &Guard) -> String {
@@ -587,7 +597,12 @@ impl Emitter {
                     operation: Operation::Primitive(name),
                     args,
                     arms,
-                } => self.primitive(name, args, arms),
+                } => self.runtime_operation("primitive", name, args, arms),
+                Action::Decide {
+                    operation: Operation::Collection(name),
+                    args,
+                    arms,
+                } => self.runtime_operation("collection", name, args, arms),
                 Action::Decide {
                     operation: Operation::Variant(e),
                     arms,
@@ -873,7 +888,13 @@ mod tests {
         ));
         // Exercise the backend gate independently of the frontend's own current
         // host restrictions, including nested reference-bearing result types.
-        for ty in ["&U32", "&mutable U32", "Option<&U32>"] {
+        for ty in [
+            "&U32",
+            "&mutable U32",
+            "Option<&U32>",
+            "vector<&U32>",
+            "map<String,array<&U32,2>>",
+        ] {
             let TypeDef::Record { fields, .. } = &mut manifest.types[0] else {
                 panic!()
             };

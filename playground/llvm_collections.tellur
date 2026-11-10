@@ -1,0 +1,53 @@
+control lookup(ref vector<string> words, u32 index) exits auto {
+    forward vector_get(words, index);
+}
+control main(u32 index, bool fail) exits result {
+    mutable vector<string> words = ["first", "second"];
+    delta vector_replace(borrow mutable words, 1, "changed") {
+        replaced { auto previous } => replaced,
+        out_of_bounds { auto rejected } => outside
+    }
+    [replaced]: emit(previous);
+    [outside]: drop(rejected);
+    [entry]: delta lookup(borrow words, index) {
+        found { auto word } => found,
+        out_of_bounds => missing
+    }
+    [found]: emit(word);
+    [missing]: emit("missing");
+    [entry]: delta vector_push(borrow mutable words, "last") {
+        pushed => pushed
+    }
+    [pushed]: delta vector_pop(borrow mutable words) {
+        item { auto last } => popped,
+        empty => empty_vector
+    }
+    [popped]: emit(last);
+    [entry]:
+        mutable map<string, u32> counts = map {};
+        delta map_insert(borrow mutable counts, "b", 2) {
+            inserted => inserted_b,
+            replaced { auto old_b } => replaced_b
+        }
+        delta map_insert(borrow mutable counts, "a", 7) {
+            inserted => inserted_a,
+            replaced { auto old_a } => replaced_a
+        }
+        delta map_take(counts) {
+            item { auto key, auto value, auto rest } => map_item,
+            empty => empty_map
+        }
+    [map_item]: emit(key);
+        emit(u32_text(value));
+        drop(rest);
+    [entry]: emit(u32_text(vector_length(borrow words)));
+        delta fail {
+            true => failed,
+            false => done
+        }
+    [failed]: fault "collection stopped";
+    [done]: exit done { words };
+}
+outcome result {
+    @exit 0 done { vector<string> words }
+}

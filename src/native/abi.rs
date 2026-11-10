@@ -102,14 +102,33 @@ impl Context<'_> {
         Ok(self.take_many(&[handle])?.pop().unwrap())
     }
     fn construct(&mut self, ty: &str, name: &str, handles: &[u64]) -> R<u64> {
-        let expected = fields(&self.host.manifest, ty, name)
-            .map_err(|e| format!("E_NATIVE: invalid ABI constructor: {e}"))?;
+        let collection = collection_support::Collection::parse(ty);
+        let expected = if let Some(collection) = &collection {
+            if name != collection.name() {
+                return Err("E_NATIVE: invalid ABI collection constructor".into());
+            }
+            collection
+                .fields(handles.len())
+                .ok_or("E_NATIVE: ABI collection field count mismatch")?
+        } else {
+            fields(&self.host.manifest, ty, name)
+                .map_err(|e| format!("E_NATIVE: invalid ABI constructor: {e}"))?
+        };
         if expected.len() != handles.len() {
             return Err("E_NATIVE: ABI constructor field count mismatch".into());
         }
         for (&handle, ty) in handles.iter().zip(&expected) {
             validate(self.get(handle)?, ty, &self.host.manifest)
                 .map_err(|e| format!("E_NATIVE: invalid ABI constructor payload: {e}"))?;
+        }
+        if matches!(collection, Some(collection_support::Collection::Map(..))) {
+            let values = handles
+                .iter()
+                .map(|h| self.get(*h).cloned())
+                .collect::<R<Vec<_>>>()?;
+            if !collection_support::sorted_map(&values) {
+                return Err("E_NATIVE: ABI map keys must be unique and sorted".into());
+            }
         }
         let fields = self.take_many(handles)?;
         Ok(self.put(V::Construct {
@@ -652,6 +671,34 @@ pub unsafe extern "C" fn tellur_rt_v1_complete(
 }
 
 pub type Callback = unsafe extern "C" fn(*mut Context<'_>, *const u64, usize);
+
+/// Collection operations use the same stable arena and element-reference
+/// evidence as generated Rust. Check the entire handle batch before mutation.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_collection(
+    ctx: *mut Context<'_>,
+    name: *const u8,
+    len: usize,
+    args: *const u64,
+    count: usize,
+) -> u64 {
+    unsafe { &mut *ctx }.perform(|c| {
+        let name = unsafe { text(name, len)? };
+        let args = c.take_many(unsafe { slice(args, count) })?;
+        let outcome = collection(name, args, c.storage.values_mut())?;
+        c.outcomes.push(Some(outcome));
+        Ok(c.outcomes.len() as u64)
+    })
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_length(ctx: *mut Context<'_>, handle: u64) -> u64 {
+    unsafe { &mut *ctx }.perform(|c| {
+        let value = c.take(handle)?;
+        let length = collection_length(value, c.storage.values_mut())?;
+        Ok(c.put(length))
+    })
+}
 
 /// Synchronous host calls retain the existing runtime's live/scripted
 /// dispatch, tracing and failures. Borrowed parameters are already lowered to
