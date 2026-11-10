@@ -288,7 +288,11 @@ pub unsafe extern "C" fn tellur_rt_v1_assign_through(
 /// Metadata words must have module lifetime, not be a stack temporary. Each
 /// descriptor is [kind, fresh, (local, flags, path_length, path...)...], with
 /// kind 0=partial, 1=complete, 2=incoming and flags indirect/guard/opaque in bits
-/// 0/1/2. No Rust layout crosses the ABI. Symbolic paths are never dereferenced.
+/// 0/1/2. Kinds 3=guarded and 4=carrier require fresh=0, followed by an
+/// origin-word count, those origin words, then respectively:
+/// [leaf, holder, path_length, path...] or
+/// [holder, leaf_count, (leaf, path_length, path...)...].
+/// No Rust layout crosses the ABI. Symbolic paths are never dereferenced.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tellur_rt_v1_evidence(
     ctx: *mut Context<'_>,
@@ -297,7 +301,10 @@ pub unsafe extern "C" fn tellur_rt_v1_evidence(
     count: usize,
 ) -> u64 {
     unsafe { &mut *ctx }.perform(|c| {
-        use execution::reference_evidence::{Origin, attach_checked, inherit_checked};
+        use execution::reference_evidence::{
+            InputLeaf, Origin, attach_carrier_input, attach_checked, attach_guarded_input,
+            inherit_checked,
+        };
         if !matches!(c.get(value)?, V::Reference { .. }) {
             return Err("E_NATIVE: ABI evidence requires a reference".into());
         }
@@ -307,10 +314,24 @@ pub unsafe extern "C" fn tellur_rt_v1_evidence(
         let [kind, fresh, rest @ ..] = words else {
             return Err("E_NATIVE: truncated ABI reference evidence".into());
         };
-        if *kind > 2 || *fresh > 1 || (*kind == 2 && (*fresh != 0 || !rest.is_empty())) {
+        if *kind > 4
+            || *fresh > 1
+            || (*kind >= 2 && *fresh != 0)
+            || (*kind == 2 && !rest.is_empty())
+        {
             return Err("E_NATIVE: invalid ABI reference evidence mode".into());
         }
-        let mut rest = rest;
+        let (mut rest, extra) = if *kind >= 3 {
+            let [length, rest @ ..] = rest else {
+                return Err("E_NATIVE: missing ABI carrier origin length".into());
+            };
+            if *length > rest.len() {
+                return Err("E_NATIVE: truncated ABI carrier origins".into());
+            }
+            rest.split_at(*length)
+        } else {
+            (rest, &[][..])
+        };
         let mut origins = vec![];
         while !rest.is_empty() {
             let [slot, flags, count, fields @ ..] = rest else {
@@ -328,8 +349,53 @@ pub unsafe extern "C" fn tellur_rt_v1_evidence(
             });
             rest = &fields[*count..];
         }
+        // Decode and resolve every local before consuming the operand. Actual
+        // holder/leaf relationships remain checked by the existing metadata helpers.
+        let guarded = if *kind == 3 {
+            let [leaf, holder, length, fields @ ..] = extra else {
+                return Err("E_NATIVE: truncated ABI guarded input".into());
+            };
+            if *length != fields.len() {
+                return Err("E_NATIVE: invalid ABI guarded input path".into());
+            }
+            Some((c.local(*leaf)?, c.local(*holder)?, fields))
+        } else {
+            None
+        };
+        let carrier = if *kind == 4 {
+            let [holder, length, rest @ ..] = extra else {
+                return Err("E_NATIVE: truncated ABI carrier input".into());
+            };
+            let holder = c.local(*holder)?;
+            let mut rest = rest;
+            let mut leaves = vec![];
+            // Parse by available words rather than trusting an allocation count.
+            while !rest.is_empty() {
+                let [leaf, length, fields @ ..] = rest else {
+                    return Err("E_NATIVE: truncated ABI carrier leaf".into());
+                };
+                if *length > fields.len() {
+                    return Err("E_NATIVE: invalid ABI carrier leaf path".into());
+                }
+                leaves.push(InputLeaf {
+                    slot: c.local(*leaf)?,
+                    fields: &fields[..*length],
+                });
+                rest = &fields[*length..];
+            }
+            if leaves.len() != *length {
+                return Err("E_NATIVE: invalid ABI carrier leaf count".into());
+            }
+            Some((holder, leaves))
+        } else {
+            None
+        };
         let value = c.take(value)?;
-        let value = if *kind == 2 {
+        let value = if let Some((leaf, holder, fields)) = guarded {
+            attach_guarded_input(c.storage.values(), value, &origins, leaf, holder, fields)
+        } else if let Some((holder, leaves)) = carrier {
+            attach_carrier_input(c.storage.values(), value, &origins, holder, &leaves)
+        } else if *kind == 2 {
             inherit_checked(c.storage.values(), value)
         } else {
             attach_checked(c.storage.values(), value, &origins, *kind == 1, *fresh != 0)

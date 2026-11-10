@@ -6326,3 +6326,23 @@ the service reports `stopped`, and the native executable matches. Two live tests
 send real signals to a native server: after a served request, SIGTERM makes an idle
 connection receive 503 and the process exit 0 with `stopped`; two pending signals
 terminate it with 130 or 143.
+
+
+## Direct LLVM reference-bearing aggregates (0.242 / B1.3h)
+
+The LLVM backend admits synchronous reference-bearing records/options/variants/named
+outcomes and whole borrowed carrier results. Guarded and carrier input annotations
+use immutable word descriptors and the same runtime checks as Rust generation.
+Actual holder paths stay separate from symbolic origins. Host primitive signatures
+retain an independent reference-free type closure.
+
+`tests/llvm_backend.rs` compares original and expanded programs at O0/O2 with Rust
+and successful reference reports. Cases include nested holder/leaf returns, shared
+copies, exclusive moves, disjoint siblings, selected origins, empty outcomes,
+generic carriers and nested options/variants. The runnable carrier example adds
+fault reports and every source fuel cut. `src/native/abi_tests.rs` checks complete
+versus partial evidence, malformed descriptor atomicity, unavailable metadata,
+returned caller identities after child retirement and rejection after storage reuse.
+A focused feature unit test gates reference-bearing primitive signatures even if
+frontend host admission later broadens. Existing resource/async/loop/boundary
+backend rejections remain; language ownership and origin checks are unchanged.

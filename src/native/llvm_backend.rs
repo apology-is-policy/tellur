@@ -37,7 +37,7 @@ declare i64 @tellur_rt_v1_primitive(ptr, ptr, i64, ptr, i64)
 declare i32 @tellur_rt_v1_route(ptr, i64, ptr, i64, ptr, i64)
 declare void @tellur_rt_v1_unmatched(ptr, i64)
 "#;
-fn admitted_types(manifest: &crate::manifest::Manifest) -> BTreeSet<String> {
+fn admitted_types(manifest: &crate::manifest::Manifest, references: bool) -> BTreeSet<String> {
     let mut types: BTreeSet<String> = ["Bool", "U32", "String", "Bytes", "Unit"]
         .into_iter()
         .map(String::from)
@@ -55,7 +55,13 @@ fn admitted_types(manifest: &crate::manifest::Manifest) -> BTreeSet<String> {
                 }
                 _ => continue,
             };
-            if fields.iter().all(|f| owned_type_supported(&f.ty, &types)) {
+            if fields.iter().all(|f| {
+                if references {
+                    type_supported(&f.ty, &types)
+                } else {
+                    owned_type_supported(&f.ty, &types)
+                }
+            }) {
                 types.insert(name.clone());
             }
         }
@@ -65,11 +71,12 @@ fn admitted_types(manifest: &crate::manifest::Manifest) -> BTreeSet<String> {
     }
 }
 fn type_supported(ty: &str, types: &BTreeSet<String>) -> bool {
-    owned_type_supported(ty, types)
+    types.contains(ty)
         || ty
             .strip_prefix("&mutable ")
             .or_else(|| ty.strip_prefix('&'))
-            .is_some_and(|inner| owned_type_supported(inner, types))
+            .or_else(|| ty.strip_prefix("Option<").and_then(|t| t.strip_suffix('>')))
+            .is_some_and(|inner| type_supported(inner, types))
 }
 fn owned_type_supported(ty: &str, types: &BTreeSet<String>) -> bool {
     types.contains(ty)
@@ -92,14 +99,7 @@ fn expression_supported(e: &Expr, types: &BTreeSet<String>) -> bool {
         Expr::Value(v) => value_supported(v, types),
         Expr::Move(_) | Expr::Place(_) => true,
         Expr::Reference(_, ty) => type_supported(ty, types),
-        Expr::WithReferenceEvidence(value, evidence) => {
-            matches!(
-                evidence,
-                ReferenceEvidence::Partial(_)
-                    | ReferenceEvidence::Complete(_)
-                    | ReferenceEvidence::Incoming
-            ) && expression_supported(value, types)
-        }
+        Expr::WithReferenceEvidence(value, _) => expression_supported(value, types),
         Expr::Pure(_, args) => args.iter().all(|e| expression_supported(e, types)),
         Expr::Construct(ty, _, args) => {
             type_supported(ty, types) && args.iter().all(|e| expression_supported(e, types))
@@ -116,6 +116,7 @@ fn expression_supported(e: &Expr, types: &BTreeSet<String>) -> bool {
 fn supported(
     i: &Instruction,
     types: &BTreeSet<String>,
+    primitive_types: &BTreeSet<String>,
     manifest: &crate::manifest::Manifest,
 ) -> bool {
     match &i.action {
@@ -151,12 +152,12 @@ fn supported(
                             && p.returns
                             && p.parameters.iter().all(|p| {
                                 p.mode != crate::manifest::Mode::Borrow
-                                    && owned_type_supported(&p.ty, types)
+                                    && owned_type_supported(&p.ty, primitive_types)
                             })
                             && p.outcomes
                                 .iter()
                                 .flat_map(|o| &o.fields)
-                                .all(|f| owned_type_supported(&f.ty, types))
+                                .all(|f| owned_type_supported(&f.ty, primitive_types))
                     })
         }
         Action::Decide {
@@ -347,9 +348,14 @@ impl Emitter {
                     ReferenceEvidence::Partial(_) => 0,
                     ReferenceEvidence::Complete(_) => 1,
                     ReferenceEvidence::Incoming => 2,
-                    _ => unreachable!("unsupported evidence rejected before emission"),
+                    ReferenceEvidence::GuardedInput { .. } => 3,
+                    ReferenceEvidence::CarrierInput { .. } => 4,
                 };
-                let mut words = vec![kind, usize::from(fresh && kind != 2)];
+                let mut words = vec![kind, usize::from(fresh && kind < 2)];
+                if kind >= 3 {
+                    words.push(0);
+                }
+                let origin_start = words.len();
                 for origin in evidence.origins() {
                     words.extend([
                         self.layout.slots[&origin.place.root],
@@ -359,6 +365,30 @@ impl Emitter {
                         origin.place.fields.len(),
                     ]);
                     words.extend(&origin.place.fields);
+                }
+                if kind >= 3 {
+                    words[2] = words.len() - origin_start;
+                }
+                match evidence {
+                    ReferenceEvidence::GuardedInput { leaf, holder, .. } => {
+                        // Match the Rust emitter: holder.fields is the actual
+                        // path inside the original borrowed aggregate, separate
+                        // from symbolic indirect/guard/opaque origin paths.
+                        words.extend([
+                            self.layout.slots[leaf],
+                            self.layout.slots[&holder.root],
+                            holder.fields.len(),
+                        ]);
+                        words.extend(&holder.fields);
+                    }
+                    ReferenceEvidence::CarrierInput { holder, leaves, .. } => {
+                        words.extend([self.layout.slots[holder], leaves.len()]);
+                        for leaf in leaves {
+                            words.extend([self.layout.slots[&leaf.leaf], leaf.fields.len()]);
+                            words.extend(&leaf.fields);
+                        }
+                    }
+                    _ => {}
                 }
                 let name = self.id();
                 let values = words
@@ -686,7 +716,9 @@ impl CheckedProgram {
             ));
         }
         let entries = self.executable_entries(entry)?;
-        let types = admitted_types(self.manifest());
+        let types = admitted_types(self.manifest(), true);
+        // Host operations remain reference-free even when controls admit carriers.
+        let primitive_types = admitted_types(self.manifest(), false);
         let mut emitter = Emitter {
             globals: String::new(),
             body: String::new(),
@@ -720,14 +752,14 @@ impl CheckedProgram {
                     .any(|f| !type_supported(&f.ty, &types))
             {
                 return Err(error(format!(
-                    "LLVM backend currently supports only synchronous scalar/owned-aggregate controls: {}",
+                    "LLVM backend currently supports only synchronous scalar/aggregate controls: {}",
                     self.runtime_name(&region.name)
                 )));
             }
             if let Some(instruction) = region
                 .code
                 .iter()
-                .find(|i| !supported(i, &types, self.manifest()))
+                .find(|i| !supported(i, &types, &primitive_types, self.manifest()))
             {
                 return Err(Diagnostic::new(
                     "E_BACKEND",
@@ -819,4 +851,44 @@ fn abi_library(target: &Path) -> Result<PathBuf> {
         )));
     }
     Ok(build.join(format!("debug/lib{library}.a")))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn carrier_admission_does_not_enable_reference_bearing_primitive_signatures() {
+        use crate::manifest::{Manifest, TypeDef};
+        let mut manifest = Manifest::from_json(r#"{
+            "version":"0.1",
+            "types":[{"kind":"record","name":"packet","fields":[{"name":"value","type":"U32"}]}],
+            "primitives":[{"name":"custom","parameters":[],"outcomes":[{"name":"ready","fields":[{"name":"value","type":"Option<packet>"}]}],"effects":[],"returns":true}]
+        }"#).unwrap();
+        let checked=crate::compile("control main() exits done {delta custom() {ready {auto value}=>ready} [ready]:drop(value);exit done;}",manifest.clone()).unwrap();
+        let instruction=checked.region("main").unwrap().code.iter().find(|i|matches!(&i.action,Action::Decide {operation:Operation::Primitive(name),..} if name=="custom")).unwrap();
+        assert!(supported(
+            instruction,
+            &admitted_types(&manifest, true),
+            &admitted_types(&manifest, false),
+            &manifest
+        ));
+        // Exercise the backend gate independently of the frontend's own current
+        // host restrictions, including nested reference-bearing result types.
+        for ty in ["&U32", "&mutable U32", "Option<&U32>"] {
+            let TypeDef::Record { fields, .. } = &mut manifest.types[0] else {
+                panic!()
+            };
+            fields[0].ty = ty.into();
+            assert!(type_supported(
+                "Option<packet>",
+                &admitted_types(&manifest, true)
+            ));
+            assert!(!supported(
+                instruction,
+                &admitted_types(&manifest, true),
+                &admitted_types(&manifest, false),
+                &manifest
+            ));
+        }
+    }
 }

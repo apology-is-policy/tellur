@@ -1,0 +1,40 @@
+// Whole carriers retain their owners; reborrowed leaves retain the holder guard.
+struct editor['a] {
+    ref mutable string text <- 'a;
+}
+struct holder['a] {
+    editor['a] item;
+}
+control lend(ref mutable holder input) exits ready { ref mutable editor value from input } {
+    exit ready { borrow mutable input.item };
+}
+control leaf(ref mutable editor input) exits ready { ref mutable string value from input['a] } {
+    exit ready { borrow mutable deref input.text };
+}
+control main(bool fail) exits result {
+    mutable string owner = "original";
+    mutable holder saved = holder { editor { borrow mutable owner } };
+    delta lend(borrow mutable saved) {
+        ready { auto carrier } => lent
+    }
+    [lent]:
+        delta leaf(carrier) {
+            ready { auto child } => selected
+        }
+    [selected]:
+        ref mutable string moved = child;
+        deref moved = "through child";
+        emit(moved);
+        deref carrier.text = "through carrier";
+        emit(carrier.text);
+        deref saved.item.text = "parent restored";
+        delta fail {
+            true => failed,
+            false => done
+        }
+    [failed]: fault "carrier stopped";
+    [done]: exit done { owner };
+}
+outcome result {
+    @exit 0 done { string text }
+}

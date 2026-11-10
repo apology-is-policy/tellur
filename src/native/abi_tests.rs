@@ -12,6 +12,219 @@ fn context(host: &mut Host) -> Context<'_> {
     }
 }
 
+// A carrier, its borrowed holder and the original private leaf are separate
+// locals, exactly as in checked input materialization.
+fn carrier_locals(c: &mut Context<'_>, complete: bool) {
+    unsafe {
+        tellur_rt_v1_frame(c, 4);
+        let owner = c.put(V::String("owner".into()));
+        tellur_rt_v1_store(c, 0, std::ptr::null(), 0, owner);
+        let leaf = tellur_rt_v1_reference(
+            c,
+            0,
+            std::ptr::null(),
+            0,
+            0,
+            b"&mutable String".as_ptr(),
+            15,
+        );
+        let leaf = if complete {
+            annotate(c, leaf, &[1, 1, 0, 0, 0])
+        } else {
+            leaf
+        };
+        let reference = c.take(leaf).unwrap();
+        let carrier = c.put(V::Construct {
+            ty: "Editor".into(),
+            name: "Editor".into(),
+            fields: vec![reference.clone()],
+        });
+        tellur_rt_v1_store(c, 1, std::ptr::null(), 0, carrier);
+        let holder = tellur_rt_v1_reference(
+            c,
+            1,
+            std::ptr::null(),
+            0,
+            0,
+            b"&mutable Editor".as_ptr(),
+            15,
+        );
+        let holder = if complete {
+            annotate(c, holder, &[1, 1, 1, 0, 0])
+        } else {
+            holder
+        };
+        tellur_rt_v1_store(c, 2, std::ptr::null(), 0, holder);
+        let leaf = c.put(reference);
+        tellur_rt_v1_store(c, 3, std::ptr::null(), 0, leaf);
+    }
+}
+const GUARDED: &[usize] = &[3, 0, 13, 3, 1, 0, 2, 7, 1, 0, 2, 1, 0, 2, 7, 0, 3, 2, 1, 0];
+const CARRIER: &[usize] = &[4, 0, 6, 2, 1, 0, 3, 1, 0, 2, 1, 3, 1, 0];
+fn origins(value: &V) -> &execution::reference_evidence::Origins {
+    let V::Reference { evidence, .. } = value else {
+        panic!("expected reference")
+    };
+    &evidence.origins
+}
+#[test]
+fn guarded_and_carrier_abi_preserve_runtime_evidence_and_do_not_promote_partial_inputs() {
+    use execution::reference_evidence::{
+        InputLeaf, Origin, attach_carrier_input, attach_guarded_input,
+    };
+    for complete in [false, true] {
+        let mut host = Host::new(json!({}), None, true, Some(0));
+        let mut c = context(&mut host);
+        carrier_locals(&mut c, complete);
+        for (slot, words) in [(3, GUARDED), (2, CARRIER)] {
+            let handle = unsafe { tellur_rt_v1_local(&mut c, slot, std::ptr::null(), 0, 0) };
+            let value = c.get(handle).unwrap().clone();
+            let origin = |root, fields, guard| Origin {
+                root,
+                fields,
+                indirect: true,
+                guard,
+                opaque: guard,
+            };
+            let expected = if slot == 3 {
+                attach_guarded_input(
+                    c.storage.values(),
+                    value,
+                    &[
+                        origin(3, &[], false),
+                        origin(2, &[0], true),
+                        origin(2, &[], false),
+                        origin(2, &[], true),
+                    ],
+                    3,
+                    2,
+                    &[0],
+                )
+            } else {
+                attach_carrier_input(
+                    c.storage.values(),
+                    value,
+                    &[origin(2, &[], false), origin(3, &[], false)],
+                    2,
+                    &[InputLeaf {
+                        slot: 3,
+                        fields: &[0],
+                    }],
+                )
+            };
+            let result = unsafe { annotate(&mut c, handle, words) };
+            assert!(c.get(handle).is_err());
+            assert_eq!(c.get(result).unwrap(), &expected);
+            assert_eq!(origins(c.get(result).unwrap()).is_complete(), complete);
+        }
+        assert!(c.error.is_none());
+        assert_eq!(c.host.fuel, Some(0));
+    }
+}
+#[test]
+fn carrier_metadata_failures_are_unavailable_and_do_not_change_execution() {
+    use execution::reference_evidence::Origins;
+    // Structurally complete but missing actual leaf, repeated leaf, wrong path,
+    // or incomplete holder guard: these are metadata failures, not ABI faults.
+    for words in [
+        &[4, 0, 3, 2, 1, 0, 2, 0][..],
+        &[4, 0, 6, 2, 1, 0, 3, 1, 0, 2, 2, 3, 1, 0, 3, 1, 0],
+        &[4, 0, 6, 2, 1, 0, 3, 1, 0, 2, 1, 3, 1, 9],
+        &[3, 0, 3, 3, 1, 0, 3, 2, 1, 0],
+    ] {
+        let mut host = Host::new(json!({}), None, true, None);
+        let mut c = context(&mut host);
+        carrier_locals(&mut c, true);
+        let slot = if words[0] == 3 { 3 } else { 2 };
+        let handle = unsafe { tellur_rt_v1_local(&mut c, slot, std::ptr::null(), 0, 0) };
+        let result = unsafe { annotate(&mut c, handle, words) };
+        assert!(
+            matches!(origins(c.get(result).unwrap()), Origins::Unavailable(_)),
+            "{words:?}"
+        );
+        assert!(c.error.is_none());
+        assert_eq!(
+            read_place(c.storage.values(), 3, &[], true).unwrap(),
+            V::String("owner".into())
+        );
+    }
+}
+#[test]
+fn carrier_child_results_retain_caller_identities_and_reject_retired_storage() {
+    unsafe extern "C" fn child(ctx: *mut Context<'_>, args: *const u64, _: usize) {
+        unsafe {
+            tellur_rt_v1_frame(ctx, 2);
+            tellur_rt_v1_store(ctx, 0, std::ptr::null(), 0, *args);
+            tellur_rt_v1_store(ctx, 1, std::ptr::null(), 0, *args.add(1));
+            let value = tellur_rt_v1_reference(
+                ctx,
+                0,
+                std::ptr::null(),
+                0,
+                1,
+                b"&mutable Editor".as_ptr(),
+                15,
+            );
+            let value = annotate(ctx, value, &[4, 0, 6, 0, 1, 0, 1, 1, 0, 0, 1, 1, 1, 0]);
+            tellur_rt_v1_complete(ctx, b"ready".as_ptr(), 5, [value].as_ptr(), 1);
+        }
+    }
+    let mut host = Host::new(json!({}), None, true, None);
+    let mut c = context(&mut host);
+    carrier_locals(&mut c, true);
+    unsafe {
+        let holder = tellur_rt_v1_local(&mut c, 2, std::ptr::null(), 0, 0);
+        let leaf = tellur_rt_v1_local(&mut c, 3, std::ptr::null(), 0, 0);
+        let result = tellur_rt_v1_call(
+            &mut c,
+            child,
+            b"child".as_ptr(),
+            5,
+            [holder, leaf].as_ptr(),
+            2,
+        );
+        let mut payload = [0];
+        assert_eq!(
+            tellur_rt_v1_route(
+                &mut c,
+                result,
+                b"ready".as_ptr(),
+                5,
+                payload.as_mut_ptr(),
+                1
+            ),
+            1
+        );
+        let value = c.get(payload[0]).unwrap().clone();
+        let execution::reference_evidence::Origins::Complete(bound) = origins(&value) else {
+            panic!("{value:?}")
+        };
+        assert!(!bound.is_empty());
+        assert!(
+            bound
+                .iter()
+                .all(|o| c.storage.values().require_storage(&o.place.storage).is_ok())
+        );
+        assert_eq!(c.storage.values().len(), 4);
+        let frame = c.frame.take().unwrap();
+        c.storage.values_mut().retire(&frame).unwrap();
+        carrier_locals(&mut c, true);
+        assert!(bound.iter().all(|o| {
+            c.storage
+                .values()
+                .require_storage(&o.place.storage)
+                .is_err()
+        }));
+        let stale = c.put(value);
+        let stale = annotate(&mut c, stale, CARRIER);
+        assert!(matches!(
+            origins(c.get(stale).unwrap()),
+            execution::reference_evidence::Origins::Unavailable(_)
+        ));
+        assert!(c.error.is_none());
+    }
+}
+
 #[test]
 fn reference_reborrows_return_from_child_frames_and_mutate_live_caller_storage() {
     unsafe extern "C" fn reborrow(ctx: *mut Context<'_>, args: *const u64, _: usize) {
@@ -142,6 +355,20 @@ fn malformed_reference_descriptors_and_indirect_destinations_preserve_arguments(
         &[1, 0, 0, 8, 0],
         &[1, 0, 0, 0, 1],
         &[1, 0, 9, 0, 0],
+        &[3, 1, 0],
+        &[3, 0],
+        &[3, 0, usize::MAX],
+        &[3, 0, 0],
+        &[3, 0, 0, 0, 0, 2, 0],
+        &[3, 0, 0, 0, 9, 0],
+        &[4, 0, 0],
+        &[4, 0, 0, 0],
+        &[4, 0, 0, 0, usize::MAX],
+        &[4, 0, 0, 0, 1, 0],
+        &[4, 0, 0, 0, 1, 0, usize::MAX],
+        &[4, 0, 0, 0, 0, 0, 0],
+        &[4, 0, 0, 9, 0],
+        &[4, 0, 0, 0, 1, 9, 0],
     ];
     for descriptor in DESCRIPTORS {
         let mut host = Host::new(json!({}), None, true, None);

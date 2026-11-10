@@ -728,6 +728,142 @@ outcome result {@exit 0 done {option<string> value}}
         }
     }
 
+    fn carrier_matrix(source: &str, scenarios: &[Json], fuels: &[Option<usize>]) {
+        let f = Fixture::new(source);
+        // These reused language fixtures declare outcomes without CLI policy.
+        let mut manifest: Json =
+            serde_json::from_str(&fs::read_to_string(&f.manifest).unwrap()).unwrap();
+        manifest["launch"] = json!({"main":{"exit_codes":{"done":0}}});
+        fs::write(&f.manifest, manifest.to_string()).unwrap();
+        let checked = compile_file(
+            &f.source,
+            Manifest::from_json(&fs::read_to_string(&f.manifest).unwrap()).unwrap(),
+        )
+        .unwrap();
+        for expanded in [false, true] {
+            for opt in [0, 2] {
+                build_pair(&f, expanded, opt);
+                for scenario in scenarios {
+                    let path = f.root.join("scenario.json");
+                    fs::write(&path, scenario.to_string()).unwrap();
+                    for &fuel in fuels {
+                        let a = execute(&f.root.join(format!("llvm-{opt}")), &path, fuel);
+                        let b = execute(&f.root.join(format!("rust-{opt}")), &path, fuel);
+                        assert_eq!(
+                            a.status.code(),
+                            b.status.code(),
+                            "{expanded}/{opt}/{scenario}/{fuel:?}: {a:?}; {b:?}"
+                        );
+                        assert_eq!(a.stdout, b.stdout, "{expanded}/{opt}/{scenario}/{fuel:?}");
+                        assert_eq!(a.stderr, b.stderr, "{expanded}/{opt}/{scenario}/{fuel:?}");
+                        if fuel.is_none() && a.status.success() {
+                            assert_eq!(
+                                report(&a),
+                                serde_json::to_value(
+                                    checked
+                                        .run(&serde_json::from_value(scenario.clone()).unwrap())
+                                        .unwrap()
+                                )
+                                .unwrap()
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn reference_carriers_preserve_guarded_leaves_whole_results_faults_and_fuel() {
+        let scenarios = [false, true].map(
+            |fail| json!({"entry":"main","arguments":[{"kind":"bool","value":fail}],"calls":[]}),
+        );
+        carrier_matrix(
+            include_str!("../playground/llvm_carriers.tellur"),
+            &scenarios,
+            &(0..=85).map(Some).chain([None]).collect::<Vec<_>>(),
+        );
+        carrier_matrix(
+            include_str!("fixtures/carrier_reborrows.tellur"),
+            &[json!({"entry":"main","arguments":[],"calls":[]})],
+            &[None],
+        );
+    }
+
+    // Reuse the accepted whole-carrier source examples, replacing only task
+    // creation/join/yield with their synchronous call equivalents.
+    fn synchronous_carriers(source: &str) -> String {
+        let source = source
+            .replace("async control", "control")
+            .replace("yield;", "")
+            .replace("forward run ", "forward ")
+            .replace("await ", "");
+        let mut calls = std::collections::BTreeMap::new();
+        let mut result = String::new();
+        for line in source.lines() {
+            let text = line.trim();
+            if let Some((name, call)) = text
+                .strip_prefix("auto ")
+                .and_then(|s| s.split_once(" = spawn "))
+            {
+                calls.insert(name.to_owned(), call.trim_end_matches(';').to_owned());
+                continue;
+            }
+            if let Some((name, original)) = text
+                .strip_prefix("auto ")
+                .and_then(|s| s.split_once(" = move "))
+            {
+                if let Some(call) = calls.get(original.trim_end_matches(';')).cloned() {
+                    calls.insert(name.to_owned(), call);
+                    continue;
+                }
+            }
+            let mut line = line.to_owned();
+            for (name, call) in &calls {
+                line = line.replace(&format!("delta {name} {{"), &format!("delta {call} {{"));
+            }
+            result.push_str(&line);
+            result.push('\n');
+        }
+        result
+    }
+
+    #[test]
+    fn whole_record_and_outcome_results_preserve_selected_origins_and_empty_alternatives() {
+        for source in [
+            include_str!("../playground/borrowed_record_spawn_results.tellur"),
+            include_str!("../playground/borrowed_outcome_spawn_results.tellur"),
+            include_str!("fixtures/source_borrowed_outcome_result_guards.tellur"),
+        ] {
+            carrier_matrix(
+                &synchronous_carriers(source),
+                &[json!({"entry":"main","arguments":[],"calls":[]})],
+                &[None],
+            );
+        }
+    }
+
+    #[test]
+    fn nested_options_variants_and_shared_reference_copies_match_both_executors() {
+        let source = r#"
+struct view<t>['a] {ref t value <- 'a;}
+variant choice['a] {held {view<string>['a] value},empty}
+control make(ref string input, bool present) exits ready {option<choice>[input] value} {
+    exit delta present {true=>ready {some {choice.held {view<string> {input}}}},false=>ready {some {choice.empty {}}}};
+}
+control main(bool present) exits result {
+    string owner="nested shared";
+    delta make(borrow owner,present) {ready {auto value}=>ready}
+    [ready]:delta value {some {auto selected}=>some,none=>none}
+    [some]:delta selected {held {auto leaf}=>held,empty=>empty}
+    [held]:ref string copy=leaf.value;emit(leaf.value);emit(copy);
+    [entry]:exit done;
+}
+outcome result {@exit 0 done}
+"#;
+        carrier_matrix(source, &[false,true].map(|present| json!({"entry":"main","arguments":[{"kind":"bool","value":present}],"calls":[]})), &[None]);
+    }
+
     #[test]
     fn live_owned_primitives_match_reference_scripts_and_rust() {
         let f = Fixture::new(include_str!("../playground/llvm_primitives.tellur"));
@@ -1010,8 +1146,6 @@ outcome result {@exit 0 done {option<string> value}}
             "struct ticket {u32 value;constructor(u32 input){self.value=input;}} control main() exits result {drop(ticket(1));exit done;} outcome result {@exit 0 done}",
             "struct box {option<read_error> value;} control main() exits result {drop(box {none});exit done;} outcome result {@exit 0 done}",
             "variant choice {one {read_error error},two} control main() exits result {drop(choice.two {});exit done;} outcome result {@exit 0 done}",
-            "struct view['a] {ref string value <- 'a;} control main() exits result {string s=\"text\";auto held=view {borrow s};drop(held);exit done;} outcome result {@exit 0 done}",
-            "control main() exits result {string s=\"text\";option<ref string> held=some {borrow s};drop(held);exit done;} outcome result {@exit 0 done}",
             "struct box {vector<u32> value;} control main() exits result {drop(box {[1,2]});exit done;} outcome result {@exit 0 done}",
             "struct box {read_error value;} control main(read_error e) exits result {drop(box {e});exit done;} outcome result {@exit 0 done}",
             "control main() exits result {exit done;} async control helper() exits done {exit done;} outcome result {@exit 0 done}",
