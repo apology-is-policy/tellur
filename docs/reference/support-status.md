@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.245.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.246.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -35,9 +35,11 @@ Compiler 0.242 adds reference-bearing aggregates, whole borrowed carriers and gu
 leaf evidence. Compiler 0.243 adds opaque/resource values and returning synchronous
 borrowed host signatures. Compiler 0.244 adds arrays/vectors/maps, collection
 literals/lengths/operations, element borrows, local shared-reference elements and
-resource transfers. Loops, boundaries, async host operations and Rust adapters remain gated.
+resource transfers. Boundaries, constructors, async host operations and Rust adapters remain gated.
 Compiler 0.245 reclaims consumed temporary cells without reusing IDs and places
-fixed-size LLVM scratch at function entry; the admitted profile is unchanged.
+fixed-size LLVM scratch at function entry. Compiler 0.246 adds synchronous loops,
+iteration resets, simultaneous owner transfers and expanded loop completion targets.
+Authored nested loops and reference-bearing loop parameters remain checker-gated.
 Unsupported checked programs fail with `E_BACKEND` before build
 outputs are created. Backend selection does not change language checking.
 

@@ -131,11 +131,24 @@ fn supported(
         Action::Assign(_, e) => expression_supported(e, types),
         Action::Release(_) => true,
         Action::Exit(_, args) => args.iter().all(|e| expression_supported(e, types)),
-        Action::Complete {
-            bindings,
-            unwind: None,
+        Action::Complete { bindings, .. } => {
+            bindings.iter().all(|(_, e)| expression_supported(e, types))
+        }
+        Action::Again { args, .. } => args.iter().all(|e| expression_supported(e, types)),
+        Action::Loop {
+            supervised,
+            parameters,
+            body,
             ..
-        } => bindings.iter().all(|(_, e)| expression_supported(e, types)),
+        } => {
+            !supervised
+                && parameters
+                    .iter()
+                    .all(|(_, e)| expression_supported(e, types))
+                && body
+                    .iter()
+                    .all(|i| supported(i, types, primitive_types, manifest))
+        }
         Action::Decide {
             operation: Operation::Region(_) | Operation::Collection(_),
             args,
@@ -172,6 +185,13 @@ fn supported(
         _ => false,
     }
 }
+#[derive(Clone)]
+struct LoopTarget {
+    restart: String,
+    complete: String,
+    arguments: String,
+    arity: usize,
+}
 struct Emitter {
     globals: String,
     body: String,
@@ -179,6 +199,7 @@ struct Emitter {
     next: usize,
     layout: FrameLayout,
     controls: BTreeMap<String, (usize, String)>,
+    loops: BTreeMap<Id, LoopTarget>,
 }
 impl Emitter {
     fn id(&mut self) -> String {
@@ -244,11 +265,14 @@ impl Emitter {
             return "null".into();
         }
         let array = self.scratch(&format!("[{} x i64]", values.len()));
+        self.write_handles(&array, values);
+        array
+    }
+    fn write_handles(&mut self, array: &str, values: &[String]) {
         for (i, v) in values.iter().enumerate() {
             let p = self.value(format!("getelementptr i64, ptr {array}, i64 {i}"));
             self.line(format!("store i64 {v}, ptr {p}"));
         }
-        array
     }
     fn region_call(&mut self, name: &str, args: &[Expr], arms: &[Arm]) {
         let (index, display) = self.controls[name].clone();
@@ -538,7 +562,14 @@ impl Emitter {
             let value = self.value(format!("load i64, ptr {ptr}"));
             self.store(p.id, &value);
         }
-        for i in &region.code {
+        self.instructions(&region.code);
+        debug_assert!(self.loops.is_empty());
+        self.line("ret void\nerror:\nret void\n}");
+        self.body
+            .insert_str(entry, &std::mem::take(&mut self.allocations));
+    }
+    fn instructions(&mut self, code: &[Instruction]) {
+        for i in code {
             self.effect(format!(
                 "call void @tellur_rt_v1_tick(ptr %ctx, i64 {}, i64 {}, i64 {})",
                 i.id, i.provenance.span.line, i.provenance.span.column
@@ -636,7 +667,7 @@ impl Emitter {
                     atom,
                     bindings,
                     release,
-                    ..
+                    unwind,
                 } => {
                     let values = bindings
                         .iter()
@@ -649,6 +680,63 @@ impl Emitter {
                         self.release(*id)
                     }
                     self.line(format!("store i1 true, ptr %a{}", self.layout.atoms[atom]));
+                    if let Some(target) = unwind {
+                        self.line(format!("br label %{}", self.loops[target].complete));
+                        terminal = true;
+                    }
+                }
+                Action::Loop {
+                    id,
+                    parameters,
+                    local_slots,
+                    local_atoms,
+                    body,
+                    ..
+                } => {
+                    // Initial and restart expressions all finish before any local
+                    // owner is reset. The transfer buffer is allocated at entry.
+                    let values = parameters
+                        .iter()
+                        .map(|(_, e)| self.expr(e))
+                        .collect::<Vec<_>>();
+                    let arguments = self.handles(&values);
+                    let restart = self.id();
+                    self.loops.insert(
+                        *id,
+                        LoopTarget {
+                            restart: restart.clone(),
+                            complete: next.clone(),
+                            arguments: arguments.clone(),
+                            arity: parameters.len(),
+                        },
+                    );
+                    self.line(format!("br label %{restart}\n{restart}:"));
+                    for id in local_slots {
+                        self.release(*id);
+                    }
+                    for atom in local_atoms {
+                        self.line(format!("store i1 false, ptr %a{}", self.layout.atoms[atom]));
+                    }
+                    for (index, (id, _)) in parameters.iter().enumerate() {
+                        let ptr =
+                            self.value(format!("getelementptr i64, ptr {arguments}, i64 {index}"));
+                        let value = self.value(format!("load i64, ptr {ptr}"));
+                        self.store(*id, &value);
+                    }
+                    self.instructions(body);
+                    // Checked loop bodies always restart, complete or exit. Keep
+                    // impossible fallthrough out of the loop's continuation.
+                    self.line("br label %error");
+                    self.loops.remove(id);
+                    terminal = true;
+                }
+                Action::Again { target, args } => {
+                    let target = self.loops[target].clone();
+                    let values = args.iter().map(|e| self.expr(e)).collect::<Vec<_>>();
+                    debug_assert_eq!(values.len(), target.arity);
+                    self.write_handles(&target.arguments, &values);
+                    self.line(format!("br label %{}", target.restart));
+                    terminal = true;
                 }
                 _ => unreachable!(),
             }
@@ -657,9 +745,6 @@ impl Emitter {
             }
             self.line(format!("{next}:"));
         }
-        self.line("ret void\nerror:\nret void\n}");
-        self.body
-            .insert_str(entry, &std::mem::take(&mut self.allocations));
     }
 }
 
@@ -749,6 +834,7 @@ impl CheckedProgram {
             allocations: String::new(),
             next: 0,
             layout: FrameLayout::default(),
+            loops: BTreeMap::new(),
             controls: self
                 .regions()
                 .enumerate()

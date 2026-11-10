@@ -1529,8 +1529,158 @@ control main() exits auto {
     }
 
     #[test]
+    fn loops_preserve_simultaneous_owned_parameters_outer_updates_faults_and_fuel() {
+        let scenarios = [(0, false), (1, false), (4, false), (4, true)]
+            .into_iter()
+            .map(|(limit, fail)| json!({"entry":"main","arguments":[{"kind":"u32","value":limit},{"kind":"bool","value":fail}],"calls":[]}))
+            .collect::<Vec<_>>();
+        let fuels = std::iter::once(None)
+            .chain((0..=100).map(Some))
+            .collect::<Vec<_>>();
+        carrier_matrix(
+            include_str!("../playground/llvm_loops.tellur"),
+            &scenarios,
+            &fuels,
+        );
+    }
+
+    #[test]
+    fn loops_reset_inlined_facts_and_resume_nested_expansion_targets() {
+        for helper in [
+            "control identity(bool x) exits yes,no {delta x {true=>yes,false=>no}[yes]:exit yes;[no]:exit no;}",
+            "control identity(bool x) exits yes,no {loop inner(){delta x {true=>yes,false=>no}[yes]:exit yes;[no]:exit no;}}",
+        ] {
+            let source = format!(
+                r#"{helper}
+control main() exits done {{
+    loop outer(bool first=true) {{
+        delta identity(first) {{yes=>first,no=>later}}
+        [first]: emit("first"); again outer(false);
+        [later]: emit("second"); exit done;
+    }}
+}}"#
+            );
+            let fuels = std::iter::once(None)
+                .chain((0..=35).map(Some))
+                .collect::<Vec<_>>();
+            carrier_matrix(
+                &source,
+                &[json!({"entry":"main","arguments":[],"calls":[]})],
+                &fuels,
+            );
+        }
+    }
+
+    #[test]
+    fn loops_enter_only_selected_histories_and_reset_iteration_bindings() {
+        carrier_matrix(
+            r#"control main(bool pick) exits auto {
+                delta pick {true=>selected,false=>skipped}
+                [selected] over &: {
+                    loop pass(bool first=true) {
+                        delta first {true=>first,false=>later}
+                        [first]: u32 value=1; emit(u32_text(value)); again pass(false);
+                        [later]: u32 value=2; exit done {value};
+                    }
+                }
+                [skipped]: exit done {0};
+            }"#,
+            &[
+                json!({"entry":"main","arguments":[{"kind":"bool","value":false}],"calls":[]}),
+                json!({"entry":"main","arguments":[{"kind":"bool","value":true}],"calls":[]}),
+            ],
+            &std::iter::once(None)
+                .chain((0..=25).map(Some))
+                .collect::<Vec<_>>(),
+        );
+    }
+
+    #[test]
+    fn loops_drain_resources_and_end_element_borrows_before_owner_transfer() {
+        carrier_matrix(
+            r#"control main(handle input) exits done {
+                vector<handle> owners=[input];
+                loop drain(vector<handle> pending=owners) {
+                    delta vector_take(pending) {item {auto item,auto rest}=>next,empty=>end}
+                    [next]:delta close(item) {closed=>closed,failed {auto error}=>failed}
+                    [closed|failed]:again drain(rest);
+                    [end]:exit done;
+                }
+            }"#,
+            &[
+                json!({"entry":"main","arguments":[{"kind":"opaque","value":{"ty":"handle","token":"one"}}],"calls":[{"operation":"close","outcome":"closed","fields":[]}]}),
+                json!({"entry":"main","arguments":[{"kind":"opaque","value":{"ty":"handle","token":"one"}}],"calls":[{"operation":"close","outcome":"failed","fields":[{"kind":"opaque","value":{"ty":"close_error","token":"error"}}]}]}),
+            ],
+            &std::iter::once(None)
+                .chain((0..=30).map(Some))
+                .collect::<Vec<_>>(),
+        );
+        carrier_matrix(
+            r#"control first(ref vector<string> words) exits auto {forward vector_get(words,0);}
+            control main() exits done {
+                loop drain(vector<string> words=["a","b"]) {
+                    delta first(borrow words) {found {auto word}=>found,out_of_bounds=>empty}
+                    [found]:emit(word);
+                    [entry]:delta vector_take(words) {item {auto item,auto rest}=>next,empty=>end}
+                    [next]:drop(item);again drain(rest);
+                    [end]:exit done;
+                }
+            }"#,
+            &[json!({"entry":"main","arguments":[],"calls":[]})],
+            &std::iter::once(None)
+                .chain((0..=35).map(Some))
+                .collect::<Vec<_>>(),
+        );
+    }
+
+    #[test]
+    fn loops_keep_native_stack_bounded_through_many_backedges() {
+        let f = Fixture::new(
+            r#"control main() exits result {
+            loop flip(bool state=true) {
+                delta state {true=>yes,false=>no}
+                [yes]:again flip(false);
+                [no]:again flip(true);
+            }
+        } outcome result {@exit 0 done}"#,
+        );
+        let scenario = f.root.join("scenario.json");
+        fs::write(
+            &scenario,
+            json!({"entry":"main","arguments":[],"calls":[]}).to_string(),
+        )
+        .unwrap();
+        for opt in [0, 2] {
+            let llvm = f.build("llvm", opt);
+            let rust = f.build("rust", opt);
+            let run = |binary: &Path| {
+                Command::new("/bin/sh")
+                    .args([
+                        "-c",
+                        "ulimit -s 512 || exit 99; exec \"$@\"",
+                        "tellur-loop-stack",
+                    ])
+                    .arg(binary)
+                    .arg("--scenario")
+                    .arg(&scenario)
+                    .args(["--fuel", "200000"])
+                    .output()
+                    .unwrap()
+            };
+            let a = run(&llvm);
+            let b = run(&rust);
+            assert_eq!(a.status.code(), Some(1), "{a:?}");
+            assert_eq!(a.status.code(), b.status.code(), "{a:?}; {b:?}");
+            assert_eq!(a.stdout, b.stdout);
+            assert_eq!(a.stderr, b.stderr);
+            assert!(String::from_utf8_lossy(&a.stderr).contains("E_FUEL"));
+        }
+    }
+
+    #[test]
     fn every_control_keeps_scratch_allocations_in_its_entry_block() {
         for source in [
+            include_str!("../playground/llvm_loops.tellur"),
             include_str!("../playground/llvm_collections.tellur"),
             include_str!("../playground/llvm_carriers.tellur"),
             "control main(bool a,bool b) exits result {bool value=a && !b || b;exit done {value};} outcome result {@exit 0 done {bool value}}",
@@ -1566,7 +1716,7 @@ control main() exits auto {
         for source in [
             "struct ticket {u32 value;constructor(u32 input){self.value=input;}} control main() exits result {drop(ticket(1));exit done;} outcome result {@exit 0 done}",
             "control main() exits result {exit done;} async control helper() exits done {exit done;} outcome result {@exit 0 done}",
-            "control main() exits result {loop L(){again L();}} outcome result {@exit 0 done}",
+            "control main() exits result {loop L(){fault boundary {exit done;} contingency [] {terminate process 1;}}} outcome result {@exit 0 done}",
             "control main() exits result {fault boundary {exit done;} contingency [] {terminate process 1;}} outcome result {@exit 0 done}",
         ] {
             let f = Fixture::new(source);

@@ -12,6 +12,7 @@ Compiler 0.241 adds direct shared/exclusive references and borrowed decisions.
 Compiler 0.242 adds reference-bearing aggregates and whole borrowed carrier results.
 Compiler 0.243 adds opaque/resource values and synchronous borrowed host parameters.
 Compiler 0.244 adds arrays, vectors, maps and synchronous collection operations.
+Compiler 0.246 adds synchronous tail loops and expanded loop completions.
 The default remains `--backend rust`. Both start from the same checked program;
 backend selection does not relax ownership, origins, outcomes or path rules.
 
@@ -31,14 +32,14 @@ The current slice accepts synchronous controls using `bool`, `u32`, `string`,
 `bytes`, `unit`, opaque/resources, arrays, vectors, maps, records, options, closed variants and named outcome values
 recursively composed of those types: declarations, moves/copies, assignment, pure expressions,
 value decisions, synchronous control/primitive calls, path guards, lexical releases,
-emit, faults and final exits.
-It also handles expansion completions without unwinding. Admitted parameters and
+emit, faults, tail loops and final exits.
+It also handles expansion completions, including returns from looping helpers. Admitted parameters and
 outcome payloads use the same launch validation and process-status mappings as
 the Rust backend. Multiple eligible executable entries are supported.
 
 Direct references and reference-bearing aggregates compose recursively; shared/exclusive
 parameters, borrowed results, carrier reborrows and indirect fields are supported.
-User constructors, loops, fault
+User constructors, fault
 boundaries, contingencies, task operations and adapters remain outside this
 profile. Launch signal policies are also rejected. Admission checks all checked
 regions, including unused helpers. Unsupported programs receive `E_BACKEND`
@@ -97,7 +98,7 @@ reference evidence are independent of these temporary tables.
 LLVM scratch arrays, Boolean expression cells and path-fact storage are allocated
 once at each function entry, including at O0. Together these bound temporary backing
 storage by the checked instruction/control layout rather than execution length.
-These are prerequisites for loops; this release still rejects source backedges.
+Since 0.246, loop backedges reuse this storage.
 Runtime sites, fuel charges, effects and failure ordering for valid programs are
 unchanged.
 
@@ -300,8 +301,7 @@ collection-origin contracts retain their checker restrictions.
 
 Resource collections retain their sealed completion obligation: removing a resource
 transfers that obligation, and the remainder must be transferred or consumed through
-its empty outcome. This slice supports straight-line operations; draining loops are
-still outside the LLVM profile. Literal shapes and handle batches validate before
+its empty outcome. Consuming draining loops are supported. Literal shapes and handle batches validate before
 ownership transfer. Collection operations introduce no additional fuel ticks.
 
 The [collection example](../../playground/llvm_collections.tellur) edits a vector,
@@ -318,6 +318,40 @@ The first emits `second`, `changed`, `last`, `a`, `7`, `2` and returns the vecto
 `["first", "changed"]` with status 0. The second emits `missing` in place of the
 selected element. The third faults after the collection operations.
 
+## Synchronous loops
+
+Tail loops evaluate initializers and restart arguments in written order, then
+transfer the completed batch before the next iteration begins. Each iteration
+clears its local bindings and path facts; surrounding locals keep their state.
+Owned parameters can be swapped, collections drained and resource completions
+handled through the same checked protocols as the Rust backend. References returned
+by a helper within an iteration retain their ordinary last-use restrictions.
+
+Expanding a looping helper creates internal nested loop targets. Its selected
+completion sets the caller's bindings and path fact before returning to that
+caller's continuation. Restarting the outer loop resets the inlined facts too.
+This does not admit authored nested loops or reference-bearing loop parameters;
+those remain checker restrictions. Supervised loops and fault boundaries remain
+outside the LLVM profile.
+
+Backedges add no fuel tick, activation or scheduler handoff. Every checked body
+instruction, including a skipped guard, retains its existing fuel charge and
+source site. Fixed-size transfer buffers and scratch cells are allocated once at
+function entry, so long-running loops do not grow the native stack per iteration.
+
+The [loop example](../../playground/llvm_loops.tellur) swaps two string owners,
+updates an outer counter and returns from a looping helper:
+
+```sh
+./bin/tellurc build playground/llvm_loops.tellur playground/manifest.json --backend llvm --out /tmp/tellur-loops
+/tmp/tellur-loops 0 false
+/tmp/tellur-loops 1 false
+/tmp/tellur-loops 4 true
+```
+
+The first emits `left`, `right`, `0`; the second emits `right`, `left`, `1`.
+Both exit with status 0. The third faults with `loop stopped` inside the helper.
+
 ## Build artifacts and requirements
 
 The compiler emits `OUTPUT.ll` and `OUTPUT.tellur-build/program.ll` directly,
@@ -325,7 +359,7 @@ then compiles `program.o` and links `OUTPUT` with its embedded LLVM/LLD 22.1.8.
 Path guards are LLVM branches. Runtime faults retain Tellur source provenance;
 native debugger information is not yet emitted.
 
-The distributed 0.245 compiler includes the `llvm` feature. When building the
+The distributed 0.246 compiler includes the `llvm` feature. When building the
 compiler from source, enable it and set `LLVM_SYS_221_PREFIX` to the static pinned
 LLVM/LLD installation, as described in the repository README. A compiler built
 without that feature reports a clear error for `--backend llvm`.
@@ -337,6 +371,5 @@ handles and shares the existing runtime's launch, fuel, fault and result logic.
 The resulting executable is standalone. Shipping a precompiled runtime and target
 link packs belongs to the later single-binary checkpoint.
 
-The next synchronous slices add loops and
-boundaries. Async lowering follows using frontend state machines, before the
+The next synchronous slices add constructors and fault boundaries. Async lowering follows using frontend state machines, before the
 whole-language parity gate permits changing the default backend.

@@ -6387,3 +6387,15 @@ before transfer or side effects. `tests/llvm_backend.rs` requires every scratch
 allocation to appear in each control's entry block; the full original/expanded O0/O2
 differential suite continues to cover reports, owners, faults and fuel. The source
 profile is unchanged; loop lowering follows after these storage prerequisites.
+
+## Direct LLVM loops (0.246 / B1.3l)
+
+`tests/llvm_backend.rs` compares original and expanded loops at O0/O2 against Rust
+and successful reference execution. Cases cover skipped loop entries, fresh local
+bindings and path facts, simultaneous swapped owner parameters, outer-local updates,
+looping helpers expanded inside loops, resource draining and element borrows ending
+before the next owner transfer. Fault and fuel matrices check intermediate cuts.
+A 200,000-instruction looping program runs under a 512 KiB stack limit at O0/O2,
+reaching the same fuel failure as Rust; entry-block scratch checks include loops.
+Unsupported boundary work inside a loop still rejects before build output creation.
+Authored nested loops and reference loop parameters retain their checker limits.

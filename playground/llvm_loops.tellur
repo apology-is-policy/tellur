@@ -1,0 +1,35 @@
+control swap(u32 limit, bool fail) exits swapped { string first, string second, u32 count } {
+    mutable u32 visited = 0;
+    loop turn(u32 count = 0, string first = "left", string second = "right") {
+        delta count < limit {
+            true => more,
+            false => finished
+        }
+        [finished]: exit swapped { first, second, visited };
+        [more]: delta fail && count == 2 {
+            true => failed,
+            false => advance
+        }
+        [failed]: fault "loop stopped";
+        [advance]: delta checked_add(count, 1) {
+            sum { u32 next } => incremented,
+            overflow => overflow
+        }
+        [overflow]: fault "counter overflow";
+        [incremented]: visited = next;
+            again turn(next, second, first);
+    }
+}
+
+control main(u32 limit, bool fail) exits result {
+    delta swap(limit, fail) {
+        swapped { auto first, auto second, auto count } => swapped
+    }
+    [swapped]: emit(first);
+        emit(second);
+        emit(u32_text(count));
+        exit done;
+}
+outcome result {
+    @exit 0 done
+}

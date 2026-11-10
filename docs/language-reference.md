@@ -1,8 +1,8 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.245.0 -->
+<!-- tellur-reference-version: 0.246.0 -->
 
-This manual describes **compiler 0.245.0**, including the current ownership model,
+This manual describes **compiler 0.246.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -21,7 +21,7 @@ as a bug to investigate, not a promise that either must remain unchanged. The
 updates at every implementation checkpoint.
 
 
-Compiler 0.245 also supports [owned spawned children](reference/async-execution.md#owned-spawned-children)
+Compiler 0.246 also supports [owned spawned children](reference/async-execution.md#owned-spawned-children)
 with explicit `await`/`yield` handoffs, required normal-path joins and owning-boundary
 fault settlement. The current profile admits reference-free values, direct borrows and nested owned record/option/variant/named-outcome
 captures/results with reference leaves to reference-free storage, plus borrowed record/option/variant/named-outcome captures
@@ -2446,6 +2446,10 @@ cannot be moved or explicitly released by a repeating body. Nested source loops 
 unsupported, but a control may call another control containing a loop. Infinite
 execution is possible; there is no termination proof.
 
+The opt-in [LLVM backend](reference/llvm-backend.md#synchronous-loops) supports these
+synchronous loops since 0.246, including expanded looping helpers, exact instruction
+fuel and bounded per-iteration temporary storage. Supervised loops remain gated.
+
 ## Rust adapters and host execution
 
 The [maintained settings application](../applications/settings/README.md) now
@@ -2953,7 +2957,7 @@ General expression-type hover remains unsupported.
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and broader spawn payloads (anonymous contracts and reference-bearing collections) remain planned; they are not executable features of 0.245.0.
+and broader spawn payloads (anonymous contracts and reference-bearing collections) remain planned; they are not executable features of 0.246.0.
 ## Contingency and supervised boundaries
 
 The [contingency reference](reference/contingency.md) specifies `@contingent`,
