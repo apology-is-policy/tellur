@@ -219,10 +219,140 @@ outcome logic_result {@exit 0 done {bool value}}
         }
     }
     #[test]
+    fn nested_calls_preserve_named_paths_and_multiple_scalar_payloads() {
+        let f = Fixture::new(
+            r#"
+            control main(bool pick, string text, bytes data) exits result {
+                noop();
+                delta relay(text, data) {ready {auto label, auto raw} => prepared}
+                [prepared]: delta choose(pick, label, raw);
+                [accepted]: emit("accepted"); exit accepted {word, payload};
+                [declined]: emit("declined"); exit declined {word, payload};
+            }
+            control noop() exits done {exit done;}
+            control relay(string text, bytes data) exits ready {string word, bytes payload} {
+                delta echo(text, data);
+                [ready]: exit ready {word, payload};
+            }
+            control echo(string text, bytes data) exits ready {string word, bytes payload} {
+                exit ready {text, data};
+            }
+            control choose(bool pick, string text, bytes data)
+                exits accepted {string word, bytes payload}, declined {string word, bytes payload} {
+                delta pick {true=>yes,false=>no}
+                [yes]: exit accepted {text, data};
+                [no]: exit declined {text, data};
+            }
+            outcome result {@exit 0 accepted {string text, bytes data}, @exit 7 declined {string text, bytes data}}
+        "#,
+        );
+        let checked = compile_file(
+            &f.source,
+            Manifest::from_json(&fs::read_to_string(&f.manifest).unwrap()).unwrap(),
+        )
+        .unwrap();
+        for expanded in [false, true] {
+            for opt in [0, 2] {
+                let mut outputs = vec![];
+                for backend in ["llvm", "rust"] {
+                    let mut command = f.command(backend, opt);
+                    if expanded {
+                        command.arg("--expanded");
+                    }
+                    let built = command.output().unwrap();
+                    assert!(
+                        built.status.success(),
+                        "{}",
+                        String::from_utf8_lossy(&built.stderr)
+                    );
+                    outputs.push(f.root.join(format!("{backend}-{opt}")));
+                }
+                for pick in [true, false] {
+                    let scenario = json!({"entry":"main","arguments":[{"kind":"bool","value":pick},{"kind":"string","value":"😀\u{0}text"},{"kind":"bytes","value":[0,255,128]}],"calls":[]});
+                    let path = f.root.join("scenario.json");
+                    fs::write(&path, scenario.to_string()).unwrap();
+                    let a = execute(&outputs[0], &path, None);
+                    let b = execute(&outputs[1], &path, None);
+                    assert_eq!(a.status.code(), if pick { Some(0) } else { Some(7) });
+                    assert_eq!(a.status.code(), b.status.code());
+                    assert_eq!(a.stdout, b.stdout);
+                    assert_eq!(a.stderr, b.stderr);
+                    let expected = checked
+                        .run(&serde_json::from_value(scenario).unwrap())
+                        .unwrap();
+                    assert_eq!(report(&a), serde_json::to_value(expected).unwrap());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn imported_private_calls_keep_activation_ids_locations_and_every_fuel_cut() {
+        let f = Fixture::new(
+            r#"
+            import "helpers.tellur" as helpers;
+            control main(bool fail) exits result faults {
+                helpers.run(false);
+                helpers.run(fail);
+                emit("after both calls");
+                exit done;
+            }
+            outcome result {@exit 0 done}
+        "#,
+        );
+        fs::write(
+            f.root.join("helpers.tellur"),
+            r#"
+            pub control run(bool fail) exits done faults {
+                delta hidden(fail);
+                [done]: exit done;
+            }
+            control hidden(bool fail) exits done faults {
+                emit("child before");
+                delta fail {true=>bad,false=>good}
+                [bad]: fault "nested stopped 😀";
+                [good]: emit("child after"); exit done;
+            }
+        "#,
+        )
+        .unwrap();
+        for expanded in [false, true] {
+            for opt in [0, 2] {
+                for backend in ["llvm", "rust"] {
+                    let mut command = f.command(backend, opt);
+                    if expanded {
+                        command.arg("--expanded");
+                    }
+                    let built = command.output().unwrap();
+                    assert!(
+                        built.status.success(),
+                        "{}",
+                        String::from_utf8_lossy(&built.stderr)
+                    );
+                }
+                for fail in [false, true] {
+                    let path = f.root.join("scenario.json");
+                    fs::write(&path,json!({"entry":"main","arguments":[{"kind":"bool","value":fail}],"calls":[]}).to_string()).unwrap();
+                    for fuel in 0..=48 {
+                        let a = execute(&f.root.join(format!("llvm-{opt}")), &path, Some(fuel));
+                        let b = execute(&f.root.join(format!("rust-{opt}")), &path, Some(fuel));
+                        assert_eq!(
+                            a.status.code(),
+                            b.status.code(),
+                            "{expanded}/{opt}/{fail}/{fuel}"
+                        );
+                        assert_eq!(a.stdout, b.stdout, "{expanded}/{opt}/{fail}/{fuel}");
+                        assert_eq!(a.stderr, b.stderr, "{expanded}/{opt}/{fail}/{fuel}");
+                    }
+                }
+            }
+        }
+    }
+    #[test]
     fn unsupported_checked_operations_create_no_build_outputs() {
         for source in [
             "control main() exits result {exit done;} async control helper() exits done {exit done;} outcome result {@exit 0 done}",
-            "control main() exits result {helper();exit done;} control helper() exits done {exit done;} outcome result {@exit 0 done}",
+            "control main() exits result {delta checked_add(1,2) {sum {auto n}=>ok,overflow=>bad} [ok]:exit done; [bad]:exit done;} outcome result {@exit 0 done}",
             "control main() exits result {loop L(){again L();}} outcome result {@exit 0 done}",
             "control main() exits result {fault boundary {exit done;} contingency [] {terminate process 1;}} outcome result {@exit 0 done}",
         ] {

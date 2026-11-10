@@ -6082,6 +6082,31 @@ operation: its state drops before the supplier and it never completes.
 chain parked by `run`, which previously stopped with `E_NATIVE: source task wait
 has no runnable producer`.
 
+## Direct LLVM scalar calls (0.236 / B1.3b)
+
+The LLVM emitter admits checked synchronous `Operation::Region` calls and emits
+helper functions separately from executable entry metadata. The private ABI
+creates a child invocation borrowing the host, transfers evaluated argument
+handles once, and returns a separate one-use outcome handle. Routing checks the
+outcome name and whole payload arity before publishing any caller value handles.
+Nonmatching arms leave the outcome intact; duplicate/stale transfers fail. A
+normal return leaves the child activation, while a fault retains its activation
+chain and blocks subsequent effects. Dispatch and payload delivery add no fuel.
+
+Three additional ABI cases cover nested callbacks, Unicode/NUL/bytes payloads,
+empty outcomes, caller locals/completion independence, malformed transfers and
+fault propagation. Two emitter cases compare original and expanded O0/O2 programs
+with Rust/reference results: nested multiple-field calls and zero-payload implicit
+calls; imported public/private helpers invoked repeatedly, with exact stdout,
+stderr and status agreement through every fuel cut on both normal and fault paths.
+The previous scalar, expansion, profile-gate and CLI cases remain covered.
+`playground/llvm_calls.tellur` supplies a runnable nested-call example.
+
+This extends backend admission only. Checker ownership/origin/outcome/path rules,
+the Rust default, and the unsupported aggregate/reference/loop/boundary/async
+profile remain unchanged. The existing coroutine experiment and common LLVM/LLD
+embedding are unchanged by this slice.
+
 ## Direct LLVM scalar controls (0.235 / B1.3a)
 
 `--backend llvm` admits synchronous scalar controls, assignment, moves, pure

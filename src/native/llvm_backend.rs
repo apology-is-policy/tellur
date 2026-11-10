@@ -17,6 +17,9 @@ declare void @tellur_rt_v1_tick(ptr, i64, i64, i64)
 declare void @tellur_rt_v1_emit(ptr, i64)
 declare void @tellur_rt_v1_fault(ptr, i64)
 declare void @tellur_rt_v1_complete(ptr, ptr, i64, ptr, i64)
+declare i64 @tellur_rt_v1_call(ptr, ptr, ptr, i64, ptr, i64)
+declare i32 @tellur_rt_v1_route(ptr, i64, ptr, i64, ptr, i64)
+declare void @tellur_rt_v1_unmatched(ptr, i64)
 "#;
 fn scalar(ty: &str) -> bool {
     matches!(ty, "Bool" | "U32" | "String" | "Bytes" | "Unit")
@@ -51,6 +54,11 @@ fn supported(i: &Instruction) -> bool {
             ..
         } => bindings.iter().all(|(_, e)| expression_supported(e)),
         Action::Decide {
+            operation: Operation::Region(_),
+            args,
+            ..
+        } => args.iter().all(expression_supported),
+        Action::Decide {
             operation: Operation::Variant(e),
             args,
             arms,
@@ -69,6 +77,7 @@ struct Emitter {
     body: String,
     next: usize,
     layout: FrameLayout,
+    controls: BTreeMap<String, (usize, String)>,
 }
 impl Emitter {
     fn id(&mut self) -> String {
@@ -132,6 +141,47 @@ impl Emitter {
             self.line(format!("store i64 {v}, ptr {p}"));
         }
         array
+    }
+    fn region_call(&mut self, name: &str, args: &[Expr], arms: &[Arm]) {
+        let (index, display) = self.controls[name].clone();
+        let values = args.iter().map(|a| self.expr(a)).collect::<Vec<_>>();
+        let args = self.handles(&values);
+        let (name, len) = self.text(&display);
+        let result = self.call(format!(
+            "call i64 @tellur_rt_v1_call(ptr %ctx, ptr @control_{index}, ptr {name}, i64 {len}, ptr {args}, i64 {})",
+            values.len()
+        ));
+        let delivered = self.id();
+        for arm in arms {
+            let payload = if arm.slots.is_empty() {
+                "null".into()
+            } else {
+                self.value(format!("alloca [{} x i64]", arm.slots.len()))
+            };
+            let (name, len) = self.text(&arm.outcome);
+            let selected = self.call(format!(
+                "call i32 @tellur_rt_v1_route(ptr %ctx, i64 {result}, ptr {name}, i64 {len}, ptr {payload}, i64 {})",
+                arm.slots.len()
+            ));
+            let selected = self.value(format!("icmp ne i32 {selected}, 0"));
+            let yes = self.id();
+            let next = self.id();
+            self.line(format!(
+                "br i1 {selected}, label %{yes}, label %{next}\n{yes}:"
+            ));
+            for (i, slot) in arm.slots.iter().enumerate() {
+                let ptr = self.value(format!("getelementptr i64, ptr {payload}, i64 {i}"));
+                let value = self.value(format!("load i64, ptr {ptr}"));
+                self.store(*slot, &value);
+            }
+            self.line(format!(
+                "store i1 true, ptr %a{}\nbr label %{delivered}\n{next}:",
+                self.layout.atoms[&arm.atom]
+            ));
+        }
+        self.line(format!(
+            "call void @tellur_rt_v1_unmatched(ptr %ctx, i64 {result})\nbr label %error\n{delivered}:"
+        ));
     }
     fn boolean(&mut self, value: &str) -> String {
         let v = self.call(format!(
@@ -307,6 +357,11 @@ impl Emitter {
                     terminal = true;
                 }
                 Action::Decide {
+                    operation: Operation::Region(name),
+                    args,
+                    arms,
+                } => self.region_call(name, args, arms),
+                Action::Decide {
                     operation: Operation::Variant(e),
                     arms,
                     ..
@@ -436,6 +491,11 @@ impl CheckedProgram {
             body: String::new(),
             next: 0,
             layout: FrameLayout::default(),
+            controls: self
+                .regions()
+                .enumerate()
+                .map(|(i, r)| (r.name.clone(), (i, self.runtime_name(&r.name).to_owned())))
+                .collect(),
         };
         let mut metadata = vec![];
         let mut callbacks = vec![];
@@ -464,9 +524,9 @@ impl CheckedProgram {
                     "LLVM backend does not yet support this operation; use --backend rust",
                 ));
             }
+            let index = emitter.controls[&region.name].0;
+            emitter.control(region, index);
             if let Some(codes) = entries.get(&region.name) {
-                let index = metadata.len();
-                emitter.control(region, index);
                 callbacks.push(format!("ptr @control_{index}"));
                 metadata.push(serde_json::json!({"name":region.name,"display":self.runtime_name(&region.name),"arguments":region.parameters.iter().map(|p|&p.ty).collect::<Vec<_>>(),"exits":codes.iter().collect::<Vec<_>>()}));
             }

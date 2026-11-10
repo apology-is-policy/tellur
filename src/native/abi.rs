@@ -7,7 +7,8 @@
 //!
 //! Safety: callers are compiler-generated code. Context pointers must refer to
 //! the active invocation; spans/arrays must be readable for their stated length
-//! and may be null only when empty. Callbacks must not retain these pointers.
+//! and may be null only when empty. Output payload spans must be writable for their
+//! stated length. Callbacks must not retain these pointers.
 use super::*;
 #[cfg(test)]
 #[path = "abi_tests.rs"]
@@ -16,6 +17,7 @@ mod tests;
 pub struct Context<'a> {
     host: &'a mut Host,
     values: Vec<Option<V>>,
+    outcomes: Vec<Option<(String, Vec<V>)>>,
     error: Option<String>,
     result: Option<Completion>,
 }
@@ -30,6 +32,14 @@ impl Context<'_> {
             .and_then(|i| self.values.get(i))
             .and_then(Option::as_ref)
             .ok_or_else(|| "E_NATIVE: invalid or consumed ABI value handle".into())
+    }
+    fn outcome(&self, handle: u64) -> R<&(String, Vec<V>)> {
+        usize::try_from(handle)
+            .ok()
+            .and_then(|n| n.checked_sub(1))
+            .and_then(|i| self.outcomes.get(i))
+            .and_then(Option::as_ref)
+            .ok_or_else(|| "E_NATIVE: invalid or consumed ABI outcome handle".into())
     }
     fn take_many(&mut self, handles: &[u64]) -> R<Vec<V>> {
         let mut seen = BTreeSet::new();
@@ -195,6 +205,83 @@ pub unsafe extern "C" fn tellur_rt_v1_complete(
 }
 
 pub type Callback = unsafe extern "C" fn(*mut Context<'_>, *const u64, usize);
+
+/// A synchronous child borrows the Host only while its compiled callback runs.
+/// Failed callbacks retain their activation chain for the launcher's fault report.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_call(
+    ctx: *mut Context<'_>,
+    callback: Callback,
+    name: *const u8,
+    len: usize,
+    args: *const u64,
+    count: usize,
+) -> u64 {
+    unsafe { &mut *ctx }.perform(|c| {
+        let name = unsafe { text(name, len)? };
+        let values = c.take_many(unsafe { slice(args, count) })?;
+        let outcome = {
+            c.host.enter(name)?;
+            let mut child = Context {
+                host: &mut *c.host,
+                values: vec![],
+                outcomes: vec![],
+                error: None,
+                result: None,
+            };
+            let arguments: Vec<u64> = values.into_iter().map(|v| child.put(v)).collect();
+            unsafe { callback(&mut child, arguments.as_ptr(), arguments.len()) };
+            if let Some(error) = child.error.take() {
+                return Err(error);
+            }
+            let result = child
+                .result
+                .take()
+                .ok_or("E_NATIVE: compiled ABI control fell through")?
+                .outcome()?;
+            child.host.leave();
+            result
+        };
+        c.outcomes.push(Some(outcome));
+        Ok(c.outcomes.len() as u64)
+    })
+}
+
+/// A nonmatching arm does not consume the outcome. A matching arm validates its
+/// entire shape before consuming it or publishing any payload handles.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_route(
+    ctx: *mut Context<'_>,
+    outcome: u64,
+    name: *const u8,
+    len: usize,
+    payload: *mut u64,
+    count: usize,
+) -> i32 {
+    unsafe { &mut *ctx }.perform(|c| {
+        let expected = unsafe { text(name, len)? };
+        let (name, fields) = c.outcome(outcome)?;
+        if name != expected {
+            return Ok(0);
+        }
+        if fields.len() != count {
+            return Err("E_NATIVE: ABI outcome payload count mismatch".into());
+        }
+        let (_, fields) = c.outcomes[outcome as usize - 1].take().unwrap();
+        for (i, value) in fields.into_iter().enumerate() {
+            unsafe { payload.add(i).write(c.put(value)) };
+        }
+        Ok(1)
+    })
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_unmatched(ctx: *mut Context<'_>, outcome: u64) {
+    unsafe { &mut *ctx }.perform::<()>(|c| {
+        c.outcome(outcome)?;
+        Err("E_NATIVE: unmatched declared outcome".into())
+    })
+}
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct EntryInfo {
@@ -255,6 +342,7 @@ unsafe fn launch_program(
             let mut context = Context {
                 host,
                 values: vec![],
+                outcomes: vec![],
                 error: None,
                 result: None,
             };

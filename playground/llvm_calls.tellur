@@ -1,0 +1,44 @@
+// Nested scalar calls and identity-routed outcomes in the direct LLVM backend.
+// true 9 Ada accepts (status 0); false 12 Ada declines (status 7).
+control main(bool enabled, u32 number, string name) exits process_result {
+    delta greeting(name) {
+        ready { auto message } => formatted
+    }
+
+    [formatted]:
+        delta choose(enabled, number, message);
+
+    [accepted]: emit(text);
+        emit(u32_text(value));
+        exit accepted { value };
+    [declined]: emit(text);
+        exit declined { value };
+}
+
+control greeting(string name) exits ready { string text } {
+    delta prefix(name);
+
+    [ready]: exit ready { text };
+}
+
+control prefix(string name) exits ready { string text } {
+    exit ready { concat("Hello, ", name) };
+}
+
+control choose(bool enabled, u32 number, string message) exits
+        accepted { u32 value, string text },
+    declined { u32 value, string text }
+{
+    delta enabled && number < 10 {
+        true => selected,
+        false => skipped
+    }
+
+    [selected]: exit accepted { number, message };
+    [skipped]: exit declined { number, message };
+}
+
+outcome process_result {
+    @exit 0 accepted { u32 value },
+    @exit 7 declined { u32 value }
+}
