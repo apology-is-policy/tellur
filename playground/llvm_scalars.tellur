@@ -1,0 +1,24 @@
+// The direct LLVM backend's first synchronous profile.
+// Run with arguments: true 9 Ada (status 0), or false 12 Ada (status 7).
+control main(bool enabled, u32 number, string name) exits process_result {
+    mutable u32 selected = number;
+    selected = 9;
+    string greeting = concat("Hello, ", name);
+    delta enabled && number < 10 {
+        true => accepted,
+        false => declined
+    }
+
+    [accepted]:
+        emit(greeting);
+        emit(u32_text(selected));
+        exit accepted { selected };
+    [declined]:
+        emit("Outside the selected path");
+        exit declined { number };
+}
+
+outcome process_result {
+    @exit 0 accepted { u32 value },
+    @exit 7 declined { u32 value }
+}

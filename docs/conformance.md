@@ -6082,6 +6082,34 @@ operation: its state drops before the supplier and it never completes.
 chain parked by `run`, which previously stopped with `E_NATIVE: source task wait
 has no runnable producer`.
 
+## Direct LLVM scalar controls (0.235 / B1.3a)
+
+`--backend llvm` admits synchronous scalar controls, assignment, moves, pure
+expressions, Boolean decisions/path guards, expansion completions, emit, faults
+and exits. It emits LLVM functions/branches directly; no per-program Rust source
+is generated. LLVM and LLD verify, optimize and link in-process. The transitional
+runtime staticlib is built by Cargo and cached under its source hash; archive
+names include the hash so different versions cannot overwrite one another.
+
+The private v1 C ABI uses opaque invocation pointers and one-use integer handles;
+no Rust enum or struct layout crosses the boundary. Batched transfers validate
+all handles before consumption, zero is invalid, handles are not reused, and the
+first failure blocks further effects. The existing launcher retains argument,
+scenario, exit-status, diagnostic and report handling.
+
+`tests/llvm_backend.rs` compares LLVM O0/O2 builds with both the reference and Rust
+executors across scalar arguments/results, Unicode/NUL strings, bytes, moves,
+assignment, pure functions, short-circuit Boolean expressions and multiple entries.
+Fault and normal paths match Rust stdout, stderr and status at every fuel cut.
+Unsupported operations and signal policies create no build artifacts. ABI tests
+in `tests/native_host.rs` exercise invalid/duplicate/consumed transfers, sticky
+failure, Unicode/bytes and invalid scalar input.
+
+See the [bounded backend profile](reference/llvm-backend.md). Calls, non-scalar
+values, loops, boundaries, async execution, adapters and native debug information
+remain later slices; this release does not claim whole-language LLVM parity or
+installation-free native building.
+
 ## Embedded LLVM and LLD (0.234 / B1.2)
 
 With the cargo feature `llvm` (off by default), `tellurc` contains LLVM and LLD

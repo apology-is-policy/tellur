@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.234.0** implements the v0.1 checked core and the current language
+Compiler release **0.235.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -21,6 +21,11 @@ Release 0.222 added dynamic task sets. `tasks<producer>` holds any number of
 spawned children of one async control. `spawn producer(..) into set;` adds a member,
 `delta await next set { ..., empty => ... }` joins members in completion order, and
 `count(borrow set)` bounds how many run at once.
+
+Release 0.235 begins direct LLVM emission for synchronous scalar controls.
+`build` and `exec` accept `--backend llvm`; the Rust backend remains the default.
+Boolean paths become native branches, while values, faults, fuel and process results
+use a private C ABI over the existing runtime. See the [supported profile and example](docs/reference/llvm-backend.md).
 
 Release 0.234 embeds LLVM and LLD 22.1.8 in `tellurc` behind the `llvm` cargo
 feature. IR is compiled and linked in-process, and the coroutine experiment's specimens
@@ -724,7 +729,7 @@ lowering; `--release` optimizes at LLVM level 2. Native executables accept `--js
 `--entry`, `--scenario FILE`, and an optional `--fuel N` host limit. All declared
 outcomes are normal completions; host errors return nonzero process status.
 
-The native pipeline is checked graph → explicit Rust control flow → LLVM → native
+The default native pipeline is checked graph → explicit Rust control flow → LLVM → native
 binary. Controls become functions and loops remain loops. Executables do not contain
 the graph interpreter. Rust is the implementation bridge to LLVM and supplies value
 storage. LLVM verification runs on every build. Generated code retains all declared
@@ -753,6 +758,8 @@ that includes LLD (built with `-DLLVM_ENABLE_PROJECTS=lld`, static libraries):
 
 ```sh
 LLVM_SYS_221_PREFIX=/path/to/llvm-22.1.8 cargo test --features llvm --test coroutine_experiment
+LLVM_SYS_221_PREFIX=/path/to/llvm-22.1.8 cargo test --features llvm --test llvm_backend
+LLVM_SYS_221_PREFIX=/path/to/llvm-22.1.8 cargo build --release --features llvm --bins
 ```
 
 The [conformance inventory](docs/conformance.md) maps the draft's requirements and

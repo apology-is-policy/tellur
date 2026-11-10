@@ -1,4 +1,7 @@
 #[cfg(test)]
+#[path = "abi.rs"]
+mod abi;
+#[cfg(test)]
 #[path = "execution.rs"]
 pub mod execution;
 #[cfg(test)]
@@ -1951,12 +1954,12 @@ fn contract(name: &str) -> Option<Contract> {
     })
 }
 pub type EntryFn = fn(&mut Host, Vec<V>) -> R<Completion>;
-pub struct Entry {
-    pub name: &'static str,
-    pub display_name: &'static str,
+pub struct Entry<'a> {
+    pub name: &'a str,
+    pub display_name: &'a str,
     pub run: EntryFn,
     pub arguments: Vec<String>,
-    pub exit_codes: &'static [(&'static str, u8)],
+    pub exit_codes: &'a [(&'a str, u8)],
 }
 pub fn launch(
     manifest: &str,
@@ -1966,6 +1969,30 @@ pub fn launch(
     rust_start: Option<RustStart>,
     rust_readiness: RustReadiness,
     sites: &str,
+) -> R<u8> {
+    launch_with(
+        manifest,
+        default_entry,
+        entries,
+        rust_adapter,
+        rust_start,
+        rust_readiness,
+        sites,
+        |entry, host, arguments| (entry.run)(host, arguments),
+    )
+}
+
+/// The launch protocol is shared by Rust callbacks and the C ABI. Each backend
+/// supplies only invocation; argument validation, diagnostics and reports stay here.
+pub fn launch_with(
+    manifest: &str,
+    default_entry: &str,
+    entries: &[Entry],
+    rust_adapter: Option<RustAdapter>,
+    rust_start: Option<RustStart>,
+    rust_readiness: RustReadiness,
+    sites: &str,
+    invoke: impl Fn(&Entry, &mut Host, Vec<V>) -> R<Completion>,
 ) -> R<u8> {
     let manifest: Json = serde_json::from_str(manifest).map_err(|e| e.to_string())?;
     let args = std::env::args().skip(1).collect::<Vec<_>>();
@@ -2101,7 +2128,7 @@ pub fn launch(
     host.activations = fault::Tracker::new(
         serde_json::from_str(sites).map_err(|e| format!("E_NATIVE: invalid source table: {e}"))?,
     );
-    let result = (selected.run)(&mut host, values).map_err(|error| {
+    let result = invoke(selected, &mut host, values).map_err(|error| {
         host.failure(
             selected.display_name,
             fault::Phase::Execution,

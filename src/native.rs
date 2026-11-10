@@ -21,6 +21,9 @@ mod access;
 mod boundary_handoff_resource_tests;
 #[path = "native/continuations.rs"]
 mod continuations;
+#[cfg(feature = "llvm")]
+#[path = "native/llvm_backend.rs"]
+mod llvm_backend;
 #[cfg(test)]
 #[path = "native/pending_operation_tests.rs"]
 mod pending_operation_tests;

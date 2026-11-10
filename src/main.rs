@@ -4,7 +4,7 @@ use std::{
     process::{Command, ExitCode},
 };
 use tellur::{compile_file, manifest::Manifest, runtime::Scenario};
-const USAGE: &str = "Tellur compiler\n  tellurc explain SOURCE [MANIFEST] (--at LINE:COLUMN | --control NAME --outcome NAME) [--json]\n  tellurc absorption-snapshot SOURCE [MANIFEST]  (bounded outcome contributor JSON)\n  tellurc absorption-diff BEFORE_JSON AFTER_JSON [--check]\n  tellurc contract-snapshot SOURCE [MANIFEST]  (checked public interface JSON)\n  tellurc contract-diff BEFORE_JSON AFTER_JSON [--check]  (exact contract differences)\n  tellurc format SOURCE [--check | --write] [--width N]  (stdout by default; no manifest needed)\n  tellurc check SOURCE [MANIFEST] [--json]\n  tellurc lock-native SOURCE [MANIFEST]  (explicitly resolve Rust adapter dependencies)\n  tellurc run SOURCE MANIFEST SCENARIO [--expanded] [--json]  (reference interpreter)\n  tellurc compare SOURCE MANIFEST OTHER_SOURCE SCENARIOS  (finite scenario evidence)\n  tellurc expand SOURCE MANIFEST ENTRY\n  tellurc extract-tail SOURCE MANIFEST CONTROL LINE HELPER [--report]\n  tellurc protocol SOURCE MANIFEST ENTRY [PREFIX_JSON]  (structural abstraction)\n  tellurc protocol-compare SOURCE MANIFEST OTHER_SOURCE ENTRY\n  tellurc certify-expansion SOURCE MANIFEST ENTRY  (JSON graph and correspondence)\n  tellurc verify-expansion SOURCE MANIFEST ARTIFACT\n  tellurc inspect SOURCE MANIFEST ENTRY [--expanded]\n  tellurc build SOURCE [MANIFEST] [--entry main] [--out FILE] [--release] [--expanded]\n  tellurc exec SOURCE [MANIFEST] [build options] [-- PROGRAM_ARGUMENTS]\nBuild writes a native executable, LLVM IR (.ll), and generated source (.tellur-build/).\nNative programs accept --help, --json, --scenario FILE, and --fuel N.\nRust/Cargo with its LLVM backend is required to build; executables are standalone.";
+const USAGE: &str = "Tellur compiler\n  tellurc explain SOURCE [MANIFEST] (--at LINE:COLUMN | --control NAME --outcome NAME) [--json]\n  tellurc absorption-snapshot SOURCE [MANIFEST]  (bounded outcome contributor JSON)\n  tellurc absorption-diff BEFORE_JSON AFTER_JSON [--check]\n  tellurc contract-snapshot SOURCE [MANIFEST]  (checked public interface JSON)\n  tellurc contract-diff BEFORE_JSON AFTER_JSON [--check]  (exact contract differences)\n  tellurc format SOURCE [--check | --write] [--width N]  (stdout by default; no manifest needed)\n  tellurc check SOURCE [MANIFEST] [--json]\n  tellurc lock-native SOURCE [MANIFEST]  (explicitly resolve Rust adapter dependencies)\n  tellurc run SOURCE MANIFEST SCENARIO [--expanded] [--json]  (reference interpreter)\n  tellurc compare SOURCE MANIFEST OTHER_SOURCE SCENARIOS  (finite scenario evidence)\n  tellurc expand SOURCE MANIFEST ENTRY\n  tellurc extract-tail SOURCE MANIFEST CONTROL LINE HELPER [--report]\n  tellurc protocol SOURCE MANIFEST ENTRY [PREFIX_JSON]  (structural abstraction)\n  tellurc protocol-compare SOURCE MANIFEST OTHER_SOURCE ENTRY\n  tellurc certify-expansion SOURCE MANIFEST ENTRY  (JSON graph and correspondence)\n  tellurc verify-expansion SOURCE MANIFEST ARTIFACT\n  tellurc inspect SOURCE MANIFEST ENTRY [--expanded]\n  tellurc build SOURCE [MANIFEST] [--entry main] [--out FILE] [--release] [--expanded] [--backend rust|llvm]\n  tellurc exec SOURCE [MANIFEST] [build options] [-- PROGRAM_ARGUMENTS]\nBuild writes a native executable, LLVM IR (.ll), and generated source (.tellur-build/).\nNative programs accept --help, --json, --scenario FILE, and --fuel N.\nRust/Cargo is required for the Rust backend and the transitional LLVM runtime cache.\nThe opt-in LLVM backend requires the llvm compiler feature and currently admits synchronous scalar controls on macOS arm64. Executables are standalone.";
 fn discover(source: &Path) -> Option<PathBuf> {
     let source = if source.is_absolute() {
         source.to_owned()
@@ -334,6 +334,7 @@ fn run(args: Vec<String>) -> std::result::Result<ExitCode, Box<dyn std::error::E
                 .join(source.file_stem().ok_or("invalid source name")?);
             let mut opt = 0;
             let mut expanded = false;
+            let mut backend = "rust";
             let mut runtime_args = &[][..];
             let mut i = 0;
             while i < rest.len() {
@@ -352,6 +353,13 @@ fn run(args: Vec<String>) -> std::result::Result<ExitCode, Box<dyn std::error::E
                     }
                     "--release" => opt = 2,
                     "--expanded" => expanded = true,
+                    "--backend" => {
+                        i += 1;
+                        backend = rest.get(i).ok_or("--backend needs rust or llvm")?;
+                        if !matches!(backend, "rust" | "llvm") {
+                            return Err(format!("unknown backend {backend}").into());
+                        }
+                    }
                     other => return Err(format!("unknown build option {other}").into()),
                 };
                 i += 1;
@@ -361,7 +369,20 @@ fn run(args: Vec<String>) -> std::result::Result<ExitCode, Box<dyn std::error::E
             } else {
                 program
             };
-            let build = p.build_native(&entry, &output, opt)?;
+            let build = if backend == "llvm" {
+                #[cfg(feature = "llvm")]
+                {
+                    p.build_llvm(&entry, &output, opt)?
+                }
+                #[cfg(not(feature = "llvm"))]
+                {
+                    return Err(
+                        "LLVM backend requires a compiler built with the llvm feature".into(),
+                    );
+                }
+            } else {
+                p.build_native(&entry, &output, opt)?
+            };
             if args[0] == "exec" {
                 let status = Command::new(&build.executable)
                     .args(runtime_args)
