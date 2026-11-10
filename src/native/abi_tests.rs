@@ -7,6 +7,8 @@ fn context(host: &mut Host) -> Context<'_> {
         frame: None,
         values: vec![],
         outcomes: vec![],
+        value_base: 0,
+        outcome_base: 0,
         error: None,
         result: None,
     }
@@ -1571,5 +1573,183 @@ fn collection_abi_keeps_element_addresses_and_validates_batches_before_mutation(
             assert_eq!(collection_support::length(&value).unwrap(), 0);
             assert_eq!(c.host.fuel, Some(0));
         }
+    }
+}
+
+#[test]
+fn consumed_temporary_tables_stay_bounded_without_reusing_value_or_outcome_ids() {
+    let mut host = Host::new(json!({}), None, false, None);
+    let mut c = context(&mut host);
+    let (mut previous_value, mut previous_outcome) = (0, 0);
+    for n in 0..100_000 {
+        let value = c.put(V::U32(n));
+        assert!(value > previous_value);
+        assert!(c.get(previous_value).is_err());
+        assert_eq!(c.take(value).unwrap(), V::U32(n));
+        let outcome = c.put_outcome(("done".into(), vec![]));
+        assert!(outcome > previous_outcome);
+        assert!(c.outcome(previous_outcome).is_err());
+        assert_eq!(
+            unsafe {
+                tellur_rt_v1_route(
+                    &mut c,
+                    outcome,
+                    b"done".as_ptr(),
+                    4,
+                    std::ptr::null_mut(),
+                    0,
+                )
+            },
+            1
+        );
+        unsafe { tellur_rt_v1_tick(&mut c, 0, 1, 1) };
+        assert!(c.error.is_none());
+        assert!(c.values.is_empty() && c.outcomes.is_empty());
+        assert!(c.values.capacity() <= 4 && c.outcomes.capacity() <= 4);
+        previous_value = value;
+        previous_outcome = outcome;
+    }
+    assert_eq!((c.value_base, c.outcome_base), (100_000, 100_000));
+    assert!(c.get(previous_value).is_err() && c.outcome(previous_outcome).is_err());
+}
+
+#[test]
+fn temporary_retirement_and_exhaustion_preserve_live_batches_and_first_failure() {
+    let mut host = Host::new(json!({}), None, false, None);
+    let mut c = context(&mut host);
+    let value = c.put(V::String("live".into()));
+    assert!(
+        c.retire_temporaries()
+            .unwrap_err()
+            .contains("live ABI temporary")
+    );
+    assert_eq!(c.value_base, 0);
+    assert_eq!(c.get(value).unwrap(), &V::String("live".into()));
+    c.take(value).unwrap();
+    let outcome = c.put_outcome(("done".into(), vec![V::U32(7)]));
+    assert!(c.retire_temporaries().is_err());
+    assert_eq!((c.value_base, c.outcome_base), (0, 0));
+    // Exhaustion is checked before an outcome is consumed or payload is published.
+    c.value_base = u64::MAX - 1;
+    let mut payload = 91;
+    assert_eq!(
+        unsafe { tellur_rt_v1_route(&mut c, outcome, b"done".as_ptr(), 4, &mut payload, 1) },
+        0
+    );
+    assert_eq!(payload, 91);
+    assert!(c.outcome(outcome).is_ok());
+    let first = c.error.clone();
+    assert_eq!(c.put(V::Unit), 0);
+    assert_eq!(c.error, first);
+    assert_eq!(c.values.len(), 1);
+    c.error = None;
+    c.value_base = 0;
+    assert_eq!(
+        unsafe { tellur_rt_v1_route(&mut c, outcome, b"done".as_ptr(), 4, &mut payload, 1) },
+        1
+    );
+    assert_eq!(c.take(payload).unwrap(), V::U32(7));
+    c.retire_temporaries().unwrap();
+    assert!(c.get(value).is_err() && c.outcome(outcome).is_err());
+    c.value_base = u64::MAX;
+    c.outcome_base = u64::MAX;
+    assert_eq!(c.put(V::Unit), 0);
+    assert_eq!(c.put_outcome(("done".into(), vec![])), 0);
+    assert!(c.values.is_empty() && c.outcomes.is_empty());
+    // A corrupt/exhausted base cannot partially retire either table.
+    c.error = None;
+    c.values.push(None);
+    c.outcomes.push(None);
+    assert!(c.retire_temporaries().is_err());
+    assert_eq!((c.value_base, c.outcome_base), (u64::MAX, u64::MAX));
+    assert_eq!((c.values.len(), c.outcomes.len()), (1, 1));
+    let mut host = Host::new(json!({}), None, false, None);
+    let mut c = context(&mut host);
+    unsafe {
+        tellur_rt_v1_frame(&mut c, 1);
+        let number = c.put(V::U32(1));
+        let owner = c.construct("vector<U32>", "vector", &[number]).unwrap();
+        tellur_rt_v1_store(&mut c, 0, std::ptr::null(), 0, owner);
+        let ty = "&mutable vector<U32>";
+        let reference =
+            tellur_rt_v1_reference(&mut c, 0, std::ptr::null(), 0, 0, ty.as_ptr(), ty.len());
+        let value = c.put(V::U32(2));
+        c.outcome_base = u64::MAX;
+        let name = "vector_push";
+        assert_eq!(
+            tellur_rt_v1_collection(
+                &mut c,
+                name.as_ptr(),
+                name.len(),
+                [reference, value].as_ptr(),
+                2
+            ),
+            0
+        );
+        assert!(c.get(reference).is_ok() && c.get(value).is_ok());
+        assert!(c.outcomes.is_empty());
+        assert_eq!(
+            collection_support::length(
+                &read_place(c.storage.values(), c.local(0).unwrap(), &[], false).unwrap()
+            )
+            .unwrap(),
+            1
+        );
+    }
+}
+
+#[test]
+fn retiring_temporaries_keeps_frame_owners_and_reference_evidence_stable() {
+    let mut host = Host::new(json!({}), None, false, None);
+    let mut c = context(&mut host);
+    unsafe {
+        tellur_rt_v1_frame(&mut c, 2);
+        let owner = c.put(V::String("stable".into()));
+        tellur_rt_v1_store(&mut c, 0, std::ptr::null(), 0, owner);
+        let reference =
+            tellur_rt_v1_reference(&mut c, 0, std::ptr::null(), 0, 0, b"&String".as_ptr(), 7);
+        let reference = annotate(&mut c, reference, &[1, 1, 0, 0, 0]);
+        let expected = c.get(reference).unwrap().clone();
+        tellur_rt_v1_store(&mut c, 1, std::ptr::null(), 0, reference);
+        for _ in 0..1000 {
+            tellur_rt_v1_tick(&mut c, 0, 1, 1);
+            let borrowed = tellur_rt_v1_local(&mut c, 1, std::ptr::null(), 0, 0);
+            assert_eq!(c.take(borrowed).unwrap(), expected);
+            let read = tellur_rt_v1_local(&mut c, 0, std::ptr::null(), 0, 0);
+            assert_eq!(c.take(read).unwrap(), V::String("stable".into()));
+            assert!(c.get(owner).is_err());
+        }
+        assert!(c.error.is_none());
+        assert_eq!(c.storage.values().len(), 2);
+        assert_eq!(
+            read_place(c.storage.values(), c.local(0).unwrap(), &[], false).unwrap(),
+            V::String("stable".into())
+        );
+    }
+}
+
+#[test]
+fn temporary_field_reads_assignment_and_projection_resolve_retired_handle_bases() {
+    let mut host = Host::new(record_manifest(), None, false, None);
+    let mut c = context(&mut host);
+    let stale = c.put(V::Unit);
+    c.take(stale).unwrap();
+    c.retire_temporaries().unwrap();
+    unsafe {
+        let owner = c.put(pair());
+        let field = tellur_rt_v1_field(&mut c, owner, [1].as_ptr(), 1, 0);
+        assert_eq!(c.take(field).unwrap(), V::U32(7));
+        let rhs = c.put(V::String("replacement".into()));
+        tellur_rt_v1_assign(&mut c, owner, [0].as_ptr(), 1, rhs);
+        assert!(c.get(rhs).is_err());
+        let projected = tellur_rt_v1_project(&mut c, owner, 0);
+        assert_eq!(c.take(projected).unwrap(), V::String("replacement".into()));
+        assert!(c.get(owner).is_err());
+        assert!(c.error.is_none());
+        c.retire_temporaries().unwrap();
+        let live = c.put(pair());
+        let before = c.get(live).unwrap().clone();
+        assert_eq!(tellur_rt_v1_project(&mut c, stale, 0), 0);
+        assert_eq!(c.get(live).unwrap(), &before);
     }
 }

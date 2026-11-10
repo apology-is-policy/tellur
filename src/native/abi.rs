@@ -20,6 +20,8 @@ pub struct Context<'a> {
     frame: Option<frames::Frame>,
     values: Vec<Option<V>>,
     outcomes: Vec<Option<(String, Vec<V>)>>,
+    value_base: u64,
+    outcome_base: u64,
     error: Option<String>,
     result: Option<Completion>,
 }
@@ -67,20 +69,76 @@ impl Context<'_> {
         Ok(result)
     }
     fn put(&mut self, value: V) -> u64 {
+        let Some(handle) = self
+            .value_base
+            .checked_add(self.values.len() as u64)
+            .and_then(|n| n.checked_add(1))
+        else {
+            self.error
+                .get_or_insert_with(|| "E_NATIVE: ABI value handle space exhausted".into());
+            return 0;
+        };
         self.values.push(Some(value));
-        self.values.len() as u64
+        handle
     }
-    fn get(&self, handle: u64) -> R<&V> {
-        let index = usize::try_from(handle).ok().and_then(|n| n.checked_sub(1));
+    fn require_outcome_room(&self) -> R<()> {
+        self.outcome_base
+            .checked_add(self.outcomes.len() as u64)
+            .and_then(|n| n.checked_add(1))
+            .map(|_| ())
+            .ok_or_else(|| "E_NATIVE: ABI outcome handle space exhausted".into())
+    }
+    fn put_outcome(&mut self, outcome: (String, Vec<V>)) -> u64 {
+        let Some(handle) = self
+            .outcome_base
+            .checked_add(self.outcomes.len() as u64)
+            .and_then(|n| n.checked_add(1))
+        else {
+            self.error
+                .get_or_insert_with(|| "E_NATIVE: ABI outcome handle space exhausted".into());
+            return 0;
+        };
+        self.outcomes.push(Some(outcome));
+        handle
+    }
+    // A checked instruction consumes every temporary it creates. Source owners
+    // and references already live in Frames; no handle may cross this boundary.
+    // Retain capacity, but advance the identity bases so old handles stay stale.
+    fn retire_temporaries(&mut self) -> R<()> {
+        if self.values.iter().any(Option::is_some) || self.outcomes.iter().any(Option::is_some) {
+            return Err("E_NATIVE: live ABI temporary at instruction boundary".into());
+        }
+        let values = self
+            .value_base
+            .checked_add(self.values.len() as u64)
+            .ok_or("E_NATIVE: ABI value handle space exhausted")?;
+        let outcomes = self
+            .outcome_base
+            .checked_add(self.outcomes.len() as u64)
+            .ok_or("E_NATIVE: ABI outcome handle space exhausted")?;
+        self.values.clear();
+        self.outcomes.clear();
+        self.value_base = values;
+        self.outcome_base = outcomes;
+        Ok(())
+    }
+    fn value_index(&self, handle: u64) -> R<usize> {
+        let index = handle
+            .checked_sub(self.value_base)
+            .and_then(|n| n.checked_sub(1))
+            .and_then(|n| usize::try_from(n).ok());
         index
-            .and_then(|i| self.values.get(i))
-            .and_then(Option::as_ref)
+            .filter(|&i| self.values.get(i).is_some_and(Option::is_some))
             .ok_or_else(|| "E_NATIVE: invalid or consumed ABI value handle".into())
     }
+    fn get(&self, handle: u64) -> R<&V> {
+        Ok(self.values[self.value_index(handle)?].as_ref().unwrap())
+    }
     fn outcome(&self, handle: u64) -> R<&(String, Vec<V>)> {
-        usize::try_from(handle)
-            .ok()
+        handle
+            .checked_sub(self.outcome_base)
             .and_then(|n| n.checked_sub(1))
+            .and_then(|n| usize::try_from(n).ok())
             .and_then(|i| self.outcomes.get(i))
             .and_then(Option::as_ref)
             .ok_or_else(|| "E_NATIVE: invalid or consumed ABI outcome handle".into())
@@ -95,7 +153,10 @@ impl Context<'_> {
         }
         Ok(handles
             .iter()
-            .map(|&h| self.values[h as usize - 1].take().unwrap())
+            .map(|&h| {
+                let index = self.value_index(h).unwrap();
+                self.values[index].take().unwrap()
+            })
             .collect())
     }
     fn take(&mut self, handle: u64) -> R<V> {
@@ -426,13 +487,13 @@ pub unsafe extern "C" fn tellur_rt_v1_evidence(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tellur_rt_v1_borrowed_variant(ctx: *mut Context<'_>, value: u64) -> u64 {
     unsafe { &mut *ctx }.perform(|c| {
+        c.require_outcome_room()?;
         if !matches!(c.get(value)?, V::Reference { .. }) {
             return Err("E_NATIVE: ABI borrowed decision requires a reference".into());
         }
         let value = c.take(value)?;
         let outcome = borrowed_variant(c.storage.values(), value)?;
-        c.outcomes.push(Some(outcome));
-        Ok(c.outcomes.len() as u64)
+        Ok(c.put_outcome(outcome))
     })
 }
 #[unsafe(no_mangle)]
@@ -510,6 +571,7 @@ pub unsafe extern "C" fn tellur_rt_v1_construct(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tellur_rt_v1_variant(ctx: *mut Context<'_>, handle: u64) -> u64 {
     unsafe { &mut *ctx }.perform(|c| {
+        c.require_outcome_room()?;
         let value = c.get(handle)?;
         if !matches!(value, V::Bool(_) | V::Construct { .. }) {
             return Err("E_NATIVE: invalid ABI decision value".into());
@@ -517,8 +579,7 @@ pub unsafe extern "C" fn tellur_rt_v1_variant(ctx: *mut Context<'_>, handle: u64
         validate(value, value.ty(), &c.host.manifest)
             .map_err(|e| format!("E_NATIVE: invalid ABI decision payload: {e}"))?;
         let outcome = variant(c.take(handle)?)?;
-        c.outcomes.push(Some(outcome));
-        Ok(c.outcomes.len() as u64)
+        Ok(c.put_outcome(outcome))
     })
 }
 
@@ -531,9 +592,8 @@ pub unsafe extern "C" fn tellur_rt_v1_field(
     moving: u32,
 ) -> u64 {
     unsafe { &mut *ctx }.perform(|c| {
-        c.get(handle)?;
+        let root = c.value_index(handle)?;
         let path = unsafe { slice(path, count) };
-        let root = handle as usize - 1;
         let value = match moving {
             0 => read_place(&c.values, root, path, false)?,
             1 => take_place(&mut c.values, root, path, false)?,
@@ -552,12 +612,11 @@ pub unsafe extern "C" fn tellur_rt_v1_assign(
     value: u64,
 ) {
     unsafe { &mut *ctx }.perform(|c| {
-        c.get(handle)?;
+        let root = c.value_index(handle)?;
         c.get(value)?;
         if handle == value {
             return Err("E_NATIVE: aliased ABI assignment transfer".into());
         }
-        let root = handle as usize - 1;
         let path = unsafe { slice(path, count) };
         // Validate the destination before consuming the RHS. No value is cloned.
         mutable_place(&mut c.values, root, path)?;
@@ -573,8 +632,8 @@ pub unsafe extern "C" fn tellur_rt_v1_project(
     index: usize,
 ) -> u64 {
     unsafe { &mut *ctx }.perform(|c| {
-        c.get(handle)?;
-        mutable_place(&mut c.values, handle as usize - 1, &[index])?;
+        let root = c.value_index(handle)?;
+        mutable_place(&mut c.values, root, &[index])?;
         let value = project_owned(c.take(handle)?, index)?;
         Ok(c.put(value))
     })
@@ -634,6 +693,7 @@ pub unsafe extern "C" fn tellur_rt_v1_tick(
 ) {
     unsafe { &mut *ctx }.perform(|c| {
         c.host.at(site);
+        c.retire_temporaries()?;
         c.host.tick(line, column)
     })
 }
@@ -683,11 +743,11 @@ pub unsafe extern "C" fn tellur_rt_v1_collection(
     count: usize,
 ) -> u64 {
     unsafe { &mut *ctx }.perform(|c| {
+        c.require_outcome_room()?;
         let name = unsafe { text(name, len)? };
         let args = c.take_many(unsafe { slice(args, count) })?;
         let outcome = collection(name, args, c.storage.values_mut())?;
-        c.outcomes.push(Some(outcome));
-        Ok(c.outcomes.len() as u64)
+        Ok(c.put_outcome(outcome))
     })
 }
 
@@ -713,6 +773,7 @@ pub unsafe extern "C" fn tellur_rt_v1_primitive(
     count: usize,
 ) -> u64 {
     unsafe { &mut *ctx }.perform(|c| {
+        c.require_outcome_room()?;
         let name = unsafe { text(name, len)? };
         let declaration = c.host.declared_primitive(name)?;
         let parameters = declaration["parameters"]
@@ -736,8 +797,7 @@ pub unsafe extern "C" fn tellur_rt_v1_primitive(
         }
         let arguments = c.take_many(handles)?;
         let outcome = c.host.primitive(name, arguments)?;
-        c.outcomes.push(Some(outcome));
-        Ok(c.outcomes.len() as u64)
+        Ok(c.put_outcome(outcome))
     })
 }
 
@@ -753,6 +813,7 @@ pub unsafe extern "C" fn tellur_rt_v1_call(
     count: usize,
 ) -> u64 {
     unsafe { &mut *ctx }.perform(|c| {
+        c.require_outcome_room()?;
         let name = unsafe { text(name, len)? };
         let values = c.take_many(unsafe { slice(args, count) })?;
         let outcome = {
@@ -763,6 +824,8 @@ pub unsafe extern "C" fn tellur_rt_v1_call(
                 frame: None,
                 values: vec![],
                 outcomes: vec![],
+                value_base: 0,
+                outcome_base: 0,
                 error: None,
                 result: None,
             };
@@ -772,8 +835,7 @@ pub unsafe extern "C" fn tellur_rt_v1_call(
             child.host.leave();
             result
         };
-        c.outcomes.push(Some(outcome));
-        Ok(c.outcomes.len() as u64)
+        Ok(c.put_outcome(outcome))
     })
 }
 
@@ -797,7 +859,13 @@ pub unsafe extern "C" fn tellur_rt_v1_route(
         if fields.len() != count {
             return Err("E_NATIVE: ABI outcome payload count mismatch".into());
         }
-        let (_, fields) = c.outcomes[outcome as usize - 1].take().unwrap();
+        c.value_base
+            .checked_add(c.values.len() as u64)
+            .and_then(|n| n.checked_add(count as u64))
+            .ok_or("E_NATIVE: ABI value handle space exhausted")?;
+        let (_, fields) = c.outcomes[(outcome - c.outcome_base - 1) as usize]
+            .take()
+            .unwrap();
         for (i, value) in fields.into_iter().enumerate() {
             unsafe { payload.add(i).write(c.put(value)) };
         }
@@ -875,6 +943,8 @@ unsafe fn launch_program(
                 frame: None,
                 values: vec![],
                 outcomes: vec![],
+                value_base: 0,
+                outcome_base: 0,
                 error: None,
                 result: None,
             };

@@ -1529,6 +1529,39 @@ control main() exits auto {
     }
 
     #[test]
+    fn every_control_keeps_scratch_allocations_in_its_entry_block() {
+        for source in [
+            include_str!("../playground/llvm_collections.tellur"),
+            include_str!("../playground/llvm_carriers.tellur"),
+            "control main(bool a,bool b) exits result {bool value=a && !b || b;exit done {value};} outcome result {@exit 0 done {bool value}}",
+        ] {
+            let checked = tellur::compile(
+                source,
+                Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+            )
+            .unwrap();
+            let ir = checked.llvm_source("main").unwrap();
+            let mut controls = 0;
+            let mut allocations = 0;
+            for body in ir.split("define void @control_").skip(1) {
+                controls += 1;
+                let body = body.split("\n}").next().unwrap();
+                let mut left_entry = false;
+                for line in body.lines() {
+                    if line.trim_start().starts_with("br ") {
+                        left_entry = true;
+                    }
+                    if line.contains(" = alloca ") {
+                        allocations += 1;
+                        assert!(!left_entry, "scratch allocated after entry: {line}\n{body}");
+                    }
+                }
+            }
+            assert!(controls > 0 && allocations > 0);
+        }
+    }
+
+    #[test]
     fn unsupported_checked_operations_create_no_build_outputs() {
         for source in [
             "struct ticket {u32 value;constructor(u32 input){self.value=input;}} control main() exits result {drop(ticket(1));exit done;} outcome result {@exit 0 done}",

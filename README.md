@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.244.0** implements the v0.1 checked core and the current language
+Compiler release **0.245.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -21,6 +21,11 @@ Release 0.222 added dynamic task sets. `tasks<producer>` holds any number of
 spawned children of one async control. `spawn producer(..) into set;` adds a member,
 `delta await next set { ..., empty => ... }` joins members in completion order, and
 `count(borrow set)` bounds how many run at once.
+
+Release 0.245 bounds LLVM temporary storage: consumed value/outcome cells are
+reclaimed between instructions without reusing handles, and fixed-size scratch
+allocations live at function entry. Source owners remain in stable frames. This
+prepares loop lowering; the admitted source profile and default backend are unchanged.
 
 Release 0.244 adds arrays, vectors and maps to direct LLVM emission, including
 collection literals, lengths, mutation, element borrows, local shared-reference

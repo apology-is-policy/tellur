@@ -6376,3 +6376,14 @@ collection host payloads, faults and instruction fuel. ABI tests reject malforme
 literal shapes, duplicate/stale batches and unsorted/duplicate keys before transfer;
 returned element addresses remain stable. Checker ownership and default execution
 are unchanged. Loops, constructors, boundaries and async remain gated.
+
+## Bounded LLVM temporaries (0.245 / B1.3k)
+
+The ABI tests run 100,000 instruction boundaries with bounded value/outcome table
+capacity, monotonic identities and stale-handle rejection. They retain stable frame
+owners and complete reference evidence across retirement, reject live temporaries,
+check counter exhaustion without identity wrap and reserve outcome/payload capacity
+before transfer or side effects. `tests/llvm_backend.rs` requires every scratch
+allocation to appear in each control's entry block; the full original/expanded O0/O2
+differential suite continues to cover reports, owners, faults and fuel. The source
+profile is unchanged; loop lowering follows after these storage prerequisites.

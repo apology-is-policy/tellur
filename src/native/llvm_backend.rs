@@ -175,6 +175,7 @@ fn supported(
 struct Emitter {
     globals: String,
     body: String,
+    allocations: String,
     next: usize,
     layout: FrameLayout,
     controls: BTreeMap<String, (usize, String)>,
@@ -191,6 +192,13 @@ impl Emitter {
     fn value(&mut self, code: impl AsRef<str>) -> String {
         let name = format!("%{}", self.id());
         self.line(format!("{name} = {}", code.as_ref()));
+        name
+    }
+    // Sizes are static. Keep scratch in the entry block so later backedges do
+    // not allocate again and grow the native stack at O0.
+    fn scratch(&mut self, ty: &str) -> String {
+        let name = format!("%{}", self.id());
+        writeln!(self.allocations, "{name} = alloca {ty}").unwrap();
         name
     }
     fn bytes(&mut self, bytes: &[u8]) -> (String, usize) {
@@ -235,7 +243,7 @@ impl Emitter {
         if values.is_empty() {
             return "null".into();
         }
-        let array = self.value(format!("alloca [{} x i64]", values.len()));
+        let array = self.scratch(&format!("[{} x i64]", values.len()));
         for (i, v) in values.iter().enumerate() {
             let p = self.value(format!("getelementptr i64, ptr {array}, i64 {i}"));
             self.line(format!("store i64 {v}, ptr {p}"));
@@ -269,7 +277,7 @@ impl Emitter {
             let payload = if arm.slots.is_empty() {
                 "null".into()
             } else {
-                self.value(format!("alloca [{} x i64]", arm.slots.len()))
+                self.scratch(&format!("[{} x i64]", arm.slots.len()))
             };
             let (name, len) = self.text(&arm.outcome);
             let selected = self.call(format!(
@@ -452,7 +460,7 @@ impl Emitter {
                 self.literal(1, n, b"")
             }
             Expr::Binary(op, a, b) if op == "&&" || op == "||" => {
-                let result = self.value("alloca i1");
+                let result = self.scratch("i1");
                 let a = self.expr(a);
                 let a = self.boolean(&a);
                 let rhs = self.id();
@@ -516,14 +524,14 @@ impl Emitter {
         self.line(format!(
             "define void @control_{index}(ptr %ctx, ptr %args, i64 %count) {{\nentry:"
         ));
+        let entry = self.body.len();
         self.effect(format!(
             "call void @tellur_rt_v1_frame(ptr %ctx, i64 {})",
             self.layout.slots.len()
         ));
         for atom in 0..self.layout.atoms.len() {
-            self.line(format!(
-                "%a{atom} = alloca i1\nstore i1 false, ptr %a{atom}"
-            ));
+            writeln!(self.allocations, "%a{atom} = alloca i1").unwrap();
+            self.line(format!("store i1 false, ptr %a{atom}"));
         }
         for (i, p) in region.parameters.iter().enumerate() {
             let ptr = self.value(format!("getelementptr i64, ptr %args, i64 {i}"));
@@ -650,6 +658,8 @@ impl Emitter {
             self.line(format!("{next}:"));
         }
         self.line("ret void\nerror:\nret void\n}");
+        self.body
+            .insert_str(entry, &std::mem::take(&mut self.allocations));
     }
 }
 
@@ -736,6 +746,7 @@ impl CheckedProgram {
         let mut emitter = Emitter {
             globals: String::new(),
             body: String::new(),
+            allocations: String::new(),
             next: 0,
             layout: FrameLayout::default(),
             controls: self

@@ -86,6 +86,22 @@ ticks or scheduling handoffs.
 
 Storage identity does not add an alternative ownership or lifetime rule.
 
+Since 0.245, fully consumed temporary value/outcome tables are cleared at instruction
+boundaries while retaining reusable capacity. Monotonic identity bases ensure that
+an old handle never names a later value. A live temporary prevents retirement;
+counter exhaustion reports an internal runtime failure and cannot wrap an identity.
+Outcome capacity is reserved before dispatch or collection mutation, and payload
+capacity before a selected outcome transfers its fields. Stable frame owners and
+reference evidence are independent of these temporary tables.
+
+LLVM scratch arrays, Boolean expression cells and path-fact storage are allocated
+once at each function entry, including at O0. Together these bound temporary backing
+storage by the checked instruction/control layout rather than execution length.
+These are prerequisites for loops; this release still rejects source backedges.
+Runtime sites, fuel charges, effects and failure ordering for valid programs are
+unchanged.
+
+
 ## Direct references
 
 Shared and exclusive references can point to the admitted scalar, record and tagged
@@ -309,7 +325,7 @@ then compiles `program.o` and links `OUTPUT` with its embedded LLVM/LLD 22.1.8.
 Path guards are LLVM branches. Runtime faults retain Tellur source provenance;
 native debugger information is not yet emitted.
 
-The distributed 0.244 compiler includes the `llvm` feature. When building the
+The distributed 0.245 compiler includes the `llvm` feature. When building the
 compiler from source, enable it and set `LLVM_SYS_221_PREFIX` to the static pinned
 LLVM/LLD installation, as described in the repository README. A compiler built
 without that feature reports a clear error for `--backend llvm`.
