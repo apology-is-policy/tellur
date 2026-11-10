@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.239.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.240.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -27,8 +27,10 @@ opt-in direct LLVM backend admits a [bounded synchronous scalar/owned-aggregate 
 on macOS arm64, extended in 0.236 to nested calls and in 0.237 to owned records, field-sensitive
 moves, assignment and temporary projections, then in 0.238 to options/variants/named
 outcome values, captures and selected payload decisions, then in 0.239 to returning
-synchronous primitives with owned arguments and supported result signatures;
-unsupported checked programs fail with `E_BACKEND` before build
+synchronous primitives with owned arguments and supported result signatures.
+Compiler 0.240 gives admitted locals stable activation storage, shared by synchronous
+children and retired on completion/failure; source reference admission is unchanged.
+Unsupported checked programs fail with `E_BACKEND` before build
 outputs are created. Backend selection does not change language checking.
 
 ## Language and data

@@ -6082,6 +6082,22 @@ operation: its state drops before the supplier and it never completes.
 chain parked by `run`, which previously stopped with `E_NATIVE: source task wait
 has no runnable producer`.
 
+## Direct LLVM stable activation storage (0.240 / B1.3f)
+
+LLVM locals now occupy stable runtime `Frames` slots instead of replaceable
+value handles. Child callbacks borrow the same arena, with distinct checked frame
+layouts; temporary and outcome handles keep their existing one-use rules.
+
+`native_host` ABI cases exercise local replacement, partial moves/reinitialization,
+invalid frame/slot/field/transfer atomicity, zero-sized frames, stale allocation
+identities after offset reuse and child retirement after normal completion, fault
+or fallthrough. Caller values survive each child outcome, and the original failure
+still supplies its activation chain. These operations consume no source fuel.
+The existing LLVM differential suite covers scalar/aggregate/tagged/primitive
+programs, nested calls, original/expanded lowering, O0/O2 and exact fault/fuel cuts.
+Source references remain rejected before output creation. This changes storage
+lowering, not source ownership, origin or scheduling rules.
+
 ## Direct LLVM owned primitive calls (0.239 / B1.3e)
 
 The LLVM emitter now lowers returning synchronous primitive decisions with owned

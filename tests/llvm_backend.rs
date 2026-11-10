@@ -143,6 +143,9 @@ outcome logic_result {@exit 0 done {bool value}}
             let rust = f.build("rust", opt);
             let ir = fs::read_to_string(llvm.with_extension("ll")).unwrap();
             assert!(ir.contains("define void @control_"));
+            assert!(ir.contains("call void @tellur_rt_v1_frame"));
+            assert!(ir.contains("call i64 @tellur_rt_v1_local"));
+            assert!(ir.contains("call void @tellur_rt_v1_store"));
             assert!(ir.contains("br i1"));
             assert!(!ir.contains("switch i64"));
             assert!(
@@ -684,8 +687,12 @@ outcome logic_result {@exit 0 done {bool value}}
                         .args(["--json", input, &add.to_string(), &mul.to_string()])
                         .output()
                         .unwrap();
-                    assert_eq!(a.status.code(), Some(*status));
-                    assert_eq!(a.status.code(), b.status.code());
+                    assert_eq!(a.status.code(), Some(*status), "LLVM {a:?}");
+                    assert_eq!(
+                        a.status.code(),
+                        b.status.code(),
+                        "{expanded}/{opt}/{input}/{add}/{mul}: LLVM {a:?}; Rust {b:?}"
+                    );
                     assert_eq!(a.stdout, b.stdout);
                     assert_eq!(a.stderr, b.stderr);
                     assert_eq!(

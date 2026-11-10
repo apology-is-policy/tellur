@@ -16,12 +16,56 @@ mod tests;
 
 pub struct Context<'a> {
     host: &'a mut Host,
+    storage: FrameStorage<'a>,
+    frame: Option<frames::Frame>,
     values: Vec<Option<V>>,
     outcomes: Vec<Option<(String, Vec<V>)>>,
     error: Option<String>,
     result: Option<Completion>,
 }
+// Temporary handles remain invocation-local. Source locals have stable addresses
+// in one arena shared by the synchronous call tree, just as in checked execution.
+enum FrameStorage<'a> {
+    Owned(Frames),
+    Borrowed(&'a mut Frames),
+}
+impl FrameStorage<'_> {
+    fn values(&self) -> &Frames {
+        match self {
+            Self::Owned(values) => values,
+            Self::Borrowed(values) => values,
+        }
+    }
+    fn values_mut(&mut self) -> &mut Frames {
+        match self {
+            Self::Owned(values) => values,
+            Self::Borrowed(values) => values,
+        }
+    }
+}
 impl Context<'_> {
+    fn local(&self, slot: usize) -> R<usize> {
+        let frame = self.frame.as_ref().ok_or("E_NATIVE: missing ABI frame")?;
+        let values = self.storage.values();
+        values.require_storage(&values.local_storage(frame, slot)?)
+    }
+    fn finish(&mut self) -> R<Completion> {
+        let result = match self.error.take() {
+            Some(error) => Err(error),
+            None => self
+                .result
+                .take()
+                .ok_or_else(|| "E_NATIVE: compiled ABI control fell through".into()),
+        };
+        let retired = match self.frame.take() {
+            Some(frame) => self.storage.values_mut().retire(&frame),
+            None => Ok(()),
+        };
+        // Retire storage even after failure, but preserve the original diagnostic.
+        let result = result?;
+        retired?;
+        Ok(result)
+    }
     fn put(&mut self, value: V) -> u64 {
         self.values.push(Some(value));
         self.values.len() as u64
@@ -102,6 +146,64 @@ unsafe fn text<'a>(data: *const u8, len: usize) -> R<&'a str> {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tellur_rt_v1_ok(ctx: *mut Context<'_>) -> i32 {
     i32::from(unsafe { &*ctx }.error.is_none())
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_frame(ctx: *mut Context<'_>, count: usize) {
+    unsafe { &mut *ctx }.perform(|c| {
+        if c.frame.is_some() {
+            return Err("E_NATIVE: duplicate ABI frame admission".into());
+        }
+        c.frame = Some(c.storage.values_mut().enter(count)?);
+        Ok(())
+    })
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_local(
+    ctx: *mut Context<'_>,
+    slot: usize,
+    path: *const usize,
+    count: usize,
+    moving: u32,
+) -> u64 {
+    unsafe { &mut *ctx }.perform(|c| {
+        let root = c.local(slot)?;
+        let path = unsafe { slice(path, count) };
+        let value = match moving {
+            0 => read_place(c.storage.values(), root, path, false)?,
+            1 => take_place(c.storage.values_mut(), root, path, false)?,
+            _ => return Err("E_NATIVE: invalid ABI local transfer mode".into()),
+        };
+        Ok(c.put(value))
+    })
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_store(
+    ctx: *mut Context<'_>,
+    slot: usize,
+    path: *const usize,
+    count: usize,
+    value: u64,
+) {
+    unsafe { &mut *ctx }.perform(|c| {
+        let root = c.local(slot)?;
+        let path = unsafe { slice(path, count) };
+        c.get(value)?;
+        // A root may be uninitialized or moved; a field needs a valid container.
+        // Validate both sides before consuming the temporary owner.
+        if !path.is_empty() {
+            mutable_place(c.storage.values_mut(), root, path)?;
+        }
+        let value = c.take(value)?;
+        assign_place(c.storage.values_mut(), root, path, false, value)
+    })
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_release_local(ctx: *mut Context<'_>, slot: usize) {
+    unsafe { &mut *ctx }.perform(|c| {
+        let root = c.local(slot)?;
+        c.storage.values_mut()[root] = None;
+        Ok(())
+    })
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tellur_rt_v1_value(
@@ -398,6 +500,8 @@ pub unsafe extern "C" fn tellur_rt_v1_call(
             c.host.enter(name)?;
             let mut child = Context {
                 host: &mut *c.host,
+                storage: FrameStorage::Borrowed(c.storage.values_mut()),
+                frame: None,
                 values: vec![],
                 outcomes: vec![],
                 error: None,
@@ -405,14 +509,7 @@ pub unsafe extern "C" fn tellur_rt_v1_call(
             };
             let arguments: Vec<u64> = values.into_iter().map(|v| child.put(v)).collect();
             unsafe { callback(&mut child, arguments.as_ptr(), arguments.len()) };
-            if let Some(error) = child.error.take() {
-                return Err(error);
-            }
-            let result = child
-                .result
-                .take()
-                .ok_or("E_NATIVE: compiled ABI control fell through")?
-                .outcome()?;
+            let result = child.finish()?.outcome()?;
             child.host.leave();
             result
         };
@@ -515,6 +612,8 @@ unsafe fn launch_program(
             host.enter(entry.display_name)?;
             let mut context = Context {
                 host,
+                storage: FrameStorage::Owned(Frames::default()),
+                frame: None,
                 values: vec![],
                 outcomes: vec![],
                 error: None,
@@ -522,12 +621,7 @@ unsafe fn launch_program(
             };
             let args: Vec<u64> = args.into_iter().map(|v| context.put(v)).collect();
             unsafe { callbacks[index](&mut context, args.as_ptr(), args.len()) };
-            if let Some(error) = context.error {
-                return Err(error);
-            }
-            let result = context
-                .result
-                .ok_or("E_NATIVE: compiled ABI control fell through")?;
+            let result = context.finish()?;
             context.host.leave();
             Ok(result)
         },

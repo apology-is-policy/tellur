@@ -6,6 +6,10 @@ use super::*;
 const DECLARATIONS: &str = r#"
 declare i32 @tellur_rt_v1_launch(ptr, i64, ptr, i64)
 declare i32 @tellur_rt_v1_ok(ptr)
+declare void @tellur_rt_v1_frame(ptr, i64)
+declare i64 @tellur_rt_v1_local(ptr, i64, ptr, i64, i32)
+declare void @tellur_rt_v1_store(ptr, i64, ptr, i64, i64)
+declare void @tellur_rt_v1_release_local(ptr, i64)
 declare i64 @tellur_rt_v1_value(ptr, i32, i64, ptr, i64)
 declare i64 @tellur_rt_v1_copy(ptr, i64)
 declare i64 @tellur_rt_v1_record(ptr, ptr, i64, ptr, i64)
@@ -308,17 +312,8 @@ impl Emitter {
             Expr::Value(v) => self.embedded(v),
             Expr::Place(p) | Expr::Move(p) => {
                 let slot = self.layout.slots[&p.root];
-                let v = self.value(format!("load i64, ptr %s{slot}"));
-                if !p.fields.is_empty() {
-                    let path =
-                        self.handles(&p.fields.iter().map(usize::to_string).collect::<Vec<_>>());
-                    self.call(format!("call i64 @tellur_rt_v1_field(ptr %ctx, i64 {v}, ptr {path}, i64 {}, i32 {})", p.fields.len(), u8::from(matches!(e, Expr::Move(_)))))
-                } else if matches!(e, Expr::Move(_)) {
-                    self.line(format!("store i64 0, ptr %s{slot}"));
-                    v
-                } else {
-                    self.call(format!("call i64 @tellur_rt_v1_copy(ptr %ctx, i64 {v})"))
-                }
+                let path = self.handles(&p.fields.iter().map(usize::to_string).collect::<Vec<_>>());
+                self.call(format!("call i64 @tellur_rt_v1_local(ptr %ctx, i64 {slot}, ptr {path}, i64 {}, i32 {})", p.fields.len(), u8::from(matches!(e, Expr::Move(_)))))
             }
             Expr::Construct(ty, name, args) => {
                 let values = args.iter().map(|a| self.expr(a)).collect::<Vec<_>>();
@@ -405,16 +400,13 @@ impl Emitter {
     }
     fn release(&mut self, id: Id) {
         let slot = self.layout.slots[&id];
-        let old = self.value(format!("load i64, ptr %s{slot}"));
         self.effect(format!(
-            "call void @tellur_rt_v1_release(ptr %ctx, i64 {old})"
+            "call void @tellur_rt_v1_release_local(ptr %ctx, i64 {slot})"
         ));
-        self.line(format!("store i64 0, ptr %s{slot}"));
     }
     fn store(&mut self, id: Id, value: &str) {
-        self.release(id);
-        self.line(format!(
-            "store i64 {value}, ptr %s{}",
+        self.effect(format!(
+            "call void @tellur_rt_v1_store(ptr %ctx, i64 {}, ptr null, i64 0, i64 {value})",
             self.layout.slots[&id]
         ));
     }
@@ -423,9 +415,10 @@ impl Emitter {
         self.line(format!(
             "define void @control_{index}(ptr %ctx, ptr %args, i64 %count) {{\nentry:"
         ));
-        for slot in 0..self.layout.slots.len() {
-            self.line(format!("%s{slot} = alloca i64\nstore i64 0, ptr %s{slot}"));
-        }
+        self.effect(format!(
+            "call void @tellur_rt_v1_frame(ptr %ctx, i64 {})",
+            self.layout.slots.len()
+        ));
         for atom in 0..self.layout.atoms.len() {
             self.line(format!(
                 "%a{atom} = alloca i1\nstore i1 false, ptr %a{atom}"
@@ -434,10 +427,7 @@ impl Emitter {
         for (i, p) in region.parameters.iter().enumerate() {
             let ptr = self.value(format!("getelementptr i64, ptr %args, i64 {i}"));
             let value = self.value(format!("load i64, ptr {ptr}"));
-            self.line(format!(
-                "store i64 {value}, ptr %s{}",
-                self.layout.slots[&p.id]
-            ));
+            self.store(p.id, &value);
         }
         for i in &region.code {
             self.effect(format!(
@@ -461,11 +451,10 @@ impl Emitter {
                     if p.fields.is_empty() {
                         self.store(p.root, &v)
                     } else {
-                        let root =
-                            self.value(format!("load i64, ptr %s{}", self.layout.slots[&p.root]));
+                        let slot = self.layout.slots[&p.root];
                         let path = self
                             .handles(&p.fields.iter().map(usize::to_string).collect::<Vec<_>>());
-                        self.effect(format!("call void @tellur_rt_v1_assign(ptr %ctx, i64 {root}, ptr {path}, i64 {}, i64 {v})", p.fields.len()));
+                        self.effect(format!("call void @tellur_rt_v1_store(ptr %ctx, i64 {slot}, ptr {path}, i64 {}, i64 {v})", p.fields.len()));
                     }
                 }
                 Action::Release(ids) => {

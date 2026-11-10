@@ -7,7 +7,8 @@ Compiler 0.237 adds ordinary owned records with scalar leaves, including nested,
 empty, imported and concrete generic records. Compiler 0.238 adds options, closed
 variants, named outcome values and their decisions/captures with recursively owned
 payloads. Compiler 0.239 adds synchronous primitive calls with owned arguments
-and supported payload types. The default remains `--backend rust`. Both start from the same checked program;
+and supported payload types. Compiler 0.240 moves locals into stable runtime activation storage.
+The default remains `--backend rust`. Both start from the same checked program;
 backend selection does not relax ownership, origins, outcomes or path rules.
 
 ```sh
@@ -63,6 +64,23 @@ helpers, scalar payloads and identity routing:
 
 The first invocation reports `accepted` with status 0; the second reports
 `declined` with status 7. The first also emits the number; both emit the greeting.
+
+## Stable local storage
+
+Each synchronous LLVM invocation has its own checked local layout in the existing
+runtime frame allocator. The call tree shares that arena; a local keeps the same
+storage identity when its value is replaced or moved and reinitialized. Temporary
+value handles and selected outcome handles remain separate one-use transfers.
+
+Child storage retires on completion, fault or failed execution without disturbing
+caller locals. Reused offsets receive new allocation identities, so retirement
+cannot make an earlier storage identity refer to a later invocation. Fault reports
+still retain the failed control's activation chain. Storage operations add no fuel
+ticks or scheduling handoffs.
+
+This is a lowering prerequisite: source references, indirect places and borrowed
+primitive parameters remain rejected until their reference evidence is lowered.
+It does not add an alternative ownership or lifetime rule.
 
 ## Owned records and fields
 
@@ -161,7 +179,7 @@ then compiles `program.o` and links `OUTPUT` with its embedded LLVM/LLD 22.1.8.
 Path guards are LLVM branches. Runtime faults retain Tellur source provenance;
 native debugger information is not yet emitted.
 
-The distributed 0.239 compiler includes the `llvm` feature. When building the
+The distributed 0.240 compiler includes the `llvm` feature. When building the
 compiler from source, enable it and set `LLVM_SYS_221_PREFIX` to the static pinned
 LLVM/LLD installation, as described in the repository README. A compiler built
 without that feature reports a clear error for `--backend llvm`.

@@ -3,11 +3,207 @@ use super::*;
 fn context(host: &mut Host) -> Context<'_> {
     Context {
         host,
+        storage: FrameStorage::Owned(Frames::default()),
+        frame: None,
         values: vec![],
         outcomes: vec![],
         error: None,
         result: None,
     }
+}
+
+#[test]
+fn stable_locals_survive_replacement_moves_and_partial_reinitialization() {
+    let mut host = Host::new(record_manifest(), None, true, Some(0));
+    let mut c = context(&mut host);
+    unsafe {
+        tellur_rt_v1_frame(&mut c, 2);
+        let root = c.local(0).unwrap();
+        let identity = c.storage.values().storage_at(root).unwrap();
+        let original = c.put(pair());
+        tellur_rt_v1_store(&mut c, 0, std::ptr::null(), 0, original);
+        let copied = tellur_rt_v1_local(&mut c, 0, [1].as_ptr(), 1, 0);
+        assert_eq!(c.take(copied).unwrap(), V::U32(7));
+        let moved = tellur_rt_v1_local(&mut c, 0, [0].as_ptr(), 1, 1);
+        assert_eq!(c.get(moved).unwrap(), &V::String("original".into()));
+        assert_eq!(
+            read_place(c.storage.values(), root, &[0], false).unwrap(),
+            V::Unit
+        );
+        tellur_rt_v1_store(&mut c, 0, [0].as_ptr(), 1, moved);
+        let whole = tellur_rt_v1_local(&mut c, 0, std::ptr::null(), 0, 1);
+        assert!(c.storage.values()[root].is_none());
+        tellur_rt_v1_store(&mut c, 1, std::ptr::null(), 0, whole);
+        let replacement = c.put(V::U32(42));
+        tellur_rt_v1_store(&mut c, 0, std::ptr::null(), 0, replacement);
+        let next = c.put(V::U32(93));
+        tellur_rt_v1_store(&mut c, 0, std::ptr::null(), 0, next);
+        assert_eq!(c.storage.values().require_storage(&identity).unwrap(), root);
+        assert_eq!(
+            read_place(c.storage.values(), root, &[], false).unwrap(),
+            V::U32(93)
+        );
+        assert_eq!(
+            read_place(c.storage.values(), c.local(1).unwrap(), &[], false).unwrap(),
+            pair()
+        );
+        assert!(
+            [original, moved, whole, replacement, next]
+                .iter()
+                .all(|h| c.get(*h).is_err())
+        );
+        tellur_rt_v1_release_local(&mut c, 0);
+        tellur_rt_v1_release_local(&mut c, 0);
+        assert!(c.storage.values()[root].is_none());
+        assert_eq!(c.host.fuel, Some(0), "storage adds no source fuel ticks");
+        assert_eq!(tellur_rt_v1_ok(&mut c), 1);
+    }
+}
+
+#[test]
+fn local_admission_and_transfers_fail_before_mutating_either_owner() {
+    for case in [
+        "missing",
+        "duplicate",
+        "slot",
+        "field",
+        "stale",
+        "mode",
+        "release",
+    ] {
+        let mut host = Host::new(record_manifest(), None, true, None);
+        let mut c = context(&mut host);
+        let held = c.put(V::String("retained".into()));
+        unsafe {
+            if case != "missing" {
+                tellur_rt_v1_frame(&mut c, 1);
+                let initial = c.put(pair());
+                tellur_rt_v1_store(&mut c, 0, std::ptr::null(), 0, initial);
+            }
+            match case {
+                "missing" => tellur_rt_v1_store(&mut c, 0, std::ptr::null(), 0, held),
+                "duplicate" => tellur_rt_v1_frame(&mut c, 5),
+                "slot" => tellur_rt_v1_store(&mut c, 1, std::ptr::null(), 0, held),
+                "field" => tellur_rt_v1_store(&mut c, 0, [9].as_ptr(), 1, held),
+                "stale" => tellur_rt_v1_store(&mut c, 0, std::ptr::null(), 0, 0),
+                "mode" => {
+                    assert_eq!(tellur_rt_v1_local(&mut c, 0, std::ptr::null(), 0, 2), 0);
+                }
+                "release" => tellur_rt_v1_release_local(&mut c, usize::MAX),
+                _ => unreachable!(),
+            }
+            assert!(c.error.is_some(), "{case}");
+            let error = c.error.clone();
+            tellur_rt_v1_store(&mut c, 0, std::ptr::null(), 0, held);
+            tellur_rt_v1_release_local(&mut c, 0);
+            tellur_rt_v1_emit(&mut c, held);
+            assert_eq!(c.error, error);
+            assert_eq!(c.get(held).unwrap(), &V::String("retained".into()));
+            assert!(c.host.events.is_empty());
+            if case != "missing" {
+                assert_eq!(c.storage.values().len(), 1);
+                assert_eq!(c.storage.values()[0], Some(pair()));
+            }
+        }
+    }
+}
+
+#[test]
+fn child_frames_retire_on_completion_fault_and_fallthrough_without_touching_parent() {
+    unsafe extern "C" fn child(ctx: *mut Context<'_>, args: *const u64, _: usize) {
+        unsafe {
+            tellur_rt_v1_frame(ctx, 3);
+            let c = &mut *ctx;
+            assert_eq!(c.local(0).unwrap(), 2);
+            assert_eq!(c.storage.values()[0], Some(V::U32(99)));
+            let mode = match c.get(*args).unwrap() {
+                V::U32(n) => *n,
+                _ => panic!(),
+            };
+            tellur_rt_v1_store(ctx, 0, std::ptr::null(), 0, *args);
+            let value = tellur_rt_v1_value(ctx, 3, 0, b"child".as_ptr(), 5);
+            tellur_rt_v1_store(ctx, 2, std::ptr::null(), 0, value);
+            match mode {
+                0 => {
+                    let moved = tellur_rt_v1_local(ctx, 2, std::ptr::null(), 0, 1);
+                    tellur_rt_v1_complete(ctx, b"ready".as_ptr(), 5, [moved].as_ptr(), 1);
+                }
+                1 => {
+                    let msg = tellur_rt_v1_local(ctx, 2, std::ptr::null(), 0, 1);
+                    tellur_rt_v1_fault(ctx, msg);
+                }
+                2 => {}
+                _ => unreachable!(),
+            }
+        }
+    }
+    for mode in 0..3 {
+        let mut host = Host::new(json!({}), None, true, None);
+        host.enter("root").unwrap();
+        let mut c = context(&mut host);
+        unsafe {
+            tellur_rt_v1_frame(&mut c, 2);
+            let parent = c.put(V::U32(99));
+            tellur_rt_v1_store(&mut c, 0, std::ptr::null(), 0, parent);
+            let arg = c.put(V::U32(mode));
+            let outcome = tellur_rt_v1_call(&mut c, child, b"child".as_ptr(), 5, [arg].as_ptr(), 1);
+            assert_eq!(c.storage.values().len(), 2, "{mode}");
+            assert_eq!(c.storage.values()[0], Some(V::U32(99)));
+            if mode == 0 {
+                assert_eq!(
+                    c.outcome(outcome).unwrap(),
+                    &("ready".into(), vec![V::String("child".into())])
+                );
+                // The next invocation can reuse retired offsets while parent storage stays live.
+                let arg = c.put(V::U32(0));
+                assert_ne!(
+                    tellur_rt_v1_call(&mut c, child, b"child".as_ptr(), 5, [arg].as_ptr(), 1),
+                    0
+                );
+                assert_eq!(c.storage.values().len(), 2);
+            } else {
+                assert_eq!(outcome, 0);
+                let error = c.error.as_ref().unwrap();
+                assert!(error.contains(if mode == 1 {
+                    "E_FAULT: child"
+                } else {
+                    "fell through"
+                }));
+                let report = c
+                    .host
+                    .activations
+                    .failure("root", fault::Phase::Execution, error);
+                assert_eq!(
+                    report
+                        .activations
+                        .iter()
+                        .map(|a| a.control.as_str())
+                        .collect::<Vec<_>>(),
+                    ["root", "child"]
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn retired_frame_identities_cannot_alias_reused_offsets_and_empty_frames_finish() {
+    let mut host = Host::new(json!({}), None, true, None);
+    let mut c = context(&mut host);
+    unsafe { tellur_rt_v1_frame(&mut c, 1) };
+    let old = c.storage.values().storage_at(c.local(0).unwrap()).unwrap();
+    c.result = Some(Completion::Outcome(("done".into(), vec![])));
+    c.finish().unwrap();
+    assert!(c.storage.values().is_empty());
+    unsafe { tellur_rt_v1_frame(&mut c, 1) };
+    assert_eq!(c.local(0).unwrap(), 0);
+    assert!(c.storage.values().require_storage(&old).is_err());
+    assert!(c.finish().is_err());
+    assert!(c.storage.values().is_empty());
+    unsafe { tellur_rt_v1_frame(&mut c, 0) };
+    c.error = Some("E_FAULT: original".into());
+    assert_eq!(c.finish().err().unwrap(), "E_FAULT: original");
+    assert!(c.frame.is_none() && c.storage.values().is_empty());
 }
 
 unsafe extern "C" fn echo(ctx: *mut Context<'_>, args: *const u64, count: usize) {
@@ -162,13 +358,7 @@ fn failed_callbacks_keep_the_nested_activation_and_stop_the_caller() {
 #[test]
 fn value_transfers_validate_the_whole_batch_before_consumption() {
     let mut host = Host::new(json!({}), None, true, None);
-    let mut c = Context {
-        host: &mut host,
-        values: vec![],
-        outcomes: vec![],
-        error: None,
-        result: None,
-    };
+    let mut c = context(&mut host);
     let first = c.put(V::String("owner".into()));
     let second = c.put(V::U32(42));
     assert!(
@@ -199,13 +389,7 @@ fn value_transfers_validate_the_whole_batch_before_consumption() {
 #[test]
 fn ffi_failure_is_sticky_and_blocks_later_effects_and_completion() {
     let mut host = Host::new(json!({}), None, true, None);
-    let mut c = Context {
-        host: &mut host,
-        values: vec![],
-        outcomes: vec![],
-        error: None,
-        result: None,
-    };
+    let mut c = context(&mut host);
     let message = c.put(V::String("must not emit".into()));
     unsafe {
         tellur_rt_v1_drop(&mut c, 0);
@@ -224,13 +408,7 @@ fn ffi_failure_is_sticky_and_blocks_later_effects_and_completion() {
 #[test]
 fn ffi_values_preserve_unicode_nuls_bytes_and_reject_invalid_scalars() {
     let mut host = Host::new(json!({}), None, true, None);
-    let mut c = Context {
-        host: &mut host,
-        values: vec![],
-        outcomes: vec![],
-        error: None,
-        result: None,
-    };
+    let mut c = context(&mut host);
     unsafe {
         let text = "😀\0quoted \"";
         let h = tellur_rt_v1_value(&mut c, 3, 0, text.as_ptr(), text.len());
