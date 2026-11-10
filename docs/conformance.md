@@ -6082,6 +6082,23 @@ operation: its state drops before the supplier and it never completes.
 chain parked by `run`, which previously stopped with `E_NATIVE: source task wait
 has no runnable producer`.
 
+## Direct LLVM direct references (0.241 / B1.3g)
+
+The LLVM emitter lowers direct shared/exclusive references to the current
+reference-free value profile, indirect reads/assignments, direct borrowed control
+results and borrowed decisions. Static integer descriptors carry checked origin
+annotations to the existing runtime evidence operations; no Rust layout crosses
+the ABI, and incoming partial evidence remains partial.
+
+ABI cases cover returned child reborrows targeting live caller allocation identities,
+mutation through returned references, malformed metadata and destination validation
+before transfer, metadata-unavailable behavior, and retained owners after borrowed
+decisions. LLVM differential cases compare original/expanded O0/O2 execution,
+shared copies, conditional origins, exclusive results, borrowed temporary arguments,
+option payload mutation and exact faults/fuel cuts. The formatted reference example
+exercises both shared and exclusive borrowed results. Aggregate reference carriers
+and borrowed primitive signatures remain rejected before output creation.
+
 ## Direct LLVM stable activation storage (0.240 / B1.3f)
 
 LLVM locals now occupy stable runtime `Frames` slots instead of replaceable

@@ -205,6 +205,151 @@ pub unsafe extern "C" fn tellur_rt_v1_release_local(ctx: *mut Context<'_>, slot:
         Ok(())
     })
 }
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_reference(
+    ctx: *mut Context<'_>,
+    slot: usize,
+    path: *const usize,
+    count: usize,
+    indirect: u32,
+    ty: *const u8,
+    len: usize,
+) -> u64 {
+    unsafe { &mut *ctx }.perform(|c| {
+        let root = c.local(slot)?;
+        let ty = unsafe { text(ty, len)? };
+        if indirect > 1 || !ty.starts_with('&') {
+            return Err("E_NATIVE: invalid ABI reference descriptor".into());
+        }
+        let value = reference(
+            c.storage.values(),
+            root,
+            unsafe { slice(path, count) },
+            indirect != 0,
+            ty,
+        )?;
+        Ok(c.put(value))
+    })
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_deref(
+    ctx: *mut Context<'_>,
+    slot: usize,
+    path: *const usize,
+    count: usize,
+    moving: u32,
+) -> u64 {
+    unsafe { &mut *ctx }.perform(|c| {
+        let root = c.local(slot)?;
+        let path = unsafe { slice(path, count) };
+        let value = match moving {
+            0 => read_place(c.storage.values(), root, path, true)?,
+            1 => take_place(c.storage.values_mut(), root, path, true)?,
+            _ => return Err("E_NATIVE: invalid ABI indirect transfer mode".into()),
+        };
+        Ok(c.put(value))
+    })
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_assign_through(
+    ctx: *mut Context<'_>,
+    slot: usize,
+    path: *const usize,
+    count: usize,
+    value: u64,
+) {
+    unsafe { &mut *ctx }.perform(|c| {
+        let root = c.local(slot)?;
+        c.get(value)?;
+        let (root, fields) = address(
+            c.storage.values(),
+            root,
+            unsafe { slice(path, count) },
+            true,
+        )?;
+        // Resolve and validate the target before moving the RHS, exactly as for
+        // direct fields. Address formation does not grant source move permission.
+        if fields.is_empty() {
+            c.storage
+                .values()
+                .get(root)
+                .ok_or("E_NATIVE: invalid indirect assignment")?;
+        } else {
+            mutable_place(c.storage.values_mut(), root, &fields)?;
+        }
+        let value = c.take(value)?;
+        assign_place(c.storage.values_mut(), root, &fields, false, value)
+    })
+}
+
+/// Metadata words must have module lifetime, not be a stack temporary. Each
+/// descriptor is [kind, fresh, (local, flags, path_length, path...)...], with
+/// kind 0=partial, 1=complete, 2=incoming and flags indirect/guard/opaque in bits
+/// 0/1/2. No Rust layout crosses the ABI. Symbolic paths are never dereferenced.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_evidence(
+    ctx: *mut Context<'_>,
+    value: u64,
+    data: *const usize,
+    count: usize,
+) -> u64 {
+    unsafe { &mut *ctx }.perform(|c| {
+        use execution::reference_evidence::{Origin, attach_checked, inherit_checked};
+        if !matches!(c.get(value)?, V::Reference { .. }) {
+            return Err("E_NATIVE: ABI evidence requires a reference".into());
+        }
+        // Safety: compiled descriptors are immutable LLVM globals, available for
+        // the complete program lifetime, as required by this entry point.
+        let words: &'static [usize] = unsafe { slice(data, count) };
+        let [kind, fresh, rest @ ..] = words else {
+            return Err("E_NATIVE: truncated ABI reference evidence".into());
+        };
+        if *kind > 2 || *fresh > 1 || (*kind == 2 && (*fresh != 0 || !rest.is_empty())) {
+            return Err("E_NATIVE: invalid ABI reference evidence mode".into());
+        }
+        let mut rest = rest;
+        let mut origins = vec![];
+        while !rest.is_empty() {
+            let [slot, flags, count, fields @ ..] = rest else {
+                return Err("E_NATIVE: truncated ABI reference origin".into());
+            };
+            if *flags > 7 || *count > fields.len() {
+                return Err("E_NATIVE: invalid ABI reference origin".into());
+            }
+            origins.push(Origin {
+                root: c.local(*slot)?,
+                fields: &fields[..*count],
+                indirect: flags & 1 != 0,
+                guard: flags & 2 != 0,
+                opaque: flags & 4 != 0,
+            });
+            rest = &fields[*count..];
+        }
+        let value = c.take(value)?;
+        let value = if *kind == 2 {
+            inherit_checked(c.storage.values(), value)
+        } else {
+            attach_checked(c.storage.values(), value, &origins, *kind == 1, *fresh != 0)
+        };
+        Ok(c.put(value))
+    })
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_borrowed_variant(ctx: *mut Context<'_>, value: u64) -> u64 {
+    unsafe { &mut *ctx }.perform(|c| {
+        if !matches!(c.get(value)?, V::Reference { .. }) {
+            return Err("E_NATIVE: ABI borrowed decision requires a reference".into());
+        }
+        let value = c.take(value)?;
+        let outcome = borrowed_variant(c.storage.values(), value)?;
+        c.outcomes.push(Some(outcome));
+        Ok(c.outcomes.len() as u64)
+    })
+}
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tellur_rt_v1_value(
     ctx: *mut Context<'_>,

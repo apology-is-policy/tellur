@@ -10,6 +10,11 @@ declare void @tellur_rt_v1_frame(ptr, i64)
 declare i64 @tellur_rt_v1_local(ptr, i64, ptr, i64, i32)
 declare void @tellur_rt_v1_store(ptr, i64, ptr, i64, i64)
 declare void @tellur_rt_v1_release_local(ptr, i64)
+declare i64 @tellur_rt_v1_reference(ptr, i64, ptr, i64, i32, ptr, i64)
+declare i64 @tellur_rt_v1_deref(ptr, i64, ptr, i64, i32)
+declare void @tellur_rt_v1_assign_through(ptr, i64, ptr, i64, i64)
+declare i64 @tellur_rt_v1_evidence(ptr, i64, ptr, i64)
+declare i64 @tellur_rt_v1_borrowed_variant(ptr, i64)
 declare i64 @tellur_rt_v1_value(ptr, i32, i64, ptr, i64)
 declare i64 @tellur_rt_v1_copy(ptr, i64)
 declare i64 @tellur_rt_v1_record(ptr, ptr, i64, ptr, i64)
@@ -50,7 +55,7 @@ fn admitted_types(manifest: &crate::manifest::Manifest) -> BTreeSet<String> {
                 }
                 _ => continue,
             };
-            if fields.iter().all(|f| type_supported(&f.ty, &types)) {
+            if fields.iter().all(|f| owned_type_supported(&f.ty, &types)) {
                 types.insert(name.clone());
             }
         }
@@ -60,11 +65,18 @@ fn admitted_types(manifest: &crate::manifest::Manifest) -> BTreeSet<String> {
     }
 }
 fn type_supported(ty: &str, types: &BTreeSet<String>) -> bool {
+    owned_type_supported(ty, types)
+        || ty
+            .strip_prefix("&mutable ")
+            .or_else(|| ty.strip_prefix('&'))
+            .is_some_and(|inner| owned_type_supported(inner, types))
+}
+fn owned_type_supported(ty: &str, types: &BTreeSet<String>) -> bool {
     types.contains(ty)
         || ty
             .strip_prefix("Option<")
             .and_then(|t| t.strip_suffix('>'))
-            .is_some_and(|inner| type_supported(inner, types))
+            .is_some_and(|inner| owned_type_supported(inner, types))
 }
 fn value_supported(v: &Value, types: &BTreeSet<String>) -> bool {
     match v {
@@ -75,13 +87,19 @@ fn value_supported(v: &Value, types: &BTreeSet<String>) -> bool {
         _ => false,
     }
 }
-fn place(p: &Place) -> bool {
-    !p.indirect
-}
 fn expression_supported(e: &Expr, types: &BTreeSet<String>) -> bool {
     match e {
         Expr::Value(v) => value_supported(v, types),
-        Expr::Move(p) | Expr::Place(p) => place(p),
+        Expr::Move(_) | Expr::Place(_) => true,
+        Expr::Reference(_, ty) => type_supported(ty, types),
+        Expr::WithReferenceEvidence(value, evidence) => {
+            matches!(
+                evidence,
+                ReferenceEvidence::Partial(_)
+                    | ReferenceEvidence::Complete(_)
+                    | ReferenceEvidence::Incoming
+            ) && expression_supported(value, types)
+        }
         Expr::Pure(_, args) => args.iter().all(|e| expression_supported(e, types)),
         Expr::Construct(ty, _, args) => {
             type_supported(ty, types) && args.iter().all(|e| expression_supported(e, types))
@@ -104,7 +122,7 @@ fn supported(
         Action::Bind(_, e) | Action::Drop(e) | Action::Emit(e) | Action::Fault(e) => {
             expression_supported(e, types)
         }
-        Action::Assign(p, e) => place(p) && expression_supported(e, types),
+        Action::Assign(_, e) => expression_supported(e, types),
         Action::Release(_) => true,
         Action::Exit(_, args) => args.iter().all(|e| expression_supported(e, types)),
         Action::Complete {
@@ -133,16 +151,16 @@ fn supported(
                             && p.returns
                             && p.parameters.iter().all(|p| {
                                 p.mode != crate::manifest::Mode::Borrow
-                                    && type_supported(&p.ty, types)
+                                    && owned_type_supported(&p.ty, types)
                             })
                             && p.outcomes
                                 .iter()
                                 .flat_map(|o| &o.fields)
-                                .all(|f| type_supported(&f.ty, types))
+                                .all(|f| owned_type_supported(&f.ty, types))
                     })
         }
         Action::Decide {
-            operation: Operation::Variant(e),
+            operation: Operation::Variant(e) | Operation::BorrowedVariant(e),
             args,
             ..
         } => args.is_empty() && expression_supported(e, types),
@@ -313,7 +331,51 @@ impl Emitter {
             Expr::Place(p) | Expr::Move(p) => {
                 let slot = self.layout.slots[&p.root];
                 let path = self.handles(&p.fields.iter().map(usize::to_string).collect::<Vec<_>>());
-                self.call(format!("call i64 @tellur_rt_v1_local(ptr %ctx, i64 {slot}, ptr {path}, i64 {}, i32 {})", p.fields.len(), u8::from(matches!(e, Expr::Move(_)))))
+                let operation = if p.indirect { "deref" } else { "local" };
+                self.call(format!("call i64 @tellur_rt_v1_{operation}(ptr %ctx, i64 {slot}, ptr {path}, i64 {}, i32 {})", p.fields.len(), u8::from(matches!(e, Expr::Move(_)))))
+            }
+            Expr::Reference(p, ty) => {
+                let slot = self.layout.slots[&p.root];
+                let path = self.handles(&p.fields.iter().map(usize::to_string).collect::<Vec<_>>());
+                let (ty, len) = self.text(ty);
+                self.call(format!("call i64 @tellur_rt_v1_reference(ptr %ctx, i64 {slot}, ptr {path}, i64 {}, i32 {}, ptr {ty}, i64 {len})", p.fields.len(), u8::from(p.indirect)))
+            }
+            Expr::WithReferenceEvidence(value, evidence) => {
+                let fresh = matches!(value.as_ref(), Expr::Reference(p, _) if !p.indirect);
+                let handle = self.expr(value);
+                let kind = match evidence {
+                    ReferenceEvidence::Partial(_) => 0,
+                    ReferenceEvidence::Complete(_) => 1,
+                    ReferenceEvidence::Incoming => 2,
+                    _ => unreachable!("unsupported evidence rejected before emission"),
+                };
+                let mut words = vec![kind, usize::from(fresh && kind != 2)];
+                for origin in evidence.origins() {
+                    words.extend([
+                        self.layout.slots[&origin.place.root],
+                        usize::from(origin.place.indirect)
+                            | (usize::from(origin.guard) << 1)
+                            | (usize::from(origin.opaque) << 2),
+                        origin.place.fields.len(),
+                    ]);
+                    words.extend(&origin.place.fields);
+                }
+                let name = self.id();
+                let values = words
+                    .iter()
+                    .map(|n| format!("i64 {n}"))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                writeln!(
+                    self.globals,
+                    "@{name} = private constant [{} x i64] [{values}]",
+                    words.len()
+                )
+                .unwrap();
+                self.call(format!(
+                    "call i64 @tellur_rt_v1_evidence(ptr %ctx, i64 {handle}, ptr @{name}, i64 {})",
+                    words.len()
+                ))
             }
             Expr::Construct(ty, name, args) => {
                 let values = args.iter().map(|a| self.expr(a)).collect::<Vec<_>>();
@@ -448,13 +510,18 @@ impl Emitter {
                 }
                 Action::Assign(p, e) => {
                     let v = self.expr(e);
-                    if p.fields.is_empty() {
+                    if p.fields.is_empty() && !p.indirect {
                         self.store(p.root, &v)
                     } else {
                         let slot = self.layout.slots[&p.root];
                         let path = self
                             .handles(&p.fields.iter().map(usize::to_string).collect::<Vec<_>>());
-                        self.effect(format!("call void @tellur_rt_v1_store(ptr %ctx, i64 {slot}, ptr {path}, i64 {}, i64 {v})", p.fields.len()));
+                        let operation = if p.indirect {
+                            "assign_through"
+                        } else {
+                            "store"
+                        };
+                        self.effect(format!("call void @tellur_rt_v1_{operation}(ptr %ctx, i64 {slot}, ptr {path}, i64 {}, i64 {v})", p.fields.len()));
                     }
                 }
                 Action::Release(ids) => {
@@ -500,6 +567,17 @@ impl Emitter {
                     let v = self.expr(e);
                     let outcome =
                         self.call(format!("call i64 @tellur_rt_v1_variant(ptr %ctx, i64 {v})"));
+                    self.route(&outcome, arms);
+                }
+                Action::Decide {
+                    operation: Operation::BorrowedVariant(e),
+                    arms,
+                    ..
+                } => {
+                    let value = self.expr(e);
+                    let outcome = self.call(format!(
+                        "call i64 @tellur_rt_v1_borrowed_variant(ptr %ctx, i64 {value})"
+                    ));
                     self.route(&outcome, arms);
                 }
                 Action::Complete {

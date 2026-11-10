@@ -13,6 +13,216 @@ fn context(host: &mut Host) -> Context<'_> {
 }
 
 #[test]
+fn reference_reborrows_return_from_child_frames_and_mutate_live_caller_storage() {
+    unsafe extern "C" fn reborrow(ctx: *mut Context<'_>, args: *const u64, _: usize) {
+        unsafe {
+            tellur_rt_v1_frame(ctx, 1);
+            tellur_rt_v1_store(ctx, 0, std::ptr::null(), 0, *args);
+            let result = tellur_rt_v1_reference(
+                ctx,
+                0,
+                std::ptr::null(),
+                0,
+                1,
+                b"&mutable String".as_ptr(),
+                15,
+            );
+            let result = annotate(ctx, result, &[1, 0, 0, 1, 0]);
+            tellur_rt_v1_complete(ctx, b"ready".as_ptr(), 5, [result].as_ptr(), 1);
+        }
+    }
+    let mut host = Host::new(record_manifest(), None, true, Some(0));
+    let mut c = context(&mut host);
+    unsafe {
+        tellur_rt_v1_frame(&mut c, 2);
+        let owner = c.put(pair());
+        tellur_rt_v1_store(&mut c, 0, std::ptr::null(), 0, owner);
+        let parent_identity = c.storage.values().storage_at(c.local(0).unwrap()).unwrap();
+        let reference = tellur_rt_v1_reference(
+            &mut c,
+            0,
+            [0].as_ptr(),
+            1,
+            0,
+            b"&mutable String".as_ptr(),
+            15,
+        );
+        let reference = annotate(&mut c, reference, &[1, 1, 0, 0, 1, 0]);
+        let result = tellur_rt_v1_call(
+            &mut c,
+            reborrow,
+            b"reborrow".as_ptr(),
+            8,
+            [reference].as_ptr(),
+            1,
+        );
+        let mut payload = [0];
+        assert_eq!(
+            tellur_rt_v1_route(
+                &mut c,
+                result,
+                b"ready".as_ptr(),
+                5,
+                payload.as_mut_ptr(),
+                1
+            ),
+            1
+        );
+        assert_eq!(c.storage.values().len(), 2);
+        let V::Reference {
+            evidence,
+            root,
+            fields,
+            ..
+        } = c.get(payload[0]).unwrap()
+        else {
+            panic!()
+        };
+        assert_eq!(*root, 0);
+        assert_eq!(fields, &[0]);
+        assert_eq!(evidence.target.as_ref().unwrap().storage, parent_identity);
+        assert!(evidence.origins.is_complete());
+        tellur_rt_v1_store(&mut c, 1, std::ptr::null(), 0, payload[0]);
+        let changed = c.put(V::String("changed through returned borrow".into()));
+        tellur_rt_v1_assign_through(&mut c, 1, std::ptr::null(), 0, changed);
+        let text = tellur_rt_v1_deref(&mut c, 1, std::ptr::null(), 0, 0);
+        assert_eq!(
+            c.take(text).unwrap(),
+            V::String("changed through returned borrow".into())
+        );
+        assert_eq!(
+            read_place(c.storage.values(), 0, &[0], false).unwrap(),
+            V::String("changed through returned borrow".into())
+        );
+        assert_eq!(c.host.fuel, Some(0));
+        assert!(c.error.is_none());
+    }
+}
+
+#[test]
+fn reference_metadata_never_promotes_partial_incoming_or_fails_source_evaluation() {
+    use execution::reference_evidence::Origins;
+    let mut host = Host::new(json!({}), None, true, None);
+    let mut c = context(&mut host);
+    unsafe {
+        tellur_rt_v1_frame(&mut c, 2);
+        let owner = c.put(V::U32(12));
+        tellur_rt_v1_store(&mut c, 0, std::ptr::null(), 0, owner);
+        let plain = tellur_rt_v1_reference(&mut c, 0, std::ptr::null(), 0, 0, b"&U32".as_ptr(), 4);
+        let partial = annotate(&mut c, plain, &[1, 0, 0, 0, 0]);
+        let partial = annotate(&mut c, partial, &[2, 0]);
+        let V::Reference { evidence, .. } = c.get(partial).unwrap() else {
+            panic!()
+        };
+        assert!(!evidence.origins.is_complete());
+        // A structurally valid origin referring through an unavailable local is
+        // metadata-unavailable, not a new source error or loss of the operand.
+        let unavailable = annotate(&mut c, partial, &[1, 0, 1, 1, 0]);
+        let V::Reference { evidence, root, .. } = c.get(unavailable).unwrap() else {
+            panic!()
+        };
+        assert!(matches!(evidence.origins, Origins::Unavailable(_)));
+        assert_eq!(*root, 0);
+        tellur_rt_v1_store(&mut c, 1, std::ptr::null(), 0, unavailable);
+        let value = tellur_rt_v1_deref(&mut c, 1, std::ptr::null(), 0, 0);
+        assert_eq!(c.take(value).unwrap(), V::U32(12));
+        assert!(c.error.is_none());
+    }
+}
+
+#[test]
+fn malformed_reference_descriptors_and_indirect_destinations_preserve_arguments() {
+    const DESCRIPTORS: &[&[usize]] = &[
+        &[],
+        &[1],
+        &[9, 0],
+        &[2, 1],
+        &[2, 0, 0],
+        &[1, 0, 0],
+        &[1, 0, 0, 8, 0],
+        &[1, 0, 0, 0, 1],
+        &[1, 0, 9, 0, 0],
+    ];
+    for descriptor in DESCRIPTORS {
+        let mut host = Host::new(json!({}), None, true, None);
+        let mut c = context(&mut host);
+        unsafe {
+            tellur_rt_v1_frame(&mut c, 1);
+            let reference =
+                tellur_rt_v1_reference(&mut c, 0, std::ptr::null(), 0, 0, b"&U32".as_ptr(), 4);
+            assert_eq!(
+                tellur_rt_v1_evidence(&mut c, reference, descriptor.as_ptr(), descriptor.len()),
+                0,
+                "{descriptor:?}"
+            );
+            assert!(c.get(reference).is_ok());
+        }
+    }
+    let mut host = Host::new(json!({}), None, true, None);
+    let mut c = context(&mut host);
+    unsafe {
+        tellur_rt_v1_frame(&mut c, 2);
+        let owner = c.put(V::U32(12));
+        tellur_rt_v1_store(&mut c, 0, std::ptr::null(), 0, owner);
+        let reference = tellur_rt_v1_reference(
+            &mut c,
+            0,
+            std::ptr::null(),
+            0,
+            0,
+            b"&mutable U32".as_ptr(),
+            12,
+        );
+        tellur_rt_v1_store(&mut c, 1, std::ptr::null(), 0, reference);
+        let retained = c.put(V::U32(99));
+        tellur_rt_v1_assign_through(&mut c, 1, [0].as_ptr(), 1, retained);
+        assert!(c.error.as_ref().unwrap().contains("projection"));
+        assert_eq!(c.get(retained).unwrap(), &V::U32(99));
+        assert_eq!(c.storage.values()[0], Some(V::U32(12)));
+    }
+}
+
+#[test]
+fn borrowed_decisions_keep_payloads_in_owner_storage() {
+    let mut host = Host::new(json!({}), None, true, None);
+    let mut c = context(&mut host);
+    unsafe {
+        tellur_rt_v1_frame(&mut c, 2);
+        let owned = V::Construct {
+            ty: "Option<String>".into(),
+            name: "Some".into(),
+            fields: vec![V::String("owned".into())],
+        };
+        let value = c.put(owned.clone());
+        tellur_rt_v1_store(&mut c, 0, std::ptr::null(), 0, value);
+        let reference = tellur_rt_v1_reference(
+            &mut c,
+            0,
+            std::ptr::null(),
+            0,
+            0,
+            b"&Option<String>".as_ptr(),
+            15,
+        );
+        let reference = annotate(&mut c, reference, &[1, 1, 0, 0, 0]);
+        let outcome = tellur_rt_v1_borrowed_variant(&mut c, reference);
+        let mut fields = [0];
+        assert_eq!(
+            tellur_rt_v1_route(&mut c, outcome, b"Some".as_ptr(), 4, fields.as_mut_ptr(), 1),
+            1
+        );
+        assert!(
+            matches!(c.get(fields[0]).unwrap(), V::Reference {root:0,fields,..} if fields==&[0])
+        );
+        tellur_rt_v1_store(&mut c, 1, std::ptr::null(), 0, fields[0]);
+        let text = tellur_rt_v1_deref(&mut c, 1, std::ptr::null(), 0, 0);
+        assert_eq!(c.take(text).unwrap(), V::String("owned".into()));
+        assert_eq!(c.storage.values()[0], Some(owned));
+        assert!(c.error.is_none());
+    }
+}
+
+#[test]
 fn stable_locals_survive_replacement_moves_and_partial_reinitialization() {
     let mut host = Host::new(record_manifest(), None, true, Some(0));
     let mut c = context(&mut host);
@@ -204,6 +414,11 @@ fn retired_frame_identities_cannot_alias_reused_offsets_and_empty_frames_finish(
     c.error = Some("E_FAULT: original".into());
     assert_eq!(c.finish().err().unwrap(), "E_FAULT: original");
     assert!(c.frame.is_none() && c.storage.values().is_empty());
+}
+
+// The ABI requires immutable module-lifetime metadata, including in tests.
+unsafe fn annotate(ctx: *mut Context<'_>, value: u64, words: &'static [usize]) -> u64 {
+    unsafe { tellur_rt_v1_evidence(ctx, value, words.as_ptr(), words.len()) }
 }
 
 unsafe extern "C" fn echo(ctx: *mut Context<'_>, args: *const u64, count: usize) {

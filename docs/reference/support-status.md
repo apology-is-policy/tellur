@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.240.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.241.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -29,7 +29,9 @@ moves, assignment and temporary projections, then in 0.238 to options/variants/n
 outcome values, captures and selected payload decisions, then in 0.239 to returning
 synchronous primitives with owned arguments and supported result signatures.
 Compiler 0.240 gives admitted locals stable activation storage, shared by synchronous
-children and retired on completion/failure; source reference admission is unchanged.
+children and retired on completion/failure; 0.241 adds direct shared/exclusive references to reference-free values, borrowed
+control arguments/results and borrowed decisions with existing origin evidence.
+Reference-bearing aggregates and borrowed host operations remain gated.
 Unsupported checked programs fail with `E_BACKEND` before build
 outputs are created. Backend selection does not change language checking.
 

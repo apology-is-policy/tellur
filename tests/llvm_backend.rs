@@ -623,6 +623,112 @@ outcome logic_result {@exit 0 done {bool value}}
     }
 
     #[test]
+    fn direct_references_preserve_returned_loans_mutation_faults_and_fuel() {
+        let f = Fixture::new(include_str!("../playground/llvm_references.tellur"));
+        let checked = compile_file(
+            &f.source,
+            Manifest::from_json(&fs::read_to_string(&f.manifest).unwrap()).unwrap(),
+        )
+        .unwrap();
+        for expanded in [false, true] {
+            for opt in [0, 2] {
+                build_pair(&f, expanded, opt);
+                let ir = fs::read_to_string(f.root.join(format!("llvm-{opt}.ll"))).unwrap();
+                assert!(ir.contains("call i64 @tellur_rt_v1_evidence"));
+                for fail in [false, true] {
+                    let scenario = json!({"entry":"main","arguments":[{"kind":"bool","value":fail}],"calls":[]});
+                    let path = f.root.join("scenario.json");
+                    fs::write(&path, scenario.to_string()).unwrap();
+                    for fuel in (0..=55).map(Some).chain([None]) {
+                        let a = execute(&f.root.join(format!("llvm-{opt}")), &path, fuel);
+                        let b = execute(&f.root.join(format!("rust-{opt}")), &path, fuel);
+                        assert_eq!(
+                            a.status.code(),
+                            b.status.code(),
+                            "{expanded}/{opt}/{fail}/{fuel:?}: {a:?}; {b:?}"
+                        );
+                        assert_eq!(a.stdout, b.stdout, "{expanded}/{opt}/{fail}/{fuel:?}");
+                        assert_eq!(a.stderr, b.stderr, "{expanded}/{opt}/{fail}/{fuel:?}");
+                        if !fail && fuel.is_none() {
+                            assert_eq!(
+                                report(&a),
+                                serde_json::to_value(
+                                    checked
+                                        .run(&serde_json::from_value(scenario.clone()).unwrap())
+                                        .unwrap()
+                                )
+                                .unwrap()
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn borrowed_decisions_conditional_origins_and_temporary_arguments_match_both_executors() {
+        let f = Fixture::new(
+            r#"
+control choose(bool pick, ref string left, ref string right) exits auto {
+    exit delta pick {true=>chosen {left},false=>chosen {right}};
+}
+control display(ref string input) exits done {emit(input);exit done;}
+control adjust(ref mutable option<string> input) exits done {
+    delta input {some {auto text}=>present,none=>absent}
+    [present]:deref text="changed payload";
+    [entry]:exit done;
+}
+control main(bool pick, option<string> input) exits result {
+    string left="left";string right="right";
+    ref string first=borrow left;ref string second=first;emit(second);
+    delta choose(pick,borrow left,borrow right) {chosen {auto selected}=>selected}
+    [selected]:
+        emit(selected);
+        display(borrow concat("temporary ","argument"));
+        mutable option<string> owned=input;
+        adjust(borrow mutable owned);
+        exit done {owned};
+}
+outcome result {@exit 0 done {option<string> value}}
+"#,
+        );
+        let checked = compile_file(
+            &f.source,
+            Manifest::from_json(&fs::read_to_string(&f.manifest).unwrap()).unwrap(),
+        )
+        .unwrap();
+        for expanded in [false, true] {
+            for opt in [0, 2] {
+                build_pair(&f, expanded, opt);
+                for pick in [false, true] {
+                    for present in [false, true] {
+                        let option = json!({"kind":"construct","value":{"ty":"Option<String>","name":if present {"Some"} else {"None"},"fields":if present {vec![json!({"kind":"string","value":"original 😀"})]} else {vec![]}}});
+                        let scenario = json!({"entry":"main","arguments":[{"kind":"bool","value":pick},option],"calls":[]});
+                        let path = f.root.join("scenario.json");
+                        fs::write(&path, scenario.to_string()).unwrap();
+                        let a = execute(&f.root.join(format!("llvm-{opt}")), &path, None);
+                        let b = execute(&f.root.join(format!("rust-{opt}")), &path, None);
+                        assert!(a.status.success(), "{a:?}");
+                        assert_eq!(a.status.code(), b.status.code(), "{a:?}; {b:?}");
+                        assert_eq!(a.stdout, b.stdout);
+                        assert_eq!(a.stderr, b.stderr);
+                        assert_eq!(
+                            report(&a),
+                            serde_json::to_value(
+                                checked
+                                    .run(&serde_json::from_value(scenario).unwrap())
+                                    .unwrap()
+                            )
+                            .unwrap()
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn live_owned_primitives_match_reference_scripts_and_rust() {
         let f = Fixture::new(include_str!("../playground/llvm_primitives.tellur"));
         let checked = compile_file(
@@ -905,6 +1011,7 @@ outcome logic_result {@exit 0 done {bool value}}
             "struct box {option<read_error> value;} control main() exits result {drop(box {none});exit done;} outcome result {@exit 0 done}",
             "variant choice {one {read_error error},two} control main() exits result {drop(choice.two {});exit done;} outcome result {@exit 0 done}",
             "struct view['a] {ref string value <- 'a;} control main() exits result {string s=\"text\";auto held=view {borrow s};drop(held);exit done;} outcome result {@exit 0 done}",
+            "control main() exits result {string s=\"text\";option<ref string> held=some {borrow s};drop(held);exit done;} outcome result {@exit 0 done}",
             "struct box {vector<u32> value;} control main() exits result {drop(box {[1,2]});exit done;} outcome result {@exit 0 done}",
             "struct box {read_error value;} control main(read_error e) exits result {drop(box {e});exit done;} outcome result {@exit 0 done}",
             "control main() exits result {exit done;} async control helper() exits done {exit done;} outcome result {@exit 0 done}",

@@ -1,0 +1,45 @@
+struct note {
+    string text;
+    u32 count;
+}
+
+control update(ref mutable note value) exits done {
+    value.text = "updated";
+    value.count = 9;
+    exit done;
+}
+
+control view(ref note value) exits ready { ref string text from value } {
+    exit ready { borrow value.text };
+}
+
+control relay(ref mutable string value) exits ready { ref mutable string text from value } {
+    exit ready { value };
+}
+
+control main(bool fail) exits result {
+    mutable note value = note { "before", 1 };
+    update(borrow mutable value);
+    delta view(borrow value) {
+        ready { auto text } => viewed
+    }
+    [viewed]:
+        emit(text);
+        delta relay(borrow mutable value.text) {
+            ready { auto editor } => editable
+        }
+    [editable]:
+        deref editor = "through returned borrow";
+        emit(editor);
+        delta fail {
+            true => stopped,
+            false => finished
+        }
+
+    [stopped]: fault "reference stopped";
+    [finished]: exit done { value };
+}
+
+outcome result {
+    @exit 0 done { note value }
+}
