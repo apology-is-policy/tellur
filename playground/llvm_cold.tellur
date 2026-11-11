@@ -1,0 +1,35 @@
+// Captures retain the original caller loan; the producer starts only at await.
+async control decorate(bool fail, ref mutable string text) exits done faults {
+    emit("producer started");
+    yield;
+    delta fail {
+        true => failed,
+        false => ready
+    }
+    [failed]: fault "cold producer failed";
+    [ready]:
+        deref text = concat(clone(text), "!");
+        exit done;
+}
+
+async control prepare(bool fail, string input) exits ready { string text } faults {
+    mutable string text = input;
+    auto pending = defer decorate(fail, borrow mutable text);
+    emit("captured");
+    auto moved = move pending;
+    await moved;
+    exit ready { text };
+}
+
+control main(bool fail, string input) exits result faults {
+    delta run prepare(fail, input) {
+        ready { string text } => ready
+    }
+    [ready]:
+        emit(borrow text);
+        exit done { text };
+}
+
+outcome result {
+    @exit 0 done { string text }
+}

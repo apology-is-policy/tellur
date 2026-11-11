@@ -6487,3 +6487,21 @@ reject-before-publication layouts, owning buffer identity, typed storage rejecti
 before capture, and same-context call versus child yield. The prior ABI resource/
 retirement matrices still cover real adoption and child-before-parent disposal.
 Unsupported task/async-loop/constructor/signal programs reject before output files.
+
+
+### B1.4e cold control tasks (0.254)
+
+Three generated LLVM matrices compare original/expanded O0/O2 cold task programs
+with Rust at every tested fuel cut and with the reference executor on success.
+They cover owned records/String/Bytes, guarded paths, nested tasks, exclusive and
+contained origins, local moves/options, scripted resources and real files. The
+existing generated callback matrix now includes cold capture and move, checking
+host quotas 1, 3 and unlimited. Two private runtime matrices verify rejection before
+capture consumption, wrong producer/host/physical child, exhausted identities,
+one-use requests, buffer identity and fault cleanup of unstarted borrowed resources.
+Started task and async host admission remains rejected before build output creation.
+
+The native publication regression rebuilds one output at O0/O2 while retaining and
+executing its original image. It verifies that replacing a program never mutates
+existing executable readers and leaves no partial publication files. This covers
+the macOS code-signature failures observed during the differential suite.

@@ -8,6 +8,8 @@ declare i32 @tellur_rt_v1_launch(ptr, i64, ptr, i64)
 declare void @tellur_rt_v1_run_entry(ptr, ptr, i64, i64, ptr, i64, i64, ptr, i64, i64)
 declare void @tellur_rt_v1_await(ptr, i64, ptr, i64)
 declare void @tellur_rt_v1_run_child(ptr, i64, ptr, i64)
+declare i64 @tellur_rt_v1_defer(ptr, i64, ptr, i64, ptr, i64)
+declare void @tellur_rt_v1_await_task(ptr, i64, i64)
 declare void @tellur_rt_v1_invalid_resume(ptr)
 %compiled_control = type { ptr, i64, i64, ptr, i64, i64, i64, i64, ptr, ptr, i64 }
 %compiled_child = type { i64, i64 }
@@ -222,7 +224,11 @@ fn retained_target<'a>(
 ) -> Option<&'a String> {
     match &i.action {
         Action::Decide {
-            operation: Operation::Region(name) | Operation::Run(name) | Operation::Await(name),
+            operation:
+                Operation::Region(name)
+                | Operation::Run(name)
+                | Operation::Await(name)
+                | Operation::AwaitTask(name),
             ..
         } if resumables.contains_key(name) => Some(name),
         _ => None,
@@ -231,9 +237,17 @@ fn retained_target<'a>(
 fn reaches_retained(i: &Instruction, names: &BTreeSet<String>) -> bool {
     match &i.action {
         Action::Decide {
-            operation: Operation::Region(name) | Operation::Run(name) | Operation::Await(name),
+            operation:
+                Operation::Region(name)
+                | Operation::Run(name)
+                | Operation::Await(name)
+                | Operation::AwaitTask(name),
             ..
         } => names.contains(name),
+        Action::Decide {
+            operation: Operation::Defer(_),
+            ..
+        } => true,
         Action::Supervise { boundary, .. } => names.contains(boundary),
         Action::Loop { body, .. } => body.iter().any(|i| reaches_retained(i, names)),
         Action::Boundary { body, handler, .. } => body
@@ -319,7 +333,8 @@ fn retained_supported(
         | Action::Exit(..) => supported(i, types, primitive_types, manifest),
         Action::Complete { unwind: None, .. } => supported(i, types, primitive_types, manifest),
         Action::Decide {
-            operation: Operation::Run(_) | Operation::Await(_),
+            operation:
+                Operation::Run(_) | Operation::Await(_) | Operation::Defer(_) | Operation::AwaitTask(_),
             args,
             ..
         } => args.iter().all(|e| expression_supported(e, types)),
@@ -786,11 +801,24 @@ impl Emitter {
             "store %frame_{target} zeroinitializer, ptr %child_{}",
             instruction.id
         ));
-        let op = if handoff { "await" } else { "run_child" };
-        self.effect(format!(
-            "call void @tellur_rt_v1_{op}(ptr %ctx, i64 {child}, ptr {args}, i64 {})",
-            values.len()
-        ));
+        if matches!(
+            &instruction.action,
+            Action::Decide {
+                operation: Operation::AwaitTask(_),
+                ..
+            }
+        ) {
+            self.effect(format!(
+                "call void @tellur_rt_v1_await_task(ptr %ctx, i64 {child}, i64 {})",
+                values[0]
+            ));
+        } else {
+            let op = if handoff { "await" } else { "run_child" };
+            self.effect(format!(
+                "call void @tellur_rt_v1_{op}(ptr %ctx, i64 {child}, ptr {args}, i64 {})",
+                values.len()
+            ));
+        }
         self.line(format!(
             "store i32 {}, ptr %pc\nret i32 {}",
             self.delivery_pc,
@@ -1103,7 +1131,10 @@ impl Emitter {
                 }
                 Action::Decide {
                     operation:
-                        Operation::Region(name) | Operation::Run(name) | Operation::Await(name),
+                        Operation::Region(name)
+                        | Operation::Run(name)
+                        | Operation::Await(name)
+                        | Operation::AwaitTask(name),
                     args,
                     ..
                 } if self.retained && self.resumables.contains_key(name) => {
@@ -1114,12 +1145,28 @@ impl Emitter {
                         matches!(
                             &i.action,
                             Action::Decide {
-                                operation: Operation::Await(_),
+                                operation: Operation::Await(_) | Operation::AwaitTask(_),
                                 ..
                             }
                         ),
                     );
                     terminal = true;
+                }
+                Action::Decide {
+                    operation: Operation::Defer(name),
+                    args,
+                    arms,
+                } if self.retained => {
+                    let values = args.iter().map(|a| self.expr(a)).collect::<Vec<_>>();
+                    let args = self.handles(&values);
+                    let (ty, len) = self.text(&crate::manifest::task_type(name));
+                    let producer = self.resumables[name];
+                    let value = self.call(format!("call i64 @tellur_rt_v1_defer(ptr %ctx, i64 {producer}, ptr {ty}, i64 {len}, ptr {args}, i64 {})", values.len()));
+                    self.store(arms[0].slots[0], &value);
+                    self.line(format!(
+                        "store i1 true, ptr %a{}",
+                        self.layout.atoms[&arms[0].atom]
+                    ));
                 }
                 Action::Decide {
                     operation: Operation::Yield,
@@ -1341,7 +1388,14 @@ impl CheckedProgram {
             ));
         }
         let entries = self.executable_entries(entry)?;
-        let types = admitted_types(self.manifest(), true);
+        let mut types = admitted_types(self.manifest(), true);
+        // Exact producer-indexed cold identities only; started handles/sets are
+        // outside this admission slice. Frontend local ownership rules still apply.
+        types.extend(
+            self.regions()
+                .filter(|r| r.asynchronous)
+                .map(|r| crate::manifest::task_type(&r.name)),
+        );
         // Host operations remain reference-free even when controls admit carriers.
         let primitive_types = admitted_types(self.manifest(), false);
         let resumables = resumable_controls(self)?;
@@ -1546,7 +1600,7 @@ async control child(bool fail, ref mutable string text) exits done faults {
     [good]:deref text="updated";emit(text);exit done;
 }
 async control startup(bool fail) exits done faults {
-    mutable string text="caller";await child(fail,borrow mutable text);
+    mutable string text="caller";auto pending=defer child(fail,borrow mutable text);emit("captured");auto moved=move pending;await moved;
     yield;emit(text);exit done;
 }
 control main(bool fail) exits result faults {forward run startup(fail);}

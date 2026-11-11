@@ -42,6 +42,46 @@ fn run(binary: &Path, scenario: &Scenario, file: &Path) -> Json {
     );
     serde_json::from_slice(&output.stdout).unwrap()
 }
+#[cfg(unix)]
+#[test]
+fn rebuilding_native_outputs_preserves_existing_executable_images() {
+    use std::os::unix::fs::MetadataExt;
+    let root = std::env::temp_dir().join(format!("tellur-republish-{}", std::process::id()));
+    fs::create_dir_all(&root).unwrap();
+    let output = root.join("program");
+    let retained = root.join("retained");
+    let manifest = Manifest::from_json(include_str!("../playground/manifest.json")).unwrap();
+    let report = |path: &Path| {
+        let result = Command::new(path).arg("--json").output().unwrap();
+        assert!(result.status.success(), "{result:?}");
+        serde_json::from_slice::<Json>(&result.stdout).unwrap()
+    };
+    let mut original_inode = None;
+    for (index, opt) in [0, 2, 0, 2].into_iter().enumerate() {
+        let source = format!(
+            "control main() exits result {{exit done {{{index}}};}} outcome result {{@exit 0 done {{u32 value}}}}"
+        );
+        let program = compile(&source, manifest.clone()).unwrap();
+        program.build_native("main", &output, opt).unwrap();
+        let inode = fs::metadata(&output).unwrap().ino();
+        if let Some(original) = original_inode {
+            assert_ne!(inode, original);
+            assert_eq!(report(&retained)["fields"][0]["value"], 0);
+        } else {
+            fs::hard_link(&output, &retained).unwrap();
+            original_inode = Some(inode);
+        }
+        assert_eq!(report(&output)["fields"][0]["value"], index);
+        assert!(fs::read_dir(&root).unwrap().all(|entry| {
+            !entry
+                .unwrap()
+                .file_name()
+                .to_string_lossy()
+                .starts_with(".tellur-publish-")
+        }));
+    }
+    fs::remove_dir_all(root).unwrap();
+}
 #[test]
 fn native_and_llvm_match_reference_before_and_after_expansion_and_optimization() {
     let root = std::env::temp_dir().join(format!("path-native-{}", std::process::id()));

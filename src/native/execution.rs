@@ -1578,6 +1578,15 @@ impl Activation {
     pub(crate) fn abi_frame_for_delivery(&self) -> &Frame {
         &self.frame
     }
+    pub(crate) fn abi_validate_cold_task(
+        &self,
+        host: &Host,
+        producer: &'static Control,
+        value: &V,
+    ) -> R<()> {
+        self.prepare_cold_task(host, producer, Some(value))
+            .map(|_| ())
+    }
     pub(crate) fn abi_control(&self) -> &'static Control {
         self.control
     }

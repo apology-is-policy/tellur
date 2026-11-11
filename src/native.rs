@@ -36,6 +36,40 @@ mod source_scheduler_tests;
 fn error(message: impl Into<String>) -> Diagnostic {
     Diagnostic::new("E_BACKEND", Span::default(), message)
 }
+fn publish_executable(source: &Path, output: &Path) -> std::io::Result<()> {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let parent = output.parent().unwrap_or_else(|| Path::new("."));
+    let (temporary, mut destination) = loop {
+        let path = parent.join(format!(
+            ".tellur-publish-{}-{}.partial",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        match fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+        {
+            Ok(file) => break (path, file),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error),
+        }
+    };
+    // Never overwrite an executable inode: existing readers keep their image,
+    // and macOS does not reuse a stale code-signature cache for different bytes.
+    let copied = (|| {
+        let mut source = fs::File::open(source)?;
+        std::io::copy(&mut source, &mut destination)?;
+        destination.set_permissions(source.metadata()?.permissions())
+    })();
+    drop(destination);
+    let result = copied.and_then(|()| fs::rename(&temporary, output));
+    if result.is_err() {
+        let _ = fs::remove_file(&temporary);
+    }
+    result
+}
 fn cargo_command() -> Command {
     Command::new(std::env::var_os("CARGO").unwrap_or_else(|| {
         std::env::var_os("HOME")
@@ -987,7 +1021,7 @@ impl CheckedProgram {
             .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
             .find_map(|v| v["executable"].as_str().map(PathBuf::from))
             .ok_or_else(|| error("toolchain did not report an executable"))?;
-        fs::copy(executable, &output).map_err(|e| error(e.to_string()))?;
+        publish_executable(&executable, &output).map_err(|e| error(e.to_string()))?;
         Ok(NativeBuild {
             executable: output,
             llvm,

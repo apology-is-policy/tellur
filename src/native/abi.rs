@@ -11,6 +11,9 @@
 //! stated length. Callbacks must not retain these pointers.
 use super::*;
 #[cfg(test)]
+#[path = "abi_cold_tests.rs"]
+mod cold_tests;
+#[cfg(test)]
 #[path = "abi_program_tests.rs"]
 mod program_tests;
 #[cfg(test)]
@@ -24,6 +27,8 @@ pub struct Context<'a> {
     // Existing Machine owns this activation's slots; the ABI borrows its identity
     // only during the selected callback. RetainedState never stores this borrow.
     selected_frame: Option<&'a frames::Frame>,
+    // Only borrowed during a callback; never parked in RetainedState.
+    selected_activation: Option<&'a execution::Activation>,
     program: Option<ProgramFrame>,
     request: Option<RequestedInvocation>,
     host: &'a mut Host,
@@ -121,6 +126,7 @@ impl Context<'_> {
         self.host.enter(name)?;
         let mut child = Context {
             selected_frame: None,
+            selected_activation: None,
             program: None,
             request: None,
             host: &mut *self.host,
@@ -329,6 +335,43 @@ impl Context<'_> {
                 self.values[index].take().unwrap()
             })
             .collect())
+    }
+    fn defer_control(
+        &mut self,
+        producer: &'static execution::Control,
+        ty: &str,
+        handles: &[u64],
+    ) -> R<u64> {
+        let activation = self
+            .selected_activation
+            .ok_or("E_NATIVE: defer requires a selected ABI invocation")?;
+        if producer.constructor
+            || handles.len() != producer.parameters.len()
+            || !ty.starts_with("$task<")
+            || !ty.ends_with('>')
+        {
+            return Err("E_NATIVE: invalid ABI cold task descriptor".into());
+        }
+        self.value_base
+            .checked_add(self.values.len() as u64)
+            .and_then(|n| n.checked_add(1))
+            .ok_or("E_NATIVE: ABI value handle space exhausted")?;
+        let indices = handles
+            .iter()
+            .map(|h| self.value_index(*h))
+            .collect::<R<Vec<_>>>()?;
+        let mut arguments = self.take_many(handles)?;
+        match activation.defer_task(self.host, producer, ty, &mut arguments) {
+            Ok(task) => Ok(self.put(task)),
+            Err(error) => {
+                // Registry admission rejects before moving arguments. Preserve
+                // every capture in its original temporary handle on failure.
+                for (index, value) in indices.into_iter().zip(arguments) {
+                    self.values[index] = Some(value);
+                }
+                Err(error)
+            }
+        }
     }
     fn take(&mut self, handle: u64) -> R<V> {
         Ok(self.take_many(&[handle])?.pop().unwrap())
@@ -966,6 +1009,7 @@ impl RetainedState {
     fn select<'a>(self, host: &'a mut Host, values: &'a mut Frames) -> Context<'a> {
         Context {
             selected_frame: None,
+            selected_activation: None,
             program: None,
             request: None,
             host,
@@ -1292,10 +1336,14 @@ impl ProgramFrame {
         })
     }
 }
+enum InvocationArguments {
+    Direct(Vec<V>),
+    Cold(Option<V>),
+}
 struct RequestedInvocation {
     handoff: bool,
     child: ProgramFrame,
-    arguments: Vec<V>,
+    arguments: InvocationArguments,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum InvocationPhase {
@@ -1408,6 +1456,7 @@ impl Invocation {
         }
         let mut context = self.state.take().unwrap().select(host, values);
         context.selected_frame = Some(frame);
+        context.selected_activation = Some(activation);
         context.program = Some(self.program);
         let arguments = if cold {
             parameters
@@ -1465,25 +1514,38 @@ impl Invocation {
             if request.handoff {
                 // Shared queue admission checks original invocation, captures and wait
                 // identity. No child callback runs until the source await hands off.
-                result = activation
-                    .queue_invocation(host, request.child.layout.control, &mut request.arguments)
-                    .map(|mut task| {
-                        task.abi = Some(Self::at(request.child));
-                        self.phase = InvocationPhase::Awaiting;
-                        execution::Step::Await {
-                            task,
-                            deliver: deliver_invocation,
-                        }
-                    });
-            } else {
-                self.call = Some(request.child);
-                self.phase = InvocationPhase::Awaiting;
-                result = Ok(execution::Step::Call {
-                    control: request.child.layout.control,
-                    arguments: request.arguments,
-                    destination: None,
-                    deliver: deliver_invocation,
+                let queued = match &mut request.arguments {
+                    InvocationArguments::Direct(arguments) => {
+                        activation.queue_invocation(host, request.child.layout.control, arguments)
+                    }
+                    InvocationArguments::Cold(value) => {
+                        activation.queue_task(host, request.child.layout.control, value)
+                    }
+                };
+                result = queued.map(|mut task| {
+                    task.abi = Some(Self::at(request.child));
+                    self.phase = InvocationPhase::Awaiting;
+                    execution::Step::Await {
+                        task,
+                        deliver: deliver_invocation,
+                    }
                 });
+            } else {
+                result = match request.arguments {
+                    InvocationArguments::Direct(arguments) => {
+                        self.call = Some(request.child);
+                        self.phase = InvocationPhase::Awaiting;
+                        Ok(execution::Step::Call {
+                            control: request.child.layout.control,
+                            arguments,
+                            destination: None,
+                            deliver: deliver_invocation,
+                        })
+                    }
+                    InvocationArguments::Cold(_) => {
+                        Err("E_NATIVE: cold task requires an await handoff".into())
+                    }
+                };
             }
             if result.is_err() {
                 self.phase = InvocationPhase::Failed;
@@ -1576,10 +1638,58 @@ unsafe fn request_invocation(
         c.request = Some(RequestedInvocation {
             handoff,
             child: program,
-            arguments,
+            arguments: InvocationArguments::Direct(arguments),
         });
         Ok(())
     })
+}
+
+/// Capture a task using its original selected invocation and registered producer.
+/// This creates an obligation/value; it neither starts nor allocates a child frame.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_defer(
+    ctx: *mut Context<'_>,
+    producer: usize,
+    ty: *const u8,
+    len: usize,
+    args: *const u64,
+    count: usize,
+) -> u64 {
+    unsafe { &mut *ctx }.perform(|c| {
+        let registry = COMPILED_PROGRAM
+            .get()
+            .ok_or("E_NATIVE: missing compiled module registry")?;
+        let layout = registry.layout(producer)?;
+        c.defer_control(layout.control, unsafe { text(ty, len)? }, unsafe {
+            slice(args, count)
+        })
+    })
+}
+/// Consume the existing cold task at an explicitly selected await site. Validate
+/// original host/owner/producer/wait and physical child before taking its handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_await_task(ctx: *mut Context<'_>, child: usize, value: u64) {
+    unsafe { &mut *ctx }.perform(|c| {
+        if c.request.is_some() || c.result.is_some() {
+            return Err("E_NATIVE: duplicate ABI continuation request".into());
+        }
+        let program = c
+            .program
+            .ok_or("E_NATIVE: cold await requires a selected ABI invocation")?
+            .child(child)?;
+        let activation = c
+            .selected_activation
+            .ok_or("E_NATIVE: cold await requires an activation")?;
+        c.require_outcome_room()?;
+        activation.abi_validate_cold_task(c.host, program.layout.control, c.get(value)?)?;
+        let value = c.take(value)?;
+        c.request = Some(RequestedInvocation {
+            handoff: true,
+            child: program,
+            arguments: InvocationArguments::Cold(Some(value)),
+        });
+        Ok(())
+    });
 }
 
 /// C-safe immutable descriptor emitted by the compiler. Every span points into
@@ -1975,6 +2085,7 @@ pub unsafe extern "C" fn tellur_rt_v1_call(
             c.host.enter(name)?;
             let mut child = Context {
                 selected_frame: None,
+                selected_activation: None,
                 program: None,
                 request: None,
                 host: &mut *c.host,
@@ -2024,6 +2135,7 @@ pub unsafe extern "C" fn tellur_rt_v1_construct_call(
         c.host.enter(name)?;
         let mut child = Context {
             selected_frame: None,
+            selected_activation: None,
             program: None,
             request: None,
             host: &mut *c.host,
@@ -2327,6 +2439,7 @@ unsafe fn launch_program(
             }
             let mut context = Context {
                 selected_frame: None,
+                selected_activation: None,
                 program: None,
                 request: None,
                 host,

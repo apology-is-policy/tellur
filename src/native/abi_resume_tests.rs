@@ -4,6 +4,7 @@ use std::{cell::RefCell, rc::Rc};
 fn selected(host: &mut Host) -> Context<'_> {
     Context {
         selected_frame: None,
+        selected_activation: None,
         program: None,
         request: None,
         host,

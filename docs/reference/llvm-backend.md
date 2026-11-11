@@ -16,7 +16,7 @@ Compiler 0.246 adds synchronous tail loops and expanded loop completions.
 Compiler 0.247 adds synchronous declared constructors with direct destination delivery.
 Compiler 0.248 adds named synchronous boundaries and contingency settlement.
 Compiler 0.249 adds lexical boundaries, supervised recovery and process termination.
-Compiler 0.253 adds a bounded frontend async-frame profile described below.
+Compiler 0.253 adds a bounded frontend async-frame profile; 0.254 adds cold control tasks.
 The default remains `--backend rust`. Both start from the same checked program;
 backend selection does not relax ownership, origins, outcomes or path rules.
 
@@ -44,8 +44,9 @@ the Rust backend. Multiple eligible executable entries are supported.
 Direct references and reference-bearing aggregates compose recursively; shared/exclusive
 parameters, borrowed results, carrier reborrows and indirect fields are supported.
 A separate bounded async profile admits `run`, direct `await` and `yield`, including
-synchronous callers that reach those controls. Cold task handles, spawn/join, task
-sets, cancellation, async host operations, async loops/boundaries and adapters remain
+synchronous callers that reach those controls. Cold control tasks support `defer`,
+local moves/option wrappers and consuming `await`. Spawn/join, task sets,
+cancellation, async host operations, async loops/boundaries and adapters remain
 outside that profile. Launch signal policies are also rejected. Admission checks all checked
 regions, including unused helpers. Unsupported programs receive `E_BACKEND`
 before the backend creates its output directory or files; ordinary checking may
@@ -455,7 +456,7 @@ then compiles `program.o` and links `OUTPUT` with its embedded LLVM/LLD 22.1.8.
 Path guards are LLVM branches. Runtime faults retain Tellur source provenance;
 native debugger information is not yet emitted.
 
-The distributed 0.253 compiler includes the `llvm` feature. When building the
+The distributed 0.254 compiler includes the `llvm` feature. When building the
 compiler from source, enable it and set `LLVM_SYS_221_PREFIX` to the static pinned
 LLVM/LLD installation, as described in the repository README. A compiler built
 without that feature reports a clear error for `--backend llvm`.
@@ -536,8 +537,8 @@ for a later invocation only after the original child's consuming delivery.
 
 This0.252 foundation used private callbacks and Rust-side descriptors. The0.253
 profile below now generates module metadata, frame layouts and resume functions
-from checked source. Cold tasks and staged task/cancellation/host integration remain
-next; Rust remains the default backend.
+from checked source. Cold tasks follow in 0.254 below; staged task/cancellation/host
+integration remains next. Rust remains the default backend.
 
 
 ## Generated async frames (0.253)
@@ -575,9 +576,42 @@ The first run emits and returns `Tellur!`; the second emits and returns `Tellur`
 The example carries an exclusive caller borrow through a yielding child, then
 returns the owned string. Both select `done` with status0.
 
-Cold task handles, spawn/join, task sets, cancellation, asynchronous host operations,
-loops or boundaries inside retained controls, Rust adapters and launch signals are
-still rejected before output creation. Constructors that enter retained controls
+The 0.253 profile excluded cold handles; 0.254 adds them as described below.
+Spawn/join, task sets, cancellation, asynchronous host operations, loops or boundaries
+inside retained controls, Rust adapters and launch signals are still rejected before output creation. Constructors that enter retained controls
 are also outside this slice. Synchronous loops/boundaries/constructors retain their
 previous support. By-value recursive frame graphs are rejected. This bounded source
 admission does not flip the default backend or claim whole-language parity.
+
+
+## Cold control tasks (0.254)
+
+`defer producer(arguments)` captures supported arguments once, in written order,
+using the selected invocation's existing task registry. It returns the original
+opaque cold task value without starting the producer, allocating a physical task
+frame or introducing a scheduling handoff. Local moves and nested option wrappers
+preserve that identity. The frontend still requires consumption on every normal
+path and rejects copying, dropping or escaping local cold handles.
+
+Consuming `await` validates the original host, owner, producer and wait admission,
+then queues the existing obligation. The child physical frame occupies a typed
+field of its caller, initialized at that await site. Delivery reuses the existing
+outcome and origin rules. Owned strings/bytes/records, resource captures, direct
+shared/exclusive borrows and supported contained references retain their ownership.
+An abandoned cold capture is retired by the same runtime cleanup as a Rust-backed
+task; no producer body runs merely because the enclosing invocation faults.
+
+```sh
+./bin/tellurc build playground/llvm_cold.tellur playground/manifest.json --backend llvm --out /tmp/tellur-cold
+/tmp/tellur-cold --json false Tellur
+/tmp/tellur-cold --json true Tellur
+```
+
+Both runs emit `captured` before `producer started`. The first returns `Tellur!`
+with status 0; the second reports the producer's source fault. The example retains
+an exclusive caller borrow through cold capture, a local move and a child yield.
+
+This is the bounded sequential cold-control profile. Spawn/join, task sets,
+cancellation, async host producers and retained loops/boundaries/constructors still
+require their later integration checkpoints. By-value physical frame cycles remain
+rejected. The default backend and the language's ownership rules are unchanged.

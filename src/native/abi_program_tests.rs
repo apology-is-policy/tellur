@@ -389,6 +389,7 @@ fn compiled_run_child_keeps_the_same_context_until_its_source_yield() {
 fn launch_context(host: &mut Host) -> Context<'_> {
     Context {
         selected_frame: None,
+        selected_activation: None,
         program: None,
         request: None,
         host,

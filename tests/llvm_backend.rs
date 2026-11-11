@@ -2463,6 +2463,156 @@ control plain() exits done {emit("synchronous");exit done;}
     }
 
     #[test]
+    fn frontend_cold_tasks_preserve_capture_order_nested_owners_and_guarded_faults() {
+        let f = Fixture::new(
+            r#"
+struct packet {string text; bytes data;}
+async control leaf(bool fail, packet input) exits ready {packet result} faults {
+    emit("leaf entered");yield;
+    delta fail {true=>bad,false=>good}
+    [bad]:fault "cold child failure 😀";
+    [good]:emit(borrow input.text);exit ready {input};
+}
+async control middle(bool fail, packet input) exits ready {packet result} faults {
+    auto pending=defer leaf(fail,input);emit("middle captured");yield;
+    auto moved=move pending;forward await moved;
+}
+async control startup(bool pick, bool fail, string text, bytes data) exits done {bytes result} faults {
+    delta pick {true=>selected,false=>skipped}
+    [selected]:
+        auto pending=defer middle(fail,packet {text,data});
+        emit("root captured");auto moved=move pending;
+        delta await moved {ready {packet result}=>ready}
+        [ready]:emit(borrow result.text);exit done {result.data};
+    [skipped]:emit(borrow text);exit done {data};
+}
+control main(bool pick,bool fail,string text,bytes data) exits done {bytes result} faults {forward run startup(pick,fail,text,data);}
+"#,
+        );
+        let scenarios=[false,true].into_iter().flat_map(|pick| [false,true].map(move |fail|
+            json!({"entry":"main","arguments":[{"kind":"bool","value":pick},{"kind":"bool","value":fail},{"kind":"string","value":"cold 😀\u{0} owner"},{"kind":"bytes","value":[0,65,255,42]}],"calls":[]}))).collect::<Vec<_>>();
+        lexical_matrix(
+            &f,
+            &scenarios,
+            &(0..=65).map(Some).chain([None]).collect::<Vec<_>>(),
+        );
+        let ir = fs::read_to_string(f.root.join("llvm-2.ll")).unwrap();
+        assert!(
+            ir.contains("call i64 @tellur_rt_v1_defer")
+                && ir.contains("call void @tellur_rt_v1_await_task")
+        );
+        assert!(!ir.contains("malloc") && !ir.contains("llvm.coro"));
+    }
+    #[test]
+    fn frontend_cold_tasks_preserve_exclusive_and_contained_caller_origins() {
+        for source in [
+            r#"
+async control lend(ref mutable string input) exits lent {ref mutable string value from input} {
+    emit("body");yield;exit lent {input};
+}
+async control startup(ref mutable string input) exits done {
+    auto pending=defer lend(input);emit("captured");yield;
+    auto moved=move pending;delta await moved {lent {auto value}=>lent}
+    [lent]:deref value="changed";yield;emit(value);exit done;
+}
+control main() exits done {
+    mutable string text="initial";run startup(borrow mutable text);
+    text="released";emit(borrow text);exit done;
+}
+"#,
+            r#"
+struct view['a] {ref string text <- 'a;}
+async control lend(view input) exits lent {view[input['a]] value} {yield;exit lent {input};}
+async control startup() exits done {
+    mutable string owner="contained owner";view saved=view {borrow owner};
+    auto pending=defer lend(saved);drop(saved);emit("captured view");
+    delta await pending {lent {auto value}=>lent}
+    [lent]:yield;emit(value.text);owner="released view";emit(borrow owner);exit done;
+}
+control main() exits done {forward run startup();}
+"#,
+        ] {
+            lexical_matrix(
+                &Fixture::new(source),
+                &[json!({"entry":"main","arguments":[],"calls":[]})],
+                &(0..=48).map(Some).chain([None]).collect::<Vec<_>>(),
+            );
+        }
+    }
+
+    #[test]
+    fn frontend_cold_tasks_preserve_local_wrappers_and_live_resource_capture() {
+        lexical_matrix(
+            &Fixture::new(
+                r#"
+async control work(string input) exits ready {string value} {emit("body");yield;exit ready {input};}
+async control startup() exits done {
+    auto pending=defer work("wrapped");auto wrapped=some {some {pending}};emit("captured");
+    delta wrapped {some {auto inner}=>inner,none=>empty}
+    [inner]:delta inner {some {auto task}=>task,none=>empty_inner}
+    [task]:delta await task {ready {string text}=>ready}
+    [ready]:emit(borrow text);
+    [ready|empty|empty_inner]:exit done;
+}
+control main() exits done {forward run startup();}
+"#,
+            ),
+            &[json!({"entry":"main","arguments":[],"calls":[]})],
+            &(0..=32).map(Some).chain([None]).collect::<Vec<_>>(),
+        );
+        let source=include_str!("../playground/llvm_resources.tellur")
+            .replace("control read_owned", "async control read_owned")
+            .replace("delta close(input.file)", "yield;delta close(input.file)")
+            .replace("control main(string filename, bool fail)", "async control startup(string filename, bool fail)")
+            .replace("[opened]: delta read_owned(file_owner { file })", "[opened]: auto pending=defer read_owned(file_owner {file});emit(\"captured file\");delta await pending")
+            + "\ncontrol main(string filename,bool fail) exits process_result {forward run startup(filename,fail);}";
+        let f = Fixture::new(&source);
+        let file = f.root.join("input.dat");
+        let bytes = vec![0, 65, 255, 10];
+        fs::write(&file, &bytes).unwrap();
+        let scenario = json!({"entry":"main","arguments":[{"kind":"string","value":"scripted"},{"kind":"bool","value":false}],"calls":[
+            {"operation":"open","outcome":"opened","fields":[{"kind":"opaque","value":{"ty":"handle","token":"file-0"}}]},
+            {"operation":"read","outcome":"data","fields":[{"kind":"bytes","value":bytes}]},
+            {"operation":"close","outcome":"closed","fields":[]}
+        ]});
+        let mut failed = scenario.clone();
+        failed["arguments"][1]["value"] = json!(true);
+        lexical_matrix(
+            &f,
+            &[scenario, failed],
+            &(0..=45).map(Some).chain([None]).collect::<Vec<_>>(),
+        );
+        for expanded in [false, true] {
+            for opt in [0, 2] {
+                build_pair(&f, expanded, opt);
+                for fail in [false, true] {
+                    let args = [file.to_str().unwrap(), if fail { "true" } else { "false" }];
+                    let a = Command::new(f.root.join(format!("llvm-{opt}")))
+                        .arg("--json")
+                        .args(args)
+                        .output()
+                        .unwrap();
+                    let b = Command::new(f.root.join(format!("rust-{opt}")))
+                        .arg("--json")
+                        .args(args)
+                        .output()
+                        .unwrap();
+                    assert_eq!(a.status.code(), Some(if fail { 1 } else { 0 }), "{a:?}");
+                    assert_eq!(a.status.code(), b.status.code());
+                    assert_eq!(a.stdout, b.stdout);
+                    assert_eq!(a.stderr, b.stderr);
+                    if !fail {
+                        assert_eq!(
+                            report(&a)["fields"],
+                            json!([{"kind":"bytes","value":bytes}])
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn retained_operations_nested_in_synchronous_scopes_are_gated_before_output() {
         let prefix = "async control leaf() exits done {yield;exit done;} control wrapper() exits done {forward run leaf();}";
         for main in [
@@ -2487,9 +2637,32 @@ control plain() exits done {emit("synchronous");exit done;}
     }
     #[test]
     fn unsupported_checked_operations_create_no_build_outputs() {
+        // Admitting cold control identities must not admit asynchronous host
+        // producers through their generated task types or wrapper controls.
+        for body in ["await tick();", "auto task=defer tick();await task;"] {
+            let f = Fixture::new(&format!(
+                "async control startup() exits done {{{body} exit done;}} control main() exits result {{forward run startup();}} outcome result {{@exit 0 done}}"
+            ));
+            let mut manifest: Json =
+                serde_json::from_str(&fs::read_to_string(&f.manifest).unwrap()).unwrap();
+            manifest["primitives"].as_array_mut().unwrap().push(json!({
+                "name":"tick", "async":true, "parameters":[],
+                "outcomes":[{"name":"ticked","fields":[]}],
+                "effects":["clock.tick"], "returns":true
+            }));
+            fs::write(&f.manifest, manifest.to_string()).unwrap();
+            let out = f.command("llvm", 0).output().unwrap();
+            assert!(!out.status.success());
+            assert!(
+                String::from_utf8_lossy(&out.stderr).contains("E_BACKEND"),
+                "{out:?}"
+            );
+            assert!(!f.root.join("llvm-0.tellur-build").exists());
+            assert!(!f.root.join("llvm-0.ll").exists());
+        }
         for source in [
             "struct ticket {u32 value;constructor(u32 input){run helper();self.value=input;}} async control helper() exits done {exit done;} control main() exits result {drop(ticket(1));exit done;} outcome result {@exit 0 done}",
-            include_str!("../playground/cold_tasks.tellur"),
+            include_str!("../playground/structured_tasks.tellur"),
             "async control helper() exits done {loop L(){yield;exit done;}} control main() exits result {forward run helper();} outcome result {@exit 0 done}",
         ] {
             let f = Fixture::new(source);
