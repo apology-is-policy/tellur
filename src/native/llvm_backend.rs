@@ -55,6 +55,7 @@ declare i64 @tellur_rt_v1_lexical_begin(ptr, ptr, i64, ptr, i64, i64, i64, i64, 
 declare i32 @tellur_rt_v1_lexical_catch(ptr, i64)
 declare void @tellur_rt_v1_lexical_end(ptr, i64)
 declare void @tellur_rt_v1_process(ptr, i32)
+declare void @tellur_rt_v1_supervise_children(ptr, i64, i64, ptr, i64)
 declare void @tellur_rt_v1_settled(ptr)
 declare void @tellur_rt_v1_escalate(ptr)
 declare void @tellur_rt_v1_supervise(ptr, ptr, ptr, ptr, i64, ptr, i64, ptr, i64, ptr, i64)
@@ -250,6 +251,23 @@ fn retained_target<'a>(
         _ => None,
     }
 }
+// Supervision owns two distinct inline children and has no outcome-delivery state.
+// Use the same inventory for frame fields and recursive-layout cycle checks.
+fn retained_child_targets<'a>(
+    instruction: &'a Instruction,
+    resumables: &BTreeMap<String, usize>,
+    boundaries: &'a BTreeMap<String, (String, Vec<usize>)>,
+) -> Vec<&'a String> {
+    if let Some(target) = retained_target(instruction, resumables) {
+        vec![target]
+    } else if let Action::Supervise { boundary, .. } = &instruction.action {
+        let handler = &boundaries[boundary].0;
+        debug_assert!(resumables.contains_key(boundary) && resumables.contains_key(handler));
+        vec![boundary, handler]
+    } else {
+        vec![]
+    }
+}
 fn reaches_retained(i: &Instruction, names: &BTreeSet<String>) -> bool {
     match &i.action {
         Action::Decide {
@@ -295,7 +313,10 @@ fn retained_instructions(code: &[Instruction]) -> Vec<&Instruction> {
     out
 }
 
-fn resumable_controls(program: &CheckedProgram) -> Result<BTreeMap<String, usize>> {
+fn resumable_controls(
+    program: &CheckedProgram,
+    boundaries: &BTreeMap<String, (String, Vec<usize>)>,
+) -> Result<BTreeMap<String, usize>> {
     let mut names = program
         .regions()
         .filter(|r| r.asynchronous)
@@ -306,6 +327,14 @@ fn resumable_controls(program: &CheckedProgram) -> Result<BTreeMap<String, usize
         for region in program.regions() {
             if region.code.iter().any(|i| reaches_retained(i, &names)) {
                 names.insert(region.name.clone());
+            }
+            if names.contains(&region.name) {
+                for instruction in retained_instructions(&region.code) {
+                    if let Action::Supervise { boundary, .. } = &instruction.action {
+                        names.insert(boundary.clone());
+                        names.insert(boundaries[boundary].0.clone());
+                    }
+                }
             }
         }
         if names.len() == before {
@@ -327,7 +356,7 @@ fn resumable_controls(program: &CheckedProgram) -> Result<BTreeMap<String, usize
     let mut incoming = vec![0usize; result.len()];
     for region in program.regions().filter(|r| result.contains_key(&r.name)) {
         for instruction in retained_instructions(&region.code) {
-            if let Some(target) = retained_target(instruction, &result) {
+            for target in retained_child_targets(instruction, &result, boundaries) {
                 edges[result[&region.name]].push(result[target]);
                 incoming[result[target]] += 1;
             }
@@ -369,7 +398,10 @@ fn retained_supported(
         | Action::Drop(..)
         | Action::Emit(..)
         | Action::Fault(..)
+        | Action::Terminate
+        | Action::Escalate
         | Action::Exit(..) => supported(i, types, primitive_types, manifest),
+        Action::Supervise { args, .. } => args.iter().all(|e| expression_supported(e, types)),
         Action::Complete { .. } | Action::Again { .. } => {
             supported(i, types, primitive_types, manifest)
         }
@@ -498,6 +530,7 @@ struct Emitter {
     resumables: BTreeMap<String, usize>,
     descriptors: Vec<String>,
     inline_children: BTreeMap<Id, (usize, usize, usize)>,
+    supervision_children: BTreeMap<Id, (usize, usize)>,
     retained_loops: BTreeMap<Id, RetainedLoopTarget>,
     task_set_slots: BTreeSet<Id>,
     resume_next: u32,
@@ -939,8 +972,7 @@ impl Emitter {
         // This field's preceding invocation has delivered and retired before the
         // checked call site can run again. No dynamic child frame is allocated.
         self.line(format!(
-            "store %frame_{target} zeroinitializer, ptr %child_{}",
-            instruction.id
+            "store %frame_{target} zeroinitializer, ptr %child_{child}"
         ));
         if matches!(
             &instruction.action,
@@ -976,6 +1008,7 @@ impl Emitter {
         self.retained = true;
         self.current_descriptor = self.resumables[&region.name];
         self.inline_children.clear();
+        self.supervision_children.clear();
         let plan = RetainedPlan::new(&region.code);
         self.retained_loops = plan.loops.clone();
         self.task_set_slots = region
@@ -985,12 +1018,21 @@ impl Emitter {
             .collect();
         let mut children = vec![];
         for &instruction in &plan.code {
-            if let Some(name) = retained_target(instruction, &self.resumables) {
+            let start = children.len();
+            let targets = retained_child_targets(instruction, &self.resumables, &self.boundaries);
+            for name in targets {
                 let target = self.controls[name].0;
                 let descriptor = self.resumables[name];
-                self.inline_children
-                    .insert(instruction.id, (descriptor, target, children.len()));
+                if !matches!(&instruction.action, Action::Supervise { .. }) {
+                    self.inline_children
+                        .insert(instruction.id, (descriptor, target, children.len()));
+                }
                 children.push((instruction.id, descriptor, target));
+            }
+            if matches!(&instruction.action, Action::Supervise { .. }) {
+                debug_assert_eq!(children.len(), start + 2);
+                self.supervision_children
+                    .insert(instruction.id, (start, start + 1));
             }
         }
         let fields = children
@@ -1015,9 +1057,9 @@ impl Emitter {
                 "%a{atom} = getelementptr %frame_{index}, ptr %frame, i32 0, i32 1, i64 {atom}"
             ));
         }
-        for (child, (instruction, _, _)) in children.iter().enumerate() {
+        for child in 0..children.len() {
             self.line(format!(
-                "%child_{instruction} = getelementptr %frame_{index}, ptr %frame, i32 0, i32 {}",
+                "%child_{child} = getelementptr %frame_{index}, ptr %frame, i32 0, i32 {}",
                 child + 2
             ));
         }
@@ -1133,8 +1175,29 @@ impl Emitter {
             child_fields.join(", ")
         )
         .unwrap();
+        let retained = region
+            .boundary
+            .as_ref()
+            .map(|b| self.layout.slots(&b.retained))
+            .unwrap_or_default();
+        let retained_pointer = if retained.is_empty() {
+            "null".to_owned()
+        } else {
+            let slots = retained
+                .iter()
+                .map(|n| format!("i64 {n}"))
+                .collect::<Vec<_>>();
+            writeln!(
+                self.globals,
+                "@retained_{index} = private constant [{} x i64] [{}]",
+                slots.len(),
+                slots.join(", ")
+            )
+            .unwrap();
+            format!("@retained_{index}")
+        };
         let (producer, producer_len) = self.text(&region.name);
-        self.descriptors.push(format!("%compiled_control {{ ptr {producer}, i64 {producer_len}, ptr {name}, i64 {len}, i64 {}, ptr @parameters_{index}, i64 {}, i64 {size}, i64 {align}, i64 {prefix}, ptr @resume_{index}, ptr @children_{index}, i64 {}, ptr null, i64 0 }}", self.layout.slots.len(), parameters.len(), children.len()));
+        self.descriptors.push(format!("%compiled_control {{ ptr {producer}, i64 {producer_len}, ptr {name}, i64 {len}, i64 {}, ptr @parameters_{index}, i64 {}, i64 {size}, i64 {align}, i64 {prefix}, ptr @resume_{index}, ptr @children_{index}, i64 {}, ptr {retained_pointer}, i64 {} }}", self.layout.slots.len(), parameters.len(), children.len(), retained.len()));
         let descriptor = self.resumables[&region.name];
         let count = self.resumables.len();
         self.line(format!("define void @control_{index}(ptr %ctx, ptr %args, i64 %count) {{\nentry:\n%frame = alloca %frame_{index}\nstore %frame_{index} zeroinitializer, ptr %frame\ncall void @tellur_rt_v2_run_entry(ptr %ctx, ptr @async_controls, i64 {count}, i64 {descriptor}, ptr %frame, i64 {size}, i64 {align}, ptr %args, i64 %count, i64 -1)\nret void\n}}"));
@@ -1290,6 +1353,17 @@ impl Emitter {
                         "call void @tellur_rt_v1_process(ptr %ctx, i32 {status})"
                     ));
                     self.return_control();
+                    terminal = true;
+                }
+                Action::Supervise { args, .. } if self.retained => {
+                    let (work, handler) = self.supervision_children[&i.id];
+                    let values = args.iter().map(|a| self.expr(a)).collect::<Vec<_>>();
+                    let args = self.handles(&values);
+                    self.effect(format!("call void @tellur_rt_v1_supervise_children(ptr %ctx, i64 {work}, i64 {handler}, ptr {args}, i64 {})", values.len()));
+                    self.line(format!(
+                        "store i32 {}, ptr %pc\nret i32 12",
+                        self.resume_next
+                    ));
                     terminal = true;
                 }
                 Action::Supervise { boundary, args } => self.supervise(boundary, args),
@@ -1733,7 +1807,18 @@ impl CheckedProgram {
         }));
         // Host operations remain reference-free even when controls admit carriers.
         let primitive_types = admitted_types(self.manifest(), false);
-        let resumables = resumable_controls(self)?;
+        let boundaries = self
+            .regions()
+            .filter_map(|r| {
+                r.boundary.as_ref().map(|b| {
+                    (
+                        r.name.clone(),
+                        (b.handler.clone(), FrameLayout::new(r).slots(&b.retained)),
+                    )
+                })
+            })
+            .collect();
+        let resumables = resumable_controls(self, &boundaries)?;
         let mut emitter = Emitter {
             frame_types: String::new(),
             retained: false,
@@ -1748,6 +1833,7 @@ impl CheckedProgram {
             resumables,
             descriptors: vec![],
             inline_children: BTreeMap::new(),
+            supervision_children: BTreeMap::new(),
             retained_loops: BTreeMap::new(),
             task_set_slots: BTreeSet::new(),
             resume_next: 0,
@@ -1766,17 +1852,7 @@ impl CheckedProgram {
                 .map(|r| r.name.clone())
                 .collect(),
             constructing: false,
-            boundaries: self
-                .regions()
-                .filter_map(|r| {
-                    r.boundary.as_ref().map(|b| {
-                        (
-                            r.name.clone(),
-                            (b.handler.clone(), FrameLayout::new(r).slots(&b.retained)),
-                        )
-                    })
-                })
-                .collect(),
+            boundaries,
             controls: self
                 .regions()
                 .enumerate()
@@ -1787,7 +1863,7 @@ impl CheckedProgram {
         let mut callbacks = vec![];
         for region in self.regions() {
             let retained = emitter.resumables.contains_key(&region.name);
-            if (retained && (region.is_constructor() || region.boundary.is_some()))
+            if (retained && region.is_constructor())
                 || region
                     .slots
                     .values()
@@ -1949,7 +2025,7 @@ mod tests {
             .unwrap()
             .extend(host["primitives"].as_array().unwrap().iter().cloned());
         let manifest = crate::manifest::Manifest::from_json(&manifest.to_string()).unwrap();
-        for mode in 0..9 {
+        for mode in 0..11 {
             let source = r#"
 async control child(bool fail, ref mutable string text) exits done faults {
     yield;delta fail {true=>bad,false=>good}
@@ -2032,6 +2108,73 @@ outcome result {@exit 0 done}
             } else {
                 source
             };
+            let source = if mode == 9 {
+                r#"
+async control child(bool fail,ref string text) exits done faults {
+    yield;emit(text);delta fail {true=>bad,false=>good}
+    [bad]:fault "quota supervised work";
+    [good]:exit done;
+}
+boundary request(bool fail,string context) retains context {
+    run child(fail,borrow context);terminate;
+}
+contingency(string reason){emit(context);emit(reason);terminate;}
+async control startup(bool fail) exits done {
+    string parent="parent";
+    loop turn(bool first=true) {
+        supervise request(fail && !first,"retained");emit(borrow parent);
+        delta first {true=>more,false=>finished}
+        [more]:again turn(false);
+        [finished]:exit done;
+    }
+}
+control main(bool fail) exits result {forward run startup(fail);}
+
+outcome result {@exit 0 done}
+"#
+                .to_owned()
+            } else if mode == 10 {
+                r#"async control operation(bool fail) exits done faults {
+    delta await tick("request") {
+        ticked { string text } => ready,
+        cancelled => stopped
+    }
+    [stopped]: emit("cancelled");
+        exit done;
+    [ready]: emit(text);
+        delta fail {
+            true => bad,
+            false => ok
+        }
+    [bad]: fault "after host";
+    [ok]: exit done;
+}
+boundary request(bool fail, string context) retains context {
+    run operation(fail);
+    emit("request complete");
+    terminate;
+}
+contingency(string reason) {
+    emit("owning handler");
+    emit(context);
+    emit(reason);
+    terminate;
+}
+async control supervisor(bool fail) exits done {
+    supervise request(fail, "retained host");
+    emit("supervisor continued");
+    exit done;
+}
+control main(bool fail) exits result {
+    forward run supervisor(fail);
+}
+
+outcome result {@exit 0 done}
+"#
+                .to_owned()
+            } else {
+                source
+            };
             let checked = crate::compile(&source, manifest.clone()).unwrap();
             for expanded in [false, true] {
                 let program = if expanded {
@@ -2049,7 +2192,7 @@ outcome result {@exit 0 done}
                     let mut expected = vec![];
                     for fail in [false, true] {
                         let scenario = directory.join(format!("{fail}.json"));
-                        fs::write(&scenario,serde_json::json!({"entry":"main","arguments":[{"kind":"bool","value":fail}],"calls":if (3..=4).contains(&mode) {vec![serde_json::json!({"operation":"tick","outcome":"ticked","fields":[{"kind":"string","value":"quota"}],"waits":7})]} else {vec![]}}).to_string()).unwrap();
+                        fs::write(&scenario,serde_json::json!({"entry":"main","arguments":[{"kind":"bool","value":fail}],"calls":if (3..=4).contains(&mode) || mode == 10 {vec![serde_json::json!({"operation":"tick","outcome":"ticked","fields":[{"kind":"string","value":"quota"}],"waits":7})]} else {vec![]}}).to_string()).unwrap();
                         for fuel in 0..=if mode >= 5 { 64 } else { 36 } {
                             let out = Command::new(&rust)
                                 .arg("--scenario")

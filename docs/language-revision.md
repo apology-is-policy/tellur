@@ -1668,3 +1668,28 @@ secondary faults, escalation, malformed completion and fuel/quotas. Source admis
 is unchanged. Generated retained named supervision is next, followed by lexical
 scopes/recovery and constructors, launch signals, parity/default, adapters, single
 binary, target packs and retirement. No language-design fork is introduced.
+
+
+## B1.4n — generated retained named supervision (0.263)
+
+The LLVM frontend now emits distinct by-value work/handler frames, ordered retained
+slot metadata and a prepared supervisor successor for named supervision. Retained
+inventory propagates through synchronous helpers and nested/looped supervision;
+fully synchronous call trees keep their existing path. The private 0.262 bridge
+uses original Machine admission, fault domains, cancellation and retirement.
+Settlement resumes only the supervisor, administratively and without an outcome,
+extra fuel tick or source handoff. No failed work continuation resumes.
+
+Eight generated parity matrices cover original/expanded O0/O2, every relevant fuel
+cut, nested handlers, escalation/secondary causes, declaration-ordered aggregates,
+guards, repeated loops, awaited/cold/spawned ancestors, outside children, task-set
+siblings, imported names, host readiness/cancellation and malformed driver replies.
+Two added quota modes cover repeated supervised work and host waits at quotas
+1/3/unbounded. A runnable retained request example accompanies the profile. Runtime,
+ABI, checker, reference executor and Rust emitter are unchanged; their validated
+0.262 evidence remains valid. The Rust backend stays default.
+
+Next: private lexical same-frame scope/recovery coordination with frontend resume
+states, then generated lexical admission, suspending constructors, launch signals,
+parity/default, adapters, single binary, target packs and retirement. No unresolved
+language-design fork is introduced.

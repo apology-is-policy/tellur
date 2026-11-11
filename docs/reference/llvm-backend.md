@@ -21,7 +21,8 @@ Compiler 0.258 adds scripted async host operations and their cancellation altern
 Compiler 0.259 adds a private task-set runtime bridge. Compiler 0.260 admits retained
 loops with repeated task calls and expanded loop completions. Compiler 0.261 adds
 generated task sets with the existing completion-order and cancellation rules.
-Compiler 0.262 adds the private retained supervision bridge; source admission is unchanged.
+Compiler 0.262 adds the private retained supervision bridge; 0.263 admits generated
+retained named supervision.
 The default remains `--backend rust`. Both start from the same checked program;
 backend selection does not relax ownership, origins, outcomes or path rules.
 
@@ -53,8 +54,8 @@ synchronous callers that reach those controls. Cold control tasks support `defer
 local moves/option wrappers and consuming `await`. Spawned controls and consuming joins
 are supported since 0.256; control cancellation requests since 0.257. Scripted
 async host operations share those task forms since 0.258. Retained loops are supported
-since 0.260; task sets since 0.261. Retained fault boundaries and Rust adapters
-remain outside that profile. Launch signal policies are also rejected. Admission checks all checked
+since 0.260; task sets since 0.261; named supervision since 0.263. Retained lexical
+scopes/recovery, suspending constructors and Rust adapters remain outside that profile. Launch signal policies are also rejected. Admission checks all checked
 regions, including unused helpers. Unsupported programs receive `E_BACKEND`
 before the backend creates its output directory or files; ordinary checking may
 still succeed, and the Rust backend remains available.
@@ -337,8 +338,8 @@ remain rejected before output creation.
 
 Dispatch uses the existing host runtime. Live builtin contracts, scripted outcomes,
 trace events and malformed-script diagnostics are unchanged. A primitive call adds
-no control activation, fuel tick or scheduling handoff. Scripted waits still require
-an async host operation, which this backend does not yet admit. A manifest-only
+no control activation, fuel tick or scheduling handoff. Scripted waits require
+an async host operation, admitted by the separate retained profile since 0.258. A manifest-only
 operation with no live adapter still requires a scenario when run.
 
 The [primitive example](../../playground/llvm_primitives.tellur) calls `parse_u32`,
@@ -435,8 +436,8 @@ Expanding a looping helper creates internal nested loop targets. Its selected
 completion sets the caller's bindings and path fact before returning to that
 caller's continuation. Restarting the outer loop resets the inlined facts too.
 This does not admit authored nested loops or reference-bearing loop parameters;
-those remain checker restrictions. Supervised loops and fault boundaries remain
-outside the LLVM profile.
+those remain checker restrictions. Supervised recovery is supported in synchronous
+controls; its retained form still needs a separate integration checkpoint.
 
 Backedges add no fuel tick, activation or scheduler handoff. Every checked body
 instruction, including a skipped guard, retains its existing fuel charge and
@@ -879,7 +880,47 @@ covered, including inline, awaited, spawned and cancelled ancestors. Invalid chi
 roles, duplicate handles, descriptor slots and lifecycle transitions reject without
 partial transfer. Physical pins and resource/task obligations retire exactly once.
 
-Source LLVM boundaries that retain across handoffs remain rejected before output
-publication. Lexical same-frame recovery, constructors that suspend and launch
-signals still need their own integration. Rust adapter resource mappings remain at
+The 0.262 checkpoint kept source boundaries across handoffs gated. Generated named
+supervision is admitted in 0.263 below. Lexical same-frame recovery, constructors
+that suspend and launch signals still need their own integration. Rust adapter resource mappings remain at
 the adapter station. Rust remains the default; accepted language semantics are unchanged.
+
+
+## Generated retained named supervision (0.263)
+
+A named boundary reached by retained execution now has generated work and handler
+frames. The same applies when its work reaches a yielding control or supported
+async host operation. Both frames are distinct typed fields within the supervisor;
+repeated requests reuse them only after the previous invocation retires. Ordinary
+synchronous-only call trees retain their synchronous path.
+
+`supervise` evaluates arguments once in written order and stores the supervisor's
+successor state before requesting work admission. The original runtime retains
+control of fault domains, cancellation, readiness and handler selection. Only an
+explicit source fault enters contingency, after failed descendants and their loans
+retire. Retained parameters transfer in declaration order, including owned records
+and collections. Imported private names and source sites remain in causal reports.
+
+Normal work and contingency end with administrative settlement. Neither produces
+an outcome, payload, fault value, extra fuel tick or handoff for the supervisor.
+Only the supervisor's own continuation resumes. Handler faults and escalation
+propagate outward; the handler cannot handle its own failure. Fuel exhaustion,
+malformed host responses and driver errors bypass contingency. Supported spawned
+children, task sets and cancellation keep their existing ownership and settlement
+rules, including owning-domain authority when an outside child faults.
+
+```sh
+./bin/tellurc build playground/llvm_async_supervision.tellur playground/manifest.json --backend llvm --out /tmp/tellur-async-supervision
+/tmp/tellur-async-supervision --json false
+/tmp/tellur-async-supervision --json true
+```
+
+Both invocations finish the supervisor with `done` and status 0. The first completes
+both requests normally. The second handles the first request's fault after its
+borrowed helper yields, reports the retained context and reason, then starts the
+independent second request. Original and expanded builds preserve the same events.
+
+Lexical same-frame boundaries, supervised recovery and process termination inside
+retained controls remain rejected before output creation, as do suspending
+constructors, Rust adapters and launch signal policies. This admission checkpoint
+does not change accepted source semantics or switch the default backend.

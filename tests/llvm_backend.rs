@@ -3652,6 +3652,676 @@ control main() exits done faults {{forward run startup();}}
     }
 
     #[test]
+    fn frontend_named_supervision_preserves_borrowed_work_and_administrative_settlement() {
+        let f = Fixture::new(include_str!("../playground/llvm_async_supervision.tellur"));
+        lexical_matrix(
+        &f,
+        &[false, true].map(
+            |fail| json!({"entry":"main","arguments":[{"kind":"bool","value":fail}],"calls":[]}),
+        ),
+        &(0..=65).map(Some).chain([None]).collect::<Vec<_>>(),
+    );
+        let ir = fs::read_to_string(f.root.join("llvm-2.ll")).unwrap();
+        assert!(
+            ir.contains("call void @tellur_rt_v1_supervise_children")
+                && ir.contains("@retained_")
+                && ir.contains("ret i32 12")
+        );
+        assert!(
+            !ir.contains("call void @tellur_rt_v1_supervise(")
+                && !ir.contains("llvm.coro")
+                && !ir.contains("malloc")
+        );
+    }
+
+    #[test]
+    fn frontend_named_supervision_preserves_nested_escalation_and_secondary_causes() {
+        let f = Fixture::new(
+            r#"async control pause() exits done {
+    yield;
+    exit done;
+}
+boundary inner(u32 mode, string context) retains context, mode {
+    run pause();
+    delta mode == 0 {
+        true => normal,
+        false => broken
+    }
+    [normal]: emit("inner normal");
+        terminate;
+    [broken]: fault "inner first";
+}
+contingency(string reason) {
+    emit(context);
+    emit(reason);
+    delta mode == 1 {
+        true => handled,
+        false => escaping
+    }
+    [handled]: terminate;
+    [escaping]: delta mode == 2 {
+        true => original,
+        false => secondary
+    }
+    [original]: escalate;
+    [secondary]: fault "cleanup second";
+}
+boundary outer(u32 mode, string context) retains context {
+    supervise inner(mode, clone(borrow context));
+    emit("outer normal");
+    terminate;
+}
+contingency(string reason) {
+    emit(context);
+    emit(reason);
+    terminate;
+}
+control main(u32 mode) exits done {
+    supervise outer(mode, "outer context");
+    emit("parent");
+    exit done;
+}
+"#,
+        );
+        lexical_matrix(
+        &f,
+        &(0..4)
+            .map(
+                |mode| json!({"entry":"main","arguments":[{"kind":"u32","value":mode}],"calls":[]}),
+            )
+            .collect::<Vec<_>>(),
+        &(0..=80).map(Some).chain([None]).collect::<Vec<_>>(),
+    );
+    }
+
+    #[test]
+    fn frontend_named_supervision_reuses_loop_frames_and_retained_declaration_order() {
+        let f = Fixture::new(
+            r#"async control examine(ref string text, bool broken) exits done faults {
+    yield;
+    emit(text);
+    delta broken {
+        true => bad,
+        false => ok
+    }
+    [bad]: fault "request failed";
+    [ok]: exit done;
+}
+boundary request(u32 index, string context) retains context, index {
+    run examine(borrow context, index == 1);
+    emit(u32_text(index));
+    terminate;
+}
+contingency(string reason) {
+    emit(context);
+    emit(u32_text(index));
+    emit(reason);
+    terminate;
+}
+control main() exits done {
+    loop requests(u32 index = 0, string parent = "parent") {
+        supervise request(index, concat("request ", u32_text(index)));
+        emit(borrow parent);
+        delta index == 2 {
+            true => last,
+            false => more
+        }
+        [last]: exit done;
+        [more]: delta checked_add(index, 1) {
+            sum { u32 next } => next,
+            overflow => bad
+        }
+        [bad]: fault "counter";
+        [next]: again requests(next, parent);
+    }
+}
+"#,
+        );
+        lexical_matrix(
+            &f,
+            &[
+                json!({"entry":"main","arguments":[],"calls":[{"operation":"checked_add","outcome":"sum","fields":[{"kind":"u32","value":1}]},{"operation":"checked_add","outcome":"sum","fields":[{"kind":"u32","value":2}]}]}),
+            ],
+            &(0..=80).map(Some).chain([None]).collect::<Vec<_>>(),
+        );
+    }
+
+    #[test]
+    fn frontend_named_supervision_retires_spawned_and_set_members_before_handover() {
+        for source in [
+            r#"async control child(bool fail, string text) exits done { string result } faults {
+    emit(borrow text);
+    yield;
+    delta fail {
+        true => bad,
+        false => ok
+    }
+    [bad]: fault "child failed";
+    [ok]: exit done { text };
+}
+async control work(bool fail) exits done faults {
+    auto first = spawn child(fail, "first");
+    auto second = spawn child(false, "second");
+    delta await second {
+        done { string second_result } => second_done
+    }
+    [second_done]: emit(second_result);
+        delta await first {
+            done { string first_result } => first_done
+        }
+    [first_done]: emit(first_result);
+        exit done;
+}
+boundary request(bool fail, string context) retains context {
+    run work(fail);
+    emit("request complete");
+    terminate;
+}
+contingency(string reason) {
+    emit(context);
+    emit(reason);
+    terminate;
+}
+async control startup(bool fail) exits done {
+    supervise request(fail, "retained");
+    emit("parent");
+    exit done;
+}
+control main(bool fail) exits done {
+    forward run startup(fail);
+}
+"#,
+            r#"async control child(bool fail, string text) exits done { string result } faults {
+    emit(borrow text);
+    yield;
+    delta fail {
+        true => bad,
+        false => ok
+    }
+    [bad]: fault "set member failed";
+    [ok]: exit done { text };
+}
+async control work(bool fail) exits done faults {
+    tasks<child> children = tasks();
+    spawn child(fail, "first") into children;
+    spawn child(false, "second") into children;
+    loop reap(tasks<child> pending = move children) {
+        delta await next pending {
+            done { string text } => member,
+            empty => drained
+        }
+        [member]: emit(text);
+            again reap(pending);
+        [drained]: exit done;
+    }
+}
+boundary request(bool fail, string context) retains context {
+    run work(fail);
+    emit("request complete");
+    terminate;
+}
+contingency(string reason) {
+    emit(context);
+    emit(reason);
+    terminate;
+}
+async control startup(bool fail) exits done {
+    supervise request(fail, "retained");
+    emit("parent");
+    exit done;
+}
+control main(bool fail) exits done {
+    forward run startup(fail);
+}
+"#,
+        ] {
+            lexical_matrix(&Fixture::new(source),&[false,true].map(|fail|json!({"entry":"main","arguments":[{"kind":"bool","value":fail}],"calls":[]})),&(0..=80).map(Some).chain([None]).collect::<Vec<_>>());
+        }
+    }
+
+    #[test]
+    fn frontend_named_supervision_keeps_outside_tasks_and_owning_fault_authority() {
+        for source in [
+            r#"boundary request(bool broken, string context) retains context {
+    delta broken {
+        true => bad,
+        false => ok
+    }
+    [bad]: fault "local request";
+    [ok]: emit(context);
+        terminate;
+}
+contingency(string reason) {
+    emit(context);
+    emit(reason);
+    terminate;
+}
+control helper() exits done {
+    supervise request(true, "helper context");
+    exit done;
+}
+async control worker(ref string text) exits done { ref string text from text } {
+    emit("child started");
+    yield;
+    exit done { text };
+}
+async control startup() exits done {
+    string text = "child result";
+    auto child = spawn worker(borrow text);
+    helper();
+    emit("parent still owns execution");
+    delta await child {
+        done { auto result } => joined
+    }
+    [joined]: emit(result);
+        supervise request(false, "direct context");
+        exit done;
+}
+control main() exits done {
+    forward run startup();
+}
+"#,
+            r#"async control crash() exits done faults {
+    emit("outside child");
+    yield;
+    fault "outside child fault";
+}
+async control pause() exits done {
+    emit("helper work");
+    yield;
+    yield;
+    exit done;
+}
+boundary local(string context) retains context {
+    run pause();
+    emit("local success");
+    terminate;
+}
+contingency(string reason) {
+    emit("wrong local handler");
+    emit(context);
+    emit(reason);
+    terminate;
+}
+control helper() exits done {
+    supervise local("local context");
+    exit done;
+}
+async control startup() exits done faults {
+    auto child = spawn crash();
+    helper();
+    await child;
+    exit done;
+}
+boundary owner(string context) retains context {
+    run startup();
+    terminate;
+}
+contingency(string reason) {
+    emit(context);
+    emit(reason);
+    terminate;
+}
+control main() exits done {
+    supervise owner("owning handler");
+    emit("parent");
+    exit done;
+}
+"#,
+        ] {
+            lexical_matrix(
+                &Fixture::new(source),
+                &[json!({"entry":"main","arguments":[],"calls":[]})],
+                &(0..=80).map(Some).chain([None]).collect::<Vec<_>>(),
+            );
+        }
+    }
+
+    #[test]
+    fn frontend_named_supervision_preserves_host_readiness_cancellation_and_driver_errors() {
+        {
+            let f = host_fixture(
+                r#"async control operation(bool fail) exits done faults {
+    delta await tick("request") {
+        ticked { string text } => ready,
+        cancelled => stopped
+    }
+    [stopped]: emit("cancelled");
+        exit done;
+    [ready]: emit(text);
+        delta fail {
+            true => bad,
+            false => ok
+        }
+    [bad]: fault "after host";
+    [ok]: exit done;
+}
+boundary request(bool fail, string context) retains context {
+    run operation(fail);
+    emit("request complete");
+    terminate;
+}
+contingency(string reason) {
+    emit("owning handler");
+    emit(context);
+    emit(reason);
+    terminate;
+}
+async control supervisor(bool fail) exits done {
+    supervise request(fail, "retained host");
+    emit("supervisor continued");
+    exit done;
+}
+control main(bool fail) exits done {
+    forward run supervisor(fail);
+}
+"#,
+            );
+            let mut scenarios = vec![
+                json!({"entry":"main","arguments":[{"kind":"bool","value":false}],"calls":[{"operation":"tick","outcome":"ticked","fields":[{"kind":"string","value":"completed"}],"waits":7}]}),
+                json!({"entry":"main","arguments":[{"kind":"bool","value":true}],"calls":[{"operation":"tick","outcome":"ticked","fields":[{"kind":"string","value":"completed"}],"waits":7}]}),
+            ];
+            for scenario in &scenarios {
+                successful_reference(&f, scenario);
+            }
+            let mut malformed = scenarios[0].clone();
+            malformed["calls"][0]["fields"] = json!([{"kind":"bool","value":true}]);
+            let mut wrong = scenarios[0].clone();
+            wrong["calls"][0]["operation"] = json!("wrong_operation");
+            let mut missing = scenarios[0].clone();
+            missing["calls"] = json!([]);
+            scenarios.extend([malformed, wrong, missing]);
+            lexical_matrix(
+                &f,
+                &scenarios,
+                &(0..=65).map(Some).chain([None]).collect::<Vec<_>>(),
+            );
+        }
+        {
+            let f = host_fixture(
+                r#"async control operation(bool fail) exits done faults {
+    delta await tick("request") {
+        ticked { string text } => ready,
+        cancelled => stopped
+    }
+    [stopped]: emit("cancelled");
+        exit done;
+    [ready]: emit(text);
+        delta fail {
+            true => bad,
+            false => ok
+        }
+    [bad]: fault "after host";
+    [ok]: exit done;
+}
+boundary request(bool fail, string context) retains context {
+    run operation(fail);
+    emit("request complete");
+    terminate;
+}
+contingency(string reason) {
+    emit("owning handler");
+    emit(context);
+    emit(reason);
+    terminate;
+}
+async control supervisor(bool fail) exits done {
+    supervise request(fail, "retained host");
+    emit("supervisor continued");
+    exit done;
+}
+async control startup(bool fail) exits done {
+    auto task = spawn supervisor(fail);
+    cancel task;
+    cancel task;
+    await task;
+    exit done;
+}
+control main(bool fail) exits done {
+    forward run startup(fail);
+}
+"#,
+            );
+            let scenarios = vec![
+                json!({"entry":"main","arguments":[{"kind":"bool","value":false}],"calls":[]}),
+                json!({"entry":"main","arguments":[{"kind":"bool","value":true}],"calls":[]}),
+            ];
+            for scenario in &scenarios {
+                successful_reference(&f, scenario);
+            }
+            lexical_matrix(
+                &f,
+                &scenarios,
+                &(0..=65).map(Some).chain([None]).collect::<Vec<_>>(),
+            );
+        }
+        {
+            let f = host_fixture(
+                r#"async control operation(bool fail) exits done faults {
+    delta await tick("request") {
+        ticked { string text } => ready,
+        cancelled => stopped
+    }
+    [stopped]: emit("cancelled");
+        exit done;
+    [ready]: emit(text);
+        delta fail {
+            true => bad,
+            false => ok
+        }
+    [bad]: fault "after host";
+    [ok]: exit done;
+}
+boundary request(bool fail, string context) retains context {
+    run operation(fail);
+    emit("request complete");
+    terminate;
+}
+contingency(string reason) {
+    emit("owning handler");
+    emit(context);
+    emit(reason);
+    terminate;
+}
+async control supervisor(bool fail) exits done {
+    supervise request(fail, "retained host");
+    emit("supervisor continued");
+    exit done;
+}
+async control startup(bool fail) exits done {
+    auto task = spawn supervisor(fail);
+    yield;
+    yield;
+    yield;
+    cancel task;
+    cancel task;
+    await task;
+    exit done;
+}
+control main(bool fail) exits done {
+    forward run startup(fail);
+}
+"#,
+            );
+            let scenarios = vec![
+                json!({"entry":"main","arguments":[{"kind":"bool","value":false}],"calls":[{"operation":"tick","outcome":"ticked","fields":[{"kind":"string","value":"completed"}],"waits":7}]}),
+                json!({"entry":"main","arguments":[{"kind":"bool","value":true}],"calls":[{"operation":"tick","outcome":"ticked","fields":[{"kind":"string","value":"completed"}],"waits":7}]}),
+            ];
+            for scenario in &scenarios {
+                successful_reference(&f, scenario);
+            }
+            lexical_matrix(
+                &f,
+                &scenarios,
+                &(0..=65).map(Some).chain([None]).collect::<Vec<_>>(),
+            );
+        }
+        {
+            let f = host_fixture(
+                r#"async control operation(bool fail) exits done faults {
+    delta await tick("request") {
+        ticked { string text } => ready,
+        cancelled => stopped
+    }
+    [stopped]: emit("cancelled");
+        exit done;
+    [ready]: emit(text);
+        delta fail {
+            true => bad,
+            false => ok
+        }
+    [bad]: fault "after host";
+    [ok]: exit done;
+}
+boundary request(bool fail, string context) retains context {
+    run operation(fail);
+    emit("request complete");
+    terminate;
+}
+contingency(string reason) {
+    emit("owning handler");
+    emit(context);
+    emit(reason);
+    terminate;
+}
+async control supervisor(bool fail) exits done {
+    supervise request(fail, "retained host");
+    emit("supervisor continued");
+    exit done;
+}
+async control startup(bool fail) exits done {
+    auto task = spawn supervisor(fail);
+    yield;
+    yield;
+    yield;
+    yield;
+    yield;
+    yield;
+    yield;
+    yield;
+    yield;
+    yield;
+    yield;
+    yield;
+    yield;
+    yield;
+    yield;
+    yield;
+    cancel task;
+    cancel task;
+    await task;
+    exit done;
+}
+control main(bool fail) exits done {
+    forward run startup(fail);
+}
+"#,
+            );
+            let scenarios = vec![
+                json!({"entry":"main","arguments":[{"kind":"bool","value":false}],"calls":[{"operation":"tick","outcome":"ticked","fields":[{"kind":"string","value":"completed"}],"waits":0}]}),
+                json!({"entry":"main","arguments":[{"kind":"bool","value":true}],"calls":[{"operation":"tick","outcome":"ticked","fields":[{"kind":"string","value":"completed"}],"waits":0}]}),
+            ];
+            for scenario in &scenarios {
+                successful_reference(&f, scenario);
+            }
+            lexical_matrix(
+                &f,
+                &scenarios,
+                &(0..=65).map(Some).chain([None]).collect::<Vec<_>>(),
+            );
+        }
+    }
+
+    #[test]
+    fn frontend_named_supervision_retains_aggregate_owners_through_awaited_and_spawned_parents() {
+        for invocation in [
+            "await supervisor(enabled, fail);",
+            "auto task=defer supervisor(enabled, fail);await task;",
+            "auto task=spawn supervisor(enabled, fail);await task;",
+        ] {
+            let f = Fixture::new(&format!(
+                r#"
+struct envelope {{string label;vector<string> words;}}
+async control examine(ref envelope context,bool fail) exits done faults {{
+    yield;emit(borrow context.label);
+    emit(u32_text(vector_length(borrow context.words)));
+    delta fail {{true=>bad,false=>ok}}
+    [bad]:fault "aggregate request";
+    [ok]:exit done;
+}}
+boundary request(vector<string> extra,envelope context,bool fail) retains context,extra {{
+    run examine(borrow context,fail);
+    emit(u32_text(vector_length(borrow extra)));terminate;
+}}
+contingency(string reason) {{
+    emit(context.label);
+    emit(u32_text(vector_length(borrow context.words)));
+    emit(u32_text(vector_length(borrow extra)));
+    emit(reason);terminate;
+}}
+async control supervisor(bool enabled,bool fail) exits done {{
+    string parent="parent retained";
+    delta enabled {{true=>selected,false=>skipped}}
+    [selected]:supervise request(["extra"],envelope {{"envelope",["a","b"]}},fail);
+    [skipped]:emit("skipped");
+    [entry]:emit(parent);exit done;
+}}
+async control startup(bool enabled,bool fail) exits done {{{invocation}exit done;}}
+control main(bool enabled,bool fail) exits done {{forward run startup(enabled,fail);}}
+"#
+            ));
+            lexical_matrix(
+                &f,
+                &[(false,true),(true,false),(true,true)].map(|(enabled,fail)|json!({
+                    "entry":"main","arguments":[{"kind":"bool","value":enabled},{"kind":"bool","value":fail}],"calls":[]
+                })),
+                &(0..=80).map(Some).chain([None]).collect::<Vec<_>>(),
+            );
+        }
+    }
+
+    #[test]
+    fn frontend_named_supervision_preserves_imported_private_and_contingent_names() {
+        let f = Fixture::new(
+            r#"import "helpers.tellur" as helpers;
+control main() exits done {
+    supervise helpers.request("retained");
+    emit("parent");
+    exit done;
+}
+"#,
+        );
+        fs::write(
+            f.root.join("helpers.tellur"),
+            r#"async control fail() exits done faults {
+    yield;
+    fault "imported fault";
+}
+@contingent
+control report(ref string context, string reason) exits done {
+    emit(context);
+    emit(reason);
+    exit done;
+}
+pub boundary request(string context) retains context {
+    run fail();
+    terminate;
+}
+contingency(string reason) {
+    report(borrow context, reason);
+    terminate;
+}
+"#,
+        )
+        .unwrap();
+        lexical_matrix(
+            &f,
+            &[json!({"entry":"main","arguments":[],"calls":[]})],
+            &(0..=50).map(Some).chain([None]).collect::<Vec<_>>(),
+        );
+    }
+
+    #[test]
     fn unsupported_checked_operations_create_no_build_outputs() {
         // Rust adapter host leaves remain gated through every supported task form.
         for body in [

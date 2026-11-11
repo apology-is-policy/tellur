@@ -167,6 +167,10 @@ callbacks and preserve retained-owner retirement, source-fault classification an
 causal reports. Since 0.249, lexical boundaries, supervised recovery, structured
 `@fault` and entry-only process termination also lower directly to LLVM, with the
 same source rules and runtime cleanup behavior as the default Rust backend.
+Since 0.263, [retained named supervision](llvm-backend.md#generated-retained-named-supervision-0263)
+also supports yielding work and the admitted task/host forms, preserving original
+fault-domain authority and declaration-ordered handover. Retained lexical recovery
+and process termination remain separate LLVM integration work.
 
 ## Declaration and invocation
 

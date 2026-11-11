@@ -6641,3 +6641,24 @@ task, cancellation and host suites. The187 native unit models are refreshed;125
 unaffected frontend/reference units and unrelated default suites reuse recorded evidence. Compiler/LSP/VSIX, baseline compatibility and release smokes
 are validated together; detailed records are in `work/tellur-0.262-verification.json`.
 Generated retained boundaries remain gated; private tests do not widen language admission.
+
+
+## 0.263 — Generated retained named supervision (B1.4n)
+
+Eight generated LLVM matrices compare original and expanded O0/O2 programs with
+Rust and reference behavior, including every relevant fuel cut. They cover normal
+work, source faults, secondary handlers, escalation, nested and looped supervision,
+retained declaration order, records/collections, skipped guards, borrowed work,
+awaited/cold/spawned ancestors, sibling/set retirement, outside owning-domain faults,
+imported private and contingent names, pending/cancelled host operations and invalid
+host replies. The example also verifies emitted child-frame and retained metadata,
+administrative tag12 and absence of a synchronous supervision fallback. Two added
+quota modes cover repeated named work and host readiness at quotas1/3/unbounded.
+
+All prior LLVM integration cases are refreshed for the changed retained inventory
+and frame emission. Unchanged native runtime, ABI, checker, reference and Rust
+emitter evidence is reused from 0.262; LSP/manual coverage is refreshed for the
+updated reference version. Both all-target checks, compiler/LSP/VSIX, old/new source
+baseline, runnable release smokes and isolated editor/install checks accompany the
+release. Detailed evidence is in `work/tellur-0.263-verification.json`. Retained
+lexical recovery, constructors, adapters and signal policies remain gated.

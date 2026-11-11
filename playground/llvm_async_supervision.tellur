@@ -1,0 +1,36 @@
+// A request keeps its context while a borrowed async helper performs its work.
+async control examine(ref string context, bool broken) exits done faults {
+    emit(context);
+    yield;
+    delta broken {
+        true => failed,
+        false => healthy
+    }
+    [failed]: fault "request invariant failed";
+    [healthy]: exit done;
+}
+
+boundary request(bool broken, string context) retains context {
+    run examine(borrow context, broken);
+    emit("request complete");
+    terminate;
+}
+contingency(string reason) {
+    emit(concat("handled ", context));
+    emit(reason);
+    terminate;
+}
+
+async control startup(bool fail) exits done {
+    supervise request(fail, "first request");
+    supervise request(false, "second request");
+    emit("supervisor continued");
+    exit done;
+}
+
+control main(bool fail) exits result {
+    forward run startup(fail);
+}
+outcome result {
+    @exit 0 done
+}
