@@ -1587,6 +1587,19 @@ impl Activation {
         self.prepare_cold_task(host, producer, Some(value))
             .map(|_| ())
     }
+    pub(crate) fn abi_validate_started_task(
+        &self,
+        host: &Host,
+        producer: &'static Control,
+        value: &V,
+    ) -> R<()> {
+        let task = self.source_task_identity(host, value, producer)?;
+        // Reject exhausted/stale claims while the original activation can still
+        // unwind its children; no source handoff or handle transfer has occurred.
+        host.tasks
+            .prepare_join(task, self.owner, producer.name)
+            .map(|_| ())
+    }
     pub(crate) fn abi_control(&self) -> &'static Control {
         self.control
     }

@@ -6517,3 +6517,19 @@ buffer identity and complete runtime cleanup agree for arena-backed and caller-o
 run/await frames at all tested fuel cuts and host quotas 1, 3 and unlimited. Source
 LLVM admission is unchanged; the existing generated async/cold and quota matrices
 exercise the embedded runtime ABI after the storage-pin addition.
+
+
+### B1.4g generated spawn/join (0.256)
+
+Five LLVM integration matrices compare source and expanded O0/O2 programs against
+Rust and the reference report: two siblings/FIFO handoffs, nested/guarded owned
+payloads, direct/contained origins, local wrappers and live resource captures, and
+imported producer identities across repeated runs. The host-quota matrix covers
+both cold and started children at quotas 1, 3 and unlimited with all tested fuel cuts.
+The private spawned-frame matrix checks no body runs at spawn, original buffer
+identity, invalid admission without mutation, sibling/inline retirement and parent
+faults before and after children complete. A two-sibling run consumes one physical
+4096-byte chunk and two slots; inline leaf frames require no additional lease.
+Registry tests validate producer spans and separate internal types from display names.
+The checker still rejects undisposed owners across spawned handoffs; the resource
+fixture completes its file owner before yielding. Async host/cancel/set gates remain.

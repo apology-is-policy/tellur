@@ -10,8 +10,10 @@ declare void @tellur_rt_v1_await(ptr, i64, ptr, i64)
 declare void @tellur_rt_v1_run_child(ptr, i64, ptr, i64)
 declare i64 @tellur_rt_v1_defer(ptr, i64, ptr, i64, ptr, i64)
 declare void @tellur_rt_v1_await_task(ptr, i64, i64)
+declare void @tellur_rt_v1_spawn(ptr, i64, i64, ptr, i64)
+declare void @tellur_rt_v1_join(ptr, i64, i64)
 declare void @tellur_rt_v1_invalid_resume(ptr)
-%compiled_control = type { ptr, i64, i64, ptr, i64, i64, i64, i64, ptr, ptr, i64 }
+%compiled_control = type { ptr, i64, ptr, i64, i64, ptr, i64, i64, i64, i64, ptr, ptr, i64 }
 %compiled_child = type { i64, i64 }
 declare i32 @tellur_rt_v1_ok(ptr)
 declare void @tellur_rt_v1_frame(ptr, i64)
@@ -245,7 +247,7 @@ fn reaches_retained(i: &Instruction, names: &BTreeSet<String>) -> bool {
             ..
         } => names.contains(name),
         Action::Decide {
-            operation: Operation::Defer(_),
+            operation: Operation::Defer(_) | Operation::Spawn(_) | Operation::Join(_),
             ..
         } => true,
         Action::Supervise { boundary, .. } => names.contains(boundary),
@@ -334,7 +336,12 @@ fn retained_supported(
         Action::Complete { unwind: None, .. } => supported(i, types, primitive_types, manifest),
         Action::Decide {
             operation:
-                Operation::Run(_) | Operation::Await(_) | Operation::Defer(_) | Operation::AwaitTask(_),
+                Operation::Run(_)
+                | Operation::Await(_)
+                | Operation::Defer(_)
+                | Operation::AwaitTask(_)
+                | Operation::Spawn(_)
+                | Operation::Join(_),
             args,
             ..
         } => args.iter().all(|e| expression_supported(e, types)),
@@ -872,7 +879,15 @@ impl Emitter {
         let mut cases = "i32 0, label %initial".to_owned();
         for (pc, instruction) in region.code.iter().enumerate() {
             write!(cases, "\ni32 {}, label %state_{}", pc + 1, pc + 1).unwrap();
-            if self.inline_children.contains_key(&instruction.id) {
+            if self.inline_children.contains_key(&instruction.id)
+                || matches!(
+                    &instruction.action,
+                    Action::Decide {
+                        operation: Operation::Join(_),
+                        ..
+                    }
+                )
+            {
                 write!(
                     cases,
                     "\ni32 {}, label %delivery_{}",
@@ -908,7 +923,15 @@ impl Emitter {
                 "store i32 {}, ptr %pc\nret i32 4",
                 self.resume_next
             ));
-            if self.inline_children.contains_key(&instruction.id) {
+            if self.inline_children.contains_key(&instruction.id)
+                || matches!(
+                    &instruction.action,
+                    Action::Decide {
+                        operation: Operation::Join(_),
+                        ..
+                    }
+                )
+            {
                 let Action::Decide { arms, .. } = &instruction.action else {
                     unreachable!()
                 };
@@ -965,7 +988,8 @@ impl Emitter {
             child_fields.join(", ")
         )
         .unwrap();
-        self.descriptors.push(format!("%compiled_control {{ ptr {name}, i64 {len}, i64 {}, ptr @parameters_{index}, i64 {}, i64 {size}, i64 {align}, i64 {prefix}, ptr @resume_{index}, ptr @children_{index}, i64 {} }}", self.layout.slots.len(), parameters.len(), children.len()));
+        let (producer, producer_len) = self.text(&region.name);
+        self.descriptors.push(format!("%compiled_control {{ ptr {producer}, i64 {producer_len}, ptr {name}, i64 {len}, i64 {}, ptr @parameters_{index}, i64 {}, i64 {size}, i64 {align}, i64 {prefix}, ptr @resume_{index}, ptr @children_{index}, i64 {} }}", self.layout.slots.len(), parameters.len(), children.len()));
         let descriptor = self.resumables[&region.name];
         let count = self.resumables.len();
         self.line(format!("define void @control_{index}(ptr %ctx, ptr %args, i64 %count) {{\nentry:\n%frame = alloca %frame_{index}\nstore %frame_{index} zeroinitializer, ptr %frame\ncall void @tellur_rt_v1_run_entry(ptr %ctx, ptr @async_controls, i64 {count}, i64 {descriptor}, ptr %frame, i64 {size}, i64 {align}, ptr %args, i64 %count, i64 -1)\nret void\n}}"));
@@ -1167,6 +1191,42 @@ impl Emitter {
                         "store i1 true, ptr %a{}",
                         self.layout.atoms[&arms[0].atom]
                     ));
+                }
+                Action::Decide {
+                    operation: Operation::Spawn(name),
+                    args,
+                    arms,
+                } if self.retained => {
+                    let values = args.iter().map(|a| self.expr(a)).collect::<Vec<_>>();
+                    let args = self.handles(&values);
+                    let producer = self.resumables[name];
+                    let slot = self.layout.slots[&arms[0].slots[0]];
+                    self.effect(format!("call void @tellur_rt_v1_spawn(ptr %ctx, i64 {producer}, i64 {slot}, ptr {args}, i64 {})", values.len()));
+                    self.line(format!(
+                        "store i1 true, ptr %a{}",
+                        self.layout.atoms[&arms[0].atom]
+                    ));
+                    self.line(format!(
+                        "store i32 {}, ptr %pc\nret i32 6",
+                        self.resume_next
+                    ));
+                    terminal = true;
+                }
+                Action::Decide {
+                    operation: Operation::Join(name),
+                    args,
+                    ..
+                } if self.retained => {
+                    let value = self.expr(&args[0]);
+                    let producer = self.resumables[name];
+                    self.effect(format!(
+                        "call void @tellur_rt_v1_join(ptr %ctx, i64 {producer}, i64 {value})"
+                    ));
+                    self.line(format!(
+                        "store i32 {}, ptr %pc\nret i32 7",
+                        self.delivery_pc
+                    ));
+                    terminal = true;
                 }
                 Action::Decide {
                     operation: Operation::Yield,
@@ -1389,13 +1449,14 @@ impl CheckedProgram {
         }
         let entries = self.executable_entries(entry)?;
         let mut types = admitted_types(self.manifest(), true);
-        // Exact producer-indexed cold identities only; started handles/sets are
-        // outside this admission slice. Frontend local ownership rules still apply.
-        types.extend(
-            self.regions()
-                .filter(|r| r.asynchronous)
-                .map(|r| crate::manifest::task_type(&r.name)),
-        );
+        // Exact producer-indexed cold and started identities. Sets remain gated;
+        // frontend local ownership rules still apply.
+        types.extend(self.regions().filter(|r| r.asynchronous).flat_map(|r| {
+            [
+                crate::manifest::task_type(&r.name),
+                crate::manifest::started_type(&r.name),
+            ]
+        }));
         // Host operations remain reference-free even when controls admit carriers.
         let primitive_types = admitted_types(self.manifest(), false);
         let resumables = resumable_controls(self)?;
@@ -1592,8 +1653,8 @@ mod tests {
         let manifest =
             crate::manifest::Manifest::from_json(include_str!("../../playground/manifest.json"))
                 .unwrap();
-        let checked = crate::compile(
-            r#"
+        for spawning in [false, true] {
+            let source = r#"
 async control child(bool fail, ref mutable string text) exits done faults {
     yield;delta fail {true=>bad,false=>good}
     [bad]:fault "quota child failure";
@@ -1605,60 +1666,64 @@ async control startup(bool fail) exits done faults {
 }
 control main(bool fail) exits result faults {forward run startup(fail);}
 outcome result {@exit 0 done}
-"#,
-            manifest,
-        )
-        .unwrap();
-        for expanded in [false, true] {
-            let program = if expanded {
-                checked.expanded("main").unwrap()
+"#;
+            let source = if spawning {
+                source.replace("defer child", "spawn child")
             } else {
-                checked.clone()
+                source.to_owned()
             };
-            for opt in [0, 2] {
-                let rust = program
-                    .build_native("main", &directory.join("rust"), opt)
-                    .unwrap()
-                    .executable;
-                let source = program.llvm_source("main").unwrap();
-                assert!(source.contains("i64 %count, i64 -1)"));
-                let mut expected = vec![];
-                for fail in [false, true] {
-                    let scenario = directory.join(format!("{fail}.json"));
-                    fs::write(&scenario,serde_json::json!({"entry":"main","arguments":[{"kind":"bool","value":fail}],"calls":[]}).to_string()).unwrap();
-                    for fuel in 0..=36 {
-                        let out = Command::new(&rust)
-                            .arg("--scenario")
-                            .arg(&scenario)
-                            .arg("--fuel")
-                            .arg(fuel.to_string())
-                            .output()
-                            .unwrap();
-                        expected.push((scenario.clone(), fuel, out));
-                    }
-                }
-                for quota in [1, 3, usize::MAX] {
-                    let source =
-                        source.replace("i64 %count, i64 -1)", &format!("i64 %count, i64 {quota})"));
-                    let llvm = program
-                        .build_llvm_source(source, &directory.join("llvm"), opt)
+            let checked = crate::compile(&source, manifest.clone()).unwrap();
+            for expanded in [false, true] {
+                let program = if expanded {
+                    checked.expanded("main").unwrap()
+                } else {
+                    checked.clone()
+                };
+                for opt in [0, 2] {
+                    let rust = program
+                        .build_native("main", &directory.join("rust"), opt)
                         .unwrap()
                         .executable;
-                    for (scenario, fuel, want) in &expected {
-                        let got = Command::new(&llvm)
-                            .arg("--scenario")
-                            .arg(scenario)
-                            .arg("--fuel")
-                            .arg(fuel.to_string())
-                            .output()
-                            .unwrap();
-                        assert_eq!(
-                            got.status.code(),
-                            want.status.code(),
-                            "{expanded}/{opt}/{quota}/{fuel}: {got:?} vs {want:?}"
-                        );
-                        assert_eq!(got.stdout, want.stdout, "{expanded}/{opt}/{quota}/{fuel}");
-                        assert_eq!(got.stderr, want.stderr, "{expanded}/{opt}/{quota}/{fuel}");
+                    let source = program.llvm_source("main").unwrap();
+                    assert!(source.contains("i64 %count, i64 -1)"));
+                    let mut expected = vec![];
+                    for fail in [false, true] {
+                        let scenario = directory.join(format!("{fail}.json"));
+                        fs::write(&scenario,serde_json::json!({"entry":"main","arguments":[{"kind":"bool","value":fail}],"calls":[]}).to_string()).unwrap();
+                        for fuel in 0..=36 {
+                            let out = Command::new(&rust)
+                                .arg("--scenario")
+                                .arg(&scenario)
+                                .arg("--fuel")
+                                .arg(fuel.to_string())
+                                .output()
+                                .unwrap();
+                            expected.push((scenario.clone(), fuel, out));
+                        }
+                    }
+                    for quota in [1, 3, usize::MAX] {
+                        let source = source
+                            .replace("i64 %count, i64 -1)", &format!("i64 %count, i64 {quota})"));
+                        let llvm = program
+                            .build_llvm_source(source, &directory.join("llvm"), opt)
+                            .unwrap()
+                            .executable;
+                        for (scenario, fuel, want) in &expected {
+                            let got = Command::new(&llvm)
+                                .arg("--scenario")
+                                .arg(scenario)
+                                .arg("--fuel")
+                                .arg(fuel.to_string())
+                                .output()
+                                .unwrap();
+                            assert_eq!(
+                                got.status.code(),
+                                want.status.code(),
+                                "{expanded}/{opt}/{quota}/{fuel}: {got:?} vs {want:?}"
+                            );
+                            assert_eq!(got.stdout, want.stdout, "{expanded}/{opt}/{quota}/{fuel}");
+                            assert_eq!(got.stderr, want.stderr, "{expanded}/{opt}/{quota}/{fuel}");
+                        }
                     }
                 }
             }

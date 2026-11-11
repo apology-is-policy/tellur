@@ -81,6 +81,8 @@ unsafe fn parent_step(
     }
 }
 const LEAF: CompiledControl = CompiledControl {
+    producer: b"internal_leaf".as_ptr(),
+    producer_len: 13,
     name: b"leaf".as_ptr(),
     name_len: 4,
     slots: 1,
@@ -94,6 +96,8 @@ const LEAF: CompiledControl = CompiledControl {
     child_count: 0,
 };
 const PARENT: CompiledControl = CompiledControl {
+    producer: b"internal_parent".as_ptr(),
+    producer_len: 15,
     name: b"parent".as_ptr(),
     name_len: 6,
     slots: 1,
@@ -160,6 +164,9 @@ fn compiled_module_descriptors_reuse_stable_authority_across_concurrent_and_repe
     let registry =
         unsafe { CompiledRegistry::register(&REGISTRY, 1, TABLE.as_ptr(), TABLE.len()) }.unwrap();
     assert_eq!(run(registry, "again".repeat(40)), identities[0]);
+    assert_eq!(registry.compiled[1].cold_type, "$task<internal_leaf>");
+    assert_eq!(registry.compiled[1].started_type, "$started<internal_leaf>");
+    assert_eq!(registry.layout(1).unwrap().control.name, "leaf");
     assert!(std::ptr::eq(
         registry.layout(0).unwrap().children[0].layout,
         registry.layout(1).unwrap()
@@ -177,7 +184,29 @@ fn compiled_module_descriptors_reuse_stable_authority_across_concurrent_and_repe
 #[test]
 fn compiled_module_preflight_rejects_bad_layouts_before_publishing_control_identity() {
     static REGISTRY: OnceLock<CompiledRegistry> = OnceLock::new();
-    static BAD: [[CompiledControl; 2]; 14] = [
+    static BAD: [[CompiledControl; 2]; 17] = [
+        [
+            CompiledControl {
+                producer: std::ptr::null(),
+                ..PARENT
+            },
+            LEAF,
+        ],
+        [
+            CompiledControl {
+                producer_len: 0,
+                ..PARENT
+            },
+            LEAF,
+        ],
+        [
+            CompiledControl {
+                producer: [0xff].as_ptr(),
+                producer_len: 1,
+                ..PARENT
+            },
+            LEAF,
+        ],
         [
             CompiledControl {
                 callback: None,
@@ -392,6 +421,7 @@ fn launch_context(host: &mut Host) -> Context<'_> {
         selected_activation: None,
         program: None,
         request: None,
+        physical_arena: None,
         host,
         storage: FrameStorage::Owned(Frames::default()),
         frame: None,

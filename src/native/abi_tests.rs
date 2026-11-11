@@ -6,6 +6,7 @@ fn context(host: &mut Host) -> Context<'_> {
         selected_activation: None,
         program: None,
         request: None,
+        physical_arena: None,
         host,
         storage: FrameStorage::Owned(Frames::default()),
         frame: None,

@@ -16,7 +16,7 @@ Compiler 0.246 adds synchronous tail loops and expanded loop completions.
 Compiler 0.247 adds synchronous declared constructors with direct destination delivery.
 Compiler 0.248 adds named synchronous boundaries and contingency settlement.
 Compiler 0.249 adds lexical boundaries, supervised recovery and process termination.
-Compiler 0.253 adds a bounded frontend async-frame profile; 0.254 adds cold control tasks.
+Compiler 0.253 adds a bounded frontend async-frame profile; 0.254 adds cold control tasks. Compiler 0.256 adds spawned controls and consuming joins.
 The default remains `--backend rust`. Both start from the same checked program;
 backend selection does not relax ownership, origins, outcomes or path rules.
 
@@ -45,7 +45,8 @@ Direct references and reference-bearing aggregates compose recursively; shared/e
 parameters, borrowed results, carrier reborrows and indirect fields are supported.
 A separate bounded async profile admits `run`, direct `await` and `yield`, including
 synchronous callers that reach those controls. Cold control tasks support `defer`,
-local moves/option wrappers and consuming `await`. Spawn/join, task sets,
+local moves/option wrappers and consuming `await`. Spawned controls and consuming joins
+are supported since 0.256. Task sets,
 cancellation, async host operations, async loops/boundaries and adapters remain
 outside that profile. Launch signal policies are also rejected. Admission checks all checked
 regions, including unused helpers. Unsupported programs receive `E_BACKEND`
@@ -456,7 +457,7 @@ then compiles `program.o` and links `OUTPUT` with its embedded LLVM/LLD 22.1.8.
 Path guards are LLVM branches. Runtime faults retain Tellur source provenance;
 native debugger information is not yet emitted.
 
-The distributed 0.255 compiler includes the `llvm` feature. When building the
+The distributed 0.256 compiler includes the `llvm` feature. When building the
 compiler from source, enable it and set `LLVM_SYS_221_PREFIX` to the static pinned
 LLVM/LLD installation, as described in the repository README. A compiler built
 without that feature reports a clear error for `--backend llvm`.
@@ -577,7 +578,7 @@ The example carries an exclusive caller borrow through a yielding child, then
 returns the owned string. Both select `done` with status0.
 
 The 0.253 profile excluded cold handles; 0.254 adds them as described below.
-Spawn/join, task sets, cancellation, asynchronous host operations, loops or boundaries
+Spawn/join is added in 0.256 below. Task sets, cancellation, asynchronous host operations, loops or boundaries
 inside retained controls, Rust adapters and launch signals are still rejected before output creation. Constructors that enter retained controls
 are also outside this slice. Synchronous loops/boundaries/constructors retain their
 previous support. By-value recursive frame graphs are rejected. This bounded source
@@ -611,7 +612,7 @@ Both runs emit `captured` before `producer started`. The first returns `Tellur!`
 with status 0; the second reports the producer's source fault. The example retains
 an exclusive caller borrow through cold capture, a local move and a child yield.
 
-This is the bounded sequential cold-control profile. Spawn/join, task sets,
+This is the bounded sequential cold-control profile. Spawn/join is added below; task sets,
 cancellation, async host producers and retained loops/boundaries/constructors still
 require their later integration checkpoints. By-value physical frame cycles remain
 rejected. The default backend and the language's ownership rules are unchanged.
@@ -632,9 +633,56 @@ Reusing a slot clears its previous counter/facts. Layout rejection and failed ta
 or wait admission leave no live physical pin behind. Existing Machine/Contexts
 still own task identity, scheduling, borrowed results and fault settlement.
 
-This checkpoint is private runtime infrastructure. Emitted source still uses the
-0.254 run/direct-await/cold-await/yield profile and caller-owned root storage;
-source spawn/join and its C ABI bridge are next. It does not change the default
-backend or claim production spawned-task parity. The 0.250 coroutine/frontend
+The 0.255 checkpoint was private runtime infrastructure. The 0.256 bridge below
+uses its leases for source spawn/join; caller-owned root storage remains valid.
+Neither checkpoint changes the default backend or claims whole-language parity. The 0.250 coroutine/frontend
 experiments remain the performance baseline; the new allocator tests measure
 physical chunks and reuse, not whole-program allocation or throughput.
+
+
+## Spawned controls and consuming joins (0.256)
+
+`spawn producer(arguments)` evaluates captures once and queues an invocation-owned
+child without selecting it. The parent continues until an explicit source handoff.
+`await handle` consumes the original started handle and observes its normal completion;
+local moves and supported option wrappers retain that same authority. Borrowed
+captures/results, contained origins, guards and fault/fuel behavior follow the checker
+and the existing source scheduler. A yielded or completed child remains owned until
+its join or fault settlement; completion alone does not release a caller loan.
+
+The compiler emits C-safe descriptors with internal producer identity separate from
+its display name. The module registry owns exact cold/started type spellings once,
+including imported controls. Each root shares one arena with spawned descendants;
+inline run/await children pin the enclosing physical allocation. Spawned leases
+retire through existing task/domain cleanup and only their last pin permits reuse.
+The source driver, claim/join policy and resource settlement are unchanged.
+
+```sh
+./bin/tellurc build playground/llvm_spawn.tellur playground/manifest.json --backend llvm --out /tmp/tellur-spawn
+/tmp/tellur-spawn --json false Tellur
+/tmp/tellur-spawn --json true Tellur
+```
+
+The first run emits `queued` before either child starts and returns `Tellur!`.
+The second reports the first child's fault and settles its sibling. The example
+keeps an exclusive caller borrow through the original consuming join.
+
+This profile admits the same payload types as the supported retained controls.
+Existing source restrictions still apply: an owner without a fault disposition
+cannot cross a spawned producer's handoff. Such an owner can be completed before
+yielding. Async host producers, cancellation, task sets, retained loops/boundaries/
+constructors, Rust adapters and launch signals remain outside LLVM admission.
+
+The private runtime matrix uses one 4096-byte chunk for two spawned frames whose
+children are inline; all physical pins retire after normal and fault paths. Compare
+this allocation policy with the [0.250 measurements](../../experiments/coroutines/README.md):
+the nested-fault frontend experiment used one 4120-byte heap chunk including its
+header, while coroutine frames used four allocations (136 bytes at O0, 120 at O2).
+Those are different fixtures and runtime representations, so these counts are a
+storage-policy comparison, not a throughput or total-memory improvement claim.
+Source values, task metadata and arena bookkeeping have separate allocations.
+
+Spawned join preflight checks the original producer/owner, unclaimed phase and
+completion-wait capacity before consuming its handle. Admission failure stays in
+the selected activation so ordinary unwind retires unselected siblings and their
+physical pins. It never escapes through a partially admitted source handoff.

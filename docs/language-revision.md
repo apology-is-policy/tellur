@@ -1494,3 +1494,34 @@ the existing queue/claim/delivery path. Keep the 0.250 measurement baseline; com
 production spawned-frame behavior when that source profile is admitted. Cancellation,
 host operations, sets, faults/boundaries/signals and later backend stations retain
 their agreed order. Rust remains default; no language-design fork is introduced.
+
+
+## B1.4g — LLVM spawned controls and consuming joins (0.256)
+
+Generated spawn/join now connects the 0.255 physical arena to original task and
+fault-domain authority. Spawn queues without a handoff. Consuming joins use the
+existing claim/delivery path, including local moves/options, owned nested payloads,
+direct/contained caller origins, imported producers and source faults. Exact internal
+task types live in the compiled registry separately from display names. Inline
+children pin the spawned allocation until their own retirement.
+
+Private lifetime/admission matrices compare all tested fuel cuts and host quotas,
+original String buffers, two siblings and inline descendants, parent/child faults,
+completed-unjoined values and invalid slot/arity/handles. Generated original/expanded
+O0/O2 matrices cover scheduling, guards, payloads, resources and imported repeated
+runs. A source fixture that yielded with an undisposed file owner was rejected by
+the existing checker; it now closes before yielding. No ownership gate was loosened.
+The quota matrix covers both cold and spawned variants. Physical chunk counts are
+compared with the maintained 0.250 experiment, with distinct fixture/metadata costs
+stated explicitly rather than claiming an unmeasured throughput win.
+
+Next B1.4h: cancellation for this bounded generated-control profile, using existing
+sticky cancellation and task/domain retirement rules. Async host operations, sets,
+retained fault/boundary integration and signals follow before parity/default switch,
+adapters, single-binary delivery, target packs and retirement. Rust remains default;
+there is no pending language-design fork.
+
+The failed-admission matrix exposed a missing completion-wait capacity check
+before the ABI join handoff. Join now validates through the original task registry
+while its activation still owns the handle and can unwind children. Exhaustion
+leaves the handle and queue unchanged and retires all source scopes and frame pins.

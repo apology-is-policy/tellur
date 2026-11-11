@@ -23,6 +23,9 @@ mod program_tests;
 #[path = "abi_resume_tests.rs"]
 mod resume_tests;
 #[cfg(test)]
+#[path = "abi_spawn_tests.rs"]
+mod spawn_tests;
+#[cfg(test)]
 #[path = "abi_tests.rs"]
 mod tests;
 
@@ -34,6 +37,7 @@ pub struct Context<'a> {
     selected_activation: Option<&'a execution::Activation>,
     program: Option<ProgramFrame>,
     request: Option<RequestedInvocation>,
+    physical_arena: Option<&'a physical_frames::Arena>,
     host: &'a mut Host,
     storage: FrameStorage<'a>,
     frame: Option<frames::Frame>,
@@ -131,6 +135,7 @@ impl Context<'_> {
             selected_frame: None,
             selected_activation: None,
             program: None,
+            physical_arena: None,
             request: None,
             host: &mut *self.host,
             storage: FrameStorage::Borrowed(self.storage.values_mut()),
@@ -1014,6 +1019,7 @@ impl RetainedState {
             selected_frame: None,
             selected_activation: None,
             program: None,
+            physical_arena: None,
             request: None,
             host,
             storage: FrameStorage::Borrowed(values),
@@ -1267,7 +1273,8 @@ impl<'frame> RetainedRoot<'frame> {
 /// stays inside the runtime; generated code sees only Context and integer handles.
 /// Each callback executes one checked transition and returns 0 error, 1 yield,
 /// 2 normal completion, 3 direct await, 4 continue without a source handoff, or
-/// 5 run an inline child on the current invocation stack.
+/// 5 run an inline child on the current invocation stack, 6 spawn without a source
+/// handoff, or 7 consume a started child through the source join policy.
 /// Initial arguments arrive once; after child delivery the span contains one
 /// outcome handle. Other callbacks receive an empty span.
 pub struct InvocationLayout {
@@ -1485,10 +1492,33 @@ enum InvocationArguments {
     Direct(Vec<V>),
     Cold(Option<V>),
 }
-struct RequestedInvocation {
-    handoff: bool,
-    child: ProgramFrame,
-    arguments: InvocationArguments,
+enum RequestedInvocation {
+    Inline {
+        handoff: bool,
+        child: ProgramFrame,
+        arguments: InvocationArguments,
+    },
+    Spawn {
+        child: Invocation,
+        arguments: Vec<V>,
+        slot: usize,
+        cold_type: &'static str,
+        started_type: &'static str,
+    },
+    Join {
+        value: V,
+        producer: &'static execution::Control,
+    },
+}
+impl RequestedInvocation {
+    fn tag(&self) -> u32 {
+        match self {
+            Self::Inline { handoff: true, .. } => 3,
+            Self::Inline { handoff: false, .. } => 5,
+            Self::Spawn { .. } => 6,
+            Self::Join { .. } => 7,
+        }
+    }
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum InvocationPhase {
@@ -1511,6 +1541,7 @@ pub(crate) struct Invocation {
     // Keep storage after retained values and pending children in drop order.
     storage: Option<physical_frames::Pin>,
     call_storage: Option<physical_frames::Pin>,
+    arena: physical_frames::Arena,
 }
 impl std::fmt::Debug for Invocation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -1534,12 +1565,14 @@ impl Invocation {
             address: storage.address(),
             layout,
         };
-        Ok(Self::with_storage(program, Some(storage)))
+        Ok(Self::with_storage(program, Some(storage), arena.clone()))
     }
-    fn with_storage(program: ProgramFrame, storage: Option<physical_frames::Pin>) -> Self {
-        let mut invocation = Self::at(program);
-        invocation.storage = storage;
-        invocation
+    fn with_storage(
+        program: ProgramFrame,
+        storage: Option<physical_frames::Pin>,
+        arena: physical_frames::Arena,
+    ) -> Self {
+        Self::at_in(program, storage, arena)
     }
     /// Safety: callbacks obey the ABI contract; physical storage must remain stable
     /// and exclusively controlled by this session until all invocations retire.
@@ -1583,9 +1616,17 @@ impl Invocation {
         Ok(Self::with_storage(
             self.call.take().unwrap(),
             self.call_storage.take(),
+            self.arena.clone(),
         ))
     }
     fn at(program: ProgramFrame) -> Self {
+        Self::at_in(program, None, physical_frames::Arena::default())
+    }
+    fn at_in(
+        program: ProgramFrame,
+        storage: Option<physical_frames::Pin>,
+        arena: physical_frames::Arena,
+    ) -> Self {
         Self {
             program,
             state: Some(RetainedState {
@@ -1603,8 +1644,9 @@ impl Invocation {
             phase: InvocationPhase::Cold,
             delivered: vec![],
             call: None,
-            storage: None,
+            storage,
             call_storage: None,
+            arena,
         }
     }
     fn step(
@@ -1632,6 +1674,7 @@ impl Invocation {
         context.selected_frame = Some(frame);
         context.selected_activation = Some(activation);
         context.program = Some(self.program);
+        context.physical_arena = Some(&self.arena);
         let arguments = if cold {
             parameters
                 .iter()
@@ -1661,12 +1704,15 @@ impl Invocation {
         } else {
             match (
                 tag,
-                request.as_ref().map(|r| r.handoff),
+                request.as_ref().map(RequestedInvocation::tag),
                 context.result.is_some(),
             ) {
                 (1, None, false) => Ok(execution::Step::Yield),
                 (4, None, false) => Ok(execution::Step::Continue),
-                (3, Some(true), false) | (5, Some(false), false) => Ok(execution::Step::Continue), // Queue after callback borrows end.
+                (3, Some(3), false)
+                | (5, Some(5), false)
+                | (6, Some(6), false)
+                | (7, Some(7), false) => Ok(execution::Step::Continue), // Queue after callback borrows end.
                 (2, None, true) => match context.result.take().unwrap() {
                     value @ Completion::Outcome(_) => Ok(execution::Step::Complete(value)),
                     _ => Err("E_NATIVE: retained ABI requires a normal completion".into()),
@@ -1683,57 +1729,82 @@ impl Invocation {
             InvocationPhase::Active
         };
         if result.is_ok()
-            && let Some(mut request) = request
+            && let Some(request) = request
         {
-            let storage = match self
-                .storage
-                .as_ref()
-                .map(physical_frames::Pin::retain)
-                .transpose()
-            {
-                Ok(storage) => storage,
-                Err(error) => {
-                    self.phase = InvocationPhase::Failed;
-                    return Err(error);
-                }
-            };
-            if request.handoff {
-                // Shared queue admission checks original invocation, captures and wait
-                // identity. No child callback runs until the source await hands off.
-                let queued = match &mut request.arguments {
-                    InvocationArguments::Direct(arguments) => {
-                        activation.queue_invocation(host, request.child.layout.control, arguments)
-                    }
-                    InvocationArguments::Cold(value) => {
-                        activation.queue_task(host, request.child.layout.control, value)
-                    }
-                };
-                result = queued.map(|mut task| {
-                    task.abi = Some(Self::with_storage(request.child, storage));
-                    self.phase = InvocationPhase::Awaiting;
-                    execution::Step::Await {
+            result = (|| match request {
+                RequestedInvocation::Spawn {
+                    child,
+                    mut arguments,
+                    slot,
+                    cold_type,
+                    started_type,
+                } => {
+                    let producer = child.program.layout.control;
+                    let mut cold =
+                        Some(activation.defer_task(host, producer, cold_type, &mut arguments)?);
+                    let mut task = activation.queue_started(host, producer, &mut cold)?;
+                    task.abi = Some(child);
+                    Ok(execution::Step::Spawn {
                         task,
+                        slot,
+                        ty: started_type,
+                    })
+                }
+                RequestedInvocation::Join { value, producer } => {
+                    self.phase = InvocationPhase::Awaiting;
+                    Ok(execution::Step::Join {
+                        value,
+                        producer,
                         deliver: deliver_invocation,
-                    }
-                });
-            } else {
-                result = match request.arguments {
-                    InvocationArguments::Direct(arguments) => {
-                        self.call = Some(request.child);
-                        self.call_storage = storage;
+                    })
+                }
+                RequestedInvocation::Inline {
+                    handoff,
+                    child,
+                    mut arguments,
+                } => {
+                    let storage = self
+                        .storage
+                        .as_ref()
+                        .map(physical_frames::Pin::retain)
+                        .transpose()?;
+                    if handoff {
+                        // Queue only after callback borrows end; existing task/domain
+                        // authority controls admission and all subsequent handoffs.
+                        let mut task =
+                            match &mut arguments {
+                                InvocationArguments::Direct(arguments) => activation
+                                    .queue_invocation(host, child.layout.control, arguments)?,
+                                InvocationArguments::Cold(value) => {
+                                    activation.queue_task(host, child.layout.control, value)?
+                                }
+                            };
+                        task.abi = Some(Self::with_storage(child, storage, self.arena.clone()));
                         self.phase = InvocationPhase::Awaiting;
-                        Ok(execution::Step::Call {
-                            control: request.child.layout.control,
-                            arguments,
-                            destination: None,
+                        Ok(execution::Step::Await {
+                            task,
                             deliver: deliver_invocation,
                         })
+                    } else {
+                        match arguments {
+                            InvocationArguments::Direct(arguments) => {
+                                self.call = Some(child);
+                                self.call_storage = storage;
+                                self.phase = InvocationPhase::Awaiting;
+                                Ok(execution::Step::Call {
+                                    control: child.layout.control,
+                                    arguments,
+                                    destination: None,
+                                    deliver: deliver_invocation,
+                                })
+                            }
+                            InvocationArguments::Cold(_) => {
+                                Err("E_NATIVE: cold task requires an await handoff".into())
+                            }
+                        }
                     }
-                    InvocationArguments::Cold(_) => {
-                        Err("E_NATIVE: cold task requires an await handoff".into())
-                    }
-                };
-            }
+                }
+            })();
             if result.is_err() {
                 self.phase = InvocationPhase::Failed;
             }
@@ -1822,7 +1893,7 @@ unsafe fn request_invocation(
         }
         c.require_outcome_room()?;
         let arguments = c.take_many(unsafe { slice(args, count) })?;
-        c.request = Some(RequestedInvocation {
+        c.request = Some(RequestedInvocation::Inline {
             handoff,
             child: program,
             arguments: InvocationArguments::Direct(arguments),
@@ -1870,7 +1941,7 @@ pub unsafe extern "C" fn tellur_rt_v1_await_task(ctx: *mut Context<'_>, child: u
         c.require_outcome_room()?;
         activation.abi_validate_cold_task(c.host, program.layout.control, c.get(value)?)?;
         let value = c.take(value)?;
-        c.request = Some(RequestedInvocation {
+        c.request = Some(RequestedInvocation::Inline {
             handoff: true,
             child: program,
             arguments: InvocationArguments::Cold(Some(value)),
@@ -1879,11 +1950,109 @@ pub unsafe extern "C" fn tellur_rt_v1_await_task(ctx: *mut Context<'_>, child: u
     });
 }
 
+impl Context<'_> {
+    fn spawn_control(
+        &mut self,
+        layout: &'static InvocationLayout,
+        cold_type: &'static str,
+        started_type: &'static str,
+        slot: usize,
+        handles: &[u64],
+    ) -> R<()> {
+        if self.request.is_some() || self.result.is_some() {
+            return Err("E_NATIVE: duplicate ABI continuation request".into());
+        }
+        if self.selected_activation.is_none() || self.program.is_none() {
+            return Err("E_NATIVE: spawn requires a selected ABI invocation".into());
+        }
+        let address = self.local(slot)?;
+        if self.storage.values()[address].is_some()
+            || handles.len() != layout.control.parameters.len()
+        {
+            return Err("E_NATIVE: invalid ABI spawn slot or arity".into());
+        }
+        // Validate captures before allocating; admission errors leave handles intact.
+        let mut seen = BTreeSet::new();
+        for handle in handles {
+            self.get(*handle)?;
+            if !seen.insert(*handle) {
+                return Err("E_NATIVE: duplicate ABI value transfer".into());
+            }
+        }
+        let arena = self
+            .physical_arena
+            .ok_or("E_NATIVE: missing physical frame arena")?;
+        let child = unsafe { Invocation::in_arena(arena, layout)? };
+        let arguments = self.take_many(handles)?;
+        self.request = Some(RequestedInvocation::Spawn {
+            child,
+            arguments,
+            slot,
+            cold_type,
+            started_type,
+        });
+        Ok(())
+    }
+    fn join_control(&mut self, producer: &'static execution::Control, handle: u64) -> R<()> {
+        if self.request.is_some() || self.result.is_some() {
+            return Err("E_NATIVE: duplicate ABI continuation request".into());
+        }
+        let activation = self
+            .selected_activation
+            .ok_or("E_NATIVE: join requires a selected ABI invocation")?;
+        self.require_outcome_room()?;
+        activation.abi_validate_started_task(self.host, producer, self.get(handle)?)?;
+        let value = self.take(handle)?;
+        self.request = Some(RequestedInvocation::Join { value, producer });
+        Ok(())
+    }
+}
+/// Queue an arena-owned child; the source driver immediately reselects its parent.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_spawn(
+    ctx: *mut Context<'_>,
+    producer: usize,
+    slot: usize,
+    args: *const u64,
+    count: usize,
+) {
+    unsafe { &mut *ctx }.perform(|c| {
+        let registry = COMPILED_PROGRAM
+            .get()
+            .ok_or("E_NATIVE: missing compiled module registry")?;
+        let layout = registry.layout(producer)?;
+        if count != layout.control.parameters.len() {
+            return Err("E_NATIVE: invalid ABI spawn arity".into());
+        }
+        let metadata = &registry.compiled[producer];
+        c.spawn_control(
+            layout,
+            &metadata.cold_type,
+            &metadata.started_type,
+            slot,
+            unsafe { slice(args, count) },
+        )
+    });
+}
+/// Consume the original source handle; existing claim/join delivery owns settlement.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_join(ctx: *mut Context<'_>, producer: usize, handle: u64) {
+    unsafe { &mut *ctx }.perform(|c| {
+        let registry = COMPILED_PROGRAM
+            .get()
+            .ok_or("E_NATIVE: missing compiled module registry")?;
+        c.join_control(registry.layout(producer)?.control, handle)
+    });
+}
+
 /// C-safe immutable descriptor emitted by the compiler. Every span points into
 /// module-static storage. Rust Control/InvocationLayout values never cross C ABI.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct CompiledControl {
+    // Internal identity is distinct from the human-readable activation name.
+    pub producer: *const u8,
+    pub producer_len: usize,
     pub name: *const u8,
     pub name_len: usize,
     pub slots: usize,
@@ -1906,6 +2075,8 @@ pub struct CompiledChild {
     pub offset: usize,
 }
 struct CompiledLayout {
+    cold_type: String,
+    started_type: String,
     callback: ResumeCallback,
     size: usize,
     align: usize,
@@ -1955,7 +2126,10 @@ impl CompiledRegistry {
         let mut controls = Vec::with_capacity(count);
         let mut compiled = Vec::with_capacity(count);
         for raw in table {
-            if raw.name_len == 0
+            if raw.producer_len == 0
+                || raw.producer.is_null()
+                || raw.producer_len > isize::MAX as usize
+                || raw.name_len == 0
                 || raw.name.is_null()
                 || raw.name_len > isize::MAX as usize
                 || raw.slots > isize::MAX as usize / std::mem::size_of::<Option<V>>()
@@ -1980,6 +2154,7 @@ impl CompiledRegistry {
                 .callback
                 .ok_or("E_NATIVE: missing compiled ABI callback")?;
             let name = unsafe { text(raw.name, raw.name_len)? };
+            let producer = unsafe { text(raw.producer, raw.producer_len)? };
             let parameters: &'static [usize] =
                 unsafe { slice(raw.parameters, raw.parameter_count) };
             if parameters
@@ -2001,6 +2176,8 @@ impl CompiledRegistry {
                 resume: resume_invocation,
             });
             compiled.push(CompiledLayout {
+                cold_type: format!("$task<{producer}>"),
+                started_type: format!("$started<{producer}>"),
                 callback,
                 size: raw.frame_size,
                 align: raw.frame_align,
@@ -2274,6 +2451,7 @@ pub unsafe extern "C" fn tellur_rt_v1_call(
                 selected_frame: None,
                 selected_activation: None,
                 program: None,
+                physical_arena: None,
                 request: None,
                 host: &mut *c.host,
                 storage: FrameStorage::Borrowed(c.storage.values_mut()),
@@ -2324,6 +2502,7 @@ pub unsafe extern "C" fn tellur_rt_v1_construct_call(
             selected_frame: None,
             selected_activation: None,
             program: None,
+            physical_arena: None,
             request: None,
             host: &mut *c.host,
             storage: FrameStorage::Borrowed(c.storage.values_mut()),
@@ -2628,6 +2807,7 @@ unsafe fn launch_program(
                 selected_frame: None,
                 selected_activation: None,
                 program: None,
+                physical_arena: None,
                 request: None,
                 host,
                 storage: FrameStorage::Owned(Frames::default()),
