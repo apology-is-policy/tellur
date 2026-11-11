@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.254.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.255.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -49,7 +49,8 @@ LLVM state machines for `run`, direct `await` and `yield`, including guarded pat
 owned/borrowed payloads, synchronous callees and source faults. Compiler 0.254 adds
 cold control handles, local moves/option wrappers and
 consuming await. Spawn/join, async host operations, async loops/boundaries and
-cancellation remain gated.
+cancellation remain gated. Compiler 0.255 adds private aligned frame-arena leases
+and descendant pins; generated spawn/join admission remains next.
 Unsupported checked programs fail with `E_BACKEND` before build
 outputs are created. Backend selection does not change language checking.
 

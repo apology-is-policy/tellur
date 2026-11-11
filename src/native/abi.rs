@@ -11,6 +11,9 @@
 //! stated length. Callbacks must not retain these pointers.
 use super::*;
 #[cfg(test)]
+#[path = "abi_arena_tests.rs"]
+mod arena_tests;
+#[cfg(test)]
 #[path = "abi_cold_tests.rs"]
 mod cold_tests;
 #[cfg(test)]
@@ -1336,6 +1339,148 @@ impl ProgramFrame {
         })
     }
 }
+// Runtime-owned physical storage for spawned ABI frames. Slots are recycled only
+// after the last invocation pin (including inline descendants) retires. Dynamic
+// source values and task metadata remain in the existing runtime stores.
+mod physical_frames {
+    use super::R;
+    use std::{alloc::Layout, cell::RefCell, collections::BTreeMap, ptr::NonNull, rc::Rc};
+
+    const CHUNK_BYTES: usize = 4096;
+    #[derive(Clone, Default)]
+    pub(super) struct Arena(Rc<RefCell<State>>);
+    #[derive(Default)]
+    struct State {
+        chunks: Vec<Chunk>,
+        slots: Vec<Slot>,
+        free: BTreeMap<(usize, usize), Vec<usize>>,
+    }
+    struct Chunk {
+        address: NonNull<u8>,
+        layout: Layout,
+        used: usize,
+    }
+    impl Drop for Chunk {
+        fn drop(&mut self) {
+            unsafe { std::alloc::dealloc(self.address.as_ptr(), self.layout) };
+        }
+    }
+    struct Slot {
+        address: NonNull<u8>,
+        layout: Layout,
+        pins: usize,
+    }
+    pub(super) struct Pin {
+        arena: Arena,
+        slot: usize,
+    }
+    impl Arena {
+        pub(super) fn allocate(&self, size: usize, align: usize) -> R<Pin> {
+            let layout = Layout::from_size_align(size, align)
+                .map_err(|_| "E_NATIVE: invalid physical frame allocation".to_owned())?;
+            if size == 0 {
+                return Err("E_NATIVE: physical frame allocation is empty".into());
+            }
+            let mut state = self.0.borrow_mut();
+            let key = (size, align);
+            let slot = if let Some(slot) = state.free.get_mut(&key).and_then(Vec::pop) {
+                assert_eq!(state.slots[slot].pins, 0);
+                state.slots[slot].pins = 1;
+                slot
+            } else {
+                let mut address = None;
+                for chunk in state.chunks.iter_mut().rev() {
+                    if chunk.layout.align() < align {
+                        continue;
+                    }
+                    let Some(offset) = chunk.used.checked_add(align - 1).map(|n| n & !(align - 1))
+                    else {
+                        continue;
+                    };
+                    if offset <= chunk.layout.size() && size <= chunk.layout.size() - offset {
+                        address = Some(unsafe {
+                            NonNull::new_unchecked(chunk.address.as_ptr().add(offset))
+                        });
+                        chunk.used = offset + size;
+                        break;
+                    }
+                }
+                let address = match address {
+                    Some(address) => address,
+                    None => {
+                        let chunk_layout = Layout::from_size_align(CHUNK_BYTES.max(size), align)
+                            .map_err(|_| {
+                                "E_NATIVE: physical arena chunk is too large".to_owned()
+                            })?;
+                        let address = NonNull::new(unsafe { std::alloc::alloc(chunk_layout) })
+                            .ok_or("E_NATIVE: physical arena allocation failed")?;
+                        state.chunks.push(Chunk {
+                            address,
+                            layout: chunk_layout,
+                            used: size,
+                        });
+                        address
+                    }
+                };
+                let index = state.slots.len();
+                state.slots.push(Slot {
+                    address,
+                    layout,
+                    pins: 1,
+                });
+                index
+            };
+            // Generated frames contain a program counter, facts and inline child
+            // frames; their initial state is all zero. No source V lives here.
+            unsafe { std::ptr::write_bytes(state.slots[slot].address.as_ptr(), 0, size) };
+            Ok(Pin {
+                arena: self.clone(),
+                slot,
+            })
+        }
+        #[cfg(test)]
+        pub(super) fn counts(&self) -> (usize, usize, usize) {
+            let state = self.0.borrow();
+            (
+                state.chunks.len(),
+                state.slots.len(),
+                state.slots.iter().map(|s| s.pins).sum(),
+            )
+        }
+    }
+    impl Pin {
+        pub(super) fn address(&self) -> *mut u8 {
+            self.arena.0.borrow().slots[self.slot].address.as_ptr()
+        }
+        pub(super) fn retain(&self) -> R<Self> {
+            let mut state = self.arena.0.borrow_mut();
+            let slot = &mut state.slots[self.slot];
+            let pins = slot
+                .pins
+                .checked_add(1)
+                .ok_or("E_NATIVE: physical frame pin space exhausted")?;
+            assert_ne!(slot.pins, 0);
+            slot.pins = pins;
+            Ok(Self {
+                arena: self.arena.clone(),
+                slot: self.slot,
+            })
+        }
+    }
+    impl Drop for Pin {
+        fn drop(&mut self) {
+            let mut state = self.arena.0.borrow_mut();
+            let slot = &mut state.slots[self.slot];
+            assert_ne!(slot.pins, 0);
+            slot.pins -= 1;
+            if slot.pins == 0 {
+                let key = (slot.layout.size(), slot.layout.align());
+                state.free.entry(key).or_default().push(self.slot);
+            }
+        }
+    }
+}
+
 enum InvocationArguments {
     Direct(Vec<V>),
     Cold(Option<V>),
@@ -1355,13 +1500,17 @@ enum InvocationPhase {
 }
 /// Owned ABI data attached to an existing runtime activation. Machine/Contexts
 /// retain all invocation, domain, task, source scheduling and retirement authority.
-/// No frame allocation or independent ownership root is created here.
+/// Physical storage may be caller-owned or leased from the runtime arena; neither
+/// form creates an independent task or fault-domain ownership root.
 pub(crate) struct Invocation {
     program: ProgramFrame,
     state: Option<RetainedState>,
     phase: InvocationPhase,
     delivered: Vec<u64>,
     call: Option<ProgramFrame>,
+    // Keep storage after retained values and pending children in drop order.
+    storage: Option<physical_frames::Pin>,
+    call_storage: Option<physical_frames::Pin>,
 }
 impl std::fmt::Debug for Invocation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -1372,6 +1521,26 @@ impl std::fmt::Debug for Invocation {
     }
 }
 impl Invocation {
+    /// Safety: the callback interprets an all-zero physical frame with this layout.
+    /// Storage remains pinned through every inline descendant and is recycled only
+    /// after those invocations retire. This private entry does not schedule a task.
+    unsafe fn in_arena(
+        arena: &physical_frames::Arena,
+        layout: &'static InvocationLayout,
+    ) -> R<Self> {
+        layout.validate()?;
+        let storage = arena.allocate(layout.size, layout.align)?;
+        let program = ProgramFrame {
+            address: storage.address(),
+            layout,
+        };
+        Ok(Self::with_storage(program, Some(storage)))
+    }
+    fn with_storage(program: ProgramFrame, storage: Option<physical_frames::Pin>) -> Self {
+        let mut invocation = Self::at(program);
+        invocation.storage = storage;
+        invocation
+    }
     /// Safety: callbacks obey the ABI contract; physical storage must remain stable
     /// and exclusively controlled by this session until all invocations retire.
     pub(crate) unsafe fn new<T>(layout: &'static InvocationLayout, program: &mut T) -> R<Self> {
@@ -1411,7 +1580,10 @@ impl Invocation {
         if self.phase != InvocationPhase::Awaiting || !std::ptr::eq(child.layout.control, control) {
             return Err("E_NATIVE: ABI run child identity or phase differs".into());
         }
-        Ok(Self::at(self.call.take().unwrap()))
+        Ok(Self::with_storage(
+            self.call.take().unwrap(),
+            self.call_storage.take(),
+        ))
     }
     fn at(program: ProgramFrame) -> Self {
         Self {
@@ -1431,6 +1603,8 @@ impl Invocation {
             phase: InvocationPhase::Cold,
             delivered: vec![],
             call: None,
+            storage: None,
+            call_storage: None,
         }
     }
     fn step(
@@ -1511,6 +1685,18 @@ impl Invocation {
         if result.is_ok()
             && let Some(mut request) = request
         {
+            let storage = match self
+                .storage
+                .as_ref()
+                .map(physical_frames::Pin::retain)
+                .transpose()
+            {
+                Ok(storage) => storage,
+                Err(error) => {
+                    self.phase = InvocationPhase::Failed;
+                    return Err(error);
+                }
+            };
             if request.handoff {
                 // Shared queue admission checks original invocation, captures and wait
                 // identity. No child callback runs until the source await hands off.
@@ -1523,7 +1709,7 @@ impl Invocation {
                     }
                 };
                 result = queued.map(|mut task| {
-                    task.abi = Some(Self::at(request.child));
+                    task.abi = Some(Self::with_storage(request.child, storage));
                     self.phase = InvocationPhase::Awaiting;
                     execution::Step::Await {
                         task,
@@ -1534,6 +1720,7 @@ impl Invocation {
                 result = match request.arguments {
                     InvocationArguments::Direct(arguments) => {
                         self.call = Some(request.child);
+                        self.call_storage = storage;
                         self.phase = InvocationPhase::Awaiting;
                         Ok(execution::Step::Call {
                             control: request.child.layout.control,

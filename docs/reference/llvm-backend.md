@@ -456,7 +456,7 @@ then compiles `program.o` and links `OUTPUT` with its embedded LLVM/LLD 22.1.8.
 Path guards are LLVM branches. Runtime faults retain Tellur source provenance;
 native debugger information is not yet emitted.
 
-The distributed 0.254 compiler includes the `llvm` feature. When building the
+The distributed 0.255 compiler includes the `llvm` feature. When building the
 compiler from source, enable it and set `LLVM_SYS_221_PREFIX` to the static pinned
 LLVM/LLD installation, as described in the repository README. A compiler built
 without that feature reports a clear error for `--backend llvm`.
@@ -615,3 +615,26 @@ This is the bounded sequential cold-control profile. Spawn/join, task sets,
 cancellation, async host producers and retained loops/boundaries/constructors still
 require their later integration checkpoints. By-value physical frame cycles remain
 rejected. The default backend and the language's ownership rules are unchanged.
+
+
+## Private physical frame arena (0.255)
+
+The runtime now has aligned chunk storage for future spawned LLVM frames. A private
+owned-invocation entry leases a zero-initialized frame from this arena. Inline run
+and await children retain pins on the same allocation, so retiring a parent cannot
+recycle storage still held by a descendant. The last pin returns the slot for reuse;
+no physical heap allocation is required for each logical frame. Source values and
+task metadata continue to use their existing stores and allocations.
+
+The arena validates extents/alignment before allocation, supports over-aligned and
+larger frames, and keeps chunks alive while any pin survives its arena handle.
+Reusing a slot clears its previous counter/facts. Layout rejection and failed task
+or wait admission leave no live physical pin behind. Existing Machine/Contexts
+still own task identity, scheduling, borrowed results and fault settlement.
+
+This checkpoint is private runtime infrastructure. Emitted source still uses the
+0.254 run/direct-await/cold-await/yield profile and caller-owned root storage;
+source spawn/join and its C ABI bridge are next. It does not change the default
+backend or claim production spawned-task parity. The 0.250 coroutine/frontend
+experiments remain the performance baseline; the new allocator tests measure
+physical chunks and reuse, not whole-program allocation or throughput.

@@ -6505,3 +6505,15 @@ The native publication regression rebuilds one output at O0/O2 while retaining a
 executing its original image. It verifies that replacing a program never mutates
 existing executable readers and leaves no partial publication files. This covers
 the macOS code-signature failures observed during the differential suite.
+
+
+### B1.4f private physical frame arena (0.255)
+
+Five ABI matrices verify aligned physical chunk allocation, pinned descendant
+lifetime, repeated zeroed reuse, failed extents/admission and independent arena
+roots. 256 live 24-byte frames use two 4096-byte chunks; 10,000 subsequent cycles
+reuse existing slots. These counts describe physical storage only. Original String
+buffer identity and complete runtime cleanup agree for arena-backed and caller-owned
+run/await frames at all tested fuel cuts and host quotas 1, 3 and unlimited. Source
+LLVM admission is unchanged; the existing generated async/cold and quota matrices
+exercise the embedded runtime ABI after the storage-pin addition.

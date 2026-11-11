@@ -1,8 +1,8 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.254.0 -->
+<!-- tellur-reference-version: 0.255.0 -->
 
-This manual describes **compiler 0.254.0**, including the current ownership model,
+This manual describes **compiler 0.255.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -18,7 +18,8 @@ Compiler 0.253 also emits typed frontend frames for a bounded `run`, direct `awa
 and `yield` profile, preserving caller origins, fault reports and source fuel.
 Compiler 0.254 adds cold control tasks: `defer`, local moves/option wrappers and
 consuming `await`. See [LLVM cold tasks](reference/llvm-backend.md#cold-control-tasks-0254)
-for current admission and limits.
+for current admission and limits. Compiler 0.255 adds private physical-frame arena
+infrastructure; it does not expand source admission.
 
 Tellur is still experimental. When this manual and the compiler disagree, treat that
 as a bug to investigate, not a promise that either must remain unchanged. The
@@ -2962,7 +2963,7 @@ General expression-type hover remains unsupported.
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and broader spawn payloads (anonymous contracts and reference-bearing collections) remain planned; they are not executable features of 0.254.0.
+and broader spawn payloads (anonymous contracts and reference-bearing collections) remain planned; they are not executable features of 0.255.0.
 ## Contingency and supervised boundaries
 
 The [contingency reference](reference/contingency.md) specifies `@contingent`,

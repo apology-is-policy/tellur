@@ -1469,3 +1469,28 @@ comparison backend rebuilt an executable in place. Native builds now publish a
 complete sibling image by atomic rename. A regression keeps the original image
 through a hard link while rebuilding and running the replacement at O0/O2. This
 changes output publication only; generated code and runtime semantics are unchanged.
+
+
+## B1.4f — private physical frame arena (0.255)
+
+A runtime arena now owns aligned physical frames through move-only pins. Inline
+run/await children retain the parent's allocation; only the last retiring pin
+makes that slot reusable. Repeated frame creation clears and reuses slots instead
+of growing a long-lived domain's bump arena indefinitely. Storage uses aligned
+chunks, with separate existing allocation policies for source values/task metadata.
+The private owned-invocation factory validates its layout before allocating.
+
+Five private matrices cover 256 live small frames in two physical chunks, 10,000
+reuse cycles without growth, over-aligned/large frames, invalid extents, independent
+arena lifetime, failed task/wait admission and original String buffer ownership.
+Arena-backed run/await invocations match caller-owned frames across source faults,
+fuel cuts and host quotas 1, 3 and unlimited. Descendant pins remain live during
+callbacks and retire after normal/fault completion. The existing runtime authority
+and generated source profile remain unchanged.
+
+This is the arena foundation portion of the spawn/join checkpoint. Next B1.4g:
+connect generated spawn/join and C-safe producer/type metadata to these leases and
+the existing queue/claim/delivery path. Keep the 0.250 measurement baseline; compare
+production spawned-frame behavior when that source profile is admitted. Cancellation,
+host operations, sets, faults/boundaries/signals and later backend stations retain
+their agreed order. Rust remains default; no language-design fork is introduced.
