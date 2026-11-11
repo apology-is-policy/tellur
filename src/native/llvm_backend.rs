@@ -33,6 +33,8 @@ declare void @tellur_rt_v1_emit(ptr, i64)
 declare void @tellur_rt_v1_fault(ptr, i64)
 declare void @tellur_rt_v1_complete(ptr, ptr, i64, ptr, i64)
 declare i64 @tellur_rt_v1_call(ptr, ptr, ptr, i64, ptr, i64)
+declare void @tellur_rt_v1_construct_call(ptr, ptr, ptr, i64, ptr, i64, i64)
+declare void @tellur_rt_v1_constructed(ptr, i64)
 declare i64 @tellur_rt_v1_primitive(ptr, ptr, i64, ptr, i64)
 declare i64 @tellur_rt_v1_collection(ptr, ptr, i64, ptr, i64)
 declare i64 @tellur_rt_v1_length(ptr, i64)
@@ -199,6 +201,8 @@ struct Emitter {
     next: usize,
     layout: FrameLayout,
     controls: BTreeMap<String, (usize, String)>,
+    constructors: BTreeSet<String>,
+    constructing: bool,
     loops: BTreeMap<Id, LoopTarget>,
 }
 impl Emitter {
@@ -278,7 +282,23 @@ impl Emitter {
         let (index, display) = self.controls[name].clone();
         let values = args.iter().map(|a| self.expr(a)).collect::<Vec<_>>();
         let args = self.handles(&values);
+        let constructor = self.constructors.contains(name);
         let (name, len) = self.text(&display);
+        if constructor {
+            assert_eq!(arms.len(), 1);
+            let arm = &arms[0];
+            assert_eq!(arm.outcome, "$constructed");
+            assert_eq!(arm.slots.len(), 1);
+            self.effect(format!(
+                "call void @tellur_rt_v1_construct_call(ptr %ctx, ptr @control_{index}, ptr {name}, i64 {len}, ptr {args}, i64 {}, i64 {})",
+                values.len(), self.layout.slots[&arm.slots[0]]
+            ));
+            self.line(format!(
+                "store i1 true, ptr %a{}",
+                self.layout.atoms[&arm.atom]
+            ));
+            return;
+        }
         let result = self.call(format!(
             "call i64 @tellur_rt_v1_call(ptr %ctx, ptr @control_{index}, ptr {name}, i64 {len}, ptr {args}, i64 {})",
             values.len()
@@ -545,6 +565,7 @@ impl Emitter {
     }
     fn control(&mut self, region: &Region, index: usize) {
         self.layout = FrameLayout::new(region);
+        self.constructing = region.is_constructor();
         self.line(format!(
             "define void @control_{index}(ptr %ctx, ptr %args, i64 %count) {{\nentry:"
         ));
@@ -622,9 +643,18 @@ impl Emitter {
                 }
                 Action::Exit(name, args) => {
                     let values = args.iter().map(|a| self.expr(a)).collect::<Vec<_>>();
-                    let args = self.handles(&values);
-                    let (name, len) = self.text(name);
-                    self.line(format!("call void @tellur_rt_v1_complete(ptr %ctx, ptr {name}, i64 {len}, ptr {args}, i64 {})\nret void",values.len()));
+                    if self.constructing {
+                        assert_eq!(name, "$constructed");
+                        assert_eq!(values.len(), 1);
+                        self.line(format!(
+                            "call void @tellur_rt_v1_constructed(ptr %ctx, i64 {})\nret void",
+                            values[0]
+                        ));
+                    } else {
+                        let args = self.handles(&values);
+                        let (name, len) = self.text(name);
+                        self.line(format!("call void @tellur_rt_v1_complete(ptr %ctx, ptr {name}, i64 {len}, ptr {args}, i64 {})\nret void",values.len()));
+                    }
                     terminal = true;
                 }
                 Action::Decide {
@@ -835,6 +865,12 @@ impl CheckedProgram {
             next: 0,
             layout: FrameLayout::default(),
             loops: BTreeMap::new(),
+            constructors: self
+                .regions()
+                .filter(|r| r.is_constructor())
+                .map(|r| r.name.clone())
+                .collect(),
+            constructing: false,
             controls: self
                 .regions()
                 .enumerate()
@@ -847,7 +883,6 @@ impl CheckedProgram {
             if region.asynchronous
                 || region.boundary.is_some()
                 || region.contingency
-                || region.is_constructor()
                 || region
                     .slots
                     .values()

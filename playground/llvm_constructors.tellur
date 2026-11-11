@@ -1,0 +1,28 @@
+struct message {
+    string text;
+    constructor(string name, bool fail) {
+        self.text = concat("Hello, ", move name);
+        delta fail {
+            true => failed,
+            false => ready
+        }
+        [failed]: fault "construction stopped";
+    }
+}
+
+struct text_view['a] {
+    ref string text <- 'a;
+    constructor(ref string input)[input] {
+        self.text = input;
+    }
+}
+
+control main(bool fail) exits result {
+    auto owned = message("Ada", fail);
+    auto view = text_view(borrow owned.text);
+    emit(view.text);
+    exit done { owned };
+}
+outcome result {
+    @exit 0 done { message value }
+}

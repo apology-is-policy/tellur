@@ -113,6 +113,11 @@ The temporary cannot contain resources or references, and no returned borrow may
 escape it. `move` transfers ownership; it does not promise a particular machine
 instruction sequence or physical copy elision.
 
+Since 0.247, the opt-in [LLVM backend](llvm-backend.md#declared-constructors)
+supports synchronous declared constructors, including nested and borrowed results.
+Task and boundary forms remain gated; source initialization and origin
+rules are the same as on the default Rust backend.
+
 Since 0.68, native constructors deliver completed values into caller storage
 without an intermediate outcome tag or payload vector. Partial fields stay owned
 by the constructor until initialization completes. A later caller fault releases

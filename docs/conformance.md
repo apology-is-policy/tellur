@@ -6399,3 +6399,14 @@ A 200,000-instruction looping program runs under a 512 KiB stack limit at O0/O2,
 reaching the same fuel failure as Rust; entry-block scratch checks include loops.
 Unsupported boundary work inside a loop still rejects before build output creation.
 Authored nested loops and reference loop parameters retain their checker limits.
+
+### B1.3m constructor delivery (0.247)
+
+The LLVM differential suite covers owning and borrowed constructors, nested and
+imported generic calls, written argument order, short-circuiting, projections,
+collection/exit payloads and loop preparation at O0/O2 before and after expansion.
+Faulting constructors match Rust source names, activation reports and every tested
+fuel cut. Runtime ABI regressions check direct destination delivery without outcome
+capacity, preserved caller storage, stale/foreign identity rejection, argument-batch
+atomicity and retirement after partial initialization or malformed completion.
+Existing constructor checker tests retain initialization, resource and origin limits.

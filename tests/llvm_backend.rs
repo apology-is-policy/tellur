@@ -1678,8 +1678,304 @@ control main() exits done {{
     }
 
     #[test]
+    fn constructors_deliver_directly_and_keep_faults_and_every_fuel_cut() {
+        let source = include_str!("../playground/llvm_constructors.tellur");
+        let checked = tellur::compile(
+            source,
+            Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
+        )
+        .unwrap();
+        let ir = checked.llvm_source("main").unwrap();
+        assert!(ir.contains("call void @tellur_rt_v1_construct_call"));
+        for (id, region) in checked
+            .regions()
+            .enumerate()
+            .filter(|(_, r)| r.is_constructor())
+        {
+            let body = ir
+                .split(&format!("define void @control_{id}("))
+                .nth(1)
+                .unwrap()
+                .split("\n}")
+                .next()
+                .unwrap();
+            assert!(
+                body.contains("call void @tellur_rt_v1_constructed"),
+                "{}",
+                region.name
+            );
+            assert!(!body.contains("call void @tellur_rt_v1_complete("));
+        }
+        carrier_matrix(source, &[false,true].map(|fail|json!({"entry":"main","arguments":[{"kind":"bool","value":fail}],"calls":[]})), &(0..=45).map(Some).chain([None]).collect::<Vec<_>>());
+    }
+    #[test]
+    fn constructors_preserve_written_order_short_circuiting_and_nested_owners() {
+        carrier_matrix(
+            r#"
+struct message {
+ string text;
+ constructor(string text) { self.text = move text; }
+}
+struct pair {
+ message left;
+ message right;
+ constructor(message a, message b) {self.right = move b; self.left = move a;}
+}
+control main() exits done {
+ auto p = pair(message("left"), message("right"));
+ emit(move p.left.text);
+ emit(move p.right.text);
+ exit done;
+}
+"#,
+            &[json!({"entry":"main","arguments":[],"calls":[]})],
+            &[None],
+        );
+        carrier_matrix(
+            r#"
+struct mark {string text; u32 number; bool yes;
+ constructor(ref mutable u32 counter, string text) {
+  emit(borrow text); deref counter=2;
+  self.text=move text; self.number=2; self.yes=true;
+ }
+}
+struct pair {u32 before; mark after;}
+control take(u32 before, mark after) exits done {emit(u32_text(before));emit(move after.text);exit done;}
+control main() exits done {
+ mutable u32 n=1;
+ take(n, mark(borrow mutable n, "call"));
+ n=1;
+ auto p=pair {n, mark(borrow mutable n,"record")};
+ emit(u32_text(p.before));emit(move p.after.text);
+ n=1;
+ bool same=n==(mark(borrow mutable n,"binary")).number;
+ delta same {true=>fault "left operand was evaluated too late",false=>compared}
+ [compared]:
+ bool skipped=false && (mark(borrow mutable n,"WRONG and")).yes;
+ bool skipped_or=true || (mark(borrow mutable n,"WRONG or")).yes;
+ bool evaluated=true && (mark(borrow mutable n,"and")).yes;
+ bool evaluated_or=false || (mark(borrow mutable n,"or")).yes;
+ delta skipped {true=>fault "bad and",false=>and_checked}
+ [and_checked]: delta skipped_or {true=>or_checked,false=>fault "bad or"}
+ [or_checked]:exit done;
+}
+"#,
+            &[json!({"entry":"main","arguments":[],"calls":[]})],
+            &[None],
+        );
+        carrier_matrix(
+            r#"
+struct mark {string text; constructor(string text) {emit(borrow text);self.text=move text;}}
+control make() exits ready {mark first,mark second} {exit ready {mark("first"),mark("second")};}
+control main() exits done {
+ auto result=capture make();
+ delta result {ready {auto first,auto second}=>ready}
+ [ready]:emit(move first.text);emit(move second.text);
+ vector<mark> values=[mark("list one"),mark("list two")];drop(values);
+ delta false {true=>yes,false=>no}
+ [yes]:auto unused=mark("WRONG inactive");drop(unused);exit done;
+ [no]:exit done;
+}
+"#,
+            &[json!({"entry":"main","arguments":[],"calls":[]})],
+            &[None],
+        );
+        carrier_matrix(
+            r#"struct message {string text;constructor(string text){self.text=move text;}}
+ control show(ref message value) exits done {emit(borrow value.text);exit done;}
+ control main() exits done {show(borrow message("temporary"));loop work(message value=message("loop")){emit(move value.text);exit done;}}"#,
+            &[json!({"entry":"main","arguments":[],"calls":[]})],
+            &[None],
+        );
+    }
+    #[test]
+    fn constructors_preserve_shared_exclusive_and_nested_carrier_origins() {
+        carrier_matrix(
+            r#"
+struct text_pair['a, 'b] {
+    ref string left <- 'a;
+    ref string right <- 'b;
+    constructor(ref string left, ref string right)[left, right] {
+        self.left = left;
+        self.right = right;
+    }
+}
+control main() exits done {
+    mutable string left = "left";
+    mutable string right = "right";
+    auto pair = text_pair(borrow left, borrow right);
+    emit(pair.left);
+    left = "released left";
+    emit(pair.right);
+    right = "released right";
+    exit done;
+}
+"#,
+            &[json!({"entry":"main","arguments":[],"calls":[]})],
+            &[None],
+        );
+        carrier_matrix(
+            r#"
+struct text_pair['a, 'b] {
+    ref mutable string left <- 'a;
+    ref mutable string right <- 'b;
+    constructor(ref mutable string left, ref mutable string right)[left, right] {
+        self.left = left;
+        self.right = right;
+    }
+}
+control main() exits done {
+    mutable string left = "left";
+    mutable string right = "right";
+    auto pair = text_pair(borrow mutable left, borrow mutable right);
+    deref pair.left = "edited"; emit(pair.left);
+    left = "released left";
+    emit(pair.right);
+    right = "released right";
+    exit done;
+}
+"#,
+            &[json!({"entry":"main","arguments":[],"calls":[]})],
+            &[None],
+        );
+        carrier_matrix(
+            r#"
+struct view['a] {
+    ref string text <- 'a;
+    constructor(ref string input)[input] { self.text = input; }
+}
+struct wrapper['a] {
+    view['a] inner;
+    constructor(ref string input)[input] { self.inner = view(input); }
+}
+struct borrowed_view['storage, 'text] {
+    ref view['text] value <- 'storage;
+    constructor(ref view input, bool first)[input, input['a]] {
+        delta first { true => first, false => second }
+        [first]: self.value = input;
+        [second]: self.value = input;
+        [entry]: emit(self.value.text);
+    }
+}
+control unwrap(view input) exits ready { view[input['a]] value } {
+    exit ready { input };
+}
+control main() exits done {
+    mutable string owner = "nested";
+    auto wrapped = wrapper(borrow owner);
+    auto a = borrowed_view(borrow wrapped.inner, true);
+    auto b = borrowed_view(borrow wrapped.inner, false);
+    emit(a.value.text);
+    emit(b.value.text);
+    drop(a);
+    drop(b);
+    drop(wrapped);
+    delta unwrap(view(borrow owner)) { ready { auto value } => ready }
+    [ready]: emit(value.text);
+    owner = "released";
+    exit done;
+}
+"#,
+            &[json!({"entry":"main","arguments":[],"calls":[]})],
+            &[None],
+        );
+        carrier_matrix(
+            r#"
+struct view['a] { ref string text <- 'a; }
+struct optional_view['storage, 'text] {
+    option<ref view>['storage, 'text] value;
+    constructor(ref view input, bool present)[input, input['a]] {
+        delta present { true => present, false => absent }
+        [present]: self.value = some { input };
+        [absent]: self.value = none {};
+    }
+}
+control show(optional_view input) exits done {
+    delta input.value { some { auto view } => present, none => absent }
+    [present]: emit(view.text);
+    [entry]: exit done;
+}
+control main() exits done {
+    mutable string owner = "nested optional";
+    view saved = view { borrow owner };
+    show(optional_view(borrow saved, false));
+    show(optional_view(borrow saved, true));
+    drop(saved);
+    owner = "released";
+    exit done;
+}
+"#,
+            &[json!({"entry":"main","arguments":[],"calls":[]})],
+            &[None],
+        );
+    }
+
+    #[test]
+    fn imported_generic_constructors_preserve_names_and_partial_initialization_faults() {
+        let f = Fixture::new(
+            r#"
+import "helpers.tellur" as helpers;
+control main(bool fail) exits result faults {
+    auto value = helpers.wrapper<helpers.message>(helpers.message(fail));
+    emit(move value.value.text);
+    exit done;
+}
+outcome result {@exit 0 done}
+"#,
+        );
+        fs::write(
+            f.root.join("helpers.tellur"),
+            r#"
+pub struct wrapper<t> {
+    pub t value;
+    pub constructor(t value) {self.value = move value;}
+}
+pub struct message {
+    pub string text;
+    pub constructor(bool fail) faults {
+        self.text = "initialized";
+        delta fail {true => failed, false => ready}
+        [failed]: fault "partial initialization";
+    }
+}
+"#,
+        )
+        .unwrap();
+        for expanded in [false, true] {
+            for opt in [0, 2] {
+                build_pair(&f, expanded, opt);
+                for fail in [false, true] {
+                    let path = f.root.join("scenario.json");
+                    fs::write(&path, json!({"entry":"main","arguments":[{"kind":"bool","value":fail}],"calls":[]}).to_string()).unwrap();
+                    for fuel in (0..=40).map(Some).chain([None]) {
+                        let a = execute(&f.root.join(format!("llvm-{opt}")), &path, fuel);
+                        let b = execute(&f.root.join(format!("rust-{opt}")), &path, fuel);
+                        assert_eq!(
+                            a.status.code(),
+                            b.status.code(),
+                            "{expanded}/{opt}/{fail}/{fuel:?}"
+                        );
+                        assert_eq!(a.stdout, b.stdout, "{expanded}/{opt}/{fail}/{fuel:?}");
+                        assert_eq!(a.stderr, b.stderr, "{expanded}/{opt}/{fail}/{fuel:?}");
+                        if fuel.is_none() {
+                            assert_eq!(a.status.success(), !fail);
+                            if fail {
+                                assert!(
+                                    String::from_utf8_lossy(&a.stderr)
+                                        .contains("message.constructor")
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn every_control_keeps_scratch_allocations_in_its_entry_block() {
         for source in [
+            include_str!("../playground/llvm_constructors.tellur"),
             include_str!("../playground/llvm_loops.tellur"),
             include_str!("../playground/llvm_collections.tellur"),
             include_str!("../playground/llvm_carriers.tellur"),
@@ -1714,7 +2010,7 @@ control main() exits done {{
     #[test]
     fn unsupported_checked_operations_create_no_build_outputs() {
         for source in [
-            "struct ticket {u32 value;constructor(u32 input){self.value=input;}} control main() exits result {drop(ticket(1));exit done;} outcome result {@exit 0 done}",
+            "struct ticket {u32 value;constructor(u32 input){run helper();self.value=input;}} async control helper() exits done {exit done;} control main() exits result {drop(ticket(1));exit done;} outcome result {@exit 0 done}",
             "control main() exits result {exit done;} async control helper() exits done {exit done;} outcome result {@exit 0 done}",
             "control main() exits result {loop L(){fault boundary {exit done;} contingency [] {terminate process 1;}}} outcome result {@exit 0 done}",
             "control main() exits result {fault boundary {exit done;} contingency [] {terminate process 1;}} outcome result {@exit 0 done}",

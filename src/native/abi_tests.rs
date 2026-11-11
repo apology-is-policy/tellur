@@ -5,6 +5,7 @@ fn context(host: &mut Host) -> Context<'_> {
         host,
         storage: FrameStorage::Owned(Frames::default()),
         frame: None,
+        destination: None,
         values: vec![],
         outcomes: vec![],
         value_base: 0,
@@ -1752,4 +1753,222 @@ fn temporary_field_reads_assignment_and_projection_resolve_retired_handle_bases(
         assert_eq!(tellur_rt_v1_project(&mut c, stale, 0), 0);
         assert_eq!(c.get(live).unwrap(), &before);
     }
+}
+
+unsafe extern "C" fn constructor_forward(ctx: *mut Context<'_>, args: *const u64, _: usize) {
+    unsafe {
+        tellur_rt_v1_frame(ctx, 1);
+        let partial = tellur_rt_v1_value(ctx, 3, 0, b"partial".as_ptr(), 7);
+        tellur_rt_v1_store(ctx, 0, std::ptr::null(), 0, partial);
+        tellur_rt_v1_constructed(ctx, *args);
+    }
+}
+
+#[test]
+fn constructor_destination_delivery_preserves_caller_storage_without_outcome_handles() {
+    let mut host = Host::new(json!({}), None, true, None);
+    host.enter("root").unwrap();
+    let mut c = context(&mut host);
+    unsafe { tellur_rt_v1_frame(&mut c, 3) };
+    c.storage.values_mut()[0] = Some(V::String("caller".into()));
+    let owner = c
+        .storage
+        .values()
+        .local_storage(c.frame.as_ref().unwrap(), 0)
+        .unwrap();
+    let reference = unsafe {
+        tellur_rt_v1_reference(&mut c, 0, std::ptr::null(), 0, 0, b"&String".as_ptr(), 7)
+    };
+    let reference = c.take(reference).unwrap();
+    let value = c.put(V::Construct {
+        ty: "view".into(),
+        name: "view".into(),
+        fields: vec![reference],
+    });
+    c.outcome_base = u64::MAX; // Constructors need no outcome capacity.
+    unsafe {
+        tellur_rt_v1_construct_call(
+            &mut c,
+            constructor_forward,
+            b"view.constructor".as_ptr(),
+            16,
+            &value,
+            1,
+            1,
+        )
+    };
+    assert!(c.error.is_none(), "{:?}", c.error);
+    assert!(c.result.is_none());
+    assert!(c.outcomes.is_empty());
+    assert!(c.get(value).is_err());
+    assert_eq!(c.storage.values().require_storage(&owner).unwrap(), 0);
+    assert_eq!(c.storage.values().len(), 3); // Child partial field retired.
+    let reference = unsafe { tellur_rt_v1_local(&mut c, 1, [0].as_ptr(), 1, 0) };
+    unsafe { tellur_rt_v1_store(&mut c, 2, std::ptr::null(), 0, reference) };
+    let text = unsafe { tellur_rt_v1_deref(&mut c, 2, std::ptr::null(), 0, 0) };
+    assert_eq!(c.get(text).unwrap(), &V::String("caller".into()));
+    assert!(c.error.is_none());
+}
+
+#[test]
+fn constructor_destination_and_argument_checks_precede_transfer() {
+    for (slot, occupied, duplicate) in [(2, false, false), (0, true, false), (0, false, true)] {
+        let mut host = Host::new(json!({}), None, true, None);
+        let mut c = context(&mut host);
+        unsafe { tellur_rt_v1_frame(&mut c, 1) };
+        if occupied {
+            c.storage.values_mut()[0] = Some(V::String("keep".into()));
+        }
+        let value = c.put(V::String("argument".into()));
+        let args = if duplicate {
+            vec![value, value]
+        } else {
+            vec![value]
+        };
+        unsafe {
+            tellur_rt_v1_construct_call(
+                &mut c,
+                constructor_forward,
+                b"ctor".as_ptr(),
+                4,
+                args.as_ptr(),
+                args.len(),
+                slot,
+            )
+        };
+        assert!(c.error.is_some());
+        assert!(c.get(value).is_ok());
+        assert_eq!(
+            c.storage.values()[0],
+            occupied.then(|| V::String("keep".into()))
+        );
+        assert!(c.outcomes.is_empty());
+    }
+    for retired in [false, true] {
+        let mut host = Host::new(json!({}), None, true, None);
+        let mut c = context(&mut host);
+        let mut other = Frames::default();
+        let frame = other.enter(1).unwrap();
+        c.destination = Some(other.local_storage(&frame, 0).unwrap());
+        if retired {
+            other.retire(&frame).unwrap();
+        }
+        c.storage = FrameStorage::Owned(if retired { other } else { Frames::default() });
+        let replacement = c.storage.values_mut().enter(1).unwrap();
+        c.frame = Some(replacement);
+        let value = c.put(V::String("not transferred".into()));
+        unsafe { tellur_rt_v1_constructed(&mut c, value) };
+        assert!(c.error.as_ref().unwrap().contains("foreign or retired"));
+        assert!(c.get(value).is_ok());
+        assert!(c.storage.values()[0].is_none());
+    }
+}
+
+#[test]
+fn failed_constructor_callbacks_retire_fields_and_revoke_malformed_delivery() {
+    unsafe extern "C" fn fail_before(ctx: *mut Context<'_>, args: *const u64, _: usize) {
+        unsafe {
+            tellur_rt_v1_frame(ctx, 1);
+            tellur_rt_v1_store(ctx, 0, std::ptr::null(), 0, *args);
+            let message = tellur_rt_v1_value(ctx, 3, 0, b"first failure".as_ptr(), 13);
+            tellur_rt_v1_fault(ctx, message);
+            tellur_rt_v1_constructed(ctx, 999);
+        }
+    }
+    unsafe extern "C" fn fail_after(ctx: *mut Context<'_>, args: *const u64, count: usize) {
+        unsafe {
+            constructor_forward(ctx, args, count);
+            let message = tellur_rt_v1_value(ctx, 3, 0, b"first failure".as_ptr(), 13);
+            tellur_rt_v1_fault(ctx, message);
+        }
+    }
+    unsafe extern "C" fn fallthrough(ctx: *mut Context<'_>, args: *const u64, _: usize) {
+        unsafe {
+            tellur_rt_v1_frame(ctx, 1);
+            tellur_rt_v1_store(ctx, 0, std::ptr::null(), 0, *args);
+        }
+    }
+    for (callback, expected) in [
+        (fail_before as Callback, "E_FAULT: first failure"),
+        (fail_after as Callback, "E_FAULT: first failure"),
+        (
+            fallthrough as Callback,
+            "E_NATIVE: compiled ABI control fell through",
+        ),
+        (
+            echo as Callback,
+            "E_NATIVE: constructor requires destination completion",
+        ),
+    ] {
+        let mut host = Host::new(json!({}), None, true, None);
+        host.enter("root").unwrap();
+        let mut c = context(&mut host);
+        unsafe { tellur_rt_v1_frame(&mut c, 2) };
+        c.storage.values_mut()[0] = Some(V::String("caller".into()));
+        let value = c.put(V::String("partial field".into()));
+        unsafe {
+            tellur_rt_v1_construct_call(
+                &mut c,
+                callback,
+                b"broken.constructor".as_ptr(),
+                18,
+                &value,
+                1,
+                1,
+            )
+        };
+        assert_eq!(c.error.as_deref(), Some(expected));
+        assert_eq!(
+            &**c.storage.values(),
+            &[Some(V::String("caller".into())), None]
+        );
+        assert!(c.outcomes.is_empty());
+        let report = c
+            .host
+            .activations
+            .failure("root", fault::Phase::Execution, expected);
+        assert_eq!(
+            report
+                .activations
+                .iter()
+                .map(|a| a.control.as_str())
+                .collect::<Vec<_>>(),
+            ["root", "broken.constructor"]
+        );
+    }
+}
+
+#[test]
+fn constructor_completion_rejects_missing_and_duplicate_destinations_without_transfer() {
+    let mut host = Host::new(json!({}), None, true, None);
+    let mut c = context(&mut host);
+    let value = c.put(V::String("kept".into()));
+    unsafe { tellur_rt_v1_constructed(&mut c, value) };
+    assert!(
+        c.error
+            .as_ref()
+            .unwrap()
+            .contains("missing constructor destination")
+    );
+    assert!(c.get(value).is_ok());
+    c.error = None;
+    unsafe { tellur_rt_v1_frame(&mut c, 1) };
+    c.destination = Some(
+        c.storage
+            .values()
+            .local_storage(c.frame.as_ref().unwrap(), 0)
+            .unwrap(),
+    );
+    unsafe { tellur_rt_v1_constructed(&mut c, value) };
+    assert!(c.error.is_none());
+    let second = c.put(V::String("second".into()));
+    unsafe { tellur_rt_v1_constructed(&mut c, second) };
+    assert!(
+        c.error
+            .as_ref()
+            .unwrap()
+            .contains("duplicate ABI completion")
+    );
+    assert!(c.get(second).is_ok());
+    assert_eq!(c.storage.values()[0], Some(V::String("kept".into())));
 }

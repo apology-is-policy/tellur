@@ -13,6 +13,7 @@ Compiler 0.242 adds reference-bearing aggregates and whole borrowed carrier resu
 Compiler 0.243 adds opaque/resource values and synchronous borrowed host parameters.
 Compiler 0.244 adds arrays, vectors, maps and synchronous collection operations.
 Compiler 0.246 adds synchronous tail loops and expanded loop completions.
+Compiler 0.247 adds synchronous declared constructors with direct destination delivery.
 The default remains `--backend rust`. Both start from the same checked program;
 backend selection does not relax ownership, origins, outcomes or path rules.
 
@@ -39,8 +40,7 @@ the Rust backend. Multiple eligible executable entries are supported.
 
 Direct references and reference-bearing aggregates compose recursively; shared/exclusive
 parameters, borrowed results, carrier reborrows and indirect fields are supported.
-User constructors, fault
-boundaries, contingencies, task operations and adapters remain outside this
+Fault boundaries, contingencies, task operations and adapters remain outside this
 profile. Launch signal policies are also rejected. Admission checks all checked
 regions, including unused helpers. Unsupported programs receive `E_BACKEND`
 before the backend creates its output directory or files; ordinary checking may
@@ -71,6 +71,32 @@ helpers, scalar payloads and identity routing:
 
 The first invocation reports `accepted` with status 0; the second reports
 `declined` with status 7. The first also emits the number; both emit the greeting.
+
+## Declared constructors
+
+Synchronous [constructors](construction.md) deliver a completed record directly into
+a validated caller local. They do not package an outcome tag or payload vector.
+Partial fields remain in the constructor frame until completion; faults retire that
+frame without publishing a partial value. Nested/generic/imported calls preserve
+written argument order, short-circuiting and ordinary source activation names.
+
+Reference-bearing constructor results retain their declared caller origins and use
+the same checked evidence as raw records and control results. The destination's
+storage identity is validated before argument transfer and delivery. It grants no
+new borrowing permission. Task-bearing and boundary-bearing constructors
+remain outside the admitted profile.
+
+The [constructor example](../../playground/llvm_constructors.tellur) constructs an
+owning message and a borrowed view:
+
+```sh
+./bin/tellurc build playground/llvm_constructors.tellur playground/manifest.json --backend llvm --out /tmp/tellur-constructors
+/tmp/tellur-constructors false
+/tmp/tellur-constructors true
+```
+
+The first invocation emits `Hello, Ada` and returns the message. The second faults
+after initializing its field, before any result reaches the caller.
 
 ## Stable local storage
 
@@ -359,7 +385,7 @@ then compiles `program.o` and links `OUTPUT` with its embedded LLVM/LLD 22.1.8.
 Path guards are LLVM branches. Runtime faults retain Tellur source provenance;
 native debugger information is not yet emitted.
 
-The distributed 0.246 compiler includes the `llvm` feature. When building the
+The distributed 0.247 compiler includes the `llvm` feature. When building the
 compiler from source, enable it and set `LLVM_SYS_221_PREFIX` to the static pinned
 LLVM/LLD installation, as described in the repository README. A compiler built
 without that feature reports a clear error for `--backend llvm`.
@@ -371,5 +397,5 @@ handles and shares the existing runtime's launch, fuel, fault and result logic.
 The resulting executable is standalone. Shipping a precompiled runtime and target
 link packs belongs to the later single-binary checkpoint.
 
-The next synchronous slices add constructors and fault boundaries. Async lowering follows using frontend state machines, before the
+The next synchronous slice adds fault boundaries. Async lowering follows using frontend state machines, before the
 whole-language parity gate permits changing the default backend.

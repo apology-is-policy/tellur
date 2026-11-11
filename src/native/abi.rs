@@ -18,6 +18,7 @@ pub struct Context<'a> {
     host: &'a mut Host,
     storage: FrameStorage<'a>,
     frame: Option<frames::Frame>,
+    destination: Option<frames::Storage>,
     values: Vec<Option<V>>,
     outcomes: Vec<Option<(String, Vec<V>)>>,
     value_base: u64,
@@ -723,9 +724,35 @@ pub unsafe extern "C" fn tellur_rt_v1_complete(
         if c.result.is_some() {
             return Err("E_NATIVE: duplicate ABI completion".into());
         }
+        if c.destination.is_some() {
+            return Err("E_NATIVE: constructor requires destination completion".into());
+        }
         let name = unsafe { text(name, len)? }.to_owned();
         let args = c.take_many(unsafe { slice(args, count) })?;
         c.result = Some(Completion::Outcome((name, args)));
+        Ok(())
+    })
+}
+
+/// Publish only a fully initialized value. The destination identifies the caller's
+/// live allocation, never an offset that could alias a retired constructor frame.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_constructed(ctx: *mut Context<'_>, value: u64) {
+    unsafe { &mut *ctx }.perform(|c| {
+        if c.result.is_some() {
+            return Err("E_NATIVE: duplicate ABI completion".into());
+        }
+        let destination = c
+            .destination
+            .as_ref()
+            .ok_or("E_NATIVE: missing constructor destination")?;
+        let root = c.storage.values().require_storage(destination)?;
+        if c.storage.values()[root].is_some() {
+            return Err("E_NATIVE: occupied constructor destination".into());
+        }
+        let value = c.take(value)?;
+        c.storage.values_mut()[root] = Some(value);
+        c.result = Some(Completion::Constructed);
         Ok(())
     })
 }
@@ -822,6 +849,7 @@ pub unsafe extern "C" fn tellur_rt_v1_call(
                 host: &mut *c.host,
                 storage: FrameStorage::Borrowed(c.storage.values_mut()),
                 frame: None,
+                destination: None,
                 values: vec![],
                 outcomes: vec![],
                 value_base: 0,
@@ -836,6 +864,55 @@ pub unsafe extern "C" fn tellur_rt_v1_call(
             result
         };
         Ok(c.put_outcome(outcome))
+    })
+}
+
+/// Constructor calls bypass outcome packaging and deliver into a checked caller
+/// local. Destination and the whole argument batch are checked before transfer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_construct_call(
+    ctx: *mut Context<'_>,
+    callback: Callback,
+    name: *const u8,
+    len: usize,
+    args: *const u64,
+    count: usize,
+    slot: usize,
+) {
+    unsafe { &mut *ctx }.perform(|c| {
+        let frame = c.frame.as_ref().ok_or("E_NATIVE: missing ABI frame")?;
+        let destination = c.storage.values().local_storage(frame, slot)?;
+        let root = c.storage.values().require_storage(&destination)?;
+        if c.storage.values()[root].is_some() {
+            return Err("E_NATIVE: occupied constructor destination".into());
+        }
+        let name = unsafe { text(name, len)? };
+        let values = c.take_many(unsafe { slice(args, count) })?;
+        c.host.enter(name)?;
+        let mut child = Context {
+            host: &mut *c.host,
+            storage: FrameStorage::Borrowed(c.storage.values_mut()),
+            frame: None,
+            destination: Some(destination.clone()),
+            values: vec![],
+            outcomes: vec![],
+            value_base: 0,
+            outcome_base: 0,
+            error: None,
+            result: None,
+        };
+        let arguments: Vec<u64> = values.into_iter().map(|v| child.put(v)).collect();
+        unsafe { callback(&mut child, arguments.as_ptr(), arguments.len()) };
+        if let Err(error) = child.finish().and_then(Completion::constructed) {
+            // A malformed callback might fail after delivery. Revoke that value,
+            // retain the original failure and leave the activation chain intact.
+            if let Ok(root) = child.storage.values().require_storage(&destination) {
+                child.storage.values_mut()[root] = None;
+            }
+            return Err(error);
+        }
+        child.host.leave();
+        Ok(())
     })
 }
 
@@ -941,6 +1018,7 @@ unsafe fn launch_program(
                 host,
                 storage: FrameStorage::Owned(Frames::default()),
                 frame: None,
+                destination: None,
                 values: vec![],
                 outcomes: vec![],
                 value_base: 0,
