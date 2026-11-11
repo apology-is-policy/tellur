@@ -17,6 +17,7 @@ Compiler 0.247 adds synchronous declared constructors with direct destination de
 Compiler 0.248 adds named synchronous boundaries and contingency settlement.
 Compiler 0.249 adds lexical boundaries, supervised recovery and process termination.
 Compiler 0.253 adds a bounded frontend async-frame profile; 0.254 adds cold control tasks. Compiler 0.256 adds spawned controls and consuming joins; 0.257 adds control cancellation requests.
+Compiler 0.258 adds scripted async host operations and their cancellation alternatives.
 The default remains `--backend rust`. Both start from the same checked program;
 backend selection does not relax ownership, origins, outcomes or path rules.
 
@@ -46,8 +47,9 @@ parameters, borrowed results, carrier reborrows and indirect fields are supporte
 A separate bounded async profile admits `run`, direct `await` and `yield`, including
 synchronous callers that reach those controls. Cold control tasks support `defer`,
 local moves/option wrappers and consuming `await`. Spawned controls and consuming joins
-are supported since 0.256; control cancellation requests since 0.257. Task sets,
-async host operations, async loops/boundaries and adapters remain
+are supported since 0.256; control cancellation requests since 0.257. Scripted
+async host operations share those task forms since 0.258. Task sets,
+async loops/boundaries and Rust adapters remain
 outside that profile. Launch signal policies are also rejected. Admission checks all checked
 regions, including unused helpers. Unsupported programs receive `E_BACKEND`
 before the backend creates its output directory or files; ordinary checking may
@@ -697,10 +699,9 @@ introduces no source handoff, and allocates no completion wait or physical frame
 Repeated requests do not complete, retire or restart the child. Already completed
 children retain their ordinary outcome and result ownership until joined.
 
-The bounded LLVM profile currently admits control tasks without async host
-operations. These children continue to ordinary completion or fault despite the
-request. Observation at a host operation's `cancelled` alternative follows with
-async host lowering; no implicit interruption at `yield` or join is introduced.
+Control tasks without cancellable host operations continue to ordinary completion
+or fault despite the request. Since 0.258 a host operation's explicit `cancelled`
+alternative observes it; no implicit interruption at `yield` or join is introduced.
 The [cancellation rules](async-execution.md#cancellation) remain the language contract.
 
 ```sh
@@ -712,5 +713,39 @@ The [cancellation rules](async-execution.md#cancellation) remain the language co
 The example requests cancellation twice before the writer runs, then joins both
 children. The first run returns `Tellur!`; the second reports the writer's ordinary
 source fault. Its exclusive caller loan remains live until join or fault settlement.
-Cancellation of sets, async host operations, retained loops/boundaries/constructors,
+Cancellation of sets, retained loops/boundaries/constructors,
 adapters and launch signals remain outside this LLVM profile. Rust stays default.
+
+
+## Scripted async host operations (0.258)
+
+Supported manifest async operations now use the same generated control frames as
+other async targets. `defer op(args)` captures arguments without starting the host;
+`spawn op(args)` queues its arena-owned task without a handoff. Consuming `await`
+uses the existing task identity and delivers the original outcome exactly once.
+A synchronous control enters with `run`; an async control uses `await`. `run`
+retains its invocation context, but a pending host leaf still lets other source
+tasks progress. Readiness polling and result delivery consume no instruction fuel.
+
+Host leaves reuse the runtime's operation validation, scripted wait counts,
+resource publication and cleanup. Borrowed resources stay live through pending
+readiness and can be consumed after completion. Signatures retain the existing
+owned-data host ABI restrictions; reference-bearing host result signatures and
+Rust adapters are not admitted. No new live async provider is introduced: these
+operations need `--scenario` until the later adapter checkpoint.
+
+An explicit `cancelled` arm on `run` or `await` observes the current task's sticky
+request. Cancellation before start consumes no scenario call. Cancellation while
+pending suppresses the completion event and payload; a completed operation retains
+its ordinary result. Without that arm the operation completes normally. Repeated
+requests, inherited requests and required joins keep the language's existing rules.
+
+```sh
+./bin/tellurc build playground/llvm_host.tellur playground/llvm_host.manifest.json --backend llvm --out /tmp/tellur-host
+/tmp/tellur-host --scenario playground/llvm_host.scenario.json
+```
+
+The example emits `captured`, then `run`, `cold`, `queued`, `spawn` and `await`.
+Its supplied scenario deliberately makes every host call report pending readiness.
+Task sets, retained loops/boundaries/constructors, adapters and launch signals
+remain outside this LLVM profile. Rust remains the default until parity.

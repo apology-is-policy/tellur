@@ -17,6 +17,9 @@ mod arena_tests;
 #[path = "abi_cold_tests.rs"]
 mod cold_tests;
 #[cfg(test)]
+#[path = "abi_host_tests.rs"]
+mod host_tests;
+#[cfg(test)]
 #[path = "abi_program_tests.rs"]
 mod program_tests;
 #[cfg(test)]
@@ -1275,7 +1278,8 @@ impl<'frame> RetainedRoot<'frame> {
 /// 2 normal completion, 3 direct await, 4 continue without a source handoff, or
 /// 5 run an inline child on the current invocation stack, 6 spawn without a source
 /// handoff, 7 consume a started child through the source join policy, or 8 request
-/// cancellation without a source handoff or consuming the started value.
+/// cancellation without a source handoff or consuming the started value, or
+/// 9 start a retained async host operation.
 /// Initial arguments arrive once; after child delivery the span contains one
 /// outcome handle. Other callbacks receive an empty span.
 pub struct InvocationLayout {
@@ -1493,7 +1497,16 @@ enum InvocationArguments {
     Direct(Vec<V>),
     Cold(Option<V>),
 }
+#[derive(Clone, Copy)]
+struct HostLeaf {
+    operation: &'static str,
+    cancellable: bool,
+}
 enum RequestedInvocation {
+    Host {
+        leaf: HostLeaf,
+        arguments: Vec<V>,
+    },
     Inline {
         handoff: bool,
         child: ProgramFrame,
@@ -1524,6 +1537,7 @@ impl RequestedInvocation {
             Self::Spawn { .. } => 6,
             Self::Join { .. } => 7,
             Self::Cancel { .. } => 8,
+            Self::Host { .. } => 9,
         }
     }
 }
@@ -1720,7 +1734,8 @@ impl Invocation {
                 | (5, Some(5), false)
                 | (6, Some(6), false)
                 | (7, Some(7), false)
-                | (8, Some(8), false) => Ok(execution::Step::Continue), // Queue after callback borrows end.
+                | (8, Some(8), false)
+                | (9, Some(9), false) => Ok(execution::Step::Continue), // Queue after callback borrows end.
                 (2, None, true) => match context.result.take().unwrap() {
                     value @ Completion::Outcome(_) => Ok(execution::Step::Complete(value)),
                     _ => Err("E_NATIVE: retained ABI requires a normal completion".into()),
@@ -1740,6 +1755,15 @@ impl Invocation {
             && let Some(request) = request
         {
             result = (|| match request {
+                RequestedInvocation::Host { leaf, arguments } => {
+                    self.phase = InvocationPhase::Awaiting;
+                    Ok(execution::Step::Host {
+                        operation: leaf.operation,
+                        arguments,
+                        deliver: deliver_host_invocation,
+                        cancellable: leaf.cancellable,
+                    })
+                }
                 RequestedInvocation::Spawn {
                     child,
                     mut arguments,
@@ -1844,13 +1868,22 @@ pub fn resume_invocation(
     activation.abi = Some(invocation);
     result
 }
+fn deliver_host_invocation(
+    activation: &mut execution::Activation,
+    values: &mut Frames,
+    outcome: String,
+    fields: Vec<V>,
+) -> R<()> {
+    deliver_invocation(activation, values, Completion::Outcome((outcome, fields)))
+}
 fn deliver_invocation(
     activation: &mut execution::Activation,
     values: &mut Frames,
     completion: Completion,
 ) -> R<()> {
     // Machine has checked the original child/invocation/domain and adopted owners.
-    // The producer's frame has retired; no source tick or callback occurs here.
+    // Child frames have retired; host results have passed runtime publication.
+    // No source tick or generated callback occurs here.
     values.frame_values(activation.abi_frame_for_delivery())?;
     let invocation = activation
         .abi
@@ -1968,6 +2001,38 @@ pub unsafe extern "C" fn tellur_rt_v1_await_task(ctx: *mut Context<'_>, child: u
 }
 
 impl Context<'_> {
+    fn host_control(
+        &mut self,
+        producer: &'static execution::Control,
+        leaf: HostLeaf,
+        handles: &[u64],
+    ) -> R<()> {
+        if self.request.is_some() || self.result.is_some() {
+            return Err("E_NATIVE: duplicate ABI continuation request".into());
+        }
+        let selected = self
+            .selected_activation
+            .ok_or("E_NATIVE: host operation requires a selected ABI invocation")?;
+        if !std::ptr::eq(selected.abi_control(), producer)
+            || self
+                .program
+                .is_none_or(|p| !std::ptr::eq(p.layout.control, producer))
+            || handles.len() != producer.parameters.len()
+        {
+            return Err("E_NATIVE: host operation producer or arity differs".into());
+        }
+        let declaration = self.host.declared_primitive(leaf.operation)?;
+        if declaration["async"] != true
+            || declaration["returns"] != true
+            || declaration["parameters"].as_array().map(Vec::len) != Some(handles.len())
+        {
+            return Err("E_NATIVE: invalid async host operation descriptor".into());
+        }
+        self.require_outcome_room()?;
+        let arguments = self.take_many(handles)?;
+        self.request = Some(RequestedInvocation::Host { leaf, arguments });
+        Ok(())
+    }
     fn spawn_control(
         &mut self,
         layout: &'static InvocationLayout,
@@ -2103,6 +2168,29 @@ pub unsafe extern "C" fn tellur_rt_v1_cancel(
     });
 }
 
+/// Suspend a generated host wrapper through the original runtime host-operation path.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_host(
+    ctx: *mut Context<'_>,
+    producer: usize,
+    args: *const u64,
+    count: usize,
+) {
+    unsafe { &mut *ctx }.perform(|c| {
+        let registry = COMPILED_PROGRAM
+            .get()
+            .ok_or("E_NATIVE: missing compiled module registry")?;
+        let layout = registry.layout(producer)?;
+        let leaf = registry.compiled[producer]
+            .host
+            .ok_or("E_NATIVE: compiled control is not an async host wrapper")?;
+        if count != layout.control.parameters.len() {
+            return Err("E_NATIVE: invalid ABI host argument count".into());
+        }
+        c.host_control(layout.control, leaf, unsafe { slice(args, count) })
+    });
+}
+
 /// C-safe immutable descriptor emitted by the compiler. Every span points into
 /// module-static storage. Rust Control/InvocationLayout values never cross C ABI.
 #[repr(C)]
@@ -2133,6 +2221,7 @@ pub struct CompiledChild {
     pub offset: usize,
 }
 struct CompiledLayout {
+    host: Option<HostLeaf>,
     cold_type: String,
     started_type: String,
     callback: ResumeCallback,
@@ -2212,7 +2301,22 @@ impl CompiledRegistry {
                 .callback
                 .ok_or("E_NATIVE: missing compiled ABI callback")?;
             let name = unsafe { text(raw.name, raw.name_len)? };
-            let producer = unsafe { text(raw.producer, raw.producer_len)? };
+            let producer: &'static str = unsafe { text(raw.producer, raw.producer_len)? };
+            let host = producer
+                .strip_suffix("$host$cancel")
+                .map(|operation| HostLeaf {
+                    operation,
+                    cancellable: true,
+                })
+                .or_else(|| {
+                    producer.strip_suffix("$host").map(|operation| HostLeaf {
+                        operation,
+                        cancellable: false,
+                    })
+                });
+            if host.is_some_and(|leaf| leaf.operation.is_empty()) {
+                return Err("E_NATIVE: empty compiled host operation".into());
+            }
             let parameters: &'static [usize] =
                 unsafe { slice(raw.parameters, raw.parameter_count) };
             if parameters
@@ -2234,6 +2338,7 @@ impl CompiledRegistry {
                 resume: resume_invocation,
             });
             compiled.push(CompiledLayout {
+                host,
                 cold_type: format!("$task<{producer}>"),
                 started_type: format!("$started<{producer}>"),
                 callback,

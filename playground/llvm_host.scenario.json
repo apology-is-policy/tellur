@@ -1,0 +1,50 @@
+{
+  "entry": "main",
+  "arguments": [],
+  "calls": [
+    {
+      "operation": "tick",
+      "outcome": "ticked",
+      "fields": [
+        {
+          "kind": "string",
+          "value": "run"
+        }
+      ],
+      "waits": 3
+    },
+    {
+      "operation": "tick",
+      "outcome": "ticked",
+      "fields": [
+        {
+          "kind": "string",
+          "value": "cold"
+        }
+      ],
+      "waits": 3
+    },
+    {
+      "operation": "tick",
+      "outcome": "ticked",
+      "fields": [
+        {
+          "kind": "string",
+          "value": "spawn"
+        }
+      ],
+      "waits": 3
+    },
+    {
+      "operation": "tick",
+      "outcome": "ticked",
+      "fields": [
+        {
+          "kind": "string",
+          "value": "await"
+        }
+      ],
+      "waits": 3
+    }
+  ]
+}

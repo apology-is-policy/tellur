@@ -1,0 +1,30 @@
+control inline_tick() exits ticked { string text } {
+    forward run tick("run");
+}
+
+async control startup() exits done {
+    auto cold = defer tick("cold");
+    emit("captured");
+    delta inline_tick() {
+        ticked { string ran_text } => ran
+    }
+    [ran]: emit(ran_text);
+        delta await cold {
+            ticked { string cold_text } => cold
+        }
+    [cold]: emit(cold_text);
+        auto started = spawn tick("spawn");
+        emit("queued");
+        delta await started {
+            ticked { string joined_text } => joined
+        }
+    [joined]: emit(joined_text);
+        delta await tick("await") {
+            ticked { string awaited_text } => awaited
+        }
+    [awaited]: emit(awaited_text);
+        exit done;
+}
+control main() exits done {
+    forward run startup();
+}

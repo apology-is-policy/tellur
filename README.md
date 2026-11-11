@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.257.0** implements the v0.1 checked core and the current language
+Compiler release **0.258.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -22,11 +22,16 @@ spawned children of one async control. `spawn producer(..) into set;` adds a mem
 `delta await next set { ..., empty => ... }` joins members in completion order, and
 `count(borrow set)` bounds how many run at once.
 
+Release 0.258 lowers scripted async host operations through the same LLVM task
+frames as async controls. `run`, `await`, `defer` and `spawn` retain source scheduling,
+owned captures, borrowed resources and explicit cancellation alternatives. See the
+[scripted host example](playground/llvm_host.tellur) and [run instructions](docs/reference/llvm-backend.md#scripted-async-host-operations-0258).
+Task sets, polled Rust adapters and later parity work remain upcoming; Rust stays default.
+
 Release 0.257 adds `cancel child;` to the bounded LLVM control profile. Requests
 remain sticky, preserve the original handle and do not yield or replace the join.
 Children without cancellable host operations finish normally. See the
-[cancellation request example](playground/llvm_cancel.tellur). Async host operations
-and task sets remain upcoming LLVM checkpoints; Rust remains default.
+[cancellation request example](playground/llvm_cancel.tellur). Async host observation follows in 0.258; task sets remain upcoming LLVM work.
 
 Release 0.256 adds LLVM spawned control tasks and consuming joins. Spawned frames
 use the runtime arena; direct children remain by value. Spawn queues without a

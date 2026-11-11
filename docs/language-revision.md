@@ -1549,3 +1549,29 @@ control-flow entry through run/await and cancelled alternatives, then preserving
 the accepted defer/spawn task model. Task sets, retained fault/boundary integration,
 signals, parity/default switch, adapters, single binary, target packs and retirement
 remain in the agreed arc. Rust stays default. No new language semantics are chosen.
+
+
+## B1.4i — scripted LLVM async host leaves (0.258)
+
+Generated host wrappers now issue a retained ABI host request through the original
+Step::Host path. Module-static producer metadata resolves the operation and its
+cancellable variant once. Preflight checks invocation identity, arity, handles and
+outcome capacity before transfer; the original runtime validates and starts the
+host operation after callback borrows end. Delivery reuses the existing outcome
+routing and adds no source tick. This admits run/await/defer/spawn together through
+the accepted task model, without a second scheduler or cancellation protocol.
+
+Five generated matrices compare original/expanded O0/O2 reports and fuel cuts:
+all task forms, two siblings and inline run, queued/pending/completed cancellation,
+borrowed resources and malformed scripts, and pending-child source-fault retirement.
+Private matrices check stable module metadata, borrowed owner buffers, failed
+preflight, wait counts, cancellation before start, fault cleanup and quotas1/3/MAX.
+The generated quota matrix now includes host readiness and cancellation variants.
+The llvm_host example has a dedicated manifest and pending-readiness scenario.
+
+This checkpoint supplies scripted host execution; no live async builtin provider
+exists in the current runtime, and polled Rust adapters remain at the adapter
+station. Async resource-result admission still obeys the existing declared fault
+release contract. Task sets are next, followed by retained fault/boundary/loop
+integration and signals, parity/default, adapters, single binary, target packs and
+retirement. Rust stays default; accepted language semantics are unchanged.

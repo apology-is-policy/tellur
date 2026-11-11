@@ -492,3 +492,45 @@ fn compiled_entry_borrows_physical_storage_and_rejects_bad_extent_before_capture
     assert_eq!(context.host.fuel, Some(10));
     assert!(context.host.events.is_empty() && context.host.resources.scopes.is_empty());
 }
+
+#[test]
+fn host_wrapper_metadata_uses_exact_module_static_producer_and_cancellation_variant() {
+    static REGISTRY: OnceLock<CompiledRegistry> = OnceLock::new();
+    static HOSTS: [CompiledControl; 2] = [
+        CompiledControl {
+            producer: b"tick$host".as_ptr(),
+            producer_len: 9,
+            name: b"display".as_ptr(),
+            name_len: 7,
+            ..LEAF
+        },
+        CompiledControl {
+            producer: b"tick$host$cancel".as_ptr(),
+            producer_len: 16,
+            ..LEAF
+        },
+    ];
+    static EMPTY: [CompiledControl; 1] = [CompiledControl {
+        producer: b"$host".as_ptr(),
+        producer_len: 5,
+        ..LEAF
+    }];
+    assert!(unsafe { CompiledRegistry::register(&REGISTRY, 1, EMPTY.as_ptr(), 1) }.is_err());
+    assert!(REGISTRY.get().is_none());
+    let registry = unsafe { CompiledRegistry::register(&REGISTRY, 1, HOSTS.as_ptr(), 2) }.unwrap();
+    for (index, cancellable) in [false, true].into_iter().enumerate() {
+        let host = registry.compiled[index].host.unwrap();
+        assert_eq!(host.operation, "tick");
+        assert_eq!(host.cancellable, cancellable);
+        assert_eq!(host.operation.as_ptr(), HOSTS[index].producer);
+    }
+    assert_eq!(registry.layout(0).unwrap().control.name, "display");
+    for _ in 0..20 {
+        let again = unsafe { CompiledRegistry::register(&REGISTRY, 1, HOSTS.as_ptr(), 2) }.unwrap();
+        assert!(std::ptr::eq(registry, again));
+        assert_eq!(
+            again.compiled[0].host.unwrap().operation.as_ptr(),
+            HOSTS[0].producer
+        );
+    }
+}

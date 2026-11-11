@@ -6546,3 +6546,20 @@ owner buffer and physical leases until retirement, rejects foreign/invalid
 preflight without consuming handles, and admits cancellation with exhausted
 completion-wait space. Existing source task, fault-domain and resource policy is
 unchanged. Async host observation, task sets and launch signals remain LLVM-gated.
+
+
+### B1.4i scripted LLVM async host leaves (0.258)
+
+Five generated host matrices cover run/direct await/cold/spawn, moved optional
+handles, two siblings, waits0/1/many, explicit cancellation before start/while
+pending/after completion, non-observing awaits, borrowed opaque handles, malformed
+responses and source faults beside pending work. Original and expanded programs at
+O0/O2 compare exact Rust/LLVM reports, stderr/status and tested fuel cuts; expected
+successful reference scenarios are asserted before comparison. The generated host
+quota matrix includes pending operations and cancellation at quotas1/3/MAX.
+
+Private tests check module-static operation metadata independently of display names,
+repeated registry use, invalid producer/arity/handles/descriptor/outcome-space
+preflight, original String buffer preservation, administrative readiness fuel,
+script cursor/events and final task/scope/frame-pin retirement. Rust adapters remain
+rejected through direct, cold and spawned host wrappers before output creation.

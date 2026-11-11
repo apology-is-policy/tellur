@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-darwin-arm64-0.257.0.vsix` using **Extensions:
+1. Install the supplied `tellur-language-darwin-arm64-0.258.0.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1792,3 +1792,9 @@ how cancellation is requested and where it is observed. Since 0.229, Build and R
 executes cancellation natively. Since 0.230, an entry can opt into cancellation by
 SIGINT or SIGTERM through `launch.<entry>.signals` in the manifest. Since 0.231,
 diagnostic notes name a host operation such as `receive`, never its generated control.
+
+
+Compiler 0.258 adds scripted async host operations to the opt-in LLVM backend,
+including the existing task forms and explicit cancellation alternatives. The
+bundled compiler and language server share that checked language version; Rust
+remains the default backend.

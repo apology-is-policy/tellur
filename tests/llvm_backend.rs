@@ -2906,10 +2906,240 @@ pub async control echo(string text) exits ready {string result} {yield;exit read
             assert!(!f.root.join("llvm-0.ll").exists());
         }
     }
+    fn host_fixture(source: &str) -> Fixture {
+        let f = Fixture::new(source);
+        let mut manifest: Json =
+            serde_json::from_str(&fs::read_to_string(&f.manifest).unwrap()).unwrap();
+        let extra: Json =
+            serde_json::from_str(include_str!("../playground/llvm_host.manifest.json")).unwrap();
+        manifest["primitives"]
+            .as_array_mut()
+            .unwrap()
+            .extend(extra["primitives"].as_array().unwrap().iter().cloned());
+        fs::write(&f.manifest, manifest.to_string()).unwrap();
+        f
+    }
+    fn host_call(label: &str, waits: u32) -> Json {
+        json!({"operation":"tick","outcome":"ticked","fields":[{"kind":"string","value":label}],"waits":waits})
+    }
+    fn successful_reference(f: &Fixture, scenario: &Json) -> Json {
+        let checked = compile_file(
+            &f.source,
+            Manifest::from_json(&fs::read_to_string(&f.manifest).unwrap()).unwrap(),
+        )
+        .unwrap();
+        serde_json::to_value(
+            checked
+                .run_completion(&serde_json::from_value(scenario.clone()).unwrap(), 10000)
+                .unwrap(),
+        )
+        .unwrap()
+    }
+    #[test]
+    fn frontend_host_operations_share_run_await_cold_and_spawned_tasks() {
+        let f = host_fixture(include_str!("../playground/llvm_host.tellur"));
+        let scenarios = [0,1,7].map(|waits| json!({"entry":"main","arguments":[],"calls":[host_call("run",waits),host_call("cold",waits),host_call("spawn",waits),host_call("await",waits)]}));
+        for scenario in &scenarios {
+            let report = successful_reference(&f, scenario);
+            let emitted = report["events"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|e| e["kind"] == "emit")
+                .map(|e| e["message"].as_str().unwrap())
+                .collect::<Vec<_>>();
+            assert_eq!(
+                emitted,
+                ["captured", "run", "cold", "queued", "spawn", "await"]
+            );
+        }
+        lexical_matrix(
+            &f,
+            &scenarios,
+            &(0..=55).map(Some).chain([None]).collect::<Vec<_>>(),
+        );
+    }
+
+    #[test]
+    fn frontend_host_operations_preserve_sibling_order_and_inline_run_isolation() {
+        let f = host_fixture(
+            r#"
+control inline_tick() exits ticked {string text} {forward run tick("inline");}
+async control startup() exits done {
+    auto left=spawn tick("left");auto right=spawn tick("right");
+    emit("queued");
+    delta inline_tick() {ticked {string ran_text}=>ran}
+    [ran]:emit(ran_text);
+    auto moved=some {left};
+    delta moved {some {auto task}=>task,none=>empty}
+    [task]:delta await task {ticked {string left_text}=>left}
+    [left]:emit(left_text);
+    [left|empty]:delta await right {ticked {string right_text}=>right}
+    [right]:emit(right_text);exit done;
+}
+control main() exits done {forward run startup();}
+"#,
+        );
+        let scenarios=[0,1,9].map(|waits|json!({"entry":"main","arguments":[],"calls":[host_call("inline",waits),host_call("left",waits),host_call("right",waits)]}));
+        for scenario in &scenarios {
+            successful_reference(&f, scenario);
+        }
+        lexical_matrix(
+            &f,
+            &scenarios,
+            &(0..=60).map(Some).chain([None]).collect::<Vec<_>>(),
+        );
+    }
+    #[test]
+    fn frontend_host_operations_cancel_before_start_while_pending_and_after_completion() {
+        for (yields, waits, interrupted) in [(0, 20, true), (3, 20, true), (12, 0, false)] {
+            for call in ["await", "run"] {
+                let f = host_fixture(&format!(
+                    r#"
+{worker} control operation() exits done {{
+    delta {call} tick("request") {{ticked {{string text}}=>ready,cancelled=>stopped}}
+    [ready]:emit(text);exit done;
+    [stopped]:emit("cancelled");exit done;
+}}
+async control worker() exits done {{ {enter} operation(); exit done; }}
+async control startup() exits done {{
+    auto task=spawn worker();{pause}cancel task;cancel task;await task;exit done;
+}}
+control main() exits done {{forward run startup();}}
+"#,
+                    pause = "yield;".repeat(yields),
+                    worker = if call == "await" { "async" } else { "" },
+                    enter = if call == "await" { "await" } else { "" }
+                ));
+                // run enters inline; a pending host leaf still yields to the source scheduler.
+                let stopped = interrupted;
+                let scenario = json!({"entry":"main","arguments":[],"calls":if yields==0 {vec![]} else {vec![host_call("complete",waits)]}});
+                let report = successful_reference(&f, &scenario);
+                let emitted = report["events"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .filter(|e| e["kind"] == "emit")
+                    .map(|e| e["message"].as_str().unwrap())
+                    .collect::<Vec<_>>();
+                assert_eq!(
+                    emitted,
+                    vec![if stopped { "cancelled" } else { "complete" }],
+                    "{call}/{yields}: {report}"
+                );
+                assert_eq!(
+                    report["events"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .filter(|e| e["kind"] == "primitive")
+                        .count(),
+                    usize::from(!stopped)
+                );
+                lexical_matrix(
+                    &f,
+                    &[scenario],
+                    &(0..=45).map(Some).chain([None]).collect::<Vec<_>>(),
+                );
+            }
+        }
+        // Without the explicit cancelled arm, inherited sticky requests do not interrupt I/O.
+        let f = host_fixture(
+            r#"
+async control worker() exits done {delta await tick("request") {ticked {string text}=>ready}[ready]:emit(text);exit done;}
+async control startup() exits done {auto task=spawn worker();cancel task;await task;exit done;}
+control main() exits done {forward run startup();}
+"#,
+        );
+        let scenario =
+            json!({"entry":"main","arguments":[],"calls":[host_call("ordinary completion",5)]});
+        successful_reference(&f, &scenario);
+        lexical_matrix(
+            &f,
+            &[scenario],
+            &(0..=30).map(Some).chain([None]).collect::<Vec<_>>(),
+        );
+    }
+    #[test]
+    fn frontend_host_operations_keep_borrowed_resources_and_validate_responses() {
+        let f = Fixture::new(
+            r#"
+async control startup() exits done {
+    delta open("input") {opened {handle file}=>opened,not_found=>absent,denied=>blocked}
+    [absent|blocked]:exit done;
+    [opened]:delta await read(borrow file) {data {bytes data}=>read,failed {read_error error}=>failed}
+    [read]:emit("read");
+    [opened]:delta close(move file) {closed=>closed,failed {close_error close_problem}=>failed_close}
+    [opened]:exit done;
+}
+control main() exits done {forward run startup();}
+"#,
+        );
+        let mut manifest: Json =
+            serde_json::from_str(&fs::read_to_string(&f.manifest).unwrap()).unwrap();
+        manifest["primitives"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|p| p["name"] == "read")
+            .unwrap()["async"] = json!(true);
+        fs::write(&f.manifest, manifest.to_string()).unwrap();
+        let scenario = json!({"entry":"main","arguments":[],"calls":[
+            {"operation":"open","outcome":"opened","fields":[{"kind":"opaque","value":{"ty":"handle","token":"file-0"}}],"waits":0},
+            {"operation":"read","outcome":"data","fields":[{"kind":"bytes","value":[0,65,255]}],"waits":3},
+            {"operation":"close","outcome":"closed","fields":[],"waits":0}
+        ]});
+        successful_reference(&f, &scenario);
+        let mut malformed = scenario.clone();
+        malformed["calls"][1]["fields"] = json!([{"kind":"bool","value":true}]);
+        let mut wrong_operation = scenario.clone();
+        wrong_operation["calls"][1]["operation"] = json!("close");
+        let mut missing = scenario.clone();
+        missing["calls"] = json!([]);
+        lexical_matrix(
+            &f,
+            &[scenario, malformed, wrong_operation, missing],
+            &(0..=38).map(Some).chain([None]).collect::<Vec<_>>(),
+        );
+    }
+
+    #[test]
+    fn frontend_host_operations_retire_pending_work_on_source_faults() {
+        for fault in [
+            "yield;yield;yield;fault \"sibling failed\";",
+            "fault \"sibling failed\";",
+        ] {
+            let f = host_fixture(&format!(
+                r#"
+async control worker() exits done {{delta await tick("pending") {{ticked {{string text}}=>ready}}[ready]:emit(text);exit done;}}
+async control failing() exits done faults {{{fault}}}
+async control startup() exits done faults {{auto pending=spawn worker();auto failed=spawn failing();await pending;await failed;exit done;}}
+control main() exits done faults {{forward run startup();}}
+"#
+            ));
+            let scenario =
+                json!({"entry":"main","arguments":[],"calls":[host_call("must not publish",100)]});
+            let checked = compile_file(
+                &f.source,
+                Manifest::from_json(&fs::read_to_string(&f.manifest).unwrap()).unwrap(),
+            )
+            .unwrap();
+            assert!(
+                checked
+                    .run_completion(&serde_json::from_value(scenario.clone()).unwrap(), 10000)
+                    .is_err()
+            );
+            lexical_matrix(
+                &f,
+                &[scenario],
+                &(0..=40).map(Some).chain([None]).collect::<Vec<_>>(),
+            );
+        }
+    }
+
     #[test]
     fn unsupported_checked_operations_create_no_build_outputs() {
-        // Admitting cold control identities must not admit asynchronous host
-        // producers through their generated task types or wrapper controls.
+        // Rust adapter host leaves remain gated through every supported task form.
         for body in [
             "await tick();",
             "auto task=defer tick();await task;",
@@ -2923,8 +3153,15 @@ pub async control echo(string text) exits ready {string result} {yield;exit read
             manifest["primitives"].as_array_mut().unwrap().push(json!({
                 "name":"tick", "async":true, "parameters":[],
                 "outcomes":[{"name":"ticked","fields":[]}],
-                "effects":["clock.tick"], "returns":true
+                "effects":["clock.tick"], "returns":true, "rust":{"execution":"poll"}
             }));
+            manifest["rust"] = json!({"source":"host.rs","lockfile":"Cargo.lock"});
+            fs::write(
+                f.root.join("host.rs"),
+                "// Adapter remains outside this backend checkpoint.\n",
+            )
+            .unwrap();
+            fs::write(f.root.join("Cargo.lock"), "version = 4\n").unwrap();
             fs::write(&f.manifest, manifest.to_string()).unwrap();
             let out = f.command("llvm", 0).output().unwrap();
             assert!(!out.status.success());

@@ -13,6 +13,7 @@ declare void @tellur_rt_v1_await_task(ptr, i64, i64)
 declare void @tellur_rt_v1_spawn(ptr, i64, i64, ptr, i64)
 declare void @tellur_rt_v1_join(ptr, i64, i64)
 declare void @tellur_rt_v1_cancel(ptr, i64, i64, i64)
+declare void @tellur_rt_v1_host(ptr, i64, ptr, i64)
 declare void @tellur_rt_v1_invalid_resume(ptr)
 %compiled_control = type { ptr, i64, ptr, i64, i64, ptr, i64, i64, i64, i64, ptr, ptr, i64 }
 %compiled_child = type { i64, i64 }
@@ -185,22 +186,7 @@ fn supported(
             ..
         } => {
             args.iter().all(|e| expression_supported(e, types))
-                && manifest
-                    .primitives
-                    .iter()
-                    .find(|p| &p.name == name)
-                    .is_some_and(|p| {
-                        !p.asynchronous
-                            && p.rust.is_none()
-                            && p.returns
-                            && p.parameters
-                                .iter()
-                                .all(|p| owned_type_supported(&p.ty, primitive_types))
-                            && p.outcomes
-                                .iter()
-                                .flat_map(|o| &o.fields)
-                                .all(|f| owned_type_supported(&f.ty, primitive_types))
-                    })
+                && primitive_supported(manifest, name, primitive_types, false)
         }
         Action::Decide {
             operation: Operation::Variant(e) | Operation::BorrowedVariant(e),
@@ -220,6 +206,29 @@ fn frame_align(index: usize) -> String {
 }
 fn frame_offset(index: usize, field: usize) -> String {
     format!("ptrtoint (ptr getelementptr (%frame_{index}, ptr null, i32 0, i32 {field}) to i64)")
+}
+fn primitive_supported(
+    manifest: &crate::manifest::Manifest,
+    name: &str,
+    types: &BTreeSet<String>,
+    asynchronous: bool,
+) -> bool {
+    manifest
+        .primitives
+        .iter()
+        .find(|p| p.name == name)
+        .is_some_and(|p| {
+            p.asynchronous == asynchronous
+                && p.rust.is_none()
+                && p.returns
+                && p.parameters
+                    .iter()
+                    .all(|p| owned_type_supported(&p.ty, types))
+                && p.outcomes
+                    .iter()
+                    .flat_map(|o| &o.fields)
+                    .all(|f| owned_type_supported(&f.ty, types))
+        })
 }
 fn retained_target<'a>(
     i: &'a Instruction,
@@ -323,6 +332,7 @@ fn resumable_controls(program: &CheckedProgram) -> Result<BTreeMap<String, usize
 }
 fn retained_supported(
     i: &Instruction,
+    host_operation: Option<&str>,
     types: &BTreeSet<String>,
     primitive_types: &BTreeSet<String>,
     manifest: &crate::manifest::Manifest,
@@ -352,6 +362,14 @@ fn retained_supported(
             operation: Operation::Yield,
             ..
         } => true,
+        Action::Decide {
+            operation: Operation::Primitive(name),
+            args,
+            ..
+        } if host_operation == Some(name.as_str()) => {
+            primitive_supported(manifest, name, primitive_types, true)
+                && args.iter().all(|e| expression_supported(e, types))
+        }
         Action::Decide { .. } => supported(i, types, primitive_types, manifest),
         _ => false,
     }
@@ -373,6 +391,8 @@ struct ScopeTarget {
 struct Emitter {
     frame_types: String,
     retained: bool,
+    current_descriptor: usize,
+    async_primitives: BTreeSet<String>,
     resumables: BTreeMap<String, usize>,
     descriptors: Vec<String>,
     inline_children: BTreeMap<Id, (usize, usize, usize)>,
@@ -835,10 +855,15 @@ impl Emitter {
             if handoff { 3 } else { 5 }
         ));
     }
+    fn async_host_leaf(&self, instruction: &Instruction) -> bool {
+        matches!(&instruction.action, Action::Decide { operation: Operation::Primitive(name), .. }
+            if self.async_primitives.contains(name))
+    }
     fn resume_control(&mut self, region: &Region, index: usize) {
         self.layout = FrameLayout::new(region);
         self.constructing = false;
         self.retained = true;
+        self.current_descriptor = self.resumables[&region.name];
         self.inline_children.clear();
         let mut children = vec![];
         for instruction in &region.code {
@@ -882,7 +907,8 @@ impl Emitter {
         let mut cases = "i32 0, label %initial".to_owned();
         for (pc, instruction) in region.code.iter().enumerate() {
             write!(cases, "\ni32 {}, label %state_{}", pc + 1, pc + 1).unwrap();
-            if self.inline_children.contains_key(&instruction.id)
+            if self.async_host_leaf(instruction)
+                || self.inline_children.contains_key(&instruction.id)
                 || matches!(
                     &instruction.action,
                     Action::Decide {
@@ -926,7 +952,8 @@ impl Emitter {
                 "store i32 {}, ptr %pc\nret i32 4",
                 self.resume_next
             ));
-            if self.inline_children.contains_key(&instruction.id)
+            if self.async_host_leaf(instruction)
+                || self.inline_children.contains_key(&instruction.id)
                 || matches!(
                     &instruction.action,
                     Action::Decide {
@@ -1275,6 +1302,24 @@ impl Emitter {
                 Action::Decide {
                     operation: Operation::Primitive(name),
                     args,
+                    ..
+                } if self.retained && self.async_primitives.contains(name) => {
+                    let values = args.iter().map(|a| self.expr(a)).collect::<Vec<_>>();
+                    let args = self.handles(&values);
+                    self.effect(format!(
+                        "call void @tellur_rt_v1_host(ptr %ctx, i64 {}, ptr {args}, i64 {})",
+                        self.current_descriptor,
+                        values.len()
+                    ));
+                    self.line(format!(
+                        "store i32 {}, ptr %pc\nret i32 9",
+                        self.delivery_pc
+                    ));
+                    terminal = true;
+                }
+                Action::Decide {
+                    operation: Operation::Primitive(name),
+                    args,
                     arms,
                 } => self.runtime_operation("primitive", name, args, arms),
                 Action::Decide {
@@ -1487,6 +1532,14 @@ impl CheckedProgram {
         let mut emitter = Emitter {
             frame_types: String::new(),
             retained: false,
+            current_descriptor: 0,
+            async_primitives: self
+                .manifest()
+                .primitives
+                .iter()
+                .filter(|p| p.asynchronous)
+                .map(|p| p.name.clone())
+                .collect(),
             resumables,
             descriptors: vec![],
             inline_children: BTreeMap::new(),
@@ -1549,7 +1602,13 @@ impl CheckedProgram {
             }
             if let Some(instruction) = region.code.iter().find(|i| {
                 if retained {
-                    !retained_supported(i, &types, &primitive_types, self.manifest())
+                    !retained_supported(
+                        i,
+                        crate::host_operations::operation(&region.name),
+                        &types,
+                        &primitive_types,
+                        self.manifest(),
+                    )
                 } else {
                     !supported(i, &types, &primitive_types, self.manifest())
                 }
@@ -1674,10 +1733,16 @@ mod tests {
             ID.fetch_add(1, Ordering::Relaxed)
         ));
         fs::create_dir_all(&directory).unwrap();
-        let manifest =
-            crate::manifest::Manifest::from_json(include_str!("../../playground/manifest.json"))
-                .unwrap();
-        for mode in 0..3 {
+        let mut manifest: serde_json::Value =
+            serde_json::from_str(include_str!("../../playground/manifest.json")).unwrap();
+        let host: serde_json::Value =
+            serde_json::from_str(include_str!("../../playground/llvm_host.manifest.json")).unwrap();
+        manifest["primitives"]
+            .as_array_mut()
+            .unwrap()
+            .extend(host["primitives"].as_array().unwrap().iter().cloned());
+        let manifest = crate::manifest::Manifest::from_json(&manifest.to_string()).unwrap();
+        for mode in 0..5 {
             let source = r#"
 async control child(bool fail, ref mutable string text) exits done faults {
     yield;delta fail {true=>bad,false=>good}
@@ -1699,6 +1764,12 @@ outcome result {@exit 0 done}
                     "cancel pending;cancel pending;auto moved=move pending;",
                 ),
             };
+            let source = if mode >= 3 {
+                source.replace("[good]:deref text=", "[good]:delta await tick(\"quota\") {ticked {string response}=>ready,cancelled=>stopped}[ready|stopped]:deref text=")
+                    .replace("cancel pending;cancel pending;", if mode==3 {""} else {"yield;yield;yield;cancel pending;cancel pending;"})
+            } else {
+                source
+            };
             let checked = crate::compile(&source, manifest.clone()).unwrap();
             for expanded in [false, true] {
                 let program = if expanded {
@@ -1716,7 +1787,7 @@ outcome result {@exit 0 done}
                     let mut expected = vec![];
                     for fail in [false, true] {
                         let scenario = directory.join(format!("{fail}.json"));
-                        fs::write(&scenario,serde_json::json!({"entry":"main","arguments":[{"kind":"bool","value":fail}],"calls":[]}).to_string()).unwrap();
+                        fs::write(&scenario,serde_json::json!({"entry":"main","arguments":[{"kind":"bool","value":fail}],"calls":if mode>=3 {vec![serde_json::json!({"operation":"tick","outcome":"ticked","fields":[{"kind":"string","value":"quota"}],"waits":7})]} else {vec![]}}).to_string()).unwrap();
                         for fuel in 0..=36 {
                             let out = Command::new(&rust)
                                 .arg("--scenario")
