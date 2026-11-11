@@ -451,7 +451,7 @@ then compiles `program.o` and links `OUTPUT` with its embedded LLVM/LLD 22.1.8.
 Path guards are LLVM branches. Runtime faults retain Tellur source provenance;
 native debugger information is not yet emitted.
 
-The distributed 0.250 compiler includes the `llvm` feature. When building the
+The distributed 0.251 compiler includes the `llvm` feature. When building the
 compiler from source, enable it and set `LLVM_SYS_221_PREFIX` to the static pinned
 LLVM/LLD installation, as described in the repository README. A compiler built
 without that feature reports a clear error for `--backend llvm`.
@@ -483,3 +483,26 @@ The [experiment](../../experiments/coroutines/README.md#frontend-frame-compariso
 records frame allocations, arena slack, code size and bounded in-process timings.
 These measurements guide generated async lowering; they do not admit async source
 programs through `--backend llvm`. Rust remains the default until parity.
+
+
+## Retained resume callback foundation (0.251)
+
+A private runtime root can now retain activation slots, temporary handles, outcomes,
+errors and lexical state between C ABI resume callbacks. The callback receives only
+an opaque context pointer, a caller-owned typed frame pointer and initial argument
+handles; subsequent resumes do not transfer arguments again. Host and shared storage
+borrows end when each callback returns. Host context selection and resource-root
+retirement reuse the existing runtime operations.
+
+A callback reports yield, ordinary completion or failure through a checked step tag.
+Foreign host/arena/frame selection, early result consumption, malformed completion
+and repeated resumption/retirement are rejected. Completion adopts owned results
+once; administrative stop retires cold, suspended or unadopted completed work without
+executing it or inventing an outcome. Original faults and fuel failures keep their
+reports, while the caller's selected context is restored.
+
+This root is runtime infrastructure, not a source task or a new awaitable value.
+Direct-await children sharing the original invocation/domain, generated checked-IR
+resume functions and source scheduling admission still follow. Existing LLVM task,
+async host, adapter and signal gates remain intact. The default Rust backend and
+language ownership, origin, cancellation and fault rules are unchanged.

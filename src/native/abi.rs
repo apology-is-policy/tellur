@@ -11,6 +11,9 @@
 //! stated length. Callbacks must not retain these pointers.
 use super::*;
 #[cfg(test)]
+#[path = "abi_resume_tests.rs"]
+mod resume_tests;
+#[cfg(test)]
 #[path = "abi_tests.rs"]
 mod tests;
 
@@ -906,6 +909,292 @@ pub unsafe extern "C" fn tellur_rt_v1_constructed(ctx: *mut Context<'_>, value: 
         c.result = Some(Completion::Constructed);
         Ok(())
     })
+}
+
+/// Private frontend-frame callback. Only the first call receives argument handles.
+/// Context and argument pointers are valid for this callback only; the program
+/// frame is caller-owned stable storage whose lifetime covers the retained root.
+/// Return 1 for a source yield, 2 for completion, or 0 after recording an error.
+pub type ResumeCallback = unsafe extern "C" fn(*mut Context<'_>, *mut u8, *const u64, usize) -> u32;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ResumeStatus {
+    Yielded,
+    Complete,
+    Failed,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ResumePhase {
+    Cold,
+    Yielded,
+    Complete,
+    Failed,
+    Retired,
+}
+
+// Unlike Context, this record owns everything it retains. Host and Frames are
+// reborrowed only while a callback or retirement operation is actually selected.
+struct RetainedState {
+    frame: Option<frames::Frame>,
+    destination: Option<frames::Storage>,
+    values: Vec<Option<V>>,
+    outcomes: Vec<Option<(String, Vec<V>)>>,
+    value_base: u64,
+    outcome_base: u64,
+    error: Option<String>,
+    result: Option<Completion>,
+    lexical: Vec<LexicalBoundary>,
+    next_lexical: u64,
+}
+impl RetainedState {
+    fn select<'a>(self, host: &'a mut Host, values: &'a mut Frames) -> Context<'a> {
+        Context {
+            host,
+            storage: FrameStorage::Borrowed(values),
+            frame: self.frame,
+            destination: self.destination,
+            values: self.values,
+            outcomes: self.outcomes,
+            value_base: self.value_base,
+            outcome_base: self.outcome_base,
+            error: self.error,
+            result: self.result,
+            lexical: self.lexical,
+            next_lexical: self.next_lexical,
+        }
+    }
+    fn park(context: Context<'_>) -> Self {
+        debug_assert!(matches!(context.storage, FrameStorage::Borrowed(_)));
+        Self {
+            frame: context.frame,
+            destination: context.destination,
+            values: context.values,
+            outcomes: context.outcomes,
+            value_base: context.value_base,
+            outcome_base: context.outcome_base,
+            error: context.error,
+            result: context.result,
+            lexical: context.lexical,
+            next_lexical: context.next_lexical,
+        }
+    }
+}
+
+/// An independent private ABI root, not a source task or an awaitable handle.
+/// It reuses Host context/scope selection and Frames identity/retirement. Source
+/// scheduling, direct-child adoption and checked-IR emission are separate layers.
+/// The Rust lifetime pins the caller-owned typed program frame without allocating
+/// it here. Every admitted root must be completed or stopped before it is dropped.
+pub struct RetainedRoot<'frame> {
+    program_frame: *mut u8,
+    callback: ResumeCallback,
+    name: String,
+    state: Option<RetainedState>,
+    arguments: Vec<u64>,
+    host: HostContext,
+    root: ContextRoot,
+    phase: ResumePhase,
+    failure: Option<fault::Report>,
+    _frame: std::marker::PhantomData<&'frame mut ()>,
+}
+impl<'frame> RetainedRoot<'frame> {
+    /// Safety: callback must interpret the program frame as T and obey every ABI
+    /// pointer/span contract. It must not unwind or retain Context/argument pointers.
+    /// Slot count and argument types are supplied by checked control metadata.
+    pub unsafe fn new<T>(
+        host: &mut Host,
+        frames: &mut Frames,
+        name: &str,
+        slots: usize,
+        arguments: Vec<V>,
+        program_frame: &'frame mut T,
+        callback: ResumeCallback,
+    ) -> R<Self> {
+        // All recoverable checks precede capture transfer and live frame admission.
+        host.resources.result_tokens(&arguments)?;
+        let prepared = frames.prepare(slots)?;
+        let (root, context) = host.prepare_context(&arguments)?;
+        let frame = frames.commit(prepared).expect("prevalidated ABI frame");
+        let handles = (1..=arguments.len() as u64).collect();
+        Ok(Self {
+            program_frame: (program_frame as *mut T).cast(),
+            callback,
+            name: name.to_owned(),
+            state: Some(RetainedState {
+                frame: Some(frame),
+                destination: None,
+                values: arguments.into_iter().map(Some).collect(),
+                outcomes: vec![],
+                value_base: 0,
+                outcome_base: 0,
+                error: None,
+                result: None,
+                lexical: vec![],
+                next_lexical: 0,
+            }),
+            arguments: handles,
+            host: context,
+            root,
+            phase: ResumePhase::Cold,
+            failure: None,
+            _frame: std::marker::PhantomData,
+        })
+    }
+    fn require(&self, host: &Host, frames: &Frames) -> R<()> {
+        if self.phase == ResumePhase::Retired {
+            return Err("E_NATIVE: ABI root already retired".into());
+        }
+        host.require_context(&self.host, &self.root)?;
+        let frame = self
+            .state
+            .as_ref()
+            .and_then(|s| s.frame.as_ref())
+            .ok_or("E_NATIVE: missing retained ABI frame")?;
+        frames.frame_values(frame)?;
+        Ok(())
+    }
+    /// One selected callback. Rejected identities/phases perform no source work;
+    /// the caller's host context is restored after yield, completion or error.
+    pub fn resume(
+        &mut self,
+        host: &mut Host,
+        frames: &mut Frames,
+        program_frame: *mut u8,
+    ) -> R<ResumeStatus> {
+        self.require(host, frames)?;
+        if program_frame != self.program_frame {
+            return Err("E_NATIVE: ABI program frame identity mismatch".into());
+        }
+        if !matches!(self.phase, ResumePhase::Cold | ResumePhase::Yielded) {
+            return Err("E_NATIVE: ABI root cannot resume after completion".into());
+        }
+        host.exchange_context(&mut self.host)?;
+        let mut context = self.state.take().unwrap().select(host, frames);
+        let cold = self.phase == ResumePhase::Cold;
+        if cold {
+            context.error = context.host.enter(&self.name).err();
+        }
+        let arguments = if cold { self.arguments.as_slice() } else { &[] };
+        let tag = if context.error.is_none() {
+            unsafe {
+                (self.callback)(
+                    &mut context,
+                    self.program_frame,
+                    arguments.as_ptr(),
+                    arguments.len(),
+                )
+            }
+        } else {
+            0
+        };
+        let status = if context.error.is_some() {
+            ResumeStatus::Failed
+        } else if tag == 1 && context.result.is_none() {
+            ResumeStatus::Yielded
+        } else if tag == 2
+            && matches!(context.result, Some(Completion::Outcome(_)))
+            && context.lexical.is_empty()
+        {
+            ResumeStatus::Complete
+        } else {
+            context.error = Some("E_NATIVE: malformed ABI resume step".into());
+            ResumeStatus::Failed
+        };
+        self.state = Some(RetainedState::park(context));
+        // No callback may retire the independent root or the saved caller scope.
+        host.exchange_context(&mut self.host)?;
+        self.arguments.clear();
+        self.phase = match status {
+            ResumeStatus::Yielded => ResumePhase::Yielded,
+            ResumeStatus::Complete => ResumePhase::Complete,
+            ResumeStatus::Failed => ResumePhase::Failed,
+        };
+        Ok(status)
+    }
+    /// Consume a completed root once. Failed callbacks keep their original report;
+    /// all state retires even when outcome/resource validation rejects a callback.
+    pub fn finish(&mut self, host: &mut Host, frames: &mut Frames) -> R<Completion> {
+        self.require(host, frames)?;
+        if !matches!(self.phase, ResumePhase::Complete | ResumePhase::Failed) {
+            return Err("E_NATIVE: ABI root has not completed".into());
+        }
+        self.retire(host, frames, false)
+    }
+    /// Administrative stop: never resumes cold/suspended work and produces no
+    /// declared outcome. This is cleanup machinery, not cooperative cancellation.
+    pub fn stop(&mut self, host: &mut Host, frames: &mut Frames) -> R<()> {
+        self.require(host, frames)?;
+        self.retire(host, frames, true).map(|_| ())
+    }
+    pub fn failure(&self) -> Option<&fault::Report> {
+        self.failure.as_ref()
+    }
+    fn retire(&mut self, host: &mut Host, frames: &mut Frames, stopped: bool) -> R<Completion> {
+        host.exchange_context(&mut self.host)?;
+        let mut context = self.state.take().unwrap().select(host, frames);
+        let had_error = context.error.is_some();
+        if stopped {
+            context
+                .error
+                .get_or_insert_with(|| "E_NATIVE: ABI root stopped".into());
+        }
+        // Borrowed temporaries/completions must disappear before source slots and
+        // resource owners. A stopped completed result is not adopted by the caller.
+        if context.error.is_some() {
+            context.values.clear();
+            context.outcomes.clear();
+            context.result = None;
+        }
+        let mut result = context.finish();
+        if let Err(error) = &result {
+            if !stopped || had_error {
+                self.failure = Some(context.host.activations.failure(
+                    &self.name,
+                    fault::Phase::Execution,
+                    error,
+                ));
+            }
+        }
+        let resource_result = if result.is_err() || stopped {
+            context.host.finish_context(&mut self.root, true)
+        } else {
+            Ok(()) // Outgoing owners transfer from the parked root below.
+        };
+        drop(context);
+        host.exchange_context(&mut self.host)?;
+        if result.is_ok() && !stopped {
+            let fields = match result.as_ref().unwrap() {
+                Completion::Outcome((_, fields)) => fields,
+                _ => unreachable!("resume validated normal completion"),
+            };
+            if let Err(error) = host.adopt_context_result(&self.host, &mut self.root, None, fields)
+            {
+                // The callback left an unreturned owner. Settle its root instead of
+                // leaking it or exposing a partially validated normal completion.
+                host.exchange_context(&mut self.host)?;
+                self.failure = Some(host.activations.failure(
+                    &self.name,
+                    fault::Phase::ResultValidation,
+                    &error,
+                ));
+                result = Err(error);
+                let cleanup = host.finish_context(&mut self.root, true);
+                host.exchange_context(&mut self.host)?;
+                cleanup?;
+            } else {
+                // Preserve the producer activation until result validation has
+                // succeeded, so a rejected result retains its original context.
+                self.host.tracker.leave();
+            }
+        }
+        self.phase = ResumePhase::Retired;
+        resource_result?;
+        if stopped {
+            Ok(Completion::Settled)
+        } else {
+            result
+        }
+    }
 }
 
 pub type Callback = unsafe extern "C" fn(*mut Context<'_>, *const u64, usize);

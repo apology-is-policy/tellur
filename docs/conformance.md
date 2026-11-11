@@ -6446,3 +6446,15 @@ runtime checks all loans, allocated frames and inline lifetimes at completion/fa
 A bounded measurement driver checks matching traces/status/checksums and records
 allocation, code size and every timing sample. These are hand-lowered experiments;
 production LLVM task admission remains gated.
+
+
+### B1.4b retained resume foundation (0.251)
+
+Six private ABI regression matrices execute C ABI callbacks across suspension while
+releasing Rust Host/Frames borrows between callbacks. They verify buffer identity,
+borrowed origin persistence, one-use temporaries, single argument/source-tick entry,
+foreign host/arena/frame and stale-phase rejection, ordinary/malformed completion,
+source-fault versus fuel reports, cold/suspended/unadopted stop, real resource
+adoption/disposal and independent roots sharing a slot arena. Reusing one retired
+root's slots cannot rebind the other root's live storage. These are runtime callback
+checks; generated async source and task scheduling remain gated.
