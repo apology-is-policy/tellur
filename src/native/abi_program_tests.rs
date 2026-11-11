@@ -166,6 +166,8 @@ fn compiled_module_descriptors_reuse_stable_authority_across_concurrent_and_repe
     assert_eq!(run(registry, "again".repeat(40)), identities[0]);
     assert_eq!(registry.compiled[1].cold_type, "$task<internal_leaf>");
     assert_eq!(registry.compiled[1].started_type, "$started<internal_leaf>");
+    assert_eq!(registry.compiled[1].set_type, "$tasks<internal_leaf>");
+    assert_eq!(registry.compiled[0].set_type, "$tasks<internal_parent>");
     assert_eq!(registry.layout(1).unwrap().control.name, "leaf");
     assert!(std::ptr::eq(
         registry.layout(0).unwrap().children[0].layout,

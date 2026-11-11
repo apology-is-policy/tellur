@@ -26,6 +26,9 @@ mod program_tests;
 #[path = "abi_resume_tests.rs"]
 mod resume_tests;
 #[cfg(test)]
+#[path = "abi_set_tests.rs"]
+mod set_tests;
+#[cfg(test)]
 #[path = "abi_spawn_tests.rs"]
 mod spawn_tests;
 #[cfg(test)]
@@ -1279,7 +1282,8 @@ impl<'frame> RetainedRoot<'frame> {
 /// 5 run an inline child on the current invocation stack, 6 spawn without a source
 /// handoff, 7 consume a started child through the source join policy, or 8 request
 /// cancellation without a source handoff or consuming the started value, or
-/// 9 start a retained async host operation.
+/// 9 start a retained async host operation, 10 spawn into a task set, or
+/// 11 await the earliest completed member of a nonempty set.
 /// Initial arguments arrive once; after child delivery the span contains one
 /// outcome handle. Other callbacks receive an empty span.
 pub struct InvocationLayout {
@@ -1503,6 +1507,18 @@ struct HostLeaf {
     cancellable: bool,
 }
 enum RequestedInvocation {
+    SpawnInto {
+        child: Invocation,
+        arguments: Vec<V>,
+        set: V,
+        slot: usize,
+        cold_type: &'static str,
+        started_type: &'static str,
+    },
+    Next {
+        set: V,
+        producer: &'static execution::Control,
+    },
     Host {
         leaf: HostLeaf,
         arguments: Vec<V>,
@@ -1538,6 +1554,8 @@ impl RequestedInvocation {
             Self::Join { .. } => 7,
             Self::Cancel { .. } => 8,
             Self::Host { .. } => 9,
+            Self::SpawnInto { .. } => 10,
+            Self::Next { .. } => 11,
         }
     }
 }
@@ -1735,7 +1753,9 @@ impl Invocation {
                 | (6, Some(6), false)
                 | (7, Some(7), false)
                 | (8, Some(8), false)
-                | (9, Some(9), false) => Ok(execution::Step::Continue), // Queue after callback borrows end.
+                | (9, Some(9), false)
+                | (10, Some(10), false)
+                | (11, Some(11), false) => Ok(execution::Step::Continue), // Queue after callback borrows end.
                 (2, None, true) => match context.result.take().unwrap() {
                     value @ Completion::Outcome(_) => Ok(execution::Step::Complete(value)),
                     _ => Err("E_NATIVE: retained ABI requires a normal completion".into()),
@@ -1755,6 +1775,34 @@ impl Invocation {
             && let Some(request) = request
         {
             result = (|| match request {
+                RequestedInvocation::SpawnInto {
+                    child,
+                    mut arguments,
+                    set,
+                    slot,
+                    cold_type,
+                    started_type,
+                } => {
+                    let producer = child.program.layout.control;
+                    let mut cold =
+                        Some(activation.defer_task(host, producer, cold_type, &mut arguments)?);
+                    let mut task = activation.queue_started(host, producer, &mut cold)?;
+                    task.abi = Some(child);
+                    Ok(execution::Step::SpawnInto {
+                        task,
+                        set,
+                        slot,
+                        ty: started_type,
+                    })
+                }
+                RequestedInvocation::Next { set, producer } => {
+                    self.phase = InvocationPhase::Awaiting;
+                    Ok(execution::Step::Next {
+                        set,
+                        producer,
+                        deliver: deliver_invocation,
+                    })
+                }
                 RequestedInvocation::Host { leaf, arguments } => {
                     self.phase = InvocationPhase::Awaiting;
                     Ok(execution::Step::Host {
@@ -2001,6 +2049,156 @@ pub unsafe extern "C" fn tellur_rt_v1_await_task(ctx: *mut Context<'_>, child: u
 }
 
 impl Context<'_> {
+    fn empty_task_set(
+        &mut self,
+        producer: &'static execution::Control,
+        set_type: &str,
+        started_type: &str,
+    ) -> R<u64> {
+        let activation = self
+            .selected_activation
+            .ok_or("E_NATIVE: task set requires a selected ABI invocation")?;
+        if self.program.is_none() {
+            return Err("E_NATIVE: task set requires an ABI program".into());
+        }
+        let value = V::Construct {
+            ty: set_type.into(),
+            name: "tasks".into(),
+            fields: vec![],
+        };
+        activation.abi_validate_task_set(
+            self.host,
+            producer,
+            set_type,
+            started_type,
+            &value,
+            false,
+        )?;
+        self.value_base
+            .checked_add(self.values.len() as u64)
+            .and_then(|n| n.checked_add(1))
+            .ok_or("E_NATIVE: ABI value handle space exhausted")?;
+        Ok(self.put(value))
+    }
+    fn spawn_into_control(
+        &mut self,
+        layout: &'static InvocationLayout,
+        cold_type: &'static str,
+        started_type: &'static str,
+        set_type: &str,
+        slot: usize,
+        set: u64,
+        handles: &[u64],
+    ) -> R<()> {
+        if self.request.is_some() || self.result.is_some() {
+            return Err("E_NATIVE: duplicate ABI continuation request".into());
+        }
+        let activation = self
+            .selected_activation
+            .ok_or("E_NATIVE: spawn requires a selected ABI invocation")?;
+        if self.program.is_none()
+            || self.storage.values()[self.local(slot)?].is_some()
+            || handles.len() != layout.control.parameters.len()
+        {
+            return Err("E_NATIVE: invalid ABI set spawn destination or arity".into());
+        }
+        activation.abi_validate_task_set(
+            self.host,
+            layout.control,
+            set_type,
+            started_type,
+            self.get(set)?,
+            false,
+        )?;
+        let mut seen = BTreeSet::from([set]);
+        for &handle in handles {
+            self.get(handle)?;
+            if !seen.insert(handle) {
+                return Err("E_NATIVE: duplicate ABI value transfer".into());
+            }
+        }
+        let arena = self
+            .physical_arena
+            .ok_or("E_NATIVE: missing physical frame arena")?;
+        let child = unsafe { Invocation::in_arena(arena, layout)? };
+        let arguments = self.take_many(handles)?;
+        let set = self.take(set)?;
+        self.request = Some(RequestedInvocation::SpawnInto {
+            child,
+            arguments,
+            set,
+            slot,
+            cold_type,
+            started_type,
+        });
+        Ok(())
+    }
+    fn next_control(
+        &mut self,
+        producer: &'static execution::Control,
+        set_type: &str,
+        started_type: &str,
+        handle: u64,
+    ) -> R<bool> {
+        if self.request.is_some() || self.result.is_some() {
+            return Err("E_NATIVE: duplicate ABI continuation request".into());
+        }
+        let activation = self
+            .selected_activation
+            .ok_or("E_NATIVE: next requires a selected ABI invocation")?;
+        if self.program.is_none() {
+            return Err("E_NATIVE: next requires an ABI program".into());
+        }
+        let empty = activation.abi_validate_task_set(
+            self.host,
+            producer,
+            set_type,
+            started_type,
+            self.get(handle)?,
+            true,
+        )?;
+        if empty {
+            self.take(handle)?;
+            return Ok(false);
+        }
+        self.require_outcome_room()?;
+        let set = self.take(handle)?;
+        self.request = Some(RequestedInvocation::Next { set, producer });
+        Ok(true)
+    }
+    fn cancel_set_control(
+        &mut self,
+        producer: &'static execution::Control,
+        set_type: &str,
+        started_type: &str,
+        slot: usize,
+        handle: u64,
+    ) -> R<()> {
+        if self.request.is_some() || self.result.is_some() {
+            return Err("E_NATIVE: duplicate ABI continuation request".into());
+        }
+        let activation = self
+            .selected_activation
+            .ok_or("E_NATIVE: cancellation requires a selected ABI invocation")?;
+        if self.program.is_none() || self.storage.values()[self.local(slot)?].is_some() {
+            return Err("E_NATIVE: invalid ABI cancellation destination".into());
+        }
+        activation.abi_validate_task_set(
+            self.host,
+            producer,
+            set_type,
+            started_type,
+            self.get(handle)?,
+            false,
+        )?;
+        let value = self.take(handle)?;
+        self.request = Some(RequestedInvocation::Cancel {
+            value,
+            producer,
+            slot,
+        });
+        Ok(())
+    }
     fn host_control(
         &mut self,
         producer: &'static execution::Control,
@@ -2191,6 +2389,86 @@ pub unsafe extern "C" fn tellur_rt_v1_host(
     });
 }
 
+/// Construct an empty exact-producer set; this allocates no source task.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_task_set(ctx: *mut Context<'_>, producer: usize) -> u64 {
+    unsafe { &mut *ctx }.perform(|c| {
+        let registry = COMPILED_PROGRAM
+            .get()
+            .ok_or("E_NATIVE: missing compiled module registry")?;
+        let control = registry.layout(producer)?.control;
+        let metadata = &registry.compiled[producer];
+        c.empty_task_set(control, &metadata.set_type, &metadata.started_type)
+    })
+}
+/// Queue a member without a source handoff, preserving the original set value.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_spawn_into(
+    ctx: *mut Context<'_>,
+    producer: usize,
+    slot: usize,
+    set: u64,
+    args: *const u64,
+    count: usize,
+) {
+    unsafe { &mut *ctx }.perform(|c| {
+        let registry = COMPILED_PROGRAM
+            .get()
+            .ok_or("E_NATIVE: missing compiled module registry")?;
+        let layout = registry.layout(producer)?;
+        if count != layout.control.parameters.len() {
+            return Err("E_NATIVE: invalid ABI set spawn arity".into());
+        }
+        let metadata = &registry.compiled[producer];
+        c.spawn_into_control(
+            layout,
+            &metadata.cold_type,
+            &metadata.started_type,
+            &metadata.set_type,
+            slot,
+            set,
+            unsafe { slice(args, count) },
+        )
+    });
+}
+/// Returns one for a parked Next request, zero for an immediate empty selection.
+/// Callers check the sticky error before interpreting the empty return value.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_next(ctx: *mut Context<'_>, producer: usize, set: u64) -> u8 {
+    unsafe { &mut *ctx }.perform(|c| {
+        let registry = COMPILED_PROGRAM
+            .get()
+            .ok_or("E_NATIVE: missing compiled module registry")?;
+        let control = registry.layout(producer)?.control;
+        let metadata = &registry.compiled[producer];
+        c.next_control(control, &metadata.set_type, &metadata.started_type, set)
+            .map(u8::from)
+    })
+}
+/// Flag current members and restore the set; future insertions are independent.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_cancel_set(
+    ctx: *mut Context<'_>,
+    producer: usize,
+    slot: usize,
+    set: u64,
+) {
+    unsafe { &mut *ctx }.perform(|c| {
+        let registry = COMPILED_PROGRAM
+            .get()
+            .ok_or("E_NATIVE: missing compiled module registry")?;
+        let control = registry.layout(producer)?.control;
+        let metadata = &registry.compiled[producer];
+        c.cancel_set_control(
+            control,
+            &metadata.set_type,
+            &metadata.started_type,
+            slot,
+            set,
+        )
+    });
+}
+
 /// C-safe immutable descriptor emitted by the compiler. Every span points into
 /// module-static storage. Rust Control/InvocationLayout values never cross C ABI.
 #[repr(C)]
@@ -2224,6 +2502,7 @@ struct CompiledLayout {
     host: Option<HostLeaf>,
     cold_type: String,
     started_type: String,
+    set_type: String,
     callback: ResumeCallback,
     size: usize,
     align: usize,
@@ -2341,6 +2620,7 @@ impl CompiledRegistry {
                 host,
                 cold_type: format!("$task<{producer}>"),
                 started_type: format!("$started<{producer}>"),
+                set_type: format!("$tasks<{producer}>"),
                 callback,
                 size: raw.frame_size,
                 align: raw.frame_align,

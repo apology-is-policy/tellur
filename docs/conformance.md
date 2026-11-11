@@ -6563,3 +6563,22 @@ repeated registry use, invalid producer/arity/handles/descriptor/outcome-space
 preflight, original String buffer preservation, administrative readiness fuel,
 script cursor/events and final task/scope/frame-pin retirement. Rust adapters remain
 rejected through direct, cold and spawned host wrappers before output creation.
+
+
+## 0.259 — Private task-set runtime ABI (B1.4j)
+
+Five private native ABI matrices cover ordinary and scripted host set members,
+completion order and remainder delivery, unchanged caller buffers, parent/child
+faults, cancellation before start/while pending/after completion, repeated requests
+and insertion after cancellation. Invalid membership/producer/owner, duplicate
+captures, destination/arity failures and exhausted task/wait/outcome space preserve
+preflight inputs. Empty Next requires no wait or outcome allocation. Fuel cuts and
+quotas 1/3/unbounded check identical observations and zero remaining task/resource
+obligations or physical pins. Module metadata tests check exact set producer types.
+
+The retained LLVM, original task-set/cancellation/host suites, manual/LSP/native
+regressions and feature quota matrices are refreshed. Unchanged synchronous LLVM
+cases and frontend/default suites reuse their recorded 0.258 evidence; this is a
+scoped validation checkpoint. Source LLVM task sets remain rejected before output.
+Reference/roadmap, compiler/LSP and extension versions advance together. Detailed
+release evidence is maintained in `work/tellur-0.259-verification.json`.

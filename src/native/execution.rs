@@ -1608,6 +1608,40 @@ impl Activation {
     ) -> R<()> {
         self.source_task_identity(host, value, producer).map(|_| ())
     }
+    /// Validate the whole checked set before a callback transfers it or flags members.
+    pub(crate) fn abi_validate_task_set(
+        &self,
+        host: &Host,
+        producer: &'static Control,
+        set_type: &str,
+        started_type: &str,
+        value: &V,
+        joining: bool,
+    ) -> R<bool> {
+        self.require_task_host(host)?;
+        let V::Construct { ty, name, fields } = value else {
+            return Err("E_NATIVE: task set requires an owned set".into());
+        };
+        if producer.constructor || ty != set_type || name != "tasks" {
+            return Err("E_NATIVE: task set producer or shape differs".into());
+        }
+        let mut seen = std::collections::BTreeSet::new();
+        for member in fields {
+            if !matches!(member, V::Task { ty, operation, .. }
+                if ty == started_type && operation == producer.name)
+            {
+                return Err("E_NATIVE: task set member type differs".into());
+            }
+            let task = self.source_task_identity(host, member, producer)?;
+            if !host.tasks.contains(task) || !seen.insert(task) {
+                return Err("E_NATIVE: stale or duplicate task set member".into());
+            }
+            if joining {
+                host.tasks.prepare_join(task, self.owner, producer.name)?;
+            }
+        }
+        Ok(fields.is_empty())
+    }
     pub(crate) fn abi_control(&self) -> &'static Control {
         self.control
     }

@@ -1575,3 +1575,29 @@ station. Async resource-result admission still obeys the existing declared fault
 release contract. Task sets are next, followed by retained fault/boundary/loop
 integration and signals, parity/default, adapters, single binary, target packs and
 retirement. Rust stays default; accepted language semantics are unchanged.
+
+
+## B1.4j — private task-set ABI (0.259)
+
+The runtime ABI now bridges exact-producer empty sets, spawn-into, next and set
+cancellation to the existing task registry and source scheduler. Metadata has module
+lifetime. Complete-set identity, type, membership and capacity checks happen before
+handle transfer; invalid later members cannot partially flag earlier members.
+Spawn queues an arena-owned child without handing off. Next joins only the earliest
+completed member and delivers its original payload plus the remaining set. Empty
+Next consumes immediately without a wait, outcome allocation or source handoff.
+Cancellation preserves the set and its join obligations; later inserted members
+remain independent of earlier set cancellation requests.
+
+Five private matrices cover completion order, borrowed caller buffers, parent/child
+faults, queued/running/completed cancellation, repeated requests, later insertion,
+scripted host readiness, malformed membership, stale/foreign authority, duplicate
+capture handles, outcome/wait/task exhaustion and physical-frame retirement.
+Fuel cuts and quotas 1/3/unbounded preserve reports and effects. Existing generated
+async and source task-set tests provide regression coverage. Source admission is
+unchanged: task sets and retained loops still fail before LLVM output publication.
+
+Next: retained loop lowering and generated task-set drain/feeding examples, then
+retained fault/boundary/constructor integration, launch signals, parity/default,
+adapters, single binary, target packs and retirement. Rust stays default; no new
+language semantics or design decision is introduced by this private checkpoint.

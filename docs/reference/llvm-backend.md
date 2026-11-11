@@ -18,6 +18,7 @@ Compiler 0.248 adds named synchronous boundaries and contingency settlement.
 Compiler 0.249 adds lexical boundaries, supervised recovery and process termination.
 Compiler 0.253 adds a bounded frontend async-frame profile; 0.254 adds cold control tasks. Compiler 0.256 adds spawned controls and consuming joins; 0.257 adds control cancellation requests.
 Compiler 0.258 adds scripted async host operations and their cancellation alternatives.
+Compiler 0.259 adds a private task-set runtime bridge; source admission is unchanged.
 The default remains `--backend rust`. Both start from the same checked program;
 backend selection does not relax ownership, origins, outcomes or path rules.
 
@@ -749,3 +750,26 @@ The example emits `captured`, then `run`, `cold`, `queued`, `spawn` and `await`.
 Its supplied scenario deliberately makes every host call report pending readiness.
 Task sets, retained loops/boundaries/constructors, adapters and launch signals
 remain outside this LLVM profile. Rust remains the default until parity.
+
+
+## Private task-set runtime bridge (0.259)
+
+The retained ABI can create an exact-producer set, queue a child into it, select
+its next completion and request cancellation of its current members. Immutable
+module metadata supplies producer identities. Whole-set validation rejects wrong
+shapes, mixed producers, duplicate or stale members and foreign task authority
+before transferring handles or changing any cancellation flag. Spawn validates
+all captures and its destination before allocating an arena frame.
+
+The original scheduler controls completion order and appends the remaining set to
+the selected member's payload. Only that member is joined; other members keep their
+ownership and fault obligations. An empty selection consumes its set immediately,
+without a source handoff, completion-wait allocation or outcome handle. Cancellation
+restores the same set and does not require wait capacity. Later insertions do not
+inherit a cancellation request previously applied to the set.
+
+Private tests exercise ordinary and scripted host members, caller loans, queued,
+running and completed cancellation, faults, capacity rejection and retirement at
+fuel cuts and quotas 1, 3 and unbounded. These tests use private callbacks: checked
+LLVM task-set programs still receive `E_BACKEND`. Retained loops and generated set
+lowering are the next integration step. Rust remains the default backend.
