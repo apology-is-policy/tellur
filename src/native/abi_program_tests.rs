@@ -94,6 +94,8 @@ const LEAF: CompiledControl = CompiledControl {
     callback: Some(leaf),
     children: std::ptr::null(),
     child_count: 0,
+    retained: std::ptr::null(),
+    retained_count: 0,
 };
 const PARENT: CompiledControl = CompiledControl {
     producer: b"internal_parent".as_ptr(),
@@ -113,6 +115,8 @@ const PARENT: CompiledControl = CompiledControl {
     }]
     .as_ptr(),
     child_count: 1,
+    retained: std::ptr::null(),
+    retained_count: 0,
 };
 static TABLE: [CompiledControl; 2] = [PARENT, LEAF];
 
@@ -149,7 +153,7 @@ fn compiled_module_descriptors_reuse_stable_authority_across_concurrent_and_repe
         .map(|i| {
             std::thread::spawn(move || {
                 let registry = unsafe {
-                    CompiledRegistry::register(&REGISTRY, 1, TABLE.as_ptr(), TABLE.len())
+                    CompiledRegistry::register(&REGISTRY, 2, TABLE.as_ptr(), TABLE.len())
                 }
                 .unwrap();
                 run(registry, format!("owner {i}").repeat(40))
@@ -162,7 +166,7 @@ fn compiled_module_descriptors_reuse_stable_authority_across_concurrent_and_repe
         .collect::<Vec<_>>();
     assert!(identities.iter().all(|pair| *pair == identities[0]));
     let registry =
-        unsafe { CompiledRegistry::register(&REGISTRY, 1, TABLE.as_ptr(), TABLE.len()) }.unwrap();
+        unsafe { CompiledRegistry::register(&REGISTRY, 2, TABLE.as_ptr(), TABLE.len()) }.unwrap();
     assert_eq!(run(registry, "again".repeat(40)), identities[0]);
     assert_eq!(registry.compiled[1].cold_type, "$task<internal_leaf>");
     assert_eq!(registry.compiled[1].started_type, "$started<internal_leaf>");
@@ -176,10 +180,10 @@ fn compiled_module_descriptors_reuse_stable_authority_across_concurrent_and_repe
     assert!(registry.layout(2).is_err());
     static OTHER: [CompiledControl; 2] = [PARENT, LEAF];
     assert!(
-        unsafe { CompiledRegistry::register(&REGISTRY, 1, OTHER.as_ptr(), OTHER.len()) }.is_err()
+        unsafe { CompiledRegistry::register(&REGISTRY, 2, OTHER.as_ptr(), OTHER.len()) }.is_err()
     );
     assert!(
-        unsafe { CompiledRegistry::register(&REGISTRY, 2, TABLE.as_ptr(), TABLE.len()) }.is_err()
+        unsafe { CompiledRegistry::register(&REGISTRY, 1, TABLE.as_ptr(), TABLE.len()) }.is_err()
     );
     assert_eq!(run(registry, "after rejection".repeat(40)), identities[0]);
 }
@@ -343,19 +347,19 @@ fn compiled_module_preflight_rejects_bad_layouts_before_publishing_control_ident
             LEAF,
         ],
     ];
-    assert!(unsafe { CompiledRegistry::register(&REGISTRY, 1, std::ptr::null(), 1) }.is_err());
-    assert!(unsafe { CompiledRegistry::register(&REGISTRY, 1, TABLE.as_ptr(), 0) }.is_err());
-    assert!(unsafe { CompiledRegistry::register(&REGISTRY, 1, TABLE.as_ptr(), 65537) }.is_err());
+    assert!(unsafe { CompiledRegistry::register(&REGISTRY, 2, std::ptr::null(), 1) }.is_err());
+    assert!(unsafe { CompiledRegistry::register(&REGISTRY, 2, TABLE.as_ptr(), 0) }.is_err());
+    assert!(unsafe { CompiledRegistry::register(&REGISTRY, 2, TABLE.as_ptr(), 65537) }.is_err());
     for (index, table) in BAD.iter().enumerate() {
         assert!(
-            unsafe { CompiledRegistry::register(&REGISTRY, 1, table.as_ptr(), table.len()) }
+            unsafe { CompiledRegistry::register(&REGISTRY, 2, table.as_ptr(), table.len()) }
                 .is_err(),
             "{index}"
         );
         assert!(REGISTRY.get().is_none(), "{index}");
     }
     let registry =
-        unsafe { CompiledRegistry::register(&REGISTRY, 1, TABLE.as_ptr(), TABLE.len()) }.unwrap();
+        unsafe { CompiledRegistry::register(&REGISTRY, 2, TABLE.as_ptr(), TABLE.len()) }.unwrap();
     run(registry, "valid after all failures".repeat(40));
 }
 
@@ -370,7 +374,7 @@ fn compiled_run_child_keeps_the_same_context_until_its_source_yield() {
         LEAF,
     ];
     let registry =
-        unsafe { CompiledRegistry::register(&REGISTRY, 1, TABLE_RUN.as_ptr(), 2) }.unwrap();
+        unsafe { CompiledRegistry::register(&REGISTRY, 2, TABLE_RUN.as_ptr(), 2) }.unwrap();
     run(registry, "inline run owner".repeat(40));
     let mut host = Host::new(json!({}), None, true, Some(10));
     let mut frame = Parent::default();
@@ -448,7 +452,7 @@ fn compiled_entry_borrows_physical_storage_and_rejects_bad_extent_before_capture
         let pointer = text.as_ptr();
         let value = context.put(V::String(text));
         unsafe {
-            tellur_rt_v1_run_entry(
+            tellur_rt_v2_run_entry(
                 &mut context,
                 TABLE.as_ptr(),
                 2,
@@ -475,7 +479,7 @@ fn compiled_entry_borrows_physical_storage_and_rejects_bad_extent_before_capture
     let mut context = launch_context(&mut host);
     let value = context.put(V::String("untouched".into()));
     unsafe {
-        tellur_rt_v1_run_entry(
+        tellur_rt_v2_run_entry(
             &mut context,
             TABLE.as_ptr(),
             2,
@@ -517,9 +521,9 @@ fn host_wrapper_metadata_uses_exact_module_static_producer_and_cancellation_vari
         producer_len: 5,
         ..LEAF
     }];
-    assert!(unsafe { CompiledRegistry::register(&REGISTRY, 1, EMPTY.as_ptr(), 1) }.is_err());
+    assert!(unsafe { CompiledRegistry::register(&REGISTRY, 2, EMPTY.as_ptr(), 1) }.is_err());
     assert!(REGISTRY.get().is_none());
-    let registry = unsafe { CompiledRegistry::register(&REGISTRY, 1, HOSTS.as_ptr(), 2) }.unwrap();
+    let registry = unsafe { CompiledRegistry::register(&REGISTRY, 2, HOSTS.as_ptr(), 2) }.unwrap();
     for (index, cancellable) in [false, true].into_iter().enumerate() {
         let host = registry.compiled[index].host.unwrap();
         assert_eq!(host.operation, "tick");
@@ -528,11 +532,59 @@ fn host_wrapper_metadata_uses_exact_module_static_producer_and_cancellation_vari
     }
     assert_eq!(registry.layout(0).unwrap().control.name, "display");
     for _ in 0..20 {
-        let again = unsafe { CompiledRegistry::register(&REGISTRY, 1, HOSTS.as_ptr(), 2) }.unwrap();
+        let again = unsafe { CompiledRegistry::register(&REGISTRY, 2, HOSTS.as_ptr(), 2) }.unwrap();
         assert!(std::ptr::eq(registry, again));
         assert_eq!(
             again.compiled[0].host.unwrap().operation.as_ptr(),
             HOSTS[0].producer
         );
     }
+}
+
+#[test]
+fn compiled_retained_slots_are_validated_before_identity_publication() {
+    static REGISTRY: OnceLock<CompiledRegistry> = OnceLock::new();
+    const BASE: CompiledControl = CompiledControl {
+        slots: 3,
+        parameters: [0, 2].as_ptr(),
+        parameter_count: 2,
+        retained: [2, 0].as_ptr(),
+        retained_count: 2,
+        ..LEAF
+    };
+    static BAD: [[CompiledControl; 1]; 6] = [
+        [CompiledControl {
+            retained: std::ptr::null(),
+            ..BASE
+        }],
+        [CompiledControl {
+            retained: [0, 0].as_ptr(),
+            ..BASE
+        }],
+        [CompiledControl {
+            retained: [0, 1].as_ptr(),
+            ..BASE
+        }],
+        [CompiledControl {
+            retained: [0, 3].as_ptr(),
+            ..BASE
+        }],
+        [CompiledControl {
+            retained_count: 3,
+            ..BASE
+        }],
+        [CompiledControl {
+            producer: b"tick$host".as_ptr(),
+            producer_len: 9,
+            ..BASE
+        }],
+    ];
+    for table in &BAD {
+        assert!(unsafe { CompiledRegistry::register(&REGISTRY, 2, table.as_ptr(), 1) }.is_err());
+        assert!(REGISTRY.get().is_none());
+    }
+    static GOOD: [CompiledControl; 1] = [BASE];
+    let registry = unsafe { CompiledRegistry::register(&REGISTRY, 2, GOOD.as_ptr(), 1) }.unwrap();
+    assert_eq!(registry.layout(0).unwrap().control.retained, [2, 0]);
+    assert!(registry.layout(0).unwrap().validate().is_ok());
 }

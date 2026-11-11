@@ -1648,3 +1648,23 @@ Next: retained fault/boundary/constructor integration and launch signals, then
 parity/default, adapters, single binary, target packs and retirement. Resource
 fault-release contracts mapped to Rust owners stay in the gated adapter profile;
 this step does not relax those contracts. Rust remains default; no design fork.
+
+
+## B1.4m — private retained supervision bridge (0.262)
+
+The private ABI supplies named work/handler frames to the original Machine and
+keeps only the waiting supervising frame alive across handled faults. Work and
+handler frames retire before retained-parameter handover; scope and task-domain
+authority stay in the runtime. Settlement resumes the supervisor administratively,
+without an outcome, source handoff or callback-local borrow. By-value frames reset
+only after prior retirement, and arena pins preserve ancestor storage.
+
+Version 2 compiled descriptors carry validated retained-slot metadata. Separate
+work/handler/settlement phases reject duplicate or mismatched transitions. Ordinary
+controls cannot return administrative settlement. Seven private lifecycle matrices
+and descriptor validation cover original-runtime parity, ordered handover, caller
+buffers, resource retirement, spawned/set siblings, cancellation, host readiness,
+secondary faults, escalation, malformed completion and fuel/quotas. Source admission
+is unchanged. Generated retained named supervision is next, followed by lexical
+scopes/recovery and constructors, launch signals, parity/default, adapters, single
+binary, target packs and retirement. No language-design fork is introduced.

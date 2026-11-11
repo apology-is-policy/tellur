@@ -6620,3 +6620,24 @@ all-target checks and release/editor/package smokes. The unchanged runtime, ABI,
 checker, Rust generator and synchronous LLVM evidence are reused from0.260; this is
 scoped verification, not a new complete-default run. Exact counts, evidence hashes,
 fixture corrections and release artifacts are in `work/tellur-0.261-verification.json`.
+
+
+## 0.262 — Private retained supervision bridge (B1.4m)
+
+Seven private ABI tests plus compiled retained-slot validation exercise named work,
+contingency and administrative settlement. Original-runtime comparisons cover
+fuel0..40, quotas1/3/unbounded, caller-owned/arena-owned parents, repeated supervision,
+retained parameter order, preserved String buffers, resource destructor order,
+ordinary/child faults, secondary handler faults, escalation and non-source errors.
+Inline, awaited, spawned and cancelled ancestors compose with spawned/set siblings
+and pending/cancelled host operations. All tasks/resources/pins retire once.
+Malformed child roles/arity, duplicate handles, descriptor slots, repeated lifecycle
+transitions and wrong completion kinds reject before partial transfer or handler entry.
+
+The native-host suite passed275 tests before the metadata-only version update; its
+exact runtime/test source hashes are retained. Full LLVM coverage is refreshed for
+descriptor version2, alongside quota matrices and the affected native/source boundary,
+task, cancellation and host suites. The187 native unit models are refreshed;125
+unaffected frontend/reference units and unrelated default suites reuse recorded evidence. Compiler/LSP/VSIX, baseline compatibility and release smokes
+are validated together; detailed records are in `work/tellur-0.262-verification.json`.
+Generated retained boundaries remain gated; private tests do not widen language admission.

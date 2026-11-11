@@ -5,7 +5,7 @@ use super::*;
 
 const DECLARATIONS: &str = r#"
 declare i32 @tellur_rt_v1_launch(ptr, i64, ptr, i64)
-declare void @tellur_rt_v1_run_entry(ptr, ptr, i64, i64, ptr, i64, i64, ptr, i64, i64)
+declare void @tellur_rt_v2_run_entry(ptr, ptr, i64, i64, ptr, i64, i64, ptr, i64, i64)
 declare void @tellur_rt_v1_await(ptr, i64, ptr, i64)
 declare void @tellur_rt_v1_run_child(ptr, i64, ptr, i64)
 declare i64 @tellur_rt_v1_defer(ptr, i64, ptr, i64, ptr, i64)
@@ -19,7 +19,7 @@ declare i8 @tellur_rt_v1_next(ptr, i64, i64)
 declare void @tellur_rt_v1_cancel_set(ptr, i64, i64, i64)
 declare void @tellur_rt_v1_host(ptr, i64, ptr, i64)
 declare void @tellur_rt_v1_invalid_resume(ptr)
-%compiled_control = type { ptr, i64, ptr, i64, i64, ptr, i64, i64, i64, i64, ptr, ptr, i64 }
+%compiled_control = type { ptr, i64, ptr, i64, i64, ptr, i64, i64, i64, i64, ptr, ptr, i64, ptr, i64 }
 %compiled_child = type { i64, i64 }
 declare i32 @tellur_rt_v1_ok(ptr)
 declare void @tellur_rt_v1_frame(ptr, i64)
@@ -1134,10 +1134,10 @@ impl Emitter {
         )
         .unwrap();
         let (producer, producer_len) = self.text(&region.name);
-        self.descriptors.push(format!("%compiled_control {{ ptr {producer}, i64 {producer_len}, ptr {name}, i64 {len}, i64 {}, ptr @parameters_{index}, i64 {}, i64 {size}, i64 {align}, i64 {prefix}, ptr @resume_{index}, ptr @children_{index}, i64 {} }}", self.layout.slots.len(), parameters.len(), children.len()));
+        self.descriptors.push(format!("%compiled_control {{ ptr {producer}, i64 {producer_len}, ptr {name}, i64 {len}, i64 {}, ptr @parameters_{index}, i64 {}, i64 {size}, i64 {align}, i64 {prefix}, ptr @resume_{index}, ptr @children_{index}, i64 {}, ptr null, i64 0 }}", self.layout.slots.len(), parameters.len(), children.len()));
         let descriptor = self.resumables[&region.name];
         let count = self.resumables.len();
-        self.line(format!("define void @control_{index}(ptr %ctx, ptr %args, i64 %count) {{\nentry:\n%frame = alloca %frame_{index}\nstore %frame_{index} zeroinitializer, ptr %frame\ncall void @tellur_rt_v1_run_entry(ptr %ctx, ptr @async_controls, i64 {count}, i64 {descriptor}, ptr %frame, i64 {size}, i64 {align}, ptr %args, i64 %count, i64 -1)\nret void\n}}"));
+        self.line(format!("define void @control_{index}(ptr %ctx, ptr %args, i64 %count) {{\nentry:\n%frame = alloca %frame_{index}\nstore %frame_{index} zeroinitializer, ptr %frame\ncall void @tellur_rt_v2_run_entry(ptr %ctx, ptr @async_controls, i64 {count}, i64 {descriptor}, ptr %frame, i64 {size}, i64 {align}, ptr %args, i64 %count, i64 -1)\nret void\n}}"));
     }
 
     fn unwind(&mut self, depth: usize) {

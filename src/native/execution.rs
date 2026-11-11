@@ -1105,6 +1105,12 @@ impl Machine {
                 if frame.pending.is_some() {
                     return Err("E_NATIVE: duplicate compiled supervision continuation".into());
                 }
+                #[cfg(any(test, feature = "runtime-abi"))]
+                let abi = frame
+                    .abi
+                    .as_mut()
+                    .map(|state| state.take_supervised(work, false))
+                    .transpose()?;
                 let domain = domains.prepare(Some(&self.current))?;
                 let state = host.begin_boundary(work.name, &arguments, false)?;
                 domains.commit(&domain)?;
@@ -1114,8 +1120,12 @@ impl Machine {
                     handler,
                     domain,
                 }));
-                self.stack
-                    .push(Self::admit(host, values, work, arguments, None)?);
+                let mut child = Self::admit(host, values, work, arguments, None)?;
+                #[cfg(any(test, feature = "runtime-abi"))]
+                {
+                    child.abi = abi;
+                }
+                self.stack.push(child);
             }
             Step::Complete(Completion::Again(target, arguments)) => {
                 let (index, control) = frame.loop_target(target)?;
@@ -1216,6 +1226,10 @@ impl Machine {
                             let result = result.settled();
                             supervision.finish(host, domains, &mut self.current, &result)?;
                             result?;
+                            #[cfg(any(test, feature = "runtime-abi"))]
+                            if let Some(abi) = parent.abi.as_mut() {
+                                abi.settle_supervision()?;
+                            }
                         }
                     }
                 } else {
@@ -1248,7 +1262,9 @@ impl Machine {
             }
             let frame = self.stack.last_mut().unwrap();
             #[cfg(any(test, feature = "runtime-abi"))]
-            drop(frame.abi.take());
+            if !matches!(frame.pending, Some(Pending::Supervise(_))) {
+                drop(frame.abi.take());
+            }
             #[cfg(test)]
             if let Some(Pending::Adapter(operation)) = &frame.pending {
                 operation.require(host, values, frame, domains, &self.current)?;
@@ -1281,19 +1297,30 @@ impl Machine {
                 {
                     let handler = (|| {
                         domains.require_quiescent(&supervision.domain, &self.current)?;
+                        #[cfg(any(test, feature = "runtime-abi"))]
+                        let abi = frame
+                            .abi
+                            .as_mut()
+                            .map(|state| state.take_supervised(supervision.handler, true))
+                            .transpose()?;
                         let keep = host.resources.owned_tokens(&retained)?;
                         host.boundary_fault(&mut supervision.state, &message, &keep)?;
                         retained.push(V::String(
                             message.strip_prefix("E_FAULT: ").unwrap_or(&message).into(),
                         ));
                         host.enter_contingency(&mut supervision.state)?;
-                        Self::admit(
+                        let mut child = Self::admit(
                             host,
                             values,
                             supervision.handler,
                             std::mem::take(&mut retained),
                             None,
-                        )
+                        )?;
+                        #[cfg(any(test, feature = "runtime-abi"))]
+                        {
+                            child.abi = abi;
+                        }
+                        Ok(child)
                     })();
                     match handler {
                         Ok(handler) => {
@@ -1307,6 +1334,10 @@ impl Machine {
                 }
                 supervision.finish(host, domains, &mut self.current, &Err(message.clone()))?;
             }
+            // Only a live, handled named supervision may retain its physical
+            // parent. Abandoned work and handler frames still retire before owners.
+            #[cfg(any(test, feature = "runtime-abi"))]
+            drop(frame.abi.take());
             retained.clear();
             // A child fault retires its original frame before handover in its caller.
             while !frame.scopes.is_empty() {

@@ -21,6 +21,7 @@ Compiler 0.258 adds scripted async host operations and their cancellation altern
 Compiler 0.259 adds a private task-set runtime bridge. Compiler 0.260 admits retained
 loops with repeated task calls and expanded loop completions. Compiler 0.261 adds
 generated task sets with the existing completion-order and cancellation rules.
+Compiler 0.262 adds the private retained supervision bridge; source admission is unchanged.
 The default remains `--backend rust`. Both start from the same checked program;
 backend selection does not relax ownership, origins, outcomes or path rules.
 
@@ -846,3 +847,39 @@ two unjoined, printing each spawn and reap. Original and expanded programs prese
 fuel charges, path facts, fault reports and host readiness. Retained boundaries,
 supervised recovery, constructors that suspend, launch signals and Rust adapters
 remain later slices. Rust remains the default until parity.
+
+
+## Private retained supervision (0.262)
+
+Named retained work and its contingency now have distinct by-value physical frames
+behind the private runtime ABI. A request validates both child identities, frame
+extents, parameter arities and retained-slot metadata before transferring arguments.
+Descriptor version 2 records retained parameters in immutable module storage; its
+versioned entry symbol prevents reading the previous descriptor layout as the new
+one. Other value and task ABI operations retain their existing version.
+
+The original runtime admits the work domain and selects its handler only after
+failed descendants, loans and sibling task domains retire. The waiting supervisor's
+physical frame and owned locals survive a handled fault. Failed work and handlers
+still retire before their owners; pins keep arena-backed ancestors alive until all
+inline descendants stop. Repeated supervision resets child storage after retirement.
+
+Work and handlers return administrative settlement, never an outcome for the failed
+work. The supervisor resumes its prepared state without an outcome handle or source
+handoff. A separate lifecycle validates work admission, optional handler admission
+and one-time settlement. Ordinary controls cannot use this settlement channel.
+Handler failures cannot re-enter the same handler; fuel and driver errors bypass
+contingency. No additional scheduler, cancellation or fault-domain policy is added.
+
+Private callbacks are compared with original runtime continuations across normal
+and faulted work, secondary faults, escalation, repeated requests, borrowed resource
+suppliers, spawned/set siblings, cancellation, pending host operations and every
+fuel cut at quotas 1, 3 and unbounded. Both caller-owned and arena-owned parents are
+covered, including inline, awaited, spawned and cancelled ancestors. Invalid child
+roles, duplicate handles, descriptor slots and lifecycle transitions reject without
+partial transfer. Physical pins and resource/task obligations retire exactly once.
+
+Source LLVM boundaries that retain across handoffs remain rejected before output
+publication. Lexical same-frame recovery, constructors that suspend and launch
+signals still need their own integration. Rust adapter resource mappings remain at
+the adapter station. Rust remains the default; accepted language semantics are unchanged.

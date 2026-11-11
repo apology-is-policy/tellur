@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.261.0** implements the v0.1 checked core and the current language
+Compiler release **0.262.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -21,6 +21,11 @@ Release 0.222 added dynamic task sets. `tasks<producer>` holds any number of
 spawned children of one async control. `spawn producer(..) into set;` adds a member,
 `delta await next set { ..., empty => ... }` joins members in completion order, and
 `count(borrow set)` bounds how many run at once.
+
+Release 0.262 adds a private retained supervision bridge. Original task domains
+control work, contingency and administrative settlement while LLVM parent frames
+survive handled faults. [The bridge profile](docs/reference/llvm-backend.md#private-retained-supervision-0262)
+keeps generated retained boundaries gated until source integration. Rust stays default.
 
 Release 0.261 adds LLVM task sets: exact-producer construction, spawn-into,
 completion-order `await next`, immediate empty selection and set cancellation.

@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.261.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.262.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -57,7 +57,8 @@ readiness and explicit cancellation alternatives. Compiler 0.260 adds retained l
 repeated task calls and expanded helper completion. Compiler 0.261 adds source task
 sets, completion-order selection and cancellation using the private 0.259 bridge.
 Set captures/results stay owned and reference-free. Retained boundaries, Rust
-adapters and launch signals remain gated.
+adapters and launch signals remain gated. Compiler 0.262 adds private retained
+supervision metadata and lifecycle tests; generated retained boundaries remain gated.
 Unsupported checked programs fail with `E_BACKEND` before build
 outputs are created. Backend selection does not change language checking.
 

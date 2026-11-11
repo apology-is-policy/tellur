@@ -32,6 +32,9 @@ mod set_tests;
 #[path = "abi_spawn_tests.rs"]
 mod spawn_tests;
 #[cfg(test)]
+#[path = "abi_supervision_tests.rs"]
+mod supervision_tests;
+#[cfg(test)]
 #[path = "abi_tests.rs"]
 mod tests;
 
@@ -1283,7 +1286,8 @@ impl<'frame> RetainedRoot<'frame> {
 /// handoff, 7 consume a started child through the source join policy, or 8 request
 /// cancellation without a source handoff or consuming the started value, or
 /// 9 start a retained async host operation, 10 spawn into a task set, or
-/// 11 await the earliest completed member of a nonempty set.
+/// 11 await the earliest completed member of a nonempty set, or
+/// 12 enter named supervision without a handoff.
 /// Initial arguments arrive once; after child delivery the span contains one
 /// outcome handle. Other callbacks receive an empty span.
 pub struct InvocationLayout {
@@ -1304,7 +1308,9 @@ impl InvocationLayout {
             || !self.align.is_power_of_two()
             || self.prefix > self.size
             || self.control.constructor
-            || !self.control.retained.is_empty()
+            || self.control.retained.iter().enumerate().any(|(i, slot)| {
+                !self.control.parameters.contains(slot) || self.control.retained[..i].contains(slot)
+            })
             || !std::ptr::fn_addr_eq(self.control.resume, resume_invocation as fn(_, _, _) -> _)
             || self.control.parameters.iter().enumerate().any(|(i, slot)| {
                 *slot >= self.control.slots || self.control.parameters[..i].contains(slot)
@@ -1507,6 +1513,11 @@ struct HostLeaf {
     cancellable: bool,
 }
 enum RequestedInvocation {
+    Supervise {
+        work: ProgramFrame,
+        handler: ProgramFrame,
+        arguments: Vec<V>,
+    },
     SpawnInto {
         child: Invocation,
         arguments: Vec<V>,
@@ -1556,6 +1567,7 @@ impl RequestedInvocation {
             Self::Host { .. } => 9,
             Self::SpawnInto { .. } => 10,
             Self::Next { .. } => 11,
+            Self::Supervise { .. } => 12,
         }
     }
 }
@@ -1567,6 +1579,17 @@ enum InvocationPhase {
     Complete,
     Failed,
 }
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SupervisionPhase {
+    Prepared,
+    Work,
+    Handler,
+}
+struct InvocationSupervision {
+    work: ProgramFrame,
+    handler: ProgramFrame,
+    phase: SupervisionPhase,
+}
 /// Owned ABI data attached to an existing runtime activation. Machine/Contexts
 /// retain all invocation, domain, task, source scheduling and retirement authority.
 /// Physical storage may be caller-owned or leased from the runtime arena; neither
@@ -1577,6 +1600,8 @@ pub(crate) struct Invocation {
     phase: InvocationPhase,
     delivered: Vec<u64>,
     call: Option<ProgramFrame>,
+    supervision: Option<InvocationSupervision>,
+    settlement: bool,
     // Keep storage after retained values and pending children in drop order.
     storage: Option<physical_frames::Pin>,
     call_storage: Option<physical_frames::Pin>,
@@ -1658,6 +1683,68 @@ impl Invocation {
             self.arena.clone(),
         ))
     }
+    // Machine alone chooses work, handler, and settlement under the original domain.
+    // No callback or source instruction runs in these administrative hooks.
+    pub(crate) fn take_supervised(
+        &mut self,
+        control: &'static execution::Control,
+        handler: bool,
+    ) -> R<Self> {
+        let supervision = self
+            .supervision
+            .as_mut()
+            .ok_or("E_NATIVE: missing ABI supervision")?;
+        let (expected, next, program) = if handler {
+            (
+                SupervisionPhase::Work,
+                SupervisionPhase::Handler,
+                supervision.handler,
+            )
+        } else {
+            (
+                SupervisionPhase::Prepared,
+                SupervisionPhase::Work,
+                supervision.work,
+            )
+        };
+        if self.phase != InvocationPhase::Awaiting
+            || supervision.phase != expected
+            || !std::ptr::eq(control, program.layout.control)
+        {
+            return Err("E_NATIVE: ABI supervision identity or phase differs".into());
+        }
+        let storage = self
+            .storage
+            .as_ref()
+            .map(physical_frames::Pin::retain)
+            .transpose()?;
+        // This distinct child has no active invocation. A repeated supervision
+        // starts from a fresh zero frame only after the previous child retired.
+        unsafe { std::ptr::write_bytes(program.address, 0, program.layout.size) };
+        let mut child = Self::with_storage(program, storage, self.arena.clone());
+        child.settlement = true;
+        supervision.phase = next;
+        Ok(child)
+    }
+    pub(crate) fn settle_supervision(&mut self) -> R<()> {
+        let supervision = self
+            .supervision
+            .as_ref()
+            .ok_or("E_NATIVE: missing ABI supervision settlement")?;
+        if self.phase != InvocationPhase::Awaiting
+            || supervision.phase == SupervisionPhase::Prepared
+            || !self.delivered.is_empty()
+            || self
+                .state
+                .as_ref()
+                .is_none_or(|s| s.error.is_some() || s.result.is_some())
+        {
+            return Err("E_NATIVE: invalid ABI supervision settlement".into());
+        }
+        self.supervision = None;
+        self.phase = InvocationPhase::Active;
+        Ok(())
+    }
     fn at(program: ProgramFrame) -> Self {
         Self::at_in(program, None, physical_frames::Arena::default())
     }
@@ -1683,6 +1770,8 @@ impl Invocation {
             phase: InvocationPhase::Cold,
             delivered: vec![],
             call: None,
+            supervision: None,
+            settlement: false,
             storage,
             call_storage: None,
             arena,
@@ -1755,10 +1844,19 @@ impl Invocation {
                 | (8, Some(8), false)
                 | (9, Some(9), false)
                 | (10, Some(10), false)
-                | (11, Some(11), false) => Ok(execution::Step::Continue), // Queue after callback borrows end.
+                | (11, Some(11), false)
+                | (12, Some(12), false) => Ok(execution::Step::Continue), // Queue after callback borrows end.
                 (2, None, true) => match context.result.take().unwrap() {
-                    value @ Completion::Outcome(_) => Ok(execution::Step::Complete(value)),
-                    _ => Err("E_NATIVE: retained ABI requires a normal completion".into()),
+                    value @ Completion::Outcome(_) if !self.settlement => {
+                        Ok(execution::Step::Complete(value))
+                    }
+                    Completion::Settled if self.settlement => {
+                        Ok(execution::Step::Complete(Completion::Settled))
+                    }
+                    _ => Err(
+                        "E_NATIVE: retained ABI completion kind differs from invocation role"
+                            .into(),
+                    ),
                 },
                 _ => Err("E_NATIVE: malformed retained ABI step".into()),
             }
@@ -1775,6 +1873,23 @@ impl Invocation {
             && let Some(request) = request
         {
             result = (|| match request {
+                RequestedInvocation::Supervise {
+                    work,
+                    handler,
+                    arguments,
+                } => {
+                    self.supervision = Some(InvocationSupervision {
+                        work,
+                        handler,
+                        phase: SupervisionPhase::Prepared,
+                    });
+                    self.phase = InvocationPhase::Awaiting;
+                    Ok(execution::Step::Supervise {
+                        work: work.layout.control,
+                        handler: handler.layout.control,
+                        arguments,
+                    })
+                }
                 RequestedInvocation::SpawnInto {
                     child,
                     mut arguments,
@@ -1995,6 +2110,44 @@ unsafe fn request_invocation(
             handoff,
             child: program,
             arguments: InvocationArguments::Direct(arguments),
+        });
+        Ok(())
+    })
+}
+
+/// Request named work with a distinct by-value contingency frame. The original
+/// Machine owns domain admission, child retirement, fault handover and settlement.
+/// A handler is selected only by that machine; this request introduces no handoff.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_supervise_children(
+    ctx: *mut Context<'_>,
+    work: usize,
+    handler: usize,
+    args: *const u64,
+    count: usize,
+) {
+    unsafe { &mut *ctx }.perform(|c| {
+        if c.request.is_some() || c.result.is_some() {
+            return Err("E_NATIVE: duplicate ABI continuation request".into());
+        }
+        let parent = c
+            .program
+            .ok_or("E_NATIVE: supervision requires a selected ABI invocation")?;
+        let work_frame = parent.child(work)?;
+        let handler_frame = parent.child(handler)?;
+        if work == handler
+            || count != work_frame.layout.control.parameters.len()
+            || handler_frame.layout.control.parameters.len()
+                != work_frame.layout.control.retained.len() + 1
+            || !handler_frame.layout.control.retained.is_empty()
+        {
+            return Err("E_NATIVE: invalid ABI supervision child roles or arity".into());
+        }
+        let arguments = c.take_many(unsafe { slice(args, count) })?;
+        c.request = Some(RequestedInvocation::Supervise {
+            work: work_frame,
+            handler: handler_frame,
+            arguments,
         });
         Ok(())
     })
@@ -2469,7 +2622,7 @@ pub unsafe extern "C" fn tellur_rt_v1_cancel_set(
     });
 }
 
-/// C-safe immutable descriptor emitted by the compiler. Every span points into
+/// Version 2 C-safe immutable descriptor emitted by the compiler. Every span points into
 /// module-static storage. Rust Control/InvocationLayout values never cross C ABI.
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -2488,6 +2641,8 @@ pub struct CompiledControl {
     pub callback: Option<ResumeCallback>,
     pub children: *const CompiledChild,
     pub child_count: usize,
+    pub retained: *const usize,
+    pub retained_count: usize,
 }
 // Generated descriptors and their pointed-to spans are immutable module data.
 // Constructing them is harmless; registration requires that lifetime contract.
@@ -2531,7 +2686,7 @@ impl CompiledRegistry {
         table: *const CompiledControl,
         count: usize,
     ) -> R<&'static Self> {
-        if abi != 1
+        if abi != 2
             || count == 0
             || count > 65536
             || table.is_null()
@@ -2559,6 +2714,10 @@ impl CompiledRegistry {
                 || raw.name.is_null()
                 || raw.name_len > isize::MAX as usize
                 || raw.slots > isize::MAX as usize / std::mem::size_of::<Option<V>>()
+                || raw.retained_count > raw.parameter_count
+                || (raw.retained_count != 0
+                    && (raw.retained.is_null()
+                        || raw.retained as usize % std::mem::align_of::<usize>() != 0))
                 || raw.parameter_count > raw.slots
                 || (raw.parameter_count != 0
                     && (raw.parameters.is_null()
@@ -2605,13 +2764,22 @@ impl CompiledRegistry {
             {
                 return Err("E_NATIVE: invalid compiled ABI parameter layout".into());
             }
+            let retained: &'static [usize] = unsafe { slice(raw.retained, raw.retained_count) };
+            if retained
+                .iter()
+                .enumerate()
+                .any(|(i, slot)| !parameters.contains(slot) || retained[..i].contains(slot))
+                || (host.is_some() && !retained.is_empty())
+            {
+                return Err("E_NATIVE: invalid compiled ABI retained parameter layout".into());
+            }
             let children = unsafe { slice(raw.children, raw.child_count) }.to_vec();
             controls.push(execution::Control {
                 name,
                 slots: raw.slots,
                 atoms: 0,
                 parameters,
-                retained: &[],
+                retained,
                 constructor: false,
                 access: None,
                 resume: resume_invocation,
@@ -2756,7 +2924,7 @@ impl CompiledRegistry {
 /// writable, aligned and exclusively owned for the entire call. No pointer to
 /// program storage survives this function, even when execution fails.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn tellur_rt_v1_run_entry(
+pub unsafe extern "C" fn tellur_rt_v2_run_entry(
     ctx: *mut Context<'_>,
     table: *const CompiledControl,
     controls: usize,
@@ -2782,7 +2950,7 @@ pub unsafe extern "C" fn tellur_rt_v1_run_entry(
             return Err("E_NATIVE: compiled entry requires an unused launch context".into());
         }
         let registry =
-            unsafe { CompiledRegistry::register(&COMPILED_PROGRAM, 1, table, controls)? };
+            unsafe { CompiledRegistry::register(&COMPILED_PROGRAM, 2, table, controls)? };
         let layout = registry.layout(index)?;
         // Validate physical storage and argument count before consuming handles.
         let invocation = unsafe { Invocation::buffer(layout, program, size, align)? };

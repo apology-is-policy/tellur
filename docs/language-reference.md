@@ -1,8 +1,8 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.261.0 -->
+<!-- tellur-reference-version: 0.262.0 -->
 
-This manual describes **compiler 0.261.0**, including the current ownership model,
+This manual describes **compiler 0.262.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -28,7 +28,9 @@ cancellation alternatives. Compiler 0.260 adds [retained loops](reference/llvm-b
 including repeated task calls and expanded loop completions. Compiler 0.261 adds
 [task sets](reference/llvm-backend.md#generated-task-sets-0261), completion-order
 selection, loop-carried remainders and set cancellation. Retained fault boundaries
-and Rust adapters remain later LLVM slices.
+and Rust adapters remain later LLVM slices. Compiler 0.262 proves the private
+[retained supervision bridge](reference/llvm-backend.md#private-retained-supervision-0262)
+without changing source admission.
 
 Tellur is still experimental. When this manual and the compiler disagree, treat that
 as a bug to investigate, not a promise that either must remain unchanged. The
@@ -2972,7 +2974,7 @@ General expression-type hover remains unsupported.
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and broader spawn payloads (anonymous contracts and reference-bearing collections) remain planned; they are not executable features of 0.261.0.
+and broader spawn payloads (anonymous contracts and reference-bearing collections) remain planned; they are not executable features of 0.262.0.
 ## Contingency and supervised boundaries
 
 The [contingency reference](reference/contingency.md) specifies `@contingent`,

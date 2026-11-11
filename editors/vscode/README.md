@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-darwin-arm64-0.261.0.vsix` using **Extensions:
+1. Install the supplied `tellur-language-darwin-arm64-0.262.0.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1802,17 +1802,23 @@ remains the default backend.
 
 Compiler 0.259 adds the private LLVM task-set runtime bridge with completion-order
 joins and existing cancellation/ownership rules. Source LLVM task sets are added in 0.261 after retained loop integration. The bundled compiler and language server report
-0.261.0; Rust remains the default backend.
+0.262.0; Rust remains the default backend.
 
 
 Compiler 0.260 adds retained LLVM loops with repeated awaits, cold/spawned tasks,
 scripted host readiness and expanded helper completions. The bundled compiler and
-language server share version 0.261.0; Rust remains the default. Task sets follow in
+language server share version 0.262.0; Rust remains the default. Task sets follow in
 0.261; retained fault boundaries remain separate work.
 
 
 Compiler 0.261 adds task sets to the opt-in LLVM backend, including bounded feeding,
 completion-order reaping and cancellation of current members. Try
 `playground/llvm_task_sets.tellur` with a job count. The bundled compiler/LSP report
-0.261.0. Existing task-set ownership and reference-free capture/result rules apply;
+0.262.0. Existing task-set ownership and reference-free capture/result rules apply;
 Rust remains the default backend.
+
+
+Compiler 0.262 adds the private retained LLVM supervision bridge and its lifecycle
+proof. Generated retained boundaries remain gated; the Rust backend remains the
+default. The bundled compiler and language server report 0.262.0. No editor window
+reload is part of the release validation or installation workflow.
