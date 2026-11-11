@@ -65,6 +65,19 @@ pub(super) unsafe fn drive_abi<T>(
     let root = unsafe { contexts.start_abi_entry(layout, args, program)? };
     drive_contexts(contexts, root, quota)
 }
+#[cfg(any(test, feature = "runtime-abi"))]
+pub(crate) unsafe fn run_abi_invocation(
+    host: &mut Host,
+    args: Vec<V>,
+    layout: &'static super::super::super::abi::InvocationLayout,
+    invocation: super::super::super::abi::Invocation,
+    quota: usize,
+) -> R<Completion> {
+    let mut contexts = Contexts::new(host);
+    contexts.source_checked = true;
+    let root = unsafe { contexts.start_abi_invocation(layout, args, invocation)? };
+    drive_contexts(contexts, root, || quota)
+}
 fn drive_contexts(
     mut contexts: Contexts<'_>,
     root: ContextKey,

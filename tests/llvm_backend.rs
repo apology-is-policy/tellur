@@ -733,7 +733,7 @@ outcome result {@exit 0 done {option<string> value}}
         // These reused language fixtures declare outcomes without CLI policy.
         let mut manifest: Json =
             serde_json::from_str(&fs::read_to_string(&f.manifest).unwrap()).unwrap();
-        manifest["launch"] = json!({"main":{"exit_codes":{"done":0}}});
+        manifest["launch"]["main"] = json!({"exit_codes":{"done":0}});
         fs::write(&f.manifest, manifest.to_string()).unwrap();
         let checked = compile_file(
             &f.source,
@@ -2178,7 +2178,7 @@ contingency(string reason){report(reason);emit(context);terminate;}
     fn lexical_matrix(f: &Fixture, scenarios: &[Json], fuels: &[Option<usize>]) {
         let mut manifest: Json =
             serde_json::from_str(&fs::read_to_string(&f.manifest).unwrap()).unwrap();
-        manifest["launch"] = json!({"main":{"exit_codes":{"done":0}}});
+        manifest["launch"]["main"] = json!({"exit_codes":{"done":0}});
         fs::write(&f.manifest, manifest.to_string()).unwrap();
         let checked = compile_file(
             &f.source,
@@ -2349,10 +2349,148 @@ control main(bool broken) exits done {
     }
 
     #[test]
+    fn frontend_async_frames_preserve_nested_handoffs_guards_and_exact_fault_fuel_reports() {
+        let f = Fixture::new(
+            r#"
+async control leaf(bool fail, ref string text) exits done faults {
+    emit("leaf before");yield;
+    delta fail {true=>bad,false=>good}
+    [bad]: fault "nested failure 😀";
+    [good]: emit(text);exit done;
+}
+async control child(bool fail, ref string text) exits done faults {
+    yield;await leaf(fail,text);emit("child after");exit done;
+}
+async control startup(bool fail, bool pick, string text) exits done faults {
+    emit("startup");
+    delta pick {true=>selected,false=>skipped}
+    [selected]:await child(fail,borrow text);
+    [selected | skipped]:yield;emit(text);exit done;
+}
+control wrapper(bool fail, bool pick, string text) exits done faults {forward run startup(fail,pick,text);}
+control main(bool fail, bool pick, string text) exits done faults {forward wrapper(fail,pick,text);}
+"#,
+        );
+        let scenarios = [false,true].into_iter().flat_map(|fail| [false,true].map(move |pick|
+            json!({"entry":"main","arguments":[{"kind":"bool","value":fail},{"kind":"bool","value":pick},{"kind":"string","value":"owned 😀 and \u{0}"}],"calls":[]}))).collect::<Vec<_>>();
+        lexical_matrix(
+            &f,
+            &scenarios,
+            &(0..=42).map(Some).chain([None]).collect::<Vec<_>>(),
+        );
+        let ir = fs::read_to_string(f.root.join("llvm-2.ll")).unwrap();
+        assert!(ir.contains("define i32 @resume_") && ir.contains("switch i32"));
+        assert!(
+            ir.contains("@tellur_rt_v1_run_child") && ir.contains("call void @tellur_rt_v1_await")
+        );
+        assert!(
+            ir.contains("%compiled_control") && ir.contains("@async_controls = private constant")
+        );
+        assert!(ir.contains("%frame_") && !ir.contains("llvm.coro") && !ir.contains("malloc"));
+    }
+    #[test]
+    fn frontend_async_frames_preserve_exclusive_caller_origins_and_temporary_owned_arguments() {
+        for source in [
+            r#"
+async control lend(ref mutable string input) exits lent {ref mutable string value from input} {
+    yield;emit("child");exit lent {input};
+}
+async control startup(ref mutable string input) exits done {
+    emit("before");delta await lend(input) {lent {auto value}=>lent}
+    [lent]:yield;deref value="changed";emit(value);exit done;
+}
+control wrapper(ref mutable string input) exits done {forward run startup(input);}
+control main() exits done {
+    mutable string text="initial";wrapper(borrow mutable text);
+    text="settled";emit(borrow text);exit done;
+}
+"#,
+            r#"
+struct message {string text;constructor(string text) {self.text=move text;}}
+async control length(ref string text, message message) exits sized {u32 length} {
+    yield;emit(text);emit(borrow message.text);exit sized {9};
+}
+async control outer() exits done {
+    auto saved=capture (await length(borrow "temporary", message("owned")));
+    delta saved {sized {u32 length}=>sized}
+    [sized]:yield;emit(u32_text(length));exit done;
+}
+control main() exits done {forward run outer();}
+"#,
+        ] {
+            lexical_matrix(
+                &Fixture::new(source),
+                &[json!({"entry":"main","arguments":[],"calls":[]})],
+                &(0..=48).map(Some).chain([None]).collect::<Vec<_>>(),
+            );
+        }
+    }
+    #[test]
+    fn frontend_async_frames_keep_unused_controls_and_multiple_runs_independent() {
+        let f = Fixture::new(
+            r#"
+async control unused() exits done {yield;exit done;}
+async control echo(string text) exits done {yield;emit(text);exit done;}
+control main() exits done {run echo("first");run echo("second");exit done;}
+control plain() exits done {emit("synchronous");exit done;}
+"#,
+        );
+        let mut manifest: Json =
+            serde_json::from_str(&fs::read_to_string(&f.manifest).unwrap()).unwrap();
+        manifest["launch"] =
+            json!({"main":{"exit_codes":{"done":0}},"plain":{"exit_codes":{"done":0}}});
+        fs::write(&f.manifest, manifest.to_string()).unwrap();
+        lexical_matrix(
+            &f,
+            &[json!({"entry":"main","arguments":[],"calls":[]})],
+            &(0..=22).map(Some).chain([None]).collect::<Vec<_>>(),
+        );
+        // A separate synchronous-only root does not enter the retained launcher.
+        for opt in [0, 2] {
+            build_pair(&f, false, opt);
+            let path = f.root.join("plain.json");
+            fs::write(
+                &path,
+                json!({"entry":"plain","arguments":[],"calls":[]}).to_string(),
+            )
+            .unwrap();
+            let a = execute(&f.root.join(format!("llvm-{opt}")), &path, None);
+            let b = execute(&f.root.join(format!("rust-{opt}")), &path, None);
+            assert_eq!(a.status.code(), b.status.code());
+            assert_eq!(a.stdout, b.stdout);
+            assert_eq!(a.stderr, b.stderr);
+        }
+    }
+
+    #[test]
+    fn retained_operations_nested_in_synchronous_scopes_are_gated_before_output() {
+        let prefix = "async control leaf() exits done {yield;exit done;} control wrapper() exits done {forward run leaf();}";
+        for main in [
+            "control main() exits result {loop L(){wrapper();exit done;}} outcome result {@exit 0 done}",
+            "control main() exits result {fault boundary {wrapper();exit done;} contingency [] {escalate;}} outcome result {@exit 0 done}",
+        ] {
+            let f = Fixture::new(&format!("{prefix}{main}"));
+            compile_file(
+                &f.source,
+                Manifest::from_json(&fs::read_to_string(&f.manifest).unwrap()).unwrap(),
+            )
+            .unwrap();
+            let result = f.command("llvm", 0).output().unwrap();
+            assert!(
+                !result.status.success()
+                    && String::from_utf8_lossy(&result.stderr).contains("E_BACKEND"),
+                "{result:?}"
+            );
+            assert!(!f.root.join("llvm-0.tellur-build").exists());
+            assert!(!f.root.join("llvm-0.ll").exists());
+        }
+    }
+    #[test]
     fn unsupported_checked_operations_create_no_build_outputs() {
         for source in [
             "struct ticket {u32 value;constructor(u32 input){run helper();self.value=input;}} async control helper() exits done {exit done;} control main() exits result {drop(ticket(1));exit done;} outcome result {@exit 0 done}",
-            "control main() exits result {exit done;} async control helper() exits done {exit done;} outcome result {@exit 0 done}",
+            include_str!("../playground/cold_tasks.tellur"),
+            "async control helper() exits done {loop L(){yield;exit done;}} control main() exits result {forward run helper();} outcome result {@exit 0 done}",
         ] {
             let f = Fixture::new(source);
             let out = f.command("llvm", 0).output().unwrap();

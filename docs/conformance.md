@@ -6472,3 +6472,18 @@ parent suppliers, and unrelated owners survive. Invalid physical layouts, foreig
 context identities and malformed callback steps reject without fabricated outcomes.
 Existing generated Rust source-scheduler and LLVM synchronous differential checks
 cover the shared driver extraction and private runtime packaging configuration.
+
+
+### B1.4d generated async frames (0.253)
+
+Three LLVM matrices compile checked run/direct-await/yield programs at O0/O2 before
+and after expansion. They compare exact statuses, effects, outcomes, source faults
+and every relevant fuel cut with Rust, plus successful reports with the reference
+executor. Cases include guarded handoffs, nested caller origins, exclusive mutation,
+temporary captures, constructors, repeated run and unused async helpers. A generated
+callback unit matrix repeats exact reports at host quotas1,3 and unlimited. Four
+runtime descriptor/entry matrices cover concurrent and repeated registration,
+reject-before-publication layouts, owning buffer identity, typed storage rejection
+before capture, and same-context call versus child yield. The prior ABI resource/
+retirement matrices still cover real adoption and child-before-parent disposal.
+Unsupported task/async-loop/constructor/signal programs reject before output files.

@@ -1,8 +1,8 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.252.0 -->
+<!-- tellur-reference-version: 0.253.0 -->
 
-This manual describes **compiler 0.252.0**, including the current ownership model,
+This manual describes **compiler 0.253.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -14,6 +14,10 @@ currently supports synchronous scalar/owned-aggregate controls, nested calls, ta
 and owned synchronous primitive calls on macOS arm64. Its locals now use stable
 activation storage shared across synchronous calls. Direct shared/exclusive references
 to reference-free values, borrowed calls/results and borrowed decisions are supported.
+Compiler 0.253 also emits typed frontend frames for a bounded `run`, direct `await`
+and `yield` profile, preserving caller origins, fault reports and source fuel.
+See [LLVM async admission](reference/llvm-backend.md#generated-async-frames-0253)
+for its current limits.
 
 Tellur is still experimental. When this manual and the compiler disagree, treat that
 as a bug to investigate, not a promise that either must remain unchanged. The
@@ -2957,7 +2961,7 @@ General expression-type hover remains unsupported.
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and broader spawn payloads (anonymous contracts and reference-bearing collections) remain planned; they are not executable features of 0.252.0.
+and broader spawn payloads (anonymous contracts and reference-bearing collections) remain planned; they are not executable features of 0.253.0.
 ## Contingency and supervised boundaries
 
 The [contingency reference](reference/contingency.md) specifies `@contingent`,

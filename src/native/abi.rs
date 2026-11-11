@@ -11,6 +11,9 @@
 //! stated length. Callbacks must not retain these pointers.
 use super::*;
 #[cfg(test)]
+#[path = "abi_program_tests.rs"]
+mod program_tests;
+#[cfg(test)]
 #[path = "abi_resume_tests.rs"]
 mod resume_tests;
 #[cfg(test)]
@@ -22,7 +25,7 @@ pub struct Context<'a> {
     // only during the selected callback. RetainedState never stores this borrow.
     selected_frame: Option<&'a frames::Frame>,
     program: Option<ProgramFrame>,
-    request: Option<RequestedAwait>,
+    request: Option<RequestedInvocation>,
     host: &'a mut Host,
     storage: FrameStorage<'a>,
     frame: Option<frames::Frame>,
@@ -1216,7 +1219,8 @@ impl<'frame> RetainedRoot<'frame> {
 /// Private runtime descriptor for a typed LLVM resume frame. This Rust metadata
 /// stays inside the runtime; generated code sees only Context and integer handles.
 /// Each callback executes one checked transition and returns 0 error, 1 yield,
-/// 2 normal completion, 3 direct await, or 4 continue without a source handoff.
+/// 2 normal completion, 3 direct await, 4 continue without a source handoff, or
+/// 5 run an inline child on the current invocation stack.
 /// Initial arguments arrive once; after child delivery the span contains one
 /// outcome handle. Other callbacks receive an empty span.
 pub struct InvocationLayout {
@@ -1288,7 +1292,8 @@ impl ProgramFrame {
         })
     }
 }
-struct RequestedAwait {
+struct RequestedInvocation {
+    handoff: bool,
     child: ProgramFrame,
     arguments: Vec<V>,
 }
@@ -1308,6 +1313,7 @@ pub(crate) struct Invocation {
     state: Option<RetainedState>,
     phase: InvocationPhase,
     delivered: Vec<u64>,
+    call: Option<ProgramFrame>,
 }
 impl std::fmt::Debug for Invocation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -1321,14 +1327,43 @@ impl Invocation {
     /// Safety: callbacks obey the ABI contract; physical storage must remain stable
     /// and exclusively controlled by this session until all invocations retire.
     pub(crate) unsafe fn new<T>(layout: &'static InvocationLayout, program: &mut T) -> R<Self> {
+        unsafe {
+            Self::buffer(
+                layout,
+                (program as *mut T).cast(),
+                std::mem::size_of::<T>(),
+                std::mem::align_of::<T>(),
+            )
+        }
+    }
+    /// Safety: the writable physical extent is exclusively owned and remains
+    /// stable until its execution session retires. A generated entry owns it.
+    pub(crate) unsafe fn buffer(
+        layout: &'static InvocationLayout,
+        address: *mut u8,
+        size: usize,
+        align: usize,
+    ) -> R<Self> {
         layout.validate()?;
-        if std::mem::size_of::<T>() < layout.size || std::mem::align_of::<T>() < layout.align {
+        if address.is_null()
+            || size < layout.size
+            || align < layout.align
+            || !align.is_power_of_two()
+            || address as usize % align != 0
+        {
             return Err("E_NATIVE: ABI physical frame does not match its layout".into());
         }
-        Ok(Self::at(ProgramFrame {
-            address: (program as *mut T).cast(),
-            layout,
-        }))
+        Ok(Self::at(ProgramFrame { address, layout }))
+    }
+    pub(crate) fn take_call(&mut self, control: &'static execution::Control) -> R<Self> {
+        let child = self
+            .call
+            .as_ref()
+            .ok_or("E_NATIVE: missing ABI run child")?;
+        if self.phase != InvocationPhase::Awaiting || !std::ptr::eq(child.layout.control, control) {
+            return Err("E_NATIVE: ABI run child identity or phase differs".into());
+        }
+        Ok(Self::at(self.call.take().unwrap()))
     }
     fn at(program: ProgramFrame) -> Self {
         Self {
@@ -1347,6 +1382,7 @@ impl Invocation {
             }),
             phase: InvocationPhase::Cold,
             delivered: vec![],
+            call: None,
         }
     }
     fn step(
@@ -1400,11 +1436,15 @@ impl Invocation {
         } else if !context.lexical.is_empty() {
             Err("E_NATIVE: retained ABI has unfinished lexical work".into())
         } else {
-            match (tag, request.is_some(), context.result.is_some()) {
-                (1, false, false) => Ok(execution::Step::Yield),
-                (4, false, false) => Ok(execution::Step::Continue),
-                (3, true, false) => Ok(execution::Step::Continue), // Queue after callback borrows end.
-                (2, false, true) => match context.result.take().unwrap() {
+            match (
+                tag,
+                request.as_ref().map(|r| r.handoff),
+                context.result.is_some(),
+            ) {
+                (1, None, false) => Ok(execution::Step::Yield),
+                (4, None, false) => Ok(execution::Step::Continue),
+                (3, Some(true), false) | (5, Some(false), false) => Ok(execution::Step::Continue), // Queue after callback borrows end.
+                (2, None, true) => match context.result.take().unwrap() {
                     value @ Completion::Outcome(_) => Ok(execution::Step::Complete(value)),
                     _ => Err("E_NATIVE: retained ABI requires a normal completion".into()),
                 },
@@ -1422,18 +1462,29 @@ impl Invocation {
         if result.is_ok()
             && let Some(mut request) = request
         {
-            // Shared queue admission checks original invocation, captures and wait
-            // identity. No child callback runs until the source await hands off.
-            result = activation
-                .queue_invocation(host, request.child.layout.control, &mut request.arguments)
-                .map(|mut task| {
-                    task.abi = Some(Self::at(request.child));
-                    self.phase = InvocationPhase::Awaiting;
-                    execution::Step::Await {
-                        task,
-                        deliver: deliver_invocation,
-                    }
+            if request.handoff {
+                // Shared queue admission checks original invocation, captures and wait
+                // identity. No child callback runs until the source await hands off.
+                result = activation
+                    .queue_invocation(host, request.child.layout.control, &mut request.arguments)
+                    .map(|mut task| {
+                        task.abi = Some(Self::at(request.child));
+                        self.phase = InvocationPhase::Awaiting;
+                        execution::Step::Await {
+                            task,
+                            deliver: deliver_invocation,
+                        }
+                    });
+            } else {
+                self.call = Some(request.child);
+                self.phase = InvocationPhase::Awaiting;
+                result = Ok(execution::Step::Call {
+                    control: request.child.layout.control,
+                    arguments: request.arguments,
+                    destination: None,
+                    deliver: deliver_invocation,
                 });
+            }
             if result.is_err() {
                 self.phase = InvocationPhase::Failed;
             }
@@ -1489,6 +1540,26 @@ pub unsafe extern "C" fn tellur_rt_v1_await(
     args: *const u64,
     count: usize,
 ) {
+    unsafe { request_invocation(ctx, child, args, count, true) }
+}
+/// Run an inline compiled child on the current invocation stack. Only a child
+/// yield/await hands off; the call itself uses the existing Step::Call policy.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_run_child(
+    ctx: *mut Context<'_>,
+    child: usize,
+    args: *const u64,
+    count: usize,
+) {
+    unsafe { request_invocation(ctx, child, args, count, false) }
+}
+unsafe fn request_invocation(
+    ctx: *mut Context<'_>,
+    child: usize,
+    args: *const u64,
+    count: usize,
+    handoff: bool,
+) {
     unsafe { &mut *ctx }.perform(|c| {
         if c.request.is_some() || c.result.is_some() {
             return Err("E_NATIVE: duplicate ABI continuation request".into());
@@ -1502,12 +1573,316 @@ pub unsafe extern "C" fn tellur_rt_v1_await(
         }
         c.require_outcome_room()?;
         let arguments = c.take_many(unsafe { slice(args, count) })?;
-        c.request = Some(RequestedAwait {
+        c.request = Some(RequestedInvocation {
+            handoff,
             child: program,
             arguments,
         });
         Ok(())
     })
+}
+
+/// C-safe immutable descriptor emitted by the compiler. Every span points into
+/// module-static storage. Rust Control/InvocationLayout values never cross C ABI.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct CompiledControl {
+    pub name: *const u8,
+    pub name_len: usize,
+    pub slots: usize,
+    pub parameters: *const usize,
+    pub parameter_count: usize,
+    pub frame_size: usize,
+    pub frame_align: usize,
+    pub frame_prefix: usize,
+    pub callback: Option<ResumeCallback>,
+    pub children: *const CompiledChild,
+    pub child_count: usize,
+}
+// Generated descriptors and their pointed-to spans are immutable module data.
+// Constructing them is harmless; registration requires that lifetime contract.
+unsafe impl Sync for CompiledControl {}
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct CompiledChild {
+    pub control: usize,
+    pub offset: usize,
+}
+struct CompiledLayout {
+    callback: ResumeCallback,
+    size: usize,
+    align: usize,
+    prefix: usize,
+    children: Vec<CompiledChild>,
+}
+/// One generated module owns one process-lifetime registry. Repeated launch uses
+/// the same immutable descriptors. OnceLock owns all allocations; no per-launch
+/// leaked tables, forged static references, or user-program state lives here.
+struct CompiledRegistry {
+    identity: (usize, usize),
+    initialized: std::sync::OnceLock<()>,
+    controls: Vec<execution::Control>,
+    compiled: Vec<CompiledLayout>,
+    children: Vec<std::sync::OnceLock<Vec<InlineChild>>>,
+    layouts: Vec<std::sync::OnceLock<InvocationLayout>>,
+}
+static COMPILED_PROGRAM: std::sync::OnceLock<CompiledRegistry> = std::sync::OnceLock::new();
+impl CompiledRegistry {
+    /// Safety: the table and all spans are readable, immutable module-static data.
+    /// Callbacks obey ResumeCallback and interpret their declared physical frame.
+    /// A registry belongs to a single module; the module cannot unload while used.
+    unsafe fn register(
+        registry: &'static std::sync::OnceLock<Self>,
+        abi: u32,
+        table: *const CompiledControl,
+        count: usize,
+    ) -> R<&'static Self> {
+        if abi != 1
+            || count == 0
+            || count > 65536
+            || table.is_null()
+            || table as usize % std::mem::align_of::<CompiledControl>() != 0
+        {
+            return Err("E_NATIVE: incompatible compiled ABI control table".into());
+        }
+        let identity = (table as usize, count);
+        if let Some(registered) = registry.get() {
+            return if registered.identity == identity {
+                registered.initialize();
+                Ok(registered)
+            } else {
+                Err("E_NATIVE: compiled ABI module identity differs".into())
+            };
+        }
+        let table = unsafe { slice(table, count) };
+        let mut controls = Vec::with_capacity(count);
+        let mut compiled = Vec::with_capacity(count);
+        for raw in table {
+            if raw.name_len == 0
+                || raw.name.is_null()
+                || raw.name_len > isize::MAX as usize
+                || raw.slots > isize::MAX as usize / std::mem::size_of::<Option<V>>()
+                || raw.parameter_count > raw.slots
+                || (raw.parameter_count != 0
+                    && (raw.parameters.is_null()
+                        || raw.parameters as usize % std::mem::align_of::<usize>() != 0))
+                || raw.frame_size == 0
+                || raw.frame_size > isize::MAX as usize
+                || !raw.frame_align.is_power_of_two()
+                || raw.frame_align > raw.frame_size
+                || raw.frame_size % raw.frame_align != 0
+                || raw.frame_prefix > raw.frame_size
+                || raw.child_count > 65536
+                || (raw.child_count != 0
+                    && (raw.children.is_null()
+                        || raw.children as usize % std::mem::align_of::<CompiledChild>() != 0))
+            {
+                return Err("E_NATIVE: invalid compiled ABI descriptor".into());
+            }
+            let callback = raw
+                .callback
+                .ok_or("E_NATIVE: missing compiled ABI callback")?;
+            let name = unsafe { text(raw.name, raw.name_len)? };
+            let parameters: &'static [usize] =
+                unsafe { slice(raw.parameters, raw.parameter_count) };
+            if parameters
+                .iter()
+                .enumerate()
+                .any(|(i, slot)| *slot >= raw.slots || parameters[..i].contains(slot))
+            {
+                return Err("E_NATIVE: invalid compiled ABI parameter layout".into());
+            }
+            let children = unsafe { slice(raw.children, raw.child_count) }.to_vec();
+            controls.push(execution::Control {
+                name,
+                slots: raw.slots,
+                atoms: 0,
+                parameters,
+                retained: &[],
+                constructor: false,
+                access: None,
+                resume: resume_invocation,
+            });
+            compiled.push(CompiledLayout {
+                callback,
+                size: raw.frame_size,
+                align: raw.frame_align,
+                prefix: raw.frame_prefix,
+                children,
+            });
+        }
+        // Check every edge and overlap before publishing any runtime identity.
+        // Each child has positive size. A finite by-value graph cannot be cyclic.
+        for parent in &compiled {
+            for (i, child) in parent.children.iter().enumerate() {
+                let target = compiled
+                    .get(child.control)
+                    .ok_or("E_NATIVE: unknown compiled ABI child control")?;
+                let end = child
+                    .offset
+                    .checked_add(target.size)
+                    .ok_or("E_NATIVE: compiled ABI child extent overflow")?;
+                if child.offset < parent.prefix
+                    || end > parent.size
+                    || target.align > parent.align
+                    || child.offset % target.align != 0
+                    || parent.children[..i].iter().any(|other| {
+                        let other_size = compiled[other.control].size;
+                        child.offset < other.offset.saturating_add(other_size) && other.offset < end
+                    })
+                {
+                    return Err("E_NATIVE: invalid compiled ABI child extent".into());
+                }
+            }
+        }
+        // Iterative topological validation avoids recursive stack growth from
+        // untrusted counts, including an equal-size/self-embedding zero prefix.
+        let mut incoming = vec![0usize; count];
+        for parent in &compiled {
+            for child in &parent.children {
+                incoming[child.control] += 1;
+            }
+        }
+        let mut ready = incoming
+            .iter()
+            .enumerate()
+            .filter_map(|(i, n)| (*n == 0).then_some(i))
+            .collect::<Vec<_>>();
+        let mut visited = 0;
+        while let Some(index) = ready.pop() {
+            visited += 1;
+            for child in &compiled[index].children {
+                incoming[child.control] -= 1;
+                if incoming[child.control] == 0 {
+                    ready.push(child.control);
+                }
+            }
+        }
+        if visited != count {
+            return Err("E_NATIVE: cyclic compiled ABI by-value frames".into());
+        }
+        let candidate = Self {
+            identity,
+            initialized: std::sync::OnceLock::new(),
+            controls,
+            compiled,
+            children: (0..count).map(|_| std::sync::OnceLock::new()).collect(),
+            layouts: (0..count).map(|_| std::sync::OnceLock::new()).collect(),
+        };
+        // A racing registration may win. Its owned metadata remains authoritative;
+        // the losing candidate is dropped normally, with no leaked allocation.
+        let _ = registry.set(candidate);
+        let result = registry.get().unwrap();
+        if result.identity != identity {
+            return Err("E_NATIVE: compiled ABI module identity differs".into());
+        }
+        result.initialize();
+        Ok(result)
+    }
+    fn initialize(&'static self) {
+        self.initialized.get_or_init(|| self.initialize_once());
+    }
+    fn initialize_once(&'static self) {
+        // Bottom-up construction borrows actual process-lifetime owned cells.
+        // No transmute or temporary reference is needed for Rust's static tables.
+        let mut pending = vec![0usize; self.compiled.len()];
+        let mut parents = vec![vec![]; self.compiled.len()];
+        for (index, layout) in self.compiled.iter().enumerate() {
+            pending[index] = layout.children.len();
+            for child in &layout.children {
+                parents[child.control].push(index);
+            }
+        }
+        let mut ready = pending
+            .iter()
+            .enumerate()
+            .filter_map(|(i, n)| (*n == 0).then_some(i))
+            .collect::<Vec<_>>();
+        while let Some(index) = ready.pop() {
+            let compiled = &self.compiled[index];
+            let children = self.children[index].get_or_init(|| {
+                compiled
+                    .children
+                    .iter()
+                    .map(|child| InlineChild {
+                        offset: child.offset,
+                        layout: self.layouts[child.control].get().unwrap(),
+                    })
+                    .collect()
+            });
+            self.layouts[index].get_or_init(|| InvocationLayout {
+                control: &self.controls[index],
+                callback: compiled.callback,
+                size: compiled.size,
+                align: compiled.align,
+                prefix: compiled.prefix,
+                children,
+            });
+            for parent in &parents[index] {
+                pending[*parent] -= 1;
+                if pending[*parent] == 0 {
+                    ready.push(*parent);
+                }
+            }
+        }
+    }
+    fn layout(&'static self, index: usize) -> R<&'static InvocationLayout> {
+        self.layouts
+            .get(index)
+            .and_then(std::sync::OnceLock::get)
+            .ok_or_else(|| "E_NATIVE: unknown compiled ABI control".into())
+    }
+}
+
+/// Run a generated entry's typed frame through the ordinary source driver.
+/// Safety: descriptors are immutable module-static data; program storage is
+/// writable, aligned and exclusively owned for the entire call. No pointer to
+/// program storage survives this function, even when execution fails.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_run_entry(
+    ctx: *mut Context<'_>,
+    table: *const CompiledControl,
+    controls: usize,
+    index: usize,
+    program: *mut u8,
+    size: usize,
+    align: usize,
+    args: *const u64,
+    count: usize,
+    quota: usize,
+) {
+    unsafe { &mut *ctx }.perform(|c| {
+        if quota == 0 {
+            return Err("E_NATIVE: compiled entry requires a positive host quota".into());
+        }
+        if c.frame.is_some()
+            || c.selected_frame.is_some()
+            || c.program.is_some()
+            || c.result.is_some()
+            || c.request.is_some()
+            || !c.lexical.is_empty()
+        {
+            return Err("E_NATIVE: compiled entry requires an unused launch context".into());
+        }
+        let registry =
+            unsafe { CompiledRegistry::register(&COMPILED_PROGRAM, 1, table, controls)? };
+        let layout = registry.layout(index)?;
+        // Validate physical storage and argument count before consuming handles.
+        let invocation = unsafe { Invocation::buffer(layout, program, size, align)? };
+        if count != layout.control.parameters.len() {
+            return Err("E_NATIVE: invalid compiled entry arity".into());
+        }
+        let args = c.take_many(unsafe { slice(args, count) })?;
+        let result =
+            unsafe { execution::run_abi_invocation(c.host, args, layout, invocation, quota)? };
+        c.result = Some(result);
+        Ok(())
+    });
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_invalid_resume(ctx: *mut Context<'_>) {
+    unsafe { &mut *ctx }.perform::<()>(|_| Err("E_NATIVE: invalid compiled resume state".into()));
 }
 
 pub type Callback = unsafe extern "C" fn(*mut Context<'_>, *const u64, usize);
@@ -1895,6 +2270,8 @@ struct EntryInfo {
     display: String,
     arguments: Vec<String>,
     exits: Vec<(String, u8)>,
+    #[serde(default)]
+    retained: bool,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -1944,7 +2321,10 @@ unsafe fn launch_program(
         &info.sites,
         |entry, host, args| {
             let index = entries.iter().position(|e| std::ptr::eq(e, entry)).unwrap();
-            host.enter(entry.display_name)?;
+            let retained = info.entries[index].retained;
+            if !retained {
+                host.enter(entry.display_name)?;
+            }
             let mut context = Context {
                 selected_frame: None,
                 program: None,
@@ -1965,7 +2345,9 @@ unsafe fn launch_program(
             let args: Vec<u64> = args.into_iter().map(|v| context.put(v)).collect();
             unsafe { callbacks[index](&mut context, args.as_ptr(), args.len()) };
             let result = context.finish()?;
-            context.host.leave();
+            if !retained {
+                context.host.leave();
+            }
             Ok(result)
         },
     )

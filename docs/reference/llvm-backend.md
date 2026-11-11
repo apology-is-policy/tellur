@@ -16,6 +16,7 @@ Compiler 0.246 adds synchronous tail loops and expanded loop completions.
 Compiler 0.247 adds synchronous declared constructors with direct destination delivery.
 Compiler 0.248 adds named synchronous boundaries and contingency settlement.
 Compiler 0.249 adds lexical boundaries, supervised recovery and process termination.
+Compiler 0.253 adds a bounded frontend async-frame profile described below.
 The default remains `--backend rust`. Both start from the same checked program;
 backend selection does not relax ownership, origins, outcomes or path rules.
 
@@ -42,7 +43,10 @@ the Rust backend. Multiple eligible executable entries are supported.
 
 Direct references and reference-bearing aggregates compose recursively; shared/exclusive
 parameters, borrowed results, carrier reborrows and indirect fields are supported.
-Task operations and adapters remain outside this profile. Launch signal policies are also rejected. Admission checks all checked
+A separate bounded async profile admits `run`, direct `await` and `yield`, including
+synchronous callers that reach those controls. Cold task handles, spawn/join, task
+sets, cancellation, async host operations, async loops/boundaries and adapters remain
+outside that profile. Launch signal policies are also rejected. Admission checks all checked
 regions, including unused helpers. Unsupported programs receive `E_BACKEND`
 before the backend creates its output directory or files; ordinary checking may
 still succeed, and the Rust backend remains available.
@@ -451,7 +455,7 @@ then compiles `program.o` and links `OUTPUT` with its embedded LLVM/LLD 22.1.8.
 Path guards are LLVM branches. Runtime faults retain Tellur source provenance;
 native debugger information is not yet emitted.
 
-The distributed 0.252 compiler includes the `llvm` feature. When building the
+The distributed 0.253 compiler includes the `llvm` feature. When building the
 compiler from source, enable it and set `LLVM_SYS_221_PREFIX` to the static pinned
 LLVM/LLD installation, as described in the repository README. A compiler built
 without that feature reports a clear error for `--backend llvm`.
@@ -530,8 +534,50 @@ resource owners. Failed or stopped children settle before parent retirement; sto
 work never runs a normal continuation. Completed by-value storage can be initialized
 for a later invocation only after the original child's consuming delivery.
 
-These are private callbacks under the actual runtime, not yet emitted from checked
-async source. The descriptors still originate inside the runtime. Generated LLVM
-metadata, frame layouts and resume functions are next, followed by cold tasks and
-staged task/cancellation/host integration. LLVM async, adapter and signal admission
-remains gated, and Rust remains the default backend.
+This0.252 foundation used private callbacks and Rust-side descriptors. The0.253
+profile below now generates module metadata, frame layouts and resume functions
+from checked source. Cold tasks and staged task/cancellation/host integration remain
+next; Rust remains the default backend.
+
+
+## Generated async frames (0.253)
+
+The compiler now emits a typed LLVM struct and resume-state switch for each control
+that suspends, and for synchronous callers reaching one through `run` or a control
+call. The frame retains its program counter and path facts. Each direct child has
+its own typed field, initialized before capture and kept alive until delivery or
+emergency retirement. Dynamic source values keep the existing stable runtime slots;
+this change does not replace the runtime's value/metadata allocation strategy.
+
+The first profile admits straight-line checked instructions, guarded decisions,
+`run`, direct `await`, `yield`, owned/borrowed arguments and results, synchronous
+calls/constructors/primitives, and source faults. A direct await hands off before
+child admission; `run` pushes the child on the same context stack. Only explicit
+source handoffs select another context. Payload routing happens before the next
+source tick, so it neither repeats capture nor spends extra instruction fuel.
+Original and expanded programs retain the same diagnostics and result origins.
+
+An immutable C-safe module table describes names, parameter slots, callbacks,
+physical extents and child offsets. The runtime validates it before admission and
+owns a single process-lifetime registry, reused by repeated launches. Rust layouts
+are never constructed by generated LLVM, and scoped borrows are never extended to
+static lifetimes. Physical frame sizes, alignments and child offsets are LLVM
+constant layout expressions. All frame types are declared before those expressions.
+The runtime keeps invocation/domain, adoption and child-before-parent cleanup policy.
+
+```sh
+./bin/tellurc build playground/llvm_async.tellur playground/manifest.json --backend llvm --out /tmp/tellur-async
+/tmp/tellur-async --json true Tellur
+/tmp/tellur-async --json false Tellur
+```
+
+The first run emits and returns `Tellur!`; the second emits and returns `Tellur`.
+The example carries an exclusive caller borrow through a yielding child, then
+returns the owned string. Both select `done` with status0.
+
+Cold task handles, spawn/join, task sets, cancellation, asynchronous host operations,
+loops or boundaries inside retained controls, Rust adapters and launch signals are
+still rejected before output creation. Constructors that enter retained controls
+are also outside this slice. Synchronous loops/boundaries/constructors retain their
+previous support. By-value recursive frame graphs are rejected. This bounded source
+admission does not flip the default backend or claim whole-language parity.

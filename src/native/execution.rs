@@ -1162,8 +1162,18 @@ impl Machine {
                 if frame.pending.replace(Pending::Call(deliver)).is_some() {
                     return Err("E_NATIVE: duplicate compiled return continuation".into());
                 }
-                self.stack
-                    .push(Self::admit(host, values, control, arguments, destination)?);
+                #[cfg(any(test, feature = "runtime-abi"))]
+                let abi = frame
+                    .abi
+                    .as_mut()
+                    .map(|state| state.take_call(control))
+                    .transpose()?;
+                let mut child = Self::admit(host, values, control, arguments, destination)?;
+                #[cfg(any(test, feature = "runtime-abi"))]
+                {
+                    child.abi = abi;
+                }
+                self.stack.push(child);
             }
             Step::Complete(result) => {
                 let abrupt = !matches!(&result, Completion::Outcome(_) | Completion::Constructed);
@@ -1534,6 +1544,10 @@ mod contexts;
 #[cfg(test)]
 #[path = "domains.rs"]
 mod domains;
+#[cfg(any(test, feature = "runtime-abi"))]
+pub use contexts::run_abi_entry;
+#[cfg(any(test, feature = "runtime-abi"))]
+pub(crate) use contexts::run_abi_invocation;
 pub use contexts::{AdmissionProgress, AdmissionStop};
 #[allow(unused_imports)]
 pub use contexts::{

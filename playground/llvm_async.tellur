@@ -1,0 +1,34 @@
+// Typed LLVM frames retain the caller's exclusive borrow through an explicit yield.
+async control add_mark(ref mutable string text) exits done {
+    yield;
+    deref text = concat(clone(text), "!");
+    exit done;
+}
+
+async control prepare(bool decorate, string input) exits ready { string text } {
+    mutable string text = input;
+    delta decorate {
+        true => selected,
+        false => unchanged,
+    }
+
+    [selected]: await add_mark(borrow mutable text);
+
+    [selected | unchanged]:
+        yield;
+        exit ready { text };
+}
+
+control main(bool decorate, string input) exits result {
+    delta run prepare(decorate, input) {
+        ready { string text } => ready,
+    }
+
+    [ready]:
+        emit(borrow text);
+        exit done { text };
+}
+
+outcome result {
+    @exit 0 done { string text },
+}

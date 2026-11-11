@@ -1633,6 +1633,10 @@ fn drive_sequential(
 #[cfg(test)]
 #[path = "source_scheduler.rs"]
 mod source_scheduler;
+#[cfg(any(test, feature = "runtime-abi"))]
+pub use source_scheduler::run_abi_entry;
+#[cfg(any(test, feature = "runtime-abi"))]
+pub(crate) use source_scheduler::run_abi_invocation;
 pub use source_scheduler::run_source_entry;
 
 #[cfg(test)]
@@ -1791,6 +1795,15 @@ impl<'a> Contexts<'a> {
         program: &'a mut T,
     ) -> R<ContextKey> {
         let invocation = unsafe { super::super::abi::Invocation::new(layout, program)? };
+        unsafe { self.start_abi_invocation(layout, arguments, invocation) }
+    }
+    /// Safety: the caller retains the physical frame until this session retires.
+    pub(crate) unsafe fn start_abi_invocation(
+        &mut self,
+        layout: &'static super::super::abi::InvocationLayout,
+        arguments: Vec<V>,
+        invocation: super::super::abi::Invocation,
+    ) -> R<ContextKey> {
         let key = self.start_entry(layout.control, arguments)?;
         self.parked
             .get_mut(&key.id)

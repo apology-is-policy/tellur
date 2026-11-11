@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.252.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.253.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -44,7 +44,10 @@ Compiler 0.247 adds synchronous declared constructors, including borrowed result
 with direct delivery into caller storage and partial-initialization fault cleanup.
 Compiler 0.248 adds named synchronous supervision, retained-owner handover and
 contingency settlement. Compiler 0.249 adds lexical boundaries, structured `@fault`,
-supervised recovery and entry-only process termination.
+supervised recovery and entry-only process termination. Compiler 0.253 adds typed
+LLVM state machines for `run`, direct `await` and `yield`, including guarded paths,
+owned/borrowed payloads, synchronous callees and source faults. Cold handles, spawn,
+async host operations, async loops/boundaries and cancellation remain gated.
 Unsupported checked programs fail with `E_BACKEND` before build
 outputs are created. Backend selection does not change language checking.
 

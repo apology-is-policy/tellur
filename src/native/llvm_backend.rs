@@ -1,10 +1,16 @@
-//! First direct LLVM emitter: owned synchronous values, controls and Boolean path facts.
+//! Direct LLVM emission for the synchronous profile and bounded retained controls.
 //! Admission is explicit and occurs before writing/building anything. Every value
 //! operation goes through the runtime's private C ABI; guards are native branches.
 use super::*;
 
 const DECLARATIONS: &str = r#"
 declare i32 @tellur_rt_v1_launch(ptr, i64, ptr, i64)
+declare void @tellur_rt_v1_run_entry(ptr, ptr, i64, i64, ptr, i64, i64, ptr, i64, i64)
+declare void @tellur_rt_v1_await(ptr, i64, ptr, i64)
+declare void @tellur_rt_v1_run_child(ptr, i64, ptr, i64)
+declare void @tellur_rt_v1_invalid_resume(ptr)
+%compiled_control = type { ptr, i64, i64, ptr, i64, i64, i64, i64, ptr, ptr, i64 }
+%compiled_child = type { i64, i64 }
 declare i32 @tellur_rt_v1_ok(ptr)
 declare void @tellur_rt_v1_frame(ptr, i64)
 declare i64 @tellur_rt_v1_local(ptr, i64, ptr, i64, i32)
@@ -199,6 +205,133 @@ fn supported(
         _ => false,
     }
 }
+fn frame_size(index: usize) -> String {
+    format!("ptrtoint (ptr getelementptr (%frame_{index}, ptr null, i32 1) to i64)")
+}
+fn frame_align(index: usize) -> String {
+    format!(
+        "ptrtoint (ptr getelementptr ({{ i8, %frame_{index} }}, ptr null, i32 0, i32 1) to i64)"
+    )
+}
+fn frame_offset(index: usize, field: usize) -> String {
+    format!("ptrtoint (ptr getelementptr (%frame_{index}, ptr null, i32 0, i32 {field}) to i64)")
+}
+fn retained_target<'a>(
+    i: &'a Instruction,
+    resumables: &BTreeMap<String, usize>,
+) -> Option<&'a String> {
+    match &i.action {
+        Action::Decide {
+            operation: Operation::Region(name) | Operation::Run(name) | Operation::Await(name),
+            ..
+        } if resumables.contains_key(name) => Some(name),
+        _ => None,
+    }
+}
+fn reaches_retained(i: &Instruction, names: &BTreeSet<String>) -> bool {
+    match &i.action {
+        Action::Decide {
+            operation: Operation::Region(name) | Operation::Run(name) | Operation::Await(name),
+            ..
+        } => names.contains(name),
+        Action::Supervise { boundary, .. } => names.contains(boundary),
+        Action::Loop { body, .. } => body.iter().any(|i| reaches_retained(i, names)),
+        Action::Boundary { body, handler, .. } => body
+            .iter()
+            .chain(handler)
+            .any(|i| reaches_retained(i, names)),
+        _ => false,
+    }
+}
+fn resumable_controls(program: &CheckedProgram) -> Result<BTreeMap<String, usize>> {
+    let mut names = program
+        .regions()
+        .filter(|r| r.asynchronous)
+        .map(|r| r.name.clone())
+        .collect::<BTreeSet<_>>();
+    loop {
+        let before = names.len();
+        for region in program.regions() {
+            if region.code.iter().any(|i| reaches_retained(i, &names)) {
+                names.insert(region.name.clone());
+            }
+        }
+        if names.len() == before {
+            break;
+        }
+    }
+    let result: BTreeMap<_, _> = program
+        .regions()
+        .filter(|r| names.contains(&r.name))
+        .enumerate()
+        .map(|(i, r)| (r.name.clone(), i))
+        .collect();
+    if result.len() > 65536 {
+        return Err(error(
+            "LLVM retained control table exceeds its current bound",
+        ));
+    }
+    let mut edges = vec![vec![]; result.len()];
+    let mut incoming = vec![0usize; result.len()];
+    for region in program.regions().filter(|r| result.contains_key(&r.name)) {
+        for instruction in &region.code {
+            if let Some(target) = retained_target(instruction, &result) {
+                edges[result[&region.name]].push(result[target]);
+                incoming[result[target]] += 1;
+            }
+        }
+    }
+    let mut ready = incoming
+        .iter()
+        .enumerate()
+        .filter_map(|(i, n)| (*n == 0).then_some(i))
+        .collect::<Vec<_>>();
+    let mut count = 0;
+    while let Some(i) = ready.pop() {
+        count += 1;
+        for child in &edges[i] {
+            incoming[*child] -= 1;
+            if incoming[*child] == 0 {
+                ready.push(*child);
+            }
+        }
+    }
+    if count != result.len() {
+        return Err(error(
+            "LLVM backend does not yet support recursive by-value async frames; use --backend rust",
+        ));
+    }
+    Ok(result)
+}
+fn retained_supported(
+    i: &Instruction,
+    types: &BTreeSet<String>,
+    primitive_types: &BTreeSet<String>,
+    manifest: &crate::manifest::Manifest,
+) -> bool {
+    match &i.action {
+        Action::Bind(..)
+        | Action::Assign(..)
+        | Action::Release(..)
+        | Action::Drop(..)
+        | Action::Emit(..)
+        | Action::Fault(..)
+        | Action::Exit(..) => supported(i, types, primitive_types, manifest),
+        Action::Complete { unwind: None, .. } => supported(i, types, primitive_types, manifest),
+        Action::Decide {
+            operation: Operation::Run(_) | Operation::Await(_),
+            args,
+            ..
+        } => args.iter().all(|e| expression_supported(e, types)),
+        Action::Decide {
+            operation: Operation::Yield,
+            ..
+        } => true,
+        Action::Decide { .. } => supported(i, types, primitive_types, manifest),
+        _ => false,
+    }
+}
+
 #[derive(Clone)]
 struct LoopTarget {
     restart: String,
@@ -213,6 +346,13 @@ struct ScopeTarget {
     outer_error: String,
 }
 struct Emitter {
+    frame_types: String,
+    retained: bool,
+    resumables: BTreeMap<String, usize>,
+    descriptors: Vec<String>,
+    inline_children: BTreeMap<Id, (usize, usize, usize)>,
+    resume_next: u32,
+    delivery_pc: u32,
     globals: String,
     body: String,
     allocations: String,
@@ -630,6 +770,179 @@ impl Emitter {
         self.body
             .insert_str(entry, &std::mem::take(&mut self.allocations));
     }
+    fn inline_call(
+        &mut self,
+        _name: &str,
+        args: &[Expr],
+        instruction: &Instruction,
+        handoff: bool,
+    ) {
+        let (_, target, child) = self.inline_children[&instruction.id];
+        let values = args.iter().map(|a| self.expr(a)).collect::<Vec<_>>();
+        let args = self.handles(&values);
+        // This field's preceding invocation has delivered and retired before the
+        // checked call site can run again. No dynamic child frame is allocated.
+        self.line(format!(
+            "store %frame_{target} zeroinitializer, ptr %child_{}",
+            instruction.id
+        ));
+        let op = if handoff { "await" } else { "run_child" };
+        self.effect(format!(
+            "call void @tellur_rt_v1_{op}(ptr %ctx, i64 {child}, ptr {args}, i64 {})",
+            values.len()
+        ));
+        self.line(format!(
+            "store i32 {}, ptr %pc\nret i32 {}",
+            self.delivery_pc,
+            if handoff { 3 } else { 5 }
+        ));
+    }
+    fn resume_control(&mut self, region: &Region, index: usize) {
+        self.layout = FrameLayout::new(region);
+        self.constructing = false;
+        self.retained = true;
+        self.inline_children.clear();
+        let mut children = vec![];
+        for instruction in &region.code {
+            if let Some(name) = retained_target(instruction, &self.resumables) {
+                let target = self.controls[name].0;
+                let descriptor = self.resumables[name];
+                self.inline_children
+                    .insert(instruction.id, (descriptor, target, children.len()));
+                children.push((instruction.id, descriptor, target));
+            }
+        }
+        let fields = children
+            .iter()
+            .map(|(_, _, target)| format!(", %frame_{target}"))
+            .collect::<String>();
+        writeln!(
+            self.frame_types,
+            "%frame_{index} = type {{ i32, [{} x i1]{fields} }}",
+            self.layout.atoms.len()
+        )
+        .unwrap();
+        self.line(format!(
+            "define i32 @resume_{index}(ptr %ctx, ptr %frame, ptr %args, i64 %count) {{\nentry:"
+        ));
+        let entry = self.body.len();
+        self.line(format!(
+            "%pc = getelementptr %frame_{index}, ptr %frame, i32 0, i32 0"
+        ));
+        for atom in 0..self.layout.atoms.len() {
+            self.line(format!(
+                "%a{atom} = getelementptr %frame_{index}, ptr %frame, i32 0, i32 1, i64 {atom}"
+            ));
+        }
+        for (child, (instruction, _, _)) in children.iter().enumerate() {
+            self.line(format!(
+                "%child_{instruction} = getelementptr %frame_{index}, ptr %frame, i32 0, i32 {}",
+                child + 2
+            ));
+        }
+        let state = self.value("load i32, ptr %pc");
+        let mut cases = "i32 0, label %initial".to_owned();
+        for (pc, instruction) in region.code.iter().enumerate() {
+            write!(cases, "\ni32 {}, label %state_{}", pc + 1, pc + 1).unwrap();
+            if self.inline_children.contains_key(&instruction.id) {
+                write!(
+                    cases,
+                    "\ni32 {}, label %delivery_{}",
+                    region.code.len() + pc + 1,
+                    pc + 1
+                )
+                .unwrap();
+            }
+        }
+        self.line(format!(
+            "switch i32 {state}, label %invalid [ {cases} ]\ninitial:"
+        ));
+        for (i, parameter) in region.parameters.iter().enumerate() {
+            let ptr = self.value(format!("getelementptr i64, ptr %args, i64 {i}"));
+            let value = self.value(format!("load i64, ptr {ptr}"));
+            self.store(parameter.id, &value);
+        }
+        self.line(if region.code.is_empty() {
+            "br label %invalid"
+        } else {
+            "br label %state_1"
+        });
+        for (pc, instruction) in region.code.iter().enumerate() {
+            self.resume_next = if pc + 1 == region.code.len() {
+                u32::MAX
+            } else {
+                (pc + 2) as u32
+            };
+            self.delivery_pc = (region.code.len() + pc + 1) as u32;
+            self.line(format!("state_{}:", pc + 1));
+            self.instructions(std::slice::from_ref(instruction));
+            self.line(format!(
+                "store i32 {}, ptr %pc\nret i32 4",
+                self.resume_next
+            ));
+            if self.inline_children.contains_key(&instruction.id) {
+                let Action::Decide { arms, .. } = &instruction.action else {
+                    unreachable!()
+                };
+                self.line(format!("delivery_{}:", pc + 1));
+                let outcome = self.value("load i64, ptr %args");
+                self.route(&outcome, arms);
+                // Delivery is administrative: route payloads into source slots
+                // before the next source tick, without an extra resume transition.
+                if self.resume_next == u32::MAX {
+                    self.line("br label %invalid");
+                } else {
+                    self.line(format!("br label %state_{}", self.resume_next));
+                }
+            }
+        }
+        self.line("invalid:\ncall void @tellur_rt_v1_invalid_resume(ptr %ctx)\nbr label %error\nerror:\nret i32 0\n}");
+        self.body
+            .insert_str(entry, &std::mem::take(&mut self.allocations));
+        self.retained = false;
+        let size = frame_size(index);
+        let align = frame_align(index);
+        let prefix = if children.is_empty() {
+            size.clone()
+        } else {
+            frame_offset(index, 2)
+        };
+        let (name, len) = self.text(&self.controls[&region.name].1.clone());
+        let parameters = region
+            .parameters
+            .iter()
+            .map(|p| format!("i64 {}", self.layout.slots[&p.id]))
+            .collect::<Vec<_>>();
+        writeln!(
+            self.globals,
+            "@parameters_{index} = private constant [{} x i64] [{}]",
+            parameters.len(),
+            parameters.join(", ")
+        )
+        .unwrap();
+        let child_fields = children
+            .iter()
+            .enumerate()
+            .map(|(field, (_, target, _))| {
+                format!(
+                    "%compiled_child {{ i64 {target}, i64 {} }}",
+                    frame_offset(index, field + 2)
+                )
+            })
+            .collect::<Vec<_>>();
+        writeln!(
+            self.globals,
+            "@children_{index} = private constant [{} x %compiled_child] [{}]",
+            children.len(),
+            child_fields.join(", ")
+        )
+        .unwrap();
+        self.descriptors.push(format!("%compiled_control {{ ptr {name}, i64 {len}, i64 {}, ptr @parameters_{index}, i64 {}, i64 {size}, i64 {align}, i64 {prefix}, ptr @resume_{index}, ptr @children_{index}, i64 {} }}", self.layout.slots.len(), parameters.len(), children.len()));
+        let descriptor = self.resumables[&region.name];
+        let count = self.resumables.len();
+        self.line(format!("define void @control_{index}(ptr %ctx, ptr %args, i64 %count) {{\nentry:\n%frame = alloca %frame_{index}\nstore %frame_{index} zeroinitializer, ptr %frame\ncall void @tellur_rt_v1_run_entry(ptr %ctx, ptr @async_controls, i64 {count}, i64 {descriptor}, ptr %frame, i64 {size}, i64 {align}, ptr %args, i64 %count, i64 -1)\nret void\n}}"));
+    }
+
     fn unwind(&mut self, depth: usize) {
         for scope in self.scopes[depth..]
             .iter()
@@ -646,7 +959,11 @@ impl Emitter {
     }
     fn return_control(&mut self) {
         self.unwind(0);
-        self.line("ret void");
+        if self.retained {
+            self.line("store i32 -1, ptr %pc\nret i32 2");
+        } else {
+            self.line("ret void");
+        }
     }
     fn instructions(&mut self, code: &[Instruction]) {
         for i in code {
@@ -785,6 +1102,41 @@ impl Emitter {
                     terminal = true;
                 }
                 Action::Decide {
+                    operation:
+                        Operation::Region(name) | Operation::Run(name) | Operation::Await(name),
+                    args,
+                    ..
+                } if self.retained && self.resumables.contains_key(name) => {
+                    self.inline_call(
+                        name,
+                        args,
+                        i,
+                        matches!(
+                            &i.action,
+                            Action::Decide {
+                                operation: Operation::Await(_),
+                                ..
+                            }
+                        ),
+                    );
+                    terminal = true;
+                }
+                Action::Decide {
+                    operation: Operation::Yield,
+                    arms,
+                    ..
+                } if self.retained => {
+                    self.line(format!(
+                        "store i1 true, ptr %a{}",
+                        self.layout.atoms[&arms[0].atom]
+                    ));
+                    self.line(format!(
+                        "store i32 {}, ptr %pc\nret i32 1",
+                        self.resume_next
+                    ));
+                    terminal = true;
+                }
+                Action::Decide {
                     operation: Operation::Region(name),
                     args,
                     arms,
@@ -910,10 +1262,13 @@ impl Emitter {
 }
 
 impl CheckedProgram {
-    /// Builds only the admitted synchronous subset. The cached Rust staticlib is
+    /// Builds only the admitted synchronous/retained subset. The cached Rust staticlib is
     /// transitional tooling; no per-program Rust is generated or compiled.
     pub fn build_llvm(&self, entry: &str, output: &Path, opt: u8) -> Result<NativeBuild> {
         let source = self.llvm_source(entry)?;
+        self.build_llvm_source(source, output, opt)
+    }
+    fn build_llvm_source(&self, source: String, output: &Path, opt: u8) -> Result<NativeBuild> {
         if std::env::consts::OS != "macos" || std::env::consts::ARCH != "aarch64" {
             return Err(error(
                 "LLVM backend currently supports the macOS arm64 target only",
@@ -989,7 +1344,15 @@ impl CheckedProgram {
         let types = admitted_types(self.manifest(), true);
         // Host operations remain reference-free even when controls admit carriers.
         let primitive_types = admitted_types(self.manifest(), false);
+        let resumables = resumable_controls(self)?;
         let mut emitter = Emitter {
+            frame_types: String::new(),
+            retained: false,
+            resumables,
+            descriptors: vec![],
+            inline_children: BTreeMap::new(),
+            resume_next: 0,
+            delivery_pc: 0,
             globals: String::new(),
             body: String::new(),
             allocations: String::new(),
@@ -1024,7 +1387,8 @@ impl CheckedProgram {
         let mut metadata = vec![];
         let mut callbacks = vec![];
         for region in self.regions() {
-            if region.asynchronous
+            let retained = emitter.resumables.contains_key(&region.name);
+            if (retained && (region.is_constructor() || region.boundary.is_some()))
                 || region
                     .slots
                     .values()
@@ -1040,15 +1404,17 @@ impl CheckedProgram {
                     .any(|f| !type_supported(&f.ty, &types))
             {
                 return Err(error(format!(
-                    "LLVM backend currently supports only synchronous scalar/aggregate controls: {}",
+                    "LLVM backend does not yet support this control layout: {}",
                     self.runtime_name(&region.name)
                 )));
             }
-            if let Some(instruction) = region
-                .code
-                .iter()
-                .find(|i| !supported(i, &types, &primitive_types, self.manifest()))
-            {
+            if let Some(instruction) = region.code.iter().find(|i| {
+                if retained {
+                    !retained_supported(i, &types, &primitive_types, self.manifest())
+                } else {
+                    !supported(i, &types, &primitive_types, self.manifest())
+                }
+            }) {
                 return Err(Diagnostic::new(
                     "E_BACKEND",
                     instruction.provenance.span,
@@ -1056,11 +1422,24 @@ impl CheckedProgram {
                 ));
             }
             let index = emitter.controls[&region.name].0;
-            emitter.control(region, index);
+            if retained {
+                emitter.resume_control(region, index);
+            } else {
+                emitter.control(region, index);
+            }
             if let Some(codes) = entries.get(&region.name) {
                 callbacks.push(format!("ptr @control_{index}"));
-                metadata.push(serde_json::json!({"name":region.name,"display":self.runtime_name(&region.name),"arguments":region.parameters.iter().map(|p|&p.ty).collect::<Vec<_>>(),"exits":codes.iter().collect::<Vec<_>>()}));
+                metadata.push(serde_json::json!({"name":region.name,"display":self.runtime_name(&region.name),"retained":retained,"arguments":region.parameters.iter().map(|p|&p.ty).collect::<Vec<_>>(),"exits":codes.iter().collect::<Vec<_>>()}));
             }
+        }
+        if !emitter.descriptors.is_empty() {
+            writeln!(
+                emitter.globals,
+                "@async_controls = private constant [{} x %compiled_control] [{}]",
+                emitter.descriptors.len(),
+                emitter.descriptors.join(", ")
+            )
+            .unwrap();
         }
         let config=serde_json::json!({"abi":1,"manifest":serde_json::to_string(self.manifest()).map_err(|e|error(e.to_string()))?,"entry":entry,"sites":serde_json::to_string(&self.runtime_sites()).map_err(|e|error(e.to_string()))?,"entries":metadata}).to_string();
         let (config, len) = emitter.text(&config);
@@ -1073,8 +1452,8 @@ impl CheckedProgram {
         .unwrap();
         emitter.line(format!("define i32 @main() {{\nentry:\n%status = call i32 @tellur_rt_v1_launch(ptr {config}, i64 {len}, ptr @entries, i64 {count})\nret i32 %status\n}}"));
         Ok(format!(
-            "; Tellur direct LLVM backend; private runtime ABI v1\n{DECLARATIONS}\n{}\n{}",
-            emitter.globals, emitter.body
+            "; Tellur direct LLVM backend; private runtime ABI v1\n{DECLARATIONS}\n{}\n{}\n{}",
+            emitter.frame_types, emitter.globals, emitter.body
         ))
     }
 }
@@ -1145,6 +1524,93 @@ fn abi_library(target: &Path) -> Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    fn generated_async_resume_functions_preserve_reports_across_host_quotas() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static ID: AtomicUsize = AtomicUsize::new(0);
+        let directory = std::env::temp_dir().join(format!(
+            "tellur-llvm-async-quota-{}-{}",
+            std::process::id(),
+            ID.fetch_add(1, Ordering::Relaxed)
+        ));
+        fs::create_dir_all(&directory).unwrap();
+        let manifest =
+            crate::manifest::Manifest::from_json(include_str!("../../playground/manifest.json"))
+                .unwrap();
+        let checked = crate::compile(
+            r#"
+async control child(bool fail, ref mutable string text) exits done faults {
+    yield;delta fail {true=>bad,false=>good}
+    [bad]:fault "quota child failure";
+    [good]:deref text="updated";emit(text);exit done;
+}
+async control startup(bool fail) exits done faults {
+    mutable string text="caller";await child(fail,borrow mutable text);
+    yield;emit(text);exit done;
+}
+control main(bool fail) exits result faults {forward run startup(fail);}
+outcome result {@exit 0 done}
+"#,
+            manifest,
+        )
+        .unwrap();
+        for expanded in [false, true] {
+            let program = if expanded {
+                checked.expanded("main").unwrap()
+            } else {
+                checked.clone()
+            };
+            for opt in [0, 2] {
+                let rust = program
+                    .build_native("main", &directory.join("rust"), opt)
+                    .unwrap()
+                    .executable;
+                let source = program.llvm_source("main").unwrap();
+                assert!(source.contains("i64 %count, i64 -1)"));
+                let mut expected = vec![];
+                for fail in [false, true] {
+                    let scenario = directory.join(format!("{fail}.json"));
+                    fs::write(&scenario,serde_json::json!({"entry":"main","arguments":[{"kind":"bool","value":fail}],"calls":[]}).to_string()).unwrap();
+                    for fuel in 0..=36 {
+                        let out = Command::new(&rust)
+                            .arg("--scenario")
+                            .arg(&scenario)
+                            .arg("--fuel")
+                            .arg(fuel.to_string())
+                            .output()
+                            .unwrap();
+                        expected.push((scenario.clone(), fuel, out));
+                    }
+                }
+                for quota in [1, 3, usize::MAX] {
+                    let source =
+                        source.replace("i64 %count, i64 -1)", &format!("i64 %count, i64 {quota})"));
+                    let llvm = program
+                        .build_llvm_source(source, &directory.join("llvm"), opt)
+                        .unwrap()
+                        .executable;
+                    for (scenario, fuel, want) in &expected {
+                        let got = Command::new(&llvm)
+                            .arg("--scenario")
+                            .arg(scenario)
+                            .arg("--fuel")
+                            .arg(fuel.to_string())
+                            .output()
+                            .unwrap();
+                        assert_eq!(
+                            got.status.code(),
+                            want.status.code(),
+                            "{expanded}/{opt}/{quota}/{fuel}: {got:?} vs {want:?}"
+                        );
+                        assert_eq!(got.stdout, want.stdout, "{expanded}/{opt}/{quota}/{fuel}");
+                        assert_eq!(got.stderr, want.stderr, "{expanded}/{opt}/{quota}/{fuel}");
+                    }
+                }
+            }
+        }
+        fs::remove_dir_all(directory).unwrap();
+    }
     #[test]
     fn carrier_admission_does_not_enable_reference_bearing_primitive_signatures() {
         use crate::manifest::{Manifest, TypeDef};
