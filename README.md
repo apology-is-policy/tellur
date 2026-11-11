@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.260.0** implements the v0.1 checked core and the current language
+Compiler release **0.261.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -22,27 +22,34 @@ spawned children of one async control. `spawn producer(..) into set;` adds a mem
 `delta await next set { ..., empty => ... }` joins members in completion order, and
 `count(borrow set)` bounds how many run at once.
 
+Release 0.261 adds LLVM task sets: exact-producer construction, spawn-into,
+completion-order `await next`, immediate empty selection and set cancellation.
+Loop-carried remainders support bounded feeding and draining. Try the
+[bounded task-set example](playground/llvm_task_sets.tellur) with an item count;
+[profile details](docs/reference/llvm-backend.md#generated-task-sets-0261) retain the
+existing ownership and reference-free member restrictions. Rust stays default.
+
 Release 0.260 adds retained LLVM loops, including repeated awaits, cold/spawned
 children, host readiness and expanded looping helpers. Iteration parameters transfer
 simultaneously and local path facts reset while outer locals remain live. See the
 [async loop example](playground/llvm_async_loops.tellur) and
 [profile details](docs/reference/llvm-backend.md#retained-loops-0260).
-Task-set source lowering and retained boundaries remain next; Rust stays default.
+Task-set source lowering follows in 0.261; retained boundaries remain next.
 
 Release 0.259 adds the private task-set runtime bridge for LLVM frames. Queuing,
 completion-order joins, empty selection and set cancellation use the existing
-scheduler and ownership checks. Source task-set admission remains a separate integration step; see [the current boundary](docs/reference/llvm-backend.md#private-task-set-runtime-bridge-0259).
+scheduler and ownership checks. Source task-set admission follows in 0.261; see [the current boundary](docs/reference/llvm-backend.md#private-task-set-runtime-bridge-0259).
 
 Release 0.258 lowers scripted async host operations through the same LLVM task
 frames as async controls. `run`, `await`, `defer` and `spawn` retain source scheduling,
 owned captures, borrowed resources and explicit cancellation alternatives. See the
 [scripted host example](playground/llvm_host.tellur) and [run instructions](docs/reference/llvm-backend.md#scripted-async-host-operations-0258).
-Task sets, polled Rust adapters and later parity work remain upcoming; Rust stays default.
+Task sets follow in 0.261; polled Rust adapters and parity remain upcoming.
 
 Release 0.257 adds `cancel child;` to the bounded LLVM control profile. Requests
 remain sticky, preserve the original handle and do not yield or replace the join.
 Children without cancellable host operations finish normally. See the
-[cancellation request example](playground/llvm_cancel.tellur). Async host observation follows in 0.258; task sets remain upcoming LLVM work.
+[cancellation request example](playground/llvm_cancel.tellur). Async host observation follows in 0.258; task sets follow in 0.261.
 
 Release 0.256 adds LLVM spawned control tasks and consuming joins. Spawned frames
 use the runtime arena; direct children remain by value. Spawn queues without a

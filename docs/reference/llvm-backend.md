@@ -19,7 +19,8 @@ Compiler 0.249 adds lexical boundaries, supervised recovery and process terminat
 Compiler 0.253 adds a bounded frontend async-frame profile; 0.254 adds cold control tasks. Compiler 0.256 adds spawned controls and consuming joins; 0.257 adds control cancellation requests.
 Compiler 0.258 adds scripted async host operations and their cancellation alternatives.
 Compiler 0.259 adds a private task-set runtime bridge. Compiler 0.260 admits retained
-loops with repeated task calls and expanded loop completions.
+loops with repeated task calls and expanded loop completions. Compiler 0.261 adds
+generated task sets with the existing completion-order and cancellation rules.
 The default remains `--backend rust`. Both start from the same checked program;
 backend selection does not relax ownership, origins, outcomes or path rules.
 
@@ -51,8 +52,8 @@ synchronous callers that reach those controls. Cold control tasks support `defer
 local moves/option wrappers and consuming `await`. Spawned controls and consuming joins
 are supported since 0.256; control cancellation requests since 0.257. Scripted
 async host operations share those task forms since 0.258. Retained loops are supported
-since 0.260. Task sets, retained fault boundaries and Rust adapters remain outside
-that profile. Launch signal policies are also rejected. Admission checks all checked
+since 0.260; task sets since 0.261. Retained fault boundaries and Rust adapters
+remain outside that profile. Launch signal policies are also rejected. Admission checks all checked
 regions, including unused helpers. Unsupported programs receive `E_BACKEND`
 before the backend creates its output directory or files; ordinary checking may
 still succeed, and the Rust backend remains available.
@@ -749,8 +750,8 @@ requests, inherited requests and required joins keep the language's existing rul
 
 The example emits `captured`, then `run`, `cold`, `queued`, `spawn` and `await`.
 Its supplied scenario deliberately makes every host call report pending readiness.
-Task sets, retained loops/boundaries/constructors, adapters and launch signals
-remain outside this LLVM profile. Rust remains the default until parity.
+Retained loops and task sets are added below. Retained boundaries/constructors,
+adapters and launch signals remain later work. Rust stays default until parity.
 
 
 ## Private task-set runtime bridge (0.259)
@@ -772,8 +773,8 @@ inherit a cancellation request previously applied to the set.
 Private tests exercise ordinary and scripted host members, caller loans, queued,
 running and completed cancellation, faults, capacity rejection and retirement at
 fuel cuts and quotas 1, 3 and unbounded. These tests use private callbacks: checked
-LLVM task-set programs still receive `E_BACKEND`. Retained loops are added in 0.260;
-generated set lowering is the next integration step. Rust remains the default backend.
+LLVM task-set programs remained gated at that checkpoint. Retained loops are added
+in 0.260 and generated set lowering in 0.261 below. Rust remains the default backend.
 
 
 ## Retained loops (0.260)
@@ -806,6 +807,42 @@ fuel charges, including skipped guards, retain the existing execution semantics.
 The first run emits `left`, `right`, `0`; the second emits `right`, `left`, `3`.
 The third faults with `iteration failed` in its third child invocation.
 Authored nested loops and reference-bearing loop parameters keep their checker
-restrictions. Retained supervision/recovery, fault boundaries and constructors,
-task-set source lowering, launch signals and Rust adapters remain gated. Rust is
+restrictions. Task-set source lowering is added below. Retained supervision/recovery,
+fault boundaries and constructors, launch signals and Rust adapters remain gated. Rust is
 the default backend until parity.
+
+
+## Generated task sets (0.261)
+
+`tasks<producer>` now creates an exact-producer set in a retained LLVM activation.
+`spawn producer(arguments) into set;` evaluates captures in written order and queues
+an arena-owned member without handing off. `count(borrow set)` includes running and
+completed members that have not been joined. Sets can move locally and cross loop
+backedges under the existing checked ownership rules.
+
+`await next` delegates completion ordering to the original scheduler. Its selected
+member payload is followed internally by the remaining set, which returns to the
+checked set binding. Only that member is joined. Empty selection retires the set
+without a source handoff, wait or outcome allocation. Cancellation requests affect
+all current members and preserve the set's drain obligation; later insertions do
+not inherit earlier requests. Scripted async host producers use the same path.
+
+The source restrictions are unchanged: captures and results are owned and
+reference-free; no set escapes in a control argument/result, helper argument or
+collection. A producer cannot name an outcome `empty`. Retained resource owners
+still need their existing fault disposition, and Rust adapter resources remain
+gated with the adapter backend. Member-local synchronous resource operations may
+complete before a handoff. Escaping member faults retain their original source
+cause and stop sibling work; they never become a normal `await next` result.
+
+```sh
+./bin/tellurc build playground/llvm_task_sets.tellur playground/manifest.json --backend llvm --out /tmp/tellur-task-sets
+/tmp/tellur-task-sets 0
+/tmp/tellur-task-sets 6
+```
+
+The first run drains an empty set. The second feeds six jobs while keeping at most
+two unjoined, printing each spawn and reap. Original and expanded programs preserve
+fuel charges, path facts, fault reports and host readiness. Retained boundaries,
+supervised recovery, constructors that suspend, launch signals and Rust adapters
+remain later slices. Rust remains the default until parity.

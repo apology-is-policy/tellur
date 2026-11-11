@@ -232,6 +232,8 @@ A spawned handle is one named local. A *task set* holds any number of started
 children of one async producer, so the count of live children no longer depends on
 the source text. The reference executor runs task sets since 0.222 and native
 executables since 0.223, with the same completion order and fault settlement.
+The opt-in LLVM backend supports this bounded task-set profile since 0.261; its
+[backend chapter](llvm-backend.md#generated-task-sets-0261) lists remaining limits.
 
 - `tasks<producer> set = tasks();` declares an empty set. The producer must be one
   async control.

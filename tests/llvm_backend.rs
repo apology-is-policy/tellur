@@ -2557,6 +2557,333 @@ control plain() exits done {emit("synchronous");exit done;}
     }
 
     #[test]
+    fn frontend_sets_drain_in_completion_order_and_empty_next_does_not_handoff() {
+        let scenario = json!({"entry":"main","arguments":[],"calls":[]});
+        let f = Fixture::new(include_str!("../playground/task_sets.tellur"));
+        let expected = successful_reference(&f, &scenario);
+        let emitted = |report: &Json| {
+            report["events"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|e| e["kind"] == "emit")
+                .map(|e| e["message"].as_str().unwrap().to_owned())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            emitted(&expected),
+            ["2", "slow", "fast", "joined fast", "joined slow"]
+        );
+        lexical_matrix(
+            &f,
+            &[scenario.clone()],
+            &(0..=70).map(Some).chain([None]).collect::<Vec<_>>(),
+        );
+        let ir = fs::read_to_string(f.root.join("llvm-2.ll")).unwrap();
+        for call in [
+            "call i64 @tellur_rt_v1_task_set",
+            "call void @tellur_rt_v1_spawn_into",
+            "call i8 @tellur_rt_v1_next",
+        ] {
+            assert!(ir.contains(call), "{call}");
+        }
+        let f = Fixture::new(
+            r#"
+async control child() exits done {emit("child");yield;exit done;}
+async control startup() exits done {
+    tasks<child> active=tasks();cancel active;
+    auto sibling=spawn child();
+    delta await next active {done=>member,empty=>drained}
+    [member]:fault "unexpected member";
+    [drained]:emit("empty");await sibling;exit done;
+}
+control main() exits done {forward run startup();}
+"#,
+        );
+        assert_eq!(
+            emitted(&successful_reference(&f, &scenario)),
+            ["empty", "child"]
+        );
+        lexical_matrix(
+            &f,
+            &[scenario],
+            &(0..=32).map(Some).chain([None]).collect::<Vec<_>>(),
+        );
+    }
+
+    #[test]
+    fn frontend_sets_preserve_remainders_owned_payloads_and_member_or_parent_faults() {
+        let f = Fixture::new(
+            r#"
+struct message {string text;}
+async control member(string text, bool slow, bool fail) exits accepted {message value}, skipped faults {
+    yield;
+    delta slow {true=>slow,false=>fast}
+    [slow]:yield;yield;
+    [slow|fast]:delta fail {true=>bad,false=>good}
+    [bad]:fault "member failed";
+    [good & slow]:drop(text);exit skipped;
+    [good & fast]:exit accepted {message {text}};
+}
+async control startup(bool parent_fail,bool member_fail) exits done faults {
+    tasks<member> initial=tasks();
+    spawn member("slow",true,false) into initial;
+    auto moved=move initial;
+    spawn member("fast",false,member_fail) into moved;
+    delta parent_fail {true=>bad,false=>good}
+    [bad]:fault "parent failed";
+    loop drain(tasks<member> pending=move moved) {
+        delta await next pending {accepted {message value}=>accepted,skipped=>skipped,empty=>drained}
+        [accepted]:emit(value.text);
+        [skipped]:emit("skipped");
+        [accepted|skipped]:emit(u32_text(count(borrow pending)));again drain(pending);
+        [drained]:exit done;
+    }
+}
+control main(bool parent_fail,bool member_fail) exits done faults {forward run startup(parent_fail,member_fail);}
+"#,
+        );
+        let scenarios=[false,true].into_iter().flat_map(|parent|[false,true].map(move |member| json!({"entry":"main","arguments":[{"kind":"bool","value":parent},{"kind":"bool","value":member}],"calls":[]}))).collect::<Vec<_>>();
+        let report = successful_reference(&f, &scenarios[0]);
+        assert_eq!(
+            report["events"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|e| e["kind"] == "emit")
+                .map(|e| e["message"].as_str().unwrap())
+                .collect::<Vec<_>>(),
+            ["fast", "1", "skipped", "0"]
+        );
+        lexical_matrix(
+            &f,
+            &scenarios,
+            &(0..=65).map(Some).chain([None]).collect::<Vec<_>>(),
+        );
+    }
+
+    #[test]
+    fn frontend_sets_bound_feeding_and_reuse_loop_carried_remainders() {
+        let f = Fixture::new(include_str!("../playground/llvm_task_sets.tellur"));
+        let scenarios=[0,1,2,6].map(|limit|json!({"entry":"main","arguments":[{"kind":"u32","value":limit}],"calls":(1..=limit).map(|n|json!({"operation":"checked_add","outcome":"sum","fields":[{"kind":"u32","value":n}]})).collect::<Vec<_>>() }));
+        for scenario in &scenarios {
+            let report = successful_reference(&f, scenario);
+            let mut active = 0;
+            let mut spawned = 0;
+            for event in report["events"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|e| e["kind"] == "emit")
+            {
+                if event["message"].as_str().unwrap().starts_with("spawn ") {
+                    active += 1;
+                    spawned += 1;
+                    assert!(active <= 2);
+                } else {
+                    assert!(active > 0);
+                    active -= 1;
+                }
+            }
+            assert_eq!(active, 0);
+            assert_eq!(spawned, scenario["arguments"][0]["value"].as_u64().unwrap());
+        }
+        lexical_matrix(
+            &f,
+            &scenarios,
+            &(0..=135).map(Some).chain([None]).collect::<Vec<_>>(),
+        );
+    }
+
+    #[test]
+    fn frontend_sets_keep_resource_completion_and_fault_effects_in_member_order() {
+        let f = Fixture::new(
+            r#"
+async control member(string path, bool fail) exits done faults {
+    delta open(path) {opened {handle h}=>opened,not_found=>missing,denied=>denied}
+    [missing|denied]:yield;exit done;
+    [opened]:delta close(h) {closed=>closed,failed {close_error error}=>close_failed}
+    [closed|close_failed]:delta fail {true=>bad,false=>good}
+    [bad]:fault "after resource completion";
+    [good]:yield;exit done;
+}
+async control startup(bool fail) exits done faults {
+    tasks<member> active=tasks();spawn member("first",false) into active;spawn member("second",fail) into active;
+    loop drain(tasks<member> pending=move active) {
+        delta await next pending {done=>member,empty=>drained}
+        [member]:emit("joined");again drain(pending);
+        [drained]:exit done;
+    }
+}
+control main(bool fail) exits done faults {forward run startup(fail);}
+"#,
+        );
+        let scenarios=[false,true].map(|fail|json!({"entry":"main","arguments":[{"kind":"bool","value":fail}],"calls":[
+            {"operation":"open","outcome":"opened","fields":[{"kind":"opaque","value":{"ty":"handle","token":"first"}}]},
+            {"operation":"close","outcome":"closed","fields":[]},
+            {"operation":"open","outcome":"opened","fields":[{"kind":"opaque","value":{"ty":"handle","token":"second"}}]},
+            {"operation":"close","outcome":"closed","fields":[]}
+        ]}));
+        let report = successful_reference(&f, &scenarios[0]);
+        assert_eq!(
+            report["events"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|e| e["kind"] == "emit")
+                .map(|e| e["message"].as_str().unwrap())
+                .collect::<Vec<_>>(),
+            ["joined", "joined"]
+        );
+        lexical_matrix(
+            &f,
+            &scenarios,
+            &(0..=65).map(Some).chain([None]).collect::<Vec<_>>(),
+        );
+    }
+
+    #[test]
+    fn frontend_sets_keep_native_stack_bounded_during_repeated_spawn_and_reap() {
+        let f = Fixture::new(
+            r#"
+async control member() exits done {yield;exit done;}
+async control startup() exits done {
+    tasks<member> active=tasks();spawn member() into active;
+    loop repeat(tasks<member> pending=move active) {
+        delta await next pending {done=>member,empty=>drained}
+        [member]:spawn member() into pending;again repeat(pending);
+        [drained]:exit done;
+    }
+}
+control main() exits result {forward run startup();}
+outcome result {@exit 0 done}
+"#,
+        );
+        let scenario = f.root.join("scenario.json");
+        fs::write(
+            &scenario,
+            json!({"entry":"main","arguments":[],"calls":[]}).to_string(),
+        )
+        .unwrap();
+        for expanded in [false, true] {
+            for opt in [0, 2] {
+                build_pair(&f, expanded, opt);
+                let run = |backend| {
+                    Command::new("/bin/sh")
+                        .args([
+                            "-c",
+                            "ulimit -s 512 || exit 99; exec \"$@\"",
+                            "tellur-retained-set-stack",
+                        ])
+                        .arg(f.root.join(format!("{backend}-{opt}")))
+                        .arg("--scenario")
+                        .arg(&scenario)
+                        .args(["--fuel", "100000"])
+                        .output()
+                        .unwrap()
+                };
+                let a = run("llvm");
+                let b = run("rust");
+                assert_eq!(a.status.code(), Some(1), "{a:?}");
+                assert_eq!(a.status.code(), b.status.code());
+                assert_eq!(a.stdout, b.stdout);
+                assert_eq!(a.stderr, b.stderr);
+                assert!(String::from_utf8_lossy(&a.stderr).contains("E_FUEL"));
+            }
+        }
+    }
+
+    #[test]
+    fn frontend_sets_cancel_current_members_but_preserve_later_insertions() {
+        for (yields, waits, stopped) in [(0, 20, true), (3, 20, true), (12, 0, false)] {
+            let f = host_fixture(&format!(
+                r#"
+async control member(string label) exits ready {{string text}}, stopped {{
+    delta await tick(label) {{ticked {{string text}}=>ready,cancelled=>stopped}}
+    [ready]:exit ready {{text}};
+    [stopped]:exit stopped;
+}}
+async control startup() exits done {{
+    tasks<member> active=tasks();cancel active;
+    spawn member("old") into active;{pause}cancel active;cancel active;
+    spawn member("new") into active;
+    loop drain(tasks<member> pending=move active) {{
+        delta await next pending {{ready {{string text}}=>ready,stopped=>stopped,empty=>drained}}
+        [ready]:emit(text);
+        [stopped]:emit("cancelled");
+        [ready|stopped]:again drain(pending);
+        [drained]:exit done;
+    }}
+}}
+control main() exits done {{forward run startup();}}
+"#,
+                pause = "yield;".repeat(yields)
+            ));
+            let mut calls = vec![];
+            if yields > 0 {
+                calls.push(host_call("old", waits));
+            }
+            calls.push(host_call("new", 0));
+            let scenario = json!({"entry":"main","arguments":[],"calls":calls});
+            let report = successful_reference(&f, &scenario);
+            let emitted = report["events"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|e| e["kind"] == "emit")
+                .map(|e| e["message"].as_str().unwrap())
+                .collect::<Vec<_>>();
+            assert!(
+                emitted.contains(&"new")
+                    && emitted.contains(&if stopped { "cancelled" } else { "old" }),
+                "{yields}/{report}"
+            );
+            assert_eq!(emitted.len(), 2);
+            lexical_matrix(
+                &f,
+                &[scenario],
+                &(0..=75).map(Some).chain([None]).collect::<Vec<_>>(),
+            );
+            let ir = fs::read_to_string(f.root.join("llvm-2.ll")).unwrap();
+            assert!(ir.contains("call void @tellur_rt_v1_cancel_set"));
+        }
+    }
+
+    #[test]
+    fn frontend_sets_of_host_operations_keep_exact_producers_and_readiness_order() {
+        let f = host_fixture(
+            r#"
+async control startup() exits done {
+    tasks<tick> active=tasks();spawn tick("first") into active;spawn tick("second") into active;
+    loop drain(tasks<tick> pending=move active) {
+        delta await next pending {ticked {string text}=>ready,empty=>drained}
+        [ready]:emit(text);again drain(pending);
+        [drained]:exit done;
+    }
+}
+control main() exits done {forward run startup();}
+"#,
+        );
+        let scenario = json!({"entry":"main","arguments":[],"calls":[host_call("first",7),host_call("second",0)]});
+        let report = successful_reference(&f, &scenario);
+        assert_eq!(
+            report["events"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|e| e["kind"] == "emit")
+                .map(|e| e["message"].as_str().unwrap())
+                .collect::<Vec<_>>(),
+            ["second", "first"]
+        );
+        lexical_matrix(
+            &f,
+            &[scenario],
+            &(0..=40).map(Some).chain([None]).collect::<Vec<_>>(),
+        );
+    }
+
+    #[test]
     fn frontend_loops_preserve_owned_swaps_resets_nested_awaits_and_expanded_completion() {
         let f = Fixture::new(include_str!("../playground/llvm_async_loops.tellur"));
         let scenarios = [0, 1, 3].into_iter().flat_map(|limit| [false,true].map(move |fail|
@@ -3361,7 +3688,7 @@ control main() exits done faults {{forward run startup();}}
         }
         for source in [
             "struct ticket {u32 value;constructor(u32 input){run helper();self.value=input;}} async control helper() exits done {exit done;} control main() exits result {drop(ticket(1));exit done;} outcome result {@exit 0 done}",
-            "async control work() exits done {yield;exit done;} async control startup() exits done {tasks<work> set=tasks();spawn work() into set;loop reap(tasks<work> pending=move set){delta await next pending {done=>next,empty=>empty} [next]:again reap(pending);[empty]:exit done;}} control main() exits result {forward run startup();} outcome result {@exit 0 done}",
+            "async control work() exits done {fault boundary {yield;exit done;} contingency [] {escalate;}} async control startup() exits done {tasks<work> set=tasks();spawn work() into set;loop reap(tasks<work> pending=move set){delta await next pending {done=>next,empty=>empty} [next]:again reap(pending);[empty]:exit done;}} control main() exits result {forward run startup();} outcome result {@exit 0 done}",
             "async control helper() exits done {loop L(){fault boundary {yield;exit done;} contingency [] {escalate;}}} control main() exits result {forward run helper();} outcome result {@exit 0 done}",
         ] {
             let f = Fixture::new(source);

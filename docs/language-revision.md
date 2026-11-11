@@ -1625,3 +1625,26 @@ loop states. Keep existing source set capture/result restrictions; follow with
 retained fault/boundary/constructor integration, signals, parity/default, adapters,
 single binary, target packs and retirement. Rust remains the default; no new
 language semantics or design fork is introduced.
+
+
+## B1.4l — generated LLVM task sets (0.261)
+
+The emitter now connects checked exact-producer sets, spawn-into, next and set
+cancellation to the private0.259 ABI. It records next's delivery states in the same
+recursive plan as retained loop instructions. The original scheduler supplies the
+selected payload plus remaining set. Empty selection sets its checked path fact
+without a wait, outcome allocation or source handoff. Spawned members stay in the
+runtime arena; direct children remain by value. Runtime and source semantics do
+not change. Set membership/result restrictions remain reference-free and local.
+
+Seven generated matrices cover completion order and count, immediate empty-next
+beside a queued sibling, local moves and owned payloads, parent/member faults,
+scripted host readiness, queued/running/completed cancellation with later insertion,
+bounded feeding, member-local resource completion and repeated spawn/reap under a
+512 KiB stack. Original/expanded O0/O2 fuel matrices and quotas1/3/unbounded preserve
+reports. The new llvm_task_sets example feeds a bounded-width work set.
+
+Next: retained fault/boundary/constructor integration and launch signals, then
+parity/default, adapters, single binary, target packs and retirement. Resource
+fault-release contracts mapped to Rust owners stay in the gated adapter profile;
+this step does not relax those contracts. Rust remains default; no design fork.

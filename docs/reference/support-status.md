@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.260.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.261.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -54,9 +54,10 @@ Arena leases keep spawned frames and their inline descendants alive through reti
 Compiler 0.257 adds sticky cancellation requests for started control handles.
 Compiler 0.258 adds scripted async host leaves with existing task forms, pending
 readiness and explicit cancellation alternatives. Compiler 0.260 adds retained loops,
-repeated task calls and expanded helper completion. Retained boundaries, task sets,
-Rust adapters and launch signals remain gated. Compiler 0.259 adds the private
-task-set ABI and its scheduling/retirement tests, without changing source admission.
+repeated task calls and expanded helper completion. Compiler 0.261 adds source task
+sets, completion-order selection and cancellation using the private 0.259 bridge.
+Set captures/results stay owned and reference-free. Retained boundaries, Rust
+adapters and launch signals remain gated.
 Unsupported checked programs fail with `E_BACKEND` before build
 outputs are created. Backend selection does not change language checking.
 

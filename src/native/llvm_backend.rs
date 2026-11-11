@@ -13,6 +13,10 @@ declare void @tellur_rt_v1_await_task(ptr, i64, i64)
 declare void @tellur_rt_v1_spawn(ptr, i64, i64, ptr, i64)
 declare void @tellur_rt_v1_join(ptr, i64, i64)
 declare void @tellur_rt_v1_cancel(ptr, i64, i64, i64)
+declare i64 @tellur_rt_v1_task_set(ptr, i64)
+declare void @tellur_rt_v1_spawn_into(ptr, i64, i64, i64, ptr, i64)
+declare i8 @tellur_rt_v1_next(ptr, i64, i64)
+declare void @tellur_rt_v1_cancel_set(ptr, i64, i64, i64)
 declare void @tellur_rt_v1_host(ptr, i64, ptr, i64)
 declare void @tellur_rt_v1_invalid_resume(ptr)
 %compiled_control = type { ptr, i64, ptr, i64, i64, ptr, i64, i64, i64, i64, ptr, ptr, i64 }
@@ -258,7 +262,12 @@ fn reaches_retained(i: &Instruction, names: &BTreeSet<String>) -> bool {
         } => names.contains(name),
         Action::Decide {
             operation:
-                Operation::Defer(_) | Operation::Spawn(_) | Operation::Join(_) | Operation::Cancel(_),
+                Operation::Defer(_)
+                | Operation::Spawn(_)
+                | Operation::Join(_)
+                | Operation::Cancel(_)
+                | Operation::SpawnInto(_)
+                | Operation::Next(_),
             ..
         } => true,
         Action::Supervise { boundary, .. } => names.contains(boundary),
@@ -385,7 +394,9 @@ fn retained_supported(
                 | Operation::AwaitTask(_)
                 | Operation::Spawn(_)
                 | Operation::Join(_)
-                | Operation::Cancel(_),
+                | Operation::Cancel(_)
+                | Operation::SpawnInto(_)
+                | Operation::Next(_),
             args,
             ..
         } => args.iter().all(|e| expression_supported(e, types)),
@@ -488,6 +499,7 @@ struct Emitter {
     descriptors: Vec<String>,
     inline_children: BTreeMap<Id, (usize, usize, usize)>,
     retained_loops: BTreeMap<Id, RetainedLoopTarget>,
+    task_set_slots: BTreeSet<Id>,
     resume_next: u32,
     delivery_pc: u32,
     globals: String,
@@ -674,6 +686,13 @@ impl Emitter {
         ))
     }
     fn construct(&mut self, ty: &str, name: &str, values: &[String]) -> String {
+        if let Some(producer) = crate::manifest::task_set_inner(ty) {
+            debug_assert!(self.retained && name == "tasks" && values.is_empty());
+            let producer = self.resumables[producer];
+            return self.call(format!(
+                "call i64 @tellur_rt_v1_task_set(ptr %ctx, i64 {producer})"
+            ));
+        }
         let args = self.handles(values);
         let (ty, ty_len) = self.text(ty);
         let (name, name_len) = self.text(name);
@@ -959,6 +978,11 @@ impl Emitter {
         self.inline_children.clear();
         let plan = RetainedPlan::new(&region.code);
         self.retained_loops = plan.loops.clone();
+        self.task_set_slots = region
+            .slots
+            .iter()
+            .filter_map(|(id, slot)| crate::manifest::task_set_inner(&slot.ty).map(|_| *id))
+            .collect();
         let mut children = vec![];
         for &instruction in &plan.code {
             if let Some(name) = retained_target(instruction, &self.resumables) {
@@ -1006,7 +1030,7 @@ impl Emitter {
                 || matches!(
                     &instruction.action,
                     Action::Decide {
-                        operation: Operation::Join(_),
+                        operation: Operation::Join(_) | Operation::Next(_),
                         ..
                     }
                 )
@@ -1047,7 +1071,7 @@ impl Emitter {
                 || matches!(
                     &instruction.action,
                     Action::Decide {
-                        operation: Operation::Join(_),
+                        operation: Operation::Join(_) | Operation::Next(_),
                         ..
                     }
                 )
@@ -1356,6 +1380,54 @@ impl Emitter {
                     terminal = true;
                 }
                 Action::Decide {
+                    operation: Operation::SpawnInto(name),
+                    args,
+                    arms,
+                } if self.retained => {
+                    let mut values = args.iter().map(|a| self.expr(a)).collect::<Vec<_>>();
+                    let set = values.pop().expect("checked spawn-into has a set operand");
+                    let args = self.handles(&values);
+                    let producer = self.resumables[name];
+                    let slot = self.layout.slots[&arms[0].slots[0]];
+                    self.effect(format!("call void @tellur_rt_v1_spawn_into(ptr %ctx, i64 {producer}, i64 {slot}, i64 {set}, ptr {args}, i64 {})", values.len()));
+                    self.line(format!(
+                        "store i1 true, ptr %a{}",
+                        self.layout.atoms[&arms[0].atom]
+                    ));
+                    self.line(format!(
+                        "store i32 {}, ptr %pc\nret i32 10",
+                        self.resume_next
+                    ));
+                    terminal = true;
+                }
+                Action::Decide {
+                    operation: Operation::Next(name),
+                    args,
+                    arms,
+                } if self.retained => {
+                    let set = self.expr(&args[0]);
+                    let producer = self.resumables[name];
+                    // call() checks the sticky error before zero can mean empty.
+                    let pending = self.call(format!(
+                        "call i8 @tellur_rt_v1_next(ptr %ctx, i64 {producer}, i64 {set})"
+                    ));
+                    let pending = self.value(format!("icmp ne i8 {pending}, 0"));
+                    let wait = self.id();
+                    let empty = self.id();
+                    self.line(format!("br i1 {pending}, label %{wait}, label %{empty}\n{wait}:\nstore i32 {}, ptr %pc\nret i32 11\n{empty}:", self.delivery_pc));
+                    let arm = arms
+                        .iter()
+                        .find(|arm| arm.outcome == "empty")
+                        .expect("checked Next has an empty arm");
+                    debug_assert!(arm.slots.is_empty());
+                    self.line(format!(
+                        "store i1 true, ptr %a{}",
+                        self.layout.atoms[&arm.atom]
+                    ));
+                    self.select_resume(self.resume_next);
+                    terminal = true;
+                }
+                Action::Decide {
                     operation: Operation::Join(name),
                     args,
                     ..
@@ -1379,8 +1451,13 @@ impl Emitter {
                     let value = self.expr(&args[0]);
                     let producer = self.resumables[name];
                     let slot = self.layout.slots[&arms[0].slots[0]];
+                    let abi = if self.task_set_slots.contains(&arms[0].slots[0]) {
+                        "cancel_set"
+                    } else {
+                        "cancel"
+                    };
                     self.effect(format!(
-                        "call void @tellur_rt_v1_cancel(ptr %ctx, i64 {producer}, i64 {slot}, i64 {value})"
+                        "call void @tellur_rt_v1_{abi}(ptr %ctx, i64 {producer}, i64 {slot}, i64 {value})"
                     ));
                     self.line(format!(
                         "store i1 true, ptr %a{}",
@@ -1645,12 +1722,13 @@ impl CheckedProgram {
         }
         let entries = self.executable_entries(entry)?;
         let mut types = admitted_types(self.manifest(), true);
-        // Exact producer-indexed cold and started identities. Sets remain gated;
-        // frontend local ownership rules still apply.
+        // Exact producer-indexed cold, started and set identities. Frontend local
+        // ownership and reference-free set capture/result rules still apply.
         types.extend(self.regions().filter(|r| r.asynchronous).flat_map(|r| {
             [
                 crate::manifest::task_type(&r.name),
                 crate::manifest::started_type(&r.name),
+                crate::manifest::task_set_type(&r.name),
             ]
         }));
         // Host operations remain reference-free even when controls admit carriers.
@@ -1671,6 +1749,7 @@ impl CheckedProgram {
             descriptors: vec![],
             inline_children: BTreeMap::new(),
             retained_loops: BTreeMap::new(),
+            task_set_slots: BTreeSet::new(),
             resume_next: 0,
             delivery_pc: 0,
             globals: String::new(),
@@ -1870,7 +1949,7 @@ mod tests {
             .unwrap()
             .extend(host["primitives"].as_array().unwrap().iter().cloned());
         let manifest = crate::manifest::Manifest::from_json(&manifest.to_string()).unwrap();
-        for mode in 0..7 {
+        for mode in 0..9 {
             let source = r#"
 async control child(bool fail, ref mutable string text) exits done faults {
     yield;delta fail {true=>bad,false=>good}
@@ -1919,6 +1998,34 @@ outcome result {@exit 0 done}
 "#;
                 if mode == 6 {
                     body.replace("defer child", "spawn child")
+                } else {
+                    body.into()
+                }
+            } else {
+                source
+            };
+            let source = if mode >= 7 {
+                let body = r#"
+async control member(bool fail, string text) exits done {string text} faults {
+    yield;delta fail {true=>bad,false=>good}
+    [bad]:fault "set quota child failure";
+    [good]:exit done {text};
+}
+async control startup(bool fail) exits done faults {
+    tasks<member> active=tasks();cancel active;
+    spawn member(false,"first") into active;spawn member(fail,"second") into active;
+    cancel active;cancel active;
+    loop drain(tasks<member> pending=move active) {
+        delta await next pending {done {string text}=>member,empty=>drained}
+        [member]:emit(text);again drain(pending);
+        [drained]:exit done;
+    }
+}
+control main(bool fail) exits result faults {forward run startup(fail);}
+outcome result {@exit 0 done}
+"#;
+                if mode == 8 {
+                    body.replace("[good]:exit done {text};", "[good]:delta await tick(text) {ticked {string response}=>ready,cancelled=>stopped}[ready]:exit done {response};[stopped]:exit done {\"cancelled\"};")
                 } else {
                     body.into()
                 }

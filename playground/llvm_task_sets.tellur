@@ -1,0 +1,60 @@
+// At most two children remain unjoined while the producer feeds new work.
+async control work(string name, u32 rounds) exits done { string name } {
+    yield;
+    delta (rounds >= 2) {
+        true => longer,
+        false => short
+    }
+    [short]: exit done { name };
+    [longer]:
+        yield;
+        exit done { name };
+}
+
+async control startup(u32 limit) exits done {
+    loop feed(u32 index = 0, tasks<work> active = tasks()) {
+        delta (index == limit) {
+            true => done_spawning,
+            false => spawning
+        }
+        [done_spawning]:
+            delta await next active {
+                done { string name } => drained_one,
+                empty => drained
+            }
+        [drained_one]:
+            emit(concat("joined ", name));
+            again feed(index, active);
+        [drained]: exit done;
+        [spawning]:
+            delta (count(borrow active) < 2) {
+                true => room,
+                false => full
+            }
+        [full]:
+            delta await next active {
+                done { string name } => reaped,
+                empty => impossible
+            }
+        [reaped]:
+            emit(concat("reaped ", name));
+            again feed(index, active);
+        [impossible]: fault "a full task set became empty";
+        [room]:
+            emit(concat("spawn ", u32_text(index)));
+            spawn work(u32_text(index), index) into active;
+            delta checked_add(index, 1) {
+                sum { u32 next } => advanced,
+                overflow => overflowed
+            }
+        [advanced]: again feed(next, active);
+        [overflowed]: fault "task index overflow";
+    }
+}
+
+control main(u32 limit) exits program_result {
+    forward run startup(limit);
+}
+outcome program_result {
+    @exit 0 done
+}

@@ -6601,3 +6601,22 @@ Task sets and unsupported retained scopes still fail before output creation.
 Compiler/LSP/extension versions, baseline sources, packaged/installed payloads,
 isolated editor execution and release examples are verified in the maintained
 `work/tellur-0.260-verification.json` record.
+
+
+## 0.261 — Generated LLVM task sets (B1.4l)
+
+Seven new `frontend_sets_` matrices exercise original and expanded programs at O0/O2:
+completion-order reaping, count and loop-carried remainders; immediate empty-next
+without running a queued sibling; multiple owned outcomes and parent/member faults;
+host producers and readiness; queued/running/completed/repeated cancellation plus
+later insertion; bounded feeding; member-local resource completion; and100000-fuel
+spawn/reap under a512KiB stack limit. Explicit normal-output assertions accompany
+fuel comparisons. The generated quota matrix adds ordinary and cancellable-host
+set members at quotas1/3/unbounded. Unsupported retained member boundaries still
+fail before output creation; source reference-free/local-set rules are unchanged.
+
+Validation refreshes retained LLVM and admission matrices, feature quotas, LSP/manual,
+all-target checks and release/editor/package smokes. The unchanged runtime, ABI,
+checker, Rust generator and synchronous LLVM evidence are reused from0.260; this is
+scoped verification, not a new complete-default run. Exact counts, evidence hashes,
+fixture corrections and release artifacts are in `work/tellur-0.261-verification.json`.
