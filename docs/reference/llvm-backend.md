@@ -18,7 +18,8 @@ Compiler 0.248 adds named synchronous boundaries and contingency settlement.
 Compiler 0.249 adds lexical boundaries, supervised recovery and process termination.
 Compiler 0.253 adds a bounded frontend async-frame profile; 0.254 adds cold control tasks. Compiler 0.256 adds spawned controls and consuming joins; 0.257 adds control cancellation requests.
 Compiler 0.258 adds scripted async host operations and their cancellation alternatives.
-Compiler 0.259 adds a private task-set runtime bridge; source admission is unchanged.
+Compiler 0.259 adds a private task-set runtime bridge. Compiler 0.260 admits retained
+loops with repeated task calls and expanded loop completions.
 The default remains `--backend rust`. Both start from the same checked program;
 backend selection does not relax ownership, origins, outcomes or path rules.
 
@@ -49,9 +50,9 @@ A separate bounded async profile admits `run`, direct `await` and `yield`, inclu
 synchronous callers that reach those controls. Cold control tasks support `defer`,
 local moves/option wrappers and consuming `await`. Spawned controls and consuming joins
 are supported since 0.256; control cancellation requests since 0.257. Scripted
-async host operations share those task forms since 0.258. Task sets,
-async loops/boundaries and Rust adapters remain
-outside that profile. Launch signal policies are also rejected. Admission checks all checked
+async host operations share those task forms since 0.258. Retained loops are supported
+since 0.260. Task sets, retained fault boundaries and Rust adapters remain outside
+that profile. Launch signal policies are also rejected. Admission checks all checked
 regions, including unused helpers. Unsupported programs receive `E_BACKEND`
 before the backend creates its output directory or files; ordinary checking may
 still succeed, and the Rust backend remains available.
@@ -771,5 +772,40 @@ inherit a cancellation request previously applied to the set.
 Private tests exercise ordinary and scripted host members, caller loans, queued,
 running and completed cancellation, faults, capacity rejection and retirement at
 fuel cuts and quotas 1, 3 and unbounded. These tests use private callbacks: checked
-LLVM task-set programs still receive `E_BACKEND`. Retained loops and generated set
-lowering are the next integration step. Rust remains the default backend.
+LLVM task-set programs still receive `E_BACKEND`. Retained loops are added in 0.260;
+generated set lowering is the next integration step. Rust remains the default backend.
+
+
+## Retained loops (0.260)
+
+Loops may now retain an LLVM control across its existing `await`, `run`, `yield`,
+cold-task, spawned-task, cancellation and scripted-host operations. This includes
+synchronous callers that reach an async operation through a helper. A repeated
+inline call reuses its by-value child frame only after the previous call has
+delivered and retired; spawned children keep their arena storage and join rules.
+
+Loop entry and `again` evaluate every parameter expression before resetting local
+bindings and path facts. The whole parameter transfer finishes in the selected
+callback. No temporary handle array or LLVM SSA value is kept across a suspension.
+Outer bindings retain their state, and ordinary per-iteration loans end at their
+checked last uses. A restart adds no scheduler handoff or source tick.
+
+Expanded synchronous helpers may introduce internal nested loops into a retained
+caller. Their selected completion transfers payloads, sets the caller's path fact
+and resumes the corresponding outer continuation. Nested states and inline child
+metadata use the same recursive instruction inventory. Source fault locations and
+fuel charges, including skipped guards, retain the existing execution semantics.
+
+```sh
+./bin/tellurc build playground/llvm_async_loops.tellur playground/manifest.json --backend llvm --out /tmp/tellur-async-loops
+/tmp/tellur-async-loops 0 false
+/tmp/tellur-async-loops 3 false
+/tmp/tellur-async-loops 3 true
+```
+
+The first run emits `left`, `right`, `0`; the second emits `right`, `left`, `3`.
+The third faults with `iteration failed` in its third child invocation.
+Authored nested loops and reference-bearing loop parameters keep their checker
+restrictions. Retained supervision/recovery, fault boundaries and constructors,
+task-set source lowering, launch signals and Rust adapters remain gated. Rust is
+the default backend until parity.

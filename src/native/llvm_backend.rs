@@ -270,6 +270,22 @@ fn reaches_retained(i: &Instruction, names: &BTreeSet<String>) -> bool {
         _ => false,
     }
 }
+// The same recursive inventory drives state planning, inline child metadata and
+// cycle checks. A nested call must not disappear from any of those three views.
+fn retained_instructions(code: &[Instruction]) -> Vec<&Instruction> {
+    fn append<'a>(code: &'a [Instruction], out: &mut Vec<&'a Instruction>) {
+        for instruction in code {
+            out.push(instruction);
+            if let Action::Loop { body, .. } = &instruction.action {
+                append(body, out);
+            }
+        }
+    }
+    let mut out = vec![];
+    append(code, &mut out);
+    out
+}
+
 fn resumable_controls(program: &CheckedProgram) -> Result<BTreeMap<String, usize>> {
     let mut names = program
         .regions()
@@ -301,7 +317,7 @@ fn resumable_controls(program: &CheckedProgram) -> Result<BTreeMap<String, usize
     let mut edges = vec![vec![]; result.len()];
     let mut incoming = vec![0usize; result.len()];
     for region in program.regions().filter(|r| result.contains_key(&r.name)) {
-        for instruction in &region.code {
+        for instruction in retained_instructions(&region.code) {
             if let Some(target) = retained_target(instruction, &result) {
                 edges[result[&region.name]].push(result[target]);
                 incoming[result[target]] += 1;
@@ -345,7 +361,22 @@ fn retained_supported(
         | Action::Emit(..)
         | Action::Fault(..)
         | Action::Exit(..) => supported(i, types, primitive_types, manifest),
-        Action::Complete { unwind: None, .. } => supported(i, types, primitive_types, manifest),
+        Action::Complete { .. } | Action::Again { .. } => {
+            supported(i, types, primitive_types, manifest)
+        }
+        Action::Loop {
+            supervised: false,
+            parameters,
+            body,
+            ..
+        } => {
+            parameters
+                .iter()
+                .all(|(_, e)| expression_supported(e, types))
+                && body.iter().all(|i| {
+                    retained_supported(i, host_operation, types, primitive_types, manifest)
+                })
+        }
         Action::Decide {
             operation:
                 Operation::Run(_)
@@ -376,6 +407,66 @@ fn retained_supported(
 }
 
 #[derive(Clone)]
+struct RetainedLoopTarget {
+    body: u32,
+    complete: u32,
+    parameters: Vec<Id>,
+    local_slots: Vec<Id>,
+    local_atoms: Vec<Id>,
+}
+struct RetainedPlan<'a> {
+    code: Vec<&'a Instruction>,
+    next: BTreeMap<Id, u32>,
+    loops: BTreeMap<Id, RetainedLoopTarget>,
+}
+impl<'a> RetainedPlan<'a> {
+    fn new(code: &'a [Instruction]) -> Self {
+        let flat = retained_instructions(code);
+        let states = flat
+            .iter()
+            .enumerate()
+            .map(|(n, i)| (i.id, (n + 1) as u32))
+            .collect::<BTreeMap<_, _>>();
+        let mut plan = Self {
+            code: flat,
+            next: BTreeMap::new(),
+            loops: BTreeMap::new(),
+        };
+        plan.block(code, &states);
+        plan
+    }
+    fn block(&mut self, code: &[Instruction], states: &BTreeMap<Id, u32>) {
+        for (index, instruction) in code.iter().enumerate() {
+            // A checked block cannot fall through its end. In particular a loop
+            // body must exit, restart or complete its expanded helper.
+            let next = code.get(index + 1).map_or(u32::MAX, |i| states[&i.id]);
+            self.next.insert(instruction.id, next);
+            if let Action::Loop {
+                id,
+                parameters,
+                local_slots,
+                local_atoms,
+                body,
+                ..
+            } = &instruction.action
+            {
+                self.loops.insert(
+                    *id,
+                    RetainedLoopTarget {
+                        body: body.first().map_or(u32::MAX, |i| states[&i.id]),
+                        complete: next,
+                        parameters: parameters.iter().map(|(id, _)| *id).collect(),
+                        local_slots: local_slots.clone(),
+                        local_atoms: local_atoms.clone(),
+                    },
+                );
+                self.block(body, states);
+            }
+        }
+    }
+}
+
+#[derive(Clone)]
 struct LoopTarget {
     restart: String,
     complete: String,
@@ -396,6 +487,7 @@ struct Emitter {
     resumables: BTreeMap<String, usize>,
     descriptors: Vec<String>,
     inline_children: BTreeMap<Id, (usize, usize, usize)>,
+    retained_loops: BTreeMap<Id, RetainedLoopTarget>,
     resume_next: u32,
     delivery_pc: u32,
     globals: String,
@@ -865,8 +957,10 @@ impl Emitter {
         self.retained = true;
         self.current_descriptor = self.resumables[&region.name];
         self.inline_children.clear();
+        let plan = RetainedPlan::new(&region.code);
+        self.retained_loops = plan.loops.clone();
         let mut children = vec![];
-        for instruction in &region.code {
+        for &instruction in &plan.code {
             if let Some(name) = retained_target(instruction, &self.resumables) {
                 let target = self.controls[name].0;
                 let descriptor = self.resumables[name];
@@ -905,7 +999,7 @@ impl Emitter {
         }
         let state = self.value("load i32, ptr %pc");
         let mut cases = "i32 0, label %initial".to_owned();
-        for (pc, instruction) in region.code.iter().enumerate() {
+        for (pc, &instruction) in plan.code.iter().enumerate() {
             write!(cases, "\ni32 {}, label %state_{}", pc + 1, pc + 1).unwrap();
             if self.async_host_leaf(instruction)
                 || self.inline_children.contains_key(&instruction.id)
@@ -920,7 +1014,7 @@ impl Emitter {
                 write!(
                     cases,
                     "\ni32 {}, label %delivery_{}",
-                    region.code.len() + pc + 1,
+                    plan.code.len() + pc + 1,
                     pc + 1
                 )
                 .unwrap();
@@ -934,18 +1028,14 @@ impl Emitter {
             let value = self.value(format!("load i64, ptr {ptr}"));
             self.store(parameter.id, &value);
         }
-        self.line(if region.code.is_empty() {
+        self.line(if plan.code.is_empty() {
             "br label %invalid"
         } else {
             "br label %state_1"
         });
-        for (pc, instruction) in region.code.iter().enumerate() {
-            self.resume_next = if pc + 1 == region.code.len() {
-                u32::MAX
-            } else {
-                (pc + 2) as u32
-            };
-            self.delivery_pc = (region.code.len() + pc + 1) as u32;
+        for (pc, &instruction) in plan.code.iter().enumerate() {
+            self.resume_next = plan.next[&instruction.id];
+            self.delivery_pc = (plan.code.len() + pc + 1) as u32;
             self.line(format!("state_{}:", pc + 1));
             self.instructions(std::slice::from_ref(instruction));
             self.line(format!(
@@ -981,6 +1071,7 @@ impl Emitter {
         self.body
             .insert_str(entry, &std::mem::take(&mut self.allocations));
         self.retained = false;
+        self.retained_loops.clear();
         let size = frame_size(index);
         let align = frame_align(index);
         let prefix = if children.is_empty() {
@@ -1046,6 +1137,28 @@ impl Emitter {
         } else {
             self.line("ret void");
         }
+    }
+    fn select_resume(&mut self, state: u32) {
+        self.line(format!("store i32 {state}, ptr %pc\nret i32 4"));
+    }
+    fn restart_retained_loop(&mut self, target: Id, values: Vec<String>) {
+        let target = self.retained_loops[&target].clone();
+        debug_assert_eq!(values.len(), target.parameters.len());
+        // All arguments are already evaluated. Reset and transfer before returning
+        // from this callback: no handle buffer or LLVM SSA value survives a park.
+        for slot in target.local_slots {
+            self.release(slot);
+        }
+        for atom in target.local_atoms {
+            self.line(format!(
+                "store i1 false, ptr %a{}",
+                self.layout.atoms[&atom]
+            ));
+        }
+        for (slot, value) in target.parameters.into_iter().zip(values) {
+            self.store(slot, &value);
+        }
+        self.select_resume(target.body);
     }
     fn instructions(&mut self, code: &[Instruction]) {
         for i in code {
@@ -1366,11 +1479,25 @@ impl Emitter {
                     }
                     self.line(format!("store i1 true, ptr %a{}", self.layout.atoms[atom]));
                     if let Some(target) = unwind {
-                        let target = self.loops[target].clone();
-                        self.unwind(target.scope_depth);
-                        self.line(format!("br label %{}", target.complete));
+                        if self.retained {
+                            self.select_resume(self.retained_loops[target].complete);
+                        } else {
+                            let target = self.loops[target].clone();
+                            self.unwind(target.scope_depth);
+                            self.line(format!("br label %{}", target.complete));
+                        }
                         terminal = true;
                     }
+                }
+                Action::Loop { id, parameters, .. } if self.retained => {
+                    let values = parameters.iter().map(|(_, e)| self.expr(e)).collect();
+                    self.restart_retained_loop(*id, values);
+                    terminal = true;
+                }
+                Action::Again { target, args } if self.retained => {
+                    let values = args.iter().map(|e| self.expr(e)).collect();
+                    self.restart_retained_loop(*target, values);
+                    terminal = true;
                 }
                 Action::Loop {
                     id,
@@ -1543,6 +1670,7 @@ impl CheckedProgram {
             resumables,
             descriptors: vec![],
             inline_children: BTreeMap::new(),
+            retained_loops: BTreeMap::new(),
             resume_next: 0,
             delivery_pc: 0,
             globals: String::new(),
@@ -1742,7 +1870,7 @@ mod tests {
             .unwrap()
             .extend(host["primitives"].as_array().unwrap().iter().cloned());
         let manifest = crate::manifest::Manifest::from_json(&manifest.to_string()).unwrap();
-        for mode in 0..5 {
+        for mode in 0..7 {
             let source = r#"
 async control child(bool fail, ref mutable string text) exits done faults {
     yield;delta fail {true=>bad,false=>good}
@@ -1764,9 +1892,36 @@ outcome result {@exit 0 done}
                     "cancel pending;cancel pending;auto moved=move pending;",
                 ),
             };
-            let source = if mode >= 3 {
+            let source = if (3..=4).contains(&mode) {
                 source.replace("[good]:deref text=", "[good]:delta await tick(\"quota\") {ticked {string response}=>ready,cancelled=>stopped}[ready|stopped]:deref text=")
                     .replace("cancel pending;cancel pending;", if mode==3 {""} else {"yield;yield;yield;cancel pending;cancel pending;"})
+            } else {
+                source
+            };
+            let source = if mode >= 5 {
+                let body = r#"
+async control child(bool fail, ref mutable string text) exits done faults {
+    yield;delta fail {true=>bad,false=>good}
+    [bad]:fault "loop quota child failure";
+    [good]:deref text=concat(clone(text),"!");exit done;
+}
+async control startup(bool fail) exits done faults {
+    mutable string text="caller";
+    loop turn(bool first=true) {
+        auto pending=defer child(fail && !first,borrow mutable text);emit("captured");await pending;
+        yield;delta first {true=>repeat,false=>finished}
+        [repeat]:again turn(false);
+        [finished]:emit(borrow text);exit done;
+    }
+}
+control main(bool fail) exits result faults {forward run startup(fail);}
+outcome result {@exit 0 done}
+"#;
+                if mode == 6 {
+                    body.replace("defer child", "spawn child")
+                } else {
+                    body.into()
+                }
             } else {
                 source
             };
@@ -1787,8 +1942,8 @@ outcome result {@exit 0 done}
                     let mut expected = vec![];
                     for fail in [false, true] {
                         let scenario = directory.join(format!("{fail}.json"));
-                        fs::write(&scenario,serde_json::json!({"entry":"main","arguments":[{"kind":"bool","value":fail}],"calls":if mode>=3 {vec![serde_json::json!({"operation":"tick","outcome":"ticked","fields":[{"kind":"string","value":"quota"}],"waits":7})]} else {vec![]}}).to_string()).unwrap();
-                        for fuel in 0..=36 {
+                        fs::write(&scenario,serde_json::json!({"entry":"main","arguments":[{"kind":"bool","value":fail}],"calls":if (3..=4).contains(&mode) {vec![serde_json::json!({"operation":"tick","outcome":"ticked","fields":[{"kind":"string","value":"quota"}],"waits":7})]} else {vec![]}}).to_string()).unwrap();
+                        for fuel in 0..=if mode >= 5 { 64 } else { 36 } {
                             let out = Command::new(&rust)
                                 .arg("--scenario")
                                 .arg(&scenario)

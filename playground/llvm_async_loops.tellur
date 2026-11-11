@@ -1,0 +1,59 @@
+// Each iteration reuses the same inline child frame after its earlier completion.
+async control echo(string text, bool fail) exits ready { string text } faults {
+    yield;
+    delta fail {
+        true => failed,
+        false => finished
+    }
+
+    [failed]: fault "iteration failed";
+    [finished]: exit ready { text };
+}
+
+async control swap(u32 limit, bool fail) exits swapped {
+        string first,
+        string second,
+        u32 visited
+    } faults
+{
+    mutable u32 visited = 0;
+    loop turn(u32 count = 0, string first = "left", string second = "right") {
+        delta count < limit {
+            true => more,
+            false => finished
+        }
+
+        [finished]: exit swapped { first, second, visited };
+        [more]:
+            delta await echo(move first, fail && count == 2) {
+                ready { string returned } => echoed
+            }
+        [echoed]:
+            delta checked_add(count, 1) {
+                sum { u32 next } => incremented,
+                overflow => overflow
+            }
+
+        [overflow]: fault "counter overflow";
+        [incremented]:
+            visited = next;
+            yield;
+            again turn(next, second, returned);
+    }
+}
+
+control main(u32 limit, bool fail) exits result faults {
+    delta run swap(limit, fail) {
+        swapped { string first, string second, u32 visited } => swapped
+    }
+
+    [swapped]:
+        emit(first);
+        emit(second);
+        emit(u32_text(visited));
+        exit done;
+}
+
+outcome result {
+    @exit 0 done
+}

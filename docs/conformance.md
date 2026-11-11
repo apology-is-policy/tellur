@@ -6582,3 +6582,22 @@ cases and frontend/default suites reuse their recorded 0.258 evidence; this is a
 scoped validation checkpoint. Source LLVM task sets remain rejected before output.
 Reference/roadmap, compiler/LSP and extension versions advance together. Detailed
 release evidence is maintained in `work/tellur-0.259-verification.json`.
+
+
+## 0.260 — Retained LLVM loops (B1.4k)
+
+Five generated differential matrices cover owned loop parameter swaps, path-fact
+resets, outer updates, nested awaits and faults, repeated cold/spawned/inline frames
+with exclusive caller loans, scripted host readiness and nested expanded helper
+completions. A structural assertion verifies actual Complete/unwind targets in the
+expanded graph. A 100,000-fuel run under a 512 KiB native stack limit checks bounded
+iteration at O0/O2 before and after expansion. Success scenarios include their
+checked arithmetic calls; fault/fuel reports match the existing Rust backend.
+The generated quota matrix adds repeated cold/spawned loops at quotas1/3/unbounded.
+
+All LLVM cases and the feature quota cases are refreshed, together with manual/LSP
+checks. Unchanged frontend/default/runtime suites reuse recorded0.259 evidence.
+Task sets and unsupported retained scopes still fail before output creation.
+Compiler/LSP/extension versions, baseline sources, packaged/installed payloads,
+isolated editor execution and release examples are verified in the maintained
+`work/tellur-0.260-verification.json` record.

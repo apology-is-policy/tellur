@@ -1601,3 +1601,27 @@ Next: retained loop lowering and generated task-set drain/feeding examples, then
 retained fault/boundary/constructor integration, launch signals, parity/default,
 adapters, single binary, target packs and retirement. Rust stays default; no new
 language semantics or design decision is introduced by this private checkpoint.
+
+
+## B1.4k — retained LLVM loops (0.260)
+
+A recursive retained instruction plan assigns body successors and loop completion
+targets, and supplies the same nested call inventory to by-value frame metadata and
+cycle checks. Loop entry/restart evaluates all inputs, resets local slots/path facts
+and transfers parameters inside one callback. No callback-local argument buffer
+survives a suspension. Expanded helper completions resume their caller's continuation;
+repeated direct/run/cold awaits reset their child frame only after prior retirement.
+The original runtime and Rust backend are unchanged.
+
+Five generated matrices cover owned swaps and outer updates, nested awaits and
+fault fuel cuts, repeated cold/spawned/inline calls with exclusive caller loans,
+scripted host readiness, actual nested expanded-loop completions and long-running
+calls under a 512 KiB stack limit. Original/expanded O0/O2 reports match. The feature
+quota matrix also repeats cold/spawned children through loops at quotas1/3/unbounded.
+The new llvm_async_loops specimen runs with live checked arithmetic.
+
+Source task-set lowering is next using the private0.259 ABI and these retained
+loop states. Keep existing source set capture/result restrictions; follow with
+retained fault/boundary/constructor integration, signals, parity/default, adapters,
+single binary, target packs and retirement. Rust remains the default; no new
+language semantics or design fork is introduced.

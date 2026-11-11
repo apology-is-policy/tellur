@@ -2557,6 +2557,194 @@ control plain() exits done {emit("synchronous");exit done;}
     }
 
     #[test]
+    fn frontend_loops_preserve_owned_swaps_resets_nested_awaits_and_expanded_completion() {
+        let f = Fixture::new(include_str!("../playground/llvm_async_loops.tellur"));
+        let scenarios = [0, 1, 3].into_iter().flat_map(|limit| [false,true].map(move |fail|
+            json!({"entry":"main","arguments":[{"kind":"u32","value":limit},{"kind":"bool","value":fail}],"calls":(1..=limit).map(|n|json!({"operation":"checked_add","outcome":"sum","fields":[{"kind":"u32","value":n}]})).collect::<Vec<_>>() }))).collect::<Vec<_>>();
+        for scenario in &scenarios {
+            if scenario["arguments"][1]["value"] == false
+                || scenario["arguments"][0]["value"].as_u64().unwrap() < 3
+            {
+                successful_reference(&f, scenario);
+            }
+        }
+        lexical_matrix(
+            &f,
+            &scenarios,
+            &(0..=76).map(Some).chain([None]).collect::<Vec<_>>(),
+        );
+    }
+    #[test]
+    fn frontend_loops_reuse_cold_spawned_and_inline_frames_with_exclusive_caller_loans() {
+        let f = Fixture::new(
+            r#"
+async control append(ref mutable string text) exits done {
+    yield;deref text=concat(clone(text),"!");exit done;
+}
+control inline_append(ref mutable string text) exits done {forward run append(text);}
+async control repeat(ref mutable string text) exits done {
+    loop turn(u32 count=0) {
+        delta count<2 {true=>more,false=>finished}
+        [finished]:exit done;
+        [more]:
+            auto cold=defer append(text);await cold;
+            auto child=spawn append(text);cancel child;await child;
+            inline_append(text);
+            delta checked_add(count,1) {sum {u32 next}=>incremented,overflow=>bad}
+        [bad]:fault "counter";
+        [incremented]:again turn(next);
+    }
+}
+control main() exits done {
+    mutable string text="owner";run repeat(borrow mutable text);
+    text=concat(move text," joined");emit(text);exit done;
+}
+"#,
+        );
+        let scenario = json!({"entry":"main","arguments":[],"calls":(1..=2).map(|n|json!({"operation":"checked_add","outcome":"sum","fields":[{"kind":"u32","value":n}]})).collect::<Vec<_>>()});
+        let expected = successful_reference(&f, &scenario);
+        assert_eq!(
+            expected["events"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|e| e["kind"] == "emit")
+                .map(|e| e["message"].as_str().unwrap())
+                .collect::<Vec<_>>(),
+            ["owner!!!!!! joined"]
+        );
+        lexical_matrix(
+            &f,
+            &[scenario],
+            &(0..=85).map(Some).chain([None]).collect::<Vec<_>>(),
+        );
+    }
+    #[test]
+    fn frontend_loops_repeat_scripted_host_readiness_without_stale_child_state() {
+        let f = host_fixture(
+            r#"
+async control startup() exits done {
+    loop turn(u32 count=0) {
+        delta count<3 {true=>more,false=>finished}
+        [finished]:exit done;
+        [more]:delta await tick("loop") {ticked {string text}=>ticked}
+        [ticked]:emit(text);delta checked_add(count,1) {sum {u32 next}=>incremented,overflow=>bad}
+        [bad]:fault "counter";
+        [incremented]:again turn(next);
+    }
+}
+control main() exits done {forward run startup();}
+"#,
+        );
+        let scenarios=[0,1,7].map(|waits|json!({"entry":"main","arguments":[],"calls":(["first","second","third"].into_iter().enumerate().flat_map(|(n,label)|[host_call(label,waits),json!({"operation":"checked_add","outcome":"sum","fields":[{"kind":"u32","value":n+1}]})]).collect::<Vec<_>>()) }));
+        for scenario in &scenarios {
+            successful_reference(&f, scenario);
+        }
+        lexical_matrix(
+            &f,
+            &scenarios,
+            &(0..=65).map(Some).chain([None]).collect::<Vec<_>>(),
+        );
+    }
+    #[test]
+    fn frontend_loops_resume_nested_expanded_helpers_at_their_outer_continuation() {
+        let f = Fixture::new(
+            r#"
+async control leaf() exits done {yield;exit done;}
+control handoff() exits done {forward run leaf();}
+control identity(bool value) exits yes,no {
+    loop inner() {
+        delta value {true=>yes,false=>no}
+        [yes]:exit yes;
+        [no]:exit no;
+    }
+}
+control main() exits done {
+    loop outer(bool first=true) {
+        delta identity(first) {yes=>first,no=>later}
+        [first]:handoff();emit("first");again outer(false);
+        [later]:handoff();emit("second");exit done;
+    }
+}
+"#,
+        );
+        let checked = compile_file(
+            &f.source,
+            Manifest::from_json(&fs::read_to_string(&f.manifest).unwrap()).unwrap(),
+        )
+        .unwrap();
+        let expanded = checked.expanded("main").unwrap();
+        fn has_unwind(code: &[tellur::ir::Instruction]) -> bool {
+            code.iter().any(|i| match &i.action {
+                tellur::ir::Action::Complete {
+                    unwind: Some(_), ..
+                } => true,
+                tellur::ir::Action::Loop { body, .. } => has_unwind(body),
+                _ => false,
+            })
+        }
+        assert!(has_unwind(&expanded.region("main").unwrap().code));
+        let scenario = json!({"entry":"main","arguments":[],"calls":[]});
+        successful_reference(&f, &scenario);
+        lexical_matrix(
+            &f,
+            &[scenario],
+            &(0..=45).map(Some).chain([None]).collect::<Vec<_>>(),
+        );
+    }
+
+    #[test]
+    fn frontend_loops_keep_native_stack_bounded_through_repeated_nested_calls() {
+        let f = Fixture::new(
+            r#"
+async control child() exits done {yield;exit done;}
+async control spin() exits done {
+    loop turn(bool state=true) {
+        await child();
+        delta state {true=>yes,false=>no}
+        [yes]:again turn(false);
+        [no]:again turn(true);
+    }
+}
+control main() exits result {forward run spin();}
+outcome result {@exit 0 done}
+"#,
+        );
+        let scenario = f.root.join("scenario.json");
+        fs::write(
+            &scenario,
+            json!({"entry":"main","arguments":[],"calls":[]}).to_string(),
+        )
+        .unwrap();
+        for expanded in [false, true] {
+            for opt in [0, 2] {
+                build_pair(&f, expanded, opt);
+                let run = |backend| {
+                    Command::new("/bin/sh")
+                        .args([
+                            "-c",
+                            "ulimit -s 512 || exit 99; exec \"$@\"",
+                            "tellur-retained-loop-stack",
+                        ])
+                        .arg(f.root.join(format!("{backend}-{opt}")))
+                        .arg("--scenario")
+                        .arg(&scenario)
+                        .args(["--fuel", "100000"])
+                        .output()
+                        .unwrap()
+                };
+                let a = run("llvm");
+                let b = run("rust");
+                assert_eq!(a.status.code(), Some(1), "{a:?}");
+                assert_eq!(a.status.code(), b.status.code());
+                assert_eq!(a.stdout, b.stdout);
+                assert_eq!(a.stderr, b.stderr);
+                assert!(String::from_utf8_lossy(&a.stderr).contains("E_FUEL"));
+            }
+        }
+    }
+
+    #[test]
     fn frontend_cold_tasks_preserve_capture_order_nested_owners_and_guarded_faults() {
         let f = Fixture::new(
             r#"
@@ -2887,7 +3075,6 @@ pub async control echo(string text) exits ready {string result} {yield;exit read
     fn retained_operations_nested_in_synchronous_scopes_are_gated_before_output() {
         let prefix = "async control leaf() exits done {yield;exit done;} control wrapper() exits done {forward run leaf();}";
         for main in [
-            "control main() exits result {loop L(){wrapper();exit done;}} outcome result {@exit 0 done}",
             "control main() exits result {fault boundary {wrapper();exit done;} contingency [] {escalate;}} outcome result {@exit 0 done}",
         ] {
             let f = Fixture::new(&format!("{prefix}{main}"));
@@ -3175,7 +3362,7 @@ control main() exits done faults {{forward run startup();}}
         for source in [
             "struct ticket {u32 value;constructor(u32 input){run helper();self.value=input;}} async control helper() exits done {exit done;} control main() exits result {drop(ticket(1));exit done;} outcome result {@exit 0 done}",
             "async control work() exits done {yield;exit done;} async control startup() exits done {tasks<work> set=tasks();spawn work() into set;loop reap(tasks<work> pending=move set){delta await next pending {done=>next,empty=>empty} [next]:again reap(pending);[empty]:exit done;}} control main() exits result {forward run startup();} outcome result {@exit 0 done}",
-            "async control helper() exits done {loop L(){yield;exit done;}} control main() exits result {forward run helper();} outcome result {@exit 0 done}",
+            "async control helper() exits done {loop L(){fault boundary {yield;exit done;} contingency [] {escalate;}}} control main() exits result {forward run helper();} outcome result {@exit 0 done}",
         ] {
             let f = Fixture::new(source);
             let out = f.command("llvm", 0).output().unwrap();
