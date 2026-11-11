@@ -2,6 +2,9 @@ use super::*;
 
 fn context(host: &mut Host) -> Context<'_> {
     Context {
+        selected_frame: None,
+        program: None,
+        request: None,
         host,
         storage: FrameStorage::Owned(Frames::default()),
         frame: None,

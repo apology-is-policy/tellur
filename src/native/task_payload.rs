@@ -84,6 +84,8 @@ pub(super) fn retire_tasks<'a>(
 /// settle the task: the owner's obligation survives until delivery or unwind.
 #[derive(Debug)]
 pub struct QueuedTask {
+    #[cfg(any(test, feature = "runtime-abi"))]
+    pub(crate) abi: Option<super::super::abi::Invocation>,
     binding: TaskBinding,
     wait: Option<WaitId>,
     started_handle: bool,
@@ -331,6 +333,8 @@ impl Activation {
         }
         let (task, wait) = host.tasks.queue_await(self.owner, producer.name)?;
         Ok(QueuedTask {
+            #[cfg(any(test, feature = "runtime-abi"))]
+            abi: None,
             binding: TaskBinding {
                 registry: self.registry.clone(),
                 owner: self.owner,
@@ -397,6 +401,8 @@ impl Activation {
             unreachable!()
         };
         Ok(QueuedTask {
+            #[cfg(any(test, feature = "runtime-abi"))]
+            abi: None,
             binding,
             wait: None,
             started_handle: true,
@@ -425,6 +431,8 @@ impl Activation {
             unreachable!()
         };
         Ok(QueuedTask {
+            #[cfg(any(test, feature = "runtime-abi"))]
+            abi: None,
             binding,
             wait: Some(wait),
             started_handle: false,

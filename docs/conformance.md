@@ -6458,3 +6458,17 @@ source-fault versus fuel reports, cold/suspended/unadopted stop, real resource
 adoption/disposal and independent roots sharing a slot arena. Reusing one retired
 root's slots cannot rebind the other root's live storage. These are runtime callback
 checks; generated async source and task scheduling remain gated.
+
+
+### B1.4c retained invocation integration (0.252)
+
+Seven private ABI matrices use the production Machine/Contexts and source driver.
+Nested inline children preserve buffers/origins, parent owner/domain identity and
+one-use delivery; repeated physical storage gets a fresh invocation. Every relevant
+fuel cut and fault path matches equivalent Rust callbacks under three quota
+partitions. Real resources verify normal adoption, fault disposal and administrative
+stop while queued, suspended or completed but unadopted. Children retire before
+parent suppliers, and unrelated owners survive. Invalid physical layouts, foreign
+context identities and malformed callback steps reject without fabricated outcomes.
+Existing generated Rust source-scheduler and LLVM synchronous differential checks
+cover the shared driver extraction and private runtime packaging configuration.

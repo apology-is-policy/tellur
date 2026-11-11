@@ -451,7 +451,7 @@ then compiles `program.o` and links `OUTPUT` with its embedded LLVM/LLD 22.1.8.
 Path guards are LLVM branches. Runtime faults retain Tellur source provenance;
 native debugger information is not yet emitted.
 
-The distributed 0.251 compiler includes the `llvm` feature. When building the
+The distributed 0.252 compiler includes the `llvm` feature. When building the
 compiler from source, enable it and set `LLVM_SYS_221_PREFIX` to the static pinned
 LLVM/LLD installation, as described in the repository README. A compiler built
 without that feature reports a clear error for `--backend llvm`.
@@ -506,3 +506,32 @@ Direct-await children sharing the original invocation/domain, generated checked-
 resume functions and source scheduling admission still follow. Existing LLVM task,
 async host, adapter and signal gates remain intact. The default Rust backend and
 language ownership, origin, cancellation and fault rules are unchanged.
+
+
+## Retained invocations and inline children (0.252)
+
+Private ABI callbacks can execute as existing runtime activations. A descriptor
+fixes the callback, physical layout and by-value child offsets. Source slots remain
+in the shared stable arena; a callback borrows its existing activation's identity
+and host only while selected. The runtime owns temporary values and outcomes across
+returns. Initial argument handles arrive once, and child delivery supplies one
+outcome handle for ordinary payload routing before the next source instruction.
+
+The callback reports one checked transition: continue, yield, direct await, normal
+completion or failure. Direct await uses the existing queued invocation and wait,
+original parent owner and owning-domain membership. The existing source scheduler
+performs the await handoff before child admission and preserves yield order and
+administrative result delivery. No second scheduler or independent child root is
+introduced. A lifetime covers the entire physical root frame and its inline children;
+layout checks reject invalid extents, alignment and overlapping child storage.
+
+Normal and emergency retirement drop parked ABI borrowers before source slots and
+resource owners. Failed or stopped children settle before parent retirement; stopped
+work never runs a normal continuation. Completed by-value storage can be initialized
+for a later invocation only after the original child's consuming delivery.
+
+These are private callbacks under the actual runtime, not yet emitted from checked
+async source. The descriptors still originate inside the runtime. Generated LLVM
+metadata, frame layouts and resume functions are next, followed by cold tasks and
+staged task/cancellation/host integration. LLVM async, adapter and signal admission
+remains gated, and Rust remains the default backend.

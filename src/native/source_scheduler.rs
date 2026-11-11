@@ -36,11 +36,40 @@ fn drive_source(
     host: &mut Host,
     args: Vec<V>,
     control: &'static Control,
-    mut quota: impl FnMut() -> usize,
+    quota: impl FnMut() -> usize,
 ) -> R<Completion> {
     let mut contexts = Contexts::new(host);
     contexts.source_checked = true;
     let root = contexts.start_entry(control, args)?;
+    drive_contexts(contexts, root, quota)
+}
+#[cfg(any(test, feature = "runtime-abi"))]
+pub unsafe fn run_abi_entry<T>(
+    host: &mut Host,
+    args: Vec<V>,
+    layout: &'static super::super::super::abi::InvocationLayout,
+    program: &mut T,
+) -> R<Completion> {
+    unsafe { drive_abi(host, args, layout, program, || usize::MAX) }
+}
+#[cfg(any(test, feature = "runtime-abi"))]
+pub(super) unsafe fn drive_abi<T>(
+    host: &mut Host,
+    args: Vec<V>,
+    layout: &'static super::super::super::abi::InvocationLayout,
+    program: &mut T,
+    quota: impl FnMut() -> usize,
+) -> R<Completion> {
+    let mut contexts = Contexts::new(host);
+    contexts.source_checked = true;
+    let root = unsafe { contexts.start_abi_entry(layout, args, program)? };
+    drive_contexts(contexts, root, quota)
+}
+fn drive_contexts(
+    mut contexts: Contexts<'_>,
+    root: ContextKey,
+    mut quota: impl FnMut() -> usize,
+) -> R<Completion> {
     let mut selected = Some(root.clone());
     let mut runnable = VecDeque::new();
     let mut handles: BTreeMap<TaskId, StartedTask> = BTreeMap::new();

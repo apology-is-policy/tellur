@@ -1125,6 +1125,7 @@ fn abi_library(target: &Path) -> Result<PathBuf> {
         .env("CARGO_PROFILE_DEV_DEBUG", "0")
         .env("CARGO_PROFILE_DEV_OPT_LEVEL", "2")
         .arg("build")
+        .arg("--features=runtime-abi")
         .arg("--locked")
         .arg("--manifest-path")
         .arg(directory.join("Cargo.toml"))

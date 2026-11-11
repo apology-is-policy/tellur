@@ -582,6 +582,8 @@ impl<'a> Contexts<'a> {
             self.values[frame.base() + slot] = Some(value);
         }
         let activation = Activation {
+            #[cfg(any(test, feature = "runtime-abi"))]
+            abi: task.abi.take(),
             frame,
             owner,
             registry: self.host.resources.identity.clone(),
@@ -1776,3 +1778,32 @@ mod carrier_alias_admission_tests;
 #[cfg(test)]
 #[path = "cold_await_admission_tests.rs"]
 mod cold_await_admission_tests;
+
+#[cfg(any(test, feature = "runtime-abi"))]
+impl<'a> Contexts<'a> {
+    /// Register a compiled ABI entry with stable caller-owned physical storage.
+    /// Safety: its callbacks obey the ABI contracts and interpret this layout as T.
+    /// The borrow covers this entire execution session, including nested children.
+    pub unsafe fn start_abi_entry<T>(
+        &mut self,
+        layout: &'static super::super::abi::InvocationLayout,
+        arguments: Vec<V>,
+        program: &'a mut T,
+    ) -> R<ContextKey> {
+        let invocation = unsafe { super::super::abi::Invocation::new(layout, program)? };
+        let key = self.start_entry(layout.control, arguments)?;
+        self.parked
+            .get_mut(&key.id)
+            .unwrap()
+            .machine
+            .stack
+            .last_mut()
+            .unwrap()
+            .abi = Some(invocation);
+        Ok(key)
+    }
+}
+
+#[cfg(test)]
+#[path = "abi_invocation_tests.rs"]
+mod abi_invocation_tests;

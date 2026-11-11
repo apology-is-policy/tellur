@@ -579,6 +579,9 @@ edition = \"2024\"
 [lib]
 path = \"lib.rs\"
 
+[features]
+runtime-abi = []
+
 [dependencies]
 serde = { version = \"1\", features = [\"derive\"] }
 serde_json = \"1\"

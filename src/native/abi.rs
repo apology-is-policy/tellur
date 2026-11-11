@@ -18,6 +18,11 @@ mod resume_tests;
 mod tests;
 
 pub struct Context<'a> {
+    // Existing Machine owns this activation's slots; the ABI borrows its identity
+    // only during the selected callback. RetainedState never stores this borrow.
+    selected_frame: Option<&'a frames::Frame>,
+    program: Option<ProgramFrame>,
+    request: Option<RequestedAwait>,
     host: &'a mut Host,
     storage: FrameStorage<'a>,
     frame: Option<frames::Frame>,
@@ -62,8 +67,13 @@ impl FrameStorage<'_> {
     }
 }
 impl Context<'_> {
+    fn frame_ref(&self) -> R<&frames::Frame> {
+        self.selected_frame
+            .or(self.frame.as_ref())
+            .ok_or_else(|| "E_NATIVE: missing ABI frame".into())
+    }
     fn local(&self, slot: usize) -> R<usize> {
-        let frame = self.frame.as_ref().ok_or("E_NATIVE: missing ABI frame")?;
+        let frame = self.frame_ref()?;
         let values = self.storage.values();
         values.require_storage(&values.local_storage(frame, slot)?)
     }
@@ -107,6 +117,9 @@ impl Context<'_> {
     ) -> R<R<Completion>> {
         self.host.enter(name)?;
         let mut child = Context {
+            selected_frame: None,
+            program: None,
+            request: None,
             host: &mut *self.host,
             storage: FrameStorage::Borrowed(self.storage.values_mut()),
             frame: None,
@@ -385,7 +398,7 @@ pub unsafe extern "C" fn tellur_rt_v1_ok(ctx: *mut Context<'_>) -> i32 {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tellur_rt_v1_frame(ctx: *mut Context<'_>, count: usize) {
     unsafe { &mut *ctx }.perform(|c| {
-        if c.frame.is_some() {
+        if c.frame.is_some() || c.selected_frame.is_some() {
             return Err("E_NATIVE: duplicate ABI frame admission".into());
         }
         c.frame = Some(c.storage.values_mut().enter(count)?);
@@ -949,6 +962,9 @@ struct RetainedState {
 impl RetainedState {
     fn select<'a>(self, host: &'a mut Host, values: &'a mut Frames) -> Context<'a> {
         Context {
+            selected_frame: None,
+            program: None,
+            request: None,
             host,
             storage: FrameStorage::Borrowed(values),
             frame: self.frame,
@@ -1197,6 +1213,303 @@ impl<'frame> RetainedRoot<'frame> {
     }
 }
 
+/// Private runtime descriptor for a typed LLVM resume frame. This Rust metadata
+/// stays inside the runtime; generated code sees only Context and integer handles.
+/// Each callback executes one checked transition and returns 0 error, 1 yield,
+/// 2 normal completion, 3 direct await, or 4 continue without a source handoff.
+/// Initial arguments arrive once; after child delivery the span contains one
+/// outcome handle. Other callbacks receive an empty span.
+pub struct InvocationLayout {
+    pub control: &'static execution::Control,
+    pub callback: ResumeCallback,
+    pub size: usize,
+    pub align: usize,
+    pub prefix: usize,
+    pub children: &'static [InlineChild],
+}
+pub struct InlineChild {
+    pub offset: usize,
+    pub layout: &'static InvocationLayout,
+}
+impl InvocationLayout {
+    fn validate(&self) -> R<()> {
+        if self.size == 0
+            || !self.align.is_power_of_two()
+            || self.prefix > self.size
+            || self.control.constructor
+            || !self.control.retained.is_empty()
+            || !std::ptr::fn_addr_eq(self.control.resume, resume_invocation as fn(_, _, _) -> _)
+            || self.control.parameters.iter().enumerate().any(|(i, slot)| {
+                *slot >= self.control.slots || self.control.parameters[..i].contains(slot)
+            })
+        {
+            return Err("E_NATIVE: invalid retained ABI invocation layout".into());
+        }
+        for (i, child) in self.children.iter().enumerate() {
+            let end = child
+                .offset
+                .checked_add(child.layout.size)
+                .ok_or("E_NATIVE: inline ABI frame extent overflow")?;
+            if child.layout.size == 0
+                || !child.layout.align.is_power_of_two()
+                || child.offset < self.prefix
+                || end > self.size
+                || child.layout.align > self.align
+                || child.offset % child.layout.align != 0
+                || self.children[..i].iter().any(|other| {
+                    child.offset < other.offset.saturating_add(other.layout.size)
+                        && other.offset < end
+                })
+            {
+                return Err("E_NATIVE: invalid inline ABI child layout".into());
+            }
+        }
+        Ok(())
+    }
+}
+#[derive(Clone, Copy)]
+struct ProgramFrame {
+    address: *mut u8,
+    layout: &'static InvocationLayout,
+}
+impl ProgramFrame {
+    fn child(self, index: usize) -> R<Self> {
+        self.layout.validate()?;
+        let child = self
+            .layout
+            .children
+            .get(index)
+            .ok_or("E_NATIVE: unknown inline ABI child")?;
+        child.layout.validate()?;
+        Ok(Self {
+            // Layout preflight proves the full child lies in the stable root frame.
+            address: unsafe { self.address.add(child.offset) },
+            layout: child.layout,
+        })
+    }
+}
+struct RequestedAwait {
+    child: ProgramFrame,
+    arguments: Vec<V>,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum InvocationPhase {
+    Cold,
+    Active,
+    Awaiting,
+    Complete,
+    Failed,
+}
+/// Owned ABI data attached to an existing runtime activation. Machine/Contexts
+/// retain all invocation, domain, task, source scheduling and retirement authority.
+/// No frame allocation or independent ownership root is created here.
+pub(crate) struct Invocation {
+    program: ProgramFrame,
+    state: Option<RetainedState>,
+    phase: InvocationPhase,
+    delivered: Vec<u64>,
+}
+impl std::fmt::Debug for Invocation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Invocation")
+            .field("control", &self.program.layout.control.name)
+            .field("phase", &self.phase)
+            .finish_non_exhaustive()
+    }
+}
+impl Invocation {
+    /// Safety: callbacks obey the ABI contract; physical storage must remain stable
+    /// and exclusively controlled by this session until all invocations retire.
+    pub(crate) unsafe fn new<T>(layout: &'static InvocationLayout, program: &mut T) -> R<Self> {
+        layout.validate()?;
+        if std::mem::size_of::<T>() < layout.size || std::mem::align_of::<T>() < layout.align {
+            return Err("E_NATIVE: ABI physical frame does not match its layout".into());
+        }
+        Ok(Self::at(ProgramFrame {
+            address: (program as *mut T).cast(),
+            layout,
+        }))
+    }
+    fn at(program: ProgramFrame) -> Self {
+        Self {
+            program,
+            state: Some(RetainedState {
+                frame: None,
+                destination: None,
+                values: vec![],
+                outcomes: vec![],
+                value_base: 0,
+                outcome_base: 0,
+                error: None,
+                result: None,
+                lexical: vec![],
+                next_lexical: 0,
+            }),
+            phase: InvocationPhase::Cold,
+            delivered: vec![],
+        }
+    }
+    fn step(
+        &mut self,
+        host: &mut Host,
+        values: &mut Frames,
+        activation: &execution::Activation,
+    ) -> R<execution::Step> {
+        let frame = activation.abi_frame(host, values)?;
+        if !std::ptr::eq(activation.abi_control(), self.program.layout.control)
+            || !matches!(self.phase, InvocationPhase::Cold | InvocationPhase::Active)
+        {
+            return Err("E_NATIVE: retained ABI invocation identity or phase differs".into());
+        }
+        let cold = self.phase == InvocationPhase::Cold;
+        let parameters = self.program.layout.control.parameters;
+        if cold
+            && parameters
+                .iter()
+                .any(|slot| values[frame.base() + slot].is_none())
+        {
+            return Err("E_NATIVE: missing admitted ABI argument".into());
+        }
+        let mut context = self.state.take().unwrap().select(host, values);
+        context.selected_frame = Some(frame);
+        context.program = Some(self.program);
+        let arguments = if cold {
+            parameters
+                .iter()
+                .map(|slot| {
+                    let value = context.storage.values_mut()[frame.base() + slot]
+                        .take()
+                        .unwrap();
+                    context.put(value)
+                })
+                .collect::<Vec<_>>()
+        } else {
+            std::mem::take(&mut self.delivered)
+        };
+        let tag = unsafe {
+            (self.program.layout.callback)(
+                &mut context,
+                self.program.address,
+                arguments.as_ptr(),
+                arguments.len(),
+            )
+        };
+        let request = context.request.take();
+        let mut result = if let Some(error) = &context.error {
+            Err(error.clone())
+        } else if !context.lexical.is_empty() {
+            Err("E_NATIVE: retained ABI has unfinished lexical work".into())
+        } else {
+            match (tag, request.is_some(), context.result.is_some()) {
+                (1, false, false) => Ok(execution::Step::Yield),
+                (4, false, false) => Ok(execution::Step::Continue),
+                (3, true, false) => Ok(execution::Step::Continue), // Queue after callback borrows end.
+                (2, false, true) => match context.result.take().unwrap() {
+                    value @ Completion::Outcome(_) => Ok(execution::Step::Complete(value)),
+                    _ => Err("E_NATIVE: retained ABI requires a normal completion".into()),
+                },
+                _ => Err("E_NATIVE: malformed retained ABI step".into()),
+            }
+        };
+        self.state = Some(RetainedState::park(context));
+        self.phase = if result.is_err() {
+            InvocationPhase::Failed
+        } else if tag == 2 {
+            InvocationPhase::Complete
+        } else {
+            InvocationPhase::Active
+        };
+        if result.is_ok()
+            && let Some(mut request) = request
+        {
+            // Shared queue admission checks original invocation, captures and wait
+            // identity. No child callback runs until the source await hands off.
+            result = activation
+                .queue_invocation(host, request.child.layout.control, &mut request.arguments)
+                .map(|mut task| {
+                    task.abi = Some(Self::at(request.child));
+                    self.phase = InvocationPhase::Awaiting;
+                    execution::Step::Await {
+                        task,
+                        deliver: deliver_invocation,
+                    }
+                });
+            if result.is_err() {
+                self.phase = InvocationPhase::Failed;
+            }
+        }
+        result
+    }
+}
+/// Runtime trampoline; the selected Machine already owns context/domain authority.
+pub fn resume_invocation(
+    host: &mut Host,
+    values: &mut Frames,
+    activation: &mut execution::Activation,
+) -> R<execution::Step> {
+    activation.abi_frame(host, values)?;
+    let mut invocation = activation
+        .abi
+        .take()
+        .ok_or("E_NATIVE: missing ABI invocation state")?;
+    let result = invocation.step(host, values, activation);
+    activation.abi = Some(invocation);
+    result
+}
+fn deliver_invocation(
+    activation: &mut execution::Activation,
+    values: &mut Frames,
+    completion: Completion,
+) -> R<()> {
+    // Machine has checked the original child/invocation/domain and adopted owners.
+    // The producer's frame has retired; no source tick or callback occurs here.
+    values.frame_values(activation.abi_frame_for_delivery())?;
+    let invocation = activation
+        .abi
+        .as_mut()
+        .ok_or("E_NATIVE: missing ABI delivery state")?;
+    if invocation.phase != InvocationPhase::Awaiting || !invocation.delivered.is_empty() {
+        return Err("E_NATIVE: duplicate or unexpected ABI child delivery".into());
+    }
+    let state = invocation.state.as_mut().unwrap();
+    let outcome = completion.outcome()?;
+    let handle = state.outcome_base + state.outcomes.len() as u64 + 1;
+    // Capacity was checked before the await; the suspended caller cannot allocate.
+    state.outcomes.push(Some(outcome));
+    invocation.delivered.push(handle);
+    invocation.phase = InvocationPhase::Active;
+    Ok(())
+}
+/// Request one direct by-value child. The descriptor fixes its offset/layout;
+/// generated code cannot redirect delivery to an unrelated frame or invocation.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_await(
+    ctx: *mut Context<'_>,
+    child: usize,
+    args: *const u64,
+    count: usize,
+) {
+    unsafe { &mut *ctx }.perform(|c| {
+        if c.request.is_some() || c.result.is_some() {
+            return Err("E_NATIVE: duplicate ABI continuation request".into());
+        }
+        let program = c
+            .program
+            .ok_or("E_NATIVE: await requires a selected ABI invocation")?
+            .child(child)?;
+        if count != program.layout.control.parameters.len() {
+            return Err("E_NATIVE: invalid ABI child arity".into());
+        }
+        c.require_outcome_room()?;
+        let arguments = c.take_many(unsafe { slice(args, count) })?;
+        c.request = Some(RequestedAwait {
+            child: program,
+            arguments,
+        });
+        Ok(())
+    })
+}
+
 pub type Callback = unsafe extern "C" fn(*mut Context<'_>, *const u64, usize);
 
 /// Collection operations use the same stable arena and element-reference
@@ -1286,6 +1599,9 @@ pub unsafe extern "C" fn tellur_rt_v1_call(
         let outcome = {
             c.host.enter(name)?;
             let mut child = Context {
+                selected_frame: None,
+                program: None,
+                request: None,
                 host: &mut *c.host,
                 storage: FrameStorage::Borrowed(c.storage.values_mut()),
                 frame: None,
@@ -1322,7 +1638,7 @@ pub unsafe extern "C" fn tellur_rt_v1_construct_call(
     slot: usize,
 ) {
     unsafe { &mut *ctx }.perform(|c| {
-        let frame = c.frame.as_ref().ok_or("E_NATIVE: missing ABI frame")?;
+        let frame = c.frame_ref()?;
         let destination = c.storage.values().local_storage(frame, slot)?;
         let root = c.storage.values().require_storage(&destination)?;
         if c.storage.values()[root].is_some() {
@@ -1332,6 +1648,9 @@ pub unsafe extern "C" fn tellur_rt_v1_construct_call(
         let values = c.take_many(unsafe { slice(args, count) })?;
         c.host.enter(name)?;
         let mut child = Context {
+            selected_frame: None,
+            program: None,
+            request: None,
             host: &mut *c.host,
             storage: FrameStorage::Borrowed(c.storage.values_mut()),
             frame: None,
@@ -1375,6 +1694,9 @@ pub unsafe extern "C" fn tellur_rt_v1_lexical_begin(
     fault: usize,
 ) -> u64 {
     unsafe { &mut *ctx }.perform(|c| {
+        if c.program.is_some() {
+            return Err("E_NATIVE: retained ABI lexical boundaries are not admitted".into());
+        }
         let name = unsafe { text(name, len)? };
         if c.result.is_some() {
             return Err("E_NATIVE: lexical boundary after completion".into());
@@ -1624,6 +1946,9 @@ unsafe fn launch_program(
             let index = entries.iter().position(|e| std::ptr::eq(e, entry)).unwrap();
             host.enter(entry.display_name)?;
             let mut context = Context {
+                selected_frame: None,
+                program: None,
+                request: None,
                 host,
                 storage: FrameStorage::Owned(Frames::default()),
                 frame: None,

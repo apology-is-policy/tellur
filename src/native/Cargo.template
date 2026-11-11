@@ -3,6 +3,8 @@ name = "path_generated"
 version = "0.1.0"
 edition = "2024"
 [workspace]
+[features]
+runtime-abi = []
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

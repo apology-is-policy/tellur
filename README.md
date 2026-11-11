@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.251.0** implements the v0.1 checked core and the current language
+Compiler release **0.252.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -21,6 +21,11 @@ Release 0.222 added dynamic task sets. `tasks<producer>` holds any number of
 spawned children of one async control. `spawn producer(..) into set;` adds a member,
 `delta await next set { ..., empty => ... }` joins members in completion order, and
 `count(borrow set)` bounds how many run at once.
+
+Release 0.252 connects retained ABI callbacks to the existing task runtime and source
+scheduler. Direct children occupy fields of their parent's typed frame and retain
+original invocation, owning-domain and diagnostic authority. This private integration
+prepares generated LLVM async lowering; production admission remains synchronous.
 
 Release 0.251 adds the private runtime foundation for retained LLVM resume callbacks.
 Owned activation state survives callback returns while host and storage access is

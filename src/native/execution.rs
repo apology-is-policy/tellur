@@ -165,6 +165,8 @@ pub struct Control {
     pub resume: fn(&mut Host, &mut Frames, &mut Activation) -> R<Step>,
 }
 pub struct Activation {
+    #[cfg(any(test, feature = "runtime-abi"))]
+    pub(crate) abi: Option<super::abi::Invocation>,
     frame: Frame,
     owner: super::tasks::OwnerId,
     registry: std::sync::Arc<()>,
@@ -730,6 +732,8 @@ impl Machine {
             values[frame.base() + slot] = Some(value);
         }
         Ok(Activation {
+            #[cfg(any(test, feature = "runtime-abi"))]
+            abi: None,
             frame,
             owner,
             registry: host.resources.identity.clone(),
@@ -1174,7 +1178,9 @@ impl Machine {
                     self.require_finish_root(domains)?;
                 }
                 host.tasks.retire_owner(owner, abrupt)?;
-                let completed = self.stack.pop().unwrap();
+                let mut completed = self.stack.pop().unwrap();
+                #[cfg(any(test, feature = "runtime-abi"))]
+                drop(completed.abi.take());
                 values.retire(&completed.frame)?;
                 host.leave();
                 if let Some(parent) = self.stack.last_mut() {
@@ -1231,6 +1237,8 @@ impl Machine {
                 return Ok(());
             }
             let frame = self.stack.last_mut().unwrap();
+            #[cfg(any(test, feature = "runtime-abi"))]
+            drop(frame.abi.take());
             #[cfg(test)]
             if let Some(Pending::Adapter(operation)) = &frame.pending {
                 operation.require(host, values, frame, domains, &self.current)?;
@@ -1545,3 +1553,18 @@ pub use task_payload::{QueuedTask, TaskBinding};
 #[cfg(test)]
 #[path = "task_retirement_tests.rs"]
 mod task_retirement_tests;
+
+#[cfg(any(test, feature = "runtime-abi"))]
+impl Activation {
+    pub(crate) fn abi_frame<'a>(&'a self, host: &Host, values: &Frames) -> R<&'a Frame> {
+        self.require_task_host(host)?;
+        values.frame_values(&self.frame)?;
+        Ok(&self.frame)
+    }
+    pub(crate) fn abi_frame_for_delivery(&self) -> &Frame {
+        &self.frame
+    }
+    pub(crate) fn abi_control(&self) -> &'static Control {
+        self.control
+    }
+}
