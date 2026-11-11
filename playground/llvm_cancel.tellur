@@ -1,0 +1,41 @@
+// A request preserves the join obligation. This child has no cancellable host await.
+async control decorate(bool fail, ref mutable string text) exits done faults {
+    emit("decorator started");
+    yield;
+    delta fail {
+        true => failed,
+        false => ready
+    }
+    [failed]: fault "spawned decorator failed";
+    [ready]:
+        deref text = concat(clone(text), "!");
+        exit done;
+}
+async control observe(string text) exits done {
+    emit(text);
+    yield;
+    exit done;
+}
+async control prepare(bool fail, string input) exits ready { string text } faults {
+    mutable string text = input;
+    auto writer = spawn decorate(fail, borrow mutable text);
+    cancel writer;
+    cancel writer;
+    auto observer = spawn observe("observer started");
+    emit("cancellation requested");
+    await observer;
+    auto moved = move writer;
+    await moved;
+    exit ready { text };
+}
+control main(bool fail, string input) exits result faults {
+    delta run prepare(fail, input) {
+        ready { string text } => ready
+    }
+    [ready]:
+        emit(borrow text);
+        exit done { text };
+}
+outcome result {
+    @exit 0 done { string text }
+}

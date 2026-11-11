@@ -16,7 +16,7 @@ Compiler 0.246 adds synchronous tail loops and expanded loop completions.
 Compiler 0.247 adds synchronous declared constructors with direct destination delivery.
 Compiler 0.248 adds named synchronous boundaries and contingency settlement.
 Compiler 0.249 adds lexical boundaries, supervised recovery and process termination.
-Compiler 0.253 adds a bounded frontend async-frame profile; 0.254 adds cold control tasks. Compiler 0.256 adds spawned controls and consuming joins.
+Compiler 0.253 adds a bounded frontend async-frame profile; 0.254 adds cold control tasks. Compiler 0.256 adds spawned controls and consuming joins; 0.257 adds control cancellation requests.
 The default remains `--backend rust`. Both start from the same checked program;
 backend selection does not relax ownership, origins, outcomes or path rules.
 
@@ -46,8 +46,8 @@ parameters, borrowed results, carrier reborrows and indirect fields are supporte
 A separate bounded async profile admits `run`, direct `await` and `yield`, including
 synchronous callers that reach those controls. Cold control tasks support `defer`,
 local moves/option wrappers and consuming `await`. Spawned controls and consuming joins
-are supported since 0.256. Task sets,
-cancellation, async host operations, async loops/boundaries and adapters remain
+are supported since 0.256; control cancellation requests since 0.257. Task sets,
+async host operations, async loops/boundaries and adapters remain
 outside that profile. Launch signal policies are also rejected. Admission checks all checked
 regions, including unused helpers. Unsupported programs receive `E_BACKEND`
 before the backend creates its output directory or files; ordinary checking may
@@ -612,8 +612,8 @@ Both runs emit `captured` before `producer started`. The first returns `Tellur!`
 with status 0; the second reports the producer's source fault. The example retains
 an exclusive caller borrow through cold capture, a local move and a child yield.
 
-This is the bounded sequential cold-control profile. Spawn/join is added below; task sets,
-cancellation, async host producers and retained loops/boundaries/constructors still
+This is the bounded sequential cold-control profile. Spawn/join and cancellation are added below; task sets,
+async host producers and retained loops/boundaries/constructors still
 require their later integration checkpoints. By-value physical frame cycles remain
 rejected. The default backend and the language's ownership rules are unchanged.
 
@@ -670,7 +670,7 @@ keeps an exclusive caller borrow through the original consuming join.
 This profile admits the same payload types as the supported retained controls.
 Existing source restrictions still apply: an owner without a fault disposition
 cannot cross a spawned producer's handoff. Such an owner can be completed before
-yielding. Async host producers, cancellation, task sets, retained loops/boundaries/
+yielding. Cancellation is added below. Async host producers, task sets, retained loops/boundaries/
 constructors, Rust adapters and launch signals remain outside LLVM admission.
 
 The private runtime matrix uses one 4096-byte chunk for two spawned frames whose
@@ -686,3 +686,31 @@ Spawned join preflight checks the original producer/owner, unclaimed phase and
 completion-wait capacity before consuming its handle. Admission failure stays in
 the selected activation so ordinary unwind retires unselected siblings and their
 physical pins. It never escapes through a partially admitted source handoff.
+
+
+## Control cancellation (0.257)
+
+`cancel child;` requests cancellation of a started control through the existing
+runtime task binding. The request is sticky and reaches descendants, including
+those created later. It preserves the original handle and its consuming join,
+introduces no source handoff, and allocates no completion wait or physical frame.
+Repeated requests do not complete, retire or restart the child. Already completed
+children retain their ordinary outcome and result ownership until joined.
+
+The bounded LLVM profile currently admits control tasks without async host
+operations. These children continue to ordinary completion or fault despite the
+request. Observation at a host operation's `cancelled` alternative follows with
+async host lowering; no implicit interruption at `yield` or join is introduced.
+The [cancellation rules](async-execution.md#cancellation) remain the language contract.
+
+```sh
+./bin/tellurc build playground/llvm_cancel.tellur playground/manifest.json --backend llvm --out /tmp/tellur-cancel
+/tmp/tellur-cancel --json false Tellur
+/tmp/tellur-cancel --json true Tellur
+```
+
+The example requests cancellation twice before the writer runs, then joins both
+children. The first run returns `Tellur!`; the second reports the writer's ordinary
+source fault. Its exclusive caller loan remains live until join or fault settlement.
+Cancellation of sets, async host operations, retained loops/boundaries/constructors,
+adapters and launch signals remain outside this LLVM profile. Rust stays default.

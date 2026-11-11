@@ -1,8 +1,8 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.256.0 -->
+<!-- tellur-reference-version: 0.257.0 -->
 
-This manual describes **compiler 0.256.0**, including the current ownership model,
+This manual describes **compiler 0.257.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -19,7 +19,10 @@ and `yield` profile, preserving caller origins, fault reports and source fuel.
 Compiler 0.254 adds cold control tasks: `defer`, local moves/option wrappers and
 consuming `await`. See [LLVM cold tasks](reference/llvm-backend.md#cold-control-tasks-0254)
 for the cold profile. Compiler 0.256 connects the physical frame arena to
-[spawned controls and consuming joins](reference/llvm-backend.md#spawned-controls-and-consuming-joins-0256).
+[spawned controls and consuming joins](reference/llvm-backend.md#spawned-controls-and-consuming-joins-0256). Compiler 0.257 adds
+[bounded control cancellation](reference/llvm-backend.md#control-cancellation-0257),
+preserving joins and ordinary child completion. Async host cancellation observation
+requires the following host-operation checkpoint.
 Cancellation, task sets and asynchronous host operations remain later LLVM slices.
 
 Tellur is still experimental. When this manual and the compiler disagree, treat that
@@ -2964,7 +2967,7 @@ General expression-type hover remains unsupported.
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and broader spawn payloads (anonymous contracts and reference-bearing collections) remain planned; they are not executable features of 0.256.0.
+and broader spawn payloads (anonymous contracts and reference-bearing collections) remain planned; they are not executable features of 0.257.0.
 ## Contingency and supervised boundaries
 
 The [contingency reference](reference/contingency.md) specifies `@contingent`,

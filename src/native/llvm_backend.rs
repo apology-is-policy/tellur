@@ -12,6 +12,7 @@ declare i64 @tellur_rt_v1_defer(ptr, i64, ptr, i64, ptr, i64)
 declare void @tellur_rt_v1_await_task(ptr, i64, i64)
 declare void @tellur_rt_v1_spawn(ptr, i64, i64, ptr, i64)
 declare void @tellur_rt_v1_join(ptr, i64, i64)
+declare void @tellur_rt_v1_cancel(ptr, i64, i64, i64)
 declare void @tellur_rt_v1_invalid_resume(ptr)
 %compiled_control = type { ptr, i64, ptr, i64, i64, ptr, i64, i64, i64, i64, ptr, ptr, i64 }
 %compiled_child = type { i64, i64 }
@@ -247,7 +248,8 @@ fn reaches_retained(i: &Instruction, names: &BTreeSet<String>) -> bool {
             ..
         } => names.contains(name),
         Action::Decide {
-            operation: Operation::Defer(_) | Operation::Spawn(_) | Operation::Join(_),
+            operation:
+                Operation::Defer(_) | Operation::Spawn(_) | Operation::Join(_) | Operation::Cancel(_),
             ..
         } => true,
         Action::Supervise { boundary, .. } => names.contains(boundary),
@@ -341,7 +343,8 @@ fn retained_supported(
                 | Operation::Defer(_)
                 | Operation::AwaitTask(_)
                 | Operation::Spawn(_)
-                | Operation::Join(_),
+                | Operation::Join(_)
+                | Operation::Cancel(_),
             args,
             ..
         } => args.iter().all(|e| expression_supported(e, types)),
@@ -1229,6 +1232,27 @@ impl Emitter {
                     terminal = true;
                 }
                 Action::Decide {
+                    operation: Operation::Cancel(name),
+                    args,
+                    arms,
+                } if self.retained => {
+                    let value = self.expr(&args[0]);
+                    let producer = self.resumables[name];
+                    let slot = self.layout.slots[&arms[0].slots[0]];
+                    self.effect(format!(
+                        "call void @tellur_rt_v1_cancel(ptr %ctx, i64 {producer}, i64 {slot}, i64 {value})"
+                    ));
+                    self.line(format!(
+                        "store i1 true, ptr %a{}",
+                        self.layout.atoms[&arms[0].atom]
+                    ));
+                    self.line(format!(
+                        "store i32 {}, ptr %pc\nret i32 8",
+                        self.resume_next
+                    ));
+                    terminal = true;
+                }
+                Action::Decide {
                     operation: Operation::Yield,
                     arms,
                     ..
@@ -1653,7 +1677,7 @@ mod tests {
         let manifest =
             crate::manifest::Manifest::from_json(include_str!("../../playground/manifest.json"))
                 .unwrap();
-        for spawning in [false, true] {
+        for mode in 0..3 {
             let source = r#"
 async control child(bool fail, ref mutable string text) exits done faults {
     yield;delta fail {true=>bad,false=>good}
@@ -1667,10 +1691,13 @@ async control startup(bool fail) exits done faults {
 control main(bool fail) exits result faults {forward run startup(fail);}
 outcome result {@exit 0 done}
 "#;
-            let source = if spawning {
-                source.replace("defer child", "spawn child")
-            } else {
-                source.to_owned()
+            let source = match mode {
+                0 => source.to_owned(),
+                1 => source.replace("defer child", "spawn child"),
+                _ => source.replace("defer child", "spawn child").replace(
+                    "auto moved=move pending;",
+                    "cancel pending;cancel pending;auto moved=move pending;",
+                ),
             };
             let checked = crate::compile(&source, manifest.clone()).unwrap();
             for expanded in [false, true] {

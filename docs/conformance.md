@@ -6533,3 +6533,16 @@ faults before and after children complete. A two-sibling run consumes one physic
 Registry tests validate producer spans and separate internal types from display names.
 The checker still rejects undisposed owners across spawned handoffs; the resource
 fixture completes its file owner before yielding. Async host/cancel/set gates remain.
+
+
+### B1.4h bounded LLVM cancellation (0.257)
+
+Two generated matrices compare repeated cancellation of queued, yielded and
+completed control tasks, nested spawned descendants, ordinary completion/source
+faults, exclusive caller loans and every tested fuel cut at original/expanded O0/O2.
+The host-quota matrix adds cancelled spawned controls to its cold/spawned variants.
+A private matrix observes sticky and inherited flags, preserves the original
+owner buffer and physical leases until retirement, rejects foreign/invalid
+preflight without consuming handles, and admits cancellation with exhausted
+completion-wait space. Existing source task, fault-domain and resource policy is
+unchanged. Async host observation, task sets and launch signals remain LLVM-gated.

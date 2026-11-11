@@ -1,5 +1,5 @@
 use super::*;
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::mem::{align_of, offset_of, size_of};
 
 #[repr(C)]
@@ -19,8 +19,17 @@ struct Parent {
     pc: u32,
     mode: u32,
     waits: u32,
+    requests: u32,
 }
-thread_local! { static LEAF_CALLS: Cell<usize> = const { Cell::new(0) }; }
+thread_local! {
+    static LEAF_CALLS: Cell<usize> = const { Cell::new(0) };
+    static CANCELLATION: RefCell<Vec<(&'static str, bool)>> = const { RefCell::new(Vec::new()) };
+}
+unsafe fn observe_cancellation(c: *mut Context<'_>, stage: &'static str) {
+    let host = unsafe { &(*c).host };
+    let cancelled = host.task_cancelled();
+    CANCELLATION.with(|events| events.borrow_mut().push((stage, cancelled)));
+}
 unsafe fn tick(c: *mut Context<'_>, id: usize) -> bool {
     unsafe {
         tellur_rt_v1_tick(c, id, id, 1);
@@ -45,6 +54,7 @@ unsafe extern "C" fn leaf(c: *mut Context<'_>, p: *mut u8, args: *const u64, cou
         LEAF_CALLS.with(|n| n.set(n.get() + 1));
         let f = &mut *p.cast::<Leaf>();
         if f.pc == 0 {
+            observe_cancellation(c, "leaf");
             assert_eq!(count, 1);
             tellur_rt_v1_store(c, 0, std::ptr::null(), 0, *args);
             if !tick(c, 20) {
@@ -67,6 +77,7 @@ unsafe extern "C" fn child(c: *mut Context<'_>, p: *mut u8, args: *const u64, co
     unsafe {
         let f = &mut *p.cast::<Child>();
         if f.pc == 0 {
+            observe_cancellation(c, "child");
             assert_eq!(count, 2);
             tellur_rt_v1_store(c, 0, std::ptr::null(), 0, *args);
             tellur_rt_v1_store(c, 1, std::ptr::null(), 0, *args.add(1));
@@ -180,6 +191,49 @@ unsafe extern "C" fn parent(
                 fault(c, "parent after children");
                 return 0;
             }
+            if (f.mode == 6 && f.waits < 1) || (f.mode == 7 && f.waits < 4) {
+                f.waits += 1;
+                return 1;
+            }
+            if f.mode >= 5 && f.requests < 2 {
+                let value = tellur_rt_v1_local(c, 2, std::ptr::null(), 0, 1);
+                let context = &mut *c;
+                let before = context.host.tasks.clone();
+                let physical = context.physical_arena.unwrap().counts();
+                for (producer, slot, handle) in [
+                    (&CHILD_CONTROL, 0, value),
+                    (&CHILD_CONTROL, 99, value),
+                    (&LEAF_CONTROL, 2, value),
+                    (&CHILD_CONTROL, 2, u64::MAX),
+                ] {
+                    assert!(context.cancel_control(producer, slot, handle).is_err());
+                    assert!(context.get(value).is_ok() && context.request.is_none());
+                    assert_eq!(context.host.tasks, before);
+                }
+                let foreign = Host::new(json!({}), None, true, None);
+                assert!(
+                    context
+                        .selected_activation
+                        .unwrap()
+                        .abi_validate_cancellation(
+                            &foreign,
+                            &CHILD_CONTROL,
+                            context.get(value).unwrap()
+                        )
+                        .is_err()
+                );
+                // Cancellation is independent of completion-wait allocation.
+                context.host.tasks.exhaust_wait_space();
+                let exhausted = context.host.tasks.clone();
+                context.cancel_control(&CHILD_CONTROL, 2, value).unwrap();
+                assert!(context.get(value).is_err());
+                assert!(context.cancel_control(&CHILD_CONTROL, 2, value).is_err());
+                assert_eq!(context.host.tasks, exhausted);
+                assert_eq!(context.physical_arena.unwrap().counts(), physical);
+                context.host.tasks = before;
+                f.requests += 1;
+                return 8;
+            }
             let value = tellur_rt_v1_local(c, 3, std::ptr::null(), 0, 1);
             if f.mode == 4 {
                 let context = &mut *c;
@@ -279,12 +333,20 @@ static PARENT: InvocationLayout = InvocationLayout {
 
 #[test]
 fn spawned_arena_frames_keep_original_owners_and_retire_siblings_and_inline_children() {
-    for mode in 0..=4 {
+    exercise(&[0, 1, 2, 3, 4], 19);
+}
+#[test]
+fn cancellation_preserves_frames_join_obligations_and_inherited_requests_across_quotas() {
+    exercise(&[5, 6, 7], 29);
+}
+fn exercise(modes: &[u32], maximum_fuel: usize) {
+    for &mode in modes {
         for fail in [false, true] {
-            for fuel in 0..=19 {
+            for fuel in 0..=maximum_fuel {
                 let mut expected = None;
                 for quota in [1, 3, usize::MAX] {
                     LEAF_CALLS.with(|n| n.set(0));
+                    CANCELLATION.with(|events| events.borrow_mut().clear());
                     let mut frame = Parent {
                         mode,
                         ..Parent::default()
@@ -303,15 +365,36 @@ fn spawned_arena_frames_keep_original_owners_and_retire_siblings_and_inline_chil
                             quota,
                         )
                     };
-                    if fuel == 19 && !fail && ![1, 3].contains(&mode) {
+                    if fuel == maximum_fuel && !fail && ![1, 3].contains(&mode) {
                         assert!(
                             result.is_ok(),
                             "{mode}/{quota}: {}",
                             result.as_ref().err().unwrap()
                         );
                     }
-                    if fuel == 19 && [1, 3].contains(&mode) && !fail {
+                    if fuel == maximum_fuel && [1, 3].contains(&mode) && !fail {
                         assert!(result.as_ref().err().is_some_and(|e| e.contains("parent ")));
+                    }
+                    let observed = CANCELLATION.with(|events| events.borrow().clone());
+                    if fuel == maximum_fuel && !fail && mode >= 5 {
+                        assert_eq!(frame.requests, 2);
+                        assert_eq!(observed.len(), 4);
+                        assert!(
+                            observed.iter().any(|(_, flag)| *flag) == (mode != 7),
+                            "{mode}: {observed:?}"
+                        );
+                        if mode == 5 {
+                            assert!(
+                                observed.contains(&("child", true))
+                                    && observed.contains(&("leaf", true))
+                            );
+                        }
+                        if mode == 6 {
+                            assert!(
+                                !observed.contains(&("child", true))
+                                    && observed.contains(&("leaf", true))
+                            );
+                        }
                     }
                     let report = match result {
                         Ok(value) => {
@@ -330,6 +413,8 @@ fn spawned_arena_frames_keep_original_owners_and_retire_siblings_and_inline_chil
                         host.fuel,
                         frame.pc,
                         frame.waits,
+                        frame.requests,
+                        observed,
                         LEAF_CALLS.with(Cell::get),
                     );
                     if let Some(want) = &expected {
@@ -340,7 +425,7 @@ fn spawned_arena_frames_keep_original_owners_and_retire_siblings_and_inline_chil
                     let (chunks, slots, pins) = arena.counts();
                     assert_eq!(pins, 0);
                     assert!(chunks <= 1 && slots <= 2);
-                    if mode == 0 && fuel == 19 && !fail {
+                    if mode == 0 && fuel == maximum_fuel && !fail {
                         assert_eq!((chunks, slots, pins), (1, 2, 0));
                     }
                     assert!(

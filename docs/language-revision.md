@@ -1525,3 +1525,27 @@ The failed-admission matrix exposed a missing completion-wait capacity check
 before the ABI join handoff. Join now validates through the original task registry
 while its activation still owns the handle and can unwind children. Exhaustion
 leaves the handle and queue unchanged and retires all source scopes and frame pins.
+
+
+## B1.4h — bounded LLVM control cancellation (0.257)
+
+Cancellation now lowers through a retained ABI request and the original runtime
+Activation::cancel_tasks/Step::Cancel path. The checked target returns to its same
+local slot; cancellation neither consumes its join obligation nor introduces a
+handoff or physical allocation. Identity preflight is separate from consuming-join
+wait-capacity preflight, so even an exhausted wait space does not block a request.
+
+Private matrices cover queued, running and completed children, repeated requests,
+inherited flags on later inline children, original String buffers, failed preflight,
+fault/fuel cuts, host quotas and final frame/task/scope retirement. Generated tests
+compare nested spawned descendants and exclusive caller loans at original/expanded
+O0/O2, including ordinary completion and source faults after cancellation. The
+quota matrix now covers cold, spawned and cancelled variants. The runnable
+llvm_cancel example demonstrates that a control without a cancellable host await
+finishes normally despite the request.
+
+Next B1.4i: async host operation lowering and pending readiness, beginning with
+control-flow entry through run/await and cancelled alternatives, then preserving
+the accepted defer/spawn task model. Task sets, retained fault/boundary integration,
+signals, parity/default switch, adapters, single binary, target packs and retirement
+remain in the agreed arc. Rust stays default. No new language semantics are chosen.

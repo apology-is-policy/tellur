@@ -1274,7 +1274,8 @@ impl<'frame> RetainedRoot<'frame> {
 /// Each callback executes one checked transition and returns 0 error, 1 yield,
 /// 2 normal completion, 3 direct await, 4 continue without a source handoff, or
 /// 5 run an inline child on the current invocation stack, 6 spawn without a source
-/// handoff, or 7 consume a started child through the source join policy.
+/// handoff, 7 consume a started child through the source join policy, or 8 request
+/// cancellation without a source handoff or consuming the started value.
 /// Initial arguments arrive once; after child delivery the span contains one
 /// outcome handle. Other callbacks receive an empty span.
 pub struct InvocationLayout {
@@ -1509,6 +1510,11 @@ enum RequestedInvocation {
         value: V,
         producer: &'static execution::Control,
     },
+    Cancel {
+        value: V,
+        producer: &'static execution::Control,
+        slot: usize,
+    },
 }
 impl RequestedInvocation {
     fn tag(&self) -> u32 {
@@ -1517,6 +1523,7 @@ impl RequestedInvocation {
             Self::Inline { handoff: false, .. } => 5,
             Self::Spawn { .. } => 6,
             Self::Join { .. } => 7,
+            Self::Cancel { .. } => 8,
         }
     }
 }
@@ -1712,7 +1719,8 @@ impl Invocation {
                 (3, Some(3), false)
                 | (5, Some(5), false)
                 | (6, Some(6), false)
-                | (7, Some(7), false) => Ok(execution::Step::Continue), // Queue after callback borrows end.
+                | (7, Some(7), false)
+                | (8, Some(8), false) => Ok(execution::Step::Continue), // Queue after callback borrows end.
                 (2, None, true) => match context.result.take().unwrap() {
                     value @ Completion::Outcome(_) => Ok(execution::Step::Complete(value)),
                     _ => Err("E_NATIVE: retained ABI requires a normal completion".into()),
@@ -1749,6 +1757,15 @@ impl Invocation {
                         slot,
                         ty: started_type,
                     })
+                }
+                RequestedInvocation::Cancel {
+                    value,
+                    producer,
+                    slot,
+                } => {
+                    activation.cancel_tasks(host, producer, &value)?;
+                    values[frame.base() + slot] = Some(value);
+                    Ok(execution::Step::Cancel)
                 }
                 RequestedInvocation::Join { value, producer } => {
                     self.phase = InvocationPhase::Awaiting;
@@ -1993,6 +2010,31 @@ impl Context<'_> {
         });
         Ok(())
     }
+    fn cancel_control(
+        &mut self,
+        producer: &'static execution::Control,
+        slot: usize,
+        handle: u64,
+    ) -> R<()> {
+        if self.request.is_some() || self.result.is_some() {
+            return Err("E_NATIVE: duplicate ABI continuation request".into());
+        }
+        let activation = self
+            .selected_activation
+            .ok_or("E_NATIVE: cancellation requires a selected ABI invocation")?;
+        if self.program.is_none() || self.storage.values()[self.local(slot)?].is_some() {
+            return Err("E_NATIVE: invalid ABI cancellation destination".into());
+        }
+        // A request allocates no completion wait and preserves the same task value.
+        activation.abi_validate_cancellation(self.host, producer, self.get(handle)?)?;
+        let value = self.take(handle)?;
+        self.request = Some(RequestedInvocation::Cancel {
+            value,
+            producer,
+            slot,
+        });
+        Ok(())
+    }
     fn join_control(&mut self, producer: &'static execution::Control, handle: u64) -> R<()> {
         if self.request.is_some() || self.result.is_some() {
             return Err("E_NATIVE: duplicate ABI continuation request".into());
@@ -2042,6 +2084,22 @@ pub unsafe extern "C" fn tellur_rt_v1_join(ctx: *mut Context<'_>, producer: usiz
             .get()
             .ok_or("E_NATIVE: missing compiled module registry")?;
         c.join_control(registry.layout(producer)?.control, handle)
+    });
+}
+
+/// Request cancellation and restore the same started value to its checked local.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_cancel(
+    ctx: *mut Context<'_>,
+    producer: usize,
+    slot: usize,
+    handle: u64,
+) {
+    unsafe { &mut *ctx }.perform(|c| {
+        let registry = COMPILED_PROGRAM
+            .get()
+            .ok_or("E_NATIVE: missing compiled module registry")?;
+        c.cancel_control(registry.layout(producer)?.control, slot, handle)
     });
 }
 

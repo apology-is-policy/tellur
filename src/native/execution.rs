@@ -1600,6 +1600,14 @@ impl Activation {
             .prepare_join(task, self.owner, producer.name)
             .map(|_| ())
     }
+    pub(crate) fn abi_validate_cancellation(
+        &self,
+        host: &Host,
+        producer: &'static Control,
+        value: &V,
+    ) -> R<()> {
+        self.source_task_identity(host, value, producer).map(|_| ())
+    }
     pub(crate) fn abi_control(&self) -> &'static Control {
         self.control
     }

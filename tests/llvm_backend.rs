@@ -2390,6 +2390,59 @@ control main(bool fail) exits done faults {forward run startup(fail);}
     }
 
     #[test]
+    fn frontend_cancellation_preserves_queued_running_and_completed_join_reports() {
+        for before_cancel in ["", "yield;", "yield;yield;yield;yield;"] {
+            let source = r#"
+async control leaf(string text) exits done {string value} {
+    emit(borrow text);yield;exit done {text};
+}
+async control child(bool fail, string text) exits done {string value} faults {
+    auto nested=spawn leaf(text);
+    delta await nested {done {string value}=>ready}
+    delta fail {true=>bad,false=>good}
+    [bad]:fault "cancelled child still faults";
+    [ready & good]:exit done {value};
+}
+async control startup(bool fail) exits done faults {
+    auto first=spawn child(fail,"first");
+    auto second=spawn child(false,"second");
+    emit("queued");
+    BEFORE_CANCEL
+    auto moved=move first;cancel moved;cancel moved;emit("requested");
+    delta await second {done {string second_value}=>second_done}
+    [second_done]:emit(second_value);
+    delta await moved {done {string first_value}=>first_done}
+    [first_done]:emit(first_value);exit done;
+}
+control main(bool fail) exits done faults {forward run startup(fail);}
+"#
+            .replace("BEFORE_CANCEL", before_cancel);
+            let f = Fixture::new(&source);
+            let scenarios = [false, true].map(|fail|
+                json!({"entry":"main","arguments":[{"kind":"bool","value":fail}],"calls":[]}));
+            lexical_matrix(
+                &f,
+                &scenarios,
+                &(0..=52).map(Some).chain([None]).collect::<Vec<_>>(),
+            );
+            let ir = fs::read_to_string(f.root.join("llvm-2.ll")).unwrap();
+            assert!(ir.contains("call void @tellur_rt_v1_cancel"));
+        }
+    }
+
+    #[test]
+    fn frontend_cancellation_keeps_exclusive_caller_loans_and_ordinary_completion() {
+        let f = Fixture::new(include_str!("../playground/llvm_cancel.tellur"));
+        let scenarios = [false, true].map(|fail|
+            json!({"entry":"main","arguments":[{"kind":"bool","value":fail},{"kind":"string","value":"original owner"}],"calls":[]}));
+        lexical_matrix(
+            &f,
+            &scenarios,
+            &(0..=44).map(Some).chain([None]).collect::<Vec<_>>(),
+        );
+    }
+
+    #[test]
     fn frontend_async_frames_preserve_nested_handoffs_guards_and_exact_fault_fuel_reports() {
         let f = Fixture::new(
             r#"
@@ -2884,7 +2937,6 @@ pub async control echo(string text) exits ready {string result} {yield;exit read
         }
         for source in [
             "struct ticket {u32 value;constructor(u32 input){run helper();self.value=input;}} async control helper() exits done {exit done;} control main() exits result {drop(ticket(1));exit done;} outcome result {@exit 0 done}",
-            "async control work() exits done {yield;exit done;} async control startup() exits done {auto task=spawn work();cancel task;await task;exit done;} control main() exits result {forward run startup();} outcome result {@exit 0 done}",
             "async control work() exits done {yield;exit done;} async control startup() exits done {tasks<work> set=tasks();spawn work() into set;loop reap(tasks<work> pending=move set){delta await next pending {done=>next,empty=>empty} [next]:again reap(pending);[empty]:exit done;}} control main() exits result {forward run startup();} outcome result {@exit 0 done}",
             "async control helper() exits done {loop L(){yield;exit done;}} control main() exits result {forward run helper();} outcome result {@exit 0 done}",
         ] {
