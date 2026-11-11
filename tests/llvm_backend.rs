@@ -2175,9 +2175,146 @@ contingency(string reason){report(reason);emit(context);terminate;}
         }
     }
 
+    fn lexical_matrix(f: &Fixture, scenarios: &[Json], fuels: &[Option<usize>]) {
+        let mut manifest: Json =
+            serde_json::from_str(&fs::read_to_string(&f.manifest).unwrap()).unwrap();
+        manifest["launch"] = json!({"main":{"exit_codes":{"done":0}}});
+        fs::write(&f.manifest, manifest.to_string()).unwrap();
+        let checked = compile_file(
+            &f.source,
+            Manifest::from_json(&manifest.to_string()).unwrap(),
+        )
+        .unwrap();
+        for expanded in [false, true] {
+            let checked = if expanded {
+                checked.expanded("main").unwrap()
+            } else {
+                checked.clone()
+            };
+            for opt in [0, 2] {
+                build_pair(f, expanded, opt);
+                for scenario in scenarios {
+                    let path = f.root.join("scenario.json");
+                    fs::write(&path, scenario.to_string()).unwrap();
+                    for &fuel in fuels {
+                        let a = execute(&f.root.join(format!("llvm-{opt}")), &path, fuel);
+                        let b = execute(&f.root.join(format!("rust-{opt}")), &path, fuel);
+                        assert_eq!(
+                            a.status.code(),
+                            b.status.code(),
+                            "{expanded}/{opt}/{scenario}/{fuel:?}: {a:?}; {b:?}"
+                        );
+                        assert_eq!(a.stdout, b.stdout, "{expanded}/{opt}/{scenario}/{fuel:?}");
+                        assert_eq!(a.stderr, b.stderr, "{expanded}/{opt}/{scenario}/{fuel:?}");
+                        if fuel.is_none() {
+                            if let Ok(expected) = checked.run_completion(
+                                &serde_json::from_value(scenario.clone()).unwrap(),
+                                10000,
+                            ) {
+                                assert_eq!(report(&a), serde_json::to_value(expected).unwrap());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    #[test]
+    fn lexical_boundaries_recover_with_preserved_supervisor_state_and_structured_faults() {
+        lexical_matrix(
+            &Fixture::new(include_str!("../playground/recovery.tellur")),
+            &[json!({"entry":"main","arguments":[],"calls":[]})],
+            &(0..=90).map(Some).chain([None]).collect::<Vec<_>>(),
+        );
+        lexical_matrix(&Fixture::new(include_str!("../playground/llvm_recovery.tellur")),&[false,true].map(|fail|json!({"entry":"main","arguments":[{"kind":"bool","value":fail}],"calls":[]})),&(0..=95).map(Some).chain([None]).collect::<Vec<_>>());
+    }
+    #[test]
+    fn lexical_boundaries_finalize_fallthrough_outward_again_and_expanded_completions() {
+        for source in [
+            r#"control main() exits done {string context="context";fault boundary {emit(borrow context);} contingency [context] {escalate;} emit(context);exit done;}"#,
+            r#"control main() exits done {loop L(u32 n=0) {delta n<3 {true=>more,false=>last}[last]:exit done;[more]:delta checked_add(n,1) {sum {u32 next}=>next,overflow=>bad}[bad]:fault "counter";[next]:fault boundary {emit(u32_text(next));again L(next);} contingency [] {escalate;}}}"#,
+            r#"control helper() exits done {string text} {fault boundary {loop L(){exit done {"out"};}} contingency [] {escalate;}} control main() exits done {delta helper(){done {string text}=>done}[done]:emit(text);exit done;}"#,
+            r#"control helper() exits done {string text} {loop L(){fault boundary {exit done {"out"};} contingency [] {escalate;}}} control main() exits done {delta helper(){done {string text}=>done}[done]:emit(text);exit done;}"#,
+        ] {
+            lexical_matrix(
+                &Fixture::new(source),
+                &[json!({"entry":"main","arguments":[],"calls":[]})],
+                &(0..=60).map(Some).chain([None]).collect::<Vec<_>>(),
+            );
+        }
+    }
+    #[test]
+    fn lexical_boundaries_preserve_nested_secondary_causes_and_process_statuses() {
+        let source = r#"control fail() faults {fault "stop";} boundary request() {fail();} contingency(string reason){emit("escalating");escalate;} control main() exits done {fault boundary {supervise request();emit("forbidden");exit done;} contingency [] {emit("stopping");terminate process 23;}}"#;
+        for status in [0, 23, 255] {
+            lexical_matrix(
+                &Fixture::new(&source.replace("process 23", &format!("process {status}"))),
+                &[json!({"entry":"main","arguments":[],"calls":[]})],
+                &(0..=45).map(Some).chain([None]).collect::<Vec<_>>(),
+            );
+        }
+        lexical_matrix(
+            &Fixture::new(
+                r#"control main() exits done {fault boundary {fault boundary {fault "first";} contingency [] {fault "second";}} contingency [] {emit(borrow @fault.message);terminate process 17;}}"#,
+            ),
+            &[json!({"entry":"main","arguments":[],"calls":[]})],
+            &(0..=40).map(Some).chain([None]).collect::<Vec<_>>(),
+        );
+    }
+    #[test]
+    fn lexical_boundaries_release_resources_and_bypass_malformed_host_responses() {
+        let f = Fixture::new(
+            r#"
+control main(bool broken) exits done {
+ delta open("file") {opened {handle input}=>opened,not_found=>absent,denied=>denied}
+ [absent|denied]:exit done;
+ [opened]:fault boundary {
+  delta read(borrow input) {data {bytes data}=>read,failed {read_error read_error}=>bad}
+  [bad]:fault "read";
+  [read]:delta broken {true=>broken,false=>healthy}
+  [broken]:fault "after read";
+  [healthy]:delta close(move input) {closed=>closed,failed {close_error close_error}=>close_failed}
+  [closed|close_failed]:exit done;
+ } contingency [input] {
+  emit(borrow @fault.message);
+  delta close(move input) {closed=>closed,failed {close_error close_error}=>close_failed}
+  [closed|close_failed]:terminate process 7;
+ }
+}"#,
+        );
+        let mut manifest: Json =
+            serde_json::from_str(&fs::read_to_string(&f.manifest).unwrap()).unwrap();
+        manifest["primitives"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|p| p["name"] == "close")
+            .unwrap()["contingent"] = json!(true);
+        fs::write(&f.manifest, manifest.to_string()).unwrap();
+        let scenarios=[false,true].into_iter().flat_map(|fail|[false,true].map(move|malformed|json!({"entry":"main","arguments":[{"kind":"bool","value":fail}],"calls":[{"operation":"open","outcome":"opened","fields":[{"kind":"opaque","value":{"ty":"handle","token":"owned"}}]},{"operation":"read","outcome":"data","fields":[if malformed {json!({"kind":"bool","value":true})} else {json!({"kind":"bytes","value":[65]})}]},{"operation":"close","outcome":"closed","fields":[]}]}))).collect::<Vec<_>>();
+        lexical_matrix(
+            &f,
+            &scenarios,
+            &(0..=65).map(Some).chain([None]).collect::<Vec<_>>(),
+        );
+    }
+    #[test]
+    fn lexical_boundaries_compose_with_imported_named_work_and_constructor_delivery() {
+        let f = Fixture::new(
+            r#"import "helper.tellur" as h;control main() exits done {fault boundary {supervise h.request();exit done;} contingency [] {emit(borrow @fault.message);terminate process 5;}}"#,
+        );
+        fs::write(f.root.join("helper.tellur"),r#"struct text {string value;constructor(string input){self.value=input;}} control make() exits ready {text value}{fault boundary {exit ready {text("owned")};} contingency [] {escalate;}} pub boundary request() faults {delta make(){ready {text value}=>ready}[ready]:emit(value.value);fault "request";} contingency(string reason){emit(reason);escalate;}"#).unwrap();
+        lexical_matrix(
+            &f,
+            &[json!({"entry":"main","arguments":[],"calls":[]})],
+            &(0..=75).map(Some).chain([None]).collect::<Vec<_>>(),
+        );
+    }
+
     #[test]
     fn every_control_keeps_scratch_allocations_in_its_entry_block() {
         for source in [
+            include_str!("../playground/llvm_recovery.tellur"),
             include_str!("../playground/llvm_supervision.tellur"),
             include_str!("../playground/llvm_constructors.tellur"),
             include_str!("../playground/llvm_loops.tellur"),
@@ -2216,8 +2353,6 @@ contingency(string reason){report(reason);emit(context);terminate;}
         for source in [
             "struct ticket {u32 value;constructor(u32 input){run helper();self.value=input;}} async control helper() exits done {exit done;} control main() exits result {drop(ticket(1));exit done;} outcome result {@exit 0 done}",
             "control main() exits result {exit done;} async control helper() exits done {exit done;} outcome result {@exit 0 done}",
-            "control main() exits result {loop L(){fault boundary {exit done;} contingency [] {terminate process 1;}}} outcome result {@exit 0 done}",
-            "control main() exits result {fault boundary {exit done;} contingency [] {terminate process 1;}} outcome result {@exit 0 done}",
         ] {
             let f = Fixture::new(source);
             let out = f.command("llvm", 0).output().unwrap();

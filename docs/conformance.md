@@ -6420,3 +6420,16 @@ invalid host payloads and fuel cuts retain Rust reports. ABI probes verify calle
 preservation without outcome handles, work-frame retirement before handler entry,
 resource destruction ordering, malformed retained sets/completions and non-source
 error bypass. Existing boundary/fault checker suites retain source restrictions.
+
+
+### B1.3o lexical boundaries (0.249)
+
+Five LLVM matrices compare original/expanded O0/O2 lexical fallthrough, outward
+loop/expansion completion, supervised recovery, structured fault fields, nested
+secondary causes, named/imported composition, constructor delivery, retained
+resources, malformed host responses and process statuses 0/23/255. Every tested
+fuel cut matches Rust; completed reports match the corresponding reference graph.
+Four ABI regressions check scoped storage and outward arguments, borrower/resource
+retirement before handover, nested causes/non-source bypass, malformed layouts,
+stale identities and unfinished callback finalization. Source checker permissions
+remain covered by the existing lexical/process-termination suites.

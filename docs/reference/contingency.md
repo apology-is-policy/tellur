@@ -164,8 +164,9 @@ There is no outcome representing the first request's fault.
 The opt-in [LLVM backend](llvm-backend.md#named-synchronous-supervision) supports
 these named synchronous boundaries since 0.248. Work and contingency use compiled
 callbacks and preserve retained-owner retirement, source-fault classification and
-causal reports. Lexical boundaries, supervised recovery and process termination
-remain later LLVM slices; the default Rust backend supports the forms above.
+causal reports. Since 0.249, lexical boundaries, supervised recovery, structured
+`@fault` and entry-only process termination also lower directly to LLVM, with the
+same source rules and runtime cleanup behavior as the default Rust backend.
 
 ## Declaration and invocation
 

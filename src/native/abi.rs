@@ -25,6 +25,18 @@ pub struct Context<'a> {
     outcome_base: u64,
     error: Option<String>,
     result: Option<Completion>,
+    lexical: Vec<LexicalBoundary>,
+    next_lexical: u64,
+}
+// A lexical scope shares its control's frame. Checked local identities are
+// resolved before entering the host scope, and only the selected top scope ends.
+struct LexicalBoundary {
+    id: u64,
+    state: BoundaryState,
+    retained: Vec<usize>,
+    retire: Vec<usize>,
+    cleanup: Vec<usize>,
+    fault: usize,
 }
 // Temporary handles remain invocation-local. Source locals have stable addresses
 // in one arena shared by the synchronous call tree, just as in checked execution.
@@ -53,6 +65,17 @@ impl Context<'_> {
         values.require_storage(&values.local_storage(frame, slot)?)
     }
     fn finish(&mut self) -> R<Completion> {
+        if !self.lexical.is_empty() {
+            self.error
+                .get_or_insert_with(|| "E_NATIVE: unfinished ABI lexical boundary".into());
+            while let Some(scope) = self.lexical.last() {
+                let id = scope.id;
+                if let Err(error) = self.end_lexical(id) {
+                    self.error.get_or_insert(error);
+                    break;
+                }
+            }
+        }
         let result = match self.error.take() {
             Some(error) => Err(error),
             None => self
@@ -91,6 +114,8 @@ impl Context<'_> {
             outcome_base: 0,
             error: None,
             result: None,
+            lexical: vec![],
+            next_lexical: 0,
         };
         let arguments: Vec<_> = values.into_iter().map(|v| child.put(v)).collect();
         unsafe { callback(&mut child, arguments.as_ptr(), arguments.len()) };
@@ -122,6 +147,78 @@ impl Context<'_> {
             child.host.leave();
         }
         Ok(result)
+    }
+    fn require_lexical(&self, id: u64) -> R<()> {
+        if self.lexical.last().is_some_and(|scope| scope.id == id) {
+            Ok(())
+        } else {
+            Err("E_NATIVE: ABI lexical boundary is not selected".into())
+        }
+    }
+    fn abandon_temporaries(&mut self) -> R<()> {
+        for value in &mut self.values {
+            *value = None;
+        }
+        for outcome in &mut self.outcomes {
+            *outcome = None;
+        }
+        self.retire_temporaries()
+    }
+    fn catch_lexical(&mut self, id: u64) -> R<bool> {
+        self.require_lexical(id)?;
+        let message = self
+            .error
+            .as_ref()
+            .ok_or("E_NATIVE: lexical handover without error")?
+            .clone();
+        if !self.host.source_faulted() {
+            return Ok(false);
+        }
+        if self.lexical.last().unwrap().state.fault_message.is_some() {
+            return Err("E_NATIVE: repeated ABI lexical handover".into());
+        }
+        self.abandon_temporaries()?;
+        let scope = self.lexical.last_mut().unwrap();
+        let keep = self.host.resources.owned_tokens(
+            scope
+                .retained
+                .iter()
+                .filter_map(|id| self.storage.values()[*id].as_ref()),
+        )?;
+        for id in &scope.retire {
+            self.storage.values_mut()[*id] = None;
+        }
+        let report = self
+            .host
+            .boundary_fault(&mut scope.state, &message, &keep)?;
+        let (message, stack, sites) = report.source_fields();
+        let strings = |xs: Vec<String>| V::Construct {
+            ty: "vector<String>".into(),
+            name: "vector".into(),
+            fields: xs.into_iter().map(V::String).collect(),
+        };
+        self.storage.values_mut()[scope.fault] = Some(V::Construct {
+            ty: "fault_report".into(),
+            name: "fault_report".into(),
+            fields: vec![V::String(message), strings(stack), strings(sites)],
+        });
+        self.host.enter_contingency(&mut scope.state)?;
+        self.error = None;
+        Ok(true)
+    }
+    fn end_lexical(&mut self, id: u64) -> R<()> {
+        self.require_lexical(id)?;
+        // Failure may strand temporary borrowers/owners; retire those before
+        // resource finalization. Successful outward jumps still own their args.
+        if self.error.is_some() {
+            self.abandon_temporaries()?;
+        }
+        let mut scope = self.lexical.pop().unwrap();
+        for id in scope.cleanup {
+            self.storage.values_mut()[id] = None;
+        }
+        let result: R<()> = self.error.clone().map_or(Ok(()), Err);
+        self.host.finish_boundary(&mut scope.state, &result)
     }
     fn put(&mut self, value: V) -> u64 {
         let Some(handle) = self
@@ -910,6 +1007,8 @@ pub unsafe extern "C" fn tellur_rt_v1_call(
                 outcome_base: 0,
                 error: None,
                 result: None,
+                lexical: vec![],
+                next_lexical: 0,
             };
             let arguments: Vec<u64> = values.into_iter().map(|v| child.put(v)).collect();
             unsafe { callback(&mut child, arguments.as_ptr(), arguments.len()) };
@@ -954,6 +1053,8 @@ pub unsafe extern "C" fn tellur_rt_v1_construct_call(
             outcome_base: 0,
             error: None,
             result: None,
+            lexical: vec![],
+            next_lexical: 0,
         };
         let arguments: Vec<u64> = values.into_iter().map(|v| child.put(v)).collect();
         unsafe { callback(&mut child, arguments.as_ptr(), arguments.len()) };
@@ -966,6 +1067,106 @@ pub unsafe extern "C" fn tellur_rt_v1_construct_call(
             return Err(error);
         }
         child.host.leave();
+        Ok(())
+    })
+}
+
+/// Enter a lexical scope over the current frame. The packed layout contains
+/// retained, abandoned, work-local and handler-local indices, in that order.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_lexical_begin(
+    ctx: *mut Context<'_>,
+    name: *const u8,
+    len: usize,
+    layout: *const usize,
+    retained: usize,
+    retire: usize,
+    work: usize,
+    handler: usize,
+    fault: usize,
+) -> u64 {
+    unsafe { &mut *ctx }.perform(|c| {
+        let name = unsafe { text(name, len)? };
+        if c.result.is_some() {
+            return Err("E_NATIVE: lexical boundary after completion".into());
+        }
+        c.retire_temporaries()?;
+        let id = c
+            .next_lexical
+            .checked_add(1)
+            .ok_or("E_NATIVE: ABI boundary identity exhausted")?;
+        let count = [retained, retire, work, handler]
+            .into_iter()
+            .try_fold(0usize, |a, b| a.checked_add(b))
+            .ok_or("E_NATIVE: ABI boundary layout overflow")?;
+        let layout = unsafe { slice(layout, count) };
+        let roots = layout
+            .iter()
+            .map(|id| c.local(*id))
+            .collect::<R<Vec<_>>>()?;
+        let fault = c.local(fault)?;
+        let (retained, rest) = roots.split_at(retained);
+        let (retire, rest) = rest.split_at(retire);
+        let (work, handler) = rest.split_at(work);
+        for group in [retained, retire, work, handler] {
+            if group.iter().collect::<BTreeSet<_>>().len() != group.len() {
+                return Err("E_NATIVE: duplicate ABI lexical slot".into());
+            }
+        }
+        if retained
+            .iter()
+            .any(|id| retire.contains(id) || work.contains(id) || handler.contains(id))
+            || !handler.contains(&fault)
+        {
+            return Err("E_NATIVE: invalid ABI lexical slot roles".into());
+        }
+        let state = c.host.begin_boundary(
+            name,
+            retained
+                .iter()
+                .chain(retire)
+                .filter_map(|id| c.storage.values()[*id].as_ref()),
+            true,
+        )?;
+        c.lexical.push(LexicalBoundary {
+            id,
+            state,
+            retained: retained.to_vec(),
+            retire: retire.to_vec(),
+            cleanup: work.iter().chain(handler).copied().collect(),
+            fault,
+        });
+        c.next_lexical = id;
+        Ok(id)
+    })
+}
+/// This is an explicit error transfer; ordinary ABI effects remain sticky.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_lexical_catch(ctx: *mut Context<'_>, id: u64) -> u32 {
+    let c = unsafe { &mut *ctx };
+    match c.catch_lexical(id) {
+        Ok(handled) => u32::from(handled),
+        Err(error) => {
+            c.error = Some(error);
+            0
+        }
+    }
+}
+/// Finalization must run even on the error channel, without re-entering cleanup.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_lexical_end(ctx: *mut Context<'_>, id: u64) {
+    let c = unsafe { &mut *ctx };
+    if let Err(error) = c.end_lexical(id) {
+        c.error.get_or_insert(error);
+    }
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_process(ctx: *mut Context<'_>, status: u32) {
+    unsafe { &mut *ctx }.perform(|c| {
+        if c.result.is_some() || c.destination.is_some() || status > 255 {
+            return Err("E_NATIVE: invalid ABI process completion".into());
+        }
+        c.result = Some(Completion::Process(status as u8));
         Ok(())
     })
 }
@@ -1144,6 +1345,8 @@ unsafe fn launch_program(
                 outcome_base: 0,
                 error: None,
                 result: None,
+                lexical: vec![],
+                next_lexical: 0,
             };
             let args: Vec<u64> = args.into_iter().map(|v| context.put(v)).collect();
             unsafe { callbacks[index](&mut context, args.as_ptr(), args.len()) };

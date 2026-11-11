@@ -12,6 +12,8 @@ fn context(host: &mut Host) -> Context<'_> {
         outcome_base: 0,
         error: None,
         result: None,
+        lexical: vec![],
+        next_lexical: 0,
     }
 }
 
@@ -2241,4 +2243,170 @@ fn named_supervision_retires_borrowers_and_releases_only_abandoned_resources_bef
     assert!(c.host.resources.get::<Probe>(&parent, "probe").is_ok());
     assert!(c.host.resources.scopes.is_empty());
     assert_eq!(c.storage.values().len(), 1);
+}
+
+unsafe fn lexical(c: &mut Context<'_>, layout: &[usize], counts: [usize; 4], fault: usize) -> u64 {
+    unsafe {
+        tellur_rt_v1_lexical_begin(
+            c,
+            b"main$boundary@1".as_ptr(),
+            15,
+            layout.as_ptr(),
+            counts[0],
+            counts[1],
+            counts[2],
+            counts[3],
+            fault,
+        )
+    }
+}
+#[test]
+fn lexical_abi_retires_only_scoped_storage_and_preserves_outward_jump_arguments() {
+    let mut host = Host::new(json!({}), None, true, None);
+    host.enter("main").unwrap();
+    let mut c = context(&mut host);
+    unsafe { tellur_rt_v1_frame(&mut c, 5) };
+    for i in 0..5 {
+        c.storage.values_mut()[i] = Some(V::String(format!("slot{i}")));
+    }
+    let frame = c
+        .storage
+        .values()
+        .local_storage(c.frame.as_ref().unwrap(), 0)
+        .unwrap();
+    let id = unsafe { lexical(&mut c, &[0, 1, 2, 3], [1, 1, 1, 1], 3) };
+    assert_ne!(id, 0);
+    assert!(c.error.is_none(), "{:?}", c.error);
+    let arg = c.put(V::String("restart".into()));
+    unsafe { tellur_rt_v1_lexical_end(&mut c, id) };
+    assert!(c.error.is_none(), "{:?}", c.error);
+    assert_eq!(c.take(arg).unwrap(), V::String("restart".into()));
+    assert_eq!(c.storage.values().require_storage(&frame).unwrap(), 0);
+    assert_eq!(
+        &**c.storage.values(),
+        &[
+            Some(V::String("slot0".into())),
+            Some(V::String("slot1".into())),
+            None,
+            None,
+            Some(V::String("slot4".into()))
+        ]
+    );
+    assert!(c.lexical.is_empty() && c.host.resources.scopes.is_empty());
+    assert!(c.result.is_none());
+}
+#[test]
+fn lexical_abi_fault_handover_retires_temporaries_and_resources_before_handler() {
+    use std::{cell::RefCell, rc::Rc};
+    struct Probe(u32, Rc<RefCell<Vec<u32>>>);
+    impl Drop for Probe {
+        fn drop(&mut self) {
+            self.1.borrow_mut().push(self.0);
+        }
+    }
+    let drops = Rc::new(RefCell::new(vec![]));
+    let mut host = Host::new(json!({}), None, true, None);
+    host.enter("main").unwrap();
+    let mut c = context(&mut host);
+    unsafe { tellur_rt_v1_frame(&mut c, 5) };
+    for (slot, id) in [(4, 0), (0, 1), (1, 2)] {
+        let owner = c
+            .host
+            .resources
+            .insert("probe", Probe(id, drops.clone()))
+            .unwrap();
+        c.storage.values_mut()[slot] = Some(owner);
+    }
+    let id = unsafe { lexical(&mut c, &[0, 1, 2, 2, 3], [1, 2, 1, 1], 3) };
+    let temporary =
+        unsafe { tellur_rt_v1_reference(&mut c, 0, std::ptr::null(), 0, 0, b"&probe".as_ptr(), 6) };
+    let borrower = c.get(temporary).unwrap().clone();
+    c.storage.values_mut()[2] = Some(borrower);
+    let message = c.put(V::String("broken".into()));
+    unsafe { tellur_rt_v1_fault(&mut c, message) };
+    assert_eq!(unsafe { tellur_rt_v1_lexical_catch(&mut c, id) }, 1);
+    assert!(c.error.is_none(), "{:?}", c.error);
+    assert!(c.get(temporary).is_err());
+    assert!(c.storage.values()[1].is_none() && c.storage.values()[2].is_none());
+    assert_eq!(*drops.borrow(), [2]);
+    let V::Construct { fields, .. } = c.storage.values()[3].as_ref().unwrap() else {
+        panic!("fault report")
+    };
+    assert_eq!(fields[0], V::String("broken".into()));
+    assert_eq!(fields.len(), 3);
+    let V::Opaque { token, .. } = c.storage.values_mut()[0].take().unwrap() else {
+        panic!("owner")
+    };
+    c.host.resources.values.remove(&token);
+    unsafe {
+        tellur_rt_v1_process(&mut c, 23);
+        tellur_rt_v1_lexical_end(&mut c, id)
+    };
+    assert!(matches!(c.result, Some(Completion::Process(23))));
+    assert_eq!(*drops.borrow(), [2, 1]);
+    assert!(c.storage.values()[4].is_some());
+    assert!(c.storage.values()[3].is_none());
+    assert!(c.host.resources.scopes.is_empty() && c.host.contingencies.is_empty());
+    assert!(!c.host.source_faulted());
+}
+#[test]
+fn lexical_abi_nested_faults_keep_causes_and_non_source_errors_bypass_handover() {
+    let mut host = Host::new(json!({}), None, true, None);
+    host.enter("main").unwrap();
+    let mut c = context(&mut host);
+    unsafe { tellur_rt_v1_frame(&mut c, 2) };
+    let outer = unsafe { lexical(&mut c, &[0], [0, 0, 0, 1], 0) };
+    let inner = unsafe { lexical(&mut c, &[1], [0, 0, 0, 1], 1) };
+    let first = c.put(V::String("first".into()));
+    unsafe { tellur_rt_v1_fault(&mut c, first) };
+    assert_eq!(unsafe { tellur_rt_v1_lexical_catch(&mut c, inner) }, 1);
+    let second = c.put(V::String("second".into()));
+    unsafe {
+        tellur_rt_v1_fault(&mut c, second);
+        tellur_rt_v1_lexical_end(&mut c, inner)
+    };
+    assert_eq!(unsafe { tellur_rt_v1_lexical_catch(&mut c, outer) }, 1);
+    assert_eq!(c.host.events.len(), 2);
+    let report = &c.host.events[1]["report"];
+    assert!(report.to_string().contains("first") && report.to_string().contains("second"));
+    c.error = Some("E_FUEL: interrupted cleanup".into());
+    assert_eq!(unsafe { tellur_rt_v1_lexical_catch(&mut c, outer) }, 0);
+    unsafe { tellur_rt_v1_lexical_end(&mut c, outer) };
+    assert_eq!(c.error.as_deref(), Some("E_FUEL: interrupted cleanup"));
+    assert!(!c.host.source_faulted());
+    assert_eq!(c.host.events.len(), 2);
+    assert!(c.lexical.is_empty() && c.host.resources.scopes.is_empty());
+}
+#[test]
+fn lexical_abi_rejects_bad_layouts_stale_scopes_and_unfinished_completion() {
+    let mut host = Host::new(json!({}), None, true, None);
+    host.enter("main").unwrap();
+    let mut c = context(&mut host);
+    unsafe { tellur_rt_v1_frame(&mut c, 2) };
+    c.storage.values_mut()[0] = Some(V::String("owner".into()));
+    for (layout, counts, fault) in [
+        (vec![0, 0, 1], [2, 0, 0, 1], 1),
+        (vec![0, 0, 1], [1, 1, 0, 1], 1),
+        (vec![99, 1], [1, 0, 0, 1], 1),
+        (vec![0], [1, 0, 0, 0], 1),
+    ] {
+        assert_eq!(unsafe { lexical(&mut c, &layout, counts, fault) }, 0);
+        assert!(c.error.take().is_some());
+        assert!(c.lexical.is_empty() && c.host.resources.scopes.is_empty());
+        assert_eq!(c.storage.values()[0], Some(V::String("owner".into())));
+    }
+    let first = unsafe { lexical(&mut c, &[1], [0, 0, 0, 1], 1) };
+    unsafe { tellur_rt_v1_lexical_end(&mut c, first) };
+    let second = unsafe { lexical(&mut c, &[1], [0, 0, 0, 1], 1) };
+    assert_ne!(first, second);
+    unsafe { tellur_rt_v1_lexical_end(&mut c, first) };
+    assert!(c.error.take().unwrap().contains("not selected"));
+    assert_eq!(c.lexical.len(), 1);
+    unsafe { tellur_rt_v1_process(&mut c, 256) };
+    assert!(c.error.take().unwrap().contains("invalid ABI process"));
+    assert!(c.result.is_none());
+    assert!(c.finish().err().unwrap().contains("unfinished ABI lexical"));
+    assert!(
+        c.lexical.is_empty() && c.host.resources.scopes.is_empty() && c.storage.values().is_empty()
+    );
 }

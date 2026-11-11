@@ -35,6 +35,10 @@ declare void @tellur_rt_v1_complete(ptr, ptr, i64, ptr, i64)
 declare i64 @tellur_rt_v1_call(ptr, ptr, ptr, i64, ptr, i64)
 declare void @tellur_rt_v1_construct_call(ptr, ptr, ptr, i64, ptr, i64, i64)
 declare void @tellur_rt_v1_constructed(ptr, i64)
+declare i64 @tellur_rt_v1_lexical_begin(ptr, ptr, i64, ptr, i64, i64, i64, i64, i64)
+declare i32 @tellur_rt_v1_lexical_catch(ptr, i64)
+declare void @tellur_rt_v1_lexical_end(ptr, i64)
+declare void @tellur_rt_v1_process(ptr, i32)
 declare void @tellur_rt_v1_settled(ptr)
 declare void @tellur_rt_v1_escalate(ptr)
 declare void @tellur_rt_v1_supervise(ptr, ptr, ptr, ptr, i64, ptr, i64, ptr, i64, ptr, i64)
@@ -134,23 +138,27 @@ fn supported(
             expression_supported(e, types)
         }
         Action::Assign(_, e) => expression_supported(e, types),
-        Action::Release(_) | Action::Terminate | Action::Escalate => true,
+        Action::Release(_) | Action::Terminate | Action::Escalate | Action::TerminateProcess(_) => {
+            true
+        }
+        Action::Boundary { body, handler, .. } => body
+            .iter()
+            .chain(handler)
+            .all(|i| supported(i, types, primitive_types, manifest)),
         Action::Supervise { args, .. } => args.iter().all(|e| expression_supported(e, types)),
         Action::Exit(_, args) => args.iter().all(|e| expression_supported(e, types)),
         Action::Complete { bindings, .. } => {
             bindings.iter().all(|(_, e)| expression_supported(e, types))
         }
-        Action::Again { args, .. } => args.iter().all(|e| expression_supported(e, types)),
+        Action::Again { args, .. } | Action::Recover { args, .. } => {
+            args.iter().all(|e| expression_supported(e, types))
+        }
         Action::Loop {
-            supervised,
-            parameters,
-            body,
-            ..
+            parameters, body, ..
         } => {
-            !supervised
-                && parameters
-                    .iter()
-                    .all(|(_, e)| expression_supported(e, types))
+            parameters
+                .iter()
+                .all(|(_, e)| expression_supported(e, types))
                 && body
                     .iter()
                     .all(|i| supported(i, types, primitive_types, manifest))
@@ -197,6 +205,12 @@ struct LoopTarget {
     complete: String,
     arguments: String,
     arity: usize,
+    scope_depth: usize,
+}
+#[derive(Clone)]
+struct ScopeTarget {
+    handle: String,
+    outer_error: String,
 }
 struct Emitter {
     globals: String,
@@ -209,6 +223,8 @@ struct Emitter {
     boundaries: BTreeMap<String, (String, Vec<usize>)>,
     constructing: bool,
     loops: BTreeMap<Id, LoopTarget>,
+    scopes: Vec<ScopeTarget>,
+    error_target: String,
 }
 impl Emitter {
     fn id(&mut self) -> String {
@@ -249,10 +265,15 @@ impl Emitter {
         self.bytes(text.as_bytes())
     }
     fn check(&mut self) {
+        self.check_to(self.error_target.clone());
+    }
+    fn check_to(&mut self, error: String) {
         let ok = self.value("call i32 @tellur_rt_v1_ok(ptr %ctx)");
         let ok = self.value(format!("icmp ne i32 {ok}, 0"));
         let next = self.id();
-        self.line(format!("br i1 {ok}, label %{next}, label %error\n{next}:"));
+        self.line(format!(
+            "br i1 {ok}, label %{next}, label %{error}\n{next}:"
+        ));
     }
     fn call(&mut self, code: String) -> String {
         let result = self.value(code);
@@ -603,10 +624,29 @@ impl Emitter {
             self.store(p.id, &value);
         }
         self.instructions(&region.code);
-        debug_assert!(self.loops.is_empty());
+        debug_assert!(self.loops.is_empty() && self.scopes.is_empty());
+        debug_assert_eq!(self.error_target, "error");
         self.line("ret void\nerror:\nret void\n}");
         self.body
             .insert_str(entry, &std::mem::take(&mut self.allocations));
+    }
+    fn unwind(&mut self, depth: usize) {
+        for scope in self.scopes[depth..]
+            .iter()
+            .rev()
+            .cloned()
+            .collect::<Vec<_>>()
+        {
+            self.line(format!(
+                "call void @tellur_rt_v1_lexical_end(ptr %ctx, i64 {})",
+                scope.handle
+            ));
+            self.check_to(scope.outer_error);
+        }
+    }
+    fn return_control(&mut self) {
+        self.unwind(0);
+        self.line("ret void");
     }
     fn instructions(&mut self, code: &[Instruction]) {
         for i in code {
@@ -656,9 +696,65 @@ impl Emitter {
                     };
                     self.effect(format!("call void @tellur_rt_v1_{op}(ptr %ctx, i64 {v})"));
                     if matches!(&i.action, Action::Fault(_)) {
-                        self.line("ret void");
+                        self.return_control();
                         terminal = true;
                     }
+                }
+                Action::Boundary {
+                    body,
+                    handler,
+                    retained,
+                    retire,
+                    work_slots,
+                    handler_slots,
+                    fault_slot,
+                } => {
+                    let layout = retained
+                        .iter()
+                        .chain(retire)
+                        .chain(work_slots)
+                        .chain(handler_slots)
+                        .map(|id| self.layout.slots[id].to_string())
+                        .collect::<Vec<_>>();
+                    let layout = self.handles(&layout);
+                    let (name, len) = self.text(&format!(
+                        "{}$boundary@{}",
+                        i.provenance.region, i.provenance.span.line
+                    ));
+                    let handle = self.call(format!("call i64 @tellur_rt_v1_lexical_begin(ptr %ctx, ptr {name}, i64 {len}, ptr {layout}, i64 {}, i64 {}, i64 {}, i64 {}, i64 {})", retained.len(),retire.len(),work_slots.len(),handler_slots.len(),self.layout.slots[fault_slot]));
+                    let outer_error = self.error_target.clone();
+                    let failed = self.id();
+                    let cleanup = self.id();
+                    let cleanup_failed = self.id();
+                    self.scopes.push(ScopeTarget {
+                        handle: handle.clone(),
+                        outer_error: outer_error.clone(),
+                    });
+                    self.error_target = failed.clone();
+                    self.instructions(body);
+                    self.unwind(self.scopes.len() - 1);
+                    self.line(format!("br label %{next}\n{failed}:"));
+                    let caught = self.value(format!(
+                        "call i32 @tellur_rt_v1_lexical_catch(ptr %ctx, i64 {handle})"
+                    ));
+                    let caught = self.value(format!("icmp ne i32 {caught}, 0"));
+                    self.line(format!(
+                        "br i1 {caught}, label %{cleanup}, label %{cleanup_failed}\n{cleanup}:"
+                    ));
+                    self.error_target = cleanup_failed.clone();
+                    self.instructions(handler);
+                    // A checked handler has no normal fallthrough.
+                    self.line(format!("br label %{cleanup_failed}\n{cleanup_failed}:\ncall void @tellur_rt_v1_lexical_end(ptr %ctx, i64 {handle})\nbr label %{outer_error}"));
+                    self.scopes.pop();
+                    self.error_target = outer_error;
+                    terminal = true;
+                }
+                Action::TerminateProcess(status) => {
+                    self.effect(format!(
+                        "call void @tellur_rt_v1_process(ptr %ctx, i32 {status})"
+                    ));
+                    self.return_control();
+                    terminal = true;
                 }
                 Action::Supervise { boundary, args } => self.supervise(boundary, args),
                 Action::Terminate | Action::Escalate => {
@@ -667,7 +763,8 @@ impl Emitter {
                     } else {
                         "escalate"
                     };
-                    self.line(format!("call void @tellur_rt_v1_{op}(ptr %ctx)\nret void"));
+                    self.effect(format!("call void @tellur_rt_v1_{op}(ptr %ctx)"));
+                    self.return_control();
                     terminal = true;
                 }
                 Action::Exit(name, args) => {
@@ -675,15 +772,16 @@ impl Emitter {
                     if self.constructing {
                         assert_eq!(name, "$constructed");
                         assert_eq!(values.len(), 1);
-                        self.line(format!(
-                            "call void @tellur_rt_v1_constructed(ptr %ctx, i64 {})\nret void",
+                        self.effect(format!(
+                            "call void @tellur_rt_v1_constructed(ptr %ctx, i64 {})",
                             values[0]
                         ));
                     } else {
                         let args = self.handles(&values);
                         let (name, len) = self.text(name);
-                        self.line(format!("call void @tellur_rt_v1_complete(ptr %ctx, ptr {name}, i64 {len}, ptr {args}, i64 {})\nret void",values.len()));
+                        self.effect(format!("call void @tellur_rt_v1_complete(ptr %ctx, ptr {name}, i64 {len}, ptr {args}, i64 {})",values.len()));
                     }
+                    self.return_control();
                     terminal = true;
                 }
                 Action::Decide {
@@ -740,7 +838,9 @@ impl Emitter {
                     }
                     self.line(format!("store i1 true, ptr %a{}", self.layout.atoms[atom]));
                     if let Some(target) = unwind {
-                        self.line(format!("br label %{}", self.loops[target].complete));
+                        let target = self.loops[target].clone();
+                        self.unwind(target.scope_depth);
+                        self.line(format!("br label %{}", target.complete));
                         terminal = true;
                     }
                 }
@@ -767,6 +867,7 @@ impl Emitter {
                             complete: next.clone(),
                             arguments: arguments.clone(),
                             arity: parameters.len(),
+                            scope_depth: self.scopes.len(),
                         },
                     );
                     self.line(format!("br label %{restart}\n{restart}:"));
@@ -789,11 +890,12 @@ impl Emitter {
                     self.loops.remove(id);
                     terminal = true;
                 }
-                Action::Again { target, args } => {
+                Action::Again { target, args } | Action::Recover { target, args } => {
                     let target = self.loops[target].clone();
                     let values = args.iter().map(|e| self.expr(e)).collect::<Vec<_>>();
                     debug_assert_eq!(values.len(), target.arity);
                     self.write_handles(&target.arguments, &values);
+                    self.unwind(target.scope_depth);
                     self.line(format!("br label %{}", target.restart));
                     terminal = true;
                 }
@@ -894,6 +996,8 @@ impl CheckedProgram {
             next: 0,
             layout: FrameLayout::default(),
             loops: BTreeMap::new(),
+            scopes: vec![],
+            error_target: "error".into(),
             constructors: self
                 .regions()
                 .filter(|r| r.is_constructor())
