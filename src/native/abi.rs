@@ -69,6 +69,60 @@ impl Context<'_> {
         retired?;
         Ok(result)
     }
+    // Only the inner callback error is eligible for source-fault handover.
+    // Admission/retained-layout failures still finalize the scope but bypass cleanup.
+    fn boundary_call(
+        &mut self,
+        callback: Callback,
+        name: &str,
+        values: Vec<V>,
+        retained: &[usize],
+        handover: &mut Vec<V>,
+    ) -> R<R<Completion>> {
+        self.host.enter(name)?;
+        let mut child = Context {
+            host: &mut *self.host,
+            storage: FrameStorage::Borrowed(self.storage.values_mut()),
+            frame: None,
+            destination: None,
+            values: vec![],
+            outcomes: vec![],
+            value_base: 0,
+            outcome_base: 0,
+            error: None,
+            result: None,
+        };
+        let arguments: Vec<_> = values.into_iter().map(|v| child.put(v)).collect();
+        unsafe { callback(&mut child, arguments.as_ptr(), arguments.len()) };
+        // Resolve the whole retained set before taking any owner. Failed work's
+        // borrowers and ordinary locals retire before the contingency is entered.
+        let captured: R<Vec<V>> = (|| {
+            let roots = retained
+                .iter()
+                .map(|slot| child.local(*slot))
+                .collect::<R<Vec<_>>>()?;
+            if child.error.is_some() && child.host.source_faulted() {
+                if roots
+                    .iter()
+                    .any(|root| child.storage.values()[*root].is_none())
+                {
+                    return Err("E_NATIVE: retained boundary parameter unavailable".into());
+                }
+                Ok(roots
+                    .into_iter()
+                    .map(|root| child.storage.values_mut()[root].take().unwrap())
+                    .collect())
+            } else {
+                Ok(vec![])
+            }
+        })();
+        let result = child.finish(); // Always retire even if capture validation failed.
+        *handover = captured?;
+        if result.is_ok() {
+            child.host.leave();
+        }
+        Ok(result)
+    }
     fn put(&mut self, value: V) -> u64 {
         let Some(handle) = self
             .value_base
@@ -913,6 +967,71 @@ pub unsafe extern "C" fn tellur_rt_v1_construct_call(
         }
         child.host.leave();
         Ok(())
+    })
+}
+
+/// Administrative completion is distinct from an ordinary outcome or constructor.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_settled(ctx: *mut Context<'_>) {
+    unsafe { &mut *ctx }.perform(|c| {
+        if c.result.is_some() || c.destination.is_some() {
+            return Err("E_NATIVE: invalid ABI settlement".into());
+        }
+        c.result = Some(Completion::Settled);
+        Ok(())
+    })
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_escalate(ctx: *mut Context<'_>) {
+    unsafe { &mut *ctx }.perform::<()>(|c| c.host.escalate())
+}
+
+/// Named synchronous isolation uses the existing host lifecycle. No outcome or
+/// fault value is returned to the supervisor. Only a source fault enters cleanup;
+/// fuel, driver and internal errors retain their original error channel.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_supervise(
+    ctx: *mut Context<'_>,
+    work: Callback,
+    handler: Callback,
+    name: *const u8,
+    len: usize,
+    handler_name: *const u8,
+    handler_len: usize,
+    args: *const u64,
+    count: usize,
+    retained: *const usize,
+    retained_count: usize,
+) {
+    unsafe { &mut *ctx }.perform(|c| {
+        let name = unsafe { text(name, len)? };
+        let handler_name = unsafe { text(handler_name, handler_len)? };
+        let retained_slots = unsafe { slice(retained, retained_count) };
+        if retained_count > count
+            || retained_slots.iter().collect::<BTreeSet<_>>().len() != retained_count
+        {
+            return Err("E_NATIVE: invalid ABI boundary retained set".into());
+        }
+        let values = c.take_many(unsafe { slice(args, count) })?;
+        let mut state = c.host.begin_boundary(name, &values, false)?;
+        let mut retained = vec![];
+        let attempted = c.boundary_call(work, name, values, retained_slots, &mut retained);
+        let result = (|| match attempted? {
+            Err(message) if c.host.source_faulted() => {
+                let keep = c.host.resources.owned_tokens(&retained)?;
+                c.host.boundary_fault(&mut state, &message, &keep)?;
+                retained.push(V::String(
+                    message.strip_prefix("E_FAULT: ").unwrap_or(&message).into(),
+                ));
+                c.host.enter_contingency(&mut state)?;
+                c.boundary_call(handler, handler_name, retained, &[], &mut vec![])?
+                    .and_then(Completion::settled)
+            }
+            other => other.and_then(Completion::settled),
+        })();
+        // Finalize once on both channels, including errors while entering cleanup.
+        c.host.finish_boundary(&mut state, &result)?;
+        result
     })
 }
 

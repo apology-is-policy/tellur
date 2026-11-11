@@ -6410,3 +6410,13 @@ fuel cut. Runtime ABI regressions check direct destination delivery without outc
 capacity, preserved caller storage, stale/foreign identity rejection, argument-batch
 atomicity and retirement after partial initialization or malformed completion.
 Existing constructor checker tests retain initialization, resource and origin limits.
+
+### B1.3n named supervision (0.248)
+
+LLVM differential tests compare named boundary settlement, ordered retained owners,
+private/imported helpers, nested escalation and secondary faults before/after
+expansion at O0/O2. Constructor/loop composition, scripted retained-resource cleanup,
+invalid host payloads and fuel cuts retain Rust reports. ABI probes verify caller
+preservation without outcome handles, work-frame retirement before handler entry,
+resource destruction ordering, malformed retained sets/completions and non-source
+error bypass. Existing boundary/fault checker suites retain source restrictions.

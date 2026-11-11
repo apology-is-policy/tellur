@@ -1972,3 +1972,273 @@ fn constructor_completion_rejects_missing_and_duplicate_destinations_without_tra
     assert!(c.get(second).is_ok());
     assert_eq!(c.storage.values()[0], Some(V::String("kept".into())));
 }
+
+unsafe extern "C" fn boundary_work(ctx: *mut Context<'_>, args: *const u64, _: usize) {
+    unsafe {
+        tellur_rt_v1_frame(ctx, 3);
+        for slot in 0..2 {
+            tellur_rt_v1_store(ctx, slot, std::ptr::null(), 0, *args.add(slot));
+        }
+        let fail = tellur_rt_v1_local(ctx, 0, std::ptr::null(), 0, 0);
+        if tellur_rt_v1_bool(ctx, fail) != 0 {
+            let message = tellur_rt_v1_value(ctx, 3, 0, b"request failed".as_ptr(), 14);
+            tellur_rt_v1_fault(ctx, message);
+        } else {
+            tellur_rt_v1_settled(ctx);
+        }
+    }
+}
+unsafe extern "C" fn boundary_handler(ctx: *mut Context<'_>, args: *const u64, _: usize) {
+    unsafe {
+        tellur_rt_v1_frame(ctx, 2);
+        for slot in 0..2 {
+            tellur_rt_v1_store(ctx, slot, std::ptr::null(), 0, *args.add(slot));
+        }
+        for slot in 0..2 {
+            let value = tellur_rt_v1_local(ctx, slot, std::ptr::null(), 0, 1);
+            tellur_rt_v1_emit(ctx, value);
+        }
+        tellur_rt_v1_settled(ctx);
+    }
+}
+unsafe fn supervise(
+    ctx: &mut Context<'_>,
+    work: Callback,
+    handler: Callback,
+    args: &[u64],
+    retained: &[usize],
+) {
+    unsafe {
+        tellur_rt_v1_supervise(
+            ctx,
+            work,
+            handler,
+            b"request".as_ptr(),
+            7,
+            b"request$contingency".as_ptr(),
+            19,
+            args.as_ptr(),
+            args.len(),
+            retained.as_ptr(),
+            retained.len(),
+        )
+    };
+}
+
+#[test]
+fn named_supervision_settles_without_outcomes_and_preserves_independent_caller_storage() {
+    let mut host = Host::new(json!({}), None, true, None);
+    host.enter("main").unwrap();
+    let mut c = context(&mut host);
+    unsafe { tellur_rt_v1_frame(&mut c, 1) };
+    c.storage.values_mut()[0] = Some(V::String("caller".into()));
+    c.outcome_base = u64::MAX;
+    for fail in [true, false, true] {
+        let args = [c.put(V::Bool(fail)), c.put(V::String("retained".into()))];
+        unsafe { supervise(&mut c, boundary_work, boundary_handler, &args, &[1]) };
+        assert!(c.error.is_none(), "{:?}", c.error);
+        assert!(c.result.is_none() && c.outcomes.is_empty());
+        assert!(args.iter().all(|h| c.get(*h).is_err()));
+        assert_eq!(&**c.storage.values(), &[Some(V::String("caller".into()))]);
+        assert!(c.host.resources.scopes.is_empty() && c.host.contingencies.is_empty());
+        assert!(!c.host.source_faulted());
+    }
+    let messages = c
+        .host
+        .events
+        .iter()
+        .filter_map(|e| e.get("message"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        messages,
+        [
+            &json!("retained"),
+            &json!("request failed"),
+            &json!("retained"),
+            &json!("request failed")
+        ]
+    );
+    assert_eq!(
+        c.host
+            .events
+            .iter()
+            .filter(|e| e["kind"] == "fault")
+            .count(),
+        2
+    );
+}
+
+#[test]
+fn named_supervision_bypasses_non_source_errors_and_never_reenters_its_handler() {
+    unsafe extern "C" fn limit(ctx: *mut Context<'_>, _: *const u64, _: usize) {
+        unsafe {
+            tellur_rt_v1_frame(ctx, 0);
+            tellur_rt_v1_tick(ctx, 0, 1, 1);
+        }
+    }
+    unsafe extern "C" fn escalate(ctx: *mut Context<'_>, _: *const u64, _: usize) {
+        unsafe {
+            tellur_rt_v1_frame(ctx, 0);
+            tellur_rt_v1_escalate(ctx);
+        }
+    }
+    unsafe extern "C" fn secondary(ctx: *mut Context<'_>, _: *const u64, _: usize) {
+        unsafe {
+            tellur_rt_v1_frame(ctx, 0);
+            let value = tellur_rt_v1_value(ctx, 3, 0, b"cleanup failed".as_ptr(), 14);
+            tellur_rt_v1_fault(ctx, value);
+        }
+    }
+    for (handler, expected) in [
+        (escalate as Callback, "E_FAULT: request failed"),
+        (secondary as Callback, "E_FAULT: cleanup failed"),
+    ] {
+        let mut host = Host::new(json!({}), None, true, None);
+        host.enter("main").unwrap();
+        let mut c = context(&mut host);
+        let args = [c.put(V::Bool(true)), c.put(V::String("retained".into()))];
+        unsafe { supervise(&mut c, boundary_work, handler, &args, &[1]) };
+        assert_eq!(c.error.as_deref(), Some(expected));
+        assert!(c.host.source_faulted());
+        assert!(c.host.resources.scopes.is_empty() && c.host.contingencies.is_empty());
+        assert!(c.storage.values().is_empty());
+        assert_eq!(c.host.events.len(), 1);
+        let report = c
+            .host
+            .activations
+            .failure("main", fault::Phase::Execution, expected);
+        assert!(
+            report
+                .cause
+                .unwrap()
+                .cause
+                .unwrap()
+                .message
+                .contains("request failed")
+        );
+    }
+    let mut host = Host::new(json!({}), None, true, Some(0));
+    host.enter("main").unwrap();
+    let mut c = context(&mut host);
+    unsafe { supervise(&mut c, limit, boundary_handler, &[], &[]) };
+    assert!(c.error.as_ref().unwrap().starts_with("E_FUEL"));
+    assert!(!c.host.source_faulted());
+    assert!(c.host.events.is_empty());
+    assert!(c.host.resources.scopes.is_empty() && c.storage.values().is_empty());
+}
+
+#[test]
+fn named_supervision_validates_batches_and_malformed_completions() {
+    let mut host = Host::new(json!({}), None, true, None);
+    let mut c = context(&mut host);
+    for retained in [vec![0, 0], vec![0, 1, 2]] {
+        let args = [c.put(V::Bool(false)), c.put(V::String("kept".into()))];
+        unsafe { supervise(&mut c, boundary_work, boundary_handler, &args, &retained) };
+        assert!(
+            c.error
+                .as_ref()
+                .unwrap()
+                .contains("invalid ABI boundary retained set")
+        );
+        assert!(args.iter().all(|h| c.get(*h).is_ok()));
+        assert!(c.host.resources.scopes.is_empty());
+        c.error = None;
+    }
+    let owner = c.put(V::String("kept".into()));
+    unsafe {
+        supervise(
+            &mut c,
+            boundary_work,
+            boundary_handler,
+            &[owner, owner],
+            &[],
+        )
+    };
+    assert!(c.get(owner).is_ok());
+    assert!(c.host.resources.scopes.is_empty());
+    c.error = None;
+    unsafe { supervise(&mut c, echo, boundary_handler, &[], &[]) };
+    assert!(c.error.as_ref().unwrap().contains("ordinary outcome"));
+    assert!(c.host.resources.scopes.is_empty() && c.host.events.is_empty());
+    c.error = None;
+    let args = [c.put(V::Bool(true)), c.put(V::String("kept".into()))];
+    unsafe { supervise(&mut c, boundary_work, boundary_handler, &args, &[99]) };
+    assert!(c.error.as_ref().unwrap().contains("outside its activation"));
+    assert!(c.storage.values().is_empty() && c.host.resources.scopes.is_empty());
+    assert!(c.host.events.is_empty()); // Malformed handover never enters cleanup.
+}
+
+#[test]
+fn named_supervision_retires_borrowers_and_releases_only_abandoned_resources_before_cleanup() {
+    use std::{cell::RefCell, rc::Rc};
+    struct Probe(u32, Rc<RefCell<Vec<u32>>>);
+    impl Drop for Probe {
+        fn drop(&mut self) {
+            self.1.borrow_mut().push(self.0);
+        }
+    }
+    unsafe extern "C" fn work(ctx: *mut Context<'_>, args: *const u64, _: usize) {
+        unsafe {
+            tellur_rt_v1_frame(ctx, 3);
+            let c = &mut *ctx;
+            let owner = c.get(*args).unwrap().clone();
+            let drops = c
+                .host
+                .resources
+                .get::<Probe>(&owner, "probe")
+                .unwrap()
+                .1
+                .clone();
+            let abandoned = c.host.resources.insert("probe", Probe(2, drops)).unwrap();
+            let abandoned = c.put(abandoned);
+            tellur_rt_v1_store(ctx, 0, std::ptr::null(), 0, *args);
+            tellur_rt_v1_store(ctx, 2, std::ptr::null(), 0, abandoned);
+            let borrow =
+                tellur_rt_v1_reference(ctx, 0, std::ptr::null(), 0, 0, b"&probe".as_ptr(), 6);
+            tellur_rt_v1_store(ctx, 1, std::ptr::null(), 0, borrow);
+            let message = tellur_rt_v1_value(ctx, 3, 0, b"broken".as_ptr(), 6);
+            tellur_rt_v1_fault(ctx, message);
+        }
+    }
+    unsafe extern "C" fn cleanup(ctx: *mut Context<'_>, args: *const u64, _: usize) {
+        let c = unsafe { &mut *ctx };
+        c.perform(|c| {
+            if c.storage.values().len() != 1 {
+                return Err("work frame still live".into());
+            }
+            let owner = c.take(unsafe { *args })?;
+            let drops = c.host.resources.get::<Probe>(&owner, "probe")?.1.clone();
+            if *drops.borrow() != [2] {
+                return Err("abandoned resource not retired before handler".into());
+            }
+            let V::Opaque { token, .. } = owner else {
+                return Err("missing owner".into());
+            };
+            c.host.resources.values.remove(&token);
+            c.take(unsafe { *args.add(1) })?;
+            Ok(())
+        });
+        unsafe { tellur_rt_v1_settled(ctx) };
+    }
+    let drops = Rc::new(RefCell::new(vec![]));
+    let mut host = Host::new(json!({}), None, true, None);
+    host.enter("main").unwrap();
+    let parent = host
+        .resources
+        .insert("probe", Probe(0, drops.clone()))
+        .unwrap();
+    let owner = host
+        .resources
+        .insert("probe", Probe(1, drops.clone()))
+        .unwrap();
+    let mut c = context(&mut host);
+    unsafe { tellur_rt_v1_frame(&mut c, 1) };
+    c.storage.values_mut()[0] = Some(parent.clone());
+    let owner = c.put(owner);
+    unsafe { supervise(&mut c, work, cleanup, &[owner], &[0]) };
+    assert!(c.error.is_none(), "{:?}", c.error);
+    assert_eq!(*drops.borrow(), [2, 1]);
+    assert!(c.host.resources.get::<Probe>(&parent, "probe").is_ok());
+    assert!(c.host.resources.scopes.is_empty());
+    assert_eq!(c.storage.values().len(), 1);
+}

@@ -1973,8 +1973,212 @@ pub struct message {
     }
 
     #[test]
+    fn named_boundaries_preserve_settlement_retained_owners_faults_and_fuel() {
+        carrier_matrix(include_str!("../playground/llvm_supervision.tellur"),
+            &[false,true].map(|fail|json!({"entry":"main","arguments":[{"kind":"bool","value":fail}],"calls":[]})),
+            &(0..=65).map(Some).chain([None]).collect::<Vec<_>>());
+        carrier_matrix(
+            r#"
+struct text {string value; constructor(string value){self.value=move value;}}
+boundary request(text value) retains value {emit(borrow value.value);fault "stopped";}
+contingency(string reason){emit(move value.value);emit(reason);terminate;}
+control main() exits done {
+    loop work(u32 n=0) {
+        supervise request(text("owned"));
+        delta checked_add(n,1) {sum {u32 next}=>step,overflow=>bad}
+        [bad]:fault "counter";
+        [step]:delta next<3 {true=>more,false=>last}
+        [more]:again work(next);
+        [last]:exit done;
+    }
+}
+"#,
+            &[json!({"entry":"main","arguments":[],"calls":[]})],
+            &[None, Some(0), Some(20), Some(75)],
+        );
+    }
+
+    #[test]
+    fn nested_named_boundaries_preserve_escalation_secondary_faults_and_outer_causes() {
+        let source = r#"
+boundary inner(u32 mode,string context) retains context,mode {
+    delta mode==0 {true=>normal,false=>broken}
+    [normal]:emit("inner normal");terminate;
+    [broken]:fault "inner first";
+}
+contingency(string reason) {
+    emit(context);emit(reason);
+    delta mode==1 {true=>handled,false=>escaping}
+    [handled]:terminate;
+    [escaping]:delta mode==2 {true=>original,false=>secondary}
+    [original]:escalate;
+    [secondary]:fault "cleanup second";
+}
+boundary outer(u32 mode,string context) retains context {
+    supervise inner(mode,clone(borrow context));
+    emit("outer normal");terminate;
+}
+contingency(string reason){emit(context);emit(reason);terminate;}
+control main(u32 mode) exits done {supervise outer(mode,"outer context");emit("parent");exit done;}
+"#;
+        carrier_matrix(source, &(0..4).map(|mode|json!({"entry":"main","arguments":[{"kind":"u32","value":mode}],"calls":[]})).collect::<Vec<_>>(), &(0..=80).map(Some).chain([None]).collect::<Vec<_>>());
+        carrier_matrix(
+            &source.replace(
+                "supervise outer(mode,\"outer context\")",
+                "supervise inner(mode,\"unhandled context\")",
+            ),
+            &[2, 3].map(
+                |mode| json!({"entry":"main","arguments":[{"kind":"u32","value":mode}],"calls":[]}),
+            ),
+            &[None, Some(12), Some(25)],
+        );
+    }
+
+    #[test]
+    fn named_boundaries_keep_retained_resource_cleanup_and_host_errors_outside_source_faults() {
+        let f = Fixture::new(
+            r#"
+boundary request(handle input,bool fail) retains input {
+    delta read(borrow input) {data {bytes bytes}=>read,failed {read_error error}=>bad}
+    [bad]:fault "read failed";
+    [read]:delta fail {true=>broken,false=>normal}
+    [broken]:fault "after read";
+    [normal]:delta close(move input) {closed=>closed,failed {close_error close_error}=>close_failed}
+    [closed|close_failed]:terminate;
+}
+contingency(string reason) {
+    emit(reason);
+    delta close(move input) {closed=>closed,failed {close_error error}=>close_failed}
+    [closed|close_failed]:terminate;
+}
+control main(bool fail) exits result {
+    delta open("file") {opened {handle input}=>opened,not_found=>absent,denied=>denied}
+    [absent|denied]:exit done;
+    [opened]:supervise request(move input,fail);exit done;
+}
+outcome result {@exit 0 done}
+"#,
+        );
+        let mut manifest: Json =
+            serde_json::from_str(&fs::read_to_string(&f.manifest).unwrap()).unwrap();
+        manifest["primitives"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|p| p["name"] == "close")
+            .unwrap()["contingent"] = json!(true);
+        fs::write(&f.manifest, manifest.to_string()).unwrap();
+        let checked = compile_file(
+            &f.source,
+            Manifest::from_json(&manifest.to_string()).unwrap(),
+        )
+        .unwrap();
+        for expanded in [false, true] {
+            for opt in [0, 2] {
+                build_pair(&f, expanded, opt);
+                for fail in [false, true] {
+                    for malformed in [false, true] {
+                        let calls = vec![
+                            json!({"operation":"open","outcome":"opened","fields":[{"kind":"opaque","value":{"ty":"handle","token":"owned"}}]}),
+                            json!({"operation":"read","outcome":"data","fields":[if malformed {json!({"kind":"bool","value":true})} else {json!({"kind":"bytes","value":[65]})}]}),
+                            json!({"operation":"close","outcome":"closed","fields":[]}),
+                        ];
+                        let scenario = json!({"entry":"main","arguments":[{"kind":"bool","value":fail}],"calls":calls});
+                        let path = f.root.join("scenario.json");
+                        fs::write(&path, scenario.to_string()).unwrap();
+                        for fuel in (0..=60).map(Some).chain([None]) {
+                            let a = execute(&f.root.join(format!("llvm-{opt}")), &path, fuel);
+                            let b = execute(&f.root.join(format!("rust-{opt}")), &path, fuel);
+                            assert_eq!(
+                                a.status.code(),
+                                b.status.code(),
+                                "{expanded}/{opt}/{fail}/{malformed}/{fuel:?}"
+                            );
+                            assert_eq!(
+                                a.stdout, b.stdout,
+                                "{expanded}/{opt}/{fail}/{malformed}/{fuel:?}"
+                            );
+                            assert_eq!(
+                                a.stderr, b.stderr,
+                                "{expanded}/{opt}/{fail}/{malformed}/{fuel:?}"
+                            );
+                            if fuel.is_none() && !malformed {
+                                assert_eq!(
+                                    report(&a),
+                                    serde_json::to_value(
+                                        checked
+                                            .run(&serde_json::from_value(scenario.clone()).unwrap())
+                                            .unwrap()
+                                    )
+                                    .unwrap()
+                                );
+                            }
+                            if fuel.is_none() && malformed {
+                                assert!(!a.status.success());
+                                assert!(
+                                    !String::from_utf8_lossy(&a.stdout)
+                                        .contains("\"kind\":\"fault\"")
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn imported_named_boundaries_keep_private_helpers_and_source_names() {
+        let f = Fixture::new(
+            r#"import "helpers.tellur" as helpers; control main() exits result {supervise helpers.request("retained");exit done;} outcome result {@exit 0 done}"#,
+        );
+        fs::write(
+            f.root.join("helpers.tellur"),
+            r#"
+control fail() faults {fault "imported fault";}
+@contingent control report(string message) exits done {emit(message);exit done;}
+pub boundary request(string context) retains context {fail();}
+contingency(string reason){report(reason);emit(context);terminate;}
+"#,
+        )
+        .unwrap();
+        let checked = compile_file(
+            &f.source,
+            Manifest::from_json(&fs::read_to_string(&f.manifest).unwrap()).unwrap(),
+        )
+        .unwrap();
+        let scenario = json!({"entry":"main","arguments":[],"calls":[]});
+        let path = f.root.join("scenario.json");
+        fs::write(&path, scenario.to_string()).unwrap();
+        for expanded in [false, true] {
+            for opt in [0, 2] {
+                build_pair(&f, expanded, opt);
+                for fuel in (0..=45).map(Some).chain([None]) {
+                    let a = execute(&f.root.join(format!("llvm-{opt}")), &path, fuel);
+                    let b = execute(&f.root.join(format!("rust-{opt}")), &path, fuel);
+                    assert_eq!(a.status.code(), b.status.code());
+                    assert_eq!(a.stdout, b.stdout);
+                    assert_eq!(a.stderr, b.stderr);
+                    if fuel.is_none() {
+                        assert_eq!(
+                            report(&a),
+                            serde_json::to_value(
+                                checked
+                                    .run(&serde_json::from_value(scenario.clone()).unwrap())
+                                    .unwrap()
+                            )
+                            .unwrap()
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn every_control_keeps_scratch_allocations_in_its_entry_block() {
         for source in [
+            include_str!("../playground/llvm_supervision.tellur"),
             include_str!("../playground/llvm_constructors.tellur"),
             include_str!("../playground/llvm_loops.tellur"),
             include_str!("../playground/llvm_collections.tellur"),

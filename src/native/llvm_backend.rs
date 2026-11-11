@@ -35,6 +35,9 @@ declare void @tellur_rt_v1_complete(ptr, ptr, i64, ptr, i64)
 declare i64 @tellur_rt_v1_call(ptr, ptr, ptr, i64, ptr, i64)
 declare void @tellur_rt_v1_construct_call(ptr, ptr, ptr, i64, ptr, i64, i64)
 declare void @tellur_rt_v1_constructed(ptr, i64)
+declare void @tellur_rt_v1_settled(ptr)
+declare void @tellur_rt_v1_escalate(ptr)
+declare void @tellur_rt_v1_supervise(ptr, ptr, ptr, ptr, i64, ptr, i64, ptr, i64, ptr, i64)
 declare i64 @tellur_rt_v1_primitive(ptr, ptr, i64, ptr, i64)
 declare i64 @tellur_rt_v1_collection(ptr, ptr, i64, ptr, i64)
 declare i64 @tellur_rt_v1_length(ptr, i64)
@@ -131,7 +134,8 @@ fn supported(
             expression_supported(e, types)
         }
         Action::Assign(_, e) => expression_supported(e, types),
-        Action::Release(_) => true,
+        Action::Release(_) | Action::Terminate | Action::Escalate => true,
+        Action::Supervise { args, .. } => args.iter().all(|e| expression_supported(e, types)),
         Action::Exit(_, args) => args.iter().all(|e| expression_supported(e, types)),
         Action::Complete { bindings, .. } => {
             bindings.iter().all(|(_, e)| expression_supported(e, types))
@@ -202,6 +206,7 @@ struct Emitter {
     layout: FrameLayout,
     controls: BTreeMap<String, (usize, String)>,
     constructors: BTreeSet<String>,
+    boundaries: BTreeMap<String, (String, Vec<usize>)>,
     constructing: bool,
     loops: BTreeMap<Id, LoopTarget>,
 }
@@ -304,6 +309,20 @@ impl Emitter {
             values.len()
         ));
         self.route(&result, arms);
+    }
+    fn supervise(&mut self, name: &str, args: &[Expr]) {
+        let (handler, retained) = self.boundaries[name].clone();
+        let (work, display) = self.controls[name].clone();
+        let (handler, handler_display) = self.controls[&handler].clone();
+        let values = args.iter().map(|a| self.expr(a)).collect::<Vec<_>>();
+        let args = self.handles(&values);
+        let slots = self.handles(&retained.iter().map(usize::to_string).collect::<Vec<_>>());
+        let (name, len) = self.text(&display);
+        let (handler_name, handler_len) = self.text(&handler_display);
+        self.effect(format!(
+            "call void @tellur_rt_v1_supervise(ptr %ctx, ptr @control_{work}, ptr @control_{handler}, ptr {name}, i64 {len}, ptr {handler_name}, i64 {handler_len}, ptr {args}, i64 {}, ptr {slots}, i64 {})",
+            values.len(), retained.len()
+        ));
     }
     fn runtime_operation(&mut self, abi: &str, name: &str, args: &[Expr], arms: &[Arm]) {
         let values = args.iter().map(|a| self.expr(a)).collect::<Vec<_>>();
@@ -641,6 +660,16 @@ impl Emitter {
                         terminal = true;
                     }
                 }
+                Action::Supervise { boundary, args } => self.supervise(boundary, args),
+                Action::Terminate | Action::Escalate => {
+                    let op = if matches!(&i.action, Action::Terminate) {
+                        "settled"
+                    } else {
+                        "escalate"
+                    };
+                    self.line(format!("call void @tellur_rt_v1_{op}(ptr %ctx)\nret void"));
+                    terminal = true;
+                }
                 Action::Exit(name, args) => {
                     let values = args.iter().map(|a| self.expr(a)).collect::<Vec<_>>();
                     if self.constructing {
@@ -871,6 +900,17 @@ impl CheckedProgram {
                 .map(|r| r.name.clone())
                 .collect(),
             constructing: false,
+            boundaries: self
+                .regions()
+                .filter_map(|r| {
+                    r.boundary.as_ref().map(|b| {
+                        (
+                            r.name.clone(),
+                            (b.handler.clone(), FrameLayout::new(r).slots(&b.retained)),
+                        )
+                    })
+                })
+                .collect(),
             controls: self
                 .regions()
                 .enumerate()
@@ -881,8 +921,6 @@ impl CheckedProgram {
         let mut callbacks = vec![];
         for region in self.regions() {
             if region.asynchronous
-                || region.boundary.is_some()
-                || region.contingency
                 || region
                     .slots
                     .values()

@@ -161,6 +161,12 @@ context and the diagnostic, then terminates. The supervisor starts the second
 request, which completes normally. `main` finally produces its own `done` outcome.
 There is no outcome representing the first request's fault.
 
+The opt-in [LLVM backend](llvm-backend.md#named-synchronous-supervision) supports
+these named synchronous boundaries since 0.248. Work and contingency use compiled
+callbacks and preserve retained-owner retirement, source-fault classification and
+causal reports. Lexical boundaries, supervised recovery and process termination
+remain later LLVM slices; the default Rust backend supports the forms above.
+
 ## Declaration and invocation
 
 A boundary is a named execution root:

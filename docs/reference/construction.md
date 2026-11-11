@@ -115,7 +115,7 @@ instruction sequence or physical copy elision.
 
 Since 0.247, the opt-in [LLVM backend](llvm-backend.md#declared-constructors)
 supports synchronous declared constructors, including nested and borrowed results.
-Task and boundary forms remain gated; source initialization and origin
+Task and lexical boundary forms remain gated; source initialization and origin
 rules are the same as on the default Rust backend.
 
 Since 0.68, native constructors deliver completed values into caller storage

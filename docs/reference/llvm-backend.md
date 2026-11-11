@@ -14,6 +14,7 @@ Compiler 0.243 adds opaque/resource values and synchronous borrowed host paramet
 Compiler 0.244 adds arrays, vectors, maps and synchronous collection operations.
 Compiler 0.246 adds synchronous tail loops and expanded loop completions.
 Compiler 0.247 adds synchronous declared constructors with direct destination delivery.
+Compiler 0.248 adds named synchronous boundaries and contingency settlement.
 The default remains `--backend rust`. Both start from the same checked program;
 backend selection does not relax ownership, origins, outcomes or path rules.
 
@@ -40,7 +41,7 @@ the Rust backend. Multiple eligible executable entries are supported.
 
 Direct references and reference-bearing aggregates compose recursively; shared/exclusive
 parameters, borrowed results, carrier reborrows and indirect fields are supported.
-Fault boundaries, contingencies, task operations and adapters remain outside this
+Lexical fault boundaries, supervised recovery, task operations and adapters remain outside this
 profile. Launch signal policies are also rejected. Admission checks all checked
 regions, including unused helpers. Unsupported programs receive `E_BACKEND`
 before the backend creates its output directory or files; ordinary checking may
@@ -83,7 +84,7 @@ written argument order, short-circuiting and ordinary source activation names.
 Reference-bearing constructor results retain their declared caller origins and use
 the same checked evidence as raw records and control results. The destination's
 storage identity is validated before argument transfer and delivery. It grants no
-new borrowing permission. Task-bearing and boundary-bearing constructors
+new borrowing permission. Task operations and lexical fault boundaries
 remain outside the admitted profile.
 
 The [constructor example](../../playground/llvm_constructors.tellur) constructs an
@@ -97,6 +98,38 @@ owning message and a borrowed view:
 
 The first invocation emits `Hello, Ada` and returns the message. The second faults
 after initializing its field, before any result reaches the caller.
+
+## Named synchronous supervision
+
+Since 0.248, `supervise` invokes a named boundary through compiled work and
+contingency callbacks. They use administrative settlement, with no outcome tag,
+payload or fault value delivered to the supervisor. After settlement, only the
+supervisor's own continuation resumes; faulted work remains abandoned.
+
+On an explicit source fault, retained owners transfer in declaration order after
+ordinary child frames and their loans retire. Existing runtime scope rules release
+abandoned resources before contingency begins and preserve unrelated caller owners.
+Normal settlement, escalation and secondary faults finalize the scope exactly once.
+A handler's failure cannot re-enter that same handler. Fuel, driver and internal
+errors bypass contingency; they do not become source faults.
+
+Original and expanded programs preserve private/imported helper names, activation
+causes, path locations and fuel. Contingent helper calls, ordinary loops and admitted
+constructors compose with named supervision. The source isolation/retention rules
+remain unchanged. Lexical `fault boundary`, `recover again`, supervised loops and
+entry-only process termination are still gated in this LLVM slice.
+
+The [supervision example](../../playground/llvm_supervision.tellur) runs two requests:
+
+```sh
+./bin/tellurc build playground/llvm_supervision.tellur playground/manifest.json --backend llvm --out /tmp/tellur-supervision
+/tmp/tellur-supervision false
+/tmp/tellur-supervision true
+```
+
+Both complete the supervisor with `done`. The second invocation handles the first
+request's source fault, reports its retained context and reason, then starts the
+independent second request.
 
 ## Stable local storage
 
@@ -145,7 +178,7 @@ Reference formation and checked partial/complete/incoming origin annotations use
 the same runtime metadata as Rust generation; incomplete incoming evidence is
 never promoted by a callee annotation. Metadata does not grant execution permission.
 
-This slice excludes async host operations and the remaining task/boundary forms. Backend
+This slice excludes async host operations and the remaining task/lexical-boundary forms. Backend
 admission does not relax lifetime, aliasing, origin or outcome checks.
 
 The [reference example](../../playground/llvm_references.tellur) mutates a record,
@@ -385,7 +418,7 @@ then compiles `program.o` and links `OUTPUT` with its embedded LLVM/LLD 22.1.8.
 Path guards are LLVM branches. Runtime faults retain Tellur source provenance;
 native debugger information is not yet emitted.
 
-The distributed 0.247 compiler includes the `llvm` feature. When building the
+The distributed 0.248 compiler includes the `llvm` feature. When building the
 compiler from source, enable it and set `LLVM_SYS_221_PREFIX` to the static pinned
 LLVM/LLD installation, as described in the repository README. A compiler built
 without that feature reports a clear error for `--backend llvm`.
@@ -397,5 +430,5 @@ handles and shares the existing runtime's launch, fuel, fault and result logic.
 The resulting executable is standalone. Shipping a precompiled runtime and target
 link packs belongs to the later single-binary checkpoint.
 
-The next synchronous slice adds fault boundaries. Async lowering follows using frontend state machines, before the
+The next synchronous slice adds lexical fault boundaries and supervised recovery. Async lowering follows using frontend state machines, before the
 whole-language parity gate permits changing the default backend.

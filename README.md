@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.247.0** implements the v0.1 checked core and the current language
+Compiler release **0.248.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -21,6 +21,12 @@ Release 0.222 added dynamic task sets. `tasks<producer>` holds any number of
 spawned children of one async control. `spawn producer(..) into set;` adds a member,
 `delta await next set { ..., empty => ... }` joins members in completion order, and
 `count(borrow set)` bounds how many run at once.
+
+Release 0.248 adds named synchronous fault supervision to direct LLVM emission.
+Retained owners move into contingency only after failed work retires; settlement
+returns no outcome to the supervisor. Nested escalation and resource cleanup retain
+existing fault reports and fuel behavior. Try the [supervision example](playground/llvm_supervision.tellur).
+Lexical boundaries and supervised recovery follow; Rust remains the default.
 
 Release 0.247 adds synchronous declared constructors to direct LLVM emission.
 Completed records go straight into caller storage, preserving nested ownership,
