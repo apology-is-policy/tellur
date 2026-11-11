@@ -1,0 +1,947 @@
+{
+  "platform": "macOS-27.2.1-arm64-arm-64bit-Mach-O",
+  "machine": "arm64",
+  "clang": "Homebrew clang version 22.1.4\nTarget: arm64-apple-darwin27.2.0\nThread model: posix\nInstalledDir: /opt/homebrew/Cellar/llvm/22.1.4/bin\nConfiguration file: /opt/homebrew/Cellar/llvm/22.1.4/etc/clang/arm64-apple-darwin.cfg",
+  "compiler": "tellurc 0.249.0 (v0.1 core, v0.2 syntax preview)",
+  "compiler_sha256": "54e6d91517178d0b0f817aabee6ee687bc2a1191ad34c5b0c09779204e39d0f6",
+  "sysroot": "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+  "iterations": 100000,
+  "samples": 5,
+  "inputs": {
+    "cancellation.ll": "7e9055d533efd7d71c69c3ddb6d3e25e9100a67e8b20ab7208021820f7c7dcc9",
+    "fault.ll": "1c3e2a1af4a7ad5a3966f9b0a7842cb5802c2089df05d1ccc55879b0d4ff48dd",
+    "frontend-cancellation.ll": "63ca5f6f8eaa611f07f63bbb833745b45253b4ae17596d71c002abe23389a2cd",
+    "frontend-fault.ll": "f233cf49ab4ab4584fb7322ace76dae93bd6d07681fe2ed16ecf807be2805239",
+    "frontend-nested-fault.ll": "c35355006ad50595b8d6b7a0e6f12b063486e1ede75b7a95e9cf0f0c06eb8188",
+    "frontend-sets.ll": "98c10fb809653e3d8a944e7c717bb84f0e31e9f579819f18162b13ad9cb56bce",
+    "frontend.ll": "f58ac257f6d84bb8de891d24ebef4080ab0819a665ef31dd418960ac4811d322",
+    "intrinsics.ll": "229d9128b1bf06078f043171d9df048bfdaac4aa468e7729031c20377c4155c0",
+    "nested-fault.ll": "314e356b473207348f01bd438331316512479e469953c2a6c7273d300a29b56b",
+    "sets.ll": "37489af2d0922bd415f3ca3d430fcb8a4e728238c82ec46054570b99db35c0b3",
+    "runtime.c": "b81e2fa8c987fb1bba763e994437dc19acd7b997373a28f8f242643403d5f442",
+    "benchmark.c": "b29345dd6d3c011d12a5f05c73a89c3e4f71d591f5f99924c9c07cb98246019c",
+    "measure.py": "ed3b96b9d76803d25f2af309c80144051b3b9db8b27d7b032ca232e5bd3e6d33"
+  },
+  "records": [
+    {
+      "specimen": "cancellation",
+      "model": "coroutine",
+      "opt": 0,
+      "metrics": {
+        "allocations": 4,
+        "inline_frames": 0,
+        "peak_frames": 4,
+        "total_bytes": 192,
+        "peak_bytes": 192,
+        "heap_allocations": 4,
+        "heap_bytes": 192
+      },
+      "binary_bytes": 70816,
+      "text_bytes": 13188,
+      "status": 0,
+      "events": [
+        "open",
+        "open",
+        "receive",
+        "The backup stopped.",
+        "close",
+        "close",
+        "decode_utf8",
+        "hello"
+      ],
+      "diagnostics": [],
+      "samples": [
+        {
+          "iterations": 100000,
+          "elapsed_ns": 83462000,
+          "checksum": 10812348009853752461,
+          "status": 0
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 86261000,
+          "checksum": 10812348009853752461,
+          "status": 0
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 83027000,
+          "checksum": 10812348009853752461,
+          "status": 0
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 82950000,
+          "checksum": 10812348009853752461,
+          "status": 0
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 83561000,
+          "checksum": 10812348009853752461,
+          "status": 0
+        }
+      ],
+      "median_ns_per_run": 834.62
+    },
+    {
+      "specimen": "cancellation",
+      "model": "frontend",
+      "opt": 0,
+      "metrics": {
+        "allocations": 3,
+        "inline_frames": 1,
+        "peak_frames": 3,
+        "total_bytes": 184,
+        "peak_bytes": 184,
+        "heap_allocations": 1,
+        "heap_bytes": 4120
+      },
+      "binary_bytes": 70928,
+      "text_bytes": 10580,
+      "status": 0,
+      "events": [
+        "open",
+        "open",
+        "receive",
+        "The backup stopped.",
+        "close",
+        "close",
+        "decode_utf8",
+        "hello"
+      ],
+      "diagnostics": [],
+      "samples": [
+        {
+          "iterations": 100000,
+          "elapsed_ns": 85874000,
+          "checksum": 10812348009853752461,
+          "status": 0
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 80560000,
+          "checksum": 10812348009853752461,
+          "status": 0
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 80486000,
+          "checksum": 10812348009853752461,
+          "status": 0
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 80645000,
+          "checksum": 10812348009853752461,
+          "status": 0
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 79469000,
+          "checksum": 10812348009853752461,
+          "status": 0
+        }
+      ],
+      "median_ns_per_run": 805.6
+    },
+    {
+      "specimen": "cancellation",
+      "model": "coroutine",
+      "opt": 2,
+      "metrics": {
+        "allocations": 4,
+        "inline_frames": 0,
+        "peak_frames": 4,
+        "total_bytes": 192,
+        "peak_bytes": 192,
+        "heap_allocations": 4,
+        "heap_bytes": 192
+      },
+      "binary_bytes": 54176,
+      "text_bytes": 8148,
+      "status": 0,
+      "events": [
+        "open",
+        "open",
+        "receive",
+        "The backup stopped.",
+        "close",
+        "close",
+        "decode_utf8",
+        "hello"
+      ],
+      "diagnostics": [],
+      "samples": [
+        {
+          "iterations": 100000,
+          "elapsed_ns": 52693000,
+          "checksum": 10812348009853752461,
+          "status": 0
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 53692000,
+          "checksum": 10812348009853752461,
+          "status": 0
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 52557000,
+          "checksum": 10812348009853752461,
+          "status": 0
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 52075000,
+          "checksum": 10812348009853752461,
+          "status": 0
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 51603000,
+          "checksum": 10812348009853752461,
+          "status": 0
+        }
+      ],
+      "median_ns_per_run": 525.57
+    },
+    {
+      "specimen": "cancellation",
+      "model": "frontend",
+      "opt": 2,
+      "metrics": {
+        "allocations": 3,
+        "inline_frames": 1,
+        "peak_frames": 3,
+        "total_bytes": 184,
+        "peak_bytes": 184,
+        "heap_allocations": 1,
+        "heap_bytes": 4120
+      },
+      "binary_bytes": 54288,
+      "text_bytes": 7972,
+      "status": 0,
+      "events": [
+        "open",
+        "open",
+        "receive",
+        "The backup stopped.",
+        "close",
+        "close",
+        "decode_utf8",
+        "hello"
+      ],
+      "diagnostics": [],
+      "samples": [
+        {
+          "iterations": 100000,
+          "elapsed_ns": 48549000,
+          "checksum": 10812348009853752461,
+          "status": 0
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 49564000,
+          "checksum": 10812348009853752461,
+          "status": 0
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 49732000,
+          "checksum": 10812348009853752461,
+          "status": 0
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 49429000,
+          "checksum": 10812348009853752461,
+          "status": 0
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 48329000,
+          "checksum": 10812348009853752461,
+          "status": 0
+        }
+      ],
+      "median_ns_per_run": 494.29
+    },
+    {
+      "specimen": "sets",
+      "model": "coroutine",
+      "opt": 0,
+      "metrics": {
+        "allocations": 4,
+        "inline_frames": 0,
+        "peak_frames": 4,
+        "total_bytes": 128,
+        "peak_bytes": 128,
+        "heap_allocations": 4,
+        "heap_bytes": 128
+      },
+      "binary_bytes": 70736,
+      "text_bytes": 11384,
+      "status": 0,
+      "events": [
+        "tick",
+        "a",
+        "stopped",
+        "stopped"
+      ],
+      "diagnostics": [],
+      "samples": [
+        {
+          "iterations": 100000,
+          "elapsed_ns": 96127000,
+          "checksum": 14774904396773654562,
+          "status": 0
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 95619000,
+          "checksum": 14774904396773654562,
+          "status": 0
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 95561000,
+          "checksum": 14774904396773654562,
+          "status": 0
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 96813000,
+          "checksum": 14774904396773654562,
+          "status": 0
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 96474000,
+          "checksum": 14774904396773654562,
+          "status": 0
+        }
+      ],
+      "median_ns_per_run": 961.27
+    },
+    {
+      "specimen": "sets",
+      "model": "frontend",
+      "opt": 0,
+      "metrics": {
+        "allocations": 4,
+        "inline_frames": 0,
+        "peak_frames": 4,
+        "total_bytes": 160,
+        "peak_bytes": 160,
+        "heap_allocations": 1,
+        "heap_bytes": 4120
+      },
+      "binary_bytes": 70832,
+      "text_bytes": 9692,
+      "status": 0,
+      "events": [
+        "tick",
+        "a",
+        "stopped",
+        "stopped"
+      ],
+      "diagnostics": [],
+      "samples": [
+        {
+          "iterations": 100000,
+          "elapsed_ns": 90046000,
+          "checksum": 14774904396773654562,
+          "status": 0
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 91394000,
+          "checksum": 14774904396773654562,
+          "status": 0
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 88748000,
+          "checksum": 14774904396773654562,
+          "status": 0
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 88514000,
+          "checksum": 14774904396773654562,
+          "status": 0
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 88744000,
+          "checksum": 14774904396773654562,
+          "status": 0
+        }
+      ],
+      "median_ns_per_run": 887.48
+    },
+    {
+      "specimen": "sets",
+      "model": "coroutine",
+      "opt": 2,
+      "metrics": {
+        "allocations": 4,
+        "inline_frames": 0,
+        "peak_frames": 4,
+        "total_bytes": 128,
+        "peak_bytes": 128,
+        "heap_allocations": 4,
+        "heap_bytes": 128
+      },
+      "binary_bytes": 54080,
+      "text_bytes": 7660,
+      "status": 0,
+      "events": [
+        "tick",
+        "a",
+        "stopped",
+        "stopped"
+      ],
+      "diagnostics": [],
+      "samples": [
+        {
+          "iterations": 100000,
+          "elapsed_ns": 60889000,
+          "checksum": 14774904396773654562,
+          "status": 0
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 66065000,
+          "checksum": 14774904396773654562,
+          "status": 0
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 67754000,
+          "checksum": 14774904396773654562,
+          "status": 0
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 61629000,
+          "checksum": 14774904396773654562,
+          "status": 0
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 61703000,
+          "checksum": 14774904396773654562,
+          "status": 0
+        }
+      ],
+      "median_ns_per_run": 617.03
+    },
+    {
+      "specimen": "sets",
+      "model": "frontend",
+      "opt": 2,
+      "metrics": {
+        "allocations": 4,
+        "inline_frames": 0,
+        "peak_frames": 4,
+        "total_bytes": 160,
+        "peak_bytes": 160,
+        "heap_allocations": 1,
+        "heap_bytes": 4120
+      },
+      "binary_bytes": 54192,
+      "text_bytes": 7548,
+      "status": 0,
+      "events": [
+        "tick",
+        "a",
+        "stopped",
+        "stopped"
+      ],
+      "diagnostics": [],
+      "samples": [
+        {
+          "iterations": 100000,
+          "elapsed_ns": 55400000,
+          "checksum": 14774904396773654562,
+          "status": 0
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 54744000,
+          "checksum": 14774904396773654562,
+          "status": 0
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 73271000,
+          "checksum": 14774904396773654562,
+          "status": 0
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 57056000,
+          "checksum": 14774904396773654562,
+          "status": 0
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 57416000,
+          "checksum": 14774904396773654562,
+          "status": 0
+        }
+      ],
+      "median_ns_per_run": 570.56
+    },
+    {
+      "specimen": "fault",
+      "model": "coroutine",
+      "opt": 0,
+      "metrics": {
+        "allocations": 3,
+        "inline_frames": 0,
+        "peak_frames": 3,
+        "total_bytes": 96,
+        "peak_bytes": 96,
+        "heap_allocations": 3,
+        "heap_bytes": 96
+      },
+      "binary_bytes": 70784,
+      "text_bytes": 12168,
+      "status": 1,
+      "events": [
+        "failing"
+      ],
+      "diagnostics": [
+        "fault: sibling failed"
+      ],
+      "samples": [
+        {
+          "iterations": 100000,
+          "elapsed_ns": 51730000,
+          "checksum": 12339244299558717540,
+          "status": 1
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 53807000,
+          "checksum": 12339244299558717540,
+          "status": 1
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 54311000,
+          "checksum": 12339244299558717540,
+          "status": 1
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 41043000,
+          "checksum": 12339244299558717540,
+          "status": 1
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 41409000,
+          "checksum": 12339244299558717540,
+          "status": 1
+        }
+      ],
+      "median_ns_per_run": 517.3
+    },
+    {
+      "specimen": "fault",
+      "model": "frontend",
+      "opt": 0,
+      "metrics": {
+        "allocations": 3,
+        "inline_frames": 0,
+        "peak_frames": 3,
+        "total_bytes": 112,
+        "peak_bytes": 112,
+        "heap_allocations": 1,
+        "heap_bytes": 4120
+      },
+      "binary_bytes": 70944,
+      "text_bytes": 9832,
+      "status": 1,
+      "events": [
+        "failing"
+      ],
+      "diagnostics": [
+        "fault: sibling failed"
+      ],
+      "samples": [
+        {
+          "iterations": 100000,
+          "elapsed_ns": 48157000,
+          "checksum": 12339244299558717540,
+          "status": 1
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 53591000,
+          "checksum": 12339244299558717540,
+          "status": 1
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 38731000,
+          "checksum": 12339244299558717540,
+          "status": 1
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 38337000,
+          "checksum": 12339244299558717540,
+          "status": 1
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 37316000,
+          "checksum": 12339244299558717540,
+          "status": 1
+        }
+      ],
+      "median_ns_per_run": 387.31
+    },
+    {
+      "specimen": "fault",
+      "model": "coroutine",
+      "opt": 2,
+      "metrics": {
+        "allocations": 3,
+        "inline_frames": 0,
+        "peak_frames": 3,
+        "total_bytes": 88,
+        "peak_bytes": 88,
+        "heap_allocations": 3,
+        "heap_bytes": 88
+      },
+      "binary_bytes": 54144,
+      "text_bytes": 7468,
+      "status": 1,
+      "events": [
+        "failing"
+      ],
+      "diagnostics": [
+        "fault: sibling failed"
+      ],
+      "samples": [
+        {
+          "iterations": 100000,
+          "elapsed_ns": 26551000,
+          "checksum": 12339244299558717540,
+          "status": 1
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 25120000,
+          "checksum": 12339244299558717540,
+          "status": 1
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 24551000,
+          "checksum": 12339244299558717540,
+          "status": 1
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 24849000,
+          "checksum": 12339244299558717540,
+          "status": 1
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 24460000,
+          "checksum": 12339244299558717540,
+          "status": 1
+        }
+      ],
+      "median_ns_per_run": 248.49
+    },
+    {
+      "specimen": "fault",
+      "model": "frontend",
+      "opt": 2,
+      "metrics": {
+        "allocations": 3,
+        "inline_frames": 0,
+        "peak_frames": 3,
+        "total_bytes": 112,
+        "peak_bytes": 112,
+        "heap_allocations": 1,
+        "heap_bytes": 4120
+      },
+      "binary_bytes": 54288,
+      "text_bytes": 7440,
+      "status": 1,
+      "events": [
+        "failing"
+      ],
+      "diagnostics": [
+        "fault: sibling failed"
+      ],
+      "samples": [
+        {
+          "iterations": 100000,
+          "elapsed_ns": 23168000,
+          "checksum": 12339244299558717540,
+          "status": 1
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 22849000,
+          "checksum": 12339244299558717540,
+          "status": 1
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 23009000,
+          "checksum": 12339244299558717540,
+          "status": 1
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 22945000,
+          "checksum": 12339244299558717540,
+          "status": 1
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 23210000,
+          "checksum": 12339244299558717540,
+          "status": 1
+        }
+      ],
+      "median_ns_per_run": 230.09
+    },
+    {
+      "specimen": "nested-fault",
+      "model": "coroutine",
+      "opt": 0,
+      "metrics": {
+        "allocations": 4,
+        "inline_frames": 0,
+        "peak_frames": 4,
+        "total_bytes": 136,
+        "peak_bytes": 136,
+        "heap_allocations": 4,
+        "heap_bytes": 136
+      },
+      "binary_bytes": 70912,
+      "text_bytes": 12528,
+      "status": 1,
+      "events": [
+        "failing"
+      ],
+      "diagnostics": [
+        "fault: sibling failed"
+      ],
+      "samples": [
+        {
+          "iterations": 100000,
+          "elapsed_ns": 47319000,
+          "checksum": 12339244299558717540,
+          "status": 1
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 44077000,
+          "checksum": 12339244299558717540,
+          "status": 1
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 43738000,
+          "checksum": 12339244299558717540,
+          "status": 1
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 43588000,
+          "checksum": 12339244299558717540,
+          "status": 1
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 42709000,
+          "checksum": 12339244299558717540,
+          "status": 1
+        }
+      ],
+      "median_ns_per_run": 437.38
+    },
+    {
+      "specimen": "nested-fault",
+      "model": "frontend",
+      "opt": 0,
+      "metrics": {
+        "allocations": 3,
+        "inline_frames": 1,
+        "peak_frames": 3,
+        "total_bytes": 144,
+        "peak_bytes": 144,
+        "heap_allocations": 1,
+        "heap_bytes": 4120
+      },
+      "binary_bytes": 71104,
+      "text_bytes": 10124,
+      "status": 1,
+      "events": [
+        "failing"
+      ],
+      "diagnostics": [
+        "fault: sibling failed"
+      ],
+      "samples": [
+        {
+          "iterations": 100000,
+          "elapsed_ns": 39402000,
+          "checksum": 12339244299558717540,
+          "status": 1
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 39376000,
+          "checksum": 12339244299558717540,
+          "status": 1
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 37843000,
+          "checksum": 12339244299558717540,
+          "status": 1
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 38024000,
+          "checksum": 12339244299558717540,
+          "status": 1
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 37465000,
+          "checksum": 12339244299558717540,
+          "status": 1
+        }
+      ],
+      "median_ns_per_run": 380.24
+    },
+    {
+      "specimen": "nested-fault",
+      "model": "coroutine",
+      "opt": 2,
+      "metrics": {
+        "allocations": 4,
+        "inline_frames": 0,
+        "peak_frames": 4,
+        "total_bytes": 120,
+        "peak_bytes": 120,
+        "heap_allocations": 4,
+        "heap_bytes": 120
+      },
+      "binary_bytes": 54272,
+      "text_bytes": 7800,
+      "status": 1,
+      "events": [
+        "failing"
+      ],
+      "diagnostics": [
+        "fault: sibling failed"
+      ],
+      "samples": [
+        {
+          "iterations": 100000,
+          "elapsed_ns": 25809000,
+          "checksum": 12339244299558717540,
+          "status": 1
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 25638000,
+          "checksum": 12339244299558717540,
+          "status": 1
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 26635000,
+          "checksum": 12339244299558717540,
+          "status": 1
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 26488000,
+          "checksum": 12339244299558717540,
+          "status": 1
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 27014000,
+          "checksum": 12339244299558717540,
+          "status": 1
+        }
+      ],
+      "median_ns_per_run": 264.88
+    },
+    {
+      "specimen": "nested-fault",
+      "model": "frontend",
+      "opt": 2,
+      "metrics": {
+        "allocations": 3,
+        "inline_frames": 1,
+        "peak_frames": 3,
+        "total_bytes": 144,
+        "peak_bytes": 144,
+        "heap_allocations": 1,
+        "heap_bytes": 4120
+      },
+      "binary_bytes": 54464,
+      "text_bytes": 7940,
+      "status": 1,
+      "events": [
+        "failing"
+      ],
+      "diagnostics": [
+        "fault: sibling failed"
+      ],
+      "samples": [
+        {
+          "iterations": 100000,
+          "elapsed_ns": 23494000,
+          "checksum": 12339244299558717540,
+          "status": 1
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 22969000,
+          "checksum": 12339244299558717540,
+          "status": 1
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 23092000,
+          "checksum": 12339244299558717540,
+          "status": 1
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 23193000,
+          "checksum": 12339244299558717540,
+          "status": 1
+        },
+        {
+          "iterations": 100000,
+          "elapsed_ns": 23001000,
+          "checksum": 12339244299558717540,
+          "status": 1
+        }
+      ],
+      "median_ns_per_run": 230.92
+    }
+  ]
+}

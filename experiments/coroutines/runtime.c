@@ -7,6 +7,8 @@
 // by cancellable operations, which then stop without an event; joins never
 // interrupt. The runtime owns scheduling, readiness and cancellation; frames
 // own only the control state of their Tellur control.
+#include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -62,19 +64,110 @@ static int outcome_index(const struct call *c, const char *const *names) {
     fail("unknown outcome", c->outcome);
     return 0;
 }
-static void event(const char *text) { printf("%s\n", text); }
+// Benchmark mode hashes the same events without timing terminal/file I/O.
+static int benchmark;
+static uint64_t event_checksum;
+void rt_benchmark(int enabled) { benchmark = enabled; }
+uint64_t rt_checksum(void) { return event_checksum; }
+static void event(const char *text) {
+    if (!benchmark) printf("%s\n", text);
+    for (const unsigned char *p = (const unsigned char *)text; *p; ++p)
+        event_checksum = event_checksum * 33 + *p;
+    event_checksum = event_checksum * 33 + '\n';
+}
 
 // ---- frames -------------------------------------------------------------------
-// Coroutine frames are allocated here so that the runtime can prove every frame
-// is released exactly once, including frames destroyed while suspended.
-static int live_frames;
+// Both lowerings share exact frame retirement accounting. Direct-await embedded
+// frames have their own lifetime ledger; their bytes already belong to the parent.
+struct allocation { void *ptr; long size; int active, arena; };
+static struct allocation allocations[MAX_TASKS * 2];
+static void *inline_frames[MAX_TASKS * 2];
+static int allocation_count, inline_count, live_inline, live_frames, peak_frames;
+static long total_bytes, live_bytes, peak_bytes, heap_allocations, heap_bytes;
+struct arena_chunk {
+    struct arena_chunk *next;
+    size_t used, capacity;
+    max_align_t storage[];
+};
+static struct arena_chunk *arena;
+
+static void *track_frame(void *ptr, long size, int in_arena) {
+    if (!ptr) fail("frame allocation failed", NULL);
+    if (allocation_count == MAX_TASKS * 2) fail("too many frames", NULL);
+    allocations[allocation_count++] = (struct allocation){ptr, size, 1, in_arena};
+    if (++live_frames > peak_frames) peak_frames = live_frames;
+    total_bytes += size;
+    live_bytes += size;
+    if (live_bytes > peak_bytes) peak_bytes = live_bytes;
+    return ptr;
+}
 void *rt_frame_alloc(long size) {
-    live_frames++;
-    return malloc(size);
+    heap_allocations++;
+    heap_bytes += size;
+    return track_frame(malloc(size), size, 0);
+}
+// Stable bump arena, reclaimed only after the domain's frames have all retired.
+// This intentionally measures page slack as well as the logical frame footprint.
+void *rt_arena_alloc(long size) {
+    size_t alignment = _Alignof(max_align_t);
+    size_t rounded = ((size_t)size + alignment - 1) / alignment * alignment;
+    if (size <= 0 || rounded > 4096) fail("invalid arena frame size", NULL);
+    if (!arena || arena->used + rounded > arena->capacity) {
+        struct arena_chunk *chunk = malloc(sizeof *chunk + 4096);
+        if (!chunk) fail("arena allocation failed", NULL);
+        *chunk = (struct arena_chunk){arena, 0, 4096};
+        arena = chunk;
+        heap_allocations++;
+        heap_bytes += sizeof *chunk + 4096;
+    }
+    void *ptr = (unsigned char *)arena->storage + arena->used;
+    arena->used += rounded;
+    memset(ptr, 0, size);
+    return track_frame(ptr, size, 1);
 }
 void rt_frame_free(void *frame) {
-    if (live_frames-- == 0) fail("frame released twice", NULL);
-    free(frame);
+    // Find the most recent allocation: malloc may reuse a previously retired address.
+    for (int i = allocation_count - 1; i >= 0; --i) {
+        struct allocation *a = &allocations[i];
+        if (a->ptr != frame) continue;
+        if (!a->active) fail("frame released twice", NULL);
+        for (int child = 0; child < inline_count; ++child) {
+            uintptr_t address = (uintptr_t)inline_frames[child];
+            uintptr_t start = (uintptr_t)frame;
+            if (address >= start && address - start < (uintptr_t)a->size)
+                fail("parent frame still owns an inline child", NULL);
+        }
+        a->active = 0;
+        live_frames--;
+        live_bytes -= a->size;
+        if (!a->arena) free(frame);
+        return;
+    }
+    fail("unknown frame release", NULL);
+}
+void rt_inline_enter(void *frame) {
+    if (inline_count == MAX_TASKS * 2) fail("too many inline frames", NULL);
+    for (int i = 0; i < inline_count; ++i)
+        if (inline_frames[i] == frame) fail("inline frame entered twice", NULL);
+    inline_frames[inline_count++] = frame;
+    live_inline++;
+}
+void rt_inline_leave(void *frame) {
+    for (int i = 0; i < inline_count; ++i) {
+        if (inline_frames[i] != frame) continue;
+        inline_frames[i] = NULL;
+        live_inline--;
+        return;
+    }
+    fail("unknown or retired inline frame", NULL);
+}
+static void frame_metrics(void) {
+    if (!benchmark && getenv("TELLUR_FRAME_METRICS"))
+        fprintf(stderr, "frames: {\"allocations\":%d,\"inline_frames\":%d,"
+                "\"peak_frames\":%d,\"total_bytes\":%ld,\"peak_bytes\":%ld,"
+                "\"heap_allocations\":%ld,\"heap_bytes\":%ld}\n",
+                allocation_count, inline_count, peak_frames, total_bytes, peak_bytes,
+                heap_allocations, heap_bytes);
 }
 
 // ---- resources and loans ------------------------------------------------------
@@ -360,18 +453,41 @@ void rt_run(int root) {
         coro_resume(t->frame);
     }
 }
-void rt_init(const char *script) { load_script(script); }
+void rt_init(const char *script) {
+    // The microbenchmark repeats the same scenario in one process. It excludes
+    // script parsing and process startup, but includes frame allocation/retirement.
+    if (!benchmark || call_count == 0) {
+        call_count = 0;
+        load_script(script);
+    }
+    next_call = resources = task_count = run_head = run_tail = op_clock = 0;
+    completions = set_count = 0;
+    fault_task = -1;
+    memset(borrows, 0, sizeof borrows);
+    memset(sets, 0, sizeof sets);
+    allocation_count = inline_count = live_inline = live_frames = peak_frames = 0;
+    total_bytes = live_bytes = peak_bytes = heap_allocations = heap_bytes = 0;
+}
 int rt_finish(int status) {
+    if (live_inline) fail("inline frames still live", NULL);
     if (live_frames) fail("frames still allocated", NULL);
+    for (int r = 0; r < resources; ++r)
+        if (borrows[r]) fail("loans still live", NULL);
+    while (arena) {
+        struct arena_chunk *next = arena->next;
+        free(arena);
+        arena = next;
+    }
+    frame_metrics();
     if (fault_task >= 0) {
         // The launcher reports a fault on stderr with status 1.
-        fprintf(stderr, "fault: %s\n", fault_message);
-        fflush(stdout);
+        if (!benchmark) fprintf(stderr, "fault: %s\n", fault_message);
+        if (!benchmark) fflush(stdout);
         return 1;
     }
     if (next_call != call_count) fail("unconsumed script entries", NULL);
     for (int t = 0; t < task_count; t++)
         if (tasks[t].owner >= 0 && !tasks[t].destroyed) fail("abandoned child frame", NULL);
-    fflush(stdout);
+    if (!benchmark) fflush(stdout);
     return status;
 }

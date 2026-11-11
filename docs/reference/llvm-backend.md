@@ -451,7 +451,7 @@ then compiles `program.o` and links `OUTPUT` with its embedded LLVM/LLD 22.1.8.
 Path guards are LLVM branches. Runtime faults retain Tellur source provenance;
 native debugger information is not yet emitted.
 
-The distributed 0.249 compiler includes the `llvm` feature. When building the
+The distributed 0.250 compiler includes the `llvm` feature. When building the
 compiler from source, enable it and set `LLVM_SYS_221_PREFIX` to the static pinned
 LLVM/LLD installation, as described in the repository README. A compiler built
 without that feature reports a clear error for `--backend llvm`.
@@ -466,3 +466,20 @@ link packs belongs to the later single-binary checkpoint.
 Async lowering follows using frontend state machines, measured against the
 existing coroutine experiments. The whole-language parity gate must pass before
 changing the default backend.
+
+
+## Frontend async-frame experiment
+
+Compiler 0.250 accompanies a standalone comparison of hand-written explicit LLVM
+state machines and LLVM coroutine splitting. Each control has a typed frame and
+resume-state switch; direct-await children occupy fields inside their parents,
+and independently scheduled tasks use a stable-address arena. The shared experiment
+runtime keeps scheduling, host readiness, cancellation, joins and fault settlement.
+
+Both lowerings match 88 reference schedules at O0/O2 through clang and embedded
+LLVM/LLD. A nested direct-await fault checks child retirement before parent storage;
+mutation tests reject omitted/duplicate retirement and unjoined borrowed children.
+The [experiment](../../experiments/coroutines/README.md#frontend-frame-comparison-b14a)
+records frame allocations, arena slack, code size and bounded in-process timings.
+These measurements guide generated async lowering; they do not admit async source
+programs through `--backend llvm`. Rust remains the default until parity.

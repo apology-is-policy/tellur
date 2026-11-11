@@ -2094,3 +2094,15 @@ joining delivers the result without replacing the original caller diagnostic cha
 work remains an obligation through normal execution and retires after complete emergency
 unwind. This is internal runtime support; source `spawn`/`yield` remain unavailable. See
 [reference started-task joins](../async-execution.md#reference-started-task-joins-e1d2d2d).
+
+
+## Explicit LLVM frame comparison (0.250)
+
+The [standalone backend experiment](../../experiments/coroutines/README.md#frontend-frame-comparison-b14a)
+now compares explicit typed frontend frames with LLVM coroutine frames. It preserves
+the same source handoffs, normal completion, pending-operation cancellation, task-set
+drain order and owning-fault cleanup. Direct-await frames live by value in their
+parents; their destruction is explicit, including fault settlement, and is separate
+from cancellation and declared outcomes. Production LLVM async admission remains
+closed while generated checked-IR lowering is implemented. No task, loan or fault
+rule changes.

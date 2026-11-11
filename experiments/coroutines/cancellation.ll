@@ -202,6 +202,11 @@ entry:
   %mem = call ptr @rt_frame_alloc(i64 %size)
   %hdl = call ptr @llvm.coro.begin(token %id, ptr %mem)
   ; auto answer = capture await first_answer(borrow primary, borrow backup);
+  call void @rt_yield(i32 %task)
+  %sh = call i8 @llvm.coro.suspend(token none, i1 false)
+  switch i8 %sh, label %return [i8 0, label %begin_child
+                                i8 1, label %cleanup]
+begin_child:
   %inner = call ptr @first_answer(i32 %task, i32 %primary, i32 %backup, ptr %answer, ptr %answer_data)
   br label %drive
 drive:

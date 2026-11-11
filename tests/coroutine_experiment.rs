@@ -62,7 +62,11 @@ fn build(clang: &Path, specimen: &str, ir: &str, opt: u8) -> PathBuf {
         .arg(format!("-O{opt}"))
         .args(["-Wall", "-Werror", "-Wno-override-module"])
         .arg(experiment.join("runtime.c"))
-        .arg(experiment.join("intrinsics.ll"))
+        .arg(experiment.join(if specimen.starts_with("frontend-") {
+            "frontend.ll"
+        } else {
+            "intrinsics.ll"
+        }))
         .arg(&source)
         .arg("-o")
         .arg(&binary)
@@ -101,9 +105,25 @@ fn clang_binaries(specimen: &'static str) -> Option<[PathBuf; 2]> {
 /// Every build of a specimen: the pinned clang at O0/O2 and, with the `llvm`
 /// feature, `tellurc llvm-smoke` (embedded LLVM and LLD) at O0/O2.
 fn binaries(specimen: &'static str) -> Option<Vec<PathBuf>> {
-    let all = clang_binaries(specimen)?.to_vec();
+    let frontend = match specimen {
+        "cancellation" => "frontend-cancellation",
+        "sets" => "frontend-sets",
+        "fault" => "frontend-fault",
+        "nested-fault" => "frontend-nested-fault",
+        _ => panic!("unknown specimen: {specimen}"),
+    };
+    let all = [
+        clang_binaries(specimen)?.to_vec(),
+        clang_binaries(frontend)?.to_vec(),
+    ]
+    .concat();
     #[cfg(feature = "llvm")]
-    let all = [all, embedded_binaries(specimen).to_vec()].concat();
+    let all = [
+        all,
+        embedded_binaries(specimen).to_vec(),
+        embedded_binaries(frontend).to_vec(),
+    ]
+    .concat();
     Some(all)
 }
 #[cfg(feature = "llvm")]
@@ -113,8 +133,9 @@ fn embedded_binaries(specimen: &str) -> [PathBuf; 2] {
     let experiment = root().join("experiments/coroutines");
     // The C runtime is test tooling: lowered to IR once by the pinned clang, then
     // compiled with every specimen in-process.
-    let runtime = dir.join("runtime.ll");
-    if !runtime.exists() {
+    static RUNTIME: OnceLock<PathBuf> = OnceLock::new();
+    let runtime = RUNTIME.get_or_init(|| {
+        let runtime = dir.join("runtime.ll");
         let output = Command::new(Path::new(LLVM).join("clang"))
             .arg("-isysroot")
             .arg(sysroot())
@@ -129,7 +150,8 @@ fn embedded_binaries(specimen: &str) -> [PathBuf; 2] {
             "{}",
             String::from_utf8_lossy(&output.stderr)
         );
-    }
+        runtime
+    });
     ["", "--release"].map(|opt| {
         let binary = dir.join(format!("{specimen}-embedded{opt}"));
         let mut command = Command::new(env!("CARGO_BIN_EXE_tellurc"));
@@ -140,7 +162,11 @@ fn embedded_binaries(specimen: &str) -> [PathBuf; 2] {
         let output = command
             .arg(&binary)
             .arg(&runtime)
-            .arg(experiment.join("intrinsics.ll"))
+            .arg(experiment.join(if specimen.starts_with("frontend-") {
+                "frontend.ll"
+            } else {
+                "intrinsics.ll"
+            }))
             .arg(experiment.join(format!("{specimen}.ll")))
             .output()
             .unwrap();
@@ -440,7 +466,16 @@ fn a_cancelled_task_set_drains_in_the_reference_completion_order() {
 
 #[test]
 fn a_sibling_fault_stops_pending_work_and_destroys_every_suspended_frame() {
-    let Some(binaries) = binaries("fault") else {
+    fault_schedules("fault");
+}
+
+#[test]
+fn a_nested_direct_await_fault_retires_the_child_before_its_parent() {
+    fault_schedules("nested-fault");
+}
+
+fn fault_schedules(specimen: &'static str) {
+    let Some(binaries) = binaries(specimen) else {
         return;
     };
     let mut config: serde_json::Value =
@@ -456,7 +491,7 @@ fn a_sibling_fault_stops_pending_work_and_destroys_every_suspended_frame() {
         }));
     let manifest = Manifest::from_json(&config.to_string()).unwrap();
     let p = compile_file(
-        &root().join("experiments/coroutines/fault.tellur"),
+        &root().join(format!("experiments/coroutines/{specimen}.tellur")),
         manifest,
     )
     .unwrap();
@@ -481,6 +516,98 @@ fn a_sibling_fault_stops_pending_work_and_destroys_every_suspended_frame() {
             assert_eq!(code, Some(1), "{stderr}");
             assert!(stderr.contains("fault: sibling failed"), "{stderr}");
             assert_eq!(events, trace(&failure.events), "waits {waits}");
+        }
+    }
+}
+
+#[test]
+fn frontend_frames_keep_borrowed_children_live_until_joined() {
+    let Some(clang) = clang() else { return };
+    let ir =
+        std::fs::read_to_string(root().join("experiments/coroutines/frontend-cancellation.ll"))
+            .unwrap();
+    let from = "  call void @rt_cancel(i32 %second)\n  br label %join_second\n";
+    assert_eq!(ir.matches(from).count(), 1);
+    let abandoned = ir.replacen(
+        from,
+        "  call void @rt_cancel(i32 %second)\n  br label %answered\n",
+        1,
+    );
+    let binary = build(&clang, "frontend-abandoned", &abandoned, 2);
+    let (code, _, stderr) = execute(&binary, &schedules()[0]);
+    assert_eq!(code, Some(70), "{stderr}");
+    assert!(stderr.contains("loan violated"), "{stderr}");
+}
+
+#[test]
+fn frontend_fault_settlement_checks_inline_child_retirement_exactly_once() {
+    let Some(clang) = clang() else { return };
+    let ir =
+        std::fs::read_to_string(root().join("experiments/coroutines/frontend-nested-fault.ll"))
+            .unwrap();
+    let from = "  call void @failure_body_destroy(ptr %child_slot)\n";
+    assert_eq!(ir.matches(from).count(), 1);
+    for (name, replacement, message) in [
+        (
+            "leaked",
+            String::new(),
+            "parent frame still owns an inline child",
+        ),
+        ("twice", from.repeat(2), "unknown or retired inline frame"),
+    ] {
+        let mutant = ir.replacen(from, &replacement, 1);
+        let binary = build(&clang, &format!("frontend-{name}"), &mutant, 0);
+        let calls = vec![call("tick", "ticked", vec![Value::String("one".into())], 4)];
+        let (code, _, stderr) = execute(&binary, &calls);
+        assert_eq!(code, Some(70), "{stderr}");
+        assert!(stderr.contains(message), "{stderr}");
+    }
+}
+
+#[test]
+fn frontend_direct_await_uses_parent_storage_and_one_arena_allocation() {
+    for (specimen, allocations, inline_frames, heap_allocations) in [
+        ("cancellation", 4, 0, 4),
+        ("frontend-cancellation", 3, 1, 1),
+        ("nested-fault", 4, 0, 4),
+        ("frontend-nested-fault", 3, 1, 1),
+    ] {
+        let Some(binaries) = clang_binaries(specimen) else {
+            return;
+        };
+        let calls = if specimen.ends_with("cancellation") {
+            schedules()[0].clone()
+        } else {
+            vec![call("tick", "ticked", vec![Value::String("one".into())], 4)]
+        };
+        for binary in binaries {
+            let path = binary.with_extension("metrics.txt");
+            std::fs::write(&path, script(&calls)).unwrap();
+            let output = Command::new(&binary)
+                .arg(path)
+                .env("TELLUR_FRAME_METRICS", "1")
+                .output()
+                .unwrap();
+            assert_eq!(
+                output.status.code(),
+                Some(if specimen.ends_with("cancellation") {
+                    0
+                } else {
+                    1
+                })
+            );
+            let stderr = String::from_utf8(output.stderr).unwrap();
+            let metrics: serde_json::Value = serde_json::from_str(
+                stderr
+                    .lines()
+                    .find_map(|l| l.strip_prefix("frames: "))
+                    .unwrap(),
+            )
+            .unwrap();
+            assert_eq!(metrics["allocations"], allocations);
+            assert_eq!(metrics["inline_frames"], inline_frames);
+            assert_eq!(metrics["heap_allocations"], heap_allocations);
+            assert!(metrics["peak_bytes"].as_u64().unwrap() > 0);
         }
     }
 }

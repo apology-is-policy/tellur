@@ -6433,3 +6433,16 @@ Four ABI regressions check scoped storage and outward arguments, borrower/resour
 retirement before handover, nested causes/non-source bypass, malformed layouts,
 stale identities and unfinished callback finalization. Source checker permissions
 remain covered by the existing lexical/process-termination suites.
+
+
+### B1.4a frontend frame experiment (0.250)
+
+Nine experiment tests cover 88 reference schedules across four specimens, two
+lowerings, O0/O2 and clang/embedded LLVM: 704 schedule executions. Five mutation
+executions catch early close, skipped joins, missing inline retirement and duplicate
+inline retirement. Allocation assertions distinguish by-value children from separately
+allocated coroutine frames and confirm one arena backing allocation. The shared
+runtime checks all loans, allocated frames and inline lifetimes at completion/fault.
+A bounded measurement driver checks matching traces/status/checksums and records
+allocation, code size and every timing sample. These are hand-lowered experiments;
+production LLVM task admission remains gated.

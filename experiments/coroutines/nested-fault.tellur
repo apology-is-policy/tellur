@@ -1,0 +1,35 @@
+// A sibling fault stops a pending host operation (no event) and destroys every
+// suspended frame before the fault is reported.
+async control step(string label) exits done {
+    delta await tick(move label) {
+        ticked { string result } => ticked
+    }
+
+    [ticked]:
+        emit(result);
+        exit done;
+}
+
+async control failure_body() exits done faults {
+    emit("failing");
+    yield;
+    yield;
+    yield;
+    fault "sibling failed";
+}
+
+async control failing() exits done faults {
+    forward await failure_body();
+}
+
+async control startup() exits done faults {
+    auto pending = spawn step("one");
+    auto failure = spawn failing();
+    await pending;
+    await failure;
+    exit done;
+}
+
+control main() exits done faults {
+    forward run startup();
+}
