@@ -1693,3 +1693,30 @@ Next: private lexical same-frame scope/recovery coordination with frontend resum
 states, then generated lexical admission, suspending constructors, launch signals,
 parity/default, adapters, single binary, target packs and retirement. No unresolved
 language-design fork is introduced.
+
+
+## B1.4o — private retained lexical scope bridge (0.264)
+
+Private immutable lexical metadata and begin/end requests now bridge to the
+original Machine scope/domain stack after callback borrows end. Explicit selected
+state redirects connect runtime body, handler and after states with an opaque
+physical frame. Same-frame handover preserves owned buffers and pins while retiring
+failed temporary values/outcomes, pending delivery and child storage before source
+owners. Advancing handle bases prevents abandoned handles from becoming valid.
+Handler preflight validates the whole redirect before clearing the sticky failure.
+
+The original runtime remains responsible for source-fault classification, owning
+domain choice, resource disposition, sibling retirement and handler suppression.
+Named and lexical scopes compose in either nesting order. Twelve private matrices
+cover exact reports, effects, fuel and destruction order, repeated scopes, ordinary
+exits and process statuses, nested/secondary faults, borrowed resources, ancestors,
+spawned/set siblings, pending/cancelled host work and outside owning-domain faults
+at quotas1/3/unbounded. Invalid metadata, lifecycle and scope requests reject before
+effects. Native model/source suites and all generated LLVM cases are refreshed for
+the changed runtime; unchanged frontend evidence is reused.
+
+Generated C descriptor v2 and the LLVM emitter remain unchanged. This checkpoint
+does not admit generated lexical recovery. Next is private loop/recovery transfer
+coordination, then generated lexical admission, suspending constructors, signals,
+parity/default, adapters, single binary, target packs and retirement. Rust stays
+default; no language-design fork is introduced.

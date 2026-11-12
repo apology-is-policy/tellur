@@ -426,6 +426,7 @@ fn launch_context(host: &mut Host) -> Context<'_> {
         selected_frame: None,
         selected_activation: None,
         program: None,
+        resume_at: None,
         request: None,
         physical_arena: None,
         host,

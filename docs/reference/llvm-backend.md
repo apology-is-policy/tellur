@@ -924,3 +924,44 @@ Lexical same-frame boundaries, supervised recovery and process termination insid
 retained controls remain rejected before output creation, as do suspending
 constructors, Rust adapters and launch signal policies. This admission checkpoint
 does not change accepted source semantics or switch the default backend.
+
+
+## Private retained lexical scopes (0.264)
+
+Private retained callbacks can now request lexical work admission and normal
+fallthrough through immutable scope metadata. The original runtime opens and
+closes each fault domain and resource scope. Selected body, handler and after
+states reach the callback through an explicit resume-state query; the runtime
+never assumes an offset or representation for the physical program counter.
+Scope fallthrough and handler selection remain administrative, with no extra
+source fuel, outcome allocation or scheduler handoff.
+
+A selected lexical handler shares the original physical frame. Failed temporary
+values, borrowed handles, outcomes and child-delivery state retire before source
+owners are released. Handle identities advance so discarded handles cannot become
+valid again. Unaffected owned buffers and the frame's arena pin survive handover.
+The original domain authority selects a handler only after descendants and sibling
+tasks retire. A fault from outside that owning domain cannot enter this handler.
+Secondary handler faults and escalation propagate outward, preserving their cause.
+Fuel, driver and internal failures bypass contingency.
+
+Requests reject invalid metadata, duplicate admission, wrong scope identity and
+work-end during contingency before effects. Handler-state validation precedes
+clearing the sticky work failure. Named work and lexical scopes compose in either
+nesting order, preserving the named supervision record until its own handler or
+settlement has been selected. Repeated normal entry reuses retired storage; an
+ordinary outcome exit closes active work scopes. Private scope-aware callbacks
+also exercise process disposition through the original completion path.
+
+Twelve private matrices compare original continuations with retained callbacks
+for caller-owned and arena-owned roots, each fuel cut through 40 and quotas 1, 3
+and unbounded. They cover nested scopes, borrowed resources, repeated entry,
+process statuses, owned buffer identity, awaited/spawned/cancelled ancestors,
+borrowing siblings and task-set members, pending host work, malformed replies,
+outside owning-domain faults and fail-closed lifecycle transitions.
+
+The generated C descriptor remains version 2 and has no lexical registration yet.
+The LLVM emitter and source admission are unchanged. Retained loop/recovery
+coordination must be proved before generated lexical scopes and recovery are
+admitted. Suspending constructors, signals and Rust adapters remain later work;
+Rust remains the default. These private callbacks do not add source-language forms.

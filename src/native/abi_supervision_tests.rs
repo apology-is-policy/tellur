@@ -383,6 +383,7 @@ control!(
     resume_invocation
 );
 static LEAF: InvocationLayout = InvocationLayout {
+    scopes: None,
     control: &LEAF_CONTROL,
     callback: leaf,
     size: size_of::<Leaf>(),
@@ -399,6 +400,7 @@ static HANDLER: InvocationLayout = InvocationLayout {
     ..LEAF
 };
 static WORK: InvocationLayout = InvocationLayout {
+    scopes: None,
     control: &WORK_CONTROL,
     callback: work,
     size: size_of::<Work>(),
@@ -410,6 +412,7 @@ static WORK: InvocationLayout = InvocationLayout {
     }],
 };
 static PARENT: InvocationLayout = InvocationLayout {
+    scopes: None,
     control: &PARENT_CONTROL,
     callback: parent,
     size: size_of::<Parent>(),
@@ -853,6 +856,7 @@ unsafe extern "C" fn wrapper(
 }
 control!(WRAPPER_CONTROL, "wrapper", 1, &[0], &[], resume_invocation);
 static WRAPPER: InvocationLayout = InvocationLayout {
+    scopes: None,
     control: &WRAPPER_CONTROL,
     callback: wrapper,
     size: size_of::<Wrapper>(),
@@ -975,6 +979,7 @@ unsafe extern "C" fn host_leaf(
 }
 control!(HOST_CONTROL, "host", 0, &[], &[], resume_invocation);
 static HOST: InvocationLayout = InvocationLayout {
+    scopes: None,
     control: &HOST_CONTROL,
     callback: host_leaf,
     size: size_of::<HostFrame>(),

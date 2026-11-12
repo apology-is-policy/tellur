@@ -422,6 +422,7 @@ control!(PARENT_CONTROL, "parent", 2, &[0]);
 macro_rules! layout {
     ($name:ident, $control:ident, $callback:ident, $frame:ty) => {
         static $name: InvocationLayout = InvocationLayout {
+            scopes: None,
             control: &$control,
             callback: $callback,
             size: size_of::<$frame>(),

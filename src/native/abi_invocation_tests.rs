@@ -164,6 +164,7 @@ static LEAF_CONTROL: Control = Control {
     resume: resume_invocation,
 };
 static LEAF: InvocationLayout = InvocationLayout {
+    scopes: None,
     control: &LEAF_CONTROL,
     callback: leaf,
     size: size_of::<Leaf>(),
@@ -172,6 +173,7 @@ static LEAF: InvocationLayout = InvocationLayout {
     children: &[],
 };
 static MIDDLE: InvocationLayout = InvocationLayout {
+    scopes: None,
     control: &MIDDLE_CONTROL,
     callback: middle,
     size: size_of::<Middle>(),
@@ -183,6 +185,7 @@ static MIDDLE: InvocationLayout = InvocationLayout {
     }],
 };
 static ROOT: InvocationLayout = InvocationLayout {
+    scopes: None,
     control: &ROOT_CONTROL,
     callback: root,
     size: size_of::<Root>(),
@@ -542,6 +545,7 @@ static OWNER_LEAF_CONTROL: Control = Control {
     resume: resume_invocation,
 };
 static OWNER_LEAF: InvocationLayout = InvocationLayout {
+    scopes: None,
     control: &OWNER_LEAF_CONTROL,
     callback: owner_leaf,
     size: size_of::<Leaf>(),
@@ -550,6 +554,7 @@ static OWNER_LEAF: InvocationLayout = InvocationLayout {
     children: &[],
 };
 static OWNERS: InvocationLayout = InvocationLayout {
+    scopes: None,
     control: &OWNER_ROOT_CONTROL,
     callback: owner_root,
     size: size_of::<Owners>(),
@@ -622,6 +627,7 @@ fn abi_child_resources_adopt_once_or_retire_before_parent_on_fault_and_stop() {
     }
 }
 static BAD_ROOT: InvocationLayout = InvocationLayout {
+    scopes: None,
     control: &ROOT_CONTROL,
     callback: root,
     size: size_of::<Root>(),
@@ -725,6 +731,7 @@ static REPEAT_CONTROL: Control = Control {
     resume: resume_invocation,
 };
 static REPEAT: InvocationLayout = InvocationLayout {
+    scopes: None,
     control: &REPEAT_CONTROL,
     callback: repeat_root,
     size: size_of::<Root>(),
@@ -783,6 +790,7 @@ static MALFORMED_CONTROL: Control = Control {
     resume: resume_invocation,
 };
 static MALFORMED: InvocationLayout = InvocationLayout {
+    scopes: None,
     control: &MALFORMED_CONTROL,
     callback: malformed,
     size: size_of::<u32>(),

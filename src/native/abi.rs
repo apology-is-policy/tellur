@@ -26,6 +26,9 @@ mod program_tests;
 #[path = "abi_resume_tests.rs"]
 mod resume_tests;
 #[cfg(test)]
+#[path = "abi_scope_tests.rs"]
+mod scope_tests;
+#[cfg(test)]
 #[path = "abi_set_tests.rs"]
 mod set_tests;
 #[cfg(test)]
@@ -45,6 +48,7 @@ pub struct Context<'a> {
     // Only borrowed during a callback; never parked in RetainedState.
     selected_activation: Option<&'a execution::Activation>,
     program: Option<ProgramFrame>,
+    resume_at: Option<u32>,
     request: Option<RequestedInvocation>,
     physical_arena: Option<&'a physical_frames::Arena>,
     host: &'a mut Host,
@@ -144,6 +148,7 @@ impl Context<'_> {
             selected_frame: None,
             selected_activation: None,
             program: None,
+            resume_at: None,
             physical_arena: None,
             request: None,
             host: &mut *self.host,
@@ -1028,6 +1033,7 @@ impl RetainedState {
             selected_frame: None,
             selected_activation: None,
             program: None,
+            resume_at: None,
             physical_arena: None,
             request: None,
             host,
@@ -1297,6 +1303,12 @@ pub struct InvocationLayout {
     pub align: usize,
     pub prefix: usize,
     pub children: &'static [InlineChild],
+    pub scopes: Option<&'static ScopeLayout>,
+}
+/// Private immutable scope metadata; generated C registration follows separately.
+pub struct ScopeLayout {
+    pub states: u32,
+    pub boundaries: &'static [&'static execution::BoundaryControl],
 }
 pub struct InlineChild {
     pub offset: usize,
@@ -1317,6 +1329,43 @@ impl InvocationLayout {
             })
         {
             return Err("E_NATIVE: invalid retained ABI invocation layout".into());
+        }
+        if let Some(scopes) = self.scopes {
+            if scopes.states == 0 {
+                return Err("E_NATIVE: empty ABI scope state range".into());
+            }
+            for (index, scope) in scopes.boundaries.iter().enumerate() {
+                if scopes.boundaries[..index]
+                    .iter()
+                    .any(|prior| std::ptr::eq(*prior, *scope))
+                    || [scope.body, scope.handler, scope.after]
+                        .iter()
+                        .any(|pc| *pc == 0 || *pc >= scopes.states as usize)
+                    || scope.body == scope.handler
+                    || scope.body == scope.after
+                    || scope.handler == scope.after
+                    || scope.fault_slot >= self.control.slots
+                    || !scope.handling.contains(&scope.fault_slot)
+                {
+                    return Err("E_NATIVE: invalid ABI lexical state or fault slot".into());
+                }
+                for group in [scope.retained, scope.retire, scope.work, scope.handling] {
+                    if group
+                        .iter()
+                        .enumerate()
+                        .any(|(i, slot)| *slot >= self.control.slots || group[..i].contains(slot))
+                    {
+                        return Err("E_NATIVE: invalid ABI lexical slot set".into());
+                    }
+                }
+                if scope.retained.iter().any(|slot| {
+                    scope.retire.contains(slot)
+                        || scope.work.contains(slot)
+                        || scope.handling.contains(slot)
+                }) {
+                    return Err("E_NATIVE: invalid ABI lexical slot roles".into());
+                }
+            }
         }
         for (i, child) in self.children.iter().enumerate() {
             let end = child
@@ -1513,6 +1562,10 @@ struct HostLeaf {
     cancellable: bool,
 }
 enum RequestedInvocation {
+    Boundary {
+        control: &'static execution::BoundaryControl,
+        end: bool,
+    },
     Supervise {
         work: ProgramFrame,
         handler: ProgramFrame,
@@ -1568,6 +1621,8 @@ impl RequestedInvocation {
             Self::SpawnInto { .. } => 10,
             Self::Next { .. } => 11,
             Self::Supervise { .. } => 12,
+            Self::Boundary { end: false, .. } => 13,
+            Self::Boundary { end: true, .. } => 14,
         }
     }
 }
@@ -1602,6 +1657,7 @@ pub(crate) struct Invocation {
     call: Option<ProgramFrame>,
     supervision: Option<InvocationSupervision>,
     settlement: bool,
+    resume_at: Option<u32>,
     // Keep storage after retained values and pending children in drop order.
     storage: Option<physical_frames::Pin>,
     call_storage: Option<physical_frames::Pin>,
@@ -1745,6 +1801,70 @@ impl Invocation {
         self.phase = InvocationPhase::Active;
         Ok(())
     }
+    fn validate_scope_redirect(&self, pc: usize, phase: InvocationPhase) -> R<()> {
+        let scopes = self
+            .program
+            .layout
+            .scopes
+            .ok_or("E_NATIVE: missing ABI lexical metadata")?;
+        if pc == 0
+            || pc >= scopes.states as usize
+            || self.phase != phase
+            || self.resume_at.is_some()
+        {
+            return Err("E_NATIVE: invalid ABI lexical redirect".into());
+        }
+        Ok(())
+    }
+    pub(crate) fn redirect_scope(&mut self, pc: usize) -> R<()> {
+        self.validate_scope_redirect(pc, InvocationPhase::Active)?;
+        self.resume_at = Some(pc as u32);
+        Ok(())
+    }
+    // Failed callbacks can strand temporary borrows and pending delivery. Retire
+    // these before Machine touches source owners; retain only the physical frame.
+    // Clearing the failure is a separate, runtime-authorized handler transition.
+    pub(crate) fn abandon_scope_work(&mut self) -> R<()> {
+        let state = self
+            .state
+            .as_mut()
+            .ok_or("E_NATIVE: selected ABI during lexical unwind")?;
+        let value_base = state
+            .value_base
+            .checked_add(state.values.len() as u64)
+            .ok_or("E_NATIVE: ABI value handle space exhausted")?;
+        let outcome_base = state
+            .outcome_base
+            .checked_add(state.outcomes.len() as u64)
+            .ok_or("E_NATIVE: ABI outcome handle space exhausted")?;
+        state.values.clear();
+        state.outcomes.clear();
+        state.result = None;
+        state.value_base = value_base;
+        state.outcome_base = outcome_base;
+        self.delivered.clear();
+        self.call = None;
+        self.call_storage = None;
+        self.supervision = None;
+        self.resume_at = None;
+        self.phase = InvocationPhase::Failed;
+        Ok(())
+    }
+    pub(crate) fn validate_scope_handler(&self, pc: usize) -> R<()> {
+        self.validate_scope_redirect(pc, InvocationPhase::Failed)?;
+        if self.state.is_none() {
+            return Err("E_NATIVE: selected ABI during lexical handover".into());
+        }
+        Ok(())
+    }
+    pub(crate) fn enter_scope_handler(&mut self, pc: usize) -> R<()> {
+        // Reject the entire redirect before clearing the sticky work failure.
+        self.validate_scope_handler(pc)?;
+        self.state.as_mut().unwrap().error = None;
+        self.phase = InvocationPhase::Active;
+        self.resume_at = Some(pc as u32);
+        Ok(())
+    }
     fn at(program: ProgramFrame) -> Self {
         Self::at_in(program, None, physical_frames::Arena::default())
     }
@@ -1772,6 +1892,7 @@ impl Invocation {
             call: None,
             supervision: None,
             settlement: false,
+            resume_at: None,
             storage,
             call_storage: None,
             arena,
@@ -1802,6 +1923,7 @@ impl Invocation {
         context.selected_frame = Some(frame);
         context.selected_activation = Some(activation);
         context.program = Some(self.program);
+        context.resume_at = self.resume_at.take();
         context.physical_arena = Some(&self.arena);
         let arguments = if cold {
             parameters
@@ -1845,9 +1967,16 @@ impl Invocation {
                 | (9, Some(9), false)
                 | (10, Some(10), false)
                 | (11, Some(11), false)
-                | (12, Some(12), false) => Ok(execution::Step::Continue), // Queue after callback borrows end.
+                | (12, Some(12), false)
+                | (13, Some(13), false)
+                | (14, Some(14), false) => Ok(execution::Step::Continue), // Queue after callback borrows end.
                 (2, None, true) => match context.result.take().unwrap() {
                     value @ Completion::Outcome(_) if !self.settlement => {
+                        Ok(execution::Step::Complete(value))
+                    }
+                    value @ Completion::Process(_)
+                        if !self.settlement && self.program.layout.scopes.is_some() =>
+                    {
                         Ok(execution::Step::Complete(value))
                     }
                     Completion::Settled if self.settlement => {
@@ -1873,6 +2002,11 @@ impl Invocation {
             && let Some(request) = request
         {
             result = (|| match request {
+                RequestedInvocation::Boundary { control, end } => Ok(if end {
+                    execution::Step::BoundaryEnd(control)
+                } else {
+                    execution::Step::Boundary(control)
+                }),
                 RequestedInvocation::Supervise {
                     work,
                     handler,
@@ -2110,6 +2244,51 @@ unsafe fn request_invocation(
             handoff,
             child: program,
             arguments: InvocationArguments::Direct(arguments),
+        });
+        Ok(())
+    })
+}
+
+/// Select a runtime-directed lexical state without knowing the physical PC layout.
+/// The override is scoped to this callback; later callbacks use their saved PC.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_resume_state(ctx: *mut Context<'_>, saved: u32) -> u32 {
+    unsafe { &mut *ctx }.perform(|c| {
+        let program = c
+            .program
+            .ok_or("E_NATIVE: resume state needs a selected ABI invocation")?;
+        let state = c.resume_at.unwrap_or(saved);
+        if let Some(scopes) = program.layout.scopes
+            && state >= scopes.states
+        {
+            return Err("E_NATIVE: ABI resume state is out of range".into());
+        }
+        Ok(state)
+    })
+}
+/// Translate retained lexical admission/fallthrough to the original Machine stack.
+/// Neither branch invokes generated work while Context borrows are active.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_scope(ctx: *mut Context<'_>, index: usize, end: u32) {
+    unsafe { &mut *ctx }.perform(|c| {
+        if c.request.is_some() || c.result.is_some() || end > 1 {
+            return Err("E_NATIVE: duplicate or invalid ABI lexical request".into());
+        }
+        let program = c
+            .program
+            .ok_or("E_NATIVE: lexical request needs a selected ABI invocation")?;
+        program.layout.validate()?;
+        let control = *program
+            .layout
+            .scopes
+            .and_then(|s| s.boundaries.get(index))
+            .ok_or("E_NATIVE: unknown ABI lexical scope")?;
+        c.selected_activation
+            .ok_or("E_NATIVE: missing ABI lexical activation")?
+            .abi_validate_scope(control, end != 0)?;
+        c.request = Some(RequestedInvocation::Boundary {
+            control,
+            end: end != 0,
         });
         Ok(())
     })
@@ -2902,6 +3081,7 @@ impl CompiledRegistry {
                 align: compiled.align,
                 prefix: compiled.prefix,
                 children,
+                scopes: None,
             });
             for parent in &parents[index] {
                 pending[*parent] -= 1;
@@ -3062,6 +3242,7 @@ pub unsafe extern "C" fn tellur_rt_v1_call(
                 selected_frame: None,
                 selected_activation: None,
                 program: None,
+                resume_at: None,
                 physical_arena: None,
                 request: None,
                 host: &mut *c.host,
@@ -3113,6 +3294,7 @@ pub unsafe extern "C" fn tellur_rt_v1_construct_call(
             selected_frame: None,
             selected_activation: None,
             program: None,
+            resume_at: None,
             physical_arena: None,
             request: None,
             host: &mut *c.host,
@@ -3418,6 +3600,7 @@ unsafe fn launch_program(
                 selected_frame: None,
                 selected_activation: None,
                 program: None,
+                resume_at: None,
                 physical_arena: None,
                 request: None,
                 host,

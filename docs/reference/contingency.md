@@ -354,3 +354,11 @@ Structural protocol analysis currently rejects graphs containing supervision,
 and tail extraction does not move boundary/contingency bodies into ordinary controls.
 General user-defined execution flags, annotation policies and dependency injection
 are deliberately deferred.
+
+
+The private 0.264 LLVM runtime bridge now preserves a lexical handler's shared
+physical frame across suspension and retires failed temporaries before source
+owners. Original fault domains still choose the handler and retain secondary-fault
+causes. This is runtime evidence only: generated lexical recovery remains gated
+until retained loop transfer and scope registration are integrated. See
+[private retained lexical scopes](llvm-backend.md#private-retained-lexical-scopes-0264).

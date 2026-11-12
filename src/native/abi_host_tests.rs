@@ -103,6 +103,7 @@ static OTHER: execution::Control = execution::Control {
     access: None,
 };
 static LAYOUT: InvocationLayout = InvocationLayout {
+    scopes: None,
     control: &CONTROL,
     callback: step,
     size: size_of::<Frame>(),

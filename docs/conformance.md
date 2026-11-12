@@ -6662,3 +6662,25 @@ updated reference version. Both all-target checks, compiler/LSP/VSIX, old/new so
 baseline, runnable release smokes and isolated editor/install checks accompany the
 release. Detailed evidence is in `work/tellur-0.263-verification.json`. Retained
 lexical recovery, constructors, adapters and signal policies remain gated.
+
+
+## 0.264 — Private retained lexical scopes (B1.4o)
+
+Twelve private lexical matrices compare original runtime continuations with ABI
+callbacks across each fuel cut through40, quotas1/3/unbounded and caller/arena roots.
+They verify preserved owned buffers, resource/borrow/pin retirement, normal repeated
+scope entry, outward outcome exits, process0/23, nested lexical and named handling,
+secondary faults/escalation, awaited/spawned/cancelled ancestors, borrowing siblings
+and task-set members, host waits/malformed replies and outside owning-domain faults.
+Invalid tables, duplicate/wrong scope requests, work-end during contingency, stale
+handles and invalid handler redirects fail without partial effects or erased errors.
+
+All native-host tests, native unit models and affected source/native boundary, task,
+host and fault suites are refreshed. The complete generated LLVM suite and feature
+quota matrices are refreshed for the runtime change. Unchanged frontend/reference
+and unrelated default integration evidence is reused. Both all-target checks,
+reference version/LSP, compiler/LSP/VSIX, source baselines, release smokes, isolated
+editor/package/install and protected-file-excluding backup accompany the checkpoint.
+Detailed evidence is in `work/tellur-0.264-verification.json`. Generated lexical
+recovery still requires loop coordination and registration; source admission is
+unchanged and no full-default-suite rerun is claimed.

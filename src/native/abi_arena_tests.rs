@@ -215,6 +215,7 @@ static PARENT_CONTROL: execution::Control = execution::Control {
     access: None,
 };
 static CHILD: InvocationLayout = InvocationLayout {
+    scopes: None,
     control: &CHILD_CONTROL,
     callback: child,
     size: size_of::<Child>(),
@@ -223,6 +224,7 @@ static CHILD: InvocationLayout = InvocationLayout {
     children: &[],
 };
 static AWAIT_LAYOUT: InvocationLayout = InvocationLayout {
+    scopes: None,
     control: &PARENT_CONTROL,
     callback: await_parent,
     size: size_of::<Parent>(),

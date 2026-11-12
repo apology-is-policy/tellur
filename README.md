@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.263.0** implements the v0.1 checked core and the current language
+Compiler release **0.264.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -21,6 +21,11 @@ Release 0.222 added dynamic task sets. `tasks<producer>` holds any number of
 spawned children of one async control. `spawn producer(..) into set;` adds a member,
 `delta await next set { ..., empty => ... }` joins members in completion order, and
 `count(borrow set)` bounds how many run at once.
+
+Release 0.264 proves the [private retained lexical scope bridge](docs/reference/llvm-backend.md#private-retained-lexical-scopes-0264).
+Same-frame work and handlers preserve original fault domains, cleanup and owned
+storage across suspension. Generated lexical recovery needs loop coordination
+before admission; the Rust backend remains default.
 
 Release 0.263 admits [retained named supervision](docs/reference/llvm-backend.md#generated-retained-named-supervision-0263)
 in the LLVM backend. Yielding request work preserves retained owners, source fault

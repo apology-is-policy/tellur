@@ -164,6 +164,7 @@ static CHILD_CONTROL: execution::Control = control("child", 1);
 static OTHER_CONTROL: execution::Control = control("other", 1);
 static PARENT_CONTROL: execution::Control = control("parent", 2);
 static CHILD: InvocationLayout = InvocationLayout {
+    scopes: None,
     control: &CHILD_CONTROL,
     callback: child,
     size: size_of::<Child>(),
@@ -172,6 +173,7 @@ static CHILD: InvocationLayout = InvocationLayout {
     children: &[],
 };
 static OTHER: InvocationLayout = InvocationLayout {
+    scopes: None,
     control: &OTHER_CONTROL,
     callback: child,
     size: size_of::<Child>(),
@@ -180,6 +182,7 @@ static OTHER: InvocationLayout = InvocationLayout {
     children: &[],
 };
 static PARENT: InvocationLayout = InvocationLayout {
+    scopes: None,
     control: &PARENT_CONTROL,
     callback: parent,
     size: size_of::<Parent>(),

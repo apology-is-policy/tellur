@@ -304,6 +304,7 @@ static PARENT_CONTROL: execution::Control = execution::Control {
     access: None,
 };
 static LEAF: InvocationLayout = InvocationLayout {
+    scopes: None,
     control: &LEAF_CONTROL,
     callback: leaf,
     size: size_of::<Leaf>(),
@@ -312,6 +313,7 @@ static LEAF: InvocationLayout = InvocationLayout {
     children: &[],
 };
 static CHILD: InvocationLayout = InvocationLayout {
+    scopes: None,
     control: &CHILD_CONTROL,
     callback: child,
     size: size_of::<Child>(),
@@ -323,6 +325,7 @@ static CHILD: InvocationLayout = InvocationLayout {
     }],
 };
 static PARENT: InvocationLayout = InvocationLayout {
+    scopes: None,
     control: &PARENT_CONTROL,
     callback: parent,
     size: size_of::<Parent>(),

@@ -1058,6 +1058,10 @@ impl Machine {
                     domain,
                 }));
                 frame.pc = control.body;
+                #[cfg(any(test, feature = "runtime-abi"))]
+                if let Some(abi) = frame.abi.as_mut() {
+                    abi.redirect_scope(control.body)?;
+                }
             }
             Step::BoundaryEnd(control) => {
                 let base = frame.base();
@@ -1078,6 +1082,10 @@ impl Machine {
                 )?;
                 frame.scopes.pop();
                 frame.pc = control.after;
+                #[cfg(any(test, feature = "runtime-abi"))]
+                if let Some(abi) = frame.abi.as_mut() {
+                    abi.redirect_scope(control.after)?;
+                }
                 // This sentinel is administrative and consumes no instruction quota.
                 return Ok((false, None));
             }
@@ -1263,7 +1271,17 @@ impl Machine {
             let frame = self.stack.last_mut().unwrap();
             #[cfg(any(test, feature = "runtime-abi"))]
             if !matches!(frame.pending, Some(Pending::Supervise(_))) {
-                drop(frame.abi.take());
+                if frame
+                    .scopes
+                    .iter()
+                    .any(|scope| matches!(scope, Scope::Boundary(_)))
+                {
+                    if let Some(abi) = frame.abi.as_mut() {
+                        abi.abandon_scope_work()?;
+                    }
+                } else {
+                    drop(frame.abi.take());
+                }
             }
             #[cfg(test)]
             if let Some(Pending::Adapter(operation)) = &frame.pending {
@@ -1334,10 +1352,20 @@ impl Machine {
                 }
                 supervision.finish(host, domains, &mut self.current, &Err(message.clone()))?;
             }
-            // Only a live, handled named supervision may retain its physical
-            // parent. Abandoned work and handler frames still retire before owners.
+            // An enclosing lexical handler shares this physical frame. Failed
+            // temporaries retire first; Machine alone can reactivate its handler.
             #[cfg(any(test, feature = "runtime-abi"))]
-            drop(frame.abi.take());
+            if frame
+                .scopes
+                .iter()
+                .any(|scope| matches!(scope, Scope::Boundary(_)))
+            {
+                if let Some(abi) = frame.abi.as_mut() {
+                    abi.abandon_scope_work()?;
+                }
+            } else {
+                drop(frame.abi.take());
+            }
             retained.clear();
             // A child fault retires its original frame before handover in its caller.
             while !frame.scopes.is_empty() {
@@ -1361,18 +1389,29 @@ impl Machine {
                         && host.source_faulted()
                         && boundary.state.fault_message.is_none()
                     {
-                        match boundary.handle(
-                            host,
-                            values,
-                            domains,
-                            &self.current,
-                            frame.base(),
-                            &message,
-                        ) {
+                        let handler = (|| {
+                            #[cfg(any(test, feature = "runtime-abi"))]
+                            if let Some(abi) = frame.abi.as_ref() {
+                                abi.validate_scope_handler(boundary.control.handler)?;
+                            }
+                            boundary.handle(
+                                host,
+                                values,
+                                domains,
+                                &self.current,
+                                frame.base(),
+                                &message,
+                            )
+                        })();
+                        match handler {
                             Ok(()) => {
                                 frame.pending = None;
                                 frame.pc = boundary.control.handler;
                                 frame.scopes.push(Scope::Boundary(boundary));
+                                #[cfg(any(test, feature = "runtime-abi"))]
+                                if let Some(abi) = frame.abi.as_mut() {
+                                    abi.enter_scope_handler(frame.pc)?;
+                                }
                                 self.fault_target = None;
                                 return Ok(());
                             }
@@ -1390,6 +1429,8 @@ impl Machine {
                     )?;
                 }
             }
+            #[cfg(any(test, feature = "runtime-abi"))]
+            drop(frame.abi.take());
             let frame = self.stack.pop().unwrap();
             if handle && host.source_faulted() {
                 for slot in frame.control.retained {
@@ -1601,6 +1642,21 @@ mod task_retirement_tests;
 
 #[cfg(any(test, feature = "runtime-abi"))]
 impl Activation {
+    pub(crate) fn abi_validate_scope(&self, control: &'static BoundaryControl, end: bool) -> R<()> {
+        if end {
+            if !matches!(self.scopes.last(),Some(Scope::Boundary(b)) if std::ptr::eq(b.control,control) && b.state.fault_message.is_none())
+            {
+                return Err("E_NATIVE: ABI lexical end is not selected work".into());
+            }
+        } else if self
+            .scopes
+            .iter()
+            .any(|s| matches!(s,Scope::Boundary(b) if std::ptr::eq(b.control,control)))
+        {
+            return Err("E_NATIVE: ABI lexical scope is already active".into());
+        }
+        Ok(())
+    }
     pub(crate) fn abi_frame<'a>(&'a self, host: &Host, values: &Frames) -> R<&'a Frame> {
         self.require_task_host(host)?;
         values.frame_values(&self.frame)?;
