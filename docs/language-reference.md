@@ -1,8 +1,8 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.271.0 -->
+<!-- tellur-reference-version: 0.272.0 -->
 
-This manual describes **compiler 0.271.0**, including the current ownership model,
+This manual describes **compiler 0.272.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -2980,7 +2980,7 @@ General expression-type hover remains unsupported.
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and broader spawn payloads (anonymous contracts and reference-bearing collections) remain planned; they are not executable features of 0.271.0.
+and broader spawn payloads (anonymous contracts and reference-bearing collections) remain planned; they are not executable features of 0.272.0.
 ## Contingency and supervised boundaries
 
 The [contingency reference](reference/contingency.md) specifies `@contingent`,
@@ -3082,3 +3082,8 @@ adapters. Generated static libraries, launch registration, opaque resources and
 polled operation/readiness bridges remain required before full parity. Rust stays
 the default backend; existing adapter source contracts and foreign panic behavior
 are unchanged.
+
+Compiler 0.272 adds private [adapter launch registration](reference/llvm-backend.md#private-adapter-launch-registration-0272).
+A complete synchronous callback table is validated before launch and retained per
+Host. LLVM source admission remains gated until generated typed adapter archives
+are linked; resources and polled operations/readiness follow. Rust stays default.

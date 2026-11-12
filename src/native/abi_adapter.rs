@@ -19,7 +19,7 @@ pub struct AdapterDescriptor {
 }
 
 /// Owned, immutable contract for one operation; no mutable global dispatch state.
-/// Launch registration and generated static libraries are separate checkpoints.
+/// The launch registry owns this contract; generated static libraries are separate.
 pub struct AdapterBinding {
     manifest: Json,
     signature: Json,
@@ -118,6 +118,97 @@ impl AdapterBinding {
             .result
             .ok_or_else(|| adapter_error("returned without an outcome"))
     }
+}
+
+/// The caller lends table/name storage only during registration. Function pointers
+/// must remain callable until every invocation using this table has completed.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct AdapterOperation {
+    pub name: *const u8,
+    pub name_len: usize,
+    pub callback: AdapterDescriptor,
+}
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct AdapterTable {
+    pub version: u32,
+    pub flags: u32,
+    pub operations: *const AdapterOperation,
+    pub count: usize,
+}
+
+/// Immutable launch-local bindings. No borrowed table spans survive preparation.
+pub struct AdapterRegistry {
+    manifest: Json,
+    bindings: BTreeMap<String, AdapterBinding>,
+}
+impl AdapterRegistry {
+    pub unsafe fn prepare(manifest: &Json, table: *const AdapterTable) -> R<Arc<Self>> {
+        let table = unsafe { adapter_span(table, 1)? }[0];
+        if table.version != 1 || table.flags != 0 {
+            return Err(adapter_error("has an incompatible operation table"));
+        }
+        let operations = unsafe { adapter_span(table.operations, table.count)? };
+        let mut bindings = BTreeMap::new();
+        for operation in operations {
+            let name = unsafe { adapter_text(operation.name, operation.name_len)? };
+            if name.is_empty() || bindings.contains_key(name) {
+                return Err(adapter_error("has an empty or duplicate operation name"));
+            }
+            let binding = AdapterBinding::new(manifest, name, operation.callback)?;
+            bindings.insert(name.to_owned(), binding);
+        }
+        let primitives = manifest["primitives"]
+            .as_array()
+            .ok_or_else(|| adapter_error("has no operation contract"))?;
+        let mut expected = BTreeSet::new();
+        for primitive in primitives.iter().filter(|p| p["rust"].is_object()) {
+            let name = primitive["name"]
+                .as_str()
+                .filter(|n| !n.is_empty())
+                .ok_or_else(|| adapter_error("has an invalid operation name"))?;
+            if !expected.insert(name) || !bindings.contains_key(name) {
+                return Err(adapter_error("requires every Rust operation exactly once"));
+            }
+        }
+        if bindings.len() != expected.len() {
+            return Err(adapter_error("contains an unbound operation"));
+        }
+        Ok(Arc::new(Self {
+            manifest: manifest.clone(),
+            bindings,
+        }))
+    }
+
+    /// Publication is all-or-nothing and cannot replace another adapter owner.
+    pub fn install(self: &Arc<Self>, host: &mut Host) -> R<()> {
+        if host.manifest != self.manifest
+            || host.resources.foreign_adapters.is_some()
+            || host.rust_adapter.is_some()
+            || host.rust_start.is_some()
+        {
+            return Err(adapter_error("cannot replace or mismatch launch bindings"));
+        }
+        host.resources.foreign_adapters = Some(Arc::clone(self));
+        host.rust_adapter = Some(dispatch);
+        Ok(())
+    }
+
+    pub fn contains(&self, operation: &str) -> bool {
+        self.bindings.contains_key(operation)
+    }
+}
+fn dispatch(resources: &mut Resources, operation: &str, mut args: Vec<V>) -> R<Outcome> {
+    let registry = resources
+        .foreign_adapters
+        .as_ref()
+        .ok_or_else(|| adapter_error("has no launch bindings"))?;
+    registry
+        .bindings
+        .get(operation)
+        .ok_or_else(|| adapter_error("has no binding for operation"))?
+        .invoke(&mut args)
 }
 
 // Identities cannot alias another call, including a concurrent or reentrant call.
@@ -405,3 +496,7 @@ pub unsafe extern "C" fn tellur_adapter_v1_complete(
 #[cfg(test)]
 #[path = "abi_adapter_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "abi_adapter_registry_tests.rs"]
+mod registry_tests;

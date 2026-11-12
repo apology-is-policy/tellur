@@ -2527,3 +2527,7 @@ outcome result {@exit 0 done}
         }
     }
 }
+
+#[cfg(test)]
+#[path = "llvm_adapter_launch_tests.rs"]
+mod adapter_launch_tests;

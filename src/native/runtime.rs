@@ -579,6 +579,10 @@ struct Resource {
 /// still belongs to explicit consuming adapter operations.
 #[derive(Default)]
 pub struct Resources {
+    // Private ABI attachment; never a resource token or a process-wide selection.
+    // Ordinary generated Rust runtimes do not compile or allocate this field.
+    #[cfg(any(test, feature = "runtime-abi"))]
+    foreign_adapters: Option<Arc<abi::adapter::AdapterRegistry>>,
     values: BTreeMap<String, Resource>,
     identity: Arc<()>,
     next_scope: u64,

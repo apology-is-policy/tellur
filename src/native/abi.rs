@@ -3906,7 +3906,13 @@ pub unsafe extern "C" fn tellur_rt_v1_primitive(
             .as_array()
             .ok_or("E_NATIVE: invalid ABI primitive parameters")?;
         if declaration["async"] == true
-            || declaration["rust"].is_object()
+            || (declaration["rust"].is_object()
+                && !c
+                    .host
+                    .resources
+                    .foreign_adapters
+                    .as_ref()
+                    .is_some_and(|registry| registry.contains(name)))
             || declaration["returns"] != true
         {
             return Err("E_NATIVE: primitive requires unsupported ABI invocation mode".into());
@@ -4265,11 +4271,27 @@ unsafe fn launch_program(
     callbacks: *const Callback,
     count: usize,
 ) -> R<u8> {
+    unsafe { launch_program_with_adapters(data, len, callbacks, count, None) }
+}
+unsafe fn launch_program_with_adapters(
+    data: *const u8,
+    len: usize,
+    callbacks: *const Callback,
+    count: usize,
+    adapters: Option<*const adapter::AdapterTable>,
+) -> R<u8> {
     let info: ProgramInfo = serde_json::from_str(unsafe { text(data, len)? })
         .map_err(|e| format!("E_NATIVE: invalid ABI program: {e}"))?;
     if info.abi != 1 || info.entries.len() != count {
         return Err("E_NATIVE: incompatible ABI program table".into());
     }
+    let adapters = adapters
+        .map(|table| {
+            let manifest: Json = serde_json::from_str(&info.manifest)
+                .map_err(|e| format!("E_NATIVE: invalid ABI manifest: {e}"))?;
+            unsafe { adapter::AdapterRegistry::prepare(&manifest, table) }
+        })
+        .transpose()?;
     let callbacks = unsafe { slice(callbacks, count) };
     let codes: Vec<Vec<(&str, u8)>> = info
         .entries
@@ -4297,6 +4319,9 @@ unsafe fn launch_program(
         || Ok(None),
         &info.sites,
         |entry, host, args| {
+            if let Some(adapters) = &adapters {
+                adapters.install(host)?;
+            }
             let index = entries.iter().position(|e| std::ptr::eq(e, entry)).unwrap();
             let retained = info.entries[index].retained;
             if !retained {
@@ -4340,6 +4365,26 @@ pub unsafe extern "C" fn tellur_rt_v1_launch(
     count: usize,
 ) -> i32 {
     match unsafe { launch_program(data, len, callbacks, count) } {
+        Ok(code) => code.into(),
+        Err(error) => {
+            eprintln!("{error}");
+            1
+        }
+    }
+}
+
+/// Version 2 adds a complete synchronous adapter table, validated before launch.
+/// Version 1 program metadata and entry callback layouts are unchanged. Table/name
+/// spans are borrowed only by this call; callback code must remain live throughout.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v2_launch(
+    data: *const u8,
+    len: usize,
+    callbacks: *const Callback,
+    count: usize,
+    adapters: *const adapter::AdapterTable,
+) -> i32 {
+    match unsafe { launch_program_with_adapters(data, len, callbacks, count, Some(adapters)) } {
         Ok(code) => code.into(),
         Err(error) => {
             eprintln!("{error}");

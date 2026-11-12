@@ -1914,3 +1914,36 @@ Next generate typed synchronous adapter static libraries and per-launch callback
 registration, then opaque resource lifecycle and polled operations/readiness.
 Only after their application and whole-suite parity proofs can LLVM become default.
 Single binary, platform link packs and retirement follow. No language fork is pending.
+
+
+## B1.5b — private per-launch adapter registration (0.272)
+
+Version2 launch accepts a complete synchronous adapter table, validates every
+binding before launch, copies metadata and attaches immutable contracts to the
+original Host. The attachment has no resource token or mutable global selection.
+Installation is atomic and cannot replace another adapter owner. Version1 launch
+and program/entry layouts remain compatible. The original primitive ABI admits
+Rust operations only on a Host with a validated binding; source admission is closed.
+
+Seven private tests cover malformed/duplicate/incomplete tables, copied metadata,
+failed publication, Host lifetime and owners, repeated/concurrent/reentrant
+selection, original scripts/events/fuel, preserved input handles and early launch
+failure. A linked LLVM C-table probe at O0/O2 verifies live/scripted payloads and
+events plus invalid and legacy launch behavior. Native-host341/manual3, LLVM106,
+feature units4 (quota2 plus linked launch), both checks and the release workflow
+refresh. Ordinary runtime changes are exactly a cfg-gated ABI field; ordinary312
+units and remaining integrations retain guarded0.271 evidence, inventory2550.
+
+This is the private launch-registration prerequisite explicitly separated from
+generated typed adapter archives. Those archives and synchronous data admission
+follow in0.273, then resource lifecycle, polling/readiness, application and whole-
+suite parity, single binary, target packs and retirement. Rust remains default;
+no language-design fork is pending.
+
+The concurrent feature run exposed an existing embedded-linker race: the new
+adapter test and the quota test entered Mach-O LLD at the same time. Crash evidence
+shows both threads inside its global symbol tables. Production linking now holds
+a process-wide mutex through driver cleanup, and LLVM target registration runs
+once. Eight concurrent workers build and execute independent programs at O0/O2.
+Sequential LLVM106 evidence is retained with exact serialization-only code guards
+and before/after emitted-object comparisons; the failed run remains recorded.

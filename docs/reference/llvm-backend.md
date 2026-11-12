@@ -1241,3 +1241,41 @@ opaque resource ownership/destruction and started operation polling/readiness
 remain separate required steps. The existing ownership, origin, outcome, fault,
 cancellation and task handoff rules stay unchanged. Complete these adapter
 prerequisites before the whole-suite parity gate and any backend default change.
+
+
+## Private adapter launch registration (0.272)
+
+The private `tellur_rt_v2_launch` entry point accepts a versioned synchronous
+adapter table alongside the unchanged version1 program and entry metadata.
+Preparation validates table and callback versions/flags, readable aligned spans,
+UTF-8 names, supported data contracts, unique bindings and complete coverage of
+Rust-bound operations. Invalid tables fail before argument processing, entry
+invocation or Host publication. Names and contracts are copied; callback code must
+remain callable for the lifetime of every launch using it.
+
+A successful launch retains immutable bindings in its own Host resource registry.
+This attachment is separate from resource tokens and is compiled only into the
+ABI runtime. Installation cannot replace another adapter owner or attach a table
+to a different manifest. Dropping the Host releases its table reference. Repeated,
+concurrent and reentrant calls cannot select another launch's bindings: there is
+no process-global or thread-local selected dispatch table.
+
+The existing primitive ABI admits a Rust-bound synchronous operation only when
+that Host owns its validated binding. Original Host dispatch still chooses live
+or scripted execution and owns events, fuel, outcome checking and failure
+classification. Version1 launches have no table and retain their previous behavior.
+The linked O0/O2 C-table test checks live and scripted payloads/events, rejected
+tables and legacy launch rejection without enabling compiler source admission.
+
+Generated typed Rust shims and adapter static archives are next. Opaque resource
+identity/destruction, polled operations/readiness, application parity and the full
+parity gate remain prerequisites of the backend default change. No source syntax,
+ownership, origin, fault, cancellation or handoff semantics change.
+
+The concurrent feature run exposed an existing embedded-linker race: the new
+adapter test and the quota test entered Mach-O LLD at the same time. Crash evidence
+shows both threads inside its global symbol tables. Production linking now holds
+a process-wide mutex through driver cleanup, and LLVM target registration runs
+once. Eight concurrent workers build and execute independent programs at O0/O2.
+Sequential LLVM106 evidence is retained with exact serialization-only code guards
+and before/after emitted-object comparisons; the failed run remains recorded.

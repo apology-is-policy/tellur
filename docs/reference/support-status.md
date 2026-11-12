@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.271.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.272.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -415,3 +415,8 @@ adapters. Generated static libraries, launch registration, opaque resources and
 polled operation/readiness bridges remain required before full parity. Rust stays
 the default backend; existing adapter source contracts and foreign panic behavior
 are unchanged.
+
+Compiler 0.272 adds private [adapter launch registration](llvm-backend.md#private-adapter-launch-registration-0272).
+A complete synchronous callback table is validated before launch and retained per
+Host. LLVM source admission remains gated until generated typed adapter archives
+are linked; resources and polled operations/readiness follow. Rust stays default.

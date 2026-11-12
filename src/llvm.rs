@@ -17,6 +17,7 @@ use std::{
     ffi::{CStr, CString, c_char, c_int},
     path::Path,
     ptr,
+    sync::{Mutex, Once},
 };
 
 unsafe extern "C" {
@@ -44,11 +45,14 @@ fn message(raw: *mut c_char) -> String {
 
 /// Compiles textual LLVM IR modules into one object file for `triple`.
 pub fn compile(modules: &[(String, String)], triple: &str, opt: u8) -> Result<Vec<u8>, String> {
-    unsafe {
+    static TARGETS: Once = Once::new();
+    TARGETS.call_once(|| unsafe {
         LLVM_InitializeAllTargetInfos();
         LLVM_InitializeAllTargets();
         LLVM_InitializeAllTargetMCs();
         LLVM_InitializeAllAsmPrinters();
+    });
+    unsafe {
         let context = LLVMContextCreate();
         let result = compile_in(context, modules, triple, opt);
         LLVMContextDispose(context);
@@ -195,8 +199,11 @@ unsafe fn emit_with(
 }
 
 /// Runs the embedded LLD. `args[0]` selects the driver: `ld64.lld`, `ld.lld` or
-/// `lld-link`. LLD may leave global state behind, so a process links once.
+/// `lld-link`. LLD permits sequential re-entry but uses process-global driver
+/// state. Serialize the entire call, including driver cleanup in the C shim.
 pub fn link(args: &[String]) -> Result<(), String> {
+    static LINK: Mutex<()> = Mutex::new(());
+    let _guard = LINK.lock().map_err(|_| "LLD invocation lock is poisoned")?;
     let owned: Vec<CString> = args
         .iter()
         .map(|a| CString::new(a.as_str()).unwrap())
@@ -254,4 +261,44 @@ pub fn smoke(inputs: &[&Path], output: &Path, opt: u8) -> Result<(), String> {
         output.display().to_string(),
         object_path.display().to_string(),
     ])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    fn concurrent_compilers_and_linkers_keep_independent_executables() {
+        use std::sync::{Arc, Barrier};
+        let directory =
+            std::env::temp_dir().join(format!("tellur-concurrent-llvm-{}", std::process::id()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let barrier = Arc::new(Barrier::new(8));
+        let workers = (0..8)
+            .map(|id| {
+                let directory = directory.clone();
+                let barrier = Arc::clone(&barrier);
+                std::thread::spawn(move || {
+                    for opt in [0, 2] {
+                        let input = directory.join(format!("{id}-{opt}.ll"));
+                        let output = directory.join(format!("{id}-{opt}"));
+                        std::fs::write(
+                            &input,
+                            format!("define i32 @main() {{ ret i32 {} }}", id + 1),
+                        )
+                        .unwrap();
+                        barrier.wait();
+                        smoke(&[&input], &output, opt).unwrap();
+                        let status = std::process::Command::new(&output).status().unwrap();
+                        assert_eq!(status.code(), Some(id + 1));
+                    }
+                })
+            })
+            .collect::<Vec<_>>();
+        for worker in workers {
+            worker.join().unwrap();
+        }
+        std::fs::remove_dir_all(directory).unwrap();
+    }
 }

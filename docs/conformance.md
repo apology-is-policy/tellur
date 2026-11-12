@@ -6824,3 +6824,28 @@ current148, smoke144, Node47, isolated editor, nine package/install payloads and
 backup887 complete the release workflow. Evidence is recorded in
 `work/tellur-0.271-verification.json`. Source admission stays unchanged: generated
 adapter archives, launch registration, resources and polling are still pending.
+
+
+## 0.272 — private per-launch adapter registration (B1.5b)
+
+Seven private registry tests prove complete-table preflight, invalid versions,
+flags, spans, names and callbacks, copied metadata, atomic publication, independent
+Host lifetimes/owners, concurrent/reentrant dispatch and preservation of original
+scripts/events/fuel and compiled input handles. One linked LLVM C-table test covers
+live/scripted outcomes and events at O0/O2, invalid tables and legacy launch behavior.
+
+Native-host341/manual3, LLVM106 and feature units4 refresh, including the existing
+sixteen-mode quota matrix. Ordinary312 units and other integrations retain guarded
+0.271 evidence: the runtime differs only by a cfg-gated ABI field and the ordinary
+generator/checker/fixtures remain unchanged. Inventory2550; baseline148/current148,
+smoke144, Node47, isolated editor, nine package/install payloads and backup889 follow
+the release workflow. Evidence: `work/tellur-0.272-verification.json`. Generated
+typed adapter archives and source admission remain next; no full parity claim.
+
+The concurrent feature run exposed an existing embedded-linker race: the new
+adapter test and the quota test entered Mach-O LLD at the same time. Crash evidence
+shows both threads inside its global symbol tables. Production linking now holds
+a process-wide mutex through driver cleanup, and LLVM target registration runs
+once. Eight concurrent workers build and execute independent programs at O0/O2.
+Sequential LLVM106 evidence is retained with exact serialization-only code guards
+and before/after emitted-object comparisons; the failed run remains recorded.
