@@ -371,7 +371,7 @@ after retirement succeeds. Generated lexical admission still awaits registration
 see [private retained loop transfers](llvm-backend.md#private-retained-loop-and-recovery-transfers-0265).
 
 
-Version 3 runtime descriptors now register the private lexical and loop bridges
-without changing their original scope authority. Compiler 0.266 validates metadata
-before publication and captures before execution. Generated lexical recovery still
-awaits emitter integration; see [compiled scope registration](llvm-backend.md#compiled-lexical-and-loop-registration-0266).
+Compiler 0.267 lowers lexical boundaries and supervised recovery in retained LLVM
+frames. Work and handler states retain the original scope, task, loan and resource
+retirement rules, including nested faults and outward loop transfers. Normal scope
+completion adds no source tick or handoff. See [retained lexical recovery](llvm-backend.md#retained-lexical-scopes-and-recovery-0267).

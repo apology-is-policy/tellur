@@ -1,0 +1,36 @@
+// A failed request retires before recovery starts the next iteration.
+struct message {
+    string text;
+    constructor(string text) {
+        self.text = text;
+    }
+}
+async control session(bool fail) exits done {
+    supervised loop requests(mutable bool first = true) {
+        bool broken = first && fail;
+        first = false;
+        mutable message context = message("request context");
+        fault boundary {
+            yield;
+            delta broken {
+                true => failed,
+                false => healthy
+            }
+            [failed]: fault "request invariant failed";
+            [healthy]: emit(context.text);
+                exit done;
+        } contingency [context] {
+            context.text = "retired request";
+            emit(context.text);
+            emit(borrow @fault.message);
+            recover again requests;
+        }
+    }
+}
+control main(bool fail) exits result {
+    forward run session(fail);
+}
+
+outcome result {
+    @exit 0 done
+}

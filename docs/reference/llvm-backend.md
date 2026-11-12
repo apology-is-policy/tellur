@@ -22,7 +22,7 @@ Compiler 0.259 adds a private task-set runtime bridge. Compiler 0.260 admits ret
 loops with repeated task calls and expanded loop completions. Compiler 0.261 adds
 generated task sets with the existing completion-order and cancellation rules.
 Compiler 0.262 adds the private retained supervision bridge; 0.263 admits generated
-retained named supervision.
+retained named supervision. Compiler 0.267 adds retained lexical scopes and supervised recovery.
 The default remains `--backend rust`. Both start from the same checked program;
 backend selection does not relax ownership, origins, outcomes or path rules.
 
@@ -54,8 +54,9 @@ synchronous callers that reach those controls. Cold control tasks support `defer
 local moves/option wrappers and consuming `await`. Spawned controls and consuming joins
 are supported since 0.256; control cancellation requests since 0.257. Scripted
 async host operations share those task forms since 0.258. Retained loops are supported
-since 0.260; task sets since 0.261; named supervision since 0.263. Retained lexical
-scopes/recovery, suspending constructors and Rust adapters remain outside that profile. Launch signal policies are also rejected. Admission checks all checked
+since 0.260; task sets since 0.261; named supervision since 0.263; lexical scopes
+and supervised recovery since 0.267. Suspending constructors and Rust adapters
+remain outside that profile. Launch signal policies are also rejected. Admission checks all checked
 regions, including unused helpers. Unsupported programs receive `E_BACKEND`
 before the backend creates its output directory or files; ordinary checking may
 still succeed, and the Rust backend remains available.
@@ -1041,7 +1042,49 @@ loop execution. The execution matrices compare original continuations at every
 fuel cut, quotas 1/3/unbounded, caller/arena roots, nested recovery, owned buffers,
 physical facts, host waits/failures, borrowed children and named work settlement.
 
-This checkpoint registers the C-safe descriptors; the LLVM emitter still writes
-version 2 tables and retains its current source profile. Emitting version 3 tables,
-work/handler/end states and retained lexical recovery is next. Constructors,
-signals and Rust adapters remain later work; Rust is still the default backend.
+The 0.266 checkpoint registered these C-safe descriptors. Compiler 0.267 emits
+them and admits retained lexical recovery, as described below. Version 2 remains
+supported by the runtime; Rust is still the default backend.
+
+
+## Retained lexical scopes and recovery (0.267)
+
+Lexical fault boundaries now compose with retained `run`, `await`, `yield`, cold
+and spawned tasks, task sets and named supervision. Normal work fallthrough closes
+its scope before the following source instruction. A work fault retires affected
+children, captures and loans before entering its original contingency. Nested
+handlers preserve their original diagnostic causes; process termination preserves
+its declared status. Contingencies retain their existing disposition restrictions.
+
+Supervised loops evaluate `again` arguments in written order and transfer the
+whole batch after retiring abandoned scopes and iteration owners. Recovery uses
+the checked boundary-entry values, including permitted supervisor updates. The
+runtime resets only local path facts after retirement. Outward loop transfers and
+expanded helper completion use the same cleanup path. Cancellation remains sticky:
+source handoffs and explicit host cancellation alternatives determine observation;
+no interruption is added at lexical scope entry or normal scope completion.
+
+Generated version 3 tables contain module-static lexical and loop metadata.
+Resume functions accept runtime-selected states and preserve child payload delivery
+before the next source tick. Boundary-end states are administrative and consume no
+source fuel. State ranges are checked for overflow. Direct child frames stay
+embedded by value, spawned frames stay arena-owned, and the original Machine owns
+scope selection, fault settlement and resource retirement.
+
+The [retained recovery example](../../playground/llvm_async_recovery.tellur) yields
+inside each request. A failed first request retires and recovers into a healthy
+second iteration; a healthy first request completes directly.
+
+```sh
+./bin/tellurc build playground/llvm_async_recovery.tellur playground/manifest.json --backend llvm --out /tmp/tellur-async-recovery
+/tmp/tellur-async-recovery --json false
+/tmp/tellur-async-recovery --json true
+```
+
+Both runs complete with status 0. The first emits `request context`. The second
+emits `retired request`, `request invariant failed`, then `request context`.
+Original and expanded lowering are compared with the Rust backend at O0/O2,
+including every tested fuel cut, nested faults, borrowing siblings, cancellation,
+imports, guarded scopes, pending host replies and driver errors. Runtime quotas
+1/3/unbounded preserve the same reports and fuel accounting. Suspending
+constructors, launch signal policies and Rust adapters remain later checkpoints.

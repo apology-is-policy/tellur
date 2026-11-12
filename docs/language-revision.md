@@ -1767,3 +1767,34 @@ Registration and emitter integration are separate concrete checkpoints within th
 accepted plan. Next B1.4r emits v3 descriptors and body/handler/end states and admits
 retained lexical recovery. Then constructors, signals, parity/default, adapters,
 single binary, target packs and retirement. Rust stays default; no design fork.
+
+
+## B1.4r — generated retained lexical scopes and recovery (0.267)
+
+The LLVM emitter now writes version 3 control, scope and loop descriptors and
+accepts retained lexical boundaries, supervised loops, recovery and process
+termination. One recursive inventory plans instructions, child frames and cycles
+across both work and handler bodies. Bounded administrative boundary-end states
+preserve normal fallthrough without source fuel. Runtime-selected states enter the
+same generated frame; child payload delivery remains administrative.
+
+Loop entry, outward again, recovery and expanded completion use the original
+Machine transfer requests. Written argument order and whole-batch transfer are
+preserved; source owners retire before pure C callbacks reset local path facts.
+No ownership, origin, outcome, contingency, cancellation or handoff rule changes.
+The formatted `playground/llvm_async_recovery.tellur` demonstrates recovery across
+a yielded request and subsequent healthy iteration.
+
+Nine new source matrices compare Rust/reference/LLVM original and expanded forms
+at O0/O2 and relevant fuel cuts. They cover nested causes, status, imports/guards,
+normal ends, borrowed children/siblings, ancestor storage, task sets, named scopes
+in both nesting directions, pending host replies and driver errors. Two new
+scenarios extend the existing quota matrix through lexical recovery and host waits.
+Runtime ABI, ordinary execution and frontend inputs are unchanged; existing
+native-host308 and native187/frontend125 unit evidence are reused with identity
+guards. The complete LLVM and quota suites refresh, with manual/source baselines,
+release smokes, compiler/LSP/VSIX and isolated editor checks.
+
+Next is suspending constructor delivery, followed by signals, parity/default,
+adapters, single binary, target packs and retirement. Rust remains default. This
+completes the lexical registration/emission pair; no design fork is pending.

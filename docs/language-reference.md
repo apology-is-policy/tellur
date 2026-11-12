@@ -1,8 +1,8 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.266.0 -->
+<!-- tellur-reference-version: 0.267.0 -->
 
-This manual describes **compiler 0.266.0**, including the current ownership model,
+This manual describes **compiler 0.267.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -2980,7 +2980,7 @@ General expression-type hover remains unsupported.
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and broader spawn payloads (anonymous contracts and reference-bearing collections) remain planned; they are not executable features of 0.266.0.
+and broader spawn payloads (anonymous contracts and reference-bearing collections) remain planned; they are not executable features of 0.267.0.
 ## Contingency and supervised boundaries
 
 The [contingency reference](reference/contingency.md) specifies `@contingent`,
@@ -3053,7 +3053,8 @@ comparison budget exhaustion is an inconclusive error, never partial success.
 Read [protocol analysis](protocol-analysis.md) for symbols, residual fields and limits.
 
 
-Compiler 0.266 adds version 3 runtime registration for retained lexical and loop
-metadata, including C ABI physical-fact reset callbacks. Existing generated code
-continues to use version 2. Retained lexical source admission awaits the emitter
-integration; Rust remains default. See [compiled scope registration](reference/llvm-backend.md#compiled-lexical-and-loop-registration-0266).
+Compiler 0.267 emits version 3 runtime descriptors and admits lexical fault
+boundaries in retained async controls, supervised recovery, outward loop transfers
+and process termination. Original ownership, fault retirement and handoff rules
+remain authoritative. Suspending constructors, signals and Rust adapters remain
+gated; Rust is still the default. See [retained lexical recovery](reference/llvm-backend.md#retained-lexical-scopes-and-recovery-0267).

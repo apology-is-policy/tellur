@@ -5,7 +5,7 @@ use super::*;
 
 const DECLARATIONS: &str = r#"
 declare i32 @tellur_rt_v1_launch(ptr, i64, ptr, i64)
-declare void @tellur_rt_v2_run_entry(ptr, ptr, i64, i64, ptr, i64, i64, ptr, i64, i64)
+declare void @tellur_rt_v3_run_entry(ptr, ptr, i64, i64, ptr, i64, i64, ptr, i64, i64)
 declare void @tellur_rt_v1_await(ptr, i64, ptr, i64)
 declare void @tellur_rt_v1_run_child(ptr, i64, ptr, i64)
 declare i64 @tellur_rt_v1_defer(ptr, i64, ptr, i64, ptr, i64)
@@ -19,8 +19,16 @@ declare i8 @tellur_rt_v1_next(ptr, i64, i64)
 declare void @tellur_rt_v1_cancel_set(ptr, i64, i64, i64)
 declare void @tellur_rt_v1_host(ptr, i64, ptr, i64)
 declare void @tellur_rt_v1_invalid_resume(ptr)
+declare i32 @tellur_rt_v1_resume_state(ptr, i32)
+declare void @tellur_rt_v1_scope(ptr, i64, i32)
+declare void @tellur_rt_v1_loop(ptr, i64, i32, ptr, i64)
 %compiled_control = type { ptr, i64, ptr, i64, i64, ptr, i64, i64, i64, i64, ptr, ptr, i64, ptr, i64 }
 %compiled_child = type { i64, i64 }
+%compiled_control_v3 = type { %compiled_control, ptr }
+%compiled_slots = type { ptr, i64 }
+%compiled_scope = type { i32, ptr, i64, ptr, i64 }
+%compiled_boundary = type { ptr, i64, i32, i32, i32, %compiled_slots, %compiled_slots, %compiled_slots, %compiled_slots, i64 }
+%compiled_loop = type { i64, i32, i32, %compiled_slots, %compiled_slots, ptr }
 declare i32 @tellur_rt_v1_ok(ptr)
 declare void @tellur_rt_v1_frame(ptr, i64)
 declare i64 @tellur_rt_v1_local(ptr, i64, ptr, i64, i32)
@@ -303,8 +311,13 @@ fn retained_instructions(code: &[Instruction]) -> Vec<&Instruction> {
     fn append<'a>(code: &'a [Instruction], out: &mut Vec<&'a Instruction>) {
         for instruction in code {
             out.push(instruction);
-            if let Action::Loop { body, .. } = &instruction.action {
-                append(body, out);
+            match &instruction.action {
+                Action::Loop { body, .. } => append(body, out),
+                Action::Boundary { body, handler, .. } => {
+                    append(body, out);
+                    append(handler, out);
+                }
+                _ => {}
             }
         }
     }
@@ -400,16 +413,18 @@ fn retained_supported(
         | Action::Fault(..)
         | Action::Terminate
         | Action::Escalate
-        | Action::Exit(..) => supported(i, types, primitive_types, manifest),
+        | Action::Exit(..)
+        | Action::TerminateProcess(..) => supported(i, types, primitive_types, manifest),
         Action::Supervise { args, .. } => args.iter().all(|e| expression_supported(e, types)),
-        Action::Complete { .. } | Action::Again { .. } => {
+        Action::Boundary { body, handler, .. } => body
+            .iter()
+            .chain(handler)
+            .all(|i| retained_supported(i, host_operation, types, primitive_types, manifest)),
+        Action::Complete { .. } | Action::Again { .. } | Action::Recover { .. } => {
             supported(i, types, primitive_types, manifest)
         }
         Action::Loop {
-            supervised: false,
-            parameters,
-            body,
-            ..
+            parameters, body, ..
         } => {
             parameters
                 .iter()
@@ -445,26 +460,48 @@ fn retained_supported(
                 && args.iter().all(|e| expression_supported(e, types))
         }
         Action::Decide { .. } => supported(i, types, primitive_types, manifest),
-        _ => false,
     }
 }
 
 #[derive(Clone)]
 struct RetainedLoopTarget {
+    index: usize,
     body: u32,
     complete: u32,
     parameters: Vec<Id>,
     local_slots: Vec<Id>,
     local_atoms: Vec<Id>,
 }
+struct RetainedBoundary<'a> {
+    instruction: &'a Instruction,
+    body: u32,
+    handler: u32,
+    after: u32,
+    end: u32,
+}
 struct RetainedPlan<'a> {
     code: Vec<&'a Instruction>,
     next: BTreeMap<Id, u32>,
     loops: BTreeMap<Id, RetainedLoopTarget>,
+    boundaries: Vec<RetainedBoundary<'a>>,
+    invalid: u32,
 }
 impl<'a> RetainedPlan<'a> {
-    fn new(code: &'a [Instruction]) -> Self {
+    fn new(code: &'a [Instruction]) -> Result<Self> {
         let flat = retained_instructions(code);
+        let boundary_count = flat
+            .iter()
+            .filter(|i| matches!(i.action, Action::Boundary { .. }))
+            .count();
+        // 0 is initial, then instruction and delivery ranges, administrative
+        // boundary ends, and one real invalid state. Metadata never uses MAX.
+        let count = flat
+            .len()
+            .checked_mul(2)
+            .and_then(|n| n.checked_add(boundary_count))
+            .and_then(|n| n.checked_add(2))
+            .and_then(|n| u32::try_from(n).ok())
+            .ok_or_else(|| error("LLVM retained resume-state range exceeds u32"))?;
         let states = flat
             .iter()
             .enumerate()
@@ -474,36 +511,51 @@ impl<'a> RetainedPlan<'a> {
             code: flat,
             next: BTreeMap::new(),
             loops: BTreeMap::new(),
+            boundaries: vec![],
+            invalid: count - 1,
         };
-        plan.block(code, &states);
-        plan
+        plan.block(code, &states, plan.invalid);
+        Ok(plan)
     }
-    fn block(&mut self, code: &[Instruction], states: &BTreeMap<Id, u32>) {
+    fn block(&mut self, code: &'a [Instruction], states: &BTreeMap<Id, u32>, after: u32) {
         for (index, instruction) in code.iter().enumerate() {
-            // A checked block cannot fall through its end. In particular a loop
-            // body must exit, restart or complete its expanded helper.
-            let next = code.get(index + 1).map_or(u32::MAX, |i| states[&i.id]);
+            let next = code.get(index + 1).map_or(after, |i| states[&i.id]);
             self.next.insert(instruction.id, next);
-            if let Action::Loop {
-                id,
-                parameters,
-                local_slots,
-                local_atoms,
-                body,
-                ..
-            } = &instruction.action
-            {
-                self.loops.insert(
-                    *id,
-                    RetainedLoopTarget {
-                        body: body.first().map_or(u32::MAX, |i| states[&i.id]),
-                        complete: next,
-                        parameters: parameters.iter().map(|(id, _)| *id).collect(),
-                        local_slots: local_slots.clone(),
-                        local_atoms: local_atoms.clone(),
-                    },
-                );
-                self.block(body, states);
+            match &instruction.action {
+                Action::Loop {
+                    id,
+                    parameters,
+                    local_slots,
+                    local_atoms,
+                    body,
+                    ..
+                } => {
+                    self.loops.insert(
+                        *id,
+                        RetainedLoopTarget {
+                            index: self.loops.len(),
+                            body: body.first().map_or(self.invalid, |i| states[&i.id]),
+                            complete: next,
+                            parameters: parameters.iter().map(|(id, _)| *id).collect(),
+                            local_slots: local_slots.clone(),
+                            local_atoms: local_atoms.clone(),
+                        },
+                    );
+                    self.block(body, states, self.invalid);
+                }
+                Action::Boundary { body, handler, .. } => {
+                    let end = (2 * self.code.len() + self.boundaries.len() + 1) as u32;
+                    self.boundaries.push(RetainedBoundary {
+                        instruction,
+                        body: body.first().map_or(end, |i| states[&i.id]),
+                        handler: handler.first().map_or(self.invalid, |i| states[&i.id]),
+                        after: next,
+                        end,
+                    });
+                    self.block(body, states, end);
+                    self.block(handler, states, self.invalid);
+                }
+                _ => {}
             }
         }
     }
@@ -532,6 +584,7 @@ struct Emitter {
     inline_children: BTreeMap<Id, (usize, usize, usize)>,
     supervision_children: BTreeMap<Id, (usize, usize)>,
     retained_loops: BTreeMap<Id, RetainedLoopTarget>,
+    retained_boundaries: BTreeMap<Id, usize>,
     task_set_slots: BTreeSet<Id>,
     resume_next: u32,
     delivery_pc: u32,
@@ -1002,14 +1055,20 @@ impl Emitter {
         matches!(&instruction.action, Action::Decide { operation: Operation::Primitive(name), .. }
             if self.async_primitives.contains(name))
     }
-    fn resume_control(&mut self, region: &Region, index: usize) {
+    fn resume_control(&mut self, region: &Region, index: usize) -> Result<()> {
         self.layout = FrameLayout::new(region);
         self.constructing = false;
         self.retained = true;
         self.current_descriptor = self.resumables[&region.name];
         self.inline_children.clear();
         self.supervision_children.clear();
-        let plan = RetainedPlan::new(&region.code);
+        let plan = RetainedPlan::new(&region.code)?;
+        self.retained_boundaries = plan
+            .boundaries
+            .iter()
+            .enumerate()
+            .map(|(n, b)| (b.instruction.id, n))
+            .collect();
         self.retained_loops = plan.loops.clone();
         self.task_set_slots = region
             .slots
@@ -1063,7 +1122,11 @@ impl Emitter {
                 child + 2
             ));
         }
-        let state = self.value("load i32, ptr %pc");
+        let saved = self.value("load i32, ptr %pc");
+        let state = self.call(format!(
+            "call i32 @tellur_rt_v1_resume_state(ptr %ctx, i32 {saved})"
+        ));
+        self.line(format!("store i32 {state}, ptr %pc"));
         let mut cases = "i32 0, label %initial".to_owned();
         for (pc, &instruction) in plan.code.iter().enumerate() {
             write!(cases, "\ni32 {}, label %state_{}", pc + 1, pc + 1).unwrap();
@@ -1086,6 +1149,20 @@ impl Emitter {
                 .unwrap();
             }
         }
+        for boundary in &plan.boundaries {
+            write!(
+                cases,
+                "\ni32 {}, label %state_{}",
+                boundary.end, boundary.end
+            )
+            .unwrap();
+        }
+        write!(
+            cases,
+            "\ni32 {}, label %state_{}",
+            plan.invalid, plan.invalid
+        )
+        .unwrap();
         self.line(format!(
             "switch i32 {state}, label %invalid [ {cases} ]\ninitial:"
         ));
@@ -1133,6 +1210,14 @@ impl Emitter {
                 }
             }
         }
+        for (scope, boundary) in plan.boundaries.iter().enumerate() {
+            self.line(format!("state_{}:", boundary.end));
+            self.effect(format!(
+                "call void @tellur_rt_v1_scope(ptr %ctx, i64 {scope}, i32 1)"
+            ));
+            self.line("ret i32 14");
+        }
+        self.line(format!("state_{}:\nbr label %invalid", plan.invalid));
         self.line("invalid:\ncall void @tellur_rt_v1_invalid_resume(ptr %ctx)\nbr label %error\nerror:\nret i32 0\n}");
         self.body
             .insert_str(entry, &std::mem::take(&mut self.allocations));
@@ -1196,11 +1281,91 @@ impl Emitter {
             .unwrap();
             format!("@retained_{index}")
         };
+        let scopes = self.scope_metadata(index, &plan);
         let (producer, producer_len) = self.text(&region.name);
-        self.descriptors.push(format!("%compiled_control {{ ptr {producer}, i64 {producer_len}, ptr {name}, i64 {len}, i64 {}, ptr @parameters_{index}, i64 {}, i64 {size}, i64 {align}, i64 {prefix}, ptr @resume_{index}, ptr @children_{index}, i64 {}, ptr {retained_pointer}, i64 {} }}", self.layout.slots.len(), parameters.len(), children.len(), retained.len()));
+        self.descriptors.push(format!("%compiled_control_v3 {{ %compiled_control {{ ptr {producer}, i64 {producer_len}, ptr {name}, i64 {len}, i64 {}, ptr @parameters_{index}, i64 {}, i64 {size}, i64 {align}, i64 {prefix}, ptr @resume_{index}, ptr @children_{index}, i64 {}, ptr {retained_pointer}, i64 {} }}, ptr {scopes} }}", self.layout.slots.len(), parameters.len(), children.len(), retained.len()));
         let descriptor = self.resumables[&region.name];
         let count = self.resumables.len();
-        self.line(format!("define void @control_{index}(ptr %ctx, ptr %args, i64 %count) {{\nentry:\n%frame = alloca %frame_{index}\nstore %frame_{index} zeroinitializer, ptr %frame\ncall void @tellur_rt_v2_run_entry(ptr %ctx, ptr @async_controls, i64 {count}, i64 {descriptor}, ptr %frame, i64 {size}, i64 {align}, ptr %args, i64 %count, i64 -1)\nret void\n}}"));
+        self.line(format!("define void @control_{index}(ptr %ctx, ptr %args, i64 %count) {{\nentry:\n%frame = alloca %frame_{index}\nstore %frame_{index} zeroinitializer, ptr %frame\ncall void @tellur_rt_v3_run_entry(ptr %ctx, ptr @async_controls, i64 {count}, i64 {descriptor}, ptr %frame, i64 {size}, i64 {align}, ptr %args, i64 %count, i64 -1)\nret void\n}}"));
+        Ok(())
+    }
+
+    fn scope_slots(&mut self, slots: &[Id]) -> String {
+        if slots.is_empty() {
+            return "%compiled_slots { ptr null, i64 0 }".into();
+        }
+        let name = format!("@scope_slots_{}", self.id());
+        let fields = slots
+            .iter()
+            .map(|id| format!("i64 {}", self.layout.slots[id]))
+            .collect::<Vec<_>>();
+        writeln!(
+            self.globals,
+            "{name} = private constant [{} x i64] [{}]",
+            fields.len(),
+            fields.join(", ")
+        )
+        .unwrap();
+        format!("%compiled_slots {{ ptr {name}, i64 {} }}", fields.len())
+    }
+    fn scope_metadata(&mut self, index: usize, plan: &RetainedPlan<'_>) -> String {
+        if plan.boundaries.is_empty() && plan.loops.is_empty() {
+            return "null".into();
+        }
+        let mut boundaries = vec![];
+        for boundary in &plan.boundaries {
+            let i = boundary.instruction;
+            let Action::Boundary {
+                retained,
+                retire,
+                work_slots,
+                handler_slots,
+                fault_slot,
+                ..
+            } = &i.action
+            else {
+                unreachable!()
+            };
+            let (name, len) = self.text(&format!(
+                "{}$boundary@{}",
+                i.provenance.region, i.provenance.span.line
+            ));
+            let retained = self.scope_slots(retained);
+            let retire = self.scope_slots(retire);
+            let work = self.scope_slots(work_slots);
+            let handling = self.scope_slots(handler_slots);
+            boundaries.push(format!("%compiled_boundary {{ ptr {name}, i64 {len}, i32 {}, i32 {}, i32 {}, {retained}, {retire}, {work}, {handling}, i64 {} }}", boundary.body, boundary.handler, boundary.after, self.layout.slots[fault_slot]));
+        }
+        let mut entries = plan.loops.iter().collect::<Vec<_>>();
+        entries.sort_by_key(|(_, target)| target.index);
+        let mut loops = vec![];
+        for (target, entry) in entries {
+            let locals = self.scope_slots(&entry.local_slots);
+            let parameters = self.scope_slots(&entry.parameters);
+            let reset = format!("@reset_{index}_{}", entry.index);
+            self.line(format!("define void {reset}(ptr %frame) {{\nentry:"));
+            for (n, atom) in entry.local_atoms.iter().enumerate() {
+                self.line(format!("%fact_{n} = getelementptr %frame_{index}, ptr %frame, i32 0, i32 1, i64 {}\nstore i1 false, ptr %fact_{n}", self.layout.atoms[atom]));
+            }
+            self.line("ret void\n}");
+            loops.push(format!("%compiled_loop {{ i64 {target}, i32 {}, i32 {}, {locals}, {parameters}, ptr {reset} }}", entry.body, entry.complete));
+        }
+        writeln!(
+            self.globals,
+            "@boundaries_{index} = private constant [{} x %compiled_boundary] [{}]",
+            boundaries.len(),
+            boundaries.join(", ")
+        )
+        .unwrap();
+        writeln!(
+            self.globals,
+            "@loops_{index} = private constant [{} x %compiled_loop] [{}]",
+            loops.len(),
+            loops.join(", ")
+        )
+        .unwrap();
+        writeln!(self.globals, "@scopes_{index} = private constant %compiled_scope {{ i32 {}, ptr @boundaries_{index}, i64 {}, ptr @loops_{index}, i64 {} }}", plan.invalid + 1, boundaries.len(), loops.len()).unwrap();
+        format!("@scopes_{index}")
     }
 
     fn unwind(&mut self, depth: usize) {
@@ -1228,24 +1393,14 @@ impl Emitter {
     fn select_resume(&mut self, state: u32) {
         self.line(format!("store i32 {state}, ptr %pc\nret i32 4"));
     }
-    fn restart_retained_loop(&mut self, target: Id, values: Vec<String>) {
-        let target = self.retained_loops[&target].clone();
-        debug_assert_eq!(values.len(), target.parameters.len());
-        // All arguments are already evaluated. Reset and transfer before returning
-        // from this callback: no handle buffer or LLVM SSA value survives a park.
-        for slot in target.local_slots {
-            self.release(slot);
-        }
-        for atom in target.local_atoms {
-            self.line(format!(
-                "store i1 false, ptr %a{}",
-                self.layout.atoms[&atom]
-            ));
-        }
-        for (slot, value) in target.parameters.into_iter().zip(values) {
-            self.store(slot, &value);
-        }
-        self.select_resume(target.body);
+    fn request_retained_loop(&mut self, target: Id, kind: u32, values: Vec<String>) {
+        let index = self.retained_loops[&target].index;
+        let args = self.handles(&values);
+        self.effect(format!(
+            "call void @tellur_rt_v1_loop(ptr %ctx, i64 {index}, i32 {kind}, ptr {args}, i64 {})",
+            values.len()
+        ));
+        self.line(format!("ret i32 {}", 15 + kind));
     }
     fn instructions(&mut self, code: &[Instruction]) {
         for i in code {
@@ -1298,6 +1453,14 @@ impl Emitter {
                         self.return_control();
                         terminal = true;
                     }
+                }
+                Action::Boundary { .. } if self.retained => {
+                    let scope = self.retained_boundaries[&i.id];
+                    self.effect(format!(
+                        "call void @tellur_rt_v1_scope(ptr %ctx, i64 {scope}, i32 0)"
+                    ));
+                    self.line("ret i32 13");
+                    terminal = true;
                 }
                 Action::Boundary {
                     body,
@@ -1631,7 +1794,7 @@ impl Emitter {
                     self.line(format!("store i1 true, ptr %a{}", self.layout.atoms[atom]));
                     if let Some(target) = unwind {
                         if self.retained {
-                            self.select_resume(self.retained_loops[target].complete);
+                            self.request_retained_loop(*target, 3, vec![]);
                         } else {
                             let target = self.loops[target].clone();
                             self.unwind(target.scope_depth);
@@ -1642,12 +1805,19 @@ impl Emitter {
                 }
                 Action::Loop { id, parameters, .. } if self.retained => {
                     let values = parameters.iter().map(|(_, e)| self.expr(e)).collect();
-                    self.restart_retained_loop(*id, values);
+                    self.request_retained_loop(*id, 0, values);
                     terminal = true;
                 }
-                Action::Again { target, args } if self.retained => {
+                Action::Again { target, args } | Action::Recover { target, args }
+                    if self.retained =>
+                {
+                    let kind = if matches!(&i.action, Action::Recover { .. }) {
+                        2
+                    } else {
+                        1
+                    };
                     let values = args.iter().map(|e| self.expr(e)).collect();
-                    self.restart_retained_loop(*target, values);
+                    self.request_retained_loop(*target, kind, values);
                     terminal = true;
                 }
                 Action::Loop {
@@ -1835,6 +2005,7 @@ impl CheckedProgram {
             inline_children: BTreeMap::new(),
             supervision_children: BTreeMap::new(),
             retained_loops: BTreeMap::new(),
+            retained_boundaries: BTreeMap::new(),
             task_set_slots: BTreeSet::new(),
             resume_next: 0,
             delivery_pc: 0,
@@ -1904,7 +2075,7 @@ impl CheckedProgram {
             }
             let index = emitter.controls[&region.name].0;
             if retained {
-                emitter.resume_control(region, index);
+                emitter.resume_control(region, index)?;
             } else {
                 emitter.control(region, index);
             }
@@ -1916,7 +2087,7 @@ impl CheckedProgram {
         if !emitter.descriptors.is_empty() {
             writeln!(
                 emitter.globals,
-                "@async_controls = private constant [{} x %compiled_control] [{}]",
+                "@async_controls = private constant [{} x %compiled_control_v3] [{}]",
                 emitter.descriptors.len(),
                 emitter.descriptors.join(", ")
             )
@@ -2025,7 +2196,7 @@ mod tests {
             .unwrap()
             .extend(host["primitives"].as_array().unwrap().iter().cloned());
         let manifest = crate::manifest::Manifest::from_json(&manifest.to_string()).unwrap();
-        for mode in 0..11 {
+        for mode in 0..13 {
             let source = r#"
 async control child(bool fail, ref mutable string text) exits done faults {
     yield;delta fail {true=>bad,false=>good}
@@ -2175,6 +2346,15 @@ outcome result {@exit 0 done}
             } else {
                 source
             };
+            let source = if mode == 11 {
+                include_str!("../../playground/llvm_async_recovery.tellur").to_owned()
+            } else if mode == 12 {
+                include_str!("../../playground/llvm_async_recovery.tellur").replace("            yield;", r#"            delta await tick("request") {ticked {string reply}=>ready,cancelled=>stopped}
+            [ready]:emit(reply);
+            [ready|stopped]:yield;"#)
+            } else {
+                source
+            };
             let checked = crate::compile(&source, manifest.clone()).unwrap();
             for expanded in [false, true] {
                 let program = if expanded {
@@ -2192,7 +2372,7 @@ outcome result {@exit 0 done}
                     let mut expected = vec![];
                     for fail in [false, true] {
                         let scenario = directory.join(format!("{fail}.json"));
-                        fs::write(&scenario,serde_json::json!({"entry":"main","arguments":[{"kind":"bool","value":fail}],"calls":if (3..=4).contains(&mode) || mode == 10 {vec![serde_json::json!({"operation":"tick","outcome":"ticked","fields":[{"kind":"string","value":"quota"}],"waits":7})]} else {vec![]}}).to_string()).unwrap();
+                        fs::write(&scenario,serde_json::json!({"entry":"main","arguments":[{"kind":"bool","value":fail}],"calls":if mode == 12 {vec![serde_json::json!({"operation":"tick","outcome":"ticked","fields":[{"kind":"string","value":"quota lexical"}],"waits":7});if fail {2} else {1}]} else if (3..=4).contains(&mode) || mode == 10 {vec![serde_json::json!({"operation":"tick","outcome":"ticked","fields":[{"kind":"string","value":"quota"}],"waits":7})]} else {vec![]}}).to_string()).unwrap();
                         for fuel in 0..=if mode >= 5 { 64 } else { 36 } {
                             let out = Command::new(&rust)
                                 .arg("--scenario")

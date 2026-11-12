@@ -3399,26 +3399,14 @@ pub async control echo(string text) exits ready {string result} {yield;exit read
     }
 
     #[test]
-    fn retained_operations_nested_in_synchronous_scopes_are_gated_before_output() {
+    fn retained_operations_nested_in_synchronous_scopes_preserve_implicit_wrappers() {
         let prefix = "async control leaf() exits done {yield;exit done;} control wrapper() exits done {forward run leaf();}";
-        for main in [
-            "control main() exits result {fault boundary {wrapper();exit done;} contingency [] {escalate;}} outcome result {@exit 0 done}",
-        ] {
-            let f = Fixture::new(&format!("{prefix}{main}"));
-            compile_file(
-                &f.source,
-                Manifest::from_json(&fs::read_to_string(&f.manifest).unwrap()).unwrap(),
-            )
-            .unwrap();
-            let result = f.command("llvm", 0).output().unwrap();
-            assert!(
-                !result.status.success()
-                    && String::from_utf8_lossy(&result.stderr).contains("E_BACKEND"),
-                "{result:?}"
-            );
-            assert!(!f.root.join("llvm-0.tellur-build").exists());
-            assert!(!f.root.join("llvm-0.ll").exists());
-        }
+        let main = "control main() exits result {fault boundary {wrapper();exit done;} contingency [] {escalate;}} outcome result {@exit 0 done}";
+        lexical_matrix(
+            &Fixture::new(&format!("{prefix}{main}")),
+            &[json!({"entry":"main","arguments":[],"calls":[]})],
+            &(0..=30).map(Some).chain([None]).collect::<Vec<_>>(),
+        );
     }
     fn host_fixture(source: &str) -> Fixture {
         let f = Fixture::new(source);
@@ -4322,6 +4310,151 @@ contingency(string reason) {
     }
 
     #[test]
+    fn frontend_lexical_scopes_preserve_normal_fallthrough_and_task_set_members() {
+        for source in [
+            "async control work() exits done {fault boundary {yield;exit done;} contingency [] {escalate;}} async control startup() exits done {tasks<work> set=tasks();spawn work() into set;loop reap(tasks<work> pending=move set){delta await next pending {done=>next,empty=>empty} [next]:again reap(pending);[empty]:exit done;}} control main() exits result {forward run startup();} outcome result {@exit 0 done}",
+            "async control helper() exits done {loop L(){fault boundary {yield;exit done;} contingency [] {escalate;}}} control main() exits result {forward run helper();} outcome result {@exit 0 done}",
+            "async control helper() exits done {string text=\"owner\";fault boundary {yield;emit(borrow text);} contingency [text] {escalate;} emit(text);exit done;} control main() exits result {forward run helper();} outcome result {@exit 0 done}",
+        ] {
+            lexical_matrix(
+                &Fixture::new(source),
+                &[json!({"entry":"main","arguments":[],"calls":[]})],
+                &(0..=35).map(Some).chain([None]).collect::<Vec<_>>(),
+            );
+        }
+    }
+    #[test]
+    fn frontend_lexical_recovery_preserves_entry_values_and_reused_path_facts() {
+        let f = Fixture::new(include_str!("../playground/llvm_async_recovery.tellur"));
+        lexical_matrix(&f, &[false,true].map(|fail| json!({"entry":"main","arguments":[{"kind":"bool","value":fail}],"calls":[]})),
+            &(0..=75).map(Some).chain([None]).collect::<Vec<_>>());
+        let ir = fs::read_to_string(f.root.join("llvm-2.ll")).unwrap();
+        assert!(ir.contains("%compiled_control_v3") && ir.contains("@tellur_rt_v3_run_entry"));
+        assert!(ir.contains("@tellur_rt_v1_scope") && ir.contains("@tellur_rt_v1_loop"));
+        assert!(ir.contains("define void @reset_") && ir.contains("@scopes_"));
+    }
+
+    #[test]
+    fn frontend_lexical_scopes_preserve_outward_again_and_expanded_completion() {
+        for source in [
+            r#"async control pause() exits done {yield;exit done;} control helper() exits done {string text} {loop L(){fault boundary {run pause();exit done {"expanded"};} contingency [] {escalate;}}} control main() exits done {delta helper(){done {string text}=>done}[done]:emit(text);exit done;}"#,
+            r#"async control session() exits done {loop L(u32 n=0){delta n<3 {true=>more,false=>last}[last]:exit done;[more]:delta checked_add(n,1){sum {u32 next}=>next,overflow=>bad}[bad]:fault "counter";[next]:fault boundary {yield;emit(u32_text(next));again L(next);} contingency [] {escalate;}}} control main() exits done {forward run session();}"#,
+            r#"async control session() exits done {yield;fault boundary {} contingency [] {escalate;} emit("after empty");exit done;} control main() exits done {forward run session();}"#,
+        ] {
+            lexical_matrix(
+                &Fixture::new(source),
+                &[json!({"entry":"main","arguments":[],"calls":[]})],
+                &(0..=65).map(Some).chain([None]).collect::<Vec<_>>(),
+            );
+        }
+    }
+    #[test]
+    fn frontend_lexical_scopes_preserve_nested_fault_causes_and_process_status() {
+        for status in [0, 23, 255] {
+            let source = r#"async control fail() exits done faults {yield;fault "first";} control main() exits done {fault boundary {fault boundary {run fail();exit done;} contingency [] {fault "second";}} contingency [] {emit(borrow @fault.message);terminate process 23;}}"#;
+            lexical_matrix(
+                &Fixture::new(&source.replace("process 23", &format!("process {status}"))),
+                &[json!({"entry":"main","arguments":[],"calls":[]})],
+                &(0..=40).map(Some).chain([None]).collect::<Vec<_>>(),
+            );
+        }
+        lexical_matrix(
+            &Fixture::new(
+                r#"async control session() exits done {supervised loop L(mutable bool first=true){bool fail=first;first=false;fault boundary {delta fail {true=>bad,false=>ok}[ok]:exit done;[bad]:fault boundary {yield;fault "first";} contingency [] {fault "second";}} contingency [] {emit(borrow @fault.message);recover again L;}}} control main() exits done {forward run session();}"#,
+            ),
+            &[json!({"entry":"main","arguments":[],"calls":[]})],
+            &(0..=60).map(Some).chain([None]).collect::<Vec<_>>(),
+        );
+    }
+    #[test]
+    fn frontend_lexical_scopes_compose_with_named_work_and_cold_borrowed_children() {
+        for source in [
+            r#"async control child(ref string text) exits done faults {yield;emit(text);fault "child";} async control borrow_work(ref string context) exits done faults {auto work=defer child(context);await work;exit done;} boundary request(string context) retains context {supervised loop L(mutable bool first=true){bool fail=first;first=false;string request_context=clone(borrow context);fault boundary {delta fail {true=>bad,false=>ok}[ok]:emit(request_context);terminate;[bad]:run borrow_work(borrow request_context);terminate;} contingency [] {emit(borrow @fault.message);recover again L;}}} contingency(string reason){emit(context);emit(reason);terminate;} async control session() exits done {supervise request("named owner");exit done;} control main() exits done {forward run session();}"#,
+            r#"async control child() exits done faults {yield;fault "named child";} boundary request(){run child();terminate;} contingency(string reason){emit(reason);escalate;} async control session() exits done {supervised loop L(mutable bool first=true){bool fail=first;first=false;fault boundary {delta fail {true=>bad,false=>ok}[ok]:exit done;[bad]:supervise request();exit done;} contingency [] {emit(borrow @fault.message);recover again L;}}} control main() exits done {forward run session();}"#,
+        ] {
+            lexical_matrix(
+                &Fixture::new(source),
+                &[json!({"entry":"main","arguments":[],"calls":[]})],
+                &(0..=70).map(Some).chain([None]).collect::<Vec<_>>(),
+            );
+        }
+    }
+    #[test]
+    fn frontend_lexical_recovery_preserves_pending_host_and_driver_error_authority() {
+        let source = include_str!("../playground/llvm_async_recovery.tellur").replace("            yield;", r#"            delta await tick("request") {ticked {string reply}=>ready,cancelled=>stopped}
+            [ready]:emit(reply);
+            [ready|stopped]:yield;"#);
+        assert!(source.contains("await tick"));
+        let f = host_fixture(&source);
+        let mut scenarios = vec![
+            json!({"entry":"main","arguments":[{"kind":"bool","value":false}],"calls":[host_call("first",5)]}),
+            json!({"entry":"main","arguments":[{"kind":"bool","value":true}],"calls":[host_call("first",5),host_call("second",3)]}),
+        ];
+        for scenario in &scenarios {
+            successful_reference(&f, scenario);
+        }
+        let mut wrong = scenarios[1].clone();
+        wrong["calls"][0]["fields"] = json!([{"kind":"bool","value":true}]);
+        scenarios.push(wrong);
+        let mut missing = scenarios[1].clone();
+        missing["calls"] = json!([]);
+        scenarios.push(missing);
+        lexical_matrix(
+            &f,
+            &scenarios,
+            &(0..=80).map(Some).chain([None]).collect::<Vec<_>>(),
+        );
+    }
+
+    #[test]
+    fn frontend_lexical_cancellation_preserves_exclusive_ancestor_storage() {
+        for pauses in ["", "yield;", "yield;yield;yield;"] {
+            let source=r#"async control worker(ref mutable string text) exits done {string request="local request";fault boundary {yield;emit(request);} contingency [] {escalate;}deref text="updated";yield;emit(text);exit done;} async control session() exits done {mutable string owner="original";auto child=spawn worker(borrow mutable owner);PAUSE cancel child;await child;emit(owner);exit done;} control main() exits done {forward run session();}"#.replace("PAUSE",pauses);
+            lexical_matrix(
+                &Fixture::new(&source),
+                &[json!({"entry":"main","arguments":[],"calls":[]})],
+                &(0..=50).map(Some).chain([None]).collect::<Vec<_>>(),
+            );
+        }
+    }
+    #[test]
+    fn frontend_lexical_recovery_retires_borrowing_siblings_before_reusing_owners() {
+        let source = r#"async control child(ref string text) exits done faults {yield;emit(text);fault "sibling";}
+async control session(bool parent_fault) exits done {
+ supervised loop L(mutable bool first=true) {
+  bool fail=first;first=false;bool fail_parent=parent_fault;mutable string context="retained owner";
+  fault boundary {
+   delta fail {true=>work,false=>finished}
+   [finished]:emit(context);exit done;
+   [work]:auto child=spawn child(borrow context);yield;
+    delta fail_parent {true=>parent,false=>join}
+   [parent]:fault "parent";
+   [join]:await child;exit done;
+  } contingency [context] {context="retired borrowers";emit(context);recover again L;}
+ }
+}
+control main(bool parent_fault) exits done {forward run session(parent_fault);}"#;
+        lexical_matrix(&Fixture::new(source), &[false,true].map(|parent|json!({"entry":"main","arguments":[{"kind":"bool","value":parent}],"calls":[]})),
+            &(0..=65).map(Some).chain([None]).collect::<Vec<_>>());
+    }
+    #[test]
+    fn frontend_lexical_imported_helpers_preserve_guarded_scope_paths_and_borrows() {
+        let f = Fixture::new(
+            r#"import "helper.tellur" as h;
+async control session(bool selected) exits done {
+ string owner="imported owner";
+ delta selected {true=>work,false=>skip}
+ [skip]:emit(owner);exit done;
+ [work]:fault boundary {await h.inspect(borrow owner);emit(owner);exit done;} contingency [owner] {emit(borrow @fault.message);escalate;}
+}
+control main(bool selected) exits done {forward run session(selected);}"#,
+        );
+        fs::write(f.root.join("helper.tellur"),r#"pub async control inspect(ref string owner) exits done faults {string request=clone(owner);fault boundary {yield;emit(request);} contingency [] {escalate;}emit(owner);exit done;}"#).unwrap();
+        lexical_matrix(&f,&[false,true].map(|selected|json!({"entry":"main","arguments":[{"kind":"bool","value":selected}],"calls":[]})),
+            &(0..=50).map(Some).chain([None]).collect::<Vec<_>>());
+    }
+
+    #[test]
     fn unsupported_checked_operations_create_no_build_outputs() {
         // Rust adapter host leaves remain gated through every supported task form.
         for body in [
@@ -4358,8 +4491,6 @@ contingency(string reason) {
         }
         for source in [
             "struct ticket {u32 value;constructor(u32 input){run helper();self.value=input;}} async control helper() exits done {exit done;} control main() exits result {drop(ticket(1));exit done;} outcome result {@exit 0 done}",
-            "async control work() exits done {fault boundary {yield;exit done;} contingency [] {escalate;}} async control startup() exits done {tasks<work> set=tasks();spawn work() into set;loop reap(tasks<work> pending=move set){delta await next pending {done=>next,empty=>empty} [next]:again reap(pending);[empty]:exit done;}} control main() exits result {forward run startup();} outcome result {@exit 0 done}",
-            "async control helper() exits done {loop L(){fault boundary {yield;exit done;} contingency [] {escalate;}}} control main() exits result {forward run helper();} outcome result {@exit 0 done}",
         ] {
             let f = Fixture::new(source);
             let out = f.command("llvm", 0).output().unwrap();

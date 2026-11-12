@@ -6722,3 +6722,21 @@ changed ABI registration. Both all-target builds compile the modified runtime.
 Selected integration suites, source baselines, release smokes, compiler/LSP/VSIX,
 isolated editor/package/install and filtered backup accompany this checkpoint.
 Exact evidence: `work/tellur-0.266-verification.json`. No full-suite rerun is claimed.
+
+
+## 0.267 — Retained lexical scope emission (B1.4r)
+
+Nine LLVM integration matrices add yielded lexical scopes, supervised recovery,
+outward loop transfers, expanded helper completion, nested fault causes, process
+statuses, named scope composition, cold borrowed children, sibling retirement,
+exclusive ancestor storage, cancellation, imports and guarded paths. Exact reports,
+events, status and diagnostics match Rust at O0/O2, original/expanded and all tested
+fuel cuts; successful unbounded runs also match the reference executor. Quota
+scenarios add repeated lexical recovery and pending host replies for quotas1/3/MAX.
+
+The complete LLVM92 and feature quota2 suites refresh. Manual navigation/examples
+refresh with the reference updates. Native-host308, ordinary native187/frontend125
+units and other unchanged default suites retain 0.266 evidence with source identity
+guards; no full-suite rerun is claimed. Both all-target checks, source baselines,
+release smokes, compiler/LSP/VSIX, isolated editor/package/install and filtered backup
+accompany this checkpoint. Exact evidence: `work/tellur-0.267-verification.json`.
