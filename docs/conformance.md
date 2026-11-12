@@ -6740,3 +6740,23 @@ units and other unchanged default suites retain 0.266 evidence with source ident
 guards; no full-suite rerun is claimed. Both all-target checks, source baselines,
 release smokes, compiler/LSP/VSIX, isolated editor/package/install and filtered backup
 accompany this checkpoint. Exact evidence: `work/tellur-0.267-verification.json`.
+
+
+## 0.268 — Retained constructor runtime delivery (B1.4s)
+
+Eleven private tests cover destination and completion roles, atomic capture
+preflight, stale/occupied storage, malformed publication, nested repeated calls,
+shared/exclusive caller results, original owned-buffer identity, pending host
+operations, sticky cancellation, driver faults, constructor-local recovery and
+partial resource retirement. Original Machine and ABI results, events, fault
+reports, fuel, resource drops and arena pins agree at the tested fuel cuts and
+quotas1/3/MAX, with both caller-owned and arena-owned ancestor frames.
+
+Native-host319, LLVM92 and quota2 refresh for the ABI changes. Manual3 and both
+all-target checks refresh. The remaining default suites and native187/frontend125
+units retain guarded 0.267 evidence: original execution, scheduling, compiler and
+frontend inputs are unchanged. No full-suite rerun is claimed. Baseline146,
+release smoke132, Node47, compiler/LSP/VSIX, isolated editor, package/install and
+filtered backup checks accompany this checkpoint. Exact evidence is maintained in
+`work/tellur-0.268-verification.json`. Source admission remains gated pending
+versioned constructor registration and generated delivery.

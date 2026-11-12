@@ -1088,3 +1088,32 @@ including every tested fuel cut, nested faults, borrowing siblings, cancellation
 imports, guarded scopes, pending host replies and driver errors. Runtime quotas
 1/3/unbounded preserve the same reports and fuel accounting. Suspending
 constructors, launch signal policies and Rust adapters remain later checkpoints.
+
+
+## Retained constructor runtime bridge (0.268)
+
+The private runtime can retain an inline constructor while its child yields or
+waits for a host operation. Its destination is the original caller's live storage,
+qualified by arena and frame generation. Nested constructors can return owned
+buffers or shared/exclusive references without relocating the original owner.
+Each constructor completion is delivered only after the original Machine retires
+the child. Delivery creates no outcome handle, source tick or task handoff.
+
+The request checks child identity, constructor role, arity, destination vacancy
+and all capture handles before moving values. Every resumption revalidates the
+original destination. Missing, stale, occupied or mismatched destinations and
+wrong completion forms fail; publication followed by a malformed callback is
+revoked before fault retirement. Constructors cannot serve as invocation roots,
+cold/spawned task producers, task-set members, named boundary roles or host leaves.
+
+Local recovery retains the constructor's own destination while retiring failed
+work and pending child delivery. Partial resource owners retire before its
+contingency. Existing host readiness, sticky cancellation, faults and quota rules
+remain authoritative. Private matrices compare original source-machine callbacks
+with ABI callbacks at every tested fuel cut and quotas 1/3/unbounded, including
+caller-owned and arena-owned ancestor frames, repeated nested calls and buffer
+identity. No source language rule changes.
+
+This checkpoint does not admit suspending constructors to LLVM source builds.
+Versioned constructor registration and generated destination delivery follow;
+version 2/3 descriptor strides remain unchanged. The Rust backend stays default.

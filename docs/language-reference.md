@@ -1,8 +1,8 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.267.0 -->
+<!-- tellur-reference-version: 0.268.0 -->
 
-This manual describes **compiler 0.267.0**, including the current ownership model,
+This manual describes **compiler 0.268.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -2980,7 +2980,7 @@ General expression-type hover remains unsupported.
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and broader spawn payloads (anonymous contracts and reference-bearing collections) remain planned; they are not executable features of 0.267.0.
+and broader spawn payloads (anonymous contracts and reference-bearing collections) remain planned; they are not executable features of 0.268.0.
 ## Contingency and supervised boundaries
 
 The [contingency reference](reference/contingency.md) specifies `@contingent`,
@@ -3058,3 +3058,8 @@ boundaries in retained async controls, supervised recovery, outward loop transfe
 and process termination. Original ownership, fault retirement and handoff rules
 remain authoritative. Suspending constructors, signals and Rust adapters remain
 gated; Rust is still the default. See [retained lexical recovery](reference/llvm-backend.md#retained-lexical-scopes-and-recovery-0267).
+
+Compiler 0.268 adds a private retained constructor destination bridge. This is
+runtime groundwork: suspending constructors remain outside the LLVM source
+profile until versioned registration and generated delivery are implemented.
+See [constructor runtime delivery](reference/llvm-backend.md#retained-constructor-runtime-bridge-0268).

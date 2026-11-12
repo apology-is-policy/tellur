@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.267.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.268.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -391,3 +391,8 @@ boundaries in retained async controls, supervised recovery, outward loop transfe
 and process termination. Original ownership, fault retirement and handoff rules
 remain authoritative. Suspending constructors, signals and Rust adapters remain
 gated; Rust is still the default. See [retained lexical recovery](llvm-backend.md#retained-lexical-scopes-and-recovery-0267).
+
+Compiler 0.268 adds a private retained constructor destination bridge. This is
+runtime groundwork: suspending constructors remain outside the LLVM source
+profile until versioned registration and generated delivery are implemented.
+See [constructor runtime delivery](llvm-backend.md#retained-constructor-runtime-bridge-0268).

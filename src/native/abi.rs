@@ -17,6 +17,9 @@ mod arena_tests;
 #[path = "abi_cold_tests.rs"]
 mod cold_tests;
 #[cfg(test)]
+#[path = "abi_constructor_tests.rs"]
+mod constructor_tests;
+#[cfg(test)]
 #[path = "abi_host_tests.rs"]
 mod host_tests;
 #[cfg(test)]
@@ -1300,9 +1303,10 @@ impl<'frame> RetainedRoot<'frame> {
 /// 9 start a retained async host operation, 10 spawn into a task set, or
 /// 11 await the earliest completed member of a nonempty set, or
 /// 12 enter named supervision without a handoff, 13/14 open/close lexical work,
-/// or 15..18 enter/repeat/recover/complete a loop administratively.
-/// Initial arguments arrive once; after child delivery the span contains one
-/// outcome handle. Other callbacks receive an empty span.
+/// or 15..18 enter/repeat/recover/complete a loop administratively, or 19 call a
+/// constructor with its caller destination.
+/// Initial arguments arrive once; ordinary child delivery carries one outcome
+/// handle. Constructor delivery and other callbacks receive an empty span.
 pub struct InvocationLayout {
     pub control: &'static execution::Control,
     pub callback: ResumeCallback,
@@ -1335,7 +1339,7 @@ impl InvocationLayout {
         if self.size == 0
             || !self.align.is_power_of_two()
             || self.prefix > self.size
-            || self.control.constructor
+            || (self.control.constructor && !self.control.retained.is_empty())
             || self.control.retained.iter().enumerate().any(|(i, slot)| {
                 !self.control.parameters.contains(slot) || self.control.retained[..i].contains(slot)
             })
@@ -1597,6 +1601,11 @@ struct HostLeaf {
     cancellable: bool,
 }
 enum RequestedInvocation {
+    Construct {
+        child: ProgramFrame,
+        destination: frames::Storage,
+        arguments: Vec<V>,
+    },
     Loop {
         control: &'static execution::LoopControl,
         kind: u32,
@@ -1653,6 +1662,7 @@ impl RequestedInvocation {
     fn tag(&self) -> u32 {
         match self {
             Self::Loop { kind, .. } => 15 + kind,
+            Self::Construct { .. } => 19,
             Self::Inline { handoff: true, .. } => 3,
             Self::Inline { handoff: false, .. } => 5,
             Self::Spawn { .. } => 6,
@@ -1695,6 +1705,9 @@ pub(crate) struct Invocation {
     state: Option<RetainedState>,
     phase: InvocationPhase,
     delivered: Vec<u64>,
+    // A pending constructor has a caller-owned, generation-qualified destination.
+    // It remains here until Machine retires the child and delivers Constructed.
+    construction: Option<frames::Storage>,
     call: Option<ProgramFrame>,
     supervision: Option<InvocationSupervision>,
     settlement: bool,
@@ -1721,6 +1734,9 @@ impl Invocation {
         layout: &'static InvocationLayout,
     ) -> R<Self> {
         layout.validate()?;
+        if layout.control.constructor {
+            return Err("E_NATIVE: constructor requires an inline destination".into());
+        }
         let storage = arena.allocate(layout.size, layout.align)?;
         let program = ProgramFrame {
             address: storage.address(),
@@ -1756,6 +1772,9 @@ impl Invocation {
         align: usize,
     ) -> R<Self> {
         layout.validate()?;
+        if layout.control.constructor {
+            return Err("E_NATIVE: constructor requires an inline destination".into());
+        }
         if address.is_null()
             || size < layout.size
             || align < layout.align
@@ -1771,14 +1790,19 @@ impl Invocation {
             .call
             .as_ref()
             .ok_or("E_NATIVE: missing ABI run child")?;
-        if self.phase != InvocationPhase::Awaiting || !std::ptr::eq(child.layout.control, control) {
+        if self.phase != InvocationPhase::Awaiting
+            || !std::ptr::eq(child.layout.control, control)
+            || control.constructor != self.construction.is_some()
+        {
             return Err("E_NATIVE: ABI run child identity or phase differs".into());
         }
-        Ok(Self::with_storage(
+        let mut child = Self::with_storage(
             self.call.take().unwrap(),
             self.call_storage.take(),
             self.arena.clone(),
-        ))
+        );
+        child.state.as_mut().unwrap().destination = self.construction.clone();
+        Ok(child)
     }
     // Machine alone chooses work, handler, and settlement under the original domain.
     // No callback or source instruction runs in these administrative hooks.
@@ -1901,6 +1925,7 @@ impl Invocation {
             || state.outcomes.iter().any(Option::is_some)
             || !self.delivered.is_empty()
             || self.call.is_some()
+            || self.construction.is_some()
             || self.supervision.is_some()
         {
             return Err("E_NATIVE: unfinished ABI loop transfer".into());
@@ -1951,6 +1976,7 @@ impl Invocation {
         state.outcome_base = outcome_base;
         self.delivered.clear();
         self.call = None;
+        self.construction = None;
         self.call_storage = None;
         self.supervision = None;
         self.resume_at = None;
@@ -1996,6 +2022,7 @@ impl Invocation {
             }),
             phase: InvocationPhase::Cold,
             delivered: vec![],
+            construction: None,
             call: None,
             supervision: None,
             settlement: false,
@@ -2016,6 +2043,19 @@ impl Invocation {
             || !matches!(self.phase, InvocationPhase::Cold | InvocationPhase::Active)
         {
             return Err("E_NATIVE: retained ABI invocation identity or phase differs".into());
+        }
+        // Validate the original destination before transferring arguments or
+        // selecting a callback, including every resumption after a handoff.
+        let constructor = self.program.layout.control.constructor;
+        let destination = self.state.as_ref().unwrap().destination.as_ref();
+        let root = destination
+            .map(|storage| values.require_storage(storage))
+            .transpose()?;
+        if constructor != root.is_some()
+            || activation.destination != root
+            || root.is_some_and(|root| values[root].is_some())
+        {
+            return Err("E_NATIVE: retained constructor destination differs or is occupied".into());
         }
         let cold = self.phase == InvocationPhase::Cold;
         let parameters = self.program.layout.control.parameters;
@@ -2054,6 +2094,7 @@ impl Invocation {
             )
         };
         let request = context.request.take();
+        let constructed = matches!(context.result, Some(Completion::Constructed));
         let mut result = if let Some(error) = &context.error {
             Err(error.clone())
         } else if !context.lexical.is_empty() {
@@ -2080,9 +2121,13 @@ impl Invocation {
                 | (15, Some(15), false)
                 | (16, Some(16), false)
                 | (17, Some(17), false)
-                | (18, Some(18), false) => Ok(execution::Step::Continue), // Queue after callback borrows end.
+                | (18, Some(18), false)
+                | (19, Some(19), false) => Ok(execution::Step::Continue), // Queue after callback borrows end.
                 (2, None, true) => match context.result.take().unwrap() {
-                    value @ Completion::Outcome(_) if !self.settlement => {
+                    Completion::Constructed if constructor && !self.settlement => {
+                        Ok(execution::Step::Complete(Completion::Constructed))
+                    }
+                    value @ Completion::Outcome(_) if !constructor && !self.settlement => {
                         Ok(execution::Step::Complete(value))
                     }
                     value @ Completion::Process(_)
@@ -2101,6 +2146,15 @@ impl Invocation {
                 _ => Err("E_NATIVE: malformed retained ABI step".into()),
             }
         };
+        // A malformed callback may publish and then fail or return the wrong
+        // tag. Revoke that publication before original Machine fault retirement.
+        if result.is_err() && constructed {
+            if let Some(destination) = &context.destination {
+                if let Ok(root) = context.storage.values().require_storage(destination) {
+                    context.storage.values_mut()[root] = None;
+                }
+            }
+        }
         self.state = Some(RetainedState::park(context));
         self.phase = if result.is_err() {
             InvocationPhase::Failed
@@ -2113,6 +2167,28 @@ impl Invocation {
             && let Some(request) = request
         {
             result = (|| match request {
+                RequestedInvocation::Construct {
+                    child,
+                    destination,
+                    arguments,
+                } => {
+                    let root = values.require_storage(&destination)?;
+                    let storage = self
+                        .storage
+                        .as_ref()
+                        .map(physical_frames::Pin::retain)
+                        .transpose()?;
+                    self.call = Some(child);
+                    self.call_storage = storage;
+                    self.construction = Some(destination);
+                    self.phase = InvocationPhase::Awaiting;
+                    Ok(execution::Step::Call {
+                        control: child.layout.control,
+                        arguments,
+                        destination: Some(root),
+                        deliver: deliver_invocation,
+                    })
+                }
                 RequestedInvocation::Loop {
                     control,
                     kind,
@@ -2319,6 +2395,17 @@ fn deliver_invocation(
     if invocation.phase != InvocationPhase::Awaiting || !invocation.delivered.is_empty() {
         return Err("E_NATIVE: duplicate or unexpected ABI child delivery".into());
     }
+    if let Some(destination) = &invocation.construction {
+        completion.constructed()?;
+        let root = values.require_storage(destination)?;
+        if values[root].is_none() {
+            return Err("E_NATIVE: missing retained constructor value".into());
+        }
+        // No outcome or payload handle exists for constructor completion.
+        invocation.construction = None;
+        invocation.phase = InvocationPhase::Active;
+        return Ok(());
+    }
     let state = invocation.state.as_mut().unwrap();
     let outcome = completion.outcome()?;
     let handle = state.outcome_base + state.outcomes.len() as u64 + 1;
@@ -2365,8 +2452,8 @@ unsafe fn request_invocation(
             .program
             .ok_or("E_NATIVE: await requires a selected ABI invocation")?
             .child(child)?;
-        if count != program.layout.control.parameters.len() {
-            return Err("E_NATIVE: invalid ABI child arity".into());
+        if program.layout.control.constructor || count != program.layout.control.parameters.len() {
+            return Err("E_NATIVE: invalid ABI child role or arity".into());
         }
         c.require_outcome_room()?;
         let arguments = c.take_many(unsafe { slice(args, count) })?;
@@ -2374,6 +2461,47 @@ unsafe fn request_invocation(
             handoff,
             child: program,
             arguments: InvocationArguments::Direct(arguments),
+        });
+        Ok(())
+    })
+}
+
+/// Request an inline constructor into one uninitialized caller local. Destination
+/// identity and child role/arity validate before any argument handles move. This
+/// is an ordinary call; only explicit handoffs in the child can switch tasks.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_construct_child(
+    ctx: *mut Context<'_>,
+    child: usize,
+    slot: usize,
+    args: *const u64,
+    count: usize,
+) {
+    unsafe { &mut *ctx }.perform(|c| {
+        if c.request.is_some() || c.result.is_some() {
+            return Err("E_NATIVE: duplicate ABI continuation request".into());
+        }
+        let program = c
+            .program
+            .ok_or("E_NATIVE: constructor requires a selected ABI invocation")?
+            .child(child)?;
+        if !program.layout.control.constructor || count != program.layout.control.parameters.len() {
+            return Err("E_NATIVE: invalid ABI constructor child role or arity".into());
+        }
+        let activation = c
+            .selected_activation
+            .ok_or("E_NATIVE: missing ABI constructor caller")?;
+        let frame = activation.abi_frame(c.host, c.storage.values())?;
+        let destination = c.storage.values().local_storage(frame, slot)?;
+        let root = c.storage.values().require_storage(&destination)?;
+        if c.storage.values()[root].is_some() {
+            return Err("E_NATIVE: occupied constructor destination".into());
+        }
+        let arguments = c.take_many(unsafe { slice(args, count) })?;
+        c.request = Some(RequestedInvocation::Construct {
+            child: program,
+            destination,
+            arguments,
         });
         Ok(())
     })
@@ -2508,6 +2636,8 @@ pub unsafe extern "C" fn tellur_rt_v1_supervise_children(
         let work_frame = parent.child(work)?;
         let handler_frame = parent.child(handler)?;
         if work == handler
+            || work_frame.layout.control.constructor
+            || handler_frame.layout.control.constructor
             || count != work_frame.layout.control.parameters.len()
             || handler_frame.layout.control.parameters.len()
                 != work_frame.layout.control.retained.len() + 1
@@ -2736,7 +2866,8 @@ impl Context<'_> {
         let selected = self
             .selected_activation
             .ok_or("E_NATIVE: host operation requires a selected ABI invocation")?;
-        if !std::ptr::eq(selected.abi_control(), producer)
+        if producer.constructor
+            || !std::ptr::eq(selected.abi_control(), producer)
             || self
                 .program
                 .is_none_or(|p| !std::ptr::eq(p.layout.control, producer))

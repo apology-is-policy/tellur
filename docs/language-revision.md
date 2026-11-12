@@ -1798,3 +1798,34 @@ release smokes, compiler/LSP/VSIX and isolated editor checks.
 Next is suspending constructor delivery, followed by signals, parity/default,
 adapters, single binary, target packs and retirement. Rust remains default. This
 completes the lexical registration/emission pair; no design fork is pending.
+
+
+## B1.4s — private retained constructor destination bridge (0.268)
+
+An explicit inline constructor request carries generation-qualified caller storage
+through the existing Machine call stack. The child retains that destination across
+handoffs; normal completion publishes a whole value and delivers administratively
+after original child retirement, without an outcome handle. Nested/repeated
+constructors preserve distinct own and pending-child destinations. Local recovery
+clears abandoned pending delivery while preserving the constructor's caller.
+
+Destination, role, identity, arity and capture checks precede transfer; every resume
+validates live original storage. Wrong completion and malformed publication fail
+without delivering a partial result. Constructor roots, cold/spawned tasks, sets,
+named work/handler roles and host-leaf impersonation stay rejected. Original scope,
+resource, fault, ownership, origin and cancellation rules remain unchanged.
+
+Eleven new private tests compare original Machine and ABI callbacks for owned
+buffer identity, shared/exclusive results, ancestor storage, nested repeated calls,
+pending hosts, cancellation, driver faults, local recovery and partial-resource
+retirement, across fuel cuts, quotas1/3/MAX and caller/arena frames. Malformed
+callbacks, preflight atomicity, stale generations and physical pin cleanup have
+explicit coverage. Full native-host319 and LLVM92/quota2 refresh; unchanged ordinary
+runtime/frontend/model suites reuse guarded evidence. Documentation, source
+baselines, release smokes and compiler/LSP/VSIX workflow accompany the checkpoint.
+
+The agreed constructor slice is split at its private runtime proof. C registration
+and generated source delivery remain next (B1.4t), preserving v2/v3 strides; only
+then can suspending constructors enter the LLVM profile. Signals, parity/default,
+adapters, single binary, target packs and retirement follow. Rust remains default;
+no language-design fork is pending.

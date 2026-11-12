@@ -498,3 +498,10 @@ Compiler/runtime checks are in [constructors.rs](../../tests/constructors.rs) an
 [borrowed_projections.rs](../../tests/borrowed_projections.rs). Sequential access checks
 are covered by [initializer_accesses.rs](../../tests/initializer_accesses.rs); actual retained-owner
 fault cleanup is checked in [rust_adapters.rs](../../tests/rust_adapters.rs).
+
+
+The LLVM runtime's [retained constructor bridge](llvm-backend.md#retained-constructor-runtime-bridge-0268)
+now preserves caller destinations while a constructor's child suspends, including
+borrowed results and local fault recovery. This is private runtime groundwork;
+LLVM source admission for those calls still awaits registration and emission.
+Constructors remain ordinary destination calls, not async task producers.
