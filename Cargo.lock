@@ -356,7 +356,7 @@ dependencies = [
 
 [[package]]
 name = "tellur"
-version = "0.264.0"
+version = "0.265.0"
 dependencies = [
  "cc",
  "llvm-sys",

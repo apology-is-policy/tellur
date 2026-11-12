@@ -1,8 +1,8 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.264.0 -->
+<!-- tellur-reference-version: 0.265.0 -->
 
-This manual describes **compiler 0.264.0**, including the current ownership model,
+This manual describes **compiler 0.265.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -33,7 +33,9 @@ using the private 0.262 bridge. Named work may yield, use supported host tasks a
 settle through its contingency without returning an outcome to the supervisor.
 Retained lexical scopes/recovery, suspending constructors, launch signals and Rust
 adapters remain later LLVM slices. Compiler 0.264 adds private lexical
-scope coordination and lifecycle proof; it does not widen that source profile.
+scope coordination and lifecycle proof; it does not widen that source profile. Compiler 0.265
+proves private retained loop/recovery transfers through original scope cleanup;
+generated lexical registration remains pending.
 
 Tellur is still experimental. When this manual and the compiler disagree, treat that
 as a bug to investigate, not a promise that either must remain unchanged. The
@@ -2977,7 +2979,7 @@ General expression-type hover remains unsupported.
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and broader spawn payloads (anonymous contracts and reference-bearing collections) remain planned; they are not executable features of 0.264.0.
+and broader spawn payloads (anonymous contracts and reference-bearing collections) remain planned; they are not executable features of 0.265.0.
 ## Contingency and supervised boundaries
 
 The [contingency reference](reference/contingency.md) specifies `@contingent`,

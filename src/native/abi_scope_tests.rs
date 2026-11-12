@@ -62,6 +62,7 @@ static INNER: BoundaryControl = BoundaryControl {
     fault_slot: 4,
 };
 static SCOPES: ScopeLayout = ScopeLayout {
+    loops: &[],
     states: 10,
     boundaries: &[&OUTER, &INNER],
 };
@@ -626,34 +627,42 @@ fn lexical_scope_metadata_rejects_invalid_states_slots_and_aliases_before_admiss
     static BAD_OVERLAP: BoundaryControl = BoundaryControl { after: 1, ..OUTER };
     static CASES: [ScopeLayout; 8] = [
         ScopeLayout {
+            loops: &[],
             states: 0,
             boundaries: &[&OUTER],
         },
         ScopeLayout {
+            loops: &[],
             states: 8,
             boundaries: &[&BAD_STATE],
         },
         ScopeLayout {
+            loops: &[],
             states: 8,
             boundaries: &[&BAD_DUPLICATE],
         },
         ScopeLayout {
+            loops: &[],
             states: 8,
             boundaries: &[&BAD_SLOT],
         },
         ScopeLayout {
+            loops: &[],
             states: 8,
             boundaries: &[&BAD_ROLES],
         },
         ScopeLayout {
+            loops: &[],
             states: 8,
             boundaries: &[&BAD_FAULT],
         },
         ScopeLayout {
+            loops: &[],
             states: 8,
             boundaries: &[&BAD_OVERLAP],
         },
         ScopeLayout {
+            loops: &[],
             states: 8,
             boundaries: &[&OUTER, &OUTER],
         },

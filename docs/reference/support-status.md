@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.264.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.265.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -61,7 +61,8 @@ named supervision through the 0.262 work/handler bridge, including declaration-o
 retention and administrative settlement. Retained lexical scopes/recovery, suspending
 constructors, Rust adapters and launch signals remain gated. The private 0.264
 lexical bridge preserves same-frame handlers across suspension; loop/recovery and
-generated registration are still required before source admission.
+generated registration are still required before source admission. The private
+0.265 bridge now proves loop/recovery coordination; generated registration is next.
 Unsupported checked programs fail with `E_BACKEND` before build
 outputs are created. Backend selection does not change language checking.
 

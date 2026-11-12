@@ -562,6 +562,21 @@ impl Activation {
         }
         Ok(())
     }
+    fn reset_loop(
+        &mut self,
+        control: &'static LoopControl,
+        values: &mut Frames,
+        arguments: Vec<V>,
+    ) -> R<()> {
+        #[cfg(any(test, feature = "runtime-abi"))]
+        {
+            let base = self.base();
+            if let Some(abi) = self.abi.as_mut() {
+                return abi.reset_loop(control, values, base, arguments);
+            }
+        }
+        (control.reset)(self, values, arguments)
+    }
     fn loop_target(&self, target: usize) -> R<(usize, &'static LoopControl)> {
         self.scopes
             .iter()
@@ -1090,6 +1105,11 @@ impl Machine {
                 return Ok((false, None));
             }
             Step::Loop { control, arguments } => {
+                #[cfg(any(test, feature = "runtime-abi"))]
+                if let Some(abi) = &frame.abi {
+                    frame.abi_validate_loop(control, 0)?;
+                    abi.validate_loop(control, Some(arguments.len()))?;
+                }
                 if frame.loop_target(control.target).is_ok() {
                     return Err("E_NATIVE: compiled loop already active".into());
                 }
@@ -1101,7 +1121,7 @@ impl Machine {
                         .filter_map(|slot| values[frame.base() + slot].as_ref()),
                     false,
                 )?;
-                (control.reset)(frame, values, arguments)?;
+                frame.reset_loop(control, values, arguments)?;
                 frame.scopes.push(Scope::Loop(control));
                 frame.pc = control.body;
             }
@@ -1137,6 +1157,11 @@ impl Machine {
             }
             Step::Complete(Completion::Again(target, arguments)) => {
                 let (index, control) = frame.loop_target(target)?;
+                #[cfg(any(test, feature = "runtime-abi"))]
+                if let Some(abi) = &frame.abi {
+                    frame.abi_validate_loop(control, 1)?;
+                    abi.validate_loop(control, Some(arguments.len()))?;
+                }
                 frame.close_scopes(host, values, domains, &mut self.current, index + 1, false)?;
                 task_payload::retire_tasks(
                     host,
@@ -1146,11 +1171,16 @@ impl Machine {
                         .filter_map(|slot| values[frame.base() + slot].as_ref()),
                     false,
                 )?;
-                (control.reset)(frame, values, arguments)?;
+                frame.reset_loop(control, values, arguments)?;
                 frame.pc = control.body;
             }
             Step::Complete(Completion::Recover(target, arguments)) => {
                 let (index, control) = frame.loop_target(target)?;
+                #[cfg(any(test, feature = "runtime-abi"))]
+                if let Some(abi) = &frame.abi {
+                    frame.abi_validate_loop(control, 2)?;
+                    abi.validate_loop(control, Some(arguments.len()))?;
+                }
                 frame.close_scopes(host, values, domains, &mut self.current, index + 1, true)?;
                 task_payload::retire_tasks(
                     host,
@@ -1163,13 +1193,22 @@ impl Machine {
                 for slot in control.locals {
                     host.release_frame(std::slice::from_ref(&values[frame.base() + slot]));
                 }
-                (control.reset)(frame, values, arguments)?;
+                frame.reset_loop(control, values, arguments)?;
                 frame.pc = control.body;
             }
             Step::Complete(Completion::Complete(target)) => {
                 let (index, control) = frame.loop_target(target)?;
+                #[cfg(any(test, feature = "runtime-abi"))]
+                if let Some(abi) = &frame.abi {
+                    frame.abi_validate_loop(control, 3)?;
+                    abi.validate_loop(control, None)?;
+                }
                 frame.close_scopes(host, values, domains, &mut self.current, index, false)?;
                 frame.pc = control.after;
+                #[cfg(any(test, feature = "runtime-abi"))]
+                if let Some(abi) = frame.abi.as_mut() {
+                    abi.redirect_scope(control.after)?;
+                }
             }
             Step::Call {
                 control,
@@ -1642,6 +1681,25 @@ mod task_retirement_tests;
 
 #[cfg(any(test, feature = "runtime-abi"))]
 impl Activation {
+    pub(crate) fn abi_validate_loop(&self, control: &'static LoopControl, kind: u32) -> R<()> {
+        let handler =
+            |scope: &Scope| matches!(scope, Scope::Boundary(b) if b.state.fault_message.is_some());
+        if kind == 0 {
+            if self.loop_target(control.target).is_ok() || self.scopes.iter().any(handler) {
+                return Err("E_NATIVE: ABI loop entry is already active or in contingency".into());
+            }
+        } else {
+            let (index, active) = self.loop_target(control.target)?;
+            if !std::ptr::eq(active, control) || kind > 3 {
+                return Err("E_NATIVE: ABI loop target identity differs".into());
+            }
+            let in_handler = self.scopes[index + 1..].iter().any(handler);
+            if (kind == 2) != in_handler {
+                return Err("E_NATIVE: ABI loop transfer differs from scope role".into());
+            }
+        }
+        Ok(())
+    }
     pub(crate) fn abi_validate_scope(&self, control: &'static BoundaryControl, end: bool) -> R<()> {
         if end {
             if !matches!(self.scopes.last(),Some(Scope::Boundary(b)) if std::ptr::eq(b.control,control) && b.state.fault_message.is_none())

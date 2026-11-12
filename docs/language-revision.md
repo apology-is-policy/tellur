@@ -1720,3 +1720,28 @@ does not admit generated lexical recovery. Next is private loop/recovery transfe
 coordination, then generated lexical admission, suspending constructors, signals,
 parity/default, adapters, single binary, target packs and retirement. Rust stays
 default; no language-design fork is introduced.
+
+
+## B1.4p — private retained loop and recovery coordination (0.265)
+
+Immutable private loop descriptors connect exact original LoopControl identities,
+parameter slots and physical-fact reset callbacks with retained invocations. Four
+queued requests map to original loop entry, Again, Recover and Complete transitions.
+All target, role, state, arity and temporary-handle checks precede argument transfer.
+After callback borrows end, the original Machine closes scopes and retires owners;
+then source locals and physical facts reset and simultaneous parameters are stored.
+An explicit resume override keeps the invocation active without a final outcome,
+additional handoff or administrative settlement.
+
+Twelve private parity matrices cover fuel cuts and quotas, owned buffer swaps,
+updated boundary-entry parameters, repeated children, outward scope transfers,
+nested/secondary faults, process status, borrowed resources, named work, ancestors,
+spawned/set siblings and pending/cancelled host operations. Invalid metadata,
+identity/role/lifecycle requests and stale or duplicate handles reject atomically.
+Native models, affected source suites and generated LLVM/quota evidence refresh
+for the changed runtime; unchanged frontend evidence is reused.
+
+Generated C descriptor v2/emitter and source rules are unchanged. Next: generated
+lexical scope/recovery registration and work/handler/end states, then suspending
+constructors, signals, parity/default, adapters, single binary, target packs and
+retirement. Rust remains default; no language-design fork is introduced.

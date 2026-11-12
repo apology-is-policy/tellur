@@ -362,3 +362,10 @@ owners. Original fault domains still choose the handler and retain secondary-fau
 causes. This is runtime evidence only: generated lexical recovery remains gated
 until retained loop transfer and scope registration are integrated. See
 [private retained lexical scopes](llvm-backend.md#private-retained-lexical-scopes-0264).
+
+
+The private 0.265 bridge also coordinates retained loop entry, repetition, recovery
+and expanded completion with original scope cleanup. Recovery preserves supervisor
+parameters from boundary entry and clears iteration locals and path facts only
+after retirement succeeds. Generated lexical admission still awaits registration;
+see [private retained loop transfers](llvm-backend.md#private-retained-loop-and-recovery-transfers-0265).

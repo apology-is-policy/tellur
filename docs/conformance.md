@@ -6684,3 +6684,23 @@ editor/package/install and protected-file-excluding backup accompany the checkpo
 Detailed evidence is in `work/tellur-0.264-verification.json`. Generated lexical
 recovery still requires loop coordination and registration; source admission is
 unchanged and no full-default-suite rerun is claimed.
+
+
+## 0.265 — Private retained loop/recovery transfers (B1.4p)
+
+Twelve private matrices compare original continuations with retained callbacks at
+fuel0..35/40, quotas1/3/unbounded and caller/arena roots. They cover simultaneous
+owned-buffer swaps, physical fact reset, boundary-entry supervisor parameters,
+repeated borrowed children, outward Again/Complete, nested Recover, secondary
+faults, process status, named settlement, inline/awaited/spawned/cancelled ancestors,
+borrowing siblings/task-set members, host waits and invalid driver replies.
+Metadata/identity/role/arity/temporary/lifecycle preflight preserves all arguments,
+source effects and physical facts on rejection. Source admission stays unchanged.
+
+All native-host tests, native unit models and affected source/native boundary,
+task, host and fault suites refresh for runtime changes, alongside full generated
+LLVM and feature quota matrices. Unchanged frontend/reference and unrelated default
+integration evidence is reused. Both all-target checks, source baselines, release
+smokes, compiler/LSP/VSIX and isolated editor/package/install checks accompany the
+protected-file-excluding backup. Exact evidence: `work/tellur-0.265-verification.json`.
+No full-default-suite rerun is claimed.

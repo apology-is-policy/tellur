@@ -20,6 +20,9 @@ mod cold_tests;
 #[path = "abi_host_tests.rs"]
 mod host_tests;
 #[cfg(test)]
+#[path = "abi_loop_tests.rs"]
+mod loop_tests;
+#[cfg(test)]
 #[path = "abi_program_tests.rs"]
 mod program_tests;
 #[cfg(test)]
@@ -1293,7 +1296,8 @@ impl<'frame> RetainedRoot<'frame> {
 /// cancellation without a source handoff or consuming the started value, or
 /// 9 start a retained async host operation, 10 spawn into a task set, or
 /// 11 await the earliest completed member of a nonempty set, or
-/// 12 enter named supervision without a handoff.
+/// 12 enter named supervision without a handoff, 13/14 open/close lexical work,
+/// or 15..18 enter/repeat/recover/complete a loop administratively.
 /// Initial arguments arrive once; after child delivery the span contains one
 /// outcome handle. Other callbacks receive an empty span.
 pub struct InvocationLayout {
@@ -1309,6 +1313,14 @@ pub struct InvocationLayout {
 pub struct ScopeLayout {
     pub states: u32,
     pub boundaries: &'static [&'static execution::BoundaryControl],
+    pub loops: &'static [LoopLayout],
+}
+/// Only physical fact bits are reset by this callback. It has no access to Host,
+/// Context, source slots or arguments, and must not fail or retain the pointer.
+pub struct LoopLayout {
+    pub control: &'static execution::LoopControl,
+    pub parameters: &'static [usize],
+    pub reset_facts: unsafe fn(*mut u8),
 }
 pub struct InlineChild {
     pub offset: usize,
@@ -1333,6 +1345,25 @@ impl InvocationLayout {
         if let Some(scopes) = self.scopes {
             if scopes.states == 0 {
                 return Err("E_NATIVE: empty ABI scope state range".into());
+            }
+            for (index, entry) in scopes.loops.iter().enumerate() {
+                let control = entry.control;
+                if scopes.loops[..index].iter().any(|prior| {
+                    std::ptr::eq(prior.control, control) || prior.control.target == control.target
+                }) || control.body == 0
+                    || control.after == 0
+                    || control.body == control.after
+                    || control.body >= scopes.states as usize
+                    || control.after >= scopes.states as usize
+                    || entry.parameters.iter().enumerate().any(|(i, slot)| {
+                        !control.locals.contains(slot) || entry.parameters[..i].contains(slot)
+                    })
+                    || control.locals.iter().enumerate().any(|(i, slot)| {
+                        *slot >= self.control.slots || control.locals[..i].contains(slot)
+                    })
+                {
+                    return Err("E_NATIVE: invalid ABI loop metadata".into());
+                }
             }
             for (index, scope) in scopes.boundaries.iter().enumerate() {
                 if scopes.boundaries[..index]
@@ -1562,6 +1593,11 @@ struct HostLeaf {
     cancellable: bool,
 }
 enum RequestedInvocation {
+    Loop {
+        control: &'static execution::LoopControl,
+        kind: u32,
+        arguments: Vec<V>,
+    },
     Boundary {
         control: &'static execution::BoundaryControl,
         end: bool,
@@ -1612,6 +1648,7 @@ enum RequestedInvocation {
 impl RequestedInvocation {
     fn tag(&self) -> u32 {
         match self {
+            Self::Loop { kind, .. } => 15 + kind,
             Self::Inline { handoff: true, .. } => 3,
             Self::Inline { handoff: false, .. } => 5,
             Self::Spawn { .. } => 6,
@@ -1821,6 +1858,72 @@ impl Invocation {
         self.resume_at = Some(pc as u32);
         Ok(())
     }
+    fn loop_layout(&self, control: &'static execution::LoopControl) -> R<&'static LoopLayout> {
+        self.program
+            .layout
+            .scopes
+            .and_then(|scopes| {
+                scopes
+                    .loops
+                    .iter()
+                    .find(|entry| std::ptr::eq(entry.control, control))
+            })
+            .ok_or_else(|| "E_NATIVE: unregistered ABI loop identity".into())
+    }
+    pub(crate) fn validate_loop(
+        &self,
+        control: &'static execution::LoopControl,
+        count: Option<usize>,
+    ) -> R<()> {
+        let entry = self.loop_layout(control)?;
+        self.validate_scope_redirect(
+            if count.is_some() {
+                control.body
+            } else {
+                control.after
+            },
+            InvocationPhase::Active,
+        )?;
+        if count.is_some_and(|count| count != entry.parameters.len()) {
+            return Err("E_NATIVE: invalid ABI loop arity".into());
+        }
+        let state = self
+            .state
+            .as_ref()
+            .ok_or("E_NATIVE: selected ABI loop reset")?;
+        if state.error.is_some()
+            || state.result.is_some()
+            || state.values.iter().any(Option::is_some)
+            || state.outcomes.iter().any(Option::is_some)
+            || !self.delivered.is_empty()
+            || self.call.is_some()
+            || self.supervision.is_some()
+        {
+            return Err("E_NATIVE: unfinished ABI loop transfer".into());
+        }
+        Ok(())
+    }
+    pub(crate) fn reset_loop(
+        &mut self,
+        control: &'static execution::LoopControl,
+        values: &mut Frames,
+        base: usize,
+        arguments: Vec<V>,
+    ) -> R<()> {
+        self.validate_loop(control, Some(arguments.len()))?;
+        let entry = self.loop_layout(control)?;
+        for slot in control.locals {
+            values[base + slot] = None;
+        }
+        for (&slot, value) in entry.parameters.iter().zip(arguments) {
+            values[base + slot] = Some(value);
+        }
+        // Original Machine completed source-scope/task retirement before this
+        // infallible physical-only reset. No callback-local borrow is alive.
+        unsafe { (entry.reset_facts)(self.program.address) };
+        self.resume_at = Some(control.body as u32);
+        Ok(())
+    }
     // Failed callbacks can strand temporary borrows and pending delivery. Retire
     // these before Machine touches source owners; retain only the physical frame.
     // Clearing the failure is a separate, runtime-authorized handler transition.
@@ -1969,7 +2072,11 @@ impl Invocation {
                 | (11, Some(11), false)
                 | (12, Some(12), false)
                 | (13, Some(13), false)
-                | (14, Some(14), false) => Ok(execution::Step::Continue), // Queue after callback borrows end.
+                | (14, Some(14), false)
+                | (15, Some(15), false)
+                | (16, Some(16), false)
+                | (17, Some(17), false)
+                | (18, Some(18), false) => Ok(execution::Step::Continue), // Queue after callback borrows end.
                 (2, None, true) => match context.result.take().unwrap() {
                     value @ Completion::Outcome(_) if !self.settlement => {
                         Ok(execution::Step::Complete(value))
@@ -2002,6 +2109,25 @@ impl Invocation {
             && let Some(request) = request
         {
             result = (|| match request {
+                RequestedInvocation::Loop {
+                    control,
+                    kind,
+                    arguments,
+                } => {
+                    self.validate_loop(control, (kind != 3).then_some(arguments.len()))?;
+                    Ok(match kind {
+                        0 => execution::Step::Loop { control, arguments },
+                        1 => {
+                            execution::Step::Complete(Completion::Again(control.target, arguments))
+                        }
+                        2 => execution::Step::Complete(Completion::Recover(
+                            control.target,
+                            arguments,
+                        )),
+                        3 => execution::Step::Complete(Completion::Complete(control.target)),
+                        _ => unreachable!(),
+                    })
+                }
                 RequestedInvocation::Boundary { control, end } => Ok(if end {
                     execution::Step::BoundaryEnd(control)
                 } else {
@@ -2289,6 +2415,69 @@ pub unsafe extern "C" fn tellur_rt_v1_scope(ctx: *mut Context<'_>, index: usize,
         c.request = Some(RequestedInvocation::Boundary {
             control,
             end: end != 0,
+        });
+        Ok(())
+    })
+}
+
+/// Request loop entry (0), again (1), recovery (2), or expanded completion (3).
+/// Arguments transfer together only after the complete request is preflighted.
+/// This is a private retained callback operation; generated registration follows.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_loop(
+    ctx: *mut Context<'_>,
+    index: usize,
+    kind: u32,
+    args: *const u64,
+    count: usize,
+) {
+    unsafe { &mut *ctx }.perform(|c| {
+        if kind > 3 || c.request.is_some() || c.result.is_some() {
+            return Err("E_NATIVE: duplicate or invalid ABI loop request".into());
+        }
+        let program = c
+            .program
+            .ok_or("E_NATIVE: loop request needs a selected ABI invocation")?;
+        program.layout.validate()?;
+        let entry = program
+            .layout
+            .scopes
+            .and_then(|s| s.loops.get(index))
+            .ok_or("E_NATIVE: unknown ABI loop")?;
+        if count != if kind == 3 { 0 } else { entry.parameters.len() } {
+            return Err("E_NATIVE: invalid ABI loop arity".into());
+        }
+        c.selected_activation
+            .ok_or("E_NATIVE: missing ABI loop activation")?
+            .abi_validate_loop(entry.control, kind)?;
+        let handles = unsafe { slice(args, count) };
+        let mut indices = BTreeSet::new();
+        for &handle in handles {
+            if !indices.insert(c.value_index(handle)?) {
+                return Err("E_NATIVE: duplicate ABI loop argument".into());
+            }
+        }
+        if c.values
+            .iter()
+            .enumerate()
+            .any(|(i, v)| v.is_some() && !indices.contains(&i))
+            || c.outcomes.iter().any(Option::is_some)
+        {
+            return Err("E_NATIVE: live ABI temporary at loop transfer".into());
+        }
+        // Capacity and every handle were checked before moving any argument.
+        c.value_base
+            .checked_add(c.values.len() as u64)
+            .ok_or("E_NATIVE: ABI value handle space exhausted")?;
+        c.outcome_base
+            .checked_add(c.outcomes.len() as u64)
+            .ok_or("E_NATIVE: ABI outcome handle space exhausted")?;
+        let arguments = c.take_many(handles)?;
+        c.retire_temporaries()?;
+        c.request = Some(RequestedInvocation::Loop {
+            control: entry.control,
+            kind,
+            arguments,
         });
         Ok(())
     })

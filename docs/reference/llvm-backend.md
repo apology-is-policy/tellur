@@ -965,3 +965,41 @@ The LLVM emitter and source admission are unchanged. Retained loop/recovery
 coordination must be proved before generated lexical scopes and recovery are
 admitted. Suspending constructors, signals and Rust adapters remain later work;
 Rust remains the default. These private callbacks do not add source-language forms.
+
+
+## Private retained loop and recovery transfers (0.265)
+
+Private retained callbacks now request loop entry, ordinary repetition, supervised
+recovery and expanded loop completion through immutable loop metadata. Exact loop
+identities, parameter slots and bounded resume states are checked before argument
+handles move. Duplicate or stale handles, unmatched targets, wrong transfer roles
+and unfinished temporaries reject before runtime scope cleanup or physical reset.
+
+Arguments transfer together into a runtime-owned vector after callback borrows end.
+The original Machine closes intervening scopes, retires task obligations and applies
+normal or fault resource disposition. Only after that cleanup succeeds does it
+reset source locals, store all new parameters and invoke the private physical-fact
+reset callback. That callback receives only its opaque frame, with no Host, Context
+or source arguments. The runtime selects the next resume state explicitly; it never
+assumes a physical program-counter offset. Loop transfers keep the invocation
+active and do not masquerade as final outcomes or named settlement.
+
+Recovery retains the existing source rule: the compiler supplies supervisor values
+preserved at boundary entry. No new source arguments or recovery outcomes are added.
+Failed work cannot resume. Nested handlers preserve secondary causes, and named
+work settles only after its local loops and scopes retire. Fuel and driver failures
+still bypass contingency. By-value children and arena pins keep their original
+ownership and cancellation rules.
+
+Twelve private matrices compare original continuations and retained callbacks at
+every fuel cut through 35 (40 for named work), quotas 1, 3 and unbounded, using both
+caller-owned and arena-owned roots. They cover owned-buffer swaps, reset path facts,
+updated boundary-entry parameters, repeated child storage, outward transfers,
+nested recovery and secondary faults, process status, borrowed child frames,
+spawned/set siblings, inline/awaited/spawned/cancelled ancestors, pending host I/O,
+malformed replies, named settlement and invalid metadata/lifecycle requests.
+
+Generated C descriptor v2 and LLVM source admission are unchanged. The next step
+is generated lexical registration and work/handler/end states using these private
+bridges. Suspending constructors, launch signals and Rust adapters remain later
+checkpoints; Rust remains the default backend.
