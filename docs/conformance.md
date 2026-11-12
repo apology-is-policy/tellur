@@ -6806,3 +6806,21 @@ The refreshed playground exit-contract audit now resolves each example's per-fil
 or nearest-directory manifest. Its previous shared-manifest assumption predated
 the host examples and failed on their async signatures; the failing log is retained.
 Passed cancellation evidence is reused while the changed audit and manual rerun.
+
+
+## 0.271 — private synchronous foreign-adapter invocation (B1.5a)
+
+Eleven private ABI tests exercise owned scalar/collection inputs and outcomes,
+exact selected payload order, UTF-8/bytes, sorted maps, stable transferred buffers,
+version/flag/arity preflight, malformed spans, stale/duplicate handles, first-error
+stickiness, late/fallthrough callbacks, atomic handle exhaustion and concurrent
+invocations. Original Host dispatch comparisons preserve scripts, events and fuel;
+foreign failures bypass source faults and a bounded child verifies fatal panics.
+
+Native-host334/manual3, LLVM106, quota2 sixteen modes and both all-target checks
+refresh for the new ABI module and archive packaging. Unchanged ordinary312 units
+and other default suites retain guarded0.270 evidence; inventory2541. Baseline148/
+current148, smoke144, Node47, isolated editor, nine package/install payloads and
+backup887 complete the release workflow. Evidence is recorded in
+`work/tellur-0.271-verification.json`. Source admission stays unchanged: generated
+adapter archives, launch registration, resources and polling are still pending.

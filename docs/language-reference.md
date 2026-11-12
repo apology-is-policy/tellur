@@ -1,8 +1,8 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.270.0 -->
+<!-- tellur-reference-version: 0.271.0 -->
 
-This manual describes **compiler 0.270.0**, including the current ownership model,
+This manual describes **compiler 0.271.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -2980,7 +2980,7 @@ General expression-type hover remains unsupported.
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and broader spawn payloads (anonymous contracts and reference-bearing collections) remain planned; they are not executable features of 0.270.0.
+and broader spawn payloads (anonymous contracts and reference-bearing collections) remain planned; they are not executable features of 0.271.0.
 ## Contingency and supervised boundaries
 
 The [contingency reference](reference/contingency.md) specifies `@contingent`,
@@ -3075,3 +3075,10 @@ Both native backends use the original source scheduler when a launch policy is
 present, including programs without explicit yield or spawned tasks. This closes
 the Rust sequential driver's idle-signal gap and matches reference cancellation.
 The Rust backend remains default; Rust adapters remain outside LLVM admission.
+
+Compiler 0.271 adds a private [synchronous adapter invocation bridge](reference/llvm-backend.md#private-synchronous-adapter-invocation-0271).
+No adapter source admission changes: LLVM still rejects manifests with Rust
+adapters. Generated static libraries, launch registration, opaque resources and
+polled operation/readiness bridges remain required before full parity. Rust stays
+the default backend; existing adapter source contracts and foreign panic behavior
+are unchanged.

@@ -1889,3 +1889,28 @@ remaining default suites retain guarded evidence. A runnable source/manifest/
 scenario and the compiler/LSP/VSIX workflow accompany the checkpoint. Rust remains
 default. Next audit full parity, implement remaining agreed adapter dependencies
 before any default flip, then single binary, target packs and retirement.
+
+
+## B1.5a — private synchronous foreign-adapter invocation (0.271)
+
+The agreed adapter station is a dependency of full parity: Rust manifests still
+fail LLVM admission, so a default flip must wait for their static-library bridge.
+This first slice defines a versioned callback descriptor and runtime-owned call
+context for existing scalar/string/bytes/vector/map adapter data. One-use handles
+and checked batch transfer keep Rust representations and allocator ownership on
+their own side of the C boundary. Concurrent calls have distinct identities.
+
+Eleven private tests cover descriptor/input preflight, buffer identity, typed
+scalar/UTF-8/byte access, collections and sorted unique maps, malformed spans and
+stale/duplicate handles, selected outcomes/payload order, concurrent calls, identity
+exhaustion, original Host script/events/fuel behavior and source-fault separation.
+An owned child process proves foreign panics remain fatal. Native-host334, manual3,
+LLVM106, quota2 and both all-target checks refresh; unchanged ordinary native187/
+frontend125 units and remaining integrations retain guarded0.270 evidence. The
+compiler/LSP/VSIX workflow accompanies the checkpoint; no new source example is
+needed because admission and existing runnable adapters are unchanged.
+
+Next generate typed synchronous adapter static libraries and per-launch callback
+registration, then opaque resource lifecycle and polled operations/readiness.
+Only after their application and whole-suite parity proofs can LLVM become default.
+Single binary, platform link packs and retirement follow. No language fork is pending.

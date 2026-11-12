@@ -1206,3 +1206,38 @@ spawned children, exclusive caller origins, yielded constructor work and caller
 recovery. Live child-process proofs cover first SIGINT/SIGTERM, default disposition
 and immediate second-signal termination at O0/O2 in both lowering forms. Rust
 remains the default pending the full parity gate.
+
+
+## Private synchronous adapter invocation (0.271)
+
+The runtime now has a private versioned C callback descriptor and an invocation
+context for the existing Rust adapter data profile: unit, bool, u32, string, bytes,
+vectors and maps with their existing key restrictions. Source adapter admission
+is unchanged. This protocol prepares the agreed static-library adapter path;
+it does not yet link generated adapters or register them with executable launches.
+
+Only integers, byte spans, opaque context pointers and C function pointers cross
+the boundary. Runtime-owned handles identify values within one call, transfer once
+and cannot be reused by another call, including concurrent calls. Scalar and byte
+accessors copy into caller-provided storage. Collection unpacking and construction
+transfer validated batches, retaining owned buffer identities. No Rust container,
+trait object or allocator-owned view is shared across the ABI.
+
+Descriptors, argument shapes and handle capacity are checked before input transfer
+or callback entry. Completion selects a declared outcome and its exact payload
+shape. Invalid spans, UTF-8, duplicate/stale handles, scalar ranges and collection
+shapes fail before partial mutation. The first failure is sticky; later calls
+cannot replace it or publish a result. A callback that falls through or uses an
+already-completed invocation fails. Handle exhaustion cannot wrap an identity.
+
+Private dispatch proofs use the original Host, preserving script precedence,
+events, fuel and driver failure classification. Foreign failures do not acquire
+source-fault authority, and foreign panics retain fatal behavior. No blanket panic
+catcher or panic-to-outcome translation is introduced. Context pointers and spans
+expire when the callback returns; callbacks cannot retain them.
+
+Generated typed Rust shims and static-library linking, per-launch registration,
+opaque resource ownership/destruction and started operation polling/readiness
+remain separate required steps. The existing ownership, origin, outcome, fault,
+cancellation and task handoff rules stay unchanged. Complete these adapter
+prerequisites before the whole-suite parity gate and any backend default change.

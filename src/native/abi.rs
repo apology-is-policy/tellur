@@ -10,6 +10,8 @@
 //! and may be null only when empty. Output payload spans must be writable for their
 //! stated length. Callbacks must not retain these pointers.
 use super::*;
+#[path = "abi_adapter.rs"]
+pub mod adapter;
 #[cfg(test)]
 #[path = "abi_arena_tests.rs"]
 mod arena_tests;

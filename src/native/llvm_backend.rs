@@ -2143,6 +2143,17 @@ fn abi_library(target: &Path) -> Result<PathBuf> {
         "#![allow(unused, unreachable_code, dead_code)]\n{}\npub mod abi {{\n{}\n}}",
         runtime_modules(),
         include_str!("abi.rs")
+            .replace(
+                "#[path = \"abi_adapter.rs\"]\npub mod adapter;",
+                &format!(
+                    "pub mod adapter {{\n{}\n}}",
+                    include_str!("abi_adapter.rs")
+                        .lines()
+                        .filter(|l| !l.starts_with("//!"))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                )
+            )
             .lines()
             .filter(|l| !l.starts_with("//!"))
             .collect::<Vec<_>>()
