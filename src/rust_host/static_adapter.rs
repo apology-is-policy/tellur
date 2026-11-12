@@ -10,28 +10,28 @@ pub(crate) fn validate_profile(manifest: &Manifest) -> Result<()> {
     let Some(config) = &manifest.rust else {
         return Ok(());
     };
-    if !config.resources.is_empty()
-        || manifest
-            .primitives
-            .iter()
-            .filter(|p| p.rust.is_some())
-            .any(|p| {
-                p.asynchronous
-                    || p.pure
-                    || !p.returns
-                    || !matches!(
-                        p.rust.as_ref().unwrap().execution,
-                        Execution::Immediate | Execution::Blocking
-                    )
-                    || p.parameters.iter().any(|p| !supported(&p.ty))
-                    || p.outcomes
-                        .iter()
-                        .flat_map(|o| &o.fields)
-                        .any(|f| !supported(&f.ty))
-            })
+    let supported = |ty: &str| supported(ty) || config.resources.contains_key(ty);
+    if manifest
+        .primitives
+        .iter()
+        .filter(|p| p.rust.is_some())
+        .any(|p| {
+            p.asynchronous
+                || p.pure
+                || !p.returns
+                || !matches!(
+                    p.rust.as_ref().unwrap().execution,
+                    Execution::Immediate | Execution::Blocking
+                )
+                || p.parameters.iter().any(|p| !supported(&p.ty))
+                || p.outcomes
+                    .iter()
+                    .flat_map(|o| &o.fields)
+                    .any(|f| !supported(&f.ty))
+        })
     {
         return Err(error(
-            "LLVM Rust adapters currently require synchronous scalar/collection data; resources and polled operations are not yet supported",
+            "LLVM Rust adapters currently require synchronous data/resource bindings; polled operations are not yet supported",
         ));
     }
     Ok(())
@@ -39,6 +39,18 @@ pub(crate) fn validate_profile(manifest: &Manifest) -> Result<()> {
 
 const ABI: &str = r#"
 use std::ffi::c_void;
+#[repr(C)]
+struct ResourceDescriptor {
+    version:u32, flags:u32, value:*mut c_void, drop:Option<unsafe extern "C" fn(*mut c_void)>,
+}
+impl Drop for ResourceDescriptor {
+    fn drop(&mut self) {
+        if !self.value.is_null() {unsafe {(self.drop.unwrap())(self.value)}}
+    }
+}
+unsafe extern "C" fn drop_resource<T:'static>(value:*mut c_void) {
+    drop(unsafe {Box::from_raw(value.cast::<T>())});
+}
 unsafe extern "C" {
     fn tellur_adapter_v1_ok(c:*mut c_void)->u32;
     fn tellur_adapter_v1_fail(c:*mut c_void,data:*const u8,len:usize);
@@ -50,6 +62,9 @@ unsafe extern "C" {
     fn tellur_adapter_v1_collection(c:*mut c_void,ty:*const u8,len:usize,fields:*const u64,count:usize)->u64;
     fn tellur_adapter_v1_drop(c:*mut c_void,h:u64);
     fn tellur_adapter_v1_complete(c:*mut c_void,name:*const u8,len:usize,fields:*const u64,count:usize);
+    fn tellur_adapter_v1_resource_publish(c:*mut c_void,ty:*const u8,len:usize,value:*mut ResourceDescriptor)->u64;
+    fn tellur_adapter_v1_resource_borrow(c:*mut c_void,h:u64,ty:*const u8,len:usize)->*const c_void;
+    fn tellur_adapter_v1_resource_take(c:*mut c_void,h:u64,ty:*const u8,len:usize,out:*mut ResourceDescriptor);
 }
 type AdapterResult<T> = Result<T,()>;
 unsafe fn check<T>(c:*mut c_void,value:T)->AdapterResult<T> {
@@ -134,6 +149,14 @@ pub(crate) fn source(manifest: &Manifest) -> Result<String> {
         let id = ids[t];
         let ty = rust_type(t, &config.resources);
         let (decode, encode) = match t.as_str() {
+            _ if config.resources.contains_key(t) => (
+                format!(
+                    "let ty={t:?};let mut out=std::mem::MaybeUninit::uninit();tellur_adapter_v1_resource_take(c,h,ty.as_ptr(),ty.len(),out.as_mut_ptr());check(c,())?;let mut out=out.assume_init();let ptr=std::mem::replace(&mut out.value,std::ptr::null_mut());Ok(*Box::from_raw(ptr.cast::<{ty}>()))"
+                ),
+                format!(
+                    "let ty={t:?};let mut out=ResourceDescriptor{{version:1,flags:0,value:Box::into_raw(Box::new(value)).cast(),drop:Some(drop_resource::<{ty}>)}};let h=tellur_adapter_v1_resource_publish(c,ty.as_ptr(),ty.len(),&mut out);check(c,h)"
+                ),
+            ),
             "Unit" | "Bool" | "U32" => {
                 let (tag, value, number) = match t.as_str() {
                     "Unit" => (0, "()", "0"),
@@ -206,7 +229,18 @@ pub(crate) fn source(manifest: &Manifest) -> Result<String> {
         writeln!(code,"#[unsafe(no_mangle)]\npub unsafe extern \"C\" fn {}(c:*mut c_void,args:*const u64,count:usize){{let _=unsafe{{invoke_{index}(c,args,count)}};}}",symbol(index)).unwrap();
         writeln!(code,"unsafe fn invoke_{index}(c:*mut c_void,args:*const u64,count:usize)->AdapterResult<()>{{unsafe{{if count!={} {{fail(c,\"adapter argument arity mismatch\");return Err(());}}let args=if count==0{{&[]}}else{{std::slice::from_raw_parts(args,count)}};",p.parameters.len()).unwrap();
         for (i, f) in p.parameters.iter().enumerate() {
+            if config.resources.contains_key(&f.ty) && f.mode == Mode::Borrow {
+                continue;
+            }
             writeln!(code, "let p{i}=decode_{}(c,args[{i}])?;", ids[&f.ty]).unwrap();
+        }
+        // Finish every owned decode/transfer before forming shared Rust views.
+        // Runtime batch preflight has already excluded consuming aliases.
+        for (i, f) in p.parameters.iter().enumerate() {
+            if config.resources.contains_key(&f.ty) && f.mode == Mode::Borrow {
+                let ty = rust_type(&f.ty, &config.resources);
+                writeln!(code,"let ty={:?};let ptr=tellur_adapter_v1_resource_borrow(c,args[{i}],ty.as_ptr(),ty.len());check(c,())?;let p{i}=&*ptr.cast::<{ty}>();",f.ty).unwrap();
+            }
         }
         let types = p
             .parameters
@@ -232,7 +266,16 @@ pub(crate) fn source(manifest: &Manifest) -> Result<String> {
             .parameters
             .iter()
             .enumerate()
-            .map(|(i, p)| format!("{}p{i}", if p.mode == Mode::Borrow { "&" } else { "" }))
+            .map(|(i, p)| {
+                format!(
+                    "{}p{i}",
+                    if p.mode == Mode::Borrow && !config.resources.contains_key(&p.ty) {
+                        "&"
+                    } else {
+                        ""
+                    }
+                )
+            })
             .collect::<Vec<_>>()
             .join(",");
         writeln!(code,"check(c,())?;let call:fn({types})->rust_api::{}_outcome=rust_host::r#{};match call({args}){{",p.name,p.name).unwrap();

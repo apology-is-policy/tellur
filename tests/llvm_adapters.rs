@@ -353,23 +353,22 @@ fn dependencies_keep_explicit_locking_across_repeated_builds() {
 }
 
 #[test]
-fn resource_and_polled_profiles_remain_rejected_before_any_output() {
+fn polled_profiles_remain_rejected_before_any_output() {
     let f = Fixture::new();
     for mode in [0, 1] {
         let mut m = config();
         if mode == 0 {
             m["types"] = json!([{"name":"resource","kind":"opaque","linear":true}]);
             m["rust"]["resources"] = json!({"resource":"Resource"});
-        } else {
-            m["primitives"][0]["async"] = json!(true);
-            m["primitives"][0]["parameters"][0]["mode"] = json!("consume");
-            m["primitives"][0]["rust"]["execution"] = json!("poll");
         }
+        m["primitives"][0]["async"] = json!(true);
+        m["primitives"][0]["parameters"][0]["mode"] = json!("consume");
+        m["primitives"][0]["rust"]["execution"] = json!("poll");
         let p = f.program("control main() exits done {exit done;}", &m);
         let path = f.root.join(format!("gated-{mode}"));
         let error = p.build_llvm("main", &path, 0).unwrap_err();
         assert_eq!(error.code, "E_BACKEND");
-        assert!(error.message.contains("resources and polled"));
+        assert!(error.message.contains("polled operations"));
         assert!(!path.exists());
         assert!(!PathBuf::from(format!("{}.tellur-build", path.display())).exists());
         assert!(!PathBuf::from(format!("{}.ll", path.display())).exists());

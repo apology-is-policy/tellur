@@ -6868,3 +6868,24 @@ feature checks refresh. Compiler/LSP/VSIX, source baseline, release examples,
 isolated editor and package/install verification follow the maintained workflow.
 Evidence: `work/tellur-0.273-verification.json`. This release admits synchronous
 data adapters; resource/polling and full backend parity remain later checkpoints.
+
+
+## 0.274 — synchronous resource adapter lifecycle (B1.5d)
+
+Private C lifecycle tests cover pointer publication and destruction, malformed
+resource descriptors, shared/owned permissions, atomic argument preflight, stale
+and foreign identities, failed and late completion, and concurrent per-launch
+selection with non-Send owners. LLVM integration families compare Rust/LLVM,
+original/expanded O0/O2 and fuel cuts for stable shared views, owned handoff,
+failed close, constructor/source faults, contingency, retained child frames and
+teardown. The retained-file example covers explicit module reexports, unused
+resource aliases, live data/end/failure and scripted alternatives. Live JSON cannot
+forge direct or nested owners. Cold runtime publication has a concurrent regression.
+
+The affected ordinary resource/host tests and generated runtime unit models refresh,
+with original failures and targeted reruns retained. Unchanged frontend/editor
+inputs preserve earlier evidence under guards. LLVM106, typed adapter tests and
+feature quota/linked probes refresh. Compiler/LSP/VSIX, source baseline, release
+examples, isolated editor and payload verification use the maintained workflow.
+Evidence: `work/tellur-0.274-verification.json`. Polling/readiness and full backend
+parity remain later checkpoints; Rust stays default.

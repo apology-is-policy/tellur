@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-darwin-arm64-0.273.0.vsix` using **Extensions:
+1. Install the supplied `tellur-language-darwin-arm64-0.274.0.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -1802,44 +1802,44 @@ remains the default backend.
 
 Compiler 0.259 adds the private LLVM task-set runtime bridge with completion-order
 joins and existing cancellation/ownership rules. Source LLVM task sets are added in 0.261 after retained loop integration. The bundled compiler and language server report
-0.273.0; Rust remains the default backend.
+0.274.0; Rust remains the default backend.
 
 
 Compiler 0.260 adds retained LLVM loops with repeated awaits, cold/spawned tasks,
 scripted host readiness and expanded helper completions. The bundled compiler and
-language server share version 0.273.0; Rust remains the default. Task sets follow in
+language server share version 0.274.0; Rust remains the default. Task sets follow in
 0.261; retained fault boundaries remain separate work.
 
 
 Compiler 0.261 adds task sets to the opt-in LLVM backend, including bounded feeding,
 completion-order reaping and cancellation of current members. Try
 `playground/llvm_task_sets.tellur` with a job count. The bundled compiler/LSP report
-0.273.0. Existing task-set ownership and reference-free capture/result rules apply;
+0.274.0. Existing task-set ownership and reference-free capture/result rules apply;
 Rust remains the default backend.
 
 
 Compiler 0.262 adds the private retained LLVM supervision bridge and its lifecycle
 proof. Generated retained boundaries remain gated; the Rust backend remains the
-default. The bundled compiler and language server report 0.273.0. No editor window
+default. The bundled compiler and language server report 0.274.0. No editor window
 reload is part of the release validation or installation workflow.
 
 
 Compiler 0.263 admits retained named supervision in the opt-in LLVM backend, including
 yielding work, ordered retained owners and outcome-free contingency settlement.
-The bundled compiler and language server report 0.273.0. Retained lexical recovery
+The bundled compiler and language server report 0.274.0. Retained lexical recovery
 remains a separate checkpoint; Rust remains the default backend. The release uses
 an isolated editor profile and never reloads existing windows.
 
 
 Compiler 0.264 proves private retained lexical scope handover and cleanup through
 the original runtime. Generated lexical recovery remains gated pending loop/state
-integration. Bundled compiler and language server report 0.273.0; Rust is default.
+integration. Bundled compiler and language server report 0.274.0; Rust is default.
 Validation uses an isolated editor profile without reloading existing windows.
 
 
 Compiler 0.265 proves private retained loop/recovery transfers through original
 scope cleanup, simultaneous owner transfer and physical fact reset. Generated
-lexical admission still awaits registration. Compiler/LSP report 0.273.0; Rust
+lexical admission still awaits registration. Compiler/LSP report 0.274.0; Rust
 remains default. Validation uses an isolated editor without reloading user windows.
 
 
@@ -1874,4 +1874,9 @@ release validation uses an isolated editor profile without reloading existing wi
 Compiler/LSP0.273 supports synchronous data Rust adapters with the opt-in LLVM
 backend, including explicit modules, locked dependencies and nested collections.
 Rust stays default; resources and polling remain gated. Release validation uses
+an isolated editor profile without reloading existing windows.
+
+Compiler/LSP0.274 extends the opt-in LLVM backend to synchronous retained Rust
+resources, preserving shared views, ownership transfer and original Host cleanup.
+Polled Rust adapters remain gated and Rust stays default. Release validation uses
 an isolated editor profile without reloading existing windows.

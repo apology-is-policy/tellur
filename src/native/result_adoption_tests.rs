@@ -28,7 +28,7 @@ fn ambient(h: &Host) -> Json {
 }
 fn observed(h: &Host) -> Json {
     json!({"ambient":ambient(h),"scopes":h.resources.scopes,
-        "owners":h.resources.values.iter().map(|(token,r)|(token,r.ty,r.scope)).collect::<Vec<_>>()})
+        "owners":h.resources.values.iter().map(|(token,r)|(token,r.ty.as_ref(),r.scope)).collect::<Vec<_>>()})
 }
 fn rejected(h: &mut Host, drops: &Rc<RefCell<Vec<u32>>>, f: impl FnOnce(&mut Host) -> R<()>) {
     let before = observed(h);

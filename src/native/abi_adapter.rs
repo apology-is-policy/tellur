@@ -1,4 +1,4 @@
-//! Private synchronous foreign-adapter invocation protocol. No source admission yet.
+//! Private synchronous foreign-adapter invocation and resource lifecycle protocol.
 //!
 //! The callback borrows an opaque context only until it returns. Spans must be
 //! readable/writable for their declared extent; null is valid only for empty spans.
@@ -8,7 +8,7 @@
 use super::*;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-pub type AdapterCallback = unsafe extern "C" fn(*mut AdapterContext, *const u64, usize);
+pub type AdapterCallback = for<'a> unsafe extern "C" fn(*mut AdapterContext<'a>, *const u64, usize);
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -41,6 +41,16 @@ fn data_type(ty: &str) -> bool {
         },
     }
 }
+fn resource_type(manifest: &Json, ty: &str) -> bool {
+    manifest["rust"]["resources"][ty]
+        .as_str()
+        .is_some_and(|s| !s.is_empty())
+        && manifest["types"].as_array().is_some_and(|types| {
+            types
+                .iter()
+                .any(|t| t["name"] == ty && t["kind"] == "opaque" && t["linear"] == true)
+        })
+}
 impl AdapterBinding {
     pub fn new(manifest: &Json, operation: &str, descriptor: AdapterDescriptor) -> R<Self> {
         if descriptor.version != 1 || descriptor.flags != 0 || descriptor.call.is_none() {
@@ -68,18 +78,30 @@ impl AdapterBinding {
             .ok_or_else(|| adapter_error("has no outcome contract"))?;
         if outcomes.is_empty()
             || parameters.iter().any(|p| {
-                !p["type"].as_str().is_some_and(data_type)
-                    || !matches!(p["mode"].as_str(), Some("value" | "borrow" | "consume"))
+                let Some(ty) = p["type"].as_str() else {
+                    return true;
+                };
+                if resource_type(manifest, ty) {
+                    !matches!(p["mode"].as_str(), Some("borrow" | "consume"))
+                } else {
+                    !data_type(ty)
+                        || !matches!(p["mode"].as_str(), Some("value" | "borrow" | "consume"))
+                }
             })
             || outcomes.iter().any(|o| {
                 o["name"].as_str().is_none_or(str::is_empty)
                     || o["fields"].as_array().is_none_or(|fs| {
-                        fs.iter()
-                            .any(|f| !f["type"].as_str().is_some_and(data_type))
+                        fs.iter().any(|f| {
+                            !f["type"]
+                                .as_str()
+                                .is_some_and(|t| data_type(t) || resource_type(manifest, t))
+                        })
                     })
             })
         {
-            return Err(adapter_error("requires owned scalar/collection data"));
+            return Err(adapter_error(
+                "requires scalar/collection data or directly bound resources",
+            ));
         }
         Ok(Self {
             manifest: manifest.clone(),
@@ -91,6 +113,14 @@ impl AdapterBinding {
     /// Validate the complete input batch before taking it or entering foreign code.
     /// The original Host still owns dispatch, script precedence, events and faults.
     pub fn invoke(&self, arguments: &mut Vec<V>) -> R<Outcome> {
+        self.invoke_with_resources(arguments, None)
+    }
+
+    fn invoke_with_resources(
+        &self,
+        arguments: &mut Vec<V>,
+        resources: Option<(&mut Resources, &Arc<()>)>,
+    ) -> R<Outcome> {
         let types = self.signature["parameters"]
             .as_array()
             .unwrap()
@@ -98,7 +128,53 @@ impl AdapterBinding {
             .map(|p| p["type"].as_str().unwrap().to_owned())
             .collect::<Vec<_>>();
         validate_args(arguments, &types, &self.manifest)?;
+        let parameters = self.signature["parameters"].as_array().unwrap();
+        let resource_inputs = parameters
+            .iter()
+            .zip(arguments.iter())
+            .filter_map(|(p, v)| {
+                let ty = p["type"].as_str().unwrap();
+                resource_type(&self.manifest, ty).then_some((v, ty, p["mode"] == "consume"))
+            })
+            .collect::<Vec<_>>();
+        let resource_results = self.signature["outcomes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|o| {
+                o["fields"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|f| resource_type(&self.manifest, f["type"].as_str().unwrap()))
+            });
+        if let Some((resources, owner)) = resources.as_ref() {
+            resources.validate_call(&resource_inputs)?;
+            for (value, ty, _) in &resource_inputs {
+                let resource = resources.get::<ForeignResource>(value, ty)?;
+                if !Arc::ptr_eq(owner, &resource.owner) {
+                    return Err(adapter_error("resource belongs to another adapter owner"));
+                }
+            }
+        } else if !resource_inputs.is_empty() || resource_results {
+            return Err(adapter_error(
+                "resource call requires registered launch storage",
+            ));
+        }
         let handles = reserve_handles(arguments.len())?;
+        let owned = parameters
+            .iter()
+            .zip(&handles)
+            .filter_map(|(p, h)| {
+                (p["mode"] == "consume"
+                    && resource_type(&self.manifest, p["type"].as_str().unwrap()))
+                .then_some(*h)
+            })
+            .collect();
+        let (resources, owner) = match resources {
+            Some((resources, owner)) => (Some(resources), Some(Arc::clone(owner))),
+            None => (None, None),
+        };
         let mut context = AdapterContext {
             manifest: self.manifest.clone(),
             signature: self.signature.clone(),
@@ -109,13 +185,17 @@ impl AdapterBinding {
                 .collect(),
             result: None,
             error: None,
+            resources,
+            owner,
+            owned,
         };
         unsafe { (self.callback)(&mut context, handles.as_ptr(), handles.len()) };
-        if let Some(error) = context.error {
+        if let Some(error) = context.error.take() {
             return Err(error);
         }
         context
             .result
+            .take()
             .ok_or_else(|| adapter_error("returned without an outcome"))
     }
 }
@@ -142,6 +222,7 @@ pub struct AdapterTable {
 pub struct AdapterRegistry {
     manifest: Json,
     bindings: BTreeMap<String, AdapterBinding>,
+    owner: Arc<()>,
 }
 impl AdapterRegistry {
     pub unsafe fn prepare(manifest: &Json, table: *const AdapterTable) -> R<Arc<Self>> {
@@ -178,6 +259,7 @@ impl AdapterRegistry {
         Ok(Arc::new(Self {
             manifest: manifest.clone(),
             bindings,
+            owner: Arc::new(()),
         }))
     }
 
@@ -202,13 +284,13 @@ impl AdapterRegistry {
 fn dispatch(resources: &mut Resources, operation: &str, mut args: Vec<V>) -> R<Outcome> {
     let registry = resources
         .foreign_adapters
-        .as_ref()
+        .clone()
         .ok_or_else(|| adapter_error("has no launch bindings"))?;
     registry
         .bindings
         .get(operation)
         .ok_or_else(|| adapter_error("has no binding for operation"))?
-        .invoke(&mut args)
+        .invoke_with_resources(&mut args, Some((resources, &registry.owner)))
 }
 
 // Identities cannot alias another call, including a concurrent or reentrant call.
@@ -227,14 +309,18 @@ fn reserve_from(next: &AtomicU64, count: usize) -> R<Vec<u64>> {
     Ok((0..count).map(|i| base + i + 1).collect())
 }
 
-pub struct AdapterContext {
+pub struct AdapterContext<'a> {
     manifest: Json,
     signature: Json,
     values: BTreeMap<u64, V>,
     result: Option<Outcome>,
     error: Option<String>,
+    resources: Option<&'a mut Resources>,
+    owner: Option<Arc<()>>,
+    // Only these call-local handles own resource tokens. Shared aliases never do.
+    owned: BTreeSet<u64>,
 }
-impl AdapterContext {
+impl AdapterContext<'_> {
     fn get(&self, handle: u64) -> R<&V> {
         self.values
             .get(&handle)
@@ -253,7 +339,10 @@ impl AdapterContext {
     fn take_many(&mut self, handles: &[u64]) -> Vec<V> {
         handles
             .iter()
-            .map(|h| self.values.remove(h).unwrap())
+            .map(|h| {
+                self.owned.remove(h);
+                self.values.remove(h).unwrap()
+            })
             .collect()
     }
     fn put(&mut self, value: V) -> R<u64> {
@@ -274,6 +363,60 @@ impl AdapterContext {
             Err(e) => {
                 self.error = Some(e);
                 T::default()
+            }
+        }
+    }
+    fn resource(&self, handle: u64, ty: &str) -> R<&ForeignResource> {
+        if !resource_type(&self.manifest, ty) {
+            return Err(adapter_error("unknown resource type"));
+        }
+        let resources = self
+            .resources
+            .as_ref()
+            .ok_or_else(|| adapter_error("has no resource storage"))?;
+        let resource = resources.get::<ForeignResource>(self.get(handle)?, ty)?;
+        if !self
+            .owner
+            .as_ref()
+            .is_some_and(|owner| Arc::ptr_eq(owner, &resource.owner))
+        {
+            return Err(adapter_error("resource belongs to another adapter owner"));
+        }
+        Ok(resource)
+    }
+    fn retire(&mut self, value: V) {
+        if let V::Opaque { ty, .. } = &value
+            && let Some(resources) = self.resources.as_mut()
+            && let Ok(resource) = resources.get::<ForeignResource>(&value, ty)
+            && self
+                .owner
+                .as_ref()
+                .is_some_and(|owner| Arc::ptr_eq(owner, &resource.owner))
+        {
+            // Removing the entry drops only the runtime-local wrapper; its foreign
+            // allocation is destroyed by the adapter that originally allocated it.
+            drop(resources.take::<ForeignResource>(&value, ty));
+        }
+    }
+    fn discard(&mut self, handle: u64) {
+        let value = self.values.remove(&handle).unwrap();
+        if self.owned.remove(&handle) {
+            self.retire(value);
+        }
+    }
+}
+impl Drop for AdapterContext<'_> {
+    fn drop(&mut self) {
+        for handle in std::mem::take(&mut self.owned) {
+            if let Some(value) = self.values.remove(&handle) {
+                self.retire(value);
+            }
+        }
+        // A late protocol error after completion must not strand selected owners.
+        // Successful invocation takes this result before destroying the context.
+        if let Some((_, values)) = self.result.take() {
+            for value in values {
+                self.retire(value);
             }
         }
     }
@@ -455,7 +598,7 @@ pub unsafe extern "C" fn tellur_adapter_v1_collection(
 pub unsafe extern "C" fn tellur_adapter_v1_drop(c: *mut AdapterContext, handle: u64) {
     unsafe { &mut *c }.perform(|c| {
         c.get(handle)?;
-        c.values.remove(&handle);
+        c.discard(handle);
         Ok(())
     })
 }
@@ -482,13 +625,146 @@ pub unsafe extern "C" fn tellur_adapter_v1_complete(
             return Err(adapter_error("outcome arity mismatch"));
         }
         for (field, handle) in fields.iter().zip(handles) {
-            validate(
-                c.get(*handle)?,
-                field["type"].as_str().unwrap(),
-                &c.manifest,
-            )?;
+            let ty = field["type"].as_str().unwrap();
+            if resource_type(&c.manifest, ty) {
+                c.resource(*handle, ty)?;
+                if !c.owned.contains(handle) {
+                    return Err(adapter_error("cannot return a shared resource as an owner"));
+                }
+            }
+            validate(c.get(*handle)?, ty, &c.manifest)?;
         }
         c.result = Some((name.into(), c.take_many(handles)));
+        Ok(())
+    })
+}
+
+pub type ResourceDrop = unsafe extern "C" fn(*mut std::ffi::c_void);
+
+/// Allocation and destruction belong to the adapter library. Publication borrows
+/// this descriptor mutably and clears `value` exactly when ownership transfers.
+/// A non-null value on return remains the caller's responsibility, even on error.
+#[repr(C)]
+pub struct ResourceDescriptor {
+    pub version: u32,
+    pub flags: u32,
+    pub value: *mut std::ffi::c_void,
+    pub drop: Option<ResourceDrop>,
+}
+
+// Only this runtime-local wrapper is boxed in Resources. No foreign Rust layout
+// is interpreted here, and no Send/Sync requirement is imposed on the allocation.
+struct ForeignResource {
+    value: *mut std::ffi::c_void,
+    drop: ResourceDrop,
+    owner: Arc<()>,
+}
+impl Drop for ForeignResource {
+    fn drop(&mut self) {
+        if !self.value.is_null() {
+            unsafe { (self.drop)(self.value) };
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_adapter_v1_resource_publish(
+    c: *mut AdapterContext,
+    ty: *const u8,
+    len: usize,
+    descriptor: *mut ResourceDescriptor,
+) -> u64 {
+    let c = unsafe { &mut *c };
+    // Adopt before perform: an already-failed/completed context must also release
+    // a valid incoming allocation. The cleared pointer makes this unambiguous.
+    let resource = (|| {
+        unsafe { adapter_span(descriptor, 1)? };
+        let descriptor = unsafe { &mut *descriptor };
+        if descriptor.version != 1
+            || descriptor.flags != 0
+            || descriptor.value.is_null()
+            || descriptor.drop.is_none()
+        {
+            return Err(adapter_error("invalid resource descriptor"));
+        }
+        let owner = c
+            .owner
+            .clone()
+            .ok_or_else(|| adapter_error("has no resource owner"))?;
+        Ok(ForeignResource {
+            value: std::mem::replace(&mut descriptor.value, std::ptr::null_mut()),
+            drop: descriptor.drop.unwrap(),
+            owner,
+        })
+    })();
+    c.perform(move |c| {
+        let resource = resource?;
+        let ty = unsafe { adapter_text(ty, len)? };
+        if !resource_type(&c.manifest, ty) {
+            return Err(adapter_error("unknown resource type"));
+        }
+        let handle = reserve_handles(1)?[0];
+        let resources = c
+            .resources
+            .as_mut()
+            .ok_or_else(|| adapter_error("has no resource storage"))?;
+        let value = resources.insert(ty.to_owned(), resource)?;
+        c.values.insert(handle, value);
+        c.owned.insert(handle);
+        Ok(handle)
+    })
+}
+
+/// The returned pointer is a shared view valid only for this callback. Taking
+/// owners must precede forming Rust references in a generated adapter callback.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_adapter_v1_resource_borrow(
+    c: *mut AdapterContext,
+    handle: u64,
+    ty: *const u8,
+    len: usize,
+) -> *const std::ffi::c_void {
+    unsafe { &mut *c }.perform(|c| {
+        let ty = unsafe { adapter_text(ty, len)? };
+        Ok(c.resource(handle, ty)?.value.cast_const())
+    })
+}
+
+/// On success writes one owned descriptor into caller output storage. On error
+/// writes nothing. The adapter must consume or destroy that descriptor exactly
+/// once; no reference into the runtime remains after this transfer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_adapter_v1_resource_take(
+    c: *mut AdapterContext,
+    handle: u64,
+    ty: *const u8,
+    len: usize,
+    output: *mut ResourceDescriptor,
+) {
+    unsafe { &mut *c }.perform(|c| {
+        if !valid_compiled_span(output, 1, 1) {
+            return Err(adapter_error("invalid resource output span"));
+        }
+        let ty = unsafe { adapter_text(ty, len)? };
+        c.resource(handle, ty)?;
+        if !c.owned.contains(&handle) {
+            return Err(adapter_error("cannot consume a shared resource"));
+        }
+        let value = c.get(handle)?.clone();
+        let mut resource = c
+            .resources
+            .as_mut()
+            .unwrap()
+            .take::<ForeignResource>(&value, ty)?;
+        let descriptor = ResourceDescriptor {
+            version: 1,
+            flags: 0,
+            value: std::mem::replace(&mut resource.value, std::ptr::null_mut()),
+            drop: Some(resource.drop),
+        };
+        c.values.remove(&handle);
+        c.owned.remove(&handle);
+        unsafe { output.write(descriptor) };
         Ok(())
     })
 }
@@ -500,3 +776,7 @@ mod tests;
 #[cfg(test)]
 #[path = "abi_adapter_registry_tests.rs"]
 mod registry_tests;
+
+#[cfg(test)]
+#[path = "abi_adapter_resource_tests.rs"]
+mod resource_tests;

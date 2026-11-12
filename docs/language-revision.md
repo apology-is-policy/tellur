@@ -1977,3 +1977,27 @@ No runtime ABI, ownership, origin, fault, cancellation or handoff semantics chan
 Resource identity/destruction and polled operations/readiness are next, followed
 by application and whole-suite parity before any default flip. Single binary,
 per-target link packs and retirement follow. Rust stays default; no fork is pending.
+
+
+## B1.5d — synchronous resource adapter lifecycle (0.274)
+
+LLVM admits the existing directly bound opaque Rust resource profile for immediate
+and blocking operations. Typed static shims preserve public resource aliases,
+non-Send/non-Sync owners, repeated shared pointer identity, consuming transfer and
+fresh returned handles. No new Tellur syntax or ownership mode is introduced.
+
+The private C protocol publishes, borrows and takes resource descriptors with an
+explicit ownership handshake. Registry/type/alias checks precede dispatch. Shared
+inputs cannot become owning results; failed publication, unused consumed inputs and
+late completion errors release their allocations through adapter-owned destructors.
+The original Host Resources registry retains all scope, outcome, fault, contingency,
+retained-frame and teardown behavior. Live JSON cannot forge an owner; scenarios
+retain symbolic dispatch. Polling stays gated and Rust remains the default.
+
+A cold-cache validation exposed a preexisting publication race: concurrent threads
+used the same PID-only temporary filename. Runtime and ABI publication now use
+unique per-process sequences; a concurrent cold preparation regression protects it.
+The retained-file example now documents both backends. The next agreed slice is
+polled operations/readiness and their consumed/shared resource lifecycle, followed
+by application and whole-suite parity before changing the default. Single binary,
+per-target link packs and Rust-backend retirement remain ahead.

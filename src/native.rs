@@ -623,6 +623,8 @@ serde_json = \"1\"
 /// Writes the runtime crate once per content hash under the target directory, so
 /// every program built there reuses one compiled runtime.
 fn runtime_crate(target: &Path) -> Result<PathBuf> {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(0);
     let lib = format!(
         "#![allow(unused, unreachable_code, unused_labels, dead_code)]\n{}",
         runtime_modules()
@@ -635,12 +637,50 @@ fn runtime_crate(target: &Path) -> Result<PathBuf> {
         // Concurrent builds may race here: each file appears whole, by rename, and
         // the manifest before the library that marks the crate complete.
         for (name, contents) in [("Cargo.toml", RUNTIME_CARGO), ("lib.rs", lib.as_str())] {
-            let partial = directory.join(format!("{name}.{}.partial", std::process::id()));
+            let partial = directory.join(format!(
+                "{name}.{}-{}.partial",
+                std::process::id(),
+                NEXT.fetch_add(1, Ordering::Relaxed)
+            ));
             fs::write(&partial, contents).map_err(|e| error(e.to_string()))?;
             fs::rename(partial, directory.join(name)).map_err(|e| error(e.to_string()))?;
         }
     }
     Ok(directory)
+}
+
+#[test]
+fn concurrent_cold_runtime_preparation_publishes_complete_files() {
+    let root = std::env::temp_dir().join(format!("tellur-cold-runtime-{}", std::process::id()));
+    assert!(!root.exists());
+    let barrier = std::sync::Barrier::new(16);
+    let directories = std::thread::scope(|scope| {
+        (0..16)
+            .map(|_| {
+                scope.spawn(|| {
+                    barrier.wait();
+                    runtime_crate(&root).unwrap()
+                })
+            })
+            .collect::<Vec<_>>()
+            .into_iter()
+            .map(|t| t.join().unwrap())
+            .collect::<Vec<_>>()
+    });
+    assert!(directories.iter().all(|p| p == &directories[0]));
+    assert_eq!(
+        fs::read_to_string(directories[0].join("Cargo.toml")).unwrap(),
+        RUNTIME_CARGO
+    );
+    assert_eq!(
+        fs::read_to_string(directories[0].join("lib.rs")).unwrap(),
+        format!(
+            "#![allow(unused, unreachable_code, unused_labels, dead_code)]\n{}",
+            runtime_modules()
+        )
+    );
+    assert_eq!(fs::read_dir(&directories[0]).unwrap().count(), 2);
+    fs::remove_dir_all(root).unwrap();
 }
 /// Adds the path-dependency runtime to a lockfile in Cargo's own sorted form, so
 /// `--locked` builds accept it (including adapter lockfiles).

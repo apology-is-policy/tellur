@@ -2155,6 +2155,8 @@ impl CheckedProgram {
 }
 
 fn abi_library(target: &Path) -> Result<PathBuf> {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(0);
     let cargo = RUNTIME_CARGO
         .replace("name = \"tellur_runtime\"", "name = \"tellur_runtime_abi\"")
         .replace(
@@ -2200,7 +2202,11 @@ fn abi_library(target: &Path) -> Result<PathBuf> {
     ] {
         let file = directory.join(name);
         if fs::read_to_string(&file).ok().as_deref() != Some(contents.as_str()) {
-            let temp = directory.join(format!("{name}.{}.partial", std::process::id()));
+            let temp = directory.join(format!(
+                "{name}.{}-{}.partial",
+                std::process::id(),
+                NEXT.fetch_add(1, Ordering::Relaxed)
+            ));
             fs::write(&temp, contents).map_err(|e| error(e.to_string()))?;
             fs::rename(temp, file).map_err(|e| error(e.to_string()))?;
         }

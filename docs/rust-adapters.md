@@ -7,10 +7,12 @@ Rust result enums, conversions and exact wrapper-signature checks from it.
 
 This is source interoperability through Cargo. The default Rust backend compiles
 adapters with the generated program. Since 0.273, the opt-in direct LLVM backend
-also supports synchronous scalar/collection adapters on macOS arm64: user Rust
+also supports synchronous scalar/collection adapters on macOS arm64, extended to
+retained resources in 0.274: user Rust
 compiles into a separate static archive, and typed shims exchange data with the
 precompiled runtime through a private versioned C protocol. No Rust representation
-or allocation ownership crosses that boundary. Opaque retained resources and polled
+crosses that boundary. Resource allocations stay in their adapter library; the
+runtime retains opaque pointers and calls the adapter to destroy them. Polled
 operations still require the Rust backend. Tellur tasks, suspension and cancellation
 are not defined in terms of Rust futures or an executor.
 
@@ -106,6 +108,12 @@ it is not converted into a recoverable Tellur alternative. No unwinding/abort or
 cancellation cleanup guarantee is implied.
 
 ## Retained resources (0.49)
+
+Since 0.274, the synchronous resource profile below also runs with `--backend llvm`
+on macOS arm64. The same source, manifest and Rust signatures work on both backends.
+Shared borrows retain the original allocation, consumed values move into the typed
+wrapper, and returned owners receive fresh handles. This includes calls made from
+supported retained Tellur controls; it does not admit polled Rust operations.
 
 An opaque must-complete Tellur type can represent an owned Rust object that survives
 between calls. Add a `resources` map to the top-level `rust` configuration:

@@ -570,7 +570,7 @@ struct PreparedResourceScope {
     owned: BTreeSet<String>,
 }
 struct Resource {
-    ty: &'static str,
+    ty: std::borrow::Cow<'static, str>,
     value: Box<dyn std::any::Any>,
     scope: Option<u64>,
 }
@@ -590,7 +590,11 @@ pub struct Resources {
     scopes: BTreeMap<u64, Option<u64>>,
 }
 impl Resources {
-    pub fn insert<T: 'static>(&mut self, ty: &'static str, value: T) -> R<V> {
+    pub fn insert<T: 'static>(
+        &mut self,
+        ty: impl Into<std::borrow::Cow<'static, str>>,
+        value: T,
+    ) -> R<V> {
         use std::sync::atomic::{AtomicU64, Ordering};
         static NEXT: AtomicU64 = AtomicU64::new(0);
         // Process-wide identities prevent reuse even across separate hosts.
@@ -598,16 +602,17 @@ impl Resources {
             .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
             .map_err(|_| "E_HOST: resource identity exhausted")?;
         let token = format!("rust:{id}");
+        let ty = ty.into();
         self.values.insert(
             token.clone(),
             Resource {
-                ty,
+                ty: ty.clone(),
                 value: Box::new(value),
                 scope: self.current,
             },
         );
         Ok(V::Opaque {
-            ty: ty.into(),
+            ty: ty.into_owned(),
             token,
         })
     }
@@ -665,7 +670,7 @@ impl Resources {
             match v {
                 V::Opaque { ty, token } => {
                     if let Some(resource) = r.values.get(token) {
-                        if resource.ty != ty {
+                        if resource.ty.as_ref() != ty.as_str() {
                             return Err("E_HOST: resource identity/type mismatch".into());
                         }
                         into.insert(token.clone());
@@ -697,7 +702,7 @@ impl Resources {
             match value {
                 V::Opaque { ty, token } => match r.values.get(token) {
                     Some(resource) => {
-                        if resource.ty != ty {
+                        if resource.ty.as_ref() != ty.as_str() {
                             return Err("E_HOST: result resource identity/type mismatch".into());
                         }
                         if !owned.insert(token.clone()) {

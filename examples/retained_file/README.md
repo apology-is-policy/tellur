@@ -13,6 +13,19 @@ From the repository root, after building the compiler:
 ./examples/retained_file/build/main --json -- playground/message.txt
 ```
 
+With compiler 0.274 on macOS arm64, the same program also runs with the opt-in
+LLVM backend:
+
+```sh
+./bin/tellurc build examples/retained_file/main.tellur --backend llvm --out /tmp/tellur-retained-file
+/tmp/tellur-retained-file --json -- playground/message.txt
+```
+
+This source adapter needs Rust/Cargo to compile its static library. Its checked
+lockfile is reused; the LLVM executable links that library with the precompiled
+Tellur runtime. Shared reads keep the same Rust file allocation, and release
+consumes it. The default backend remains Rust.
+
 For a fresh clone built with Cargo, replace `./bin/tellurc` with
 `./target/release/tellurc`. The JSON report contains the named outcome, raw bytes
 and open/read/release events. `data` and `end` have status 0; `open_failed` and

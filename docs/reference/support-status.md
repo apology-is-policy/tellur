@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.273.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.274.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -419,9 +419,16 @@ are unchanged.
 Compiler 0.272 adds private [adapter launch registration](llvm-backend.md#private-adapter-launch-registration-0272).
 A complete synchronous callback table is validated before launch and retained per
 Host. LLVM source admission remains gated until generated typed adapter archives
-are linked; resources and polled operations/readiness follow. Rust stays default.
+are linked. Synchronous resource support follows in 0.274; polled
+operations/readiness remain ahead. Rust stays default.
 
 Compiler 0.273 admits [typed synchronous Rust adapters](llvm-backend.md#typed-synchronous-source-adapters-0273)
 on the opt-in LLVM backend. Scalar/string/bytes/vector/map values cross a private
 C protocol; explicit modules, exact signatures and locked dependencies are preserved.
-Opaque resources and polled operations still require the default Rust backend.
+Synchronous retained resources join this profile in 0.274; polled operations
+still require the default Rust backend.
+
+Compiler 0.274 admits [synchronous Rust resource adapters](llvm-backend.md#synchronous-resource-adapters-0274)
+on the opt-in LLVM backend. Stable shared views, owned transfer, selected resource
+results and existing Host scope/teardown rules are preserved. Polled operations
+remain gated and Rust remains the default.

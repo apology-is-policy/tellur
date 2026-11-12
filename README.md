@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.273.0** implements the v0.1 checked core and the current language
+Compiler release **0.274.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -22,12 +22,18 @@ spawned children of one async control. `spawn producer(..) into set;` adds a mem
 `delta await next set { ..., empty => ... }` joins members in completion order, and
 `count(borrow set)` bounds how many run at once.
 
+Release 0.274 adds retained Rust resources to the opt-in LLVM backend. Synchronous
+adapters preserve stable shared borrows, consuming transfers, selected resource
+results and cleanup through the original host scopes. The
+[retained file example](examples/retained_file/README.md) runs on both backends.
+Polled Rust adapters still require the default Rust backend.
+
 Release 0.273 admits synchronous Rust source adapters on the opt-in LLVM backend.
 Typed adapter archives communicate with the precompiled runtime through the private
 C value protocol. Explicit modules, dependency locks, borrowed data and nested
 collections retain their existing contracts. Try the
-[text summary example](examples/text_summary/README.md). Resources and polled
-adapters still require the default Rust backend.
+[text summary example](examples/text_summary/README.md). Synchronous resources
+join this profile in 0.274; polled adapters still require the default Rust backend.
 
 Release 0.272 adds private per-launch registration for synchronous foreign
 adapters. Complete immutable callback tables attach to the original host, with

@@ -3,6 +3,55 @@
 mod host;
 use host::{Host, V};
 use serde_json::{Value as Json, json};
+
+#[test]
+fn dynamic_resource_type_names_preserve_alias_checks_and_owned_destruction() {
+    use std::{cell::Cell, rc::Rc};
+    struct Owner(Rc<Cell<usize>>);
+    impl Drop for Owner {
+        fn drop(&mut self) {
+            self.0.set(self.0.get() + 1);
+        }
+    }
+    let drops = Rc::new(Cell::new(0));
+    let mut resources = host::Resources::default();
+    // Foreign contracts own their names; callback metadata cannot be leaked or
+    // borrowed for the lifetime of the Host. Resources still need not be Send.
+    let value = {
+        let name = ["dynamic", "_owner"].concat();
+        resources.insert(name, Owner(drops.clone())).unwrap()
+    };
+    resources
+        .validate_call(&[
+            (&value, "dynamic_owner", false),
+            (&value, "dynamic_owner", false),
+        ])
+        .unwrap();
+    let pointer = resources.get::<Owner>(&value, "dynamic_owner").unwrap() as *const _;
+    assert_eq!(
+        pointer,
+        resources.get::<Owner>(&value, "dynamic_owner").unwrap() as *const _
+    );
+    assert!(
+        resources
+            .validate_call(&[
+                (&value, "dynamic_owner", true),
+                (&value, "dynamic_owner", false)
+            ])
+            .is_err()
+    );
+    assert!(resources.take::<Owner>(&value, "other_owner").is_err());
+    assert_eq!(drops.get(), 0);
+    drop(resources.take::<Owner>(&value, "dynamic_owner").unwrap());
+    assert_eq!(drops.get(), 1);
+    assert!(resources.get::<Owner>(&value, "dynamic_owner").is_err());
+    resources
+        .insert("dynamic_owner".to_owned(), Owner(drops.clone()))
+        .unwrap();
+    drop(resources);
+    assert_eq!(drops.get(), 2);
+}
+
 #[test]
 fn bounded_admission_exposes_progress_without_evaluating_zero_quota_or_opaque_work() {
     use host::execution::{Activation, AdmissionProgress, AdmissionStop, Contexts, Control, Step};

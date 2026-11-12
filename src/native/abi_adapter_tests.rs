@@ -20,7 +20,7 @@ unsafe extern "C" fn echo(c: *mut AdapterContext, args: *const u64, count: usize
 fn binding(ty: &str, callback: AdapterCallback) -> AdapterBinding {
     AdapterBinding::new(&manifest(ty), "inspect", descriptor(callback)).unwrap()
 }
-fn context(ty: &str, values: Vec<V>) -> (AdapterContext, Vec<u64>) {
+fn context(ty: &str, values: Vec<V>) -> (AdapterContext<'static>, Vec<u64>) {
     let m = manifest(ty);
     let handles = reserve_handles(values.len()).unwrap();
     (
@@ -30,6 +30,9 @@ fn context(ty: &str, values: Vec<V>) -> (AdapterContext, Vec<u64>) {
             values: handles.iter().copied().zip(values).collect(),
             result: None,
             error: None,
+            resources: None,
+            owner: None,
+            owned: BTreeSet::new(),
         },
         handles,
     )

@@ -26,6 +26,7 @@ retained named supervision. Compiler 0.267 adds retained lexical scopes and supe
 Compiler 0.269 adds retained constructors whose children suspend.
 Compiler 0.270 adds opt-in launch signal policies.
 Compiler 0.273 adds synchronous scalar/collection Rust source adapters.
+Compiler 0.274 adds directly bound synchronous retained Rust resources.
 The default remains `--backend rust`. Both start from the same checked program;
 backend selection does not relax ownership, origins, outcomes or path rules.
 
@@ -60,8 +61,8 @@ async host operations share those task forms since 0.258. Retained loops are sup
 since 0.260; task sets since 0.261; named supervision since 0.263; lexical scopes
 and supervised recovery since 0.267; constructors whose children suspend since
 0.269; opt-in launch signal policies since 0.270. Synchronous scalar/collection
-Rust adapters are admitted since 0.273; resource and polled Rust adapters remain
-outside that profile. Admission checks all checked
+Rust adapters are admitted since 0.273; directly bound synchronous Rust resources
+since 0.274. Polled Rust adapters remain outside that profile. Admission checks all checked
 regions, including unused helpers. Unsupported programs receive `E_BACKEND`
 before the backend creates its output directory or files; ordinary checking may
 still succeed, and the Rust backend remains available.
@@ -1289,8 +1290,8 @@ and before/after emitted-object comparisons; the failed run remains recorded.
 profile: `unit`, `bool`, `u32`, `string`, `bytes`, vectors and maps of supported
 values. Map keys remain string, u32 or bool. Bindings must be synchronous and use
 `immediate` or `blocking`; neither adds suspension or a task handoff. Calls compose
-with supported synchronous and retained controls. Resource configurations and
-polled bindings remain rejected with `E_BACKEND` before output creation, including
+with supported synchronous and retained controls. Since 0.274 the profile also
+includes directly bound opaque resources, as described below. Polled bindings remain rejected with `E_BACKEND` before output creation, including
 unused bindings.
 
 The compiler generates the same `rust_api` outcome enums and exact typed function
@@ -1315,6 +1316,40 @@ to use version1 launch and do not compile per-program Rust. The
 [text summary example](../../examples/text_summary/README.md) demonstrates borrowed
 Unicode text, an explicit Rust module and an owned sorted word-count map.
 
-This completes synchronous data admission, not full adapter parity. Resource
-lifecycle, polled operations/readiness and application/whole-suite parity remain
-before the default changes. Rust stays the default.
+Polled operations/readiness and application/whole-suite parity remain before the
+default changes. Rust stays the default.
+
+
+## Synchronous resource adapters (0.274)
+
+The existing `rust.resources` map can bind opaque must-complete Tellur types to
+public Rust types or aliases. The adapter receives `&T` for a shared parameter and
+`T` for a consuming parameter; resource outcome fields contain `T`. Rust types
+remain unrestricted by `Copy`, `Clone`, `Send` or `Sync`, and explicit modules may
+re-export them. Resources cross this boundary directly, never inside a collection
+or nominal aggregate; aggregate ownership inside Tellur retains its existing rules.
+The [resource contract](../rust-adapters.md#retained-resources-049) applies unchanged.
+
+The private C bridge associates each allocation with its adapter registry and its
+Tellur type. It validates the entire argument batch before dispatch, including
+consuming aliases, stale tokens and cross-host identities. Repeated shared inputs
+point at the same allocation. Generated callbacks finish owned decoding before
+forming shared Rust references. Consumption removes the owner before calling the
+wrapper; a returned object is published with a fresh resource token. A failed close
+still consumes its input unless the selected outcome explicitly returns an owner.
+
+An adapter allocates and destroys its own Rust objects. A versioned descriptor
+contains an opaque allocation pointer and an adapter-owned destruction callback;
+no Rust representation crosses C. Publication clears the descriptor pointer exactly
+when ownership transfers. Failed publication, unused owned handles and a protocol
+error after completion release each affected allocation once. Shared inputs cannot
+be consumed or returned as owning results. The original Host resource registry
+handles scopes, source faults, contingency transfer, retained task frames and final
+teardown. There is no second source resource registry or mutable global dispatch.
+
+Live JSON arguments cannot manufacture resource owners. Scripted calls still bypass
+live adapters and use symbolic values. Foreign panics remain fatal; this adds no
+panic recovery or destructor guarantee for aborts or forced process termination.
+The [retained file example](../../examples/retained_file/README.md) demonstrates
+open, shared read and consuming release with either backend. Polled operations,
+readiness, application and whole-suite parity remain ahead; Rust stays default.
