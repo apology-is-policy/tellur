@@ -5,10 +5,23 @@ program. The Tellur primitive manifest is the source of argument types, closed
 outcomes, ownership modes and declared effects. The compiler generates concrete
 Rust result enums, conversions and exact wrapper-signature checks from it.
 
-This is source interoperability through Cargo, not a stable Rust binary ABI. LLVM
-still compiles the generated program. A future direct LLVM backend can replace this
-bridge with a versioned native adapter ABI; Tellur tasks, suspension and cancellation
+This is source interoperability through Cargo. The default Rust backend compiles
+adapters with the generated program. Since 0.273, the opt-in direct LLVM backend
+also supports synchronous scalar/collection adapters on macOS arm64: user Rust
+compiles into a separate static archive, and typed shims exchange data with the
+precompiled runtime through a private versioned C protocol. No Rust representation
+or allocation ownership crosses that boundary. Opaque retained resources and polled
+operations still require the Rust backend. Tellur tasks, suspension and cancellation
 are not defined in terms of Rust futures or an executor.
+
+The [text summary example](../examples/text_summary/README.md) runs on both backends.
+Both preserve exact function signatures, explicit source/module resolution and
+`lock-native` dependency locks. LLVM checking and IR emission inspect the manifest
+without reading adapter source files; building reads and compiles all declared
+adapters, including unused operations. Adapter archives are cached by generated
+code, sources/modules, lockfile, manifest, target, optimization and Rust toolchain.
+Every build still checks Cargo freshness with `--locked`. Only programs containing
+source adapters invoke per-program Rust compilation on the LLVM path.
 
 ## Declare an adapter
 

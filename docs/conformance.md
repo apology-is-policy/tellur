@@ -6849,3 +6849,22 @@ a process-wide mutex through driver cleanup, and LLVM target registration runs
 once. Eight concurrent workers build and execute independent programs at O0/O2.
 Sequential LLVM106 evidence is retained with exact serialization-only code guards
 and before/after emitted-object comparisons; the failed run remains recorded.
+
+
+## 0.273 — generated synchronous adapter archives (B1.5c)
+
+Six LLVM adapter integration families compile real typed Rust archives and compare
+original/expanded O0/O2 live/scripted outcomes, events and process statuses with the
+Rust backend. They cover every supported scalar form, empty/Unicode/byte data,
+nested vectors/maps and key ordering, owned and shared arguments, zero arguments,
+selected payload order and retained callers. Module changes/concurrent builds,
+unused signature failures, explicit locked dependencies, malformed scripts,
+source faults/fuel, fatal panics and resource/poll admission guards are included.
+The text summary example adds a runnable explicit-module/word-count adapter.
+
+Ordinary Rust generation and the private runtime are unchanged; their prior
+verification is retained with exact input guards. The affected LLVM suite and
+feature checks refresh. Compiler/LSP/VSIX, source baseline, release examples,
+isolated editor and package/install verification follow the maintained workflow.
+Evidence: `work/tellur-0.273-verification.json`. This release admits synchronous
+data adapters; resource/polling and full backend parity remain later checkpoints.

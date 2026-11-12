@@ -1,0 +1,14 @@
+// Rust performs the text analysis; Tellur routes its closed outcomes.
+control main(string text) exits result {
+    forward summarize(borrow text);
+}
+
+outcome result {
+    @exit 0 measured {
+        u32 characters,
+        u32 lines,
+        map<string, u32> words,
+    },
+    @exit 0 blank,
+    @exit 1 too_large,
+}

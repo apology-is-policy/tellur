@@ -1947,3 +1947,33 @@ a process-wide mutex through driver cleanup, and LLVM target registration runs
 once. Eight concurrent workers build and execute independent programs at O0/O2.
 Sequential LLVM106 evidence is retained with exact serialization-only code guards
 and before/after emitted-object comparisons; the failed run remains recorded.
+
+
+## B1.5c — typed synchronous adapter archives (0.273)
+
+LLVM source admission now accepts the complete synchronous data adapter profile.
+Generated Rust static libraries contain user source/modules, typed result enums,
+exact function checks and C codecs. They contain no Tellur runtime definitions.
+Per-launch tables register every Rust operation before original Host dispatch.
+Owned scalar/string/bytes/vector/map values and local shared borrows preserve the
+existing contracts; only the selected outcome crosses back through one-use handles.
+
+Source paths, explicit modules, dependencies and lock-native locks retain their
+existing rules. Source checking/IR emission does not read adapter files; builds
+check every function, including unused ones. Cargo always runs with --locked and
+incremental builds disabled. Cache keys include generated code, source/modules,
+lock/TOML, manifest contracts, target, optimization and toolchain identity. Ordinary
+LLVM programs retain version1 launch and no per-program Rust compilation.
+
+Six integration families exercise actual generated archives: empty/Unicode and
+nested collection data, every scalar/borrow form, zero arguments, selected outcomes,
+original/expanded O0/O2 Rust parity, synchronous adapters inside retained controls,
+explicit modules and changed sources, simultaneous builds, unused signature errors,
+locked dependencies, scripts, malformed scripted results, faults/every fuel cut,
+fatal foreign panics and pre-output resource/poll rejection. The runnable text
+summary example demonstrates a borrowed string and an owned sorted word-count map.
+No runtime ABI, ownership, origin, fault, cancellation or handoff semantics change.
+
+Resource identity/destruction and polled operations/readiness are next, followed
+by application and whole-suite parity before any default flip. Single binary,
+per-target link packs and retirement follow. Rust stays default; no fork is pending.

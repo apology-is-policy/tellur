@@ -1,0 +1,25 @@
+{
+  "version": "0.1",
+  "types": [],
+  "rust": {
+    "source": "host.rs",
+    "lockfile": "Cargo.lock",
+    "modules": { "words": "words.rs" }
+  },
+  "primitives": [{
+    "name": "summarize",
+    "parameters": [{ "name": "text", "type": "string", "mode": "borrow" }],
+    "outcomes": [
+      { "name": "measured", "fields": [
+        { "name": "characters", "type": "u32" },
+        { "name": "lines", "type": "u32" },
+        { "name": "words", "type": "map<string,u32>" }
+      ] },
+      { "name": "blank", "fields": [] },
+      { "name": "too_large", "fields": [] }
+    ],
+    "effects": [],
+    "returns": true,
+    "rust": { "execution": "immediate" }
+  }]
+}

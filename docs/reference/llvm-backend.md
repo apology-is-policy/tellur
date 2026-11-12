@@ -25,6 +25,7 @@ Compiler 0.262 adds the private retained supervision bridge; 0.263 admits genera
 retained named supervision. Compiler 0.267 adds retained lexical scopes and supervised recovery.
 Compiler 0.269 adds retained constructors whose children suspend.
 Compiler 0.270 adds opt-in launch signal policies.
+Compiler 0.273 adds synchronous scalar/collection Rust source adapters.
 The default remains `--backend rust`. Both start from the same checked program;
 backend selection does not relax ownership, origins, outcomes or path rules.
 
@@ -58,8 +59,9 @@ are supported since 0.256; control cancellation requests since 0.257. Scripted
 async host operations share those task forms since 0.258. Retained loops are supported
 since 0.260; task sets since 0.261; named supervision since 0.263; lexical scopes
 and supervised recovery since 0.267; constructors whose children suspend since
-0.269; opt-in launch signal policies since 0.270. Rust adapters remain outside
-that profile. Admission checks all checked
+0.269; opt-in launch signal policies since 0.270. Synchronous scalar/collection
+Rust adapters are admitted since 0.273; resource and polled Rust adapters remain
+outside that profile. Admission checks all checked
 regions, including unused helpers. Unsupported programs receive `E_BACKEND`
 before the backend creates its output directory or files; ordinary checking may
 still succeed, and the Rust backend remains available.
@@ -1279,3 +1281,40 @@ a process-wide mutex through driver cleanup, and LLVM target registration runs
 once. Eight concurrent workers build and execute independent programs at O0/O2.
 Sequential LLVM106 evidence is retained with exact serialization-only code guards
 and before/after emitted-object comparisons; the failed run remains recorded.
+
+
+## Typed synchronous source adapters (0.273)
+
+`--backend llvm` admits manifests whose Rust bindings all use the existing data
+profile: `unit`, `bool`, `u32`, `string`, `bytes`, vectors and maps of supported
+values. Map keys remain string, u32 or bool. Bindings must be synchronous and use
+`immediate` or `blocking`; neither adds suspension or a task handoff. Calls compose
+with supported synchronous and retained controls. Resource configurations and
+polled bindings remain rejected with `E_BACKEND` before output creation, including
+unused bindings.
+
+The compiler generates the same `rust_api` outcome enums and exact typed function
+checks used by source adapters. Explicit source and module paths resolve against
+the manifest. All declared operations must have matching Rust functions, even if
+Tellur never calls them. Compilation uses the saved `lock-native` lock and explicit
+dependencies with `--locked`; it does not refresh dependencies automatically.
+
+One independent static archive contains user code, typed codecs and C callbacks.
+The linked LLVM module supplies a complete operation table to version2 launch.
+Callbacks decode runtime-owned handles into local Rust values, form call-duration
+borrowed views, invoke the typed function once and encode only its selected outcome.
+The precompiled runtime validates one-use handles and owns live/scripted dispatch,
+events, fuel and result checking. Rust containers and allocator ownership remain
+inside their own archive. Foreign panics remain fatal; source faults and driver
+failures retain their existing classifications.
+
+The content-addressed cache includes source/modules, generated codecs, dependency
+TOML and lock, manifest contracts, target, optimization and Rust toolchain identity.
+Cargo still checks freshness on repeated builds. Ordinary LLVM programs continue
+to use version1 launch and do not compile per-program Rust. The
+[text summary example](../../examples/text_summary/README.md) demonstrates borrowed
+Unicode text, an explicit Rust module and an owned sorted word-count map.
+
+This completes synchronous data admission, not full adapter parity. Resource
+lifecycle, polled operations/readiness and application/whole-suite parity remain
+before the default changes. Rust stays the default.

@@ -3,6 +3,9 @@
 //! operation goes through the runtime's private C ABI; guards are native branches.
 use super::*;
 
+#[path = "llvm_adapter.rs"]
+mod adapters;
+
 const DECLARATIONS: &str = r#"
 declare i32 @tellur_rt_v1_launch(ptr, i64, ptr, i64)
 declare void @tellur_rt_v4_run_entry(ptr, ptr, i64, i64, ptr, i64, i64, ptr, i64, i64)
@@ -234,7 +237,7 @@ fn primitive_supported(
         .find(|p| p.name == name)
         .is_some_and(|p| {
             p.asynchronous == asynchronous
-                && p.rust.is_none()
+                && (!asynchronous || p.rust.is_none())
                 && p.returns
                 && p.parameters
                     .iter()
@@ -1915,7 +1918,7 @@ impl Emitter {
 
 impl CheckedProgram {
     /// Builds only the admitted synchronous/retained subset. The cached Rust staticlib is
-    /// transitional tooling; no per-program Rust is generated or compiled.
+    /// transitional tooling. Only source adapters require per-program Rust.
     pub fn build_llvm(&self, entry: &str, output: &Path, opt: u8) -> Result<NativeBuild> {
         let source = self.llvm_source(entry)?;
         self.build_llvm_source(source, output, opt)
@@ -1939,7 +1942,14 @@ impl CheckedProgram {
         fs::write(&generated, &source).map_err(|e| error(e.to_string()))?;
         let llvm = PathBuf::from(format!("{}.ll", output.display()));
         fs::write(&llvm, &source).map_err(|e| error(e.to_string()))?;
-        let runtime = abi_library(&native_target_dir(&output))?;
+        let target = native_target_dir(&output);
+        let adapter = self
+            .manifest()
+            .rust
+            .as_ref()
+            .map(|_| adapters::library(self.manifest(), &target, opt))
+            .transpose()?;
+        let runtime = abi_library(&target)?;
         let triple = format!("arm64-apple-macosx{}.0", crate::llvm::MACOS_MINIMUM);
         let bytes =
             crate::llvm::compile(&[(generated.display().to_string(), source)], &triple, opt)
@@ -1955,7 +1965,7 @@ impl CheckedProgram {
                 "cannot find the macOS SDK; bundled link packs follow at station single",
             ));
         }
-        crate::llvm::link(&[
+        let mut arguments = vec![
             "ld64.lld".into(),
             "-arch".into(),
             "arm64".into(),
@@ -1970,8 +1980,11 @@ impl CheckedProgram {
             output.display().to_string(),
             object.display().to_string(),
             runtime.display().to_string(),
-        ])
-        .map_err(error)?;
+        ];
+        if let Some(adapter) = adapter {
+            arguments.push(adapter.display().to_string());
+        }
+        crate::llvm::link(&arguments).map_err(error)?;
         Ok(NativeBuild {
             executable: output,
             llvm,
@@ -1984,9 +1997,8 @@ impl CheckedProgram {
         if self.region(entry).is_none() {
             return Err(error(format!("unknown entry region {entry}")));
         }
-        if self.manifest().rust.is_some() {
-            return Err(error("LLVM backend does not yet support Rust adapters"));
-        }
+        crate::rust_host::static_adapter::validate_profile(self.manifest())
+            .map_err(|e| error(e.message))?;
         let entries = self.executable_entries(entry)?;
         let mut types = admitted_types(self.manifest(), true);
         // Exact producer-indexed cold, started and set identities. Frontend local
@@ -2124,7 +2136,17 @@ impl CheckedProgram {
             callbacks.join(", ")
         )
         .unwrap();
-        emitter.line(format!("define i32 @main() {{\nentry:\n%status = call i32 @tellur_rt_v1_launch(ptr {config}, i64 {len}, ptr @entries, i64 {count})\nret i32 %status\n}}"));
+        let launch = if self.manifest().rust.is_some() {
+            adapters::table(self.manifest(), &mut emitter);
+            format!(
+                "@tellur_rt_v2_launch(ptr {config}, i64 {len}, ptr @entries, i64 {count}, ptr @adapter_table)"
+            )
+        } else {
+            format!("@tellur_rt_v1_launch(ptr {config}, i64 {len}, ptr @entries, i64 {count})")
+        };
+        emitter.line(format!(
+            "define i32 @main() {{\nentry:\n%status = call i32 {launch}\nret i32 %status\n}}"
+        ));
         Ok(format!(
             "; Tellur direct LLVM backend; private runtime ABI v1\n{DECLARATIONS}\n{}\n{}\n{}",
             emitter.frame_types, emitter.globals, emitter.body

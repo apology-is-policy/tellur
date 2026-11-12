@@ -1,8 +1,8 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.272.0 -->
+<!-- tellur-reference-version: 0.273.0 -->
 
-This manual describes **compiler 0.272.0**, including the current ownership model,
+This manual describes **compiler 0.273.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -2980,7 +2980,7 @@ General expression-type hover remains unsupported.
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and broader spawn payloads (anonymous contracts and reference-bearing collections) remain planned; they are not executable features of 0.272.0.
+and broader spawn payloads (anonymous contracts and reference-bearing collections) remain planned; they are not executable features of 0.273.0.
 ## Contingency and supervised boundaries
 
 The [contingency reference](reference/contingency.md) specifies `@contingent`,
@@ -3087,3 +3087,8 @@ Compiler 0.272 adds private [adapter launch registration](reference/llvm-backend
 A complete synchronous callback table is validated before launch and retained per
 Host. LLVM source admission remains gated until generated typed adapter archives
 are linked; resources and polled operations/readiness follow. Rust stays default.
+
+Compiler 0.273 admits [typed synchronous Rust adapters](reference/llvm-backend.md#typed-synchronous-source-adapters-0273)
+on the opt-in LLVM backend. Scalar/string/bytes/vector/map values cross a private
+C protocol; explicit modules, exact signatures and locked dependencies are preserved.
+Opaque resources and polled operations still require the default Rust backend.

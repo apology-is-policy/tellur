@@ -11,6 +11,9 @@ use std::{
     path::PathBuf,
 };
 
+#[cfg(feature = "llvm")]
+pub(crate) mod static_adapter;
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Configuration {
