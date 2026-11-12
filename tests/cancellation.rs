@@ -601,3 +601,64 @@ fn run_stopped(p: &CheckedProgram, s: &Scenario) -> Vec<Event> {
     assert_eq!(native_run(p, s), serde_json::to_value(&reference).unwrap());
     reference.events
 }
+
+const HOST_ONLY_SIGNALS: &str = r#"
+async control work() exits done {
+    delta await tick("request") {ticked {string text}=>ready,cancelled=>stopped}
+    [ready]:emit(text);[stopped]:emit("stopped");[entry]:exit done;
+}
+control main() exits done {forward run work();}
+"#;
+fn signal_only_program() -> CheckedProgram {
+    let mut config: serde_json::Value =
+        serde_json::from_str(&manifest_json(serde_json::json!([]))).unwrap();
+    config["launch"] = serde_json::json!({"main":{"signals":"cancel"}});
+    compile(
+        HOST_ONLY_SIGNALS,
+        Manifest::from_json(&config.to_string()).unwrap(),
+    )
+    .unwrap()
+}
+#[test]
+fn launch_signals_cancel_host_only_programs_at_idle_without_yield_or_spawn() {
+    let p = signal_only_program();
+    for name in ["SIGINT", "SIGTERM"] {
+        for calls in [vec![signal(name)], vec![tick("pending", 5), signal(name)]] {
+            let s = scenario(calls);
+            assert_eq!(run(&p, &s), ["stopped"]);
+            let expanded = p.expanded("main").unwrap();
+            assert_eq!(
+                native_run(&expanded, &s),
+                serde_json::to_value(expanded.run(&s).unwrap()).unwrap()
+            );
+        }
+    }
+}
+#[test]
+fn launch_signal_errors_in_host_only_programs_precede_pending_completion() {
+    let p = signal_only_program();
+    for calls in [
+        vec![tick("pending", 5), signal("SIGTERM"), signal("SIGINT")],
+        vec![tick("pending", 5), signal("UNKNOWN")],
+    ] {
+        let s = scenario(calls);
+        let expected = p.run(&s).unwrap_err();
+        assert_eq!(expected.code, "E_DRIVER");
+        for p in [p.clone(), p.expanded("main").unwrap()] {
+            let binary = native(&p);
+            let file = binary.with_extension("signals.json");
+            std::fs::write(&file, serde_json::to_vec(&s).unwrap()).unwrap();
+            let out = Command::new(binary)
+                .arg("--scenario")
+                .arg(file)
+                .output()
+                .unwrap();
+            assert!(!out.status.success());
+            assert!(out.stdout.is_empty());
+            assert!(
+                String::from_utf8_lossy(&out.stderr).contains(&expected.message),
+                "{out:?} vs {expected:?}"
+            );
+        }
+    }
+}

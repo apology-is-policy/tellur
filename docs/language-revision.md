@@ -1858,3 +1858,34 @@ no checker, ownership, origin, fault, cancellation or scheduling semantics chang
 This completes the agreed retained-constructor slice. Signals are next, followed
 by parity/default, adapters, single binary, target packs and retirement. Rust stays
 default; no language-design question is pending.
+
+
+## B1.4u — LLVM launch signals and native idle delivery (0.270)
+
+The LLVM admission gate for launch signal policies is removed after original,
+expanded, O0/O2, fuel and live-process parity proofs. Existing launch metadata,
+Host policy and source scheduler deliver root cancellation, wake observing hosts
+and preserve ordinary joins, task-set drains, origins, constructor destinations
+and source-fault recovery. First/second/default signal dispositions are unchanged.
+
+The new no-yield/no-spawn matrices exposed the Rust sequential driver's documented
+idle-signal gap: LLVM/reference cancelled the pending host, while Rust completed
+it and left the signal unconsumed. Opted-in native programs now select the original
+source scheduler regardless of explicit scheduling instructions. Two default
+regressions preserve this correction; the original Machine, ABI, ownership and
+cancellation semantics remain unchanged. This is a backend parity repair, not a
+new language fork or implicit task handoff.
+
+Six new LLVM families cover before-start and idle signals, pending sets, later
+cold/spawned children, nonobserving operations, exclusive caller loans, constructors
+and caller recovery, selected-entry policies, synchronous entries and driver-error
+priority. Bounded child-only live signals cover first SIGINT/SIGTERM, default
+termination and immediate second-signal termination. The quota harness adds an
+idle root-signal/second-signal mode, bringing it to sixteen at quotas1/3/MAX.
+
+Native187 units, cancellation10, exit-codes9, manual3, LLVM106, quota2 and both
+all-target checks refresh. Unchanged frontend125 units, private ABI/runtime and
+remaining default suites retain guarded evidence. A runnable source/manifest/
+scenario and the compiler/LSP/VSIX workflow accompany the checkpoint. Rust remains
+default. Next audit full parity, implement remaining agreed adapter dependencies
+before any default flip, then single binary, target packs and retirement.

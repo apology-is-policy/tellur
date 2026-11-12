@@ -733,7 +733,7 @@ outcome result {@exit 0 done {option<string> value}}
         // These reused language fixtures declare outcomes without CLI policy.
         let mut manifest: Json =
             serde_json::from_str(&fs::read_to_string(&f.manifest).unwrap()).unwrap();
-        manifest["launch"]["main"] = json!({"exit_codes":{"done":0}});
+        manifest["launch"]["main"]["exit_codes"] = json!({"done":0});
         fs::write(&f.manifest, manifest.to_string()).unwrap();
         let checked = compile_file(
             &f.source,
@@ -2178,7 +2178,7 @@ contingency(string reason){report(reason);emit(context);terminate;}
     fn lexical_matrix(f: &Fixture, scenarios: &[Json], fuels: &[Option<usize>]) {
         let mut manifest: Json =
             serde_json::from_str(&fs::read_to_string(&f.manifest).unwrap()).unwrap();
-        manifest["launch"]["main"] = json!({"exit_codes":{"done":0}});
+        manifest["launch"]["main"]["exit_codes"] = json!({"done":0});
         fs::write(&f.manifest, manifest.to_string()).unwrap();
         let checked = compile_file(
             &f.source,
@@ -4714,6 +4714,382 @@ control main(bool selected) exits done {forward run session(selected);}"#,
             &(0..=50).map(Some).chain([None]).collect::<Vec<_>>());
     }
 
+    fn launch_signal(name: &str) -> Json {
+        json!({"operation":"$signal","outcome":name,"fields":[],"waits":0})
+    }
+    fn signal_fixture(source: &str, policy: bool) -> Fixture {
+        let f = host_fixture(source);
+        let mut manifest: Json =
+            serde_json::from_str(&fs::read_to_string(&f.manifest).unwrap()).unwrap();
+        manifest["launch"]["main"] = json!({"exit_codes":{"done":0}});
+        if policy {
+            manifest["launch"]["main"]["signals"] = json!("cancel");
+        }
+        fs::write(&f.manifest, manifest.to_string()).unwrap();
+        f
+    }
+    #[test]
+    fn frontend_launch_signals_cancel_pending_sets_and_before_first_host_start() {
+        let f = signal_fixture(
+            include_str!("../playground/llvm_launch_signals.tellur"),
+            true,
+        );
+        let mut scenarios = vec![];
+        for name in ["SIGINT", "SIGTERM"] {
+            scenarios.push(json!({"entry":"main","arguments":[],"calls":[launch_signal(name)]}));
+            let idle = json!({"entry":"main","arguments":[],"calls":[host_call("first",0),host_call("member",5),host_call("second",5),launch_signal(name)]});
+            let expected = successful_reference(&f, &idle);
+            assert_eq!(expected["outcome"], "done");
+            let emits = expected["events"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|e| e["kind"] == "emit")
+                .map(|e| e["message"].as_str().unwrap())
+                .collect::<Vec<_>>();
+            assert_eq!(emits, ["first", "member stopped", "stopping"]);
+            scenarios.push(idle);
+        }
+        lexical_matrix(
+            &f,
+            &scenarios,
+            &(0..=90).map(Some).chain([None]).collect::<Vec<_>>(),
+        );
+    }
+    #[test]
+    fn frontend_launch_signals_remain_sticky_for_later_children_and_do_not_interrupt_joins() {
+        let f = signal_fixture(
+            r#"
+async control worker(ref mutable string text) exits done {
+    yield;delta await tick("worker") {ticked {string reply}=>ready,cancelled=>stopped}
+    [ready]:deref text=reply;[stopped]:deref text="cancelled child";[entry]:exit done;
+}
+async control startup() exits done {
+    delta await tick("entry") {ticked {string reply}=>ready,cancelled=>stopped}
+    [ready]:emit(reply);[stopped]:emit("entry stopped");
+    [entry]:mutable string text="original";
+    auto cold=defer worker(borrow mutable text);
+    await cold;emit(borrow text);
+    auto active=spawn worker(borrow mutable text);
+    delta await active {done=>joined}
+    [joined]:emit(borrow text);
+    delta await tick("nonobserving") {ticked {string final_reply}=>completed}
+    [completed]:emit(final_reply);await worker(borrow mutable text);emit(text);exit done;
+}
+control main() exits done {forward run startup();}
+"#,
+            true,
+        );
+        let scenarios=["SIGINT","SIGTERM"].map(|name|json!({"entry":"main","arguments":[],"calls":[launch_signal(name),host_call("nonobserving completed",5)]}));
+        for scenario in &scenarios {
+            let expected = successful_reference(&f, scenario);
+            let emits = expected["events"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|e| e["kind"] == "emit")
+                .map(|e| e["message"].as_str().unwrap())
+                .collect::<Vec<_>>();
+            assert_eq!(
+                emits,
+                [
+                    "entry stopped",
+                    "cancelled child",
+                    "cancelled child",
+                    "nonobserving completed",
+                    "cancelled child"
+                ]
+            );
+        }
+        lexical_matrix(
+            &f,
+            &scenarios,
+            &(0..=80).map(Some).chain([None]).collect::<Vec<_>>(),
+        );
+    }
+    #[test]
+    fn frontend_launch_signals_preserve_constructor_destinations_and_caller_recovery() {
+        let f = signal_fixture(
+            r#"
+struct message {string text;constructor(bool fail) {
+    delta run tick("constructor") {ticked {string reply}=>ready,cancelled=>stopped}
+    [ready]:self.text=reply;[stopped]:self.text="constructor cancelled";
+    [entry]:delta fail {true=>bad,false=>good}[bad]:fault "constructor source fault";
+}}
+async control service(bool fail) exits done {
+    supervised loop again_request(mutable bool first=fail) {
+        bool broken=first;first=false;
+        fault boundary {auto value=message(broken);emit(value.text);exit done;}
+        contingency [] {emit(borrow @fault.message);recover again again_request;}
+    }
+}
+control main(bool fail) exits done {forward run service(fail);}
+"#,
+            true,
+        );
+        let scenarios=[false,true].map(|fail|json!({"entry":"main","arguments":[{"kind":"bool","value":fail}],"calls":[host_call("pending",5),launch_signal("SIGTERM")]}));
+        for scenario in &scenarios {
+            successful_reference(&f, scenario);
+        }
+        lexical_matrix(
+            &f,
+            &scenarios,
+            &(0..=80).map(Some).chain([None]).collect::<Vec<_>>(),
+        );
+    }
+    #[test]
+    fn frontend_launch_signals_use_the_selected_entry_policy_and_preserve_synchronous_entries() {
+        let f = signal_fixture(
+            r#"
+async control startup() exits done {
+    delta await tick("request") {ticked {string text}=>ready,cancelled=>stopped}
+    [ready]:emit(text);[stopped]:emit("stopped");[entry]:exit done;
+}
+control main() exits result {forward run startup();}
+control other() exits result {forward run startup();}
+control plain() exits result {emit("synchronous");exit done;}
+outcome result {@exit 0 done}
+"#,
+            true,
+        );
+        let scenarios = [
+            json!({"entry":"main","arguments":[],"calls":[launch_signal("SIGINT")]}),
+            json!({"entry":"other","arguments":[],"calls":[launch_signal("SIGINT")]}),
+            json!({"entry":"other","arguments":[],"calls":[host_call("ordinary",3)]}),
+            json!({"entry":"plain","arguments":[],"calls":[]}),
+            json!({"entry":"plain","arguments":[],"calls":[launch_signal("SIGTERM")]}),
+        ];
+        lexical_matrix(
+            &f,
+            &scenarios,
+            &(0..=26).map(Some).chain([None]).collect::<Vec<_>>(),
+        );
+        let path = f.root.join("policy.json");
+        fs::write(&path, scenarios[1].to_string()).unwrap();
+        let got = execute(&f.root.join("llvm-2"), &path, None);
+        assert!(!got.status.success());
+        assert!(String::from_utf8_lossy(&got.stderr).contains("declare launch.<entry>.signals"));
+        // Signal policy alone does not force a synchronous source into task frames.
+        let f = signal_fixture(
+            "control main() exits done {emit(\"plain\");exit done;}",
+            true,
+        );
+        lexical_matrix(
+            &f,
+            &[json!({"entry":"main","arguments":[],"calls":[]})],
+            &[None],
+        );
+        let ir = fs::read_to_string(f.root.join("llvm-2.ll")).unwrap();
+        assert!(!ir.contains("@async_controls ="));
+    }
+    #[test]
+    fn frontend_launch_signal_driver_errors_bypass_supervision_and_preserve_reports() {
+        let source = r#"
+async control work() exits done {
+    fault boundary {
+        delta await tick("request") {ticked {string text}=>ready,cancelled=>stopped}
+        [ready]:emit(text);[stopped]:emit("stopped");[entry]:exit done;
+    } contingency [] {emit("unexpected recovery");escalate;}
+}
+control main() exits done {forward run work();}
+"#;
+        for policy in [false, true] {
+            let f = signal_fixture(source, policy);
+            let scenarios = if policy {
+                vec![
+                    json!({"entry":"main","arguments":[],"calls":[launch_signal("SIGINT"),launch_signal("SIGTERM")]}),
+                    json!({"entry":"main","arguments":[],"calls":[host_call("pending",4),launch_signal("SIGTERM"),launch_signal("SIGINT")]}),
+                    json!({"entry":"main","arguments":[],"calls":[launch_signal("UNKNOWN")]}),
+                    json!({"entry":"main","arguments":[],"calls":[host_call("pending",4),launch_signal("UNKNOWN")]}),
+                    json!({"entry":"main","arguments":[],"calls":[host_call("ready",0),host_call("unused",0)]}),
+                ]
+            } else {
+                vec![json!({"entry":"main","arguments":[],"calls":[launch_signal("SIGTERM")]})]
+            };
+            lexical_matrix(
+                &f,
+                &scenarios,
+                &(0..=25).map(Some).chain([None]).collect::<Vec<_>>(),
+            );
+            for scenario in &scenarios {
+                let path = f.root.join("error.json");
+                fs::write(&path, scenario.to_string()).unwrap();
+                let out = execute(&f.root.join("llvm-2"), &path, None);
+                assert!(!out.status.success());
+                assert!(String::from_utf8_lossy(&out.stderr).contains("E_DRIVER"));
+                assert!(!String::from_utf8_lossy(&out.stdout).contains("unexpected recovery"));
+            }
+        }
+    }
+
+    #[test]
+    fn frontend_launch_signals_preserve_live_first_default_and_second_signal_dispositions() {
+        use std::io::{BufRead, Read};
+        use std::os::unix::process::ExitStatusExt;
+        use std::process::{Child, Stdio};
+        use std::time::{Duration, Instant};
+        struct OwnedChild(Option<Child>);
+        impl Drop for OwnedChild {
+            fn drop(&mut self) {
+                if let Some(child) = self.0.as_mut() {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                }
+            }
+        }
+        unsafe extern "C" {
+            fn waitpid(pid: i32, status: *mut i32, options: i32) -> i32;
+        }
+        let f = host_fixture(
+            r#"async control startup(string marker) exits stopped {
+    emit("signal test ready");
+    loop wait_marker {
+        yield;
+        delta open(clone(borrow marker)) {
+            opened { handle file } => ready,
+            not_found => absent,
+            denied => denied
+        }
+        [absent | denied]: again wait_marker;
+        [ready]:
+            delta close(move file) {
+                closed => closed,
+                failed { close_error problem } => failed
+            }
+        [failed]: drop(problem);
+        [closed | failed]:
+            delta await tick("after signal") {
+                ticked { string reply } => replied,
+                cancelled => cancelled
+            }
+        [replied]: emit(reply);
+            exit stopped;
+        [cancelled]: emit("cancelled by launch signal");
+            exit stopped;
+    }
+}
+control main(string marker) exits result {
+    forward run startup(marker);
+}
+outcome result {
+    @exit 0 stopped
+}
+"#,
+        );
+        for policy in [true, false] {
+            let mut manifest: Json =
+                serde_json::from_str(&fs::read_to_string(&f.manifest).unwrap()).unwrap();
+            manifest["launch"]["main"] = json!({"exit_codes":{"stopped":0}});
+            if policy {
+                manifest["launch"]["main"]["signals"] = json!("cancel");
+            }
+            fs::write(&f.manifest, manifest.to_string()).unwrap();
+            for expanded in [false, true] {
+                for opt in [0, 2] {
+                    build_pair(&f, expanded, opt);
+                    for backend in ["rust", "llvm"] {
+                        for mode in if policy {
+                            vec!["INT", "TERM", "second"]
+                        } else {
+                            vec!["INT", "TERM"]
+                        } {
+                            let marker = f.root.join("continue-signal");
+                            let _ = fs::remove_file(&marker);
+                            let child = Command::new(f.root.join(format!("{backend}-{opt}")))
+                                .arg(&marker)
+                                .stdout(Stdio::piped())
+                                .stderr(Stdio::piped())
+                                .spawn()
+                                .unwrap();
+                            let mut child = OwnedChild(Some(child));
+                            let stdout = child.0.as_mut().unwrap().stdout.take().unwrap();
+                            let (tx, rx) = std::sync::mpsc::channel();
+                            let reader = std::thread::spawn(move || {
+                                let mut reader = std::io::BufReader::new(stdout);
+                                let mut first = String::new();
+                                reader.read_line(&mut first).unwrap();
+                                let _ = tx.send(first.clone());
+                                reader.read_to_string(&mut first).unwrap();
+                                first
+                            });
+                            assert_eq!(
+                                rx.recv_timeout(Duration::from_secs(15)).unwrap(),
+                                "signal test ready\n"
+                            );
+                            let pid = child.0.as_ref().unwrap().id();
+                            let send = |name: &str| {
+                                assert!(
+                                    Command::new("/bin/kill")
+                                        .arg(format!("-{name}"))
+                                        .arg(pid.to_string())
+                                        .status()
+                                        .unwrap()
+                                        .success()
+                                );
+                            };
+                            if mode == "second" {
+                                send("STOP");
+                                let until = Instant::now() + Duration::from_secs(5);
+                                loop {
+                                    let mut status = 0;
+                                    let result = unsafe { waitpid(pid as i32, &mut status, 3) };
+                                    if result == pid as i32 {
+                                        assert_eq!(status & 0xff, 0x7f);
+                                        break;
+                                    }
+                                    assert_eq!(result, 0);
+                                    assert!(Instant::now() < until, "child did not stop");
+                                    std::thread::sleep(Duration::from_millis(1));
+                                }
+                                send("INT");
+                                send("TERM");
+                                send("CONT");
+                            } else {
+                                send(mode);
+                                if policy {
+                                    fs::write(&marker, "continue").unwrap();
+                                }
+                            }
+                            let until = Instant::now() + Duration::from_secs(15);
+                            loop {
+                                if child.0.as_mut().unwrap().try_wait().unwrap().is_some() {
+                                    break;
+                                }
+                                assert!(
+                                    Instant::now() < until,
+                                    "{backend}/{expanded}/{opt}/{policy}/{mode}: child did not exit"
+                                );
+                                std::thread::sleep(Duration::from_millis(2));
+                            }
+                            let output = child.0.take().unwrap().wait_with_output().unwrap();
+                            let stdout = reader.join().unwrap();
+                            assert!(output.stderr.is_empty(), "{output:?}");
+                            if !policy {
+                                assert_eq!(
+                                    output.status.signal(),
+                                    Some(if mode == "INT" { 2 } else { 15 })
+                                );
+                                assert_eq!(stdout, "signal test ready\n");
+                            } else if mode == "second" {
+                                assert!(
+                                    matches!(output.status.code(), Some(130 | 143)),
+                                    "{output:?}"
+                                );
+                                assert_eq!(stdout, "signal test ready\n");
+                            } else {
+                                assert!(output.status.success(), "{output:?}");
+                                assert_eq!(
+                                    stdout,
+                                    "signal test ready\ncancelled by launch signal\nstopped\n"
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     #[test]
     fn unsupported_checked_operations_create_no_build_outputs() {
         // Rust adapter host leaves remain gated through every supported task form.
@@ -4749,17 +5125,5 @@ control main(bool selected) exits done {forward run session(selected);}"#,
             assert!(!f.root.join("llvm-0.tellur-build").exists());
             assert!(!f.root.join("llvm-0.ll").exists());
         }
-        let f = Fixture::new(include_str!("../playground/hello.tellur"));
-        let mut manifest: Json =
-            serde_json::from_str(&fs::read_to_string(&f.manifest).unwrap()).unwrap();
-        manifest["launch"] = json!({"main": {"signals": "cancel"}});
-        fs::write(&f.manifest, manifest.to_string()).unwrap();
-        let out = f.command("llvm", 0).output().unwrap();
-        assert!(!out.status.success());
-        assert!(
-            String::from_utf8_lossy(&out.stderr)
-                .contains("does not yet support launch signal policies")
-        );
-        assert!(!f.root.join("llvm-0.tellur-build").exists());
     }
 }

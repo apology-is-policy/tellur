@@ -24,6 +24,7 @@ generated task sets with the existing completion-order and cancellation rules.
 Compiler 0.262 adds the private retained supervision bridge; 0.263 admits generated
 retained named supervision. Compiler 0.267 adds retained lexical scopes and supervised recovery.
 Compiler 0.269 adds retained constructors whose children suspend.
+Compiler 0.270 adds opt-in launch signal policies.
 The default remains `--backend rust`. Both start from the same checked program;
 backend selection does not relax ownership, origins, outcomes or path rules.
 
@@ -57,7 +58,8 @@ are supported since 0.256; control cancellation requests since 0.257. Scripted
 async host operations share those task forms since 0.258. Retained loops are supported
 since 0.260; task sets since 0.261; named supervision since 0.263; lexical scopes
 and supervised recovery since 0.267; constructors whose children suspend since
-0.269. Rust adapters remain outside that profile. Launch signal policies are also rejected. Admission checks all checked
+0.269; opt-in launch signal policies since 0.270. Rust adapters remain outside
+that profile. Admission checks all checked
 regions, including unused helpers. Unsupported programs receive `E_BACKEND`
 before the backend creates its output directory or files; ordinary checking may
 still succeed, and the Rust backend remains available.
@@ -1162,4 +1164,45 @@ initialization without publishing a result. Original and expanded LLVM builds at
 O0/O2 match the corresponding Rust/reference form across tested fuel cuts, host
 waits, cancellation, task sets and caller recovery. Quotas 1/3/unbounded additionally
 cover repeated constructor resumption and cancellation during host waits. Rust
-remains the default; launch signals and Rust adapters are still outside admission.
+remains the default; Rust adapters are still outside admission. Launch signal
+policies are supported since 0.270, as described below.
+
+
+## Launch signals (0.270)
+
+The LLVM backend accepts `launch.<entry>.signals = "cancel"`. The selected entry's
+policy governs each invocation. A first SIGINT or SIGTERM cancels the entry and
+all descendants, including children created later. Cancellation remains sticky,
+observing host operations select their existing `cancelled` alternative, and
+nonobserving operations and consuming joins complete normally. Task sets drain
+through ordinary outcomes. Existing ownership, origins, constructor destinations
+and caller supervision remain authoritative.
+
+Live launches install the original signal handler after argument validation. A
+second signal terminates immediately with status 128 plus the signal number,
+without cleanup. An entry without the policy keeps the operating system's default
+disposition. No new deadline or signal handler runs in source code. Rust adapters
+and their descriptor-based live I/O remain outside LLVM admission.
+
+Scenario `$signal` entries deliver before host start or at source-scheduler idle
+points. A missing policy, second signal or unknown signal produces the existing
+`E_DRIVER` failure; it bypasses source contingency. Fuel, source fault reports and
+cleanup agree with the corresponding original/expanded Rust/reference forms.
+Opted-in Rust programs now select that same scheduler even without `yield` or
+spawned tasks, closing the old sequential driver's idle-signal limitation. This
+changes driver selection, not the original Machine or cancellation rules.
+
+The [launch signal example](../../playground/llvm_launch_signals.tellur) cancels a
+pending accept and a waiting task-set member, then drains the set:
+
+```sh
+./bin/tellurc build playground/llvm_launch_signals.tellur playground/llvm_launch_signals.manifest.json --backend llvm --out /tmp/tellur-signals
+/tmp/tellur-signals --scenario playground/llvm_launch_signals.scenario.json
+```
+
+It completes with `done` after emitting `first`, `member stopped`, and `stopping`.
+The regression matrix also covers cancellation before host start, later cold and
+spawned children, exclusive caller origins, yielded constructor work and caller
+recovery. Live child-process proofs cover first SIGINT/SIGTERM, default disposition
+and immediate second-signal termination at O0/O2 in both lowering forms. Rust
+remains the default pending the full parity gate.

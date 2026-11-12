@@ -815,7 +815,16 @@ impl CheckedProgram {
                 _ => false,
             })
         }
-        let driver = if self.regions().any(|r| schedules(&r.code)) {
+        // An opted-in launch must observe signals while its only host operation
+        // waits, even when the source has no yield or spawned task. Use the same
+        // idle/cancellation driver as the reference and LLVM executors.
+        let driver = if self.regions().any(|r| schedules(&r.code))
+            || self
+                .manifest()
+                .launch
+                .values()
+                .any(|entry| entry.signals.is_some())
+        {
             "run_source_entry"
         } else {
             "run_entry"

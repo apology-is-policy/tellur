@@ -1,0 +1,45 @@
+{
+  "entry": "main",
+  "arguments": [],
+  "calls": [
+    {
+      "operation": "tick",
+      "outcome": "ticked",
+      "fields": [
+        {
+          "kind": "string",
+          "value": "first"
+        }
+      ],
+      "waits": 0
+    },
+    {
+      "operation": "tick",
+      "outcome": "ticked",
+      "fields": [
+        {
+          "kind": "string",
+          "value": "member"
+        }
+      ],
+      "waits": 5
+    },
+    {
+      "operation": "tick",
+      "outcome": "ticked",
+      "fields": [
+        {
+          "kind": "string",
+          "value": "second"
+        }
+      ],
+      "waits": 5
+    },
+    {
+      "operation": "$signal",
+      "outcome": "SIGTERM",
+      "fields": [],
+      "waits": 0
+    }
+  ]
+}

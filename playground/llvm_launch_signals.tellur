@@ -1,0 +1,44 @@
+async control member(string label) exits done {
+    delta await tick(move label) {
+        ticked { string result } => ticked,
+        cancelled => cancelled
+    }
+
+    [ticked]:
+        emit(result);
+        exit done;
+    [cancelled]:
+        emit("member stopped");
+        exit done;
+}
+async control serve() exits done {
+    tasks<member> active = tasks();
+    spawn member("member") into active;
+    loop accept_next(bool stopping = false, tasks<member> members = move active) {
+        delta (stopping) {
+            true => draining,
+            false => accepting
+        }
+        [draining]:
+            delta await next members {
+                done => joined,
+                empty => drained
+            }
+        [joined]: again accept_next(stopping, members);
+        [drained]: exit done;
+        [accepting]:
+            delta await tick("accept") {
+                ticked { string label } => accepted,
+                cancelled => cancelled
+            }
+        [accepted]:
+            emit(label);
+            again accept_next(stopping, members);
+        [cancelled]:
+            emit("stopping");
+            again accept_next(true, members);
+    }
+}
+control main() exits done {
+    forward run serve();
+}

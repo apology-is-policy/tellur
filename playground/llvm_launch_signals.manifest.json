@@ -1,0 +1,40 @@
+{
+  "version": "0.1",
+  "types": [],
+  "primitives": [
+    {
+      "name": "tick",
+      "async": true,
+      "parameters": [
+        {
+          "name": "label",
+          "type": "string",
+          "mode": "consume"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "ticked",
+          "fields": [
+            {
+              "name": "label",
+              "type": "string"
+            }
+          ]
+        }
+      ],
+      "effects": [
+        "clock.tick"
+      ],
+      "returns": true
+    }
+  ],
+  "launch": {
+    "main": {
+      "exit_codes": {
+        "done": 0
+      },
+      "signals": "cancel"
+    }
+  }
+}

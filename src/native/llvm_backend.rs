@@ -1987,11 +1987,6 @@ impl CheckedProgram {
         if self.manifest().rust.is_some() {
             return Err(error("LLVM backend does not yet support Rust adapters"));
         }
-        if self.manifest().launch.values().any(|c| c.signals.is_some()) {
-            return Err(error(
-                "LLVM backend does not yet support launch signal policies",
-            ));
-        }
         let entries = self.executable_entries(entry)?;
         let mut types = admitted_types(self.manifest(), true);
         // Exact producer-indexed cold, started and set identities. Frontend local
@@ -2223,7 +2218,7 @@ mod tests {
             .unwrap()
             .extend(host["primitives"].as_array().unwrap().iter().cloned());
         let manifest = crate::manifest::Manifest::from_json(&manifest.to_string()).unwrap();
-        for mode in 0..15 {
+        for mode in 0..16 {
             let source = r#"
 async control child(bool fail, ref mutable string text) exits done faults {
     yield;delta fail {true=>bad,false=>good}
@@ -2384,7 +2379,7 @@ outcome result {@exit 0 done}
             };
             let source = if mode == 13 {
                 include_str!("../../playground/llvm_async_constructors.tellur").to_owned()
-            } else if mode == 14 {
+            } else if mode == 14 || mode == 15 {
                 r#"
 struct message {string text;constructor(string input,bool fail) {
  delta run tick(input) {ticked {string reply}=>ready,cancelled=>stopped}
@@ -2406,7 +2401,22 @@ outcome result {@exit 0 done}
             } else {
                 source
             };
-            let checked = crate::compile(&source, manifest.clone()).unwrap();
+            let source = if mode == 15 {
+                source.replace("yield;cancel pending;", "yield;")
+            } else {
+                source
+            };
+            let mut selected_manifest = manifest.clone();
+            if mode == 15 {
+                selected_manifest.launch.insert(
+                    "main".into(),
+                    crate::launch::EntryConfiguration {
+                        exit_codes: Default::default(),
+                        signals: Some(crate::launch::SignalPolicy::Cancel),
+                    },
+                );
+            }
+            let checked = crate::compile(&source, selected_manifest).unwrap();
             for expanded in [false, true] {
                 let program = if expanded {
                     checked.expanded("main").unwrap()
@@ -2423,7 +2433,7 @@ outcome result {@exit 0 done}
                     let mut expected = vec![];
                     for fail in [false, true] {
                         let scenario = directory.join(format!("{fail}.json"));
-                        fs::write(&scenario,serde_json::json!({"entry":"main","arguments":[{"kind":"bool","value":fail}],"calls":if mode == 12 {vec![serde_json::json!({"operation":"tick","outcome":"ticked","fields":[{"kind":"string","value":"quota lexical"}],"waits":7});if fail {2} else {1}]} else if (3..=4).contains(&mode) || mode == 10 || mode == 14 {vec![serde_json::json!({"operation":"tick","outcome":"ticked","fields":[{"kind":"string","value":"quota"}],"waits":7})]} else {vec![]}}).to_string()).unwrap();
+                        fs::write(&scenario,serde_json::json!({"entry":"main","arguments":[{"kind":"bool","value":fail}],"calls":if mode==15 {let mut calls=vec![serde_json::json!({"operation":"tick","outcome":"ticked","fields":[{"kind":"string","value":"quota signal"}],"waits":7}),serde_json::json!({"operation":"$signal","outcome":"SIGTERM","fields":[],"waits":0})];if fail {calls.push(serde_json::json!({"operation":"$signal","outcome":"SIGINT","fields":[],"waits":0}));}calls} else if mode == 12 {vec![serde_json::json!({"operation":"tick","outcome":"ticked","fields":[{"kind":"string","value":"quota lexical"}],"waits":7});if fail {2} else {1}]} else if (3..=4).contains(&mode) || mode == 10 || mode == 14 {vec![serde_json::json!({"operation":"tick","outcome":"ticked","fields":[{"kind":"string","value":"quota"}],"waits":7})]} else {vec![]}}).to_string()).unwrap();
                         for fuel in 0..=if mode >= 5 { 64 } else { 36 } {
                             let out = Command::new(&rust)
                                 .arg("--scenario")

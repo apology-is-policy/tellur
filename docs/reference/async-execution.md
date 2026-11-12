@@ -1326,10 +1326,12 @@ starts, or when no task can run. Both executors deliver it at the same point. If
 the entry has no `signals` policy, or the signal is the second one, the run ends
 with an `E_DRIVER` error naming the termination status.
 
-Two limitations remain. Native executables without source tasks (the sequential
-driver) do not deliver scripted signals at idle points, only before a host
-operation starts. A live signal that arrives while a polled adapter waits only for a
-delay, without a descriptor, is noticed when that delay ends.
+Since 0.270, both native backends select the existing source scheduler whenever a
+launch signal policy is present. Programs that only await a host operation now
+receive scripted signals at idle points too; the earlier Rust sequential-driver
+gap is closed. The LLVM backend supports the same policy and existing scripted
+host profile. A live signal that arrives while a polled Rust adapter waits only
+for a delay, without a descriptor, is still noticed when that delay ends.
 
 ## Local cold tasks
 

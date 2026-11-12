@@ -46,9 +46,6 @@ fn libraries_need_no_status_but_executables_require_every_declared_alternative()
 #[test]
 fn maintained_playgrounds_declare_complete_executable_contracts() {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let manifest =
-        Manifest::from_json(&fs::read_to_string(root.join("playground/manifest.json")).unwrap())
-            .unwrap();
     let mut pending = vec![root.join("playground")];
     let mut checked = 0;
     while let Some(directory) = pending.pop() {
@@ -61,7 +58,22 @@ fn maintained_playgrounds_declare_complete_executable_contracts() {
                     pending.push(path);
                 }
             } else if path.extension().is_some_and(|e| e == "tellur") {
-                let p = compile_file(&path, manifest.clone()).unwrap();
+                // Examples may declare their own host/launch contract. Resolve the
+                // same per-file/nearest-directory manifest as their documented run.
+                let sibling = path.with_extension("manifest.json");
+                let manifest_path = if sibling.exists() {
+                    sibling
+                } else {
+                    path.parent()
+                        .unwrap()
+                        .ancestors()
+                        .map(|directory| directory.join("manifest.json"))
+                        .find(|candidate| candidate.exists())
+                        .unwrap()
+                };
+                let manifest =
+                    Manifest::from_json(&fs::read_to_string(manifest_path).unwrap()).unwrap();
+                let p = compile_file(&path, manifest).unwrap();
                 if p.region("main").is_some() {
                     p.native_source("main")
                         .unwrap_or_else(|e| panic!("{}: {e}", path.display()));

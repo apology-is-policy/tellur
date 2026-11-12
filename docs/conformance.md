@@ -6781,3 +6781,28 @@ compiler/LSP/VSIX, isolated editor, package/install and filtered backup checks
 accompany the checkpoint. Exact evidence is recorded in
 `work/tellur-0.269-verification.json`. Source constructor isolation/recovery and
 faulting with unresolved builtin resource obligations remain rejected.
+
+
+## 0.270 — LLVM launch signals and native idle delivery (B1.4u)
+
+Six LLVM test families compare original/expanded O0/O2 builds with Rust/reference
+across fuel cuts for first/second/unknown signals, pending hosts and sets, later
+children, nonobserving work, joins, origins, constructors/recovery and selected
+entries. Live owned-child tests cover first SIGINT/SIGTERM, default disposition and
+second-signal status130/143 with readiness/marker handshakes and bounded cleanup.
+Two default cancellation regressions cover opted-in programs without yield/spawn;
+the Rust driver now observes idle signals through the original source scheduler.
+No runtime/ABI/checker semantic rule changes.
+
+Fresh checks: native187 units, cancellation10/exit-codes9/manual3, LLVM106 and quota2
+with sixteen modes at quotas1/3/MAX; default/feature all-target checks and fmt/diff.
+Unchanged frontend125 and remaining default integration evidence is reused with
+input guards. Inventory2530. Baseline147/current148, smoke144, Node47, isolated
+editor, nine package/install payloads and filtered backup885 complete the release
+workflow. Exact evidence: `work/tellur-0.270-verification.json`. Rust stays default;
+unsupported live Rust adapters remain gated pending the agreed next dependency.
+
+The refreshed playground exit-contract audit now resolves each example's per-file
+or nearest-directory manifest. Its previous shared-manifest assumption predated
+the host examples and failed on their async signatures; the failing log is retained.
+Passed cancellation evidence is reused while the changed audit and manual rerun.
