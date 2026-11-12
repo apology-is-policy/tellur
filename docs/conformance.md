@@ -6704,3 +6704,21 @@ integration evidence is reused. Both all-target checks, source baselines, releas
 smokes, compiler/LSP/VSIX and isolated editor/package/install checks accompany the
 protected-file-excluding backup. Exact evidence: `work/tellur-0.265-verification.json`.
 No full-default-suite rerun is claimed.
+
+
+## 0.266 — Compiled lexical/loop registration (B1.4q)
+
+Nine new tests verify versioned C metadata preflight, stable registry ownership,
+concurrent/repeated launches and capture preservation on invalid entry requests.
+Registered scope/loop matrices compare original continuations for fuel0..35/40,
+quotas1/3/unbounded and caller/arena roots, including borrowed children, owned
+buffers, physical facts, nested/secondary faults, host readiness/errors and named
+work settlement. The complete native-host suite refreshes all existing private
+runtime cases. LLVM and feature quota suites verify the preserved v2 entry path.
+
+Ordinary native187 models and frontend125 units are reused from0.265: their
+execution/runtime/generator/test inputs are unchanged, and they do not call the
+changed ABI registration. Both all-target builds compile the modified runtime.
+Selected integration suites, source baselines, release smokes, compiler/LSP/VSIX,
+isolated editor/package/install and filtered backup accompany this checkpoint.
+Exact evidence: `work/tellur-0.266-verification.json`. No full-suite rerun is claimed.

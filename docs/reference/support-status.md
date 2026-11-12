@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.265.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.266.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -60,9 +60,10 @@ Set captures/results stay owned and reference-free. Compiler 0.263 admits retain
 named supervision through the 0.262 work/handler bridge, including declaration-ordered
 retention and administrative settlement. Retained lexical scopes/recovery, suspending
 constructors, Rust adapters and launch signals remain gated. The private 0.264
-lexical bridge preserves same-frame handlers across suspension; loop/recovery and
-generated registration are still required before source admission. The private
-0.265 bridge now proves loop/recovery coordination; generated registration is next.
+lexical bridge preserves same-frame handlers across suspension. The private
+0.265 bridge proves loop/recovery coordination, and0.266 adds C-safe runtime
+registration. Emitting lexical states and descriptors is required before source
+admission.
 Unsupported checked programs fail with `E_BACKEND` before build
 outputs are created. Backend selection does not change language checking.
 
@@ -383,3 +384,9 @@ joining delivers the result without replacing the original caller diagnostic cha
 work remains an obligation through normal execution and retires after complete emergency
 unwind. This is internal runtime support; source `spawn`/`yield` remain unavailable. See
 [reference started-task joins](../async-execution.md#reference-started-task-joins-e1d2d2d).
+
+
+Compiler 0.266 adds version 3 runtime registration for retained lexical and loop
+metadata, including C ABI physical-fact reset callbacks. Existing generated code
+continues to use version 2. Retained lexical source admission awaits the emitter
+integration; Rust remains default. See [compiled scope registration](llvm-backend.md#compiled-lexical-and-loop-registration-0266).

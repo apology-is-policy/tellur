@@ -1,8 +1,8 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.265.0 -->
+<!-- tellur-reference-version: 0.266.0 -->
 
-This manual describes **compiler 0.265.0**, including the current ownership model,
+This manual describes **compiler 0.266.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -35,7 +35,8 @@ Retained lexical scopes/recovery, suspending constructors, launch signals and Ru
 adapters remain later LLVM slices. Compiler 0.264 adds private lexical
 scope coordination and lifecycle proof; it does not widen that source profile. Compiler 0.265
 proves private retained loop/recovery transfers through original scope cleanup;
-generated lexical registration remains pending.
+version 3 runtime registration follows in0.266. Emitted retained lexical recovery
+remains pending.
 
 Tellur is still experimental. When this manual and the compiler disagree, treat that
 as a bug to investigate, not a promise that either must remain unchanged. The
@@ -2979,7 +2980,7 @@ General expression-type hover remains unsupported.
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and broader spawn payloads (anonymous contracts and reference-bearing collections) remain planned; they are not executable features of 0.265.0.
+and broader spawn payloads (anonymous contracts and reference-bearing collections) remain planned; they are not executable features of 0.266.0.
 ## Contingency and supervised boundaries
 
 The [contingency reference](reference/contingency.md) specifies `@contingent`,
@@ -3050,3 +3051,9 @@ and data correlations are forgotten. Equal protocols do not establish equivalent
 programs; impossible concrete histories may appear in the abstraction. Model or
 comparison budget exhaustion is an inconclusive error, never partial success.
 Read [protocol analysis](protocol-analysis.md) for symbols, residual fields and limits.
+
+
+Compiler 0.266 adds version 3 runtime registration for retained lexical and loop
+metadata, including C ABI physical-fact reset callbacks. Existing generated code
+continues to use version 2. Retained lexical source admission awaits the emitter
+integration; Rust remains default. See [compiled scope registration](reference/llvm-backend.md#compiled-lexical-and-loop-registration-0266).

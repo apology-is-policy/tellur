@@ -1745,3 +1745,25 @@ Generated C descriptor v2/emitter and source rules are unchanged. Next: generate
 lexical scope/recovery registration and work/handler/end states, then suspending
 constructors, signals, parity/default, adapters, single binary, target packs and
 retirement. Rust remains default; no language-design fork is introduced.
+
+
+## B1.4q — compiled lexical and loop metadata registration (0.266)
+
+An explicit version 3 C table and entry symbol extend retained control registration
+with lexical and loop descriptors. Version 2 remains compatible with its original
+stride. Immutable spans and state/slot roles validate before registry publication;
+module identity includes version, and entry preflight preserves captures on failure.
+The registry owns stable original boundary/loop controls and scope layouts across
+concurrent registration and repeated execution. Physical fact resets use the C
+calling convention explicitly. Original Machine cleanup and source semantics stay
+unchanged; no callbacks are cast between calling conventions.
+
+Nine new tests cover malformed metadata, atomic rejection, version separation,
+concurrent identity reuse and registered recovery under fuel/quotas. Runtime ABI and
+LLVM evidence refresh. The unchanged ordinary Rust execution models and frontend
+units retain their existing evidence, guarded by source identity checks.
+
+Registration and emitter integration are separate concrete checkpoints within the
+accepted plan. Next B1.4r emits v3 descriptors and body/handler/end states and admits
+retained lexical recovery. Then constructors, signals, parity/default, adapters,
+single binary, target packs and retirement. Rust stays default; no design fork.

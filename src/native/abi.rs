@@ -29,6 +29,9 @@ mod program_tests;
 #[path = "abi_resume_tests.rs"]
 mod resume_tests;
 #[cfg(test)]
+#[path = "abi_scope_registry_tests.rs"]
+mod scope_registry_tests;
+#[cfg(test)]
 #[path = "abi_scope_tests.rs"]
 mod scope_tests;
 #[cfg(test)]
@@ -1309,7 +1312,7 @@ pub struct InvocationLayout {
     pub children: &'static [InlineChild],
     pub scopes: Option<&'static ScopeLayout>,
 }
-/// Private immutable scope metadata; generated C registration follows separately.
+/// Immutable runtime scope metadata; the versioned C registry owns generated tables.
 pub struct ScopeLayout {
     pub states: u32,
     pub boundaries: &'static [&'static execution::BoundaryControl],
@@ -1320,8 +1323,9 @@ pub struct ScopeLayout {
 pub struct LoopLayout {
     pub control: &'static execution::LoopControl,
     pub parameters: &'static [usize],
-    pub reset_facts: unsafe fn(*mut u8),
+    pub reset_facts: FactResetCallback,
 }
+pub type FactResetCallback = unsafe extern "C" fn(*mut u8);
 pub struct InlineChild {
     pub offset: usize,
     pub layout: &'static InvocationLayout,
@@ -3021,6 +3025,209 @@ pub struct CompiledChild {
     pub control: usize,
     pub offset: usize,
 }
+/// Version 3 extends the control table through an explicit new entry symbol.
+/// A v2 table is never read with this stride. A null scopes pointer means that
+/// this control has no retained lexical or loop metadata.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct CompiledControlV3 {
+    pub control: CompiledControl,
+    pub scopes: *const CompiledScopes,
+}
+unsafe impl Sync for CompiledControlV3 {}
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct CompiledSlots {
+    pub data: *const usize,
+    pub count: usize,
+}
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct CompiledScopes {
+    pub states: u32,
+    pub boundaries: *const CompiledBoundary,
+    pub boundary_count: usize,
+    pub loops: *const CompiledLoop,
+    pub loop_count: usize,
+}
+unsafe impl Sync for CompiledScopes {}
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct CompiledBoundary {
+    pub name: *const u8,
+    pub name_len: usize,
+    pub body: u32,
+    pub handler: u32,
+    pub after: u32,
+    pub retained: CompiledSlots,
+    pub retire: CompiledSlots,
+    pub work: CompiledSlots,
+    pub handling: CompiledSlots,
+    pub fault_slot: usize,
+}
+unsafe impl Sync for CompiledBoundary {}
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct CompiledLoop {
+    pub target: usize,
+    pub body: u32,
+    pub after: u32,
+    pub locals: CompiledSlots,
+    pub parameters: CompiledSlots,
+    pub reset_facts: Option<FactResetCallback>,
+}
+unsafe impl Sync for CompiledLoop {}
+struct CompiledScopeData {
+    states: u32,
+    boundaries: Vec<execution::BoundaryControl>,
+    loops: Vec<execution::LoopControl>,
+    parameters: Vec<&'static [usize]>,
+    resets: Vec<FactResetCallback>,
+    boundary_refs: std::sync::OnceLock<Vec<&'static execution::BoundaryControl>>,
+    loop_layouts: std::sync::OnceLock<Vec<LoopLayout>>,
+    layout: std::sync::OnceLock<ScopeLayout>,
+}
+// These controls must always take Activation's retained ABI reset path. The
+// fallback cannot mutate source slots or manufacture a second recovery policy.
+fn unexpected_compiled_loop_reset(
+    _: &mut execution::Activation,
+    _: &mut Frames,
+    _: Vec<V>,
+) -> R<()> {
+    Err("E_NATIVE: compiled loop requires a retained ABI invocation".into())
+}
+fn valid_compiled_span<T>(data: *const T, count: usize, limit: usize) -> bool {
+    count <= limit
+        && count <= isize::MAX as usize / std::mem::size_of::<T>()
+        && (count == 0 || (!data.is_null() && data as usize % std::mem::align_of::<T>() == 0))
+}
+impl CompiledSlots {
+    unsafe fn read(self, slots: usize) -> R<&'static [usize]> {
+        if !valid_compiled_span(self.data, self.count, slots) {
+            return Err("E_NATIVE: invalid compiled scope slot span".into());
+        }
+        let values: &'static [usize] = unsafe { slice(self.data, self.count) };
+        if values
+            .iter()
+            .enumerate()
+            .any(|(i, slot)| *slot >= slots || values[..i].contains(slot))
+        {
+            return Err("E_NATIVE: invalid compiled scope slot set".into());
+        }
+        Ok(values)
+    }
+}
+impl CompiledScopeData {
+    // All references point into the caller's immutable module-static spans.
+    // Validate everything before the owning registry can publish any identity.
+    unsafe fn read(raw: &CompiledScopes, slots: usize) -> R<Self> {
+        if raw.states == 0
+            || !valid_compiled_span(raw.boundaries, raw.boundary_count, 65536)
+            || !valid_compiled_span(raw.loops, raw.loop_count, 65536)
+        {
+            return Err("E_NATIVE: invalid compiled scope table".into());
+        }
+        let mut boundaries = Vec::with_capacity(raw.boundary_count);
+        for boundary in unsafe { slice(raw.boundaries, raw.boundary_count) } {
+            if boundary.name_len == 0
+                || !valid_compiled_span(boundary.name, boundary.name_len, isize::MAX as usize)
+                || [boundary.body, boundary.handler, boundary.after]
+                    .iter()
+                    .any(|pc| *pc == 0 || *pc >= raw.states)
+                || boundary.body == boundary.handler
+                || boundary.body == boundary.after
+                || boundary.handler == boundary.after
+                || boundary.fault_slot >= slots
+            {
+                return Err("E_NATIVE: invalid compiled lexical states or name".into());
+            }
+            let name = unsafe { text(boundary.name, boundary.name_len)? };
+            let retained = unsafe { boundary.retained.read(slots)? };
+            let retire = unsafe { boundary.retire.read(slots)? };
+            let work = unsafe { boundary.work.read(slots)? };
+            let handling = unsafe { boundary.handling.read(slots)? };
+            if !handling.contains(&boundary.fault_slot)
+                || retained.iter().any(|slot| {
+                    retire.contains(slot) || work.contains(slot) || handling.contains(slot)
+                })
+            {
+                return Err("E_NATIVE: invalid compiled lexical slot roles".into());
+            }
+            boundaries.push(execution::BoundaryControl {
+                name,
+                body: boundary.body as usize,
+                handler: boundary.handler as usize,
+                after: boundary.after as usize,
+                retained,
+                retire,
+                work,
+                handling,
+                fault_slot: boundary.fault_slot,
+            });
+        }
+        let mut loops: Vec<execution::LoopControl> = Vec::with_capacity(raw.loop_count);
+        let mut parameters = Vec::with_capacity(raw.loop_count);
+        let mut resets = Vec::with_capacity(raw.loop_count);
+        for entry in unsafe { slice(raw.loops, raw.loop_count) } {
+            if entry.body == 0
+                || entry.after == 0
+                || entry.body == entry.after
+                || entry.body >= raw.states
+                || entry.after >= raw.states
+                || loops.iter().any(|control| control.target == entry.target)
+            {
+                return Err("E_NATIVE: invalid compiled loop states or target".into());
+            }
+            let locals = unsafe { entry.locals.read(slots)? };
+            let params = unsafe { entry.parameters.read(slots)? };
+            if params.iter().any(|slot| !locals.contains(slot)) {
+                return Err("E_NATIVE: compiled loop parameters must be iteration locals".into());
+            }
+            resets.push(
+                entry
+                    .reset_facts
+                    .ok_or("E_NATIVE: missing compiled fact reset")?,
+            );
+            parameters.push(params);
+            loops.push(execution::LoopControl {
+                target: entry.target,
+                body: entry.body as usize,
+                after: entry.after as usize,
+                locals,
+                reset: unexpected_compiled_loop_reset,
+            });
+        }
+        Ok(Self {
+            states: raw.states,
+            boundaries,
+            loops,
+            parameters,
+            resets,
+            boundary_refs: std::sync::OnceLock::new(),
+            loop_layouts: std::sync::OnceLock::new(),
+            layout: std::sync::OnceLock::new(),
+        })
+    }
+    fn layout(&'static self) -> &'static ScopeLayout {
+        self.layout.get_or_init(|| ScopeLayout {
+            states: self.states,
+            boundaries: self
+                .boundary_refs
+                .get_or_init(|| self.boundaries.iter().collect()),
+            loops: self.loop_layouts.get_or_init(|| {
+                self.loops
+                    .iter()
+                    .enumerate()
+                    .map(|(i, control)| LoopLayout {
+                        control,
+                        parameters: self.parameters[i],
+                        reset_facts: self.resets[i],
+                    })
+                    .collect()
+            }),
+        })
+    }
+}
 struct CompiledLayout {
     host: Option<HostLeaf>,
     cold_type: String,
@@ -3031,12 +3238,13 @@ struct CompiledLayout {
     align: usize,
     prefix: usize,
     children: Vec<CompiledChild>,
+    scopes: Option<CompiledScopeData>,
 }
 /// One generated module owns one process-lifetime registry. Repeated launch uses
 /// the same immutable descriptors. OnceLock owns all allocations; no per-launch
 /// leaked tables, forged static references, or user-program state lives here.
 struct CompiledRegistry {
-    identity: (usize, usize),
+    identity: (u32, usize, usize),
     initialized: std::sync::OnceLock<()>,
     controls: Vec<execution::Control>,
     compiled: Vec<CompiledLayout>,
@@ -3062,7 +3270,44 @@ impl CompiledRegistry {
         {
             return Err("E_NATIVE: incompatible compiled ABI control table".into());
         }
-        let identity = (table as usize, count);
+        let identity = (2, table as usize, count);
+        let table: &'static [CompiledControl] = unsafe { slice(table, count) };
+        unsafe { Self::register_table(registry, identity, table.iter().map(|raw| (raw, None))) }
+    }
+    /// Same lifetime and callback contract as register, with explicit v3 stride.
+    unsafe fn register_v3(
+        registry: &'static std::sync::OnceLock<Self>,
+        abi: u32,
+        table: *const CompiledControlV3,
+        count: usize,
+    ) -> R<&'static Self> {
+        if abi != 3 || count == 0 || !valid_compiled_span(table, count, 65536) {
+            return Err("E_NATIVE: incompatible compiled ABI v3 control table".into());
+        }
+        let identity = (3, table as usize, count);
+        let table: &'static [CompiledControlV3] = unsafe { slice(table, count) };
+        // Check pointer shape before any scope table is read. A null pointer is
+        // the only representation for absent metadata.
+        if table.iter().any(|raw| {
+            !raw.scopes.is_null()
+                && raw.scopes as usize % std::mem::align_of::<CompiledScopes>() != 0
+        }) {
+            return Err("E_NATIVE: invalid compiled scope descriptor pointer".into());
+        }
+        unsafe {
+            Self::register_table(
+                registry,
+                identity,
+                table.iter().map(|raw| (&raw.control, raw.scopes.as_ref())),
+            )
+        }
+    }
+    unsafe fn register_table(
+        registry: &'static std::sync::OnceLock<Self>,
+        identity: (u32, usize, usize),
+        table: impl Iterator<Item = (&'static CompiledControl, Option<&'static CompiledScopes>)>,
+    ) -> R<&'static Self> {
+        let count = identity.2;
         if let Some(registered) = registry.get() {
             return if registered.identity == identity {
                 registered.initialize();
@@ -3071,10 +3316,9 @@ impl CompiledRegistry {
                 Err("E_NATIVE: compiled ABI module identity differs".into())
             };
         }
-        let table = unsafe { slice(table, count) };
         let mut controls = Vec::with_capacity(count);
         let mut compiled = Vec::with_capacity(count);
-        for raw in table {
+        for (raw, scopes) in table {
             if raw.producer_len == 0
                 || raw.producer.is_null()
                 || raw.producer_len > isize::MAX as usize
@@ -3142,6 +3386,12 @@ impl CompiledRegistry {
                 return Err("E_NATIVE: invalid compiled ABI retained parameter layout".into());
             }
             let children = unsafe { slice(raw.children, raw.child_count) }.to_vec();
+            if host.is_some() && scopes.is_some() {
+                return Err("E_NATIVE: compiled host controls cannot own source scopes".into());
+            }
+            let scopes = scopes
+                .map(|scope| unsafe { CompiledScopeData::read(scope, raw.slots) })
+                .transpose()?;
             controls.push(execution::Control {
                 name,
                 slots: raw.slots,
@@ -3162,6 +3412,7 @@ impl CompiledRegistry {
                 align: raw.frame_align,
                 prefix: raw.frame_prefix,
                 children,
+                scopes,
             });
         }
         // Check every edge and overlap before publishing any runtime identity.
@@ -3270,7 +3521,7 @@ impl CompiledRegistry {
                 align: compiled.align,
                 prefix: compiled.prefix,
                 children,
-                scopes: None,
+                scopes: compiled.scopes.as_ref().map(CompiledScopeData::layout),
             });
             for parent in &parents[index] {
                 pending[*parent] -= 1;
@@ -3305,33 +3556,83 @@ pub unsafe extern "C" fn tellur_rt_v2_run_entry(
     count: usize,
     quota: usize,
 ) {
-    unsafe { &mut *ctx }.perform(|c| {
-        if quota == 0 {
-            return Err("E_NATIVE: compiled entry requires a positive host quota".into());
-        }
-        if c.frame.is_some()
-            || c.selected_frame.is_some()
-            || c.program.is_some()
-            || c.result.is_some()
-            || c.request.is_some()
-            || !c.lexical.is_empty()
-        {
-            return Err("E_NATIVE: compiled entry requires an unused launch context".into());
-        }
-        let registry =
-            unsafe { CompiledRegistry::register(&COMPILED_PROGRAM, 2, table, controls)? };
-        let layout = registry.layout(index)?;
-        // Validate physical storage and argument count before consuming handles.
-        let invocation = unsafe { Invocation::buffer(layout, program, size, align)? };
-        if count != layout.control.parameters.len() {
-            return Err("E_NATIVE: invalid compiled entry arity".into());
-        }
-        let args = c.take_many(unsafe { slice(args, count) })?;
-        let result =
-            unsafe { execution::run_abi_invocation(c.host, args, layout, invocation, quota)? };
-        c.result = Some(result);
-        Ok(())
+    unsafe { &mut *ctx }.perform(|c| unsafe {
+        run_compiled_entry(
+            c,
+            || CompiledRegistry::register(&COMPILED_PROGRAM, 2, table, controls),
+            index,
+            program,
+            size,
+            align,
+            args,
+            count,
+            quota,
+        )
     });
+}
+/// Version 3 entry with C-safe lexical/loop metadata. Its pointer/lifetime and
+/// exclusive program-storage contract is identical to tellur_rt_v2_run_entry.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v3_run_entry(
+    ctx: *mut Context<'_>,
+    table: *const CompiledControlV3,
+    controls: usize,
+    index: usize,
+    program: *mut u8,
+    size: usize,
+    align: usize,
+    args: *const u64,
+    count: usize,
+    quota: usize,
+) {
+    unsafe { &mut *ctx }.perform(|c| unsafe {
+        run_compiled_entry(
+            c,
+            || CompiledRegistry::register_v3(&COMPILED_PROGRAM, 3, table, controls),
+            index,
+            program,
+            size,
+            align,
+            args,
+            count,
+            quota,
+        )
+    });
+}
+unsafe fn run_compiled_entry(
+    c: &mut Context<'_>,
+    register: impl FnOnce() -> R<&'static CompiledRegistry>,
+    index: usize,
+    program: *mut u8,
+    size: usize,
+    align: usize,
+    args: *const u64,
+    count: usize,
+    quota: usize,
+) -> R<()> {
+    if quota == 0 {
+        return Err("E_NATIVE: compiled entry requires a positive host quota".into());
+    }
+    if c.frame.is_some()
+        || c.selected_frame.is_some()
+        || c.program.is_some()
+        || c.result.is_some()
+        || c.request.is_some()
+        || !c.lexical.is_empty()
+    {
+        return Err("E_NATIVE: compiled entry requires an unused launch context".into());
+    }
+    let registry = register()?;
+    let layout = registry.layout(index)?;
+    // Validate physical storage and argument count before consuming handles.
+    let invocation = unsafe { Invocation::buffer(layout, program, size, align)? };
+    if count != layout.control.parameters.len() {
+        return Err("E_NATIVE: invalid compiled entry arity".into());
+    }
+    let args = c.take_many(unsafe { slice(args, count) })?;
+    let result = unsafe { execution::run_abi_invocation(c.host, args, layout, invocation, quota)? };
+    c.result = Some(result);
+    Ok(())
 }
 
 #[unsafe(no_mangle)]

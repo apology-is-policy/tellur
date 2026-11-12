@@ -369,3 +369,9 @@ and expanded completion with original scope cleanup. Recovery preserves supervis
 parameters from boundary entry and clears iteration locals and path facts only
 after retirement succeeds. Generated lexical admission still awaits registration;
 see [private retained loop transfers](llvm-backend.md#private-retained-loop-and-recovery-transfers-0265).
+
+
+Version 3 runtime descriptors now register the private lexical and loop bridges
+without changing their original scope authority. Compiler 0.266 validates metadata
+before publication and captures before execution. Generated lexical recovery still
+awaits emitter integration; see [compiled scope registration](llvm-backend.md#compiled-lexical-and-loop-registration-0266).

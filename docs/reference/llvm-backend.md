@@ -1003,3 +1003,45 @@ Generated C descriptor v2 and LLVM source admission are unchanged. The next step
 is generated lexical registration and work/handler/end states using these private
 bridges. Suspending constructors, launch signals and Rust adapters remain later
 checkpoints; Rust remains the default backend.
+
+
+## Compiled lexical and loop registration (0.266)
+
+The runtime now accepts an explicit version 3 control table through
+`tellur_rt_v3_run_entry`. Each entry contains the existing version 2 control
+fields plus an optional pointer to immutable lexical and loop metadata. The old
+entry symbol retains its original stride; version 2 allocations are never read
+as larger version 3 descriptors. Module identity includes the ABI version.
+
+A scope descriptor declares the resume-state bound, lexical boundaries and loops.
+Lexical entries carry their diagnostic name, body/handler/after states, retained,
+retirement, work and handler slot groups, and the fault-report slot. Loop entries
+carry the original target, body/after states, iteration locals, ordered parameter
+slots and an `extern "C"` physical-fact reset callback. All spans and callbacks are
+module-static, immutable data. Reset callbacks receive only their physical frame;
+they cannot fail, retain it, access host state or implement source cleanup.
+
+Registration rejects malformed spans, excessive counts, alignment errors, invalid
+UTF-8 names, invalid state ranges, overlapping state roles, duplicate slots or loop
+targets, missing reset callbacks and invalid retained/parameter/fault slot roles.
+Host-operation descriptors cannot carry source scopes. These checks finish before
+publishing control identities. Entry storage, arity and quota checks precede capture
+transfer. The original source Machine still performs scope/task/resource retirement
+and recovery; registered metadata does not add a scheduler or a scope policy.
+
+One process-lifetime registry owns the normalized controls and initialized scope
+layouts. Concurrent registration and repeated execution reuse the same identities;
+a losing registration candidate is dropped normally. There are no per-launch
+metadata leaks or forged static references. Original version 2 tables continue to
+work and cannot be mixed with a different version or module in that registry.
+
+Nine added tests cover malformed metadata and entry preflight, version separation,
+concurrent registration, stable identities, owned captures and registered lexical/
+loop execution. The execution matrices compare original continuations at every
+fuel cut, quotas 1/3/unbounded, caller/arena roots, nested recovery, owned buffers,
+physical facts, host waits/failures, borrowed children and named work settlement.
+
+This checkpoint registers the C-safe descriptors; the LLVM emitter still writes
+version 2 tables and retains its current source profile. Emitting version 3 tables,
+work/handler/end states and retained lexical recovery is next. Constructors,
+signals and Rust adapters remain later work; Rust is still the default backend.

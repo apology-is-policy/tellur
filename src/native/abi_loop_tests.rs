@@ -273,7 +273,7 @@ struct Parent {
     fact: bool,
     child: Child,
 }
-unsafe fn reset_facts(p: *mut u8) {
+unsafe extern "C" fn reset_facts(p: *mut u8) {
     unsafe {
         (*p.cast::<Parent>()).fact = false;
     }
@@ -615,6 +615,14 @@ fn exercise(modes: &[u32]) {
     exercise_wrapped(modes, &[0]);
 }
 fn exercise_wrapped(modes: &[u32], forms: &[u32]) {
+    exercise_with_layouts(modes, forms, &PARENT, &WRAPPER);
+}
+fn exercise_with_layouts(
+    modes: &[u32],
+    forms: &[u32],
+    parent_layout: &'static InvocationLayout,
+    wrapper_layout: &'static InvocationLayout,
+) {
     for &form in forms {
         for &mode in modes {
             for fuel in 0..=35 {
@@ -637,14 +645,18 @@ fn exercise_wrapped(modes: &[u32], forms: &[u32]) {
                         let (args, pointers) = arguments();
                         let mut h = Host::new(manifest(mode, form), script(mode), true, Some(fuel));
                         let mut frame = Wrapper::default();
-                        let layout = if form == 0 { &PARENT } else { &WRAPPER };
+                        let layout = if form == 0 {
+                            parent_layout
+                        } else {
+                            wrapper_layout
+                        };
                         let pool = physical_frames::Arena::default();
                         let invocation = if arena {
                             unsafe { Invocation::in_arena(&pool, layout) }
                         } else if form == 0 {
-                            unsafe { Invocation::new(&PARENT, &mut frame.parent) }
+                            unsafe { Invocation::new(parent_layout, &mut frame.parent) }
                         } else {
-                            unsafe { Invocation::new(&WRAPPER, &mut frame) }
+                            unsafe { Invocation::new(wrapper_layout, &mut frame) }
                         }
                         .unwrap();
                         let storage = invocation.arena.clone();
@@ -935,13 +947,22 @@ fn rust_host(_: &mut Host, _: &mut Frames, a: &mut Activation) -> R<Step> {
     Ok(Step::Complete(Completion::Outcome(("done".into(), vec![]))))
 }
 unsafe extern "C" fn host(c: *mut Context<'_>, p: *mut u8, args: *const u64, count: usize) -> u32 {
+    unsafe { host_step(c, p, args, count, &ABI_HOST) }
+}
+unsafe fn host_step(
+    c: *mut Context<'_>,
+    p: *mut u8,
+    args: *const u64,
+    count: usize,
+    producer: &'static Control,
+) -> u32 {
     unsafe {
         let f = &mut *p.cast::<HostFrame>();
         if f.pc == 0 {
             assert_eq!(count, 0);
             (&mut *c).perform(|c| {
                 c.host_control(
-                    &ABI_HOST,
+                    producer,
                     HostLeaf {
                         operation: "tick",
                         cancellable: true,
@@ -1309,6 +1330,9 @@ static SUPERVISOR: InvocationLayout = InvocationLayout {
 };
 #[test]
 fn named_work_runs_recovering_loops_and_settles_only_after_local_scope_retirement() {
+    exercise_named(&SUPERVISOR);
+}
+fn exercise_named(layout: &'static InvocationLayout) {
     for mode in [1, 2, 3, 8, 9, 10, 11, 12, 13] {
         for fuel in 0..=40 {
             DROPS.with(|v| v.borrow_mut().clear());
@@ -1324,14 +1348,14 @@ fn named_work_runs_recovering_loops_and_settles_only_after_local_scope_retiremen
                     let mut frame = Supervisor::default();
                     let pool = physical_frames::Arena::default();
                     let invocation = if arena {
-                        unsafe { Invocation::in_arena(&pool, &SUPERVISOR) }
+                        unsafe { Invocation::in_arena(&pool, layout) }
                     } else {
-                        unsafe { Invocation::new(&SUPERVISOR, &mut frame) }
+                        unsafe { Invocation::new(layout, &mut frame) }
                     }
                     .unwrap();
                     let storage = invocation.arena.clone();
                     let result = unsafe {
-                        execution::run_abi_invocation(&mut h, args, &SUPERVISOR, invocation, quota)
+                        execution::run_abi_invocation(&mut h, args, layout, invocation, quota)
                     };
                     assert_eq!(
                         observation(&mut h, result, pointers),
@@ -1344,4 +1368,180 @@ fn named_work_runs_recovering_loops_and_settles_only_after_local_scope_retiremen
             }
         }
     }
+}
+
+// The same callbacks and original-continuation oracle also run through C-safe
+// module registration, whose original control identities are newly owned by the
+// registry. No private InvocationLayout is substituted for a registered root.
+const fn compiled_slots(data: &'static [usize]) -> CompiledSlots {
+    CompiledSlots {
+        data: data.as_ptr(),
+        count: data.len(),
+    }
+}
+const fn compiled_boundary(raw: &'static BoundaryControl) -> CompiledBoundary {
+    CompiledBoundary {
+        name: raw.name.as_ptr(),
+        name_len: raw.name.len(),
+        body: raw.body as u32,
+        handler: raw.handler as u32,
+        after: raw.after as u32,
+        retained: compiled_slots(raw.retained),
+        retire: compiled_slots(raw.retire),
+        work: compiled_slots(raw.work),
+        handling: compiled_slots(raw.handling),
+        fault_slot: raw.fault_slot,
+    }
+}
+static REGISTERED_SCOPES: CompiledScopes = CompiledScopes {
+    states: 12,
+    boundaries: [compiled_boundary(&BOUNDARY), compiled_boundary(&INNER)].as_ptr(),
+    boundary_count: 2,
+    loops: [CompiledLoop {
+        target: LOOP.target,
+        body: LOOP.body as u32,
+        after: LOOP.after as u32,
+        locals: compiled_slots(LOOP.locals),
+        parameters: compiled_slots(&[2, 3, 4]),
+        reset_facts: Some(reset_facts),
+    }]
+    .as_ptr(),
+    loop_count: 1,
+};
+const fn compiled_control(
+    layout: &'static InvocationLayout,
+    children: &'static [CompiledChild],
+    scopes: *const CompiledScopes,
+) -> CompiledControlV3 {
+    let c = layout.control;
+    CompiledControlV3 {
+        control: CompiledControl {
+            producer: c.name.as_ptr(),
+            producer_len: c.name.len(),
+            name: c.name.as_ptr(),
+            name_len: c.name.len(),
+            slots: c.slots,
+            parameters: c.parameters.as_ptr(),
+            parameter_count: c.parameters.len(),
+            frame_size: layout.size,
+            frame_align: layout.align,
+            frame_prefix: layout.prefix,
+            callback: Some(layout.callback),
+            children: children.as_ptr(),
+            child_count: children.len(),
+            retained: c.retained.as_ptr(),
+            retained_count: c.retained.len(),
+        },
+        scopes,
+    }
+}
+static REGISTERED_CONTROLS: [CompiledControlV3; 7] = [
+    compiled_control(
+        &PARENT,
+        &[CompiledChild {
+            control: 1,
+            offset: offset_of!(Parent, child),
+        }],
+        &REGISTERED_SCOPES,
+    ),
+    compiled_control(
+        &CHILD,
+        &[CompiledChild {
+            control: 2,
+            offset: offset_of!(Child, host),
+        }],
+        std::ptr::null(),
+    ),
+    CompiledControlV3 {
+        control: CompiledControl {
+            producer: b"tick$host$cancel".as_ptr(),
+            producer_len: 16,
+            callback: Some(registered_host),
+            ..compiled_control(&HOST, &[], std::ptr::null()).control
+        },
+        scopes: std::ptr::null(),
+    },
+    compiled_control(
+        &WRAPPER,
+        &[CompiledChild {
+            control: 0,
+            offset: offset_of!(Wrapper, parent),
+        }],
+        std::ptr::null(),
+    ),
+    compiled_control(
+        &WORK,
+        &[CompiledChild {
+            control: 1,
+            offset: offset_of!(Parent, child),
+        }],
+        &REGISTERED_SCOPES,
+    ),
+    compiled_control(
+        &HANDLER,
+        &[CompiledChild {
+            control: 2,
+            offset: offset_of!(Child, host),
+        }],
+        std::ptr::null(),
+    ),
+    compiled_control(
+        &SUPERVISOR,
+        &[
+            CompiledChild {
+                control: 4,
+                offset: offset_of!(Supervisor, work),
+            },
+            CompiledChild {
+                control: 5,
+                offset: offset_of!(Supervisor, handler),
+            },
+        ],
+        std::ptr::null(),
+    ),
+];
+fn registered() -> &'static CompiledRegistry {
+    static REGISTRY: std::sync::OnceLock<CompiledRegistry> = std::sync::OnceLock::new();
+    unsafe {
+        CompiledRegistry::register_v3(
+            &REGISTRY,
+            3,
+            REGISTERED_CONTROLS.as_ptr(),
+            REGISTERED_CONTROLS.len(),
+        )
+    }
+    .unwrap()
+}
+#[test]
+fn compiled_v3_recovery_matches_original_scopes_buffers_facts_and_host_failures() {
+    let registry = registered();
+    exercise_with_layouts(
+        &(0..=13).collect::<Vec<_>>(),
+        &[0],
+        registry.layout(0).unwrap(),
+        registry.layout(3).unwrap(),
+    );
+}
+#[test]
+fn compiled_v3_recovery_preserves_inline_and_awaited_ancestry() {
+    let registry = registered();
+    exercise_with_layouts(
+        &[1, 2, 3, 8, 9, 10, 11, 12, 13],
+        &[1, 2],
+        registry.layout(0).unwrap(),
+        registry.layout(3).unwrap(),
+    );
+}
+#[test]
+fn compiled_v3_named_work_settles_after_registered_local_scopes() {
+    exercise_named(registered().layout(6).unwrap());
+}
+
+unsafe extern "C" fn registered_host(
+    c: *mut Context<'_>,
+    p: *mut u8,
+    args: *const u64,
+    count: usize,
+) -> u32 {
+    unsafe { host_step(c, p, args, count, registered().layout(2).unwrap().control) }
 }
