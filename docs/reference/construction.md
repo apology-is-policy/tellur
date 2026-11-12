@@ -505,3 +505,12 @@ now preserves caller destinations while a constructor's child suspends, includin
 borrowed results and local fault recovery. This is private runtime groundwork;
 LLVM source admission for those calls still awaits registration and emission.
 Constructors remain ordinary destination calls, not async task producers.
+
+
+Compiler 0.269 completes LLVM source admission for ordinary constructors whose
+children suspend. See [retained constructor source delivery](llvm-backend.md#retained-constructor-source-delivery-0269).
+Caller destinations and declared result origins survive yields and host waits,
+including construction inside cold/spawned parents. Constructor faults propagate
+to caller supervision: constructors themselves cannot contain isolation/recovery
+or become async task producers. Existing resource completion rules still apply.
+The private runtime tests in 0.268 do not authorize additional constructor syntax.

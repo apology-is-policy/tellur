@@ -3166,6 +3166,15 @@ pub struct CompiledControlV3 {
     pub scopes: *const CompiledScopes,
 }
 unsafe impl Sync for CompiledControlV3 {}
+/// Version 4 adds an explicit constructor role without changing v2/v3 strides.
+/// Bit 0 denotes a constructor; all other flag bits are reserved and rejected.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct CompiledControlV4 {
+    pub base: CompiledControlV3,
+    pub flags: u32,
+}
+unsafe impl Sync for CompiledControlV4 {}
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct CompiledSlots {
@@ -3403,7 +3412,13 @@ impl CompiledRegistry {
         }
         let identity = (2, table as usize, count);
         let table: &'static [CompiledControl] = unsafe { slice(table, count) };
-        unsafe { Self::register_table(registry, identity, table.iter().map(|raw| (raw, None))) }
+        unsafe {
+            Self::register_table(
+                registry,
+                identity,
+                table.iter().map(|raw| (raw, None, false)),
+            )
+        }
     }
     /// Same lifetime and callback contract as register, with explicit v3 stride.
     unsafe fn register_v3(
@@ -3429,14 +3444,50 @@ impl CompiledRegistry {
             Self::register_table(
                 registry,
                 identity,
-                table.iter().map(|raw| (&raw.control, raw.scopes.as_ref())),
+                table
+                    .iter()
+                    .map(|raw| (&raw.control, raw.scopes.as_ref(), false)),
+            )
+        }
+    }
+    /// Explicit v4 stride, with the same module-static lifetime contract as v3.
+    unsafe fn register_v4(
+        registry: &'static std::sync::OnceLock<Self>,
+        abi: u32,
+        table: *const CompiledControlV4,
+        count: usize,
+    ) -> R<&'static Self> {
+        if abi != 4 || count == 0 || !valid_compiled_span(table, count, 65536) {
+            return Err("E_NATIVE: incompatible compiled ABI v4 control table".into());
+        }
+        let table: &'static [CompiledControlV4] = unsafe { slice(table, count) };
+        if table.iter().any(|raw| {
+            raw.flags & !1 != 0
+                || (!raw.base.scopes.is_null()
+                    && raw.base.scopes as usize % std::mem::align_of::<CompiledScopes>() != 0)
+        }) {
+            return Err("E_NATIVE: invalid compiled constructor flags or scope pointer".into());
+        }
+        unsafe {
+            Self::register_table(
+                registry,
+                (4, table.as_ptr() as usize, count),
+                table
+                    .iter()
+                    .map(|raw| (&raw.base.control, raw.base.scopes.as_ref(), raw.flags == 1)),
             )
         }
     }
     unsafe fn register_table(
         registry: &'static std::sync::OnceLock<Self>,
         identity: (u32, usize, usize),
-        table: impl Iterator<Item = (&'static CompiledControl, Option<&'static CompiledScopes>)>,
+        table: impl Iterator<
+            Item = (
+                &'static CompiledControl,
+                Option<&'static CompiledScopes>,
+                bool,
+            ),
+        >,
     ) -> R<&'static Self> {
         let count = identity.2;
         if let Some(registered) = registry.get() {
@@ -3449,7 +3500,7 @@ impl CompiledRegistry {
         }
         let mut controls = Vec::with_capacity(count);
         let mut compiled = Vec::with_capacity(count);
-        for (raw, scopes) in table {
+        for (raw, scopes, constructor) in table {
             if raw.producer_len == 0
                 || raw.producer.is_null()
                 || raw.producer_len > isize::MAX as usize
@@ -3498,6 +3549,9 @@ impl CompiledRegistry {
             if host.is_some_and(|leaf| leaf.operation.is_empty()) {
                 return Err("E_NATIVE: empty compiled host operation".into());
             }
+            if constructor && (host.is_some() || raw.retained_count != 0) {
+                return Err("E_NATIVE: incompatible compiled constructor role".into());
+            }
             let parameters: &'static [usize] =
                 unsafe { slice(raw.parameters, raw.parameter_count) };
             if parameters
@@ -3529,7 +3583,7 @@ impl CompiledRegistry {
                 atoms: 0,
                 parameters,
                 retained,
-                constructor: false,
+                constructor,
                 access: None,
                 resume: resume_invocation,
             });
@@ -3720,6 +3774,35 @@ pub unsafe extern "C" fn tellur_rt_v3_run_entry(
         run_compiled_entry(
             c,
             || CompiledRegistry::register_v3(&COMPILED_PROGRAM, 3, table, controls),
+            index,
+            program,
+            size,
+            align,
+            args,
+            count,
+            quota,
+        )
+    });
+}
+/// Version 4 entry with explicit constructor roles and C-safe scope metadata. Its pointer/lifetime and
+/// exclusive program-storage contract is identical to tellur_rt_v2_run_entry.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v4_run_entry(
+    ctx: *mut Context<'_>,
+    table: *const CompiledControlV4,
+    controls: usize,
+    index: usize,
+    program: *mut u8,
+    size: usize,
+    align: usize,
+    args: *const u64,
+    count: usize,
+    quota: usize,
+) {
+    unsafe { &mut *ctx }.perform(|c| unsafe {
+        run_compiled_entry(
+            c,
+            || CompiledRegistry::register_v4(&COMPILED_PROGRAM, 4, table, controls),
             index,
             program,
             size,

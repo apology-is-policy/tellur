@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.268.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.269.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -396,3 +396,9 @@ Compiler 0.268 adds a private retained constructor destination bridge. This is
 runtime groundwork: suspending constructors remain outside the LLVM source
 profile until versioned registration and generated delivery are implemented.
 See [constructor runtime delivery](llvm-backend.md#retained-constructor-runtime-bridge-0268).
+
+Compiler 0.269 admits constructors whose children suspend to LLVM source builds.
+Versioned constructor registration and direct caller-destination delivery complete
+the private groundwork from 0.268. See [retained constructors](llvm-backend.md#retained-constructor-source-delivery-0269).
+Constructors remain ordinary calls; their faults propagate to caller supervision.
+Rust remains the default backend.

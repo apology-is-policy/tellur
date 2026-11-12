@@ -1,0 +1,39 @@
+// A constructor remains an ordinary call while an explicitly run child can yield.
+async control prepare(ref mutable string text) exits done {
+    yield;
+    deref text = concat(clone(text), "!");
+    exit done;
+}
+async control pause() exits done {
+    yield;
+    exit done;
+}
+struct message {
+    string text;
+    constructor(string name, bool fail) {
+        mutable string text = concat("Hello, ", move name);
+        run prepare(borrow mutable text);
+        self.text = move text;
+        delta fail {
+            true => failed,
+            false => ready
+        }
+        [failed]: fault "construction stopped after yield";
+    }
+}
+struct text_view['a] {
+    ref string text <- 'a;
+    constructor(ref string input)[input] {
+        run pause();
+        self.text = input;
+    }
+}
+control main(bool fail) exits result {
+    auto owned = message("Ada", fail);
+    auto view = text_view(borrow owned.text);
+    emit(view.text);
+    exit done { owned };
+}
+outcome result {
+    @exit 0 done { message value }
+}

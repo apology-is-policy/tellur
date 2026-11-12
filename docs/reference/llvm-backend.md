@@ -23,6 +23,7 @@ loops with repeated task calls and expanded loop completions. Compiler 0.261 add
 generated task sets with the existing completion-order and cancellation rules.
 Compiler 0.262 adds the private retained supervision bridge; 0.263 admits generated
 retained named supervision. Compiler 0.267 adds retained lexical scopes and supervised recovery.
+Compiler 0.269 adds retained constructors whose children suspend.
 The default remains `--backend rust`. Both start from the same checked program;
 backend selection does not relax ownership, origins, outcomes or path rules.
 
@@ -55,8 +56,8 @@ local moves/option wrappers and consuming `await`. Spawned controls and consumin
 are supported since 0.256; control cancellation requests since 0.257. Scripted
 async host operations share those task forms since 0.258. Retained loops are supported
 since 0.260; task sets since 0.261; named supervision since 0.263; lexical scopes
-and supervised recovery since 0.267. Suspending constructors and Rust adapters
-remain outside that profile. Launch signal policies are also rejected. Admission checks all checked
+and supervised recovery since 0.267; constructors whose children suspend since
+0.269. Rust adapters remain outside that profile. Launch signal policies are also rejected. Admission checks all checked
 regions, including unused helpers. Unsupported programs receive `E_BACKEND`
 before the backend creates its output directory or files; ordinary checking may
 still succeed, and the Rust backend remains available.
@@ -98,7 +99,8 @@ written argument order, short-circuiting and ordinary source activation names.
 Reference-bearing constructor results retain their declared caller origins and use
 the same checked evidence as raw records and control results. The destination's
 storage identity is validated before argument transfer and delivery. It grants no
-new borrowing permission. Task operations remain outside the admitted profile.
+new borrowing permission. Constructors remain ordinary calls; retained child work
+is described below.
 
 The [constructor example](../../playground/llvm_constructors.tellur) constructs an
 owning message and a borrowed view:
@@ -1117,3 +1119,47 @@ identity. No source language rule changes.
 This checkpoint does not admit suspending constructors to LLVM source builds.
 Versioned constructor registration and generated destination delivery follow;
 version 2/3 descriptor strides remain unchanged. The Rust backend stays default.
+
+
+## Retained constructor source delivery (0.269)
+
+LLVM now admits ordinary constructor calls whose children yield or wait for an
+async host operation. The caller owns the destination throughout construction.
+A retained constructor holds its own explicit frame and by-value child frames;
+spawned or cold parent tasks keep those frames in the existing task arena.
+Successful completion publishes the whole value into the original destination,
+then resumes the caller after child retirement. Delivery adds no source tick,
+outcome handle or scheduling handoff. Partial values never reach the caller.
+
+Owned buffers, shared/exclusive result references and nested reference-bearing
+carriers retain the original owners and declared origins. Imported/generic calls,
+repeated nested construction, written argument order and short-circuit evaluation
+use the same checked program. Host readiness, cancellation, driver faults and fuel
+remain governed by the original Machine. Constructor faults propagate to caller
+supervision; constructors cannot contain isolation/recovery, become task producers
+or serve as independent invocation roots. Resource completion obligations still
+apply before faulting work. This adds no source syntax or ownership permission.
+
+C ABI version 4 nests the version 3 descriptor and adds a constructor-role flag.
+Registration validates reserved bits, role/host/retained-parameter compatibility
+and metadata before publication; versions 2 and 3 retain their original strides.
+The launch preflight rejects invalid roots, extents, arities and quotas before
+consuming captures. Static registration identity is shared across repeated and
+concurrent launches. Generated callbacks request the private destination bridge
+from 0.268 and resume without an outcome payload after construction.
+
+The [retained constructor example](../../playground/llvm_async_constructors.tellur)
+constructs an owned message and a borrowed view, each with a yielded child:
+
+```sh
+./bin/tellurc build playground/llvm_async_constructors.tellur playground/manifest.json --backend llvm --out /tmp/tellur-async-constructors
+/tmp/tellur-async-constructors false
+/tmp/tellur-async-constructors true
+```
+
+The first invocation emits and returns `Hello, Ada!`. The second faults after field
+initialization without publishing a result. Original and expanded LLVM builds at
+O0/O2 match the corresponding Rust/reference form across tested fuel cuts, host
+waits, cancellation, task sets and caller recovery. Quotas 1/3/unbounded additionally
+cover repeated constructor resumption and cancellation during host waits. Rust
+remains the default; launch signals and Rust adapters are still outside admission.

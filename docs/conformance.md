@@ -6760,3 +6760,24 @@ release smoke132, Node47, compiler/LSP/VSIX, isolated editor, package/install an
 filtered backup checks accompany this checkpoint. Exact evidence is maintained in
 `work/tellur-0.268-verification.json`. Source admission remains gated pending
 versioned constructor registration and generated delivery.
+
+
+## 0.269 — Retained constructor source delivery (B1.4t)
+
+Four new private registration/entry tests cover explicit v4 constructor roles,
+v2/v3 stride compatibility, concurrent identity, malformed metadata and atomic
+launch preflight. Eight new LLVM source matrices cover yielded constructors with
+owned/shared/exclusive results, nested carriers, ancestor origins, written order,
+short-circuits, repeated/imported/generic calls, partial initialization faults,
+caller recovery, resource fields, cold/spawned parents, task sets and pending,
+cancelled or malformed host responses. Original/expanded O0/O2 builds match their
+Rust/reference forms across fuel cuts. Two quota test functions now include fifteen
+modes with constructor and pending-host cancellation cases at quotas1/3/MAX.
+
+Native-host323, LLVM100, quota2, manual3 and both all-target checks refresh. Unchanged
+default suites and ordinary native187/frontend125 units retain guarded0.268 evidence;
+no full-suite rerun is claimed. Baseline146/current147, release smoke140, Node47,
+compiler/LSP/VSIX, isolated editor, package/install and filtered backup checks
+accompany the checkpoint. Exact evidence is recorded in
+`work/tellur-0.269-verification.json`. Source constructor isolation/recovery and
+faulting with unresolved builtin resource obligations remain rejected.

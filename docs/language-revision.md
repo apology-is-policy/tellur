@@ -1829,3 +1829,32 @@ and generated source delivery remain next (B1.4t), preserving v2/v3 strides; onl
 then can suspending constructors enter the LLVM profile. Signals, parity/default,
 adapters, single binary, target packs and retirement follow. Rust remains default;
 no language-design fork is pending.
+
+
+## B1.4t — retained constructor registration and LLVM delivery (0.269)
+
+Version 4 C descriptors preserve v2/v3 strides while explicitly registering the
+constructor role. Reserved flags, incompatible host/named roles and malformed
+metadata fail before registry publication; invocation preflight preserves captures
+on invalid roots, buffers, arities and quotas. Repeated/concurrent registration
+retains static identity. Generated callbacks invoke the 0.268 destination bridge,
+retain by-value children, and resume administratively after whole-value publication
+and child retirement. Suspending constructors now enter the LLVM source profile.
+
+Four registry tests and eight source matrices cover owned/shared/exclusive results,
+carrier origins and ancestor owners, nested/repeated/imported/generic constructors,
+written order and short-circuits, partial initialization, caller recovery, resource
+fields through nonfaulting yields, cold/spawned parents, sets, pending/cancelled
+hosts and driver faults. Original/expanded LLVM O0/O2 match their Rust/reference
+forms across fuel cuts; the quota harness adds constructor and host-cancellation
+modes at quotas1/3/MAX. The runnable retained-constructor example accompanies the
+reference and release workflow. Native-host323, LLVM100, quota2, manual3 and both
+all-target checks refresh; unchanged ordinary units and default suites retain
+byte-guarded prior evidence.
+
+Constructor-local isolation/recovery and faults with unresolved builtin resources
+remain rejected. Development fixtures were corrected to existing source rules;
+no checker, ownership, origin, fault, cancellation or scheduling semantics changed.
+This completes the agreed retained-constructor slice. Signals are next, followed
+by parity/default, adapters, single binary, target packs and retirement. Rust stays
+default; no language-design question is pending.

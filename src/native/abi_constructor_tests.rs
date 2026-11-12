@@ -1436,3 +1436,260 @@ fn constructor_cannot_impersonate_a_generated_host_leaf_or_consume_its_captures(
         "done"
     );
 }
+
+const fn descriptor_v4(
+    layout: &InvocationLayout,
+    producer: &str,
+    children: &'static [CompiledChild],
+) -> CompiledControlV4 {
+    CompiledControlV4 {
+        base: CompiledControlV3 {
+            control: CompiledControl {
+                producer: producer.as_ptr(),
+                producer_len: producer.len(),
+                name: layout.control.name.as_ptr(),
+                name_len: layout.control.name.len(),
+                slots: layout.control.slots,
+                parameters: layout.control.parameters.as_ptr(),
+                parameter_count: layout.control.parameters.len(),
+                frame_size: layout.size,
+                frame_align: layout.align,
+                frame_prefix: layout.prefix,
+                callback: Some(layout.callback),
+                children: children.as_ptr(),
+                child_count: children.len(),
+                retained: layout.control.retained.as_ptr(),
+                retained_count: layout.control.retained.len(),
+            },
+            scopes: std::ptr::null(),
+        },
+        flags: if layout.control.constructor { 1 } else { 0 },
+    }
+}
+static V4_TABLE: [CompiledControlV4; 3] = [
+    descriptor_v4(
+        &ROOT,
+        "root",
+        &[CompiledChild {
+            control: 1,
+            offset: offset_of!(Root, constructor),
+        }],
+    ),
+    descriptor_v4(
+        &CONSTRUCTOR,
+        "box.constructor",
+        &[CompiledChild {
+            control: 2,
+            offset: offset_of!(Constructor, leaf),
+        }],
+    ),
+    descriptor_v4(&LEAF, "leaf", &[]),
+];
+static V4_REGISTRY: std::sync::OnceLock<CompiledRegistry> = std::sync::OnceLock::new();
+#[test]
+fn version_four_constructor_registration_preserves_identity_destinations_and_original_machine_parity()
+ {
+    let registry =
+        unsafe { CompiledRegistry::register_v4(&V4_REGISTRY, 4, V4_TABLE.as_ptr(), 3) }.unwrap();
+    assert!(registry.layout(1).unwrap().control.constructor);
+    assert!(!registry.layout(0).unwrap().control.constructor);
+    let again =
+        unsafe { CompiledRegistry::register_v4(&V4_REGISTRY, 4, V4_TABLE.as_ptr(), 3) }.unwrap();
+    assert!(std::ptr::eq(again, registry));
+    std::thread::scope(|scope| {
+        for _ in 0..8 {
+            scope.spawn(|| {
+                assert!(std::ptr::eq(
+                    unsafe { CompiledRegistry::register_v4(&V4_REGISTRY, 4, V4_TABLE.as_ptr(), 3) }
+                        .unwrap(),
+                    registry
+                ));
+            });
+        }
+    });
+    let layout = registry.layout(0).unwrap();
+    for fail in [false, true] {
+        for fuel in 0..=10 {
+            let text = "registered constructor buffer".repeat(30);
+            let buffer = text.as_ptr();
+            let mut h = host(fuel, fail);
+            let result = execution::run_source_entry(&mut h, vec![V::String(text)], &RUST_ROOT);
+            let expected = observed(&mut h, result, buffer);
+            for quota in [1, 3, usize::MAX] {
+                for arena in [false, true] {
+                    let mut frame = Root::default();
+                    let pool = physical_frames::Arena::default();
+                    let invocation = if arena {
+                        unsafe { Invocation::in_arena(&pool, layout) }
+                    } else {
+                        unsafe { Invocation::new(layout, &mut frame) }
+                    }
+                    .unwrap();
+                    let text = "registered constructor buffer".repeat(30);
+                    let buffer = text.as_ptr();
+                    let mut h = host(fuel, fail);
+                    let result = unsafe {
+                        execution::run_abi_invocation(
+                            &mut h,
+                            vec![V::String(text)],
+                            layout,
+                            invocation,
+                            quota,
+                        )
+                    };
+                    assert_eq!(
+                        observed(&mut h, result, buffer),
+                        expected,
+                        "{fail}/{fuel}/{quota}/{arena}"
+                    );
+                    assert_eq!(pool.counts().2, 0);
+                }
+            }
+        }
+    }
+    let mut constructor = Constructor::default();
+    assert!(unsafe { Invocation::new(registry.layout(1).unwrap(), &mut constructor) }.is_err());
+}
+#[test]
+fn version_four_rejects_invalid_constructor_roles_and_metadata_before_registry_publication() {
+    static RETAINED: [usize; 1] = [0];
+    for mutation in 0..8 {
+        let mut table = V4_TABLE;
+        match mutation {
+            0 => table[1].flags = 2,
+            1 => table[1].flags = 3,
+            2 => {
+                table[1].base.control.producer = b"op$host".as_ptr();
+                table[1].base.control.producer_len = 7;
+            }
+            3 => {
+                table[1].base.control.producer = b"op$host$cancel".as_ptr();
+                table[1].base.control.producer_len = 14;
+            }
+            4 => {
+                table[1].base.control.retained = RETAINED.as_ptr();
+                table[1].base.control.retained_count = 1;
+            }
+            5 => table[1].base.scopes = std::ptr::dangling::<u8>().cast(),
+            6 => table[1].base.control.callback = None,
+            7 => table[1].base.control.frame_size = 0,
+            _ => unreachable!(),
+        }
+        let table = Box::leak(Box::new(table));
+        let registry = Box::leak(Box::new(std::sync::OnceLock::new()));
+        assert!(
+            unsafe { CompiledRegistry::register_v4(registry, 4, table.as_ptr(), 3) }.is_err(),
+            "mutation={mutation}"
+        );
+        assert!(registry.get().is_none());
+    }
+    for (abi, pointer, count) in [
+        (3, V4_TABLE.as_ptr(), 3),
+        (4, V4_TABLE.as_ptr(), 0),
+        (4, V4_TABLE.as_ptr(), 65537),
+        (4, std::ptr::null(), 1),
+        (4, std::ptr::dangling::<u8>().cast(), 1),
+    ] {
+        let registry = Box::leak(Box::new(std::sync::OnceLock::new()));
+        assert!(unsafe { CompiledRegistry::register_v4(registry, abi, pointer, count) }.is_err());
+        assert!(registry.get().is_none());
+    }
+}
+#[test]
+fn version_four_does_not_reinterpret_version_two_or_three_descriptor_strides() {
+    static V2: [CompiledControl; 1] = [descriptor_v4(&LEAF, "leaf", &[]).base.control];
+    static V3: [CompiledControlV3; 1] = [descriptor_v4(&LEAF, "leaf", &[]).base];
+    static V4: [CompiledControlV4; 1] = [descriptor_v4(&LEAF, "leaf", &[])];
+    static TWO: std::sync::OnceLock<CompiledRegistry> = std::sync::OnceLock::new();
+    static THREE: std::sync::OnceLock<CompiledRegistry> = std::sync::OnceLock::new();
+    static FOUR: std::sync::OnceLock<CompiledRegistry> = std::sync::OnceLock::new();
+    let two = unsafe { CompiledRegistry::register(&TWO, 2, V2.as_ptr(), 1) }.unwrap();
+    let three = unsafe { CompiledRegistry::register_v3(&THREE, 3, V3.as_ptr(), 1) }.unwrap();
+    let four = unsafe { CompiledRegistry::register_v4(&FOUR, 4, V4.as_ptr(), 1) }.unwrap();
+    for r in [two, three, four] {
+        assert!(!r.layout(0).unwrap().control.constructor);
+        assert_eq!(r.layout(0).unwrap().size, size_of::<Leaf>());
+    }
+    assert!(unsafe { CompiledRegistry::register_v4(&TWO, 4, V4.as_ptr(), 1) }.is_err());
+    assert!(unsafe { CompiledRegistry::register_v3(&FOUR, 3, V3.as_ptr(), 1) }.is_err());
+}
+
+#[test]
+fn version_four_entry_checks_constructor_role_extent_arity_and_quota_before_taking_captures() {
+    static REGISTRY: std::sync::OnceLock<CompiledRegistry> = std::sync::OnceLock::new();
+    for attempt in 0..6 {
+        let mut host = host(100, false);
+        let mut context = Context {
+            selected_frame: None,
+            selected_activation: None,
+            program: None,
+            resume_at: None,
+            request: None,
+            physical_arena: None,
+            host: &mut host,
+            storage: FrameStorage::Owned(Frames::default()),
+            frame: None,
+            destination: None,
+            values: vec![],
+            outcomes: vec![],
+            value_base: 0,
+            outcome_base: 0,
+            error: None,
+            result: None,
+            lexical: vec![],
+            next_lexical: 0,
+        };
+        let text = "atomic v4 launch capture".repeat(40);
+        let buffer = text.as_ptr();
+        let handle = context.put(V::String(text));
+        let mut frame = Root::default();
+        context.perform(|c| unsafe {
+            run_compiled_entry(
+                c,
+                || CompiledRegistry::register_v4(&REGISTRY, 4, V4_TABLE.as_ptr(), 3),
+                if attempt == 0 {
+                    1
+                } else if attempt == 1 {
+                    3
+                } else {
+                    0
+                },
+                (&mut frame as *mut Root).cast(),
+                if attempt == 2 {
+                    size_of::<Root>() - 1
+                } else {
+                    size_of::<Root>()
+                },
+                align_of::<Root>(),
+                [handle].as_ptr(),
+                if attempt == 3 { 0 } else { 1 },
+                if attempt == 4 { 0 } else { 1 },
+            )
+        });
+        if attempt == 5 {
+            let (_, fields) = context.finish().unwrap().outcome().unwrap();
+            let V::String(text) = &fields[0] else {
+                panic!()
+            };
+            assert_eq!(text.as_ptr(), buffer);
+            assert!(context.get(handle).is_err());
+        } else {
+            assert!(context.error.is_some());
+            let V::String(text) = context.get(handle).unwrap() else {
+                panic!()
+            };
+            assert_eq!(text.as_ptr(), buffer);
+            assert_eq!(
+                (frame.pc, frame.constructor.pc, frame.constructor.leaf.pc),
+                (0, 0, 0)
+            );
+            assert_eq!(context.host.fuel, Some(100));
+            assert!(context.host.events.is_empty());
+        }
+        assert!(
+            context.host.tasks.is_empty()
+                && context.host.resources.scopes.is_empty()
+                && context.host.resources.values.is_empty()
+        );
+    }
+}

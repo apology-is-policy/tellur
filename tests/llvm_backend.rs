@@ -2443,6 +2443,266 @@ control main(bool fail) exits done faults {forward run startup(fail);}
     }
 
     #[test]
+    fn frontend_constructors_preserve_owned_and_borrowed_destinations_through_yielded_helpers() {
+        let f = Fixture::new(include_str!("../playground/llvm_async_constructors.tellur"));
+        let scenarios = [false, true].map(
+            |fail| json!({"entry":"main","arguments":[{"kind":"bool","value":fail}],"calls":[]}),
+        );
+        lexical_matrix(
+            &f,
+            &scenarios,
+            &(0..=45).map(Some).chain([None]).collect::<Vec<_>>(),
+        );
+        let ir = compile_file(
+            &f.source,
+            Manifest::from_json(&fs::read_to_string(&f.manifest).unwrap()).unwrap(),
+        )
+        .unwrap()
+        .llvm_source("main")
+        .unwrap();
+        assert!(ir.contains("%compiled_control_v4") && ir.contains("@tellur_rt_v4_run_entry"));
+        assert!(
+            ir.contains("call void @tellur_rt_v1_construct_child")
+                && ir.contains("call void @tellur_rt_v1_constructed")
+        );
+    }
+
+    #[test]
+    fn frontend_constructors_preserve_exclusive_results_nested_carriers_and_ancestor_owners() {
+        for source in [
+            r#"
+async control pause() exits done {yield;exit done;}
+struct text_pair['a,'b] {
+ ref mutable string left <- 'a; ref mutable string right <- 'b;
+ constructor(ref mutable string left, ref mutable string right)[left,right] {
+  self.left=left;run pause();self.right=right;
+ }
+}
+control main() exits done {
+ mutable string left="left";mutable string right="right";
+ auto pair=text_pair(borrow mutable left,borrow mutable right);
+ deref pair.left="edited";emit(pair.left);left="released left";
+ emit(pair.right);right="released right";exit done;
+}
+"#,
+            r#"
+async control pause() exits done {yield;exit done;}
+struct view['a] {ref string text <- 'a;constructor(ref string input)[input] {run pause();self.text=input;}}
+struct wrapper['a] {view['a] inner;constructor(ref string input)[input] {self.inner=view(input);run pause();}}
+struct borrowed_view['storage,'text] {
+ ref view['text] value <- 'storage;
+ constructor(ref view input,bool first)[input,input['a]] {
+  run pause();delta first {true=>first,false=>second}
+  [first]:self.value=input;[second]:self.value=input;[entry]:emit(self.value.text);
+ }
+}
+control unwrap(view input) exits ready {view[input['a]] value} {exit ready {input};}
+control main() exits done {
+ mutable string owner="nested";auto wrapped=wrapper(borrow owner);
+ auto a=borrowed_view(borrow wrapped.inner,true);auto b=borrowed_view(borrow wrapped.inner,false);
+ emit(a.value.text);emit(b.value.text);drop(a);drop(b);drop(wrapped);
+ delta unwrap(view(borrow owner)) {ready {auto value}=>ready}
+ [ready]:emit(value.text);owner="released";exit done;
+}
+"#,
+        ] {
+            let f = Fixture::new(source);
+            lexical_matrix(
+                &f,
+                &[json!({"entry":"main","arguments":[],"calls":[]})],
+                &(0..=80).map(Some).chain([None]).collect::<Vec<_>>(),
+            );
+        }
+    }
+
+    #[test]
+    fn frontend_constructors_preserve_written_order_short_circuits_and_repeated_nested_calls() {
+        let f = Fixture::new(
+            r#"
+async control pause() exits done {yield;exit done;}
+struct mark {string text;u32 number;bool yes;
+ constructor(ref mutable u32 counter,string text) {
+  emit(borrow text);run pause();deref counter=2;
+  self.text=move text;self.number=2;self.yes=true;
+ }
+}
+struct pair {u32 before;mark after;}
+control take(u32 before,mark after) exits done {emit(u32_text(before));emit(move after.text);exit done;}
+control main() exits done {
+ mutable u32 n=1;take(n,mark(borrow mutable n,"call"));n=1;
+ auto p=pair {n,mark(borrow mutable n,"record")};emit(u32_text(p.before));emit(move p.after.text);n=1;
+ bool same=n==(mark(borrow mutable n,"binary")).number;
+ delta same {true=>fault "left operand too late",false=>compared}
+ [compared]:bool skipped=false && (mark(borrow mutable n,"WRONG and")).yes;
+ bool skipped_or=true || (mark(borrow mutable n,"WRONG or")).yes;
+ bool evaluated=true && (mark(borrow mutable n,"and")).yes;
+ bool evaluated_or=false || (mark(borrow mutable n,"or")).yes;
+ delta skipped {true=>fault "bad and",false=>and_checked}
+ [and_checked]:delta skipped_or {true=>or_checked,false=>fault "bad or"}
+ [or_checked]:exit done;
+}
+"#,
+        );
+        lexical_matrix(
+            &f,
+            &[json!({"entry":"main","arguments":[],"calls":[]})],
+            &(0..=110).map(Some).chain([None]).collect::<Vec<_>>(),
+        );
+    }
+
+    #[test]
+    fn frontend_constructors_preserve_imported_generic_names_and_partial_initialization_faults() {
+        let f = Fixture::new(
+            r#"
+import "helpers.tellur" as helpers;
+control main(bool fail) exits done faults {
+ auto value=helpers.wrapper<helpers.message>(helpers.message(fail));emit(move value.value.text);exit done;
+}
+"#,
+        );
+        fs::write(
+            f.root.join("helpers.tellur"),
+            r#"
+async control pause() exits done {yield;exit done;}
+pub struct wrapper<t> {pub t value;pub constructor(t value) {run pause();self.value=move value;}}
+pub struct message {pub string text;pub constructor(bool fail) faults {
+ self.text="initialized";run pause();delta fail {true=>failed,false=>ready}
+ [failed]:fault "partial initialization after yield";
+}}
+"#,
+        )
+        .unwrap();
+        lexical_matrix(&f,&[false,true].map(|fail|json!({"entry":"main","arguments":[{"kind":"bool","value":fail}],"calls":[]})),&(0..=50).map(Some).chain([None]).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn frontend_constructors_recover_after_partial_work_and_reuse_the_same_inline_frame() {
+        let f = Fixture::new(
+            r#"
+async control helper(bool fail) exits done faults {
+ yield;delta fail {true=>failed,false=>ready}
+ [failed]:fault "constructor child failed";[ready]:exit done;
+}
+struct message {string text;constructor(bool fail) {self.text="complete";run helper(fail);}}
+async control session(bool fail) exits done {
+ supervised loop attempts(mutable bool first=true) {
+  bool broken=fail && first;first=false;
+  fault boundary {
+   auto value=message(broken);emit(value.text);exit done;
+  } contingency [] {emit(borrow @fault.message);recover again attempts;}
+ }
+}
+control main(bool fail) exits done {forward run session(fail);}
+"#,
+        );
+        lexical_matrix(&f,&[false,true].map(|fail|json!({"entry":"main","arguments":[{"kind":"bool","value":fail}],"calls":[]})),&(0..=65).map(Some).chain([None]).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn frontend_constructors_compose_with_cold_spawned_borrowed_parents_and_task_sets() {
+        let source = r#"
+async control pause() exits done {yield;exit done;}
+struct view['a] {ref mutable string text <- 'a;constructor(ref mutable string input)[input] {run pause();self.text=input;}}
+async control child(ref mutable string input) exits done {view[input] value} {exit done {view(input)};}
+async control startup() exits done {
+ mutable string text="caller";auto pending=defer child(borrow mutable text);
+ delta await pending {done {auto value}=>ready}
+ [ready]:deref value.text="edited";emit(value.text);drop(value);text="released";emit(text);exit done;
+}
+control main() exits done {forward run startup();}
+"#;
+        for source in [
+            source.to_owned(),
+            source.replace("defer child", "spawn child"),
+        ] {
+            lexical_matrix(
+                &Fixture::new(&source),
+                &[json!({"entry":"main","arguments":[],"calls":[]})],
+                &(0..=45).map(Some).chain([None]).collect::<Vec<_>>(),
+            );
+        }
+        let f = Fixture::new(
+            r#"
+async control pause() exits done {yield;exit done;}
+struct message {string text;constructor(string input) {run pause();self.text=input;}}
+async control member(string input) exits done {message value} {exit done {message(input)};}
+async control startup() exits done {
+ tasks<member> active=tasks();spawn member("first") into active;spawn member("second") into active;
+ loop drain(tasks<member> pending=move active) {
+  delta await next pending {done {auto value}=>next,empty=>empty}
+  [next]:emit(value.text);again drain(pending);[empty]:exit done;
+ }
+}
+control main() exits done {forward run startup();}
+"#,
+        );
+        lexical_matrix(
+            &f,
+            &[json!({"entry":"main","arguments":[],"calls":[]})],
+            &(0..=70).map(Some).chain([None]).collect::<Vec<_>>(),
+        );
+    }
+
+    #[test]
+    fn frontend_constructors_preserve_pending_host_cancellation_driver_faults_and_spawned_delivery()
+    {
+        let f = host_fixture(
+            r#"
+struct message {string text;constructor(string input,bool fail) {
+ delta run tick(input) {ticked {string reply}=>ready,cancelled=>stopped}
+ [ready]:self.text=reply;[stopped]:self.text="cancelled";
+ [entry]:delta fail {true=>bad,false=>good}
+ [bad]:fault "constructor after host";
+}}
+async control member(bool fail,string input) exits done {message value} faults {yield;exit done {message(input,fail)};}
+async control startup(bool fail,bool stop) exits done faults {
+ auto first=spawn member(fail,"first");auto second=spawn member(false,"second");
+ delta stop {true=>stop,false=>keep}
+ [stop]:cancel first;
+ [entry]:delta await second {done {auto second_value}=>second_done}
+ [second_done]:emit(second_value.text);
+ delta await first {done {auto first_value}=>first_done}
+ [first_done]:emit(first_value.text);exit done;
+}
+control main(bool fail,bool stop) exits done faults {forward run startup(fail,stop);}
+"#,
+        );
+        let scenarios=[false,true].into_iter().flat_map(|fail|[false,true].into_iter().flat_map(move |stop|[false,true].map(move |malformed|json!({"entry":"main","arguments":[{"kind":"bool","value":fail},{"kind":"bool","value":stop}],"calls":vec![json!({"operation":"tick","outcome":if malformed {"invalid"}else{"ticked"},"fields":[{"kind":"string","value":"reply"}],"waits":5});if stop {1}else{2}]})))).collect::<Vec<_>>();
+        lexical_matrix(
+            &f,
+            &scenarios,
+            &(0..=65).map(Some).chain([None]).collect::<Vec<_>>(),
+        );
+    }
+
+    #[test]
+    fn frontend_constructors_preserve_resource_fields_through_handoffs_and_retire_before_caller_faults()
+     {
+        let f = Fixture::new(
+            r#"
+async control helper() exits done {yield;exit done;}
+struct file_owner {handle file;constructor(handle input) {self.file=move input;run helper();}}
+control main(bool fail) exits done {
+ fault boundary {
+  delta open("file") {opened {handle input}=>opened,not_found=>missing,denied=>denied}
+  [missing|denied]:exit done;
+  [opened]:auto value=file_owner(input);
+  delta close(move value.file) {closed=>closed,failed {auto problem}=>close_failed}
+  [closed|close_failed]:delta fail {true=>bad,false=>done}
+  [bad]:fault "after closing constructed owner";[done]:exit done;
+ } contingency [] {emit(borrow @fault.message);terminate process 9;}
+}
+"#,
+        );
+        let scenarios=[false,true].map(|fail|json!({"entry":"main","arguments":[{"kind":"bool","value":fail}],"calls":[{"operation":"open","outcome":"opened","fields":[{"kind":"opaque","value":{"ty":"handle","token":"partial"}}]},{"operation":"close","outcome":"closed","fields":[]}]}));
+        lexical_matrix(
+            &f,
+            &scenarios,
+            &(0..=55).map(Some).chain([None]).collect::<Vec<_>>(),
+        );
+    }
+
+    #[test]
     fn frontend_async_frames_preserve_nested_handoffs_guards_and_exact_fault_fuel_reports() {
         let f = Fixture::new(
             r#"
@@ -4329,7 +4589,7 @@ contingency(string reason) {
         lexical_matrix(&f, &[false,true].map(|fail| json!({"entry":"main","arguments":[{"kind":"bool","value":fail}],"calls":[]})),
             &(0..=75).map(Some).chain([None]).collect::<Vec<_>>());
         let ir = fs::read_to_string(f.root.join("llvm-2.ll")).unwrap();
-        assert!(ir.contains("%compiled_control_v3") && ir.contains("@tellur_rt_v3_run_entry"));
+        assert!(ir.contains("%compiled_control_v4") && ir.contains("@tellur_rt_v4_run_entry"));
         assert!(ir.contains("@tellur_rt_v1_scope") && ir.contains("@tellur_rt_v1_loop"));
         assert!(ir.contains("define void @reset_") && ir.contains("@scopes_"));
     }
@@ -4485,20 +4745,6 @@ control main(bool selected) exits done {forward run session(selected);}"#,
             assert!(
                 String::from_utf8_lossy(&out.stderr).contains("E_BACKEND"),
                 "{out:?}"
-            );
-            assert!(!f.root.join("llvm-0.tellur-build").exists());
-            assert!(!f.root.join("llvm-0.ll").exists());
-        }
-        for source in [
-            "struct ticket {u32 value;constructor(u32 input){run helper();self.value=input;}} async control helper() exits done {exit done;} control main() exits result {drop(ticket(1));exit done;} outcome result {@exit 0 done}",
-        ] {
-            let f = Fixture::new(source);
-            let out = f.command("llvm", 0).output().unwrap();
-            assert!(!out.status.success());
-            assert!(
-                String::from_utf8_lossy(&out.stderr).contains("E_BACKEND"),
-                "{}",
-                String::from_utf8_lossy(&out.stderr)
             );
             assert!(!f.root.join("llvm-0.tellur-build").exists());
             assert!(!f.root.join("llvm-0.ll").exists());

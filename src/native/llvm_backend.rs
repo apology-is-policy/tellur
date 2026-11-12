@@ -5,9 +5,10 @@ use super::*;
 
 const DECLARATIONS: &str = r#"
 declare i32 @tellur_rt_v1_launch(ptr, i64, ptr, i64)
-declare void @tellur_rt_v3_run_entry(ptr, ptr, i64, i64, ptr, i64, i64, ptr, i64, i64)
+declare void @tellur_rt_v4_run_entry(ptr, ptr, i64, i64, ptr, i64, i64, ptr, i64, i64)
 declare void @tellur_rt_v1_await(ptr, i64, ptr, i64)
 declare void @tellur_rt_v1_run_child(ptr, i64, ptr, i64)
+declare void @tellur_rt_v1_construct_child(ptr, i64, i64, ptr, i64)
 declare i64 @tellur_rt_v1_defer(ptr, i64, ptr, i64, ptr, i64)
 declare void @tellur_rt_v1_await_task(ptr, i64, i64)
 declare void @tellur_rt_v1_spawn(ptr, i64, i64, ptr, i64)
@@ -25,6 +26,7 @@ declare void @tellur_rt_v1_loop(ptr, i64, i32, ptr, i64)
 %compiled_control = type { ptr, i64, ptr, i64, i64, ptr, i64, i64, i64, i64, ptr, ptr, i64, ptr, i64 }
 %compiled_child = type { i64, i64 }
 %compiled_control_v3 = type { %compiled_control, ptr }
+%compiled_control_v4 = type { %compiled_control_v3, i32 }
 %compiled_slots = type { ptr, i64 }
 %compiled_scope = type { i32, ptr, i64, ptr, i64 }
 %compiled_boundary = type { ptr, i64, i32, i32, i32, %compiled_slots, %compiled_slots, %compiled_slots, %compiled_slots, i64 }
@@ -1012,13 +1014,7 @@ impl Emitter {
         self.body
             .insert_str(entry, &std::mem::take(&mut self.allocations));
     }
-    fn inline_call(
-        &mut self,
-        _name: &str,
-        args: &[Expr],
-        instruction: &Instruction,
-        handoff: bool,
-    ) {
+    fn inline_call(&mut self, name: &str, args: &[Expr], instruction: &Instruction, handoff: bool) {
         let (_, target, child) = self.inline_children[&instruction.id];
         let values = args.iter().map(|a| self.expr(a)).collect::<Vec<_>>();
         let args = self.handles(&values);
@@ -1027,7 +1023,20 @@ impl Emitter {
         self.line(format!(
             "store %frame_{target} zeroinitializer, ptr %child_{child}"
         ));
-        if matches!(
+        let constructor = self.constructors.contains(name);
+        if constructor {
+            assert!(!handoff);
+            let Action::Decide { arms, .. } = &instruction.action else {
+                unreachable!()
+            };
+            assert_eq!(arms.len(), 1);
+            assert_eq!(arms[0].outcome, "$constructed");
+            assert_eq!(arms[0].slots.len(), 1);
+            self.effect(format!(
+                "call void @tellur_rt_v1_construct_child(ptr %ctx, i64 {child}, i64 {}, ptr {args}, i64 {})",
+                self.layout.slots[&arms[0].slots[0]], values.len()
+            ));
+        } else if matches!(
             &instruction.action,
             Action::Decide {
                 operation: Operation::AwaitTask(_),
@@ -1048,7 +1057,13 @@ impl Emitter {
         self.line(format!(
             "store i32 {}, ptr %pc\nret i32 {}",
             self.delivery_pc,
-            if handoff { 3 } else { 5 }
+            if constructor {
+                19
+            } else if handoff {
+                3
+            } else {
+                5
+            }
         ));
     }
     fn async_host_leaf(&self, instruction: &Instruction) -> bool {
@@ -1057,7 +1072,7 @@ impl Emitter {
     }
     fn resume_control(&mut self, region: &Region, index: usize) -> Result<()> {
         self.layout = FrameLayout::new(region);
-        self.constructing = false;
+        self.constructing = region.is_constructor();
         self.retained = true;
         self.current_descriptor = self.resumables[&region.name];
         self.inline_children.clear();
@@ -1199,8 +1214,21 @@ impl Emitter {
                     unreachable!()
                 };
                 self.line(format!("delivery_{}:", pc + 1));
-                let outcome = self.value("load i64, ptr %args");
-                self.route(&outcome, arms);
+                if matches!(&instruction.action, Action::Decide { operation: Operation::Region(name) | Operation::Run(name), .. } if self.constructors.contains(name))
+                {
+                    assert_eq!(arms.len(), 1);
+                    assert_eq!(arms[0].outcome, "$constructed");
+                    assert_eq!(arms[0].slots.len(), 1);
+                    // Constructed has already published to the checked caller slot.
+                    // Its administrative delivery carries no outcome/payload handles.
+                    self.line(format!(
+                        "store i1 true, ptr %a{}",
+                        self.layout.atoms[&arms[0].atom]
+                    ));
+                } else {
+                    let outcome = self.value("load i64, ptr %args");
+                    self.route(&outcome, arms);
+                }
                 // Delivery is administrative: route payloads into source slots
                 // before the next source tick, without an extra resume transition.
                 if self.resume_next == u32::MAX {
@@ -1283,10 +1311,10 @@ impl Emitter {
         };
         let scopes = self.scope_metadata(index, &plan);
         let (producer, producer_len) = self.text(&region.name);
-        self.descriptors.push(format!("%compiled_control_v3 {{ %compiled_control {{ ptr {producer}, i64 {producer_len}, ptr {name}, i64 {len}, i64 {}, ptr @parameters_{index}, i64 {}, i64 {size}, i64 {align}, i64 {prefix}, ptr @resume_{index}, ptr @children_{index}, i64 {}, ptr {retained_pointer}, i64 {} }}, ptr {scopes} }}", self.layout.slots.len(), parameters.len(), children.len(), retained.len()));
+        self.descriptors.push(format!("%compiled_control_v4 {{ %compiled_control_v3 {{ %compiled_control {{ ptr {producer}, i64 {producer_len}, ptr {name}, i64 {len}, i64 {}, ptr @parameters_{index}, i64 {}, i64 {size}, i64 {align}, i64 {prefix}, ptr @resume_{index}, ptr @children_{index}, i64 {}, ptr {retained_pointer}, i64 {} }}, ptr {scopes} }}, i32 {} }}", self.layout.slots.len(), parameters.len(), children.len(), retained.len(), u32::from(region.is_constructor())));
         let descriptor = self.resumables[&region.name];
         let count = self.resumables.len();
-        self.line(format!("define void @control_{index}(ptr %ctx, ptr %args, i64 %count) {{\nentry:\n%frame = alloca %frame_{index}\nstore %frame_{index} zeroinitializer, ptr %frame\ncall void @tellur_rt_v3_run_entry(ptr %ctx, ptr @async_controls, i64 {count}, i64 {descriptor}, ptr %frame, i64 {size}, i64 {align}, ptr %args, i64 %count, i64 -1)\nret void\n}}"));
+        self.line(format!("define void @control_{index}(ptr %ctx, ptr %args, i64 %count) {{\nentry:\n%frame = alloca %frame_{index}\nstore %frame_{index} zeroinitializer, ptr %frame\ncall void @tellur_rt_v4_run_entry(ptr %ctx, ptr @async_controls, i64 {count}, i64 {descriptor}, ptr %frame, i64 {size}, i64 {align}, ptr %args, i64 %count, i64 -1)\nret void\n}}"));
         Ok(())
     }
 
@@ -2034,11 +2062,10 @@ impl CheckedProgram {
         let mut callbacks = vec![];
         for region in self.regions() {
             let retained = emitter.resumables.contains_key(&region.name);
-            if (retained && region.is_constructor())
-                || region
-                    .slots
-                    .values()
-                    .any(|s| !type_supported(&s.ty, &types))
+            if region
+                .slots
+                .values()
+                .any(|s| !type_supported(&s.ty, &types))
                 || region
                     .parameters
                     .iter()
@@ -2087,7 +2114,7 @@ impl CheckedProgram {
         if !emitter.descriptors.is_empty() {
             writeln!(
                 emitter.globals,
-                "@async_controls = private constant [{} x %compiled_control_v3] [{}]",
+                "@async_controls = private constant [{} x %compiled_control_v4] [{}]",
                 emitter.descriptors.len(),
                 emitter.descriptors.join(", ")
             )
@@ -2196,7 +2223,7 @@ mod tests {
             .unwrap()
             .extend(host["primitives"].as_array().unwrap().iter().cloned());
         let manifest = crate::manifest::Manifest::from_json(&manifest.to_string()).unwrap();
-        for mode in 0..13 {
+        for mode in 0..15 {
             let source = r#"
 async control child(bool fail, ref mutable string text) exits done faults {
     yield;delta fail {true=>bad,false=>good}
@@ -2355,6 +2382,30 @@ outcome result {@exit 0 done}
             } else {
                 source
             };
+            let source = if mode == 13 {
+                include_str!("../../playground/llvm_async_constructors.tellur").to_owned()
+            } else if mode == 14 {
+                r#"
+struct message {string text;constructor(string input,bool fail) {
+ delta run tick(input) {ticked {string reply}=>ready,cancelled=>stopped}
+ [ready]:self.text=reply;[stopped]:self.text="cancelled";
+ [entry]:delta fail {true=>bad,false=>good}[bad]:fault "quota constructor after host";
+}}
+async control child(bool fail) exits done {string value} faults {
+ auto value=message("request",fail);exit done {value.text};
+}
+async control startup(bool fail) exits done faults {
+ auto pending=spawn child(fail);yield;cancel pending;
+ delta await pending {done {string value}=>ready}
+ [ready]:emit(value);exit done;
+}
+control main(bool fail) exits result faults {forward run startup(fail);}
+outcome result {@exit 0 done}
+"#
+                .to_owned()
+            } else {
+                source
+            };
             let checked = crate::compile(&source, manifest.clone()).unwrap();
             for expanded in [false, true] {
                 let program = if expanded {
@@ -2372,7 +2423,7 @@ outcome result {@exit 0 done}
                     let mut expected = vec![];
                     for fail in [false, true] {
                         let scenario = directory.join(format!("{fail}.json"));
-                        fs::write(&scenario,serde_json::json!({"entry":"main","arguments":[{"kind":"bool","value":fail}],"calls":if mode == 12 {vec![serde_json::json!({"operation":"tick","outcome":"ticked","fields":[{"kind":"string","value":"quota lexical"}],"waits":7});if fail {2} else {1}]} else if (3..=4).contains(&mode) || mode == 10 {vec![serde_json::json!({"operation":"tick","outcome":"ticked","fields":[{"kind":"string","value":"quota"}],"waits":7})]} else {vec![]}}).to_string()).unwrap();
+                        fs::write(&scenario,serde_json::json!({"entry":"main","arguments":[{"kind":"bool","value":fail}],"calls":if mode == 12 {vec![serde_json::json!({"operation":"tick","outcome":"ticked","fields":[{"kind":"string","value":"quota lexical"}],"waits":7});if fail {2} else {1}]} else if (3..=4).contains(&mode) || mode == 10 || mode == 14 {vec![serde_json::json!({"operation":"tick","outcome":"ticked","fields":[{"kind":"string","value":"quota"}],"waits":7})]} else {vec![]}}).to_string()).unwrap();
                         for fuel in 0..=if mode >= 5 { 64 } else { 36 } {
                             let out = Command::new(&rust)
                                 .arg("--scenario")

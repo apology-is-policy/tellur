@@ -1,8 +1,8 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.268.0 -->
+<!-- tellur-reference-version: 0.269.0 -->
 
-This manual describes **compiler 0.268.0**, including the current ownership model,
+This manual describes **compiler 0.269.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -2980,7 +2980,7 @@ General expression-type hover remains unsupported.
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and broader spawn payloads (anonymous contracts and reference-bearing collections) remain planned; they are not executable features of 0.268.0.
+and broader spawn payloads (anonymous contracts and reference-bearing collections) remain planned; they are not executable features of 0.269.0.
 ## Contingency and supervised boundaries
 
 The [contingency reference](reference/contingency.md) specifies `@contingent`,
@@ -3063,3 +3063,9 @@ Compiler 0.268 adds a private retained constructor destination bridge. This is
 runtime groundwork: suspending constructors remain outside the LLVM source
 profile until versioned registration and generated delivery are implemented.
 See [constructor runtime delivery](reference/llvm-backend.md#retained-constructor-runtime-bridge-0268).
+
+Compiler 0.269 admits constructors whose children suspend to LLVM source builds.
+Versioned constructor registration and direct caller-destination delivery complete
+the private groundwork from 0.268. See [retained constructors](reference/llvm-backend.md#retained-constructor-source-delivery-0269).
+Constructors remain ordinary calls; their faults propagate to caller supervision.
+Rust remains the default backend.
