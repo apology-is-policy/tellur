@@ -2100,3 +2100,14 @@ development CLI and VS Code extension use the same executable for compilation
 and stdio LSP. Rust remains the Windows default during native parity testing.
 [Windows package qualification](https://github.com/apology-is-policy/tellur/actions/runs/43756449235) ·
 [Windows target instructions](reference/llvm-backend.md#windows-x64-linker-qualification)
+
+## Thylacine development pack
+
+The opt-in `thylacine-pack` compiler build embeds the AArch64 pouch startup
+files, static system libraries, and both Tellur runtime profiles. A host compiler
+with this pack can cross-compile a static executable for
+`aarch64-unknown-thylacine`. Inside the guest, the development compiler used
+embedded LLVM and LLD to build and run optimized Hello. The scalar example
+received its arguments and returned its authored exit status of 7 through
+`tellur exec`. Rust remains the default on Thylacine during qualification.
+[Pack preparation and guest checks](reference/llvm-backend.md#thylacine-runtime-qualification)

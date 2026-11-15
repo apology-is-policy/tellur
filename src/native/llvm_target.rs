@@ -22,6 +22,13 @@ enum LinkPack {
         libraries: &'static [Input],
         end: &'static Input,
     },
+    Pouch {
+        start: &'static [Input],
+        libraries: &'static [Input],
+        end: &'static Input,
+        dl: Input,
+        pthread: Input,
+    },
     Musl {
         start: &'static [Input],
         libraries: &'static [Input],
@@ -39,6 +46,10 @@ pub(super) struct TargetPack {
 static PACKS: &[TargetPack] = include!(concat!(env!("OUT_DIR"), "/target-packs.rs"));
 
 pub(super) fn native_triple() -> Option<&'static str> {
+    // The patched Rust sysroot does not expose Thylacine through env::consts::OS.
+    if cfg!(all(target_os = "thylacine", target_arch = "aarch64")) {
+        return Some("aarch64-unknown-thylacine");
+    }
     match (std::env::consts::OS, std::env::consts::ARCH) {
         ("macos", "aarch64") => Some("aarch64-apple-darwin"),
         ("windows", "x86_64") => Some("x86_64-pc-windows-gnu"),
@@ -68,7 +79,9 @@ impl TargetPack {
     pub fn llvm_triple(&self) -> String {
         match self.link {
             LinkPack::Darwin => format!("arm64-apple-macosx{}.0", crate::llvm::MACOS_MINIMUM),
-            LinkPack::Musl { .. } | LinkPack::Windows { .. } => self.triple.to_owned(),
+            LinkPack::Pouch { .. } | LinkPack::Musl { .. } | LinkPack::Windows { .. } => {
+                self.triple.to_owned()
+            }
         }
     }
 
@@ -155,6 +168,45 @@ impl TargetPack {
                     args.push(file.extract(&cache)?);
                 }
                 args.push(end.extract(&cache)?);
+                args
+            }
+            LinkPack::Pouch {
+                start,
+                libraries,
+                end,
+                ref dl,
+                ref pthread,
+            } => {
+                // libunwind uses ELF dependent-library records with canonical names.
+                let search = cache.join(format!("pouch-{}-{}", dl.name, pthread.name));
+                unpack(&search.join("libdl.a"), dl.bytes)?;
+                unpack(&search.join("libpthread.a"), pthread.bytes)?;
+                let mut args = vec![
+                    "ld.lld".into(),
+                    "-static".into(),
+                    "-z".into(),
+                    "max-page-size=4096".into(),
+                    "-z".into(),
+                    "separate-loadable-segments".into(),
+                    "-z".into(),
+                    "noexecstack".into(),
+                    "--build-id=none".into(),
+                    "--eh-frame-hdr".into(),
+                    format!("-L{}", search.display()),
+                    "-o".into(),
+                    output,
+                ];
+                for file in start {
+                    args.push(file.extract(&cache)?);
+                }
+                args.extend([obj, "--start-group".into(), runtime]);
+                if let Some(path) = adapter {
+                    args.push(path.display().to_string());
+                }
+                for file in libraries {
+                    args.push(file.extract(&cache)?);
+                }
+                args.extend(["--end-group".into(), end.extract(&cache)?]);
                 args
             }
             LinkPack::Musl {

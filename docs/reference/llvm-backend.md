@@ -1499,8 +1499,19 @@ The compiler frontend also runs in the guest. A cross-build with the patched
 Rust standard library checked and interpreted `playground/hello.tellur`.
 The same executable served an LSP initialize request over stdio, reported its
 capabilities and exited successfully after shutdown. This build exercises the
-frontend and interpreter. An LLVM-enabled compiler running on Thylacine still
-requires target-native LLVM and LLD libraries.
+frontend and interpreter.
+
+An LLVM-enabled development compiler also ran in the guest. It compiled
+the authored Hello from source with `--backend llvm`, emitted the AArch64
+object and linked the executable in-process. Running that executable with
+`--json` returned both authored messages, the outcome `done` and status 0.
+On the guest, `tellur exec` launches the executable through pouch
+`posix_spawn` and waits for its exit status. The optimized Hello exited 0.
+This scalar example selected the declined path, printed its message and exited 7.
+
+```sh
+tellur exec playground/llvm_scalars.tellur playground/manifest.json --backend llvm -- --json false 12 Ada
+```
 
 Polled adapters register pouch descriptors with `poll(2)`. Socket and
 cancellation-pipe registrations share one wait. Only launches with signal
@@ -1525,3 +1536,35 @@ For cross-linking, the verified pouch inputs include `crt1.o`, `crti.o`,
 dependency records. With these files, the Rust process entry and the
 corresponding plain or polled runtime, LLD 22.1.8 reproduced both guest-tested
 executables byte for byte in a relocated directory with an empty tool path.
+
+### Preparing the Thylacine development pack
+
+The opt-in `thylacine-pack` Cargo feature embeds the pouch startup files and
+both Rust runtime profiles. To prepare the pack, select the nightly compiler
+that matches your patched Thylacine Rust sysroot. The Rust sysroot must
+contain the target standard library for the supplied JSON specification.
+
+```sh
+python3 ci/prepare-thylacine-pack.py \
+  --target-spec "$THYLACINE/usr/ports/rust/aarch64-unknown-thylacine.json" \
+  --rust-sysroot "$THYLACINE_RUST_SYSROOT" \
+  --pouch-sysroot "$THYLACINE/build/sysroot" \
+  --out "$PWD/pouch-pack"
+```
+
+When building Tellur, set `TELLUR_THYLACINE_PACK` to that directory and
+`LLVM_SYS_221_PREFIX` to your LLVM/LLD 22.1.8 installation. A compiler
+built to run on Thylacine uses the fork's AArch64 LLVM libraries, LLD's ELF
+and common libraries, and the patched Rust libc and standard library. Its
+`llvm-config` must run on the build host and describe the target libraries.
+On an Apple Silicon host with the pinned LLVM toolchain, build the
+cross-compiler with `cargo build --release --locked --features thylacine-pack
+--bin tellur`. That compiler can link the same pack for the guest.
+
+```sh
+tellur build playground/hello.tellur --target aarch64-unknown-thylacine --out hello
+```
+
+Transfer `hello` to the guest and run `./hello --json`. The target compiler
+accepts `--backend llvm` for a native build. Rust remains its default while
+platform qualification continues.

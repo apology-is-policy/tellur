@@ -24,6 +24,7 @@ runtime-abi = []
 llvm = ["dep:llvm-sys", "dep:cc"]
 linux-musl-packs = ["llvm"]
 windows-gnu-pack = ["llvm"]
+thylacine-pack = ["llvm"]
 
 [[bin]]
 name = "tellur"

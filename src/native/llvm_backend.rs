@@ -2202,7 +2202,9 @@ impl CheckedProgram {
 }
 
 fn main_symbol(triple: Option<&str>) -> &'static str {
-    if triple.is_some_and(|name| name.ends_with("-linux-musl")) {
+    if triple
+        .is_some_and(|name| name.ends_with("-linux-musl") || name == "aarch64-unknown-thylacine")
+    {
         "tellur_program_main"
     } else {
         "main"

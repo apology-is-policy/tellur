@@ -8,16 +8,21 @@
 #include <algorithm>
 #include <vector>
 
-LLD_HAS_DRIVER(macho)
 LLD_HAS_DRIVER(elf)
+#ifndef TELLUR_LLD_ELF_ONLY
+LLD_HAS_DRIVER(macho)
 LLD_HAS_DRIVER(coff)
+#endif
 
 extern "C" int tellur_lld_link(int argc, const char **argv, int *can_run_again) {
     std::vector<const char *> args(argv, argv + argc);
     lld::Result result = lld::lldMain(args, llvm::outs(), llvm::errs(),
-                                      {{lld::Darwin, &lld::macho::link},
-                                       {lld::Gnu, &lld::elf::link},
-                                       {lld::WinLink, &lld::coff::link}});
+                                      {{lld::Gnu, &lld::elf::link},
+#ifndef TELLUR_LLD_ELF_ONLY
+                                       {lld::Darwin, &lld::macho::link},
+                                       {lld::WinLink, &lld::coff::link},
+#endif
+                                      });
     llvm::outs().flush();
     llvm::errs().flush();
     *can_run_again = result.canRunAgain ? 1 : 0;

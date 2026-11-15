@@ -66,6 +66,16 @@ pub fn build() {
         );
         prepare(&out, WINDOWS, Some(&root), &mut descriptors);
     }
+    if cfg!(feature = "thylacine-pack") {
+        println!("cargo:rerun-if-env-changed=TELLUR_THYLACINE_PACK");
+        let pack = PathBuf::from(env::var_os("TELLUR_THYLACINE_PACK").expect(
+            "set TELLUR_THYLACINE_PACK to the prepared Thylacine runtime and pouch link inputs",
+        ));
+        thylacine_pack(
+            &pack.canonicalize().expect("locate Thylacine pack"),
+            &mut descriptors,
+        );
+    }
     descriptors.push(']');
     fs::write(out.join("target-packs.rs"), descriptors).unwrap();
 }
@@ -147,6 +157,30 @@ fn input(path: &Path, stem: &str, extension: &str) -> String {
     bytes.hash(&mut hash);
     let name = format!("{stem}_{:016x}.{extension}", hash.finish());
     format!("Input {{ name: {name:?}, bytes: include_bytes!({path:?}) }}")
+}
+
+fn thylacine_pack(pack: &Path, descriptors: &mut String) {
+    let file = |name: &str| {
+        let path = pack.join(name);
+        println!("cargo:rerun-if-changed={}", path.display());
+        let (stem, ext) = name.rsplit_once('.').unwrap();
+        input(&path, stem, ext)
+    };
+    let files = |names: &[&str]| {
+        names
+            .iter()
+            .map(|name| file(name))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    let start = files(&["crt1.o", "crti.o", "entry.o"]);
+    let libraries = files(&["libunwind.a", "libc.a", "libclang_rt.builtins.a"]);
+    let end = file("crtn.o");
+    let plain = file("runtime-plain.a");
+    let polled = file("runtime-polled.a");
+    let dl = file("libdl.a");
+    let pthread = file("libpthread.a");
+    writeln!(descriptors, "TargetPack {{ triple: \"aarch64-unknown-thylacine\", plain: {plain}, polled: {polled}, link: LinkPack::Pouch {{ start: &[{start}], libraries: &[{libraries}], end: &{end}, dl: {dl}, pthread: {pthread} }} }},").unwrap();
 }
 
 fn musl_link(pack: &Path, triple: &str, sysroot: &Path) -> String {

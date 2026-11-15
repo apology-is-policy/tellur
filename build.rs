@@ -1,6 +1,7 @@
 //! Build the embedded linker and native runtime pack for LLVM-enabled compilers.
 fn main() {
     println!("cargo:rustc-check-cfg=cfg(tellur_native_llvm)");
+    println!("cargo:rustc-check-cfg=cfg(target_os, values(\"thylacine\"))");
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=src/llvm/lld_shim.cpp");
     println!("cargo:rerun-if-env-changed=LLVM_SYS_221_PREFIX");
@@ -28,8 +29,13 @@ mod llvm {
             std::env::var("LLVM_SYS_221_PREFIX")
                 .expect("set LLVM_SYS_221_PREFIX to the pinned static LLVM 22.1.8 install"),
         );
-        cc::Build::new()
-            .cpp(true)
+        let elf_only = std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("thylacine")
+            && !cfg!(feature = "windows-gnu-pack");
+        let mut shim = cc::Build::new();
+        if elf_only {
+            shim.define("TELLUR_LLD_ELF_ONLY", None);
+        }
+        shim.cpp(true)
             .std("c++17")
             .include(config(&prefix, "--includedir"))
             .file("src/llvm/lld_shim.cpp")
@@ -39,7 +45,11 @@ mod llvm {
             "cargo:rustc-link-search=native={}",
             config(&prefix, "--libdir")
         );
-        for lib in ["lldMachO", "lldELF", "lldCOFF", "lldCommon"] {
+        if !elf_only {
+            println!("cargo:rustc-link-lib=static=lldMachO");
+            println!("cargo:rustc-link-lib=static=lldCOFF");
+        }
+        for lib in ["lldELF", "lldCommon"] {
             println!("cargo:rustc-link-lib=static={lib}");
         }
     }
