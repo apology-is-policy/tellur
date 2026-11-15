@@ -3,6 +3,8 @@ name = "path_generated"
 version = "0.1.0"
 edition = "2024"
 [workspace]
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("thylacine"))'] }
 [features]
 runtime-abi = []
 [dependencies]

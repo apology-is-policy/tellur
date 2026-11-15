@@ -1486,3 +1486,28 @@ Native Windows qualification passed both standalone programs, including the
 service's loopback HTTP endpoint. The Windows-host workflow builds the compiler
 and checks a win32-x64 VSIX and a CLI ZIP. It exercises the packaged binary
 through stdio LSP, Hello and live settings before uploading either artifact.
+
+## Thylacine runtime qualification
+
+The development runtime builds for `aarch64-unknown-thylacine` with the
+Thylacine project's patched Rust standard library and pouch sysroot. In a
+Thylacine guest, the cross-linked playground Hello returned its authored
+`done` outcome and both emit events under `--json`. Its Rust entry point
+initializes process arguments before calling the compiled Tellur entry.
+
+Polled adapters register pouch descriptors with `poll(2)`. Socket and
+cancellation-pipe registrations share one wait. Only launches with signal
+cancellation enabled limit a kernel wait to 50 ms so a pending process note
+can reach its handler. An empty wait result leaves the adapter parked. The
+compiled `playground/llvm_launch_signals.tellur` example waited on two real
+pouch sockets in the guest. Both a parent-sent SIGTERM and a foreground
+Ctrl-C selected the authored cancellation paths, drained the member and
+exited with status zero.
+
+The guest TCP probe used `ioctl(FIONBIO)` and an explicit loopback port. It
+verified accept, read and write readiness, timeout, byte delivery and EOF.
+Listening after binding port zero returned `EINVAL`. The current patched
+Rust standard library also returned `ENOTTY` when creating a listener with
+`TcpListener::bind`. The settings HTTP adapter uses that interface. A
+distributable Thylacine target pack and settings HTTP qualification remain
+open.

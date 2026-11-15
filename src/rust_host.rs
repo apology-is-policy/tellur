@@ -482,10 +482,16 @@ pub(crate) fn has_polled_adapters(manifest: &Manifest) -> bool {
         .any(|p| p.asynchronous && p.rust.is_some())
 }
 pub(crate) fn readiness_source(polled: bool) -> &'static str {
-    if polled { MIO_READINESS } else { NO_READINESS }
+    if polled {
+        POLLED_READINESS
+    } else {
+        NO_READINESS
+    }
 }
-pub(crate) const MIO_DEPENDENCY: &str =
-    "tellur_mio = { package = \"mio\", version = \"1\", features = [\"os-poll\", \"os-ext\"] }\n";
+const MIO_DEPENDENCY: &str = concat!(
+    "[target.'cfg(not(target_os = \"thylacine\"))'.dependencies]\n",
+    "tellur_mio = { package = \"mio\", version = \"1\", features = [\"os-poll\", \"os-ext\"] }\n",
+);
 /// Readiness vocabulary shared by every polled async host operation.
 const POLL_API: &str = r#"/// One poll of a started async host operation.
 pub enum Poll<T> { Ready(T), Pending(Wait) }
@@ -515,10 +521,12 @@ impl Wait {
 const NO_READINESS: &str =
     "fn rust_readiness() -> R<Option<Box<dyn ReadinessBackend>>> { Ok(None) }\n";
 /// The internal readiness backend for polled adapters; Mio stays out of the adapter API.
-const MIO_READINESS: &str = concat!(
+const POLLED_READINESS: &str = concat!(
     include_str!("native/mio_readiness.rs"),
     "\n",
-    include_str!("native/windows_readiness.rs")
+    include_str!("native/windows_readiness.rs"),
+    "\n",
+    include_str!("native/thylacine_readiness.rs")
 );
 /// Start async host operations and adapt their typed polls to the runtime.
 fn start_source(
@@ -703,9 +711,6 @@ fn start_source(
 }
 pub(crate) fn cargo(manifest: &Manifest, template: &str) -> String {
     let mut dependencies = String::new();
-    if has_polled_adapters(manifest) {
-        dependencies.push_str(MIO_DEPENDENCY);
-    }
     if let Some(config) = &manifest.rust {
         for (name, d) in &config.dependencies {
             writeln!(
@@ -718,6 +723,9 @@ pub(crate) fn cargo(manifest: &Manifest, template: &str) -> String {
             )
             .unwrap();
         }
+    }
+    if has_polled_adapters(manifest) {
+        dependencies.push_str(MIO_DEPENDENCY);
     }
     template.replace("\r\n", "\n").replace(
         "\n# Each output",
