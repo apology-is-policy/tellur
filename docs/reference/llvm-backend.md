@@ -1448,3 +1448,13 @@ For cross-compilation, pass the same `--target` to both commands.
 `pack-adapter --release` optimizes the adapter independently of its consuming
 program. The macOS bundled system link stub covers the settings application.
 Adapters requiring additional SDK symbols can use the regular source build.
+
+### Windows x64 linker qualification
+
+The [Windows COFF smoke workflow](../../.github/workflows/windows-coff.yml) checks
+the embedded LLVM and LLD drivers used for the upcoming Windows target. On macOS
+it emits an x64 COFF object, builds a KERNEL32 import library from a module
+definition, and links a console executable with the external tool search path
+empty. A Windows x64 runner downloads that executable and checks that it exits
+with status 42. Building Tellur source for Windows also requires the Windows
+runtime and target link pack.

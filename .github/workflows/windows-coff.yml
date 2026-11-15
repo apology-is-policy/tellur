@@ -1,0 +1,58 @@
+name: Windows COFF smoke
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/windows-coff.yml
+      - ci/windows-coff-smoke.rs
+      - src/llvm.rs
+      - src/llvm/lld_shim.cpp
+
+permissions:
+  contents: read
+
+jobs:
+  link:
+    runs-on: macos-15
+    env:
+      CARGO_INCREMENTAL: '0'
+      RUSTUP_TOOLCHAIN: 1.97.1
+      MACOSX_DEPLOYMENT_TARGET: '13.0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Select pinned toolchain
+        run: |
+          echo "LLVM_SYS_221_PREFIX=$RUNNER_TEMP/tellur-llvm-22.1.8" >> "$GITHUB_ENV"
+          rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
+      - uses: actions/cache@v4
+        id: llvm
+        with:
+          path: ${{ runner.temp }}/tellur-llvm-22.1.8
+          key: llvm-22.1.8-macos-15-${{ hashFiles('ci/build-llvm.sh') }}
+      - if: steps.llvm.outputs.cache-hit != 'true'
+        run: bash ci/build-llvm.sh "$LLVM_SYS_221_PREFIX"
+      - name: Emit COFF and link a PE executable using the embedded drivers
+        run: |
+          cargo build --locked --release --features llvm --example windows-coff-smoke
+          PATH=/absent target/release/examples/windows-coff-smoke "$RUNNER_TEMP/coff"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-coff-smoke
+          path: ${{ runner.temp }}/coff/exit.exe
+          if-no-files-found: error
+  execute:
+    needs: link
+    runs-on: windows-2025
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-coff-smoke
+          path: probe
+      - name: Check the process exit status on Windows x64
+        shell: pwsh
+        run: |
+          $process = Start-Process -FilePath ./probe/exit.exe -Wait -PassThru
+          if ($process.ExitCode -ne 42) { throw "Expected exit code 42, got $($process.ExitCode)" }

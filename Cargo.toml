@@ -44,3 +44,8 @@ path = "src/bin/pathc.rs"
 [[bin]]
 name = "path-lsp"
 path = "src/bin/path-lsp.rs"
+
+[[example]]
+name = "windows-coff-smoke"
+path = "ci/windows-coff-smoke.rs"
+required-features = ["llvm"]
