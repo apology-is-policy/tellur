@@ -1495,6 +1495,13 @@ Thylacine guest, the cross-linked playground Hello returned its authored
 `done` outcome and both emit events under `--json`. Its Rust entry point
 initializes process arguments before calling the compiled Tellur entry.
 
+The compiler frontend also runs in the guest. A cross-build with the patched
+Rust standard library checked and interpreted `playground/hello.tellur`.
+The same executable served an LSP initialize request over stdio, reported its
+capabilities and exited successfully after shutdown. This build exercises the
+frontend and interpreter. An LLVM-enabled compiler running on Thylacine still
+requires target-native LLVM and LLD libraries.
+
 Polled adapters register pouch descriptors with `poll(2)`. Socket and
 cancellation-pipe registrations share one wait. Only launches with signal
 cancellation enabled limit a kernel wait to 50 ms so a pending process note
@@ -1511,3 +1518,10 @@ Rust standard library also returned `ENOTTY` when creating a listener with
 `TcpListener::bind`. The settings HTTP adapter uses that interface. A
 distributable Thylacine target pack and settings HTTP qualification remain
 open.
+
+For cross-linking, the verified pouch inputs include `crt1.o`, `crti.o`,
+`crtn.o`, libc, compiler-rt builtins and libunwind. The linker also needs
+`libdl.a` and `libpthread.a` on the library search path to resolve libunwind’s
+dependency records. With these files, the Rust process entry and the
+corresponding plain or polled runtime, LLD 22.1.8 reproduced both guest-tested
+executables byte for byte in a relocated directory with an empty tool path.
