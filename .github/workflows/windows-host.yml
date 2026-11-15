@@ -7,6 +7,7 @@ on:
       - .github/workflows/windows-host.yml
       - ci/check-windows-host.py
       - ci/prepare-windows-crt.py
+      - ci/prepare-windows-llvm-xml.py
       - build.rs
       - runtime/target_packs.rs
       - src/native/llvm_target.rs
@@ -32,11 +33,11 @@ jobs:
           "TELLUR_WINDOWS_DLLTOOL=$env:RUNNER_TEMP/tellur-llvm-msvc/bin/llvm-dlltool.exe" >> $env:GITHUB_ENV
           "TELLUR_WINDOWS_SYSROOT=$env:RUNNER_TEMP/tellur-windows-gnu" >> $env:GITHUB_ENV
           "TELLUR_NATIVE_TARGET_DIR=$env:RUNNER_TEMP/native-target" >> $env:GITHUB_ENV
-      - uses: actions/cache@v4
+      - uses: actions/cache/restore@v4
         id: llvm
         with:
           path: ${{ env.LLVM_SYS_221_PREFIX }}
-          key: llvm-msvc-x64-22.1.8-d96c2cc1-v1
+          key: llvm-msvc-x64-22.1.8-d96c2cc1-libxml2-103f5197-v1
       - name: Prepare pinned static LLVM and LLD development libraries
         if: steps.llvm.outputs.cache-hit != 'true'
         shell: pwsh
@@ -53,6 +54,12 @@ jobs:
           foreach ($lib in 'lldCOFF', 'lldELF', 'lldMachO', 'lldCommon') {
             if (!(Test-Path "$env:LLVM_SYS_221_PREFIX/lib/$lib.lib")) { throw "Missing $lib" }
           }
+          python ci/prepare-windows-llvm-xml.py $env:LLVM_SYS_221_PREFIX
+      - uses: actions/cache/save@v4
+        if: steps.llvm.outputs.cache-hit != 'true'
+        with:
+          path: ${{ env.LLVM_SYS_221_PREFIX }}
+          key: ${{ steps.llvm.outputs.cache-primary-key }}
       - name: Build the Windows-hosted compiler
         shell: pwsh
         run: |
@@ -60,6 +67,31 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python ci/prepare-windows-crt.py $env:TELLUR_WINDOWS_SYSROOT
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          cargo build --release --locked --features windows-gnu-pack --bin tellur
-      - name: Qualify the standalone Windows compiler and stdio LSP
-        run: python ci/check-windows-host.py target/release/tellur.exe
+          $env:CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS = "-Ctarget-feature=+crt-static"
+          cargo build --target x86_64-pc-windows-msvc --release --locked --features windows-gnu-pack --bin tellur
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Package the Windows CLI and VS Code extension
+        shell: pwsh
+        run: |
+          $version = (Get-Content editors/vscode/package.json -Raw | ConvertFrom-Json).version
+          $dist = "$env:GITHUB_WORKSPACE/dist"
+          New-Item -ItemType Directory -Force $dist, editors/vscode/server | Out-Null
+          Copy-Item target/x86_64-pc-windows-msvc/release/tellur.exe editors/vscode/server/tellur.exe
+          Copy-Item "$env:LLVM_SYS_221_PREFIX/libxml2-Copyright.txt" editors/vscode/server/libxml2-Copyright.txt
+          Compress-Archive -LiteralPath target/x86_64-pc-windows-msvc/release/tellur.exe, LICENSE, editors/vscode/server/libxml2-Copyright.txt -DestinationPath "$dist/tellur-$version-win32-x64.zip"
+          Set-Location editors/vscode
+          npm ci
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./node_modules/.bin/vsce.cmd package --no-dependencies --target win32-x64 --out "$dist/tellur-$version-win32-x64.vsix"
+      - name: Qualify the packaged Windows compiler and stdio LSP
+        run: python ci/check-windows-host.py dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tellur-win32-x64
+          path: dist/*
+          if-no-files-found: error
+          compression-level: 0

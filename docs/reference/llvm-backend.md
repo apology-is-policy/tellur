@@ -1481,5 +1481,7 @@ To prepare the compiler itself, install the pinned Rust toolchain's
 `python3 ci/prepare-windows-crt.py <directory>`. Set `TELLUR_WINDOWS_SYSROOT`
 to that directory when building with `--features windows-gnu-pack`. The build
 uses `llvm-dlltool` from the pinned LLVM prefix or `TELLUR_WINDOWS_DLLTOOL`.
-The Windows workflow exercises the resulting Hello and the service's loopback
-HTTP endpoint.
+Native Windows qualification passed both standalone programs, including the
+service's loopback HTTP endpoint. The Windows-host workflow builds the compiler
+and checks a win32-x64 VSIX and a CLI ZIP. It exercises the packaged binary
+through stdio LSP, Hello and live settings before uploading either artifact.
