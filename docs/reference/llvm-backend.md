@@ -1588,3 +1588,39 @@ empty tool path. In a Thylacine guest the resulting application saved, retrieved
 and removed a setting across separate invocations. Looking up the removed key
 returned status 3. The HTTP entry rejected an invalid connection budget with
 status 2 and reported the listener's `ENOTTY` error on a valid fixed port.
+
+### Native Thylacine listener qualification
+
+Thylacine also exposes TCP as files under `/net/tcp`. In a private guest,
+a Rust program opened `clone`, announced an explicit loopback address, polled the
+listener’s `ready` file, accepted a connection through `listen`, exchanged
+bytes through `data` and half-closed the connection through its control file.
+The opened descriptors and a duplicate of the data descriptor had the
+close-on-exec flag set. An idle connection timed out in `poll`.
+
+Two settings server requirements remain open on this interface. A second
+listener successfully claimed the same loopback address and port while the
+first was still open. Asking netd to allocate a port by announcing port zero
+returned `EINVAL`. The settings service requires an occupied port to fail and
+port zero to yield an available port. The development pack still uses the
+existing HTTP adapter.
+
+To check another SDK, build the standalone probe with the nightly matching
+its patched Rust standard library and the pinned LLVM tools.
+
+```sh
+rustc -Zunstable-options --edition=2024 ci/thylacine-net-smoke.rs \
+  --target "$TELLUR_THYLACINE_TARGET_SPEC" --sysroot "$THYLACINE_RUST_SYSROOT" \
+  -C "linker=$THYLACINE/tools/pouch-clang" \
+  -C "link-arg=--ld-path=$LLVM_SYS_221_PREFIX/bin/ld.lld" \
+  -C "link-arg=$THYLACINE/build/sysroot/lib/libclang_rt.builtins.a" -o netsmoke
+```
+
+Run each case independently in a disposable guest with loopback ports 38172
+and 38173 initially free. Each command exits zero when that requirement holds.
+
+```sh
+./netsmoke transfer
+./netsmoke occupied
+./netsmoke automatic
+```

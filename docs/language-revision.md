@@ -2117,3 +2117,9 @@ SDK’s JSON target specification. The compiler linked the complete application
 from that pack with an empty tool path. The guest passed persistent set, get,
 remove and missing-key checks. Starting the HTTP service on a valid port still
 returns the patched standard library’s listener error.
+
+The native Thylacine TCP file interface passed fixed-port loopback transfer,
+readiness, descriptor duplication and half-close checks. Its listener accepted
+a second claim on an occupied port and rejected port zero. Both port behaviors
+need platform support before the settings HTTP service can qualify.
+[Runnable listener checks](reference/llvm-backend.md#native-thylacine-listener-qualification)
