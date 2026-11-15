@@ -7,6 +7,7 @@ on:
       - .github/workflows/release.yml
       - ci/build-llvm.sh
       - ci/check-release.py
+      - ci/check-clean-linux.sh
   release:
     types: [published]
 
@@ -97,15 +98,10 @@ jobs:
         shell: bash
         run: |
           docker run --rm --network none \
-            -v "$RUNNER_TEMP/qualified:/input:ro" ubuntu:24.04 \
+            -v "$RUNNER_TEMP/qualified:/input:ro" \
+            -v "$GITHUB_WORKSPACE/ci/check-clean-linux.sh:/smoke.sh:ro" ubuntu:24.04 \
             /usr/bin/env -i HOME=/tmp PATH=/absent TELLUR_NATIVE_TARGET_DIR=/tmp/cache \
-            /bin/sh -ec '
-              /input/tellur exec /input/hello.tellur --backend llvm --out /tmp/hello -- --json
-              /input/tellur build /input/project/applications/settings/main.tellur --adapter-pack /input/settings.adapter --out /tmp/settings
-              /tmp/settings --entry set -- /tmp/settings.json theme dark
-              value=$(/tmp/settings --entry get -- /tmp/settings.json theme)
-              test "$value" = "$(printf "dark\ndone")"
-            '
+            /usr/bin/timeout 120 /bin/bash /smoke.sh /input /tmp
 
       - name: Compare native Linux LLVM and Rust execution
         if: runner.os == 'Linux'
