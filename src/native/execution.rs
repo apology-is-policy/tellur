@@ -341,7 +341,11 @@ impl HostOperation {
                                 self.operation
                             ));
                         }
-                        *due = delay.map(|delay| std::time::Instant::now() + delay);
+                        *due = match delay {
+                            Some(delay) => Some(std::time::Instant::now().checked_add(delay)
+                                .ok_or_else(|| format!("E_HOST: pending `{}` delay exceeds the host clock range", self.operation))?),
+                            None => None,
+                        };
                         if registered.is_some_and(|(_, old)| Some(old) != fd) {
                             deregister(host, registered)?;
                         }

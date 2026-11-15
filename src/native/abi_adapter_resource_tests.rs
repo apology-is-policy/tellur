@@ -70,6 +70,7 @@ fn binding(m: &Json, name: &str, call: AdapterCallback) -> AdapterBinding {
 fn context<'a>(resources: &'a mut Resources, owner: &Arc<()>) -> AdapterContext<'a> {
     let manifest = manifest();
     AdapterContext {
+        progress: polled::Progress::default(),
         signature: manifest["primitives"][0].clone(),
         manifest,
         values: BTreeMap::new(),

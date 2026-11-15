@@ -25,6 +25,7 @@ fn context(ty: &str, values: Vec<V>) -> (AdapterContext<'static>, Vec<u64>) {
     let handles = reserve_handles(values.len()).unwrap();
     (
         AdapterContext {
+            progress: polled::Progress::default(),
             signature: m["primitives"][0].clone(),
             manifest: m,
             values: handles.iter().copied().zip(values).collect(),

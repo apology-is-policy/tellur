@@ -71,10 +71,17 @@ define i32 @main() {
     fs::write(&scenario,json!({"entry":"main","arguments":[{"kind":"string","value":"input"}],"calls":[{"operation":"inspect","outcome":"ready","fields":[{"kind":"string","value":"script"}]}]}).to_string()).unwrap();
     let mut reports = vec![];
     for opt in [0, 2] {
-        for mode in ["valid", "invalid", "legacy"] {
+        for mode in ["valid", "mixed", "invalid", "legacy"] {
             let mut source = format!("{header}{source}")
                 .replace("INFO_LENGTH", &info.len().to_string())
-                .replace("TABLE_VERSION", if mode == "invalid" { "2" } else { "1" });
+                .replace(
+                    "TABLE_VERSION",
+                    match mode {
+                        "invalid" => "3",
+                        "mixed" => "2",
+                        _ => "1",
+                    },
+                );
             if mode == "legacy" {
                 source = source
                     .replace(
@@ -95,7 +102,7 @@ define i32 @main() {
                     command.args(["--json", "input"]);
                 }
                 let result = command.output().unwrap();
-                if mode != "valid" {
+                if matches!(mode, "legacy" | "invalid") {
                     assert_eq!(result.status.code(), Some(1), "{mode}/{opt}: {result:?}");
                     let err = String::from_utf8_lossy(&result.stderr);
                     assert!(
@@ -133,7 +140,8 @@ define i32 @main() {
             }
         }
     }
-    assert_eq!(reports[0], reports[2]);
-    assert_eq!(reports[1], reports[3]);
+    for pair in reports.chunks_exact(2) {
+        assert_eq!(pair, &reports[..2]);
+    }
     fs::remove_dir_all(directory).unwrap();
 }

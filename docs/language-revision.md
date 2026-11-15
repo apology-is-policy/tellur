@@ -2001,3 +2001,15 @@ The retained-file example now documents both backends. The next agreed slice is
 polled operations/readiness and their consumed/shared resource lifecycle, followed
 by application and whole-suite parity before changing the default. Single binary,
 per-target link packs and Rust-backend retirement remain ahead.
+
+## B1.5e — private polled adapter lifecycle (0.275)
+
+Version 2 adapter tables can register both synchronous callbacks and starts for
+owned host operations. Each launch checks all entries against the manifest before
+installing either callback. A started operation belongs to its original Host.
+Each poll receives fresh handles for shared resources. The host can wait on a
+timer, descriptor readiness, or both. On completion or cancellation it deregisters
+the descriptor before destroying the operation. Cancellation publishes no host event.
+
+Typed Rust source generation for polled adapters and live OS readiness are next.
+The public LLVM adapter profile still ends at synchronous retained resources.

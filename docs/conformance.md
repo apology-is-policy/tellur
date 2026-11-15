@@ -6889,3 +6889,12 @@ feature quota/linked probes refresh. Compiler/LSP/VSIX, source baseline, release
 examples, isolated editor and payload verification use the maintained workflow.
 Evidence: `work/tellur-0.274-verification.json`. Polling/readiness and full backend
 parity remain later checkpoints; Rust stays default.
+
+## 0.275 private polled adapter lifecycle
+
+The native Host tests exercise launch-local start registration, consuming
+handoff, stale shared suppliers, incomplete polls and late result rejection.
+A retained control follows a registered wait through both normal completion
+and cooperative cancellation. Its readiness backend records deregistration and
+foreign destructors record their own calls. Linked LLVM probes exercise both
+table versions, a rejected version, and legacy launch at O0 and O2.

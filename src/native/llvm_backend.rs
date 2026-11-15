@@ -2172,6 +2172,13 @@ fn abi_library(target: &Path) -> Result<PathBuf> {
                 &format!(
                     "pub mod adapter {{\n{}\n}}",
                     include_str!("abi_adapter.rs")
+                        .replace(
+                            "#[path = \"abi_adapter_polled.rs\"]\npub mod polled;",
+                            &format!(
+                                "pub mod polled {{\n{}\n}}",
+                                include_str!("abi_adapter_polled.rs")
+                            )
+                        )
                         .lines()
                         .filter(|l| !l.starts_with("//!"))
                         .collect::<Vec<_>>()

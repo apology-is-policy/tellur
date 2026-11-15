@@ -1353,3 +1353,26 @@ panic recovery or destructor guarantee for aborts or forced process termination.
 The [retained file example](../../examples/retained_file/README.md) demonstrates
 open, shared read and consuming release with either backend. Polled operations,
 readiness, application and whole-suite parity remain ahead; Rust stays default.
+
+## Private polled operation protocol (0.275)
+
+Version 1 tables accept synchronous callbacks. Version 2 adds callback flag 1
+for a start, with the same C signature. A start publishes a versioned descriptor
+containing an opaque state pointer and poll and destruction callbacks. Clearing
+the supplied pointer acknowledges transfer. Only shared resource tokens survive
+from the start arguments. Each poll resolves them again against the launch owner
+and the original Host before calling the adapter. A consuming argument can move
+into the adapter's state.
+
+A poll completes once or publishes one pending wait. Its flags select a relative
+delay (1), a readable descriptor (2), or a writable descriptor (4). The interests
+are exclusive and may include a delay. Delay uses seconds and nanoseconds.
+Cancellation deregisters the wait before destroying the state and suppresses the
+completion event. A protocol error retires any owning result that the callback
+already published.
+
+To exercise completion and cancellation through the retained runtime, run
+`cargo test --test native_host retained_host_deregisters_foreign_wait`.
+The test supplies readiness tokens while the real Host manages registrations,
+operation state and ownership. Compiling polled Rust source on LLVM follows in
+the next checkpoint.

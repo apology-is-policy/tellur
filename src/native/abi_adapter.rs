@@ -20,6 +20,7 @@ pub struct AdapterDescriptor {
 
 /// Owned, immutable contract for one operation; no mutable global dispatch state.
 /// The launch registry owns this contract; generated static libraries are separate.
+#[derive(Clone)]
 pub struct AdapterBinding {
     manifest: Json,
     signature: Json,
@@ -53,6 +54,15 @@ fn resource_type(manifest: &Json, ty: &str) -> bool {
 }
 impl AdapterBinding {
     pub fn new(manifest: &Json, operation: &str, descriptor: AdapterDescriptor) -> R<Self> {
+        Self::prepare(manifest, operation, descriptor, false)
+    }
+
+    fn prepare(
+        manifest: &Json,
+        operation: &str,
+        descriptor: AdapterDescriptor,
+        polled: bool,
+    ) -> R<Self> {
         if descriptor.version != 1 || descriptor.flags != 0 || descriptor.call.is_none() {
             return Err(adapter_error("has an incompatible callback descriptor"));
         }
@@ -60,15 +70,20 @@ impl AdapterBinding {
             .as_array()
             .and_then(|ps| ps.iter().find(|p| p["name"] == operation))
             .ok_or_else(|| adapter_error("names an unknown operation"))?;
-        if !manifest["rust"].is_object()
-            || !matches!(
+        let execution_matches = if polled {
+            signature["rust"]["execution"] == "poll" && signature["async"] == true
+        } else {
+            matches!(
                 signature["rust"]["execution"].as_str(),
                 Some("immediate" | "blocking")
-            )
-            || signature["async"] == true
-            || signature["pure"] == true
-        {
-            return Err(adapter_error("requires a synchronous Rust binding"));
+            ) && signature["async"] != true
+        };
+        if !manifest["rust"].is_object() || !execution_matches || signature["pure"] == true {
+            return Err(adapter_error(if polled {
+                "requires a polled Rust binding"
+            } else {
+                "requires a synchronous Rust binding"
+            }));
         }
         let parameters = signature["parameters"]
             .as_array()
@@ -121,6 +136,22 @@ impl AdapterBinding {
         arguments: &mut Vec<V>,
         resources: Option<(&mut Resources, &Arc<()>)>,
     ) -> R<Outcome> {
+        let (mut context, handles) = self.context(arguments, resources)?;
+        unsafe { (self.callback)(&mut context, handles.as_ptr(), handles.len()) };
+        if let Some(error) = context.error.take() {
+            return Err(error);
+        }
+        context
+            .result
+            .take()
+            .ok_or_else(|| adapter_error("returned without an outcome"))
+    }
+
+    fn context<'a>(
+        &self,
+        arguments: &mut Vec<V>,
+        resources: Option<(&'a mut Resources, &Arc<()>)>,
+    ) -> R<(AdapterContext<'a>, Vec<u64>)> {
         let types = self.signature["parameters"]
             .as_array()
             .unwrap()
@@ -175,7 +206,7 @@ impl AdapterBinding {
             Some((resources, owner)) => (Some(resources), Some(Arc::clone(owner))),
             None => (None, None),
         };
-        let mut context = AdapterContext {
+        let context = AdapterContext {
             manifest: self.manifest.clone(),
             signature: self.signature.clone(),
             values: handles
@@ -188,15 +219,9 @@ impl AdapterBinding {
             resources,
             owner,
             owned,
+            progress: polled::Progress::default(),
         };
-        unsafe { (self.callback)(&mut context, handles.as_ptr(), handles.len()) };
-        if let Some(error) = context.error.take() {
-            return Err(error);
-        }
-        context
-            .result
-            .take()
-            .ok_or_else(|| adapter_error("returned without an outcome"))
+        Ok((context, handles))
     }
 }
 
@@ -222,23 +247,40 @@ pub struct AdapterTable {
 pub struct AdapterRegistry {
     manifest: Json,
     bindings: BTreeMap<String, AdapterBinding>,
+    starts: BTreeMap<String, polled::PolledBinding>,
     owner: Arc<()>,
 }
 impl AdapterRegistry {
     pub unsafe fn prepare(manifest: &Json, table: *const AdapterTable) -> R<Arc<Self>> {
         let table = unsafe { adapter_span(table, 1)? }[0];
-        if table.version != 1 || table.flags != 0 {
+        if !matches!(table.version, 1 | 2) || table.flags != 0 {
             return Err(adapter_error("has an incompatible operation table"));
         }
         let operations = unsafe { adapter_span(table.operations, table.count)? };
         let mut bindings = BTreeMap::new();
+        let mut starts = BTreeMap::new();
         for operation in operations {
             let name = unsafe { adapter_text(operation.name, operation.name_len)? };
-            if name.is_empty() || bindings.contains_key(name) {
+            if name.is_empty() || bindings.contains_key(name) || starts.contains_key(name) {
                 return Err(adapter_error("has an empty or duplicate operation name"));
             }
-            let binding = AdapterBinding::new(manifest, name, operation.callback)?;
-            bindings.insert(name.to_owned(), binding);
+            // Version 2 adds a start callback (flag 1) with the same C call
+            // signature. Version 1 and ordinary callbacks still require flag 0.
+            if table.version == 2 && operation.callback.flags == 1 {
+                let descriptor = AdapterDescriptor {
+                    flags: 0,
+                    ..operation.callback
+                };
+                starts.insert(
+                    name.to_owned(),
+                    polled::PolledBinding::new(manifest, name, descriptor)?,
+                );
+            } else {
+                bindings.insert(
+                    name.to_owned(),
+                    AdapterBinding::new(manifest, name, operation.callback)?,
+                );
+            }
         }
         let primitives = manifest["primitives"]
             .as_array()
@@ -249,16 +291,18 @@ impl AdapterRegistry {
                 .as_str()
                 .filter(|n| !n.is_empty())
                 .ok_or_else(|| adapter_error("has an invalid operation name"))?;
-            if !expected.insert(name) || !bindings.contains_key(name) {
+            if !expected.insert(name) || !(bindings.contains_key(name) || starts.contains_key(name))
+            {
                 return Err(adapter_error("requires every Rust operation exactly once"));
             }
         }
-        if bindings.len() != expected.len() {
+        if bindings.len() + starts.len() != expected.len() {
             return Err(adapter_error("contains an unbound operation"));
         }
         Ok(Arc::new(Self {
             manifest: manifest.clone(),
             bindings,
+            starts,
             owner: Arc::new(()),
         }))
     }
@@ -274,6 +318,9 @@ impl AdapterRegistry {
         }
         host.resources.foreign_adapters = Some(Arc::clone(self));
         host.rust_adapter = Some(dispatch);
+        if !self.starts.is_empty() {
+            host.rust_start = Some(dispatch_start);
+        }
         Ok(())
     }
 
@@ -291,6 +338,22 @@ fn dispatch(resources: &mut Resources, operation: &str, mut args: Vec<V>) -> R<O
         .get(operation)
         .ok_or_else(|| adapter_error("has no binding for operation"))?
         .invoke_with_resources(&mut args, Some((resources, &registry.owner)))
+}
+
+fn dispatch_start(
+    resources: &mut Resources,
+    operation: &str,
+    mut args: Vec<V>,
+) -> R<Box<dyn HostPoll>> {
+    let registry = resources
+        .foreign_adapters
+        .clone()
+        .ok_or_else(|| adapter_error("has no launch bindings"))?;
+    registry
+        .starts
+        .get(operation)
+        .ok_or_else(|| adapter_error("has no polled binding for operation"))?
+        .start(&mut args, resources, &registry.owner)
 }
 
 // Identities cannot alias another call, including a concurrent or reentrant call.
@@ -319,6 +382,7 @@ pub struct AdapterContext<'a> {
     owner: Option<Arc<()>>,
     // Only these call-local handles own resource tokens. Shared aliases never do.
     owned: BTreeSet<u64>,
+    progress: polled::Progress,
 }
 impl AdapterContext<'_> {
     fn get(&self, handle: u64) -> R<&V> {
@@ -354,7 +418,7 @@ impl AdapterContext<'_> {
         if self.error.is_some() {
             return T::default();
         }
-        if self.result.is_some() {
+        if self.result.is_some() || self.progress.finished() {
             self.error = Some(adapter_error("used a completed invocation"));
             return T::default();
         }
@@ -407,6 +471,8 @@ impl AdapterContext<'_> {
 }
 impl Drop for AdapterContext<'_> {
     fn drop(&mut self) {
+        // A failed start retires its published operation before unused owners.
+        self.progress = polled::Progress::default();
         for handle in std::mem::take(&mut self.owned) {
             if let Some(value) = self.values.remove(&handle) {
                 self.retire(value);
@@ -611,6 +677,11 @@ pub unsafe extern "C" fn tellur_adapter_v1_complete(
     count: usize,
 ) {
     unsafe { &mut *c }.perform(|c| {
+        if matches!(c.progress, polled::Progress::Starting(_)) {
+            return Err(adapter_error(
+                "start must publish an operation, not an outcome",
+            ));
+        }
         let name = unsafe { adapter_text(name, len)? };
         let handles = unsafe { adapter_span(fields, count)? };
         c.batch(handles)?;
@@ -780,3 +851,6 @@ mod registry_tests;
 #[cfg(test)]
 #[path = "abi_adapter_resource_tests.rs"]
 mod resource_tests;
+
+#[path = "abi_adapter_polled.rs"]
+pub mod polled;

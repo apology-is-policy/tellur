@@ -87,7 +87,7 @@ fn complete_table_preflight_rejects_malformed_or_missing_bindings() {
             ..table(&ops)
         },
         AdapterTable {
-            version: 2,
+            version: 3,
             ..table(&ops)
         },
         AdapterTable {
@@ -343,7 +343,7 @@ fn invalid_launch_registration_fails_before_entry_or_argument_processing() {
     let info=json!({"abi":1,"manifest":manifest().to_string(),"entry":"main","sites":"{}", "entries":[{"name":"main","display":"main","arguments":[],"exits":[["done",0]]}]}).to_string();
     let callbacks = [never as Callback];
     let invalid = AdapterTable {
-        version: 2,
+        version: 3,
         ..table(&[])
     };
     let error = unsafe {
