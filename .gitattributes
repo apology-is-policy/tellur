@@ -3,3 +3,8 @@
 examples/**/*.tellur text eol=lf
 playground/**/*.tellur text eol=lf
 tests/fixtures/**/*.tellur text eol=lf
+
+# A precompiled settings adapter identifies these inputs by their contents.
+applications/settings/host.rs text eol=lf
+applications/settings/Cargo.lock text eol=lf
+library/host/*.rs text eol=lf

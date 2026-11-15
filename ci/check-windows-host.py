@@ -40,6 +40,7 @@ def qualify(dist, directory):
                  "-Cdlltool=" + os.environ["TELLUR_WINDOWS_DLLTOOL"]}
     subprocess.run([compiler, "pack-adapter", settings, "--target", target, "--out", adapter],
                    check=True, env=build_env)
+    consumer = checks["copy_settings_project"](directory / "project")
     os.environ["PATH"] = ""
     os.environ["TELLUR_NATIVE_TARGET_DIR"] = str(directory / "clean-cache")
     assert subprocess.check_output([compiler, "--version"], text=True).split()[1] == version
@@ -49,7 +50,7 @@ def qualify(dist, directory):
     report = json.loads(subprocess.check_output([hello, "--json"], timeout=15))
     assert report["outcome"] == "done" and report["events"][0]["message"] == "Hello from Tellur!"
     service = directory / "settings.exe"
-    subprocess.run([compiler, "build", settings, "--backend", "llvm", "--adapter-pack", adapter, "--out", service],
+    subprocess.run([compiler, "build", consumer, "--backend", "llvm", "--adapter-pack", adapter, "--out", service],
                    check=True)
     checks["check_settings"](service, directory, os.environ)
 

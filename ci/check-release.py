@@ -95,22 +95,25 @@ def check_settings(binary, directory, env):
                 server.kill()
 
 
-def qualify_adapter_pack(compiler, dest, scratch):
-    # Copy only the maintained settings inputs. Relative imports and adapter
-    # module paths retain their layout in the clean container.
-    project = dest / "project"
+def copy_settings_project(project):
+    # Model a consumer with an LF checkout, even when the pack producer uses
+    # Git's Windows checkout settings. Keep relative module paths intact.
     for pattern in ["applications/settings/*.tellur", "applications/settings/manifest.json",
                     "applications/settings/Cargo.lock", "applications/settings/host.rs",
                     "library/*.tellur", "library/host/*.rs"]:
         for path in Path(".").glob(pattern):
             copy = project / path
             copy.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(path, copy)
+            copy.write_bytes(path.read_bytes().replace(b"\r\n", b"\n"))
+    return project / "applications/settings/main.tellur"
+
+
+def qualify_adapter_pack(compiler, dest, scratch):
+    source = copy_settings_project(dest / "project")
     original = Path("applications/settings/main.tellur")
     pack = dest / "settings.adapter"
     subprocess.run([compiler, "pack-adapter", original, "--out", pack], check=True)
     env = {"HOME": str(scratch), "PATH": "/absent", "TELLUR_NATIVE_TARGET_DIR": str(scratch / "packed-cache")}
-    source = project / original
     settings = scratch / "settings"
     build = [compiler, "build", source, "--adapter-pack", pack, "--out", settings]
     subprocess.run(build, env=env, check=True)

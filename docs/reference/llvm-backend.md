@@ -1444,6 +1444,10 @@ bound resource types and primitives, dependencies, and lockfile. Changing those
 inputs requires rebuilding the pack. Supply trusted packs, as you would other
 native code. Ordinary source-adapter builds still run Cargo with its lockfile.
 
+When sharing a pack across checkouts, preserve the line endings in the Rust
+adapter source, its modules and its lockfile. The settings application's Git
+attributes keep these files at LF on Windows, macOS and Linux.
+
 For cross-compilation, pass the same `--target` to both commands.
 `pack-adapter --release` optimizes the adapter independently of its consuming
 program. The macOS bundled system link stub covers the settings application.
