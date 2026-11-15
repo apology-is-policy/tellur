@@ -1,4 +1,5 @@
 const vscode = require('vscode');
+const { resolveCommand } = require('./commands.cjs');
 const { configuration } = require('./configuration.cjs');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -9,12 +10,6 @@ function registerBuildCommands(context) {
   let busy = false;
   let active;
   context.subscriptions.push({ dispose: () => active?.kill() });
-  function compiler(root, config) {
-    const configured = config.get('compilerPath', '');
-    if (configured) return path.isAbsolute(configured) ? configured : path.resolve(root, configured);
-    const name = process.platform === 'win32' ? 'tellurc.exe' : 'tellurc';
-    return [path.join(context.extensionPath, 'server', name), path.join(root, 'target', 'debug', name)].find(p => fs.existsSync(p)) || name;
-  }
   function manifest(source, root, config) {
     const configured = config.get('manifestPath', '');
     if (configured) return path.resolve(root, configured);
@@ -44,7 +39,7 @@ function registerBuildCommands(context) {
     if (run) args.push('--', ...programArgs);
     output.clear(); output.show(true);
     output.appendLine(`${run ? 'Building and running' : 'Building'} ${path.basename(document.uri.fsPath)} · entry ${entry}`);
-    const command = compiler(root, config);
+    const { command } = resolveCommand(context.extensionPath, root, config.get('compilerPath', ''), false);
     busy = true;
     try {
       return await new Promise((resolve, reject) => {
@@ -53,7 +48,7 @@ function registerBuildCommands(context) {
         active = child;
         child.stdout.on('data', data => { stdout += data; output.append(data.toString()); });
         child.stderr.on('data', data => { stderr += data; output.append(data.toString()); });
-        child.on('error', error => reject(new Error(`Could not start tellurc: ${error.message}. Set tellurLanguage.compilerPath.`)));
+        child.on('error', error => reject(new Error(`Could not start ${command}: ${error.message}. Set tellurLanguage.compilerPath.`)));
         child.on('close', code => {
           output.appendLine(`\n${code === 0 ? 'Finished' : 'Failed'} (exit ${code})`);
           resolve({ code, stdout, stderr, executable: buildFile });

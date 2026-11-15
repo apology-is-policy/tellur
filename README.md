@@ -1,11 +1,12 @@
 # Tellur compiler and playground
 
 The language is now named **Tellur** (formerly the Path placeholder). Release 0.36
-uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Existing
+introduced `.tellur` sources and `tellur.code-workspace`. The `tellur` executable
+provides the compiler and the stdio language server (`tellur lsp`). Existing
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.277.0** implements the v0.1 checked core and the current language
+Compiler release **0.278.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -870,13 +871,13 @@ Install Rust/Cargo, then run:
 git clone https://github.com/apology-is-policy/tellur.git
 cd tellur
 cargo build --locked --release --bins
-./target/release/tellurc check playground/hello.tellur
-./target/release/tellurc exec playground/hello.tellur
-./target/release/tellurc build playground/hello.tellur --release
+./target/release/tellur check playground/hello.tellur
+./target/release/tellur exec playground/hello.tellur
+./target/release/tellur build playground/hello.tellur --release
 ./playground/build/hello
 ```
 
-Generated binaries and VSIX packages are not committed. Use `target/release/tellurc`
+Generated binaries and VSIX packages are not committed. Use `target/release/tellur`
 in place of `bin/tellurc` in the examples below, or copy the release binaries into
 `bin/`. To build the editor extension, follow the
 [VS Code development guide](editors/vscode/README.md). The project is licensed under
@@ -984,8 +985,8 @@ before/after expansion and O0/O2 optimization, live host adapters, and actual ed
 build/run. This is finite evidence, not a soundness or termination proof.
 
 The [VS Code development guide](editors/vscode/README.md) describes the extension
-and its integration runner. The installed release bundles both `tellurc` and
-`tellur-lsp`. Rebuild and override their paths when working on compiler code.
+and its integration runner. The installed release bundles one `tellur` executable. The editor launches `tellur lsp` for language services
+and `tellur build` or `tellur exec` for native commands.
 
 ## Design and boundaries
 

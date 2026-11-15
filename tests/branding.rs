@@ -19,12 +19,16 @@ fn canonical_and_legacy_commands_report_tellur_and_check_both_extensions() {
     for extension in ["tellur", "path"] {
         fs::write(root.join(format!("main.{extension}")), source).unwrap();
     }
-    for compiler in [env!("CARGO_BIN_EXE_tellurc"), env!("CARGO_BIN_EXE_pathc")] {
+    for (compiler, version_name) in [
+        (env!("CARGO_BIN_EXE_tellur"), "tellur"),
+        (env!("CARGO_BIN_EXE_tellurc"), "tellurc"),
+        (env!("CARGO_BIN_EXE_pathc"), "tellurc"),
+    ] {
         let version = Command::new(compiler).arg("--version").output().unwrap();
         assert!(version.status.success());
         assert!(
             String::from_utf8_lossy(&version.stdout)
-                .starts_with(concat!("tellurc ", env!("CARGO_PKG_VERSION")))
+                .starts_with(&format!("{version_name} {}", env!("CARGO_PKG_VERSION")))
         );
         let help = Command::new(compiler).arg("--help").output().unwrap();
         assert!(help.status.success());

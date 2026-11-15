@@ -1021,7 +1021,7 @@ control main() exits done {
     await waitFor(() => revisedDiagnostics().length === 0, 'stored contributor repair');
     console.log('TELLUR_STORED_CONTRIBUTORS_EDITOR_TESTS_PASSED: capture, adapter, related source locations, unsaved repair');
     await buildDocument.save();
-    const jsonCheck = await require('node:util').promisify(require('node:child_process').execFile)(path.join(__dirname, '../server/tellurc'), ['check', buildUri.fsPath, '--json']);
+    const jsonCheck = await require('node:util').promisify(require('node:child_process').execFile)(path.join(__dirname, process.platform === 'win32' ? '../server/tellur.exe' : '../server/tellur'), ['check', buildUri.fsPath, '--json']);
     const checkReport = JSON.parse(jsonCheck.stdout);
     assert.equal(checkReport.schema, 'tellur.check.v1');
     assert.equal(checkReport.ok, true);

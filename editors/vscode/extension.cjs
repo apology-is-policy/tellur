@@ -1,6 +1,5 @@
 const vscode = require('vscode');
-const fs = require('node:fs');
-const path = require('node:path');
+const { resolveCommand } = require('./commands.cjs');
 const { LanguageClient, DocumentFormattingRequest } = require('vscode-languageclient/node');
 const { configuration } = require('./configuration.cjs');
 const { registerBuildCommands } = require('./build.cjs');
@@ -8,24 +7,17 @@ let client;
 let fileWatcher;
 let startQueue = Promise.resolve();
 
-function serverPath(context) {
-  const configured = configuration(vscode).get('serverPath', '');
-  const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-  if (configured) return path.isAbsolute(configured) ? configured : path.resolve(root || context.extensionPath, configured);
-  const binary = process.platform === 'win32' ? 'tellur-lsp.exe' : 'tellur-lsp';
-  const candidates = [path.join(context.extensionPath, 'server', binary), path.resolve(context.extensionPath, '../../target/debug', binary), root && path.join(root, 'target', 'debug', binary)];
-  return candidates.find(p => p && fs.existsSync(p)) || binary;
-}
-
 async function start(context) {
   if (client) { const previous = client; client = undefined; await previous.dispose(); }
   fileWatcher?.dispose();
   fileWatcher = undefined;
   if (!vscode.workspace.isTrusted) return;
-  const command = serverPath(context);
+  const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  const configured = configuration(vscode).get('serverPath', '');
+  const { command, args } = resolveCommand(context.extensionPath, root, configured, true);
   const watcher = vscode.workspace.createFileSystemWatcher('**/*.{json,tellur,path}');
   fileWatcher = watcher;
-  const next = new LanguageClient('tellurLanguage', 'Tellur Language', { command, args: [], options: { env: process.env } }, {
+  const next = new LanguageClient('tellurLanguage', 'Tellur Language', { command, args, options: { env: process.env } }, {
     documentSelector: ['tellur', 'path'].flatMap(language => ['file', 'untitled'].map(scheme => ({ language, scheme }))),
     initializationOptions: { manifestPath: configuration(vscode).get('manifestPath', '') },
     synchronize: { fileEvents: watcher },
@@ -53,7 +45,7 @@ async function start(context) {
     watcher.dispose();
     if (client === next) client = undefined;
     await next.dispose();
-    void vscode.window.showErrorMessage(`Tellur language server could not start (${command}). Build tellur-lsp or set tellurLanguage.serverPath. ${error.message}`);
+    void vscode.window.showErrorMessage(`Tellur language server could not start (${command}). Build tellur or set tellurLanguage.serverPath. ${error.message}`);
     throw error;
   }
 

@@ -4,7 +4,7 @@ use std::{
     process::{Command, ExitCode},
 };
 use tellur::{compile_file, manifest::Manifest, runtime::Scenario};
-const USAGE: &str = "Tellur compiler\n  tellurc explain SOURCE [MANIFEST] (--at LINE:COLUMN | --control NAME --outcome NAME) [--json]\n  tellurc absorption-snapshot SOURCE [MANIFEST]  (bounded outcome contributor JSON)\n  tellurc absorption-diff BEFORE_JSON AFTER_JSON [--check]\n  tellurc contract-snapshot SOURCE [MANIFEST]  (checked public interface JSON)\n  tellurc contract-diff BEFORE_JSON AFTER_JSON [--check]  (exact contract differences)\n  tellurc format SOURCE [--check | --write] [--width N]  (stdout by default; no manifest needed)\n  tellurc check SOURCE [MANIFEST] [--json]\n  tellurc lock-native SOURCE [MANIFEST]  (explicitly resolve Rust adapter dependencies)\n  tellurc run SOURCE MANIFEST SCENARIO [--expanded] [--json]  (reference interpreter)\n  tellurc compare SOURCE MANIFEST OTHER_SOURCE SCENARIOS  (finite scenario evidence)\n  tellurc expand SOURCE MANIFEST ENTRY\n  tellurc extract-tail SOURCE MANIFEST CONTROL LINE HELPER [--report]\n  tellurc protocol SOURCE MANIFEST ENTRY [PREFIX_JSON]  (structural abstraction)\n  tellurc protocol-compare SOURCE MANIFEST OTHER_SOURCE ENTRY\n  tellurc certify-expansion SOURCE MANIFEST ENTRY  (JSON graph and correspondence)\n  tellurc verify-expansion SOURCE MANIFEST ARTIFACT\n  tellurc inspect SOURCE MANIFEST ENTRY [--expanded]\n  tellurc build SOURCE [MANIFEST] [--entry main] [--out FILE] [--release] [--expanded] [--backend rust|llvm]\n  tellurc exec SOURCE [MANIFEST] [build options] [-- PROGRAM_ARGUMENTS]\nBuild writes a native executable, LLVM IR (.ll), and generated source (.tellur-build/).\nNative programs accept --help, --json, --scenario FILE, and --fuel N.\nRust/Cargo is required for the Rust backend and the transitional LLVM runtime cache.\nLLVM-enabled macOS arm64 compilers default to LLVM. Other builds default to Rust. Pass --backend rust to use generated Rust on any build. See docs/reference/llvm-backend.md for supported operations. Executables are standalone.";
+const USAGE: &str = "Tellur compiler\n  tellur lsp  (language server over stdio)\n  tellurc explain SOURCE [MANIFEST] (--at LINE:COLUMN | --control NAME --outcome NAME) [--json]\n  tellurc absorption-snapshot SOURCE [MANIFEST]  (bounded outcome contributor JSON)\n  tellurc absorption-diff BEFORE_JSON AFTER_JSON [--check]\n  tellurc contract-snapshot SOURCE [MANIFEST]  (checked public interface JSON)\n  tellurc contract-diff BEFORE_JSON AFTER_JSON [--check]  (exact contract differences)\n  tellurc format SOURCE [--check | --write] [--width N]  (stdout by default; no manifest needed)\n  tellurc check SOURCE [MANIFEST] [--json]\n  tellurc lock-native SOURCE [MANIFEST]  (explicitly resolve Rust adapter dependencies)\n  tellurc run SOURCE MANIFEST SCENARIO [--expanded] [--json]  (reference interpreter)\n  tellurc compare SOURCE MANIFEST OTHER_SOURCE SCENARIOS  (finite scenario evidence)\n  tellurc expand SOURCE MANIFEST ENTRY\n  tellurc extract-tail SOURCE MANIFEST CONTROL LINE HELPER [--report]\n  tellurc protocol SOURCE MANIFEST ENTRY [PREFIX_JSON]  (structural abstraction)\n  tellurc protocol-compare SOURCE MANIFEST OTHER_SOURCE ENTRY\n  tellurc certify-expansion SOURCE MANIFEST ENTRY  (JSON graph and correspondence)\n  tellurc verify-expansion SOURCE MANIFEST ARTIFACT\n  tellurc inspect SOURCE MANIFEST ENTRY [--expanded]\n  tellurc build SOURCE [MANIFEST] [--entry main] [--out FILE] [--release] [--expanded] [--backend rust|llvm]\n  tellurc exec SOURCE [MANIFEST] [build options] [-- PROGRAM_ARGUMENTS]\nBuild writes a native executable, LLVM IR (.ll), and generated source (.tellur-build/).\nNative programs accept --help, --json, --scenario FILE, and --fuel N.\nRust/Cargo is required for the Rust backend and the transitional LLVM runtime cache.\nLLVM-enabled macOS arm64 compilers default to LLVM. Other builds default to Rust. Pass --backend rust to use generated Rust on any build. See docs/reference/llvm-backend.md for supported operations. Executables are standalone.";
 fn discover(source: &Path) -> Option<PathBuf> {
     let source = if source.is_absolute() {
         source.to_owned()
@@ -17,20 +17,30 @@ fn discover(source: &Path) -> Option<PathBuf> {
         .map(|p| p.join("manifest.json"))
         .find(|p| p.is_file())
 }
-fn run(args: Vec<String>) -> std::result::Result<ExitCode, Box<dyn std::error::Error>> {
+fn run(
+    args: Vec<String>,
+    compiler_name: &str,
+) -> std::result::Result<ExitCode, Box<dyn std::error::Error>> {
+    let usage = || USAGE.replace("tellurc ", &format!("{compiler_name} "));
     if args.is_empty() || args[0] == "--help" || args[0] == "help" {
-        println!("{USAGE}");
+        println!("{}", usage());
         return Ok(ExitCode::SUCCESS);
     }
     if args[0] == "--version" {
         println!(
-            "tellurc {} (v0.1 core, v0.2 syntax preview)",
+            "{compiler_name} {} (v0.1 core, v0.2 syntax preview)",
             env!("CARGO_PKG_VERSION")
         );
         return Ok(ExitCode::SUCCESS);
     }
+    if args[0] == "lsp" {
+        if args.len() != 1 {
+            return Err("usage: tellur lsp".into());
+        }
+        return Ok(tellur::lsp::serve_stdio());
+    }
     if args.len() < 2 {
-        return Err(USAGE.into());
+        return Err(usage().into());
     }
     // Development command of the embedded LLVM backend (feature `llvm`):
     // `llvm-smoke [--release] OUT INPUT.ll...` links a host executable in-process.
@@ -400,16 +410,22 @@ fn run(args: Vec<String>) -> std::result::Result<ExitCode, Box<dyn std::error::E
                 );
             }
         }
-        _ => return Err(USAGE.into()),
+        _ => return Err(usage().into()),
     }
     Ok(ExitCode::SUCCESS)
 }
 fn main() -> ExitCode {
+    let executable = env::args_os().next().map(PathBuf::from).unwrap_or_default();
+    let compiler_name = match executable.file_stem().and_then(|name| name.to_str()) {
+        Some("tellur-lsp" | "path-lsp") => return tellur::lsp::serve_stdio(),
+        Some("tellurc" | "pathc") => "tellurc",
+        _ => "tellur",
+    };
     let args = env::args().skip(1).collect::<Vec<_>>();
     if args.first().is_some_and(|a| a == "check") && args[1..].iter().any(|a| a == "--json") {
         return json_check(&args[1..]);
     }
-    match run(args) {
+    match run(args, compiler_name) {
         Ok(code) => code,
         Err(e) => {
             eprintln!("{e}");

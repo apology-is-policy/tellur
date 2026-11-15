@@ -11,3 +11,6 @@ build.cjs
 extensions.json
 
 configuration.cjs
+commands.cjs
+server/tellurc*
+server/tellur-lsp*

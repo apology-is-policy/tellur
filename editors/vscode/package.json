@@ -2,7 +2,7 @@
   "name": "tellur-language",
   "displayName": "Tellur Language (Experimental)",
   "description": "Tellur controls, inline adapters, owned outcomes, diagnostics and native build/run",
-  "version": "0.277.0",
+  "version": "0.278.0",
   "publisher": "tellur-language-local",
   "license": "Apache-2.0",
   "engines": {
@@ -105,7 +105,7 @@
           "type": "string",
           "default": "",
           "scope": "machine-overridable",
-          "description": "Path to tellur-lsp. Empty uses the bundled server or the compiler checkout's target/debug/tellur-lsp."
+          "description": "Path to a standalone language server started without arguments. Empty starts the bundled tellur lsp."
         },
         "tellurLanguage.manifestPath": {
           "type": "string",
@@ -127,7 +127,7 @@
           "type": "string",
           "default": "",
           "scope": "machine-overridable",
-          "description": "Path to tellurc. Empty uses the bundled compiler."
+          "description": "Path to a Tellur compiler. Empty uses the bundled tellur executable."
         },
         "tellurLanguage.entryRegion": {
           "type": "string",
@@ -151,7 +151,7 @@
           "type": "string",
           "default": "",
           "scope": "machine-overridable",
-          "description": "Path to tellur-lsp. Empty uses the bundled server or the compiler checkout's target/debug/tellur-lsp.",
+          "description": "Path to a standalone language server started without arguments. Empty starts the bundled tellur lsp.",
           "deprecationMessage": "Use tellurLanguage.serverPath instead."
         },
         "pathLanguage.manifestPath": {
@@ -176,7 +176,7 @@
           "type": "string",
           "default": "",
           "scope": "machine-overridable",
-          "description": "Path to tellurc. Empty uses the bundled compiler.",
+          "description": "Path to a Tellur compiler. Empty uses the bundled tellur executable.",
           "deprecationMessage": "Use tellurLanguage.compilerPath instead."
         },
         "pathLanguage.entryRegion": {

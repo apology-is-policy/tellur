@@ -1303,6 +1303,19 @@ fn request(server: &Server, request: Request) -> Response {
         ),
     }
 }
+pub fn serve_stdio() -> std::process::ExitCode {
+    let (connection, threads) = lsp_server::Connection::stdio();
+    if let Err(error) = serve(connection) {
+        eprintln!("tellur-lsp: {error}");
+        return std::process::ExitCode::FAILURE;
+    }
+    if let Err(error) = threads.join() {
+        eprintln!("tellur-lsp transport: {error}");
+        return std::process::ExitCode::FAILURE;
+    }
+    std::process::ExitCode::SUCCESS
+}
+
 pub fn serve(connection: Connection) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let (id, params) = connection.initialize_start()?;
     let mut server = Server::default();

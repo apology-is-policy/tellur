@@ -1,8 +1,8 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.277.0 -->
+<!-- tellur-reference-version: 0.278.0 -->
 
-This manual describes **compiler 0.277.0**, including the current ownership model,
+This manual describes **compiler 0.278.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -2910,7 +2910,7 @@ completion cleans escaped host resources outside the language trace.
 ### Tellur name and migration
 
 From compiler 0.36, the language is named **Tellur**. New source files use `.tellur`;
-the compiler is `tellurc` and the language server is `tellur-lsp`. The language's
+the current compiler command is `tellur` and `tellur lsp` serves the language protocol over stdio. The language's
 `path` keyword, path atoms, masks and provenance keep their meanings and spelling.
 The original v0.1 specification and vision retain their historical names.
 
@@ -2919,8 +2919,8 @@ highlighting, hover and diagnostics. Imports use their exact relative filenames;
 a compilation may import either extension, including a mixture of the two.
 Changing a filename also requires updating imports that name it.
 
-The `pathc` and `path-lsp` binaries remain compatibility entry points into this same
-compiler/server. They report the Tellur release version. Existing `path.*` editor
+The compiler aliases `tellurc` and `pathc` and the standalone server names
+`tellur-lsp` and `path-lsp` remain available. They report the Tellur release version. Existing `path.*` editor
 commands and explicitly assigned `path` language IDs remain accepted. New commands
 are `tellur.build`, `tellur.buildAndRun`, and `tellur.restartServer`.
 
@@ -2979,7 +2979,7 @@ General expression-type hover remains unsupported.
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and broader spawn payloads (anonymous contracts and reference-bearing collections) remain planned; they are not executable features of 0.277.0.
+and broader spawn payloads (anonymous contracts and reference-bearing collections) remain planned; they are not executable features of 0.278.0.
 ## Contingency and supervised boundaries
 
 The [contingency reference](reference/contingency.md) specifies `@contingent`,

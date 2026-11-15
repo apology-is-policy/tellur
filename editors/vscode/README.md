@@ -4,15 +4,15 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-darwin-arm64-0.277.0.vsix` using **Extensions:
-   Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
+1. Install the supplied `tellur-language-darwin-arm64-0.278.0.vsix` using **Extensions:
+   Install from VSIX…** in VS Code's Command Palette. This package includes `tellur`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
 3. Open `playground/hello.tellur` and click **▶** or **Tellur: Build and Run** (`⌘⌥R`).
    Try `playground/structured_helpers.tellur`, `playground/structured_tasks.tellur`, `playground/sequential_initializers.tellur`, `playground/projected_construction.tellur`, `playground/composed_construction.tellur`, `playground/borrowed_construction.tellur`, `playground/construction.tellur`, `playground/named_outcomes.tellur`, `stored_adapters.tellur`, `adapters.tellur`, `outcomes.tellur`, `collections.tellur`, `references.tellur`, and `count.tellur` next.
 4. Read `docs/language-reference.md` for the detailed language reference.
 
-The package contains both `tellur-lsp` and `tellurc`. Native builds require the Rust/Cargo
+The package uses the same executable for `tellur lsp`, `tellur build` and `tellur exec`. Native builds require the Rust/Cargo
 toolchain and pinned dependencies; no npm installation is needed. Executables are
 standalone. Build/run saves the active file and sends output to **Tellur Build**.
 Use **Tellur: Build Native Program** (`⌘⌥B`) to build without running. Windows/Linux
@@ -134,10 +134,10 @@ migration notes in `docs/language-reference.md` in the compiler checkout.
 
 ## Server settings
 
-`tellurLanguage.serverPath` overrides the server executable. Otherwise the extension
-uses its bundled server, then `target/debug/tellur-lsp` from a development checkout,
-then `tellur-lsp` on PATH. The packaged server and compiler match the extension
-version; rebuild or override them when experimenting with compiler changes.
+By default the extension starts its bundled `tellur lsp`. In a development
+checkout it can also find the executable in `target/debug` or on PATH. A
+configured `tellurLanguage.serverPath` names a standalone stdio server and receives
+no arguments. Relative overrides resolve against the workspace folder.
 
 For another platform, build the Rust server and set the executable path. The source
 extension is platform-independent; the supplied VSIX is explicitly `darwin-arm64`.
@@ -168,7 +168,7 @@ pointing at this directory and `--extensionTestsPath` pointing at that runner. T
 temporarily modify those fixture files; do not point the runner at your actual work.
 The main README records the validated test coverage.
 
-For packaging, build the release server, copy it and `tellurc` to `server/` (use `.exe` names on Windows), then run `npm run package -- --target PLATFORM`. The build
+For packaging, build the release `tellur` executable and copy it to `server/tellur` (`server/tellur.exe` on Windows), then run `npm run package -- --target PLATFORM`. The build
 bundles the language client; npm dependencies are not shipped separately. Packaging
 does not publish anything to the Marketplace.
 

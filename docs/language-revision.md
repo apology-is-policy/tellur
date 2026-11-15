@@ -2038,3 +2038,10 @@ Source builds without the LLVM feature and builds on other hosts default to Rust
 
 The next station combines the compiler and language server, packages precompiled
 runtime libraries and target link packs, and builds release artifacts in CI.
+
+## Unified compiler and language server (0.278)
+
+The Apple Silicon VSIX ships one executable. It runs compiler commands directly
+and starts the language server with `tellur lsp`. Existing compiler and standalone
+server aliases retain their calling conventions. Next come runtime and target link
+packs for builds on machines without a development toolchain.
