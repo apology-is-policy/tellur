@@ -9,6 +9,7 @@ use std::{
 };
 
 const DARWIN: &str = "aarch64-apple-darwin";
+const WINDOWS: &str = "x86_64-pc-windows-gnu";
 const LINUX: [&str; 2] = ["aarch64-unknown-linux-musl", "x86_64-unknown-linux-musl"];
 
 pub fn build() {
@@ -53,6 +54,15 @@ pub fn build() {
             prepare(&out, triple, Some(&sysroot), &mut descriptors);
         }
     }
+    if cfg!(feature = "windows-gnu-pack") {
+        println!("cargo:rerun-if-env-changed=TELLUR_WINDOWS_SYSROOT");
+        println!("cargo:rerun-if-env-changed=TELLUR_WINDOWS_DLLTOOL");
+        let root = PathBuf::from(
+            env::var_os("TELLUR_WINDOWS_SYSROOT")
+                .expect("set TELLUR_WINDOWS_SYSROOT to the prepared Windows GNU Rust sysroot"),
+        );
+        prepare(&out, WINDOWS, Some(&root), &mut descriptors);
+    }
     descriptors.push(']');
     fs::write(out.join("target-packs.rs"), descriptors).unwrap();
 }
@@ -61,7 +71,11 @@ fn prepare(out: &Path, triple: &str, sysroot: Option<&Path>, descriptors: &mut S
     let pack = out.join(triple);
     fs::create_dir_all(&pack).unwrap();
     let link = if let Some(sysroot) = sysroot {
-        musl_link(&pack, triple, sysroot)
+        if triple == WINDOWS {
+            windows_link(&pack, sysroot)
+        } else {
+            musl_link(&pack, triple, sysroot)
+        }
     } else {
         "LinkPack::Darwin".to_owned()
     };
@@ -87,6 +101,10 @@ fn prepare(out: &Path, triple: &str, sysroot: Option<&Path>, descriptors: &mut S
             // sysroot to the packaged runtime; host build scripts use their own.
             let mut flags = std::ffi::OsString::from("--sysroot\x1f");
             flags.push(root);
+            if triple == WINDOWS {
+                flags.push("\x1f-Cdlltool=");
+                flags.push(windows_dlltool());
+            }
             cargo
                 .env_remove("RUSTFLAGS")
                 .env("CARGO_ENCODED_RUSTFLAGS", flags);
@@ -174,5 +192,61 @@ fn musl_link(pack: &Path, triple: &str, sysroot: &Path) -> String {
         input(&entry, "tellur-entry", "o"),
         files(&["libunwind.a", "libc.a"]),
         files(&["crtend.o", "crtn.o"])
+    )
+}
+
+fn windows_dlltool() -> PathBuf {
+    env::var_os("TELLUR_WINDOWS_DLLTOOL")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            PathBuf::from(env::var_os("LLVM_SYS_221_PREFIX").unwrap()).join("bin/llvm-dlltool")
+        })
+}
+
+fn windows_link(pack: &Path, sysroot: &Path) -> String {
+    let rust_lib = sysroot.join("lib/rustlib").join(WINDOWS).join("lib");
+    let crt = rust_lib.join("self-contained");
+    let file = |dir: &Path, name: &str| {
+        let path = dir.join(name);
+        println!("cargo:rerun-if-changed={}", path.display());
+        let (stem, ext) = name.rsplit_once('.').unwrap();
+        input(&path, stem, ext)
+    };
+    let mut libraries: Vec<_> = [
+        "libmingw32.a",
+        "libmingwex.a",
+        "libmoldname.a",
+        "libmsvcrt.a",
+        "libgcc.a",
+        "libgcc_eh.a",
+    ]
+    .iter()
+    .map(|name| file(&crt, name))
+    .collect();
+    for dll in ["kernel32", "ntdll", "userenv", "ws2_32"] {
+        let definition = Path::new("src/native/targets")
+            .join(WINDOWS)
+            .join(format!("{dll}.def"));
+        let library = pack.join(format!("{dll}.lib"));
+        println!("cargo:rerun-if-changed={}", definition.display());
+        let status = Command::new(windows_dlltool())
+            .args(["-m", "i386:x86-64", "-d"])
+            .arg(&definition)
+            .arg("-l")
+            .arg(&library)
+            .status()
+            .expect("start llvm-dlltool");
+        assert!(
+            status.success(),
+            "building Windows import library for {dll}"
+        );
+        libraries.push(input(&library, dll, "lib"));
+    }
+    format!(
+        "LinkPack::Windows {{ start: &[{}, {}], libraries: &[{}], end: &{} }}",
+        file(&crt, "crt2.o"),
+        file(&rust_lib, "rsbegin.o"),
+        libraries.join(", "),
+        file(&rust_lib, "rsend.o")
     )
 }

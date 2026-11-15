@@ -1460,4 +1460,26 @@ with status 42. The workflow also emits `playground/hello.tellur` as a Windows
 object. On Windows, it links Hello against each Rust runtime profile using the
 installed Visual C++ startup libraries, then checks the process status and JSON
 output. Separate native tests exercise socket readiness and signal cancellation.
-The distributed compiler still needs its own Windows startup and link pack.
+The opt-in `windows-gnu-pack` Cargo feature embeds the x64 MinGW startup,
+CRT and unwind libraries, two Rust runtime archives, and import libraries
+generated from the four module definitions in `src/native/targets/x86_64-pc-windows-gnu`.
+It adds a cross target to the compiler. The Windows-hosted distribution and
+default-backend qualification are later steps.
+
+With this pack, compile Hello on the build host and run the resulting file
+on Windows x64:
+
+```sh
+tellur build playground/hello.tellur --backend llvm --target x86_64-pc-windows-gnu --out hello.exe
+```
+
+For the settings service, pass the same target to `pack-adapter` and `build`.
+Creating the adapter needs Cargo and the GNU target's Rust standard library.
+Building Hello or linking the packed service uses only the compiler.
+To prepare the compiler itself, install the pinned Rust toolchain's
+`x86_64-pc-windows-gnu` standard library, then run
+`python3 ci/prepare-windows-crt.py <directory>`. Set `TELLUR_WINDOWS_SYSROOT`
+to that directory when building with `--features windows-gnu-pack`. The build
+uses `llvm-dlltool` from the pinned LLVM prefix or `TELLUR_WINDOWS_DLLTOOL`.
+The Windows workflow exercises the resulting Hello and the service's loopback
+HTTP endpoint.

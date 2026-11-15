@@ -2086,3 +2086,11 @@ direct LLVM emission when `build` or `exec` omits the backend. For example,
 toolchain. Featureless builds default to Rust, and `--backend rust` selects it
 explicitly. Windows COFF linking, import libraries and readiness follow the
 three-platform release.
+
+## Windows x64 target pack qualification
+
+The opt-in Windows GNU pack adds x64 COFF output to LLVM-enabled compiler
+builds. It links through embedded LLD with MinGW startup, OS import libraries
+and the plain or polled Tellur runtime. Native CI exercises Hello and the
+packed settings HTTP service with an empty tool search path.
+[Windows target instructions](reference/llvm-backend.md#windows-x64-linker-qualification)

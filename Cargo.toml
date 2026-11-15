@@ -23,6 +23,7 @@ cc = { version = "1", optional = true }
 runtime-abi = []
 llvm = ["dep:llvm-sys", "dep:cc"]
 linux-musl-packs = ["llvm"]
+windows-gnu-pack = ["llvm"]
 
 [[bin]]
 name = "tellur"

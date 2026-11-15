@@ -17,6 +17,11 @@ impl Input {
 #[allow(dead_code)] // A source build may package only one linker flavor.
 enum LinkPack {
     Darwin,
+    Windows {
+        start: &'static [Input],
+        libraries: &'static [Input],
+        end: &'static Input,
+    },
     Musl {
         start: &'static [Input],
         libraries: &'static [Input],
@@ -36,6 +41,7 @@ static PACKS: &[TargetPack] = include!(concat!(env!("OUT_DIR"), "/target-packs.r
 pub(super) fn native_triple() -> Option<&'static str> {
     match (std::env::consts::OS, std::env::consts::ARCH) {
         ("macos", "aarch64") => Some("aarch64-apple-darwin"),
+        ("windows", "x86_64") => Some("x86_64-pc-windows-gnu"),
         ("linux", "aarch64") => Some("aarch64-unknown-linux-musl"),
         ("linux", "x86_64") => Some("x86_64-unknown-linux-musl"),
         _ => None,
@@ -62,7 +68,7 @@ impl TargetPack {
     pub fn llvm_triple(&self) -> String {
         match self.link {
             LinkPack::Darwin => format!("arm64-apple-macosx{}.0", crate::llvm::MACOS_MINIMUM),
-            LinkPack::Musl { .. } => self.triple.to_owned(),
+            LinkPack::Musl { .. } | LinkPack::Windows { .. } => self.triple.to_owned(),
         }
     }
 
@@ -121,6 +127,34 @@ impl TargetPack {
                     )?;
                     args.extend(["-Z".into(), stub.display().to_string()]);
                 }
+                args
+            }
+            LinkPack::Windows {
+                start,
+                libraries,
+                end,
+            } => {
+                let mut args = vec![
+                    "lld-link".into(),
+                    "-lldmingw".into(),
+                    "/nodefaultlib".into(),
+                    "/opt:ref".into(),
+                    "/machine:x64".into(),
+                    "/subsystem:console".into(),
+                    "/entry:mainCRTStartup".into(),
+                    format!("/out:{output}"),
+                ];
+                for file in start {
+                    args.push(file.extract(&cache)?);
+                }
+                args.extend([obj, runtime]);
+                if let Some(path) = adapter {
+                    args.push(path.display().to_string());
+                }
+                for file in libraries {
+                    args.push(file.extract(&cache)?);
+                }
+                args.push(end.extract(&cache)?);
                 args
             }
             LinkPack::Musl {

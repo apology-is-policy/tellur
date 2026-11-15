@@ -5,7 +5,9 @@ import io
 import json
 from pathlib import Path
 import platform
-import select
+import os
+import queue
+import threading
 import shutil
 import subprocess
 import sys
@@ -71,8 +73,13 @@ def check_settings(binary, directory, env):
     with subprocess.Popen([binary, "--entry", "serve", "--", directory / "settings.json", "0", "1", "10000"],
                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env) as server:
         try:
-            assert select.select([server.stdout], [], [], 15)[0], "settings did not announce its port"
-            address = urlsplit(server.stdout.readline().strip())
+            # Windows pipes cannot be passed to select(). Read the announcement
+            # with a deadline on all three hosts, then collect the remaining output.
+            lines = queue.Queue()
+            reader = threading.Thread(target=lambda: lines.put(server.stdout.readline()), daemon=True)
+            reader.start()
+            address = urlsplit(lines.get(timeout=15).strip())
+            reader.join()
             assert address.scheme == "http" and address.hostname == "127.0.0.1"
             connection = http.client.HTTPConnection(address.hostname, address.port, timeout=10)
             try:
@@ -163,4 +170,13 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    if sys.argv[1:2] == ["--windows-target"]:
+        directory = Path(sys.argv[2]).resolve()
+        env = {**os.environ, "PATH": ""}
+        hello = subprocess.check_output([directory / "hello-standalone.exe", "--json"], env=env, timeout=15)
+        report = json.loads(hello)
+        assert report["outcome"] == "done" and report["events"][0]["message"] == "Hello from Tellur!"
+        with tempfile.TemporaryDirectory() as scratch:
+            check_settings(directory / "settings-standalone.exe", Path(scratch), env)
+    else:
+        main()

@@ -1,0 +1,8 @@
+LIBRARY NTDLL.DLL
+EXPORTS
+    NtCreateFile
+    NtCreateNamedPipeFile
+    NtOpenFile
+    NtReadFile
+    NtWriteFile
+    RtlNtStatusToDosError

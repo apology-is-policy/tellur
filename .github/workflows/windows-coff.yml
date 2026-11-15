@@ -6,6 +6,11 @@ on:
     paths:
       - .github/workflows/windows-coff.yml
       - ci/windows-coff-smoke.rs
+      - ci/prepare-windows-crt.py
+      - ci/check-release.py
+      - Cargo.toml
+      - src/native/llvm_target.rs
+      - src/native/targets/x86_64-pc-windows-gnu/**
       - runtime/**
       - src/native/runtime.rs
       - src/native/windows_readiness.rs
@@ -39,16 +44,36 @@ jobs:
           key: llvm-22.1.8-macos-15-${{ hashFiles('ci/build-llvm.sh') }}
       - if: steps.llvm.outputs.cache-hit != 'true'
         run: bash ci/build-llvm.sh "$LLVM_SYS_221_PREFIX"
+      - name: Prepare the pinned Windows x64 target libraries
+        run: |
+          rustup target add x86_64-pc-windows-gnu
+          rustup component add llvm-tools-preview
+          rust_lib="$(rustc --print sysroot)/lib/rustlib/$(rustc -vV | sed -n 's/^host: //p')/bin"
+          ln -s "$rust_lib/llvm-ar" "$RUNNER_TEMP/llvm-dlltool"
+          python3 ci/prepare-windows-crt.py "$RUNNER_TEMP/windows-sysroot"
+          echo "TELLUR_WINDOWS_SYSROOT=$RUNNER_TEMP/windows-sysroot" >> "$GITHUB_ENV"
+          echo "TELLUR_WINDOWS_DLLTOOL=$RUNNER_TEMP/llvm-dlltool" >> "$GITHUB_ENV"
       - name: Emit COFF and link a PE executable using the embedded drivers
         run: |
-          cargo build --locked --release --features llvm --example windows-coff-smoke
+          cargo build --locked --release --features windows-gnu-pack --bin tellur --example windows-coff-smoke
           PATH=/absent target/release/examples/windows-coff-smoke "$RUNNER_TEMP/coff"
+      - name: Build Windows Hello and settings using the embedded link pack
+        run: |
+          target=x86_64-pc-windows-gnu
+          compiler="$PWD/target/release/tellur"
+          output="$RUNNER_TEMP/coff"
+          CARGO_TARGET_X86_64_PC_WINDOWS_GNU_RUSTFLAGS="-Cdlltool=$TELLUR_WINDOWS_DLLTOOL" \
+            "$compiler" pack-adapter applications/settings/main.tellur --target "$target" --out "$output/settings.adapter"
+          export PATH=/absent TELLUR_NATIVE_TARGET_DIR="$RUNNER_TEMP/clean-windows-target"
+          "$compiler" build playground/hello.tellur --target "$target" --out "$output/hello-standalone.exe"
+          "$compiler" build applications/settings/main.tellur --target "$target" --adapter-pack "$output/settings.adapter" --out "$output/settings-standalone.exe"
       - uses: actions/upload-artifact@v4
         with:
           name: windows-coff-smoke
           path: |
             ${{ runner.temp }}/coff/exit.exe
             ${{ runner.temp }}/coff/hello.obj
+            ${{ runner.temp }}/coff/*-standalone.exe
           if-no-files-found: error
   execute:
     needs: link
@@ -66,6 +91,8 @@ jobs:
         run: |
           $process = Start-Process -FilePath ./probe/exit.exe -Wait -PassThru
           if ($process.ExitCode -ne 42) { throw "Expected exit code 42, got $($process.ExitCode)" }
+      - name: Run both standalone programs with an empty tool path
+        run: python ci/check-release.py --windows-target probe
       - name: Build the runtime and check the compiled Tellur Hello program
         shell: pwsh
         run: |
