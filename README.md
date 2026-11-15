@@ -6,7 +6,7 @@ provides the compiler and the stdio language server (`tellur lsp`). Existing
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.281.0** implements the v0.1 checked core and the current language
+Compiler release **0.282.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -23,8 +23,9 @@ The Apple Silicon distribution also builds static Linux executables. For example
 produces a program you can copy to x86_64 Linux. Use `aarch64-unknown-linux-musl`
 for arm64 Linux.
 
-Release 0.277 makes direct LLVM emission the default for `build` and `exec` in the
-Apple Silicon macOS distribution. Use `--backend rust` to select generated Rust.
+The Apple Silicon macOS, Linux x86_64 and Linux arm64 distributions use direct
+LLVM emission by default. Run `tellur exec playground/hello.tellur` on any of
+these hosts to compile and run Hello with the embedded toolchain. Use `--backend rust` to select generated Rust.
 Compilers built without the LLVM feature continue to use Rust. Both backends
 passed the application suite, including concurrent settings requests, graceful
 shutdown, and typed polled Rust adapters. See the
@@ -882,7 +883,7 @@ once with LLVM and once with generated Rust. Each target uses the same test
 executable for both passes.
 
 Run the workflow manually to produce qualification artifacts. Publishing a
-GitHub Release with a tag matching the compiler version (such as `v0.281.0`)
+GitHub Release with a tag matching the compiler version (such as `v0.282.0`)
 attaches all three CLI archives and VSIX packages after the matrix passes.
 
 ## Build from a fresh clone

@@ -27,8 +27,8 @@ Compiler 0.269 adds retained constructors whose children suspend.
 Compiler 0.270 adds opt-in launch signal policies.
 Compiler 0.273 adds synchronous scalar/collection Rust source adapters.
 Compiler 0.274 adds directly bound synchronous retained Rust resources.
-Since 0.277 the LLVM-enabled macOS arm64 compiler selects direct LLVM emission
-when `build` or `exec` omits `--backend`. Use `--backend rust` to generate Rust
+On Apple Silicon macOS (since 0.277) and Linux x86_64 and arm64 (since 0.282),
+LLVM-enabled compilers select direct emission when `build` or `exec` omits `--backend`. Use `--backend rust` to generate Rust
 instead. Other builds default to Rust. Both backends use the same checked program.
 
 ```sh

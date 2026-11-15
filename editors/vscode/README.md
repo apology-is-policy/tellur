@@ -4,22 +4,21 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-darwin-arm64-0.281.0.vsix` using **Extensions:
-   Install from VSIX…** in VS Code's Command Palette. This package includes `tellur`
-   for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
+1. Choose the 0.282.0 VSIX for Apple Silicon macOS, Linux x64 or Linux arm64.
+   Run **Extensions: Install from VSIX…** in the Command Palette and select it.
+   Each package includes the native `tellur` compiler and language server.
 2. Open `tellur.code-workspace` from the compiler checkout.
 3. Open `playground/hello.tellur` and click **▶** or **Tellur: Build and Run** (`⌘⌥R`).
    Try `playground/structured_helpers.tellur`, `playground/structured_tasks.tellur`, `playground/sequential_initializers.tellur`, `playground/projected_construction.tellur`, `playground/composed_construction.tellur`, `playground/borrowed_construction.tellur`, `playground/construction.tellur`, `playground/named_outcomes.tellur`, `stored_adapters.tellur`, `adapters.tellur`, `outcomes.tellur`, `collections.tellur`, `references.tellur`, and `count.tellur` next.
 4. Read `docs/language-reference.md` for the detailed language reference.
 
-The package uses the same executable for `tellur lsp`, `tellur build` and `tellur exec`. It includes the Apple Silicon runtime and linker inputs for ordinary Tellur
-programs. The bundled CLI also accepts `--target x86_64-unknown-linux-musl`
+The package uses the same executable for `tellur lsp`, `tellur build` and `tellur exec`. It includes the runtime and linker inputs for ordinary Tellur programs on its host. The bundled CLI also accepts `--target x86_64-unknown-linux-musl`
 and `--target aarch64-unknown-linux-musl` for static Linux builds. Source adapters
 require Rust/Cargo, their locked dependencies and the target standard library.
 Apple Silicon source adapters also use the macOS SDK. Executables are
 standalone. Build/run saves the active file and sends output to **Tellur Build**.
 Use **Tellur: Build Native Program** (`⌘⌥B`) to build without running. Windows/Linux
-keybindings use Ctrl instead of Cmd; the supplied binary package is macOS arm64.
+keybindings use Ctrl instead of Cmd.
 
 `tellurLanguage.entryRegion` defaults to `main`; `tellurLanguage.programArguments` is
 an array of strings. Each item is passed as one argument, without a shell.

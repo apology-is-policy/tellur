@@ -10,11 +10,7 @@ use std::{
     process::Command,
 };
 /// Backend selected by the compiler CLI when the caller omits `--backend`.
-pub const DEFAULT_BACKEND: &str = if cfg!(all(
-    feature = "llvm",
-    target_os = "macos",
-    target_arch = "aarch64"
-)) {
+pub const DEFAULT_BACKEND: &str = if cfg!(tellur_native_llvm) {
     "llvm"
 } else {
     "rust"

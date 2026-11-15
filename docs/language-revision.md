@@ -2074,5 +2074,15 @@ operations and loopback HTTP exercise both architectures.
 A subsequent LLVM `build` or `exec` can consume that pack with an empty tool
 search path. The settings application exercises relocation, file operations,
 and live HTTP with the bundled Apple Silicon and Linux musl runtime packs.
-Native CI qualification of the compiler and VS Code packages is in progress.
-Linux still uses Rust by default pending native parity.
+The packaged compiler and extension passed on Apple Silicon and both Linux hosts.
+Each Linux host passed all 113 integration targets, including 69 run on both backends.
+[Native qualification results](https://github.com/apology-is-policy/tellur/actions/runs/43731462441)
+
+## Linux default backend (0.282)
+
+On Linux x86_64 and arm64, a compiler built with the native LLVM pack selects
+direct LLVM emission when `build` or `exec` omits the backend. For example,
+`tellur exec playground/hello.tellur` builds and runs Hello using the embedded
+toolchain. Featureless builds default to Rust, and `--backend rust` selects it
+explicitly. Windows COFF linking, import libraries and readiness follow the
+three-platform release.

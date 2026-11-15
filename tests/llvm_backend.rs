@@ -83,11 +83,7 @@ fn default_and_explicit_backends_preserve_the_process_contract() {
     let fixture = Fixture::new(
         "control main() exits result {exit done {42};} outcome result {@exit 7 done {u32 value}}",
     );
-    let direct_default = cfg!(all(
-        feature = "llvm",
-        target_os = "macos",
-        target_arch = "aarch64"
-    ));
+    let direct_default = cfg!(tellur_native_llvm);
     let mut cases = vec![
         ("default", None, direct_default),
         ("rust", Some("rust"), false),

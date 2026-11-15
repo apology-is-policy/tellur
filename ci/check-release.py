@@ -153,7 +153,7 @@ def main():
     with tempfile.TemporaryDirectory() as directory:
         scratch = Path(directory)
         env = {"HOME": directory, "PATH": "/absent", "TELLUR_NATIVE_TARGET_DIR": str(scratch / "cache")}
-        output = subprocess.check_output([compiler, "exec", dest / "hello.tellur", "--backend", "llvm",
+        output = subprocess.check_output([compiler, "exec", dest / "hello.tellur",
                                           "--out", scratch / "hello", "--", "--json"], env=env)
         report = json.loads(output)
         assert report["outcome"] == "done" and report["events"][0]["message"] == "Hello from Tellur!"

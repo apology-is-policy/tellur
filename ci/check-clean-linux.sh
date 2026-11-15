@@ -4,7 +4,7 @@ set -eu
 input=${1:?qualified release directory}
 scratch=${2:?scratch directory}
 
-"$input/tellur" exec "$input/hello.tellur" --backend llvm --out "$scratch/hello" -- --json
+"$input/tellur" exec "$input/hello.tellur" --out "$scratch/hello" -- --json
 "$input/tellur" build "$input/project/applications/settings/main.tellur" \
     --adapter-pack "$input/settings.adapter" --out "$scratch/settings"
 
