@@ -1,0 +1,65 @@
+name: Windows compiler and language server
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/windows-host.yml
+      - ci/check-windows-host.py
+      - ci/prepare-windows-crt.py
+      - build.rs
+      - runtime/target_packs.rs
+      - src/native/llvm_target.rs
+
+permissions:
+  contents: read
+
+env:
+  CARGO_INCREMENTAL: '0'
+  RUSTUP_TOOLCHAIN: 1.97.1
+
+jobs:
+  native:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Locate native build inputs
+        shell: pwsh
+        run: |
+          "LLVM_SYS_221_PREFIX=$env:RUNNER_TEMP/tellur-llvm-msvc" >> $env:GITHUB_ENV
+          "TELLUR_WINDOWS_DLLTOOL=$env:RUNNER_TEMP/tellur-llvm-msvc/bin/llvm-dlltool.exe" >> $env:GITHUB_ENV
+          "TELLUR_WINDOWS_SYSROOT=$env:RUNNER_TEMP/tellur-windows-gnu" >> $env:GITHUB_ENV
+          "TELLUR_NATIVE_TARGET_DIR=$env:RUNNER_TEMP/native-target" >> $env:GITHUB_ENV
+      - uses: actions/cache@v4
+        id: llvm
+        with:
+          path: ${{ env.LLVM_SYS_221_PREFIX }}
+          key: llvm-msvc-x64-22.1.8-d96c2cc1-v1
+      - name: Prepare pinned static LLVM and LLD development libraries
+        if: steps.llvm.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          $name = "clang+llvm-22.1.8-x86_64-pc-windows-msvc"
+          $archive = "$env:RUNNER_TEMP/llvm.tar.xz"
+          curl.exe --fail --location --retry 3 --output $archive "https://github.com/llvm/llvm-project/releases/download/llvmorg-22.1.8/$name.tar.xz"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $digest = (Get-FileHash $archive -Algorithm SHA256).Hash
+          if ($digest -ne 'd96c2cc1736f4eb7fa43cb9bbdf56d93551a9ae0a9aadb9c99c3c3b2b712a234') { throw 'Unexpected Windows LLVM archive digest' }
+          New-Item -ItemType Directory -Force $env:LLVM_SYS_221_PREFIX | Out-Null
+          tar.exe -xf $archive --strip-components 1 -C $env:LLVM_SYS_221_PREFIX "$name/include" "$name/lib/*.lib" "$name/bin/llvm-config.exe" "$name/bin/llvm-dlltool.exe"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          foreach ($lib in 'lldCOFF', 'lldELF', 'lldMachO', 'lldCommon') {
+            if (!(Test-Path "$env:LLVM_SYS_221_PREFIX/lib/$lib.lib")) { throw "Missing $lib" }
+          }
+      - name: Build the Windows-hosted compiler
+        shell: pwsh
+        run: |
+          rustup toolchain install $env:RUSTUP_TOOLCHAIN --profile minimal --target x86_64-pc-windows-gnu
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python ci/prepare-windows-crt.py $env:TELLUR_WINDOWS_SYSROOT
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo build --release --locked --features windows-gnu-pack --bin tellur
+      - name: Qualify the standalone Windows compiler and stdio LSP
+        run: python ci/check-windows-host.py target/release/tellur.exe
