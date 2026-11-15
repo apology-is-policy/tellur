@@ -2084,8 +2084,11 @@ On Linux x86_64 and arm64, a compiler built with the native LLVM pack selects
 direct LLVM emission when `build` or `exec` omits the backend. For example,
 `tellur exec playground/hello.tellur` builds and runs Hello using the embedded
 toolchain. Featureless builds default to Rust, and `--backend rust` selects it
-explicitly. Windows COFF linking, import libraries and readiness follow the
-three-platform release.
+explicitly. Release 0.282.0 includes the compiler and VS Code extension for
+Apple Silicon, Linux x86_64 and Linux arm64. Both Linux release runners passed
+all 113 integration targets, including 69 LLVM comparison groups.
+[Release packages](https://github.com/apology-is-policy/tellur/releases/tag/v0.282.0) ·
+[Native qualification](https://github.com/apology-is-policy/tellur/actions/runs/43748026383)
 
 ## Windows x64 target pack qualification
 
