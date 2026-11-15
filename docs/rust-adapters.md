@@ -264,9 +264,9 @@ adapters; they script completions with `"waits"`.
 Since 0.220, `Wait::readable(&stream)` parks the operation until the descriptor
 becomes readable, optionally bounded by `.or_after(delay)`. Readability is
 edge-triggered: return it only after a nonblocking read reported `WouldBlock`,
-and read until `WouldBlock` again when polled. The descriptor must stay open while
-the operation is pending; it normally belongs to a borrowed resource, which
-outlives the operation. The runtime registers the descriptor with an internal
+and read until `WouldBlock` again when polled. Keep the registered descriptor open
+through the poll that returns the outcome. A borrowed resource can own the
+descriptor, or the operation state can release it in its destructor. The runtime registers the descriptor with an internal
 readiness backend (Mio) and deregisters it on completion or stop, before the
 state drops. Registration failures stop the host with `E_HOST`. A build with polled
 adapters adds that internal dependency, so rerun `tellurc lock-native` after

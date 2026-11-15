@@ -71,7 +71,7 @@ impl rust_api::http_send_operation for Sending {
         if let Some(outcome) = self.immediate.take() {
             return rust_api::Poll::Ready(outcome);
         }
-        let progress = loop {
+        loop {
             if self.written == self.bytes.len() {
                 break rust_api::Poll::Ready(sent);
             }
@@ -98,10 +98,7 @@ impl rust_api::http_send_operation for Sending {
                 }
                 Err(e) => break rust_api::Poll::Ready(failed(e.to_string())),
             }
-        };
-        // Restore blocking mode before the result is delivered.
-        self.stream = None;
-        progress
+        }
     }
 }
 
@@ -186,8 +183,7 @@ impl rust_api::http_connection_finish_operation for Finishing {
                 }
             }
         };
-        // The descriptor is released before the result is delivered.
-        self.connection = None;
+        // The runtime deregisters the descriptor before dropping this state.
         rust_api::Poll::Ready(progress)
     }
 }

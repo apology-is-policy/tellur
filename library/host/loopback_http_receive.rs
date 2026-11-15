@@ -196,9 +196,9 @@ impl rust_api::http_receive_operation for Receiving {
     fn poll(&mut self, connection: &Connection) -> rust_api::Poll<rust_api::http_receive_outcome> {
         let progress = self.step(connection);
         if matches!(progress, rust_api::Poll::Ready(_))
-            && let Some(stream) = self.stream.take()
+            && let Some(stream) = &self.stream
         {
-            // Responses use blocking writes with their own timeouts.
+            // Keep the registered handle alive until the runtime drops this state.
             if let Err(e) = stream.set_nonblocking(false) {
                 return rust_api::Poll::Ready(failed(format!("blocking response mode: {e}")));
             }
