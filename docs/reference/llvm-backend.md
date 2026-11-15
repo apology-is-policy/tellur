@@ -1593,6 +1593,20 @@ and removed a setting across separate invocations. Looking up the removed key
 returned status 3. The HTTP entry rejected an invalid connection budget with
 status 2 and reported the listener's `ENOTTY` error on a valid fixed port.
 
+The Thylacine-hosted development compiler can also consume the pack directly.
+Transfer the settings sources, manifest, Rust adapter sources and lockfile with
+their relative paths intact, alongside the host-prepared `settings.adapter`.
+Run these commands from the project root in the guest.
+
+```sh
+tellur build applications/settings/main.tellur --backend llvm --adapter-pack settings.adapter --out settings
+./settings --entry set -- state.json color ochre
+./settings --entry get -- state.json color
+```
+
+The guest compiler linked the executable with its embedded LLVM and LLD. The
+two invocations exited zero and the lookup printed `ochre`.
+
 ### Native Thylacine listener qualification
 
 Thylacine also exposes TCP as files under `/net/tcp`. In a private guest,
