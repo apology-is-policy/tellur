@@ -284,18 +284,18 @@ fn a_loan_cannot_end_before_its_borrower_is_joined() {
     };
     // Closing a handle while a started reader still borrows it is rejected.
     let consumed = edit(
-        "    auto answer = capture await first_answer(borrow primary, borrow backup);\n",
+        "    auto answer = capture await first_answer(borrow primary, borrow backup);",
         "    auto pending = spawn first_answer(borrow primary, borrow backup);\n    \
          delta close(primary) {\n        closed => early_closed,\n        \
          failed { close_error early_error } => early_failed\n    }\n    \
-         auto answer = capture await pending;\n",
+         auto answer = capture await pending;",
     );
     let error = compile(&consumed, manifest()).expect_err("closed while borrowed");
     assert_eq!(error.code, "E_LOAN", "{error:?}");
     // A cancelled child must still be joined.
     let abandoned = edit(
-        "        cancel second;\n",
-        "        cancel second;\n        exit answered { data };\n",
+        "        cancel second;",
+        "        cancel second;\n        exit answered { data };",
     );
     let error = compile(&abandoned, manifest()).expect_err("abandoned child");
     assert_eq!(error.code, "E_RESOURCE", "{error:?}");

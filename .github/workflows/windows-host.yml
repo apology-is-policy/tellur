@@ -5,10 +5,12 @@ on:
     branches: [main]
     paths:
       - .github/workflows/windows-host.yml
+      - ci/check-native-parity.py
       - ci/check-windows-host.py
       - ci/prepare-windows-crt.py
       - ci/prepare-windows-llvm-xml.py
       - tests/llvm_backend.rs
+      - tests/cancellation_specimen.rs
       - tests/async_adapters.rs
       - tests/fixtures/readiness_stream.rs
       - tests/settings_http.rs
@@ -102,24 +104,11 @@ jobs:
           if-no-files-found: error
           compression-level: 0
 
-      - name: Compare Windows default and explicit backend behavior
+      - name: Run the full native Windows compiler parity suite
         shell: pwsh
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target
         run: |
           $env:CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS = "-Ctarget-feature=+crt-static"
           $env:CARGO_TARGET_X86_64_PC_WINDOWS_GNU_RUSTFLAGS = "-Cdlltool=$env:TELLUR_WINDOWS_DLLTOOL"
-          $options = @('test', '--target', 'x86_64-pc-windows-msvc', '--release', '--locked', '--features', 'windows-gnu-pack')
-          cargo @options --lib native::generated_cargo_inputs_accept_crlf -- --exact
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          cargo @options --test llvm_backend default_and_explicit_backends_preserve_the_process_contract -- --exact
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          cargo @options --test llvm_backend keep_native_stack_bounded
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          foreach ($backend in 'rust', 'llvm') {
-            $env:TELLUR_TEST_BACKEND = $backend
-            cargo @options --test async_adapters descriptors_wake_polled
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-            cargo @options --test settings_http native_http_launch_signal_replies_503_to_waiting_members_and_stops -- --exact
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-            cargo @options --test borrowed_tasks --test boundaries --test cancellation_specimen --test faults --test outcome_origins -- --test-threads=2
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          }
+          python ci/check-native-parity.py

@@ -8,7 +8,7 @@ on:
       - ci/build-llvm.sh
       - ci/check-release.py
       - ci/check-clean-linux.sh
-      - ci/check-linux-parity.py
+      - ci/check-native-parity.py
   release:
     types: [published]
 
@@ -108,7 +108,7 @@ jobs:
         if: runner.os == 'Linux'
         env:
           CARGO_TARGET_DIR: ${{ github.workspace }}/target
-        run: python3 ci/check-linux-parity.py
+        run: python3 ci/check-native-parity.py
 
       - uses: actions/upload-artifact@v4
         with:
