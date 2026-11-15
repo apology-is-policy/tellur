@@ -1,6 +1,6 @@
 [package]
 name = "tellur"
-version = "0.279.0"
+version = "0.280.0"
 edition = "2024"
 license = "Apache-2.0"
 repository = "https://github.com/apology-is-policy/tellur"
@@ -22,6 +22,7 @@ cc = { version = "1", optional = true }
 # Private runtime packaging flag; compiler source admission remains separate.
 runtime-abi = []
 llvm = ["dep:llvm-sys", "dep:cc"]
+linux-musl-packs = ["llvm"]
 
 [[bin]]
 name = "tellur"

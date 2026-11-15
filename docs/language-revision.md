@@ -2059,3 +2059,11 @@ tellur exec playground/hello.tellur
 The plain profile avoids allocating a readiness poller. Manifests with polled
 Rust operations select the Mio profile, preserving cancellation, deadlines and
 resource ownership. Rust source adapters still use their locked toolchain build.
+
+## Linux static musl link packs (0.280)
+
+The compiler can emit and link Linux ELF executables for x86_64 and arm64.
+`build --target` selects the runtime and system objects by triple. The
+target-specific Rust entry makes process arguments available to both the Tellur
+launcher and Rust adapters. Scalar argument parsing, exit codes, settings file
+operations and loopback HTTP exercise both architectures.

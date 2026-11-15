@@ -26,7 +26,12 @@ pub(super) fn table(manifest: &Manifest, emitter: &mut Emitter) {
     writeln!(emitter.globals, "@adapter_operations = private constant [{count} x %adapter_operation] [{}]\n@adapter_table = private constant %adapter_table {{ i32 {version}, i32 0, ptr @adapter_operations, i64 {count} }}", operations.join(", ")).unwrap();
 }
 
-pub(super) fn library(manifest: &Manifest, target: &Path, opt: u8) -> Result<PathBuf> {
+pub(super) fn library(
+    manifest: &Manifest,
+    target: &Path,
+    opt: u8,
+    triple: &str,
+) -> Result<PathBuf> {
     let source = static_adapter::source(manifest)?;
     let config = manifest.rust.as_ref().unwrap();
     let lock = fs::read_to_string(&config.lockfile).map_err(|e| {
@@ -62,7 +67,6 @@ pub(super) fn library(manifest: &Manifest, target: &Path, opt: u8) -> Result<Pat
             String::from_utf8_lossy(&identity.stderr)
         )));
     }
-    let triple = "aarch64-apple-darwin";
     let mut hasher = std::hash::DefaultHasher::new();
     (
         "tellur-source-adapter-c-abi-v1",

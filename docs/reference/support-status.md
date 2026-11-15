@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.279.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.280.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -21,6 +21,9 @@ transitive callees, permit enclosing fault settlement.
 See [owned spawned children](async-execution.md#owned-spawned-children).
 
 ## Native backends
+
+The distributed compiler embeds static musl packs for Linux x86_64 and arm64.
+Select either Rust target triple with `tellur build --target`.
 
 The macOS arm64 distribution uses [direct LLVM emission](llvm-backend.md) by
 default. Select generated Rust with `--backend rust`. Source builds without LLVM

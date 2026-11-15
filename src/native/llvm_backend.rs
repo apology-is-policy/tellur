@@ -5,6 +5,8 @@ use super::*;
 
 #[path = "llvm_adapter.rs"]
 mod adapters;
+#[path = "llvm_target.rs"]
+mod targets;
 
 const DECLARATIONS: &str = r#"
 declare i32 @tellur_rt_v1_launch(ptr, i64, ptr, i64)
@@ -1916,21 +1918,39 @@ impl Emitter {
 }
 
 impl CheckedProgram {
-    /// Emit LLVM IR directly and link it with the cached runtime for macOS arm64.
-    /// Manifests with Rust source adapters also link a compiled adapter archive.
+    /// Build for the compiler's native LLVM target.
     pub fn build_llvm(&self, entry: &str, output: &Path, opt: u8) -> Result<NativeBuild> {
+        self.build_llvm_for(entry, output, opt, None)
+    }
+
+    /// Build using the selected embedded runtime and system link pack.
+    pub fn build_llvm_for(
+        &self,
+        entry: &str,
+        output: &Path,
+        opt: u8,
+        triple: Option<&str>,
+    ) -> Result<NativeBuild> {
         if opt > 3 {
             return Err(error("optimization level must be 0..3"));
         }
-        let source = self.llvm_source(entry)?;
-        self.build_llvm_source(source, output, opt)
+        let pack = targets::select(triple)?;
+        let source = self.llvm_source_with_main(entry, main_symbol(Some(pack.triple)))?;
+        self.link_llvm_source(source, output, opt, pack)
     }
+
+    #[cfg(all(test, target_os = "macos", target_arch = "aarch64"))]
     fn build_llvm_source(&self, source: String, output: &Path, opt: u8) -> Result<NativeBuild> {
-        if std::env::consts::OS != "macos" || std::env::consts::ARCH != "aarch64" {
-            return Err(error(
-                "LLVM backend currently supports the macOS arm64 target only",
-            ));
-        }
+        self.link_llvm_source(source, output, opt, targets::select(None)?)
+    }
+
+    fn link_llvm_source(
+        &self,
+        source: String,
+        output: &Path,
+        opt: u8,
+        pack: &targets::TargetPack,
+    ) -> Result<NativeBuild> {
         let output = if output.is_absolute() {
             output.to_owned()
         } else {
@@ -1940,7 +1960,7 @@ impl CheckedProgram {
         };
         let directory = PathBuf::from(format!("{}.tellur-build", output.display()));
         fs::create_dir_all(&directory).map_err(|e| error(e.to_string()))?;
-        let triple = format!("arm64-apple-macosx{}.0", crate::llvm::MACOS_MINIMUM);
+        let triple = pack.llvm_triple();
         let source = format!("target triple = \"{triple}\"\n{source}");
         let generated = directory.join("program.ll");
         fs::write(&generated, &source).map_err(|e| error(e.to_string()))?;
@@ -1951,54 +1971,20 @@ impl CheckedProgram {
             .manifest()
             .rust
             .as_ref()
-            .map(|_| adapters::library(self.manifest(), &target, opt))
+            .map(|_| adapters::library(self.manifest(), &target, opt, pack.triple))
             .transpose()?;
-        let runtime = abi_library(
-            &target,
-            crate::rust_host::has_polled_adapters(self.manifest()),
-        )?;
         let bytes =
             crate::llvm::compile(&[(generated.display().to_string(), source)], &triple, opt)
                 .map_err(error)?;
         let object = directory.join("program.o");
         fs::write(&object, bytes).map_err(|e| error(e.to_string()))?;
-        let mut arguments = vec![
-            "ld64.lld".into(),
-            "-arch".into(),
-            "arm64".into(),
-            "-platform_version".into(),
-            "macos".into(),
-            crate::llvm::MACOS_MINIMUM.into(),
-            crate::llvm::MACOS_MINIMUM.into(),
-            "-o".into(),
-            output.display().to_string(),
-            object.display().to_string(),
-            runtime.display().to_string(),
-        ];
-        if let Some(adapter) = adapter {
-            // Source adapters can import system symbols beyond the Tellur runtime.
-            let sdk = Command::new("xcrun")
-                .arg("--show-sdk-path")
-                .output()
-                .map_err(|e| error(format!("cannot locate macOS SDK for Rust adapter: {e}")))?;
-            if !sdk.status.success() {
-                return Err(error("cannot locate macOS SDK for Rust adapter"));
-            }
-            arguments.extend([
-                adapter.display().to_string(),
-                "-syslibroot".into(),
-                String::from_utf8_lossy(&sdk.stdout).trim().into(),
-                "-lSystem".into(),
-            ]);
-        } else {
-            let stub = directory.join("libSystem.tbd");
-            unpack(
-                &stub,
-                include_bytes!("targets/aarch64-apple-darwin/libSystem.tbd"),
-            )?;
-            arguments.extend(["-Z".into(), stub.display().to_string()]);
-        }
-        crate::llvm::link(&arguments).map_err(error)?;
+        pack.link(
+            &target,
+            &object,
+            &output,
+            adapter,
+            crate::rust_host::has_polled_adapters(self.manifest()),
+        )?;
         Ok(NativeBuild {
             executable: output,
             llvm,
@@ -2007,6 +1993,10 @@ impl CheckedProgram {
     }
 
     pub fn llvm_source(&self, entry: &str) -> Result<String> {
+        self.llvm_source_with_main(entry, main_symbol(targets::native_triple()))
+    }
+
+    fn llvm_source_with_main(&self, entry: &str, main: &str) -> Result<String> {
         self.verify()?;
         if self.region(entry).is_none() {
             return Err(error(format!("unknown entry region {entry}")));
@@ -2159,7 +2149,7 @@ impl CheckedProgram {
             format!("@tellur_rt_v1_launch(ptr {config}, i64 {len}, ptr @entries, i64 {count})")
         };
         emitter.line(format!(
-            "define i32 @main() {{\nentry:\n%status = call i32 {launch}\nret i32 %status\n}}"
+            "define i32 @{main}() {{\nentry:\n%status = call i32 {launch}\nret i32 %status\n}}"
         ));
         Ok(format!(
             "; Tellur direct LLVM backend; private runtime ABI v1\n{DECLARATIONS}\n{}\n{}\n{}",
@@ -2168,24 +2158,12 @@ impl CheckedProgram {
     }
 }
 
-#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-fn abi_library(target: &Path, polled: bool) -> Result<PathBuf> {
-    let (id, bytes): (&str, &[u8]) = if polled {
-        (
-            env!("TELLUR_RUNTIME_POLLED_ID"),
-            include_bytes!(concat!(env!("OUT_DIR"), "/runtime-polled.a")),
-        )
+fn main_symbol(triple: Option<&str>) -> &'static str {
+    if triple.is_some_and(|name| name.ends_with("-linux-musl")) {
+        "tellur_program_main"
     } else {
-        (
-            env!("TELLUR_RUNTIME_PLAIN_ID"),
-            include_bytes!(concat!(env!("OUT_DIR"), "/runtime-plain.a")),
-        )
-    };
-    let archive = target
-        .join("tellur-runtime-pack")
-        .join(format!("libtellur_runtime_{id}.a"));
-    unpack(&archive, bytes)?;
-    Ok(archive)
+        "main"
+    }
 }
 
 /// Publish a complete link input even when compilers share a cold cache.
@@ -2216,11 +2194,6 @@ fn unpack(path: &Path, bytes: &[u8]) -> Result<()> {
         return Err(error(format!("cannot unpack {}: {e}", path.display())));
     }
     Ok(())
-}
-
-#[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
-fn abi_library(_: &Path, _: bool) -> Result<PathBuf> {
-    Err(error("embedded Tellur runtime unavailable for this target"))
 }
 
 #[cfg(test)]

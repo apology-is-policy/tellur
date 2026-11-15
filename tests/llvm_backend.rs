@@ -5289,3 +5289,42 @@ pub fn tick() -> Box<dyn tick_operation> { Box::new(Tick) }
         }
     }
 }
+
+#[cfg(feature = "linux-musl-packs")]
+#[test]
+fn cli_links_both_static_linux_targets_from_a_cold_cache_without_build_tools() {
+    let fixture = Fixture::new(include_str!("../playground/hello.tellur"));
+    for (triple, machine) in [
+        ("x86_64-unknown-linux-musl", 62),
+        ("aarch64-unknown-linux-musl", 183),
+    ] {
+        let path = fixture.root.join(triple);
+        let built = Command::new(env!("CARGO_BIN_EXE_tellur"))
+            .env_clear()
+            .env("HOME", &fixture.root)
+            .env("PATH", fixture.root.join("missing-tools"))
+            .env("TELLUR_NATIVE_TARGET_DIR", fixture.root.join("cache"))
+            .arg("build")
+            .arg(&fixture.source)
+            .args(["--target", triple, "--out"])
+            .arg(&path)
+            .output()
+            .unwrap();
+        assert!(built.status.success(), "{built:?}");
+        let elf = fs::read(&path).unwrap();
+        assert_eq!(&elf[..6], b"\x7fELF\x02\x01");
+        assert_eq!(u16::from_le_bytes(elf[16..18].try_into().unwrap()), 2); // ET_EXEC
+        assert_eq!(u16::from_le_bytes(elf[18..20].try_into().unwrap()), machine);
+        let offset = u64::from_le_bytes(elf[32..40].try_into().unwrap()) as usize;
+        let stride = u16::from_le_bytes(elf[54..56].try_into().unwrap()) as usize;
+        let count = u16::from_le_bytes(elf[56..58].try_into().unwrap()) as usize;
+        assert!(count > 0);
+        for header in elf[offset..offset + count * stride].chunks_exact(stride) {
+            let kind = u32::from_le_bytes(header[..4].try_into().unwrap());
+            assert!(!matches!(kind, 2 | 3), "unexpected PT_DYNAMIC or PT_INTERP");
+        }
+        let ir = fs::read_to_string(path.with_extension("ll")).unwrap();
+        assert!(ir.contains(&format!("target triple = \"{triple}\"")));
+        assert!(ir.contains("define i32 @tellur_program_main()"));
+    }
+}

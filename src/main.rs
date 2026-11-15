@@ -4,7 +4,7 @@ use std::{
     process::{Command, ExitCode},
 };
 use tellur::{compile_file, manifest::Manifest, runtime::Scenario};
-const USAGE: &str = "Tellur compiler\n  tellur lsp  (language server over stdio)\n  tellurc explain SOURCE [MANIFEST] (--at LINE:COLUMN | --control NAME --outcome NAME) [--json]\n  tellurc absorption-snapshot SOURCE [MANIFEST]  (bounded outcome contributor JSON)\n  tellurc absorption-diff BEFORE_JSON AFTER_JSON [--check]\n  tellurc contract-snapshot SOURCE [MANIFEST]  (checked public interface JSON)\n  tellurc contract-diff BEFORE_JSON AFTER_JSON [--check]  (exact contract differences)\n  tellurc format SOURCE [--check | --write] [--width N]  (stdout by default; no manifest needed)\n  tellurc check SOURCE [MANIFEST] [--json]\n  tellurc lock-native SOURCE [MANIFEST]  (explicitly resolve Rust adapter dependencies)\n  tellurc run SOURCE MANIFEST SCENARIO [--expanded] [--json]  (reference interpreter)\n  tellurc compare SOURCE MANIFEST OTHER_SOURCE SCENARIOS  (finite scenario evidence)\n  tellurc expand SOURCE MANIFEST ENTRY\n  tellurc extract-tail SOURCE MANIFEST CONTROL LINE HELPER [--report]\n  tellurc protocol SOURCE MANIFEST ENTRY [PREFIX_JSON]  (structural abstraction)\n  tellurc protocol-compare SOURCE MANIFEST OTHER_SOURCE ENTRY\n  tellurc certify-expansion SOURCE MANIFEST ENTRY  (JSON graph and correspondence)\n  tellurc verify-expansion SOURCE MANIFEST ARTIFACT\n  tellurc inspect SOURCE MANIFEST ENTRY [--expanded]\n  tellurc build SOURCE [MANIFEST] [--entry main] [--out FILE] [--release] [--expanded] [--backend rust|llvm]\n  tellurc exec SOURCE [MANIFEST] [build options] [-- PROGRAM_ARGUMENTS]\nBuild writes a native executable, LLVM IR (.ll), and generated source (.tellur-build/).\nNative programs accept --help, --json, --scenario FILE, and --fuel N.\nThe Apple Silicon LLVM runtime and system link pack are embedded. Rust/Cargo is required for Rust source adapters and --backend rust.\nLLVM-enabled macOS arm64 compilers default to LLVM. Other builds default to Rust. Pass --backend rust to use generated Rust on any build. See docs/reference/llvm-backend.md for supported operations. Executables are standalone.";
+const USAGE: &str = "Tellur compiler\n  tellur lsp  (language server over stdio)\n  tellurc explain SOURCE [MANIFEST] (--at LINE:COLUMN | --control NAME --outcome NAME) [--json]\n  tellurc absorption-snapshot SOURCE [MANIFEST]  (bounded outcome contributor JSON)\n  tellurc absorption-diff BEFORE_JSON AFTER_JSON [--check]\n  tellurc contract-snapshot SOURCE [MANIFEST]  (checked public interface JSON)\n  tellurc contract-diff BEFORE_JSON AFTER_JSON [--check]  (exact contract differences)\n  tellurc format SOURCE [--check | --write] [--width N]  (stdout by default; no manifest needed)\n  tellurc check SOURCE [MANIFEST] [--json]\n  tellurc lock-native SOURCE [MANIFEST]  (explicitly resolve Rust adapter dependencies)\n  tellurc run SOURCE MANIFEST SCENARIO [--expanded] [--json]  (reference interpreter)\n  tellurc compare SOURCE MANIFEST OTHER_SOURCE SCENARIOS  (finite scenario evidence)\n  tellurc expand SOURCE MANIFEST ENTRY\n  tellurc extract-tail SOURCE MANIFEST CONTROL LINE HELPER [--report]\n  tellurc protocol SOURCE MANIFEST ENTRY [PREFIX_JSON]  (structural abstraction)\n  tellurc protocol-compare SOURCE MANIFEST OTHER_SOURCE ENTRY\n  tellurc certify-expansion SOURCE MANIFEST ENTRY  (JSON graph and correspondence)\n  tellurc verify-expansion SOURCE MANIFEST ARTIFACT\n  tellurc inspect SOURCE MANIFEST ENTRY [--expanded]\n  tellurc build SOURCE [MANIFEST] [--entry main] [--out FILE] [--release] [--expanded] [--backend rust|llvm] [--target TRIPLE]\n  tellurc exec SOURCE [MANIFEST] [build options] [-- PROGRAM_ARGUMENTS]\nBuild writes a native executable, LLVM IR (.ll), and generated source (.tellur-build/).\nA Linux target triple selects a bundled static musl pack (x86_64 or aarch64).\nNative programs accept --help, --json, --scenario FILE, and --fuel N.\nThe Apple Silicon LLVM runtime and system link pack are embedded. Rust/Cargo is required for Rust source adapters and --backend rust.\nLLVM-enabled macOS arm64 compilers default to LLVM. Other builds default to Rust. Pass --backend rust to use generated Rust on any build. See docs/reference/llvm-backend.md for supported operations. Executables are standalone.";
 fn discover(source: &Path) -> Option<PathBuf> {
     let source = if source.is_absolute() {
         source.to_owned()
@@ -344,7 +344,8 @@ fn run(
                 .join(source.file_stem().ok_or("invalid source name")?);
             let mut opt = 0;
             let mut expanded = false;
-            let mut backend = tellur::native::DEFAULT_BACKEND;
+            let mut backend = None;
+            let mut target = None;
             let mut runtime_args = &[][..];
             let mut i = 0;
             while i < rest.len() {
@@ -363,11 +364,20 @@ fn run(
                     }
                     "--release" => opt = 2,
                     "--expanded" => expanded = true,
+                    "--target" => {
+                        i += 1;
+                        target = Some(
+                            rest.get(i)
+                                .ok_or("--target needs a target triple")?
+                                .as_str(),
+                        );
+                    }
                     "--backend" => {
                         i += 1;
-                        backend = rest.get(i).ok_or("--backend needs rust or llvm")?;
-                        if !matches!(backend, "rust" | "llvm") {
-                            return Err(format!("unknown backend {backend}").into());
+                        let selected = rest.get(i).ok_or("--backend needs rust or llvm")?.as_str();
+                        backend = Some(selected);
+                        if !matches!(selected, "rust" | "llvm") {
+                            return Err(format!("unknown backend {selected}").into());
                         }
                     }
                     other => return Err(format!("unknown build option {other}").into()),
@@ -379,10 +389,18 @@ fn run(
             } else {
                 program
             };
+            let backend = backend.unwrap_or(if target.is_some() {
+                "llvm"
+            } else {
+                tellur::native::DEFAULT_BACKEND
+            });
+            if target.is_some() && backend == "rust" {
+                return Err("--target requires the LLVM backend".into());
+            }
             let build = if backend == "llvm" {
                 #[cfg(feature = "llvm")]
                 {
-                    p.build_llvm(&entry, &output, opt)?
+                    p.build_llvm_for(&entry, &output, opt, target)?
                 }
                 #[cfg(not(feature = "llvm"))]
                 {

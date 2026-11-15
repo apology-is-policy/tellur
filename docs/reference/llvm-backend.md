@@ -41,6 +41,31 @@ The first invocation exits with status 0; the second selects `declined` and exit
 with status 7. Both report the declared outcome and its payload. Native `--json`,
 `--scenario`, `--entry`, `--help` and `--fuel` retain their existing behavior.
 
+## Linux static musl targets (0.280)
+
+The Apple Silicon distribution can build standalone ELF executables for either
+Linux architecture. The target selects the runtime, startup objects, libc and
+unwinder embedded in the compiler. Both triples use the same checked program
+and in-process LLVM optimizer and linker as native Apple Silicon builds.
+
+```sh
+tellur build playground/hello.tellur --target x86_64-unknown-linux-musl --out build/hello-x86_64
+tellur build playground/hello.tellur --target aarch64-unknown-linux-musl --out build/hello-arm64
+```
+
+Copy the executable to a matching Linux machine and run it there. On Linux,
+`tellur exec playground/hello.tellur --backend llvm` selects the native musl
+pack in an LLVM-enabled build. A Rust startup object initializes process
+arguments for the runtime and source adapters. Polled adapters use Mio on Linux.
+Manifests that declare Rust sources need Cargo and Rust's standard library for
+the selected target. Ordinary Tellur builds need only the distributed compiler.
+
+To build the compiler with both Linux packs, install the two musl standard
+libraries for the build's Rust toolchain and enable the Cargo feature
+`linux-musl-packs`. On Linux, `--features llvm` includes the native musl pack.
+Pack builders can set `TELLUR_MUSL_SYSROOT` to a matching Rust sysroot containing
+`lib/rustlib/<triple>/lib/self-contained/`.
+
 ## Current admission
 
 The current slice accepts synchronous controls using `bool`, `u32`, `string`,
