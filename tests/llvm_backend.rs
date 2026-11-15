@@ -42,16 +42,7 @@ impl Fixture {
         }
         c
     }
-    #[cfg(all(
-        feature = "llvm",
-        any(
-            all(target_os = "macos", target_arch = "aarch64"),
-            all(
-                target_os = "linux",
-                any(target_arch = "aarch64", target_arch = "x86_64")
-            )
-        )
-    ))]
+    #[cfg(tellur_native_llvm)]
     fn build(&self, backend: &str, opt: u8) -> PathBuf {
         let output = self.command(backend, opt).output().unwrap();
         assert!(
@@ -101,16 +92,7 @@ fn default_and_explicit_backends_preserve_the_process_contract() {
         ("default", None, direct_default),
         ("rust", Some("rust"), false),
     ];
-    if cfg!(all(
-        feature = "llvm",
-        any(
-            all(target_os = "macos", target_arch = "aarch64"),
-            all(
-                target_os = "linux",
-                any(target_arch = "aarch64", target_arch = "x86_64")
-            )
-        )
-    )) {
+    if cfg!(tellur_native_llvm) {
         cases.push(("llvm", Some("llvm"), true));
     }
     let mut reports = Vec::new();
@@ -138,29 +120,11 @@ fn default_and_explicit_backends_preserve_the_process_contract() {
     assert!(reports.windows(2).all(|pair| pair[0] == pair[1]));
 }
 
-#[cfg(all(
-    feature = "llvm",
-    any(
-        all(target_os = "macos", target_arch = "aarch64"),
-        all(
-            target_os = "linux",
-            any(target_arch = "aarch64", target_arch = "x86_64")
-        )
-    )
-))]
+#[cfg(tellur_native_llvm)]
 #[path = "support/corpus.rs"]
 mod corpus;
 
-#[cfg(all(
-    feature = "llvm",
-    any(
-        all(target_os = "macos", target_arch = "aarch64"),
-        all(
-            target_os = "linux",
-            any(target_arch = "aarch64", target_arch = "x86_64")
-        )
-    )
-))]
+#[cfg(tellur_native_llvm)]
 mod enabled {
     use super::*;
     use serde_json::{Value as Json, json};

@@ -1966,7 +1966,7 @@ impl CheckedProgram {
         self.link_llvm_source(source, output, opt, pack, adapter_pack)
     }
 
-    #[cfg(all(test, target_os = "macos", target_arch = "aarch64"))]
+    #[cfg(all(test, tellur_native_llvm))]
     fn build_llvm_source(&self, source: String, output: &Path, opt: u8) -> Result<NativeBuild> {
         self.link_llvm_source(source, output, opt, targets::select(None)?, None)
     }
@@ -2238,7 +2238,7 @@ fn unpack(path: &Path, bytes: &[u8]) -> Result<()> {
 mod tests {
     use super::*;
     #[test]
-    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    #[cfg(tellur_native_llvm)]
     fn generated_async_resume_functions_preserve_reports_across_host_quotas() {
         use std::sync::atomic::{AtomicUsize, Ordering};
         static ID: AtomicUsize = AtomicUsize::new(0);

@@ -877,7 +877,9 @@ step compares the compiler inside the VSIX with the standalone archive, starts
 the language server, then builds Hello and the settings HTTP server with an empty
 tool search path. Settings uses a locked, target-specific adapter pack. Both
 Linux runners also build and run the applications in an isolated Ubuntu container
-and compare LLVM execution with generated Rust.
+and run the compiler test suite. Integration targets that select a backend run
+once with LLVM and once with generated Rust. Each target uses the same test
+executable for both passes.
 
 Run the workflow manually to produce qualification artifacts. Publishing a
 GitHub Release with a tag matching the compiler version (such as `v0.281.0`)

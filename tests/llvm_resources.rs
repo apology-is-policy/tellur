@@ -1,5 +1,5 @@
 //! Actual typed static libraries, linked to the precompiled C runtime.
-#![cfg(all(feature = "llvm", target_os = "macos", target_arch = "aarch64"))]
+#![cfg(tellur_native_llvm)]
 use serde_json::{Value as Json, json};
 use std::{
     fs,

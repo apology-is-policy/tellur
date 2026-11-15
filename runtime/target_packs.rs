@@ -29,12 +29,16 @@ pub fn build() {
     let out = PathBuf::from(env::var_os("OUT_DIR").unwrap());
     let mut descriptors = String::from("&[\n");
     if env::var("TARGET").as_deref() == Ok(DARWIN) {
+        println!("cargo:rustc-cfg=tellur_native_llvm");
         prepare(&out, DARWIN, None, &mut descriptors);
     }
     let host_cpu = env::var("CARGO_CFG_TARGET_ARCH").unwrap();
     for triple in LINUX {
         let native = env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("linux")
             && triple.split('-').next() == Some(host_cpu.as_str());
+        if native {
+            println!("cargo:rustc-cfg=tellur_native_llvm");
+        }
         if native || cfg!(feature = "linux-musl-packs") {
             let sysroot = env::var_os("TELLUR_MUSL_SYSROOT")
                 .map(PathBuf::from)

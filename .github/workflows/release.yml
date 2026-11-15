@@ -8,6 +8,7 @@ on:
       - ci/build-llvm.sh
       - ci/check-release.py
       - ci/check-clean-linux.sh
+      - ci/check-linux-parity.py
   release:
     types: [published]
 
@@ -103,11 +104,11 @@ jobs:
             /usr/bin/env -i HOME=/tmp PATH=/absent TELLUR_NATIVE_TARGET_DIR=/tmp/cache \
             /usr/bin/timeout 120 /bin/bash /smoke.sh /input /tmp
 
-      - name: Compare native Linux LLVM and Rust execution
+      - name: Run the full native Linux compiler parity suite
         if: runner.os == 'Linux'
         env:
-          CARGO_PROFILE_DEV_DEBUG: '0'
-        run: cargo test --locked --release --features linux-musl-packs --test llvm_backend --test llvm_adapters -- --test-threads=2
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target
+        run: python3 ci/check-linux-parity.py
 
       - uses: actions/upload-artifact@v4
         with:

@@ -1147,7 +1147,7 @@ fn cancellation_stops_a_pending_polled_operation_and_drops_its_state() {
     assert!(stop < log.len() - 1);
 }
 
-#[cfg(all(feature = "llvm", target_os = "macos", target_arch = "aarch64"))]
+#[cfg(tellur_native_llvm)]
 #[test]
 fn llvm_polled_adapters_match_live_timer_socket_and_cancellation_behavior() {
     for (name, host, source, manifest) in [
@@ -1160,7 +1160,7 @@ fn llvm_polled_adapters_match_live_timer_socket_and_cancellation_behavior() {
     }
 }
 
-#[cfg(all(feature = "llvm", target_os = "macos", target_arch = "aarch64"))]
+#[cfg(tellur_native_llvm)]
 #[test]
 fn llvm_polled_adapters_match_owned_handoff_stop_and_direct_spawn() {
     let split = format!("{HOST}{SPLIT_HOST}");
@@ -1177,7 +1177,7 @@ fn llvm_polled_adapters_match_owned_handoff_stop_and_direct_spawn() {
     compare_llvm_adapter("spawned", SPAWN_HOST, SPAWNED, spawn_config(), true);
 }
 
-#[cfg(all(feature = "llvm", target_os = "macos", target_arch = "aarch64"))]
+#[cfg(tellur_native_llvm)]
 fn compare_llvm_adapter(name: &str, host: &str, source: &str, manifest: Json, success: bool) {
     let fixture = Fixture::new(&format!("llvm-{name}"));
     fs::write(fixture.root.join("host.rs"), host).unwrap();

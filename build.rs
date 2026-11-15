@@ -1,5 +1,6 @@
 //! Build the embedded linker and native runtime pack for LLVM-enabled compilers.
 fn main() {
+    println!("cargo:rustc-check-cfg=cfg(tellur_native_llvm)");
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=src/llvm/lld_shim.cpp");
     println!("cargo:rerun-if-env-changed=LLVM_SYS_221_PREFIX");

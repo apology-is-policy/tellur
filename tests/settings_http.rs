@@ -1264,7 +1264,7 @@ fn scripted_launch_signal_stops_the_service_and_replies_503() {
     assert_eq!(output.status.code(), Some(0));
 }
 
-#[cfg(all(feature = "llvm", target_os = "macos", target_arch = "aarch64"))]
+#[cfg(tellur_native_llvm)]
 #[test]
 fn llvm_http_serves_a_second_client_and_shuts_down_pending_members() {
     let p = program();
