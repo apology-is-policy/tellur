@@ -1,0 +1,5 @@
+# Native conformance tests derive programs by editing these versioned specimens.
+# Keep their byte offsets and multiline edit anchors stable across checkouts.
+examples/**/*.tellur text eol=lf
+playground/**/*.tellur text eol=lf
+tests/fixtures/**/*.tellur text eol=lf
