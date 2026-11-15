@@ -88,7 +88,7 @@ fn default_and_explicit_backends_preserve_the_process_contract() {
         ("default", None, direct_default),
         ("rust", Some("rust"), false),
     ];
-    if cfg!(tellur_native_llvm) {
+    if cfg!(tellur_native_llvm) || cfg!(all(windows, feature = "windows-gnu-pack")) {
         cases.push(("llvm", Some("llvm"), true));
     }
     let mut reports = Vec::new();

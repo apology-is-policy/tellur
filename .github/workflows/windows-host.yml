@@ -8,6 +8,7 @@ on:
       - ci/check-windows-host.py
       - ci/prepare-windows-crt.py
       - ci/prepare-windows-llvm-xml.py
+      - tests/llvm_backend.rs
       - build.rs
       - runtime/target_packs.rs
       - src/native/llvm_target.rs
@@ -95,3 +96,17 @@ jobs:
           path: dist/*
           if-no-files-found: error
           compression-level: 0
+
+      - name: Compare Windows default and explicit backend behavior
+        shell: pwsh
+        run: |
+          $env:CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS = "-Ctarget-feature=+crt-static"
+          $env:CARGO_TARGET_X86_64_PC_WINDOWS_GNU_RUSTFLAGS = "-Cdlltool=$env:TELLUR_WINDOWS_DLLTOOL"
+          $options = @('test', '--target', 'x86_64-pc-windows-msvc', '--release', '--locked', '--features', 'windows-gnu-pack')
+          cargo @options --test llvm_backend default_and_explicit_backends_preserve_the_process_contract -- --exact
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          foreach ($backend in 'rust', 'llvm') {
+            $env:TELLUR_TEST_BACKEND = $backend
+            cargo @options --test borrowed_tasks --test boundaries --test cancellation_specimen --test faults --test outcome_origins -- --test-threads=2
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
