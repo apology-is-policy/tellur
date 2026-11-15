@@ -1,26 +1,26 @@
-#[cfg(test)]
+#[cfg(any(test, feature = "runtime-abi"))]
 #[path = "abi.rs"]
 mod abi;
-#[cfg(test)]
+#[cfg(any(test, feature = "runtime-abi"))]
 #[path = "execution.rs"]
 pub mod execution;
-#[cfg(test)]
+#[cfg(any(test, feature = "runtime-abi"))]
 #[path = "frames.rs"]
 mod frames;
-#[cfg(test)]
+#[cfg(any(test, feature = "runtime-abi"))]
 #[path = "tasks.rs"]
 mod tasks;
 pub use frames::Frames;
 #[cfg(test)]
 #[path = "boundary_state_tests.rs"]
 mod boundary_state_tests;
-#[cfg(test)]
+#[cfg(any(test, feature = "runtime-abi"))]
 #[path = "../collection_support.rs"]
 mod collection_support;
 #[cfg(test)]
 #[path = "context_state_tests.rs"]
 mod context_state_tests;
-#[cfg(test)]
+#[cfg(any(test, feature = "runtime-abi"))]
 #[path = "../fault.rs"]
 mod fault;
 #[cfg(test)]

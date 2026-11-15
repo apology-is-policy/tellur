@@ -479,12 +479,16 @@ compiler from source, enable it and set `LLVM_SYS_221_PREFIX` to the static pinn
 LLVM/LLD installation, as described in the repository README. A compiler built
 without that feature reports a clear error for `--backend llvm`.
 
-This intermediate release still requires Cargo and the runtime's pinned Rust
-dependencies to build a cached static library, plus the macOS SDK for linking.
-Tellur program code is not translated to Rust. The C ABI uses opaque value
-handles and shares the existing runtime's launch, fuel, fault and result logic.
-The resulting executable is standalone. Shipping a precompiled runtime and target
-link packs belongs to the later single-binary checkpoint.
+The Apple Silicon compiler embeds a plain runtime archive, a Mio-enabled archive
+for polled Rust adapters, and a macOS libSystem link stub. For an ordinary
+program, the compiler unpacks the runtime into its native cache and links with
+the bundled stub. It can do this on a machine without Cargo, rustc or the SDK.
+Only macOS system libraries are needed to run the resulting executable.
+Manifests that supply Rust adapter source use Cargo with the adapter lockfile
+and link against the installed SDK to resolve the adapter's system imports.
+
+The C ABI uses opaque value handles and shares the runtime's launch, fuel,
+fault and result logic across both backends.
 
 Async lowering uses frontend state machines. The coroutine experiments and the
 application and full-suite comparisons provide independent conformance evidence.

@@ -1630,7 +1630,7 @@ fn drive_sequential(
     result
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "runtime-abi"))]
 #[path = "source_scheduler.rs"]
 mod source_scheduler;
 #[cfg(any(test, feature = "runtime-abi"))]
@@ -1643,7 +1643,7 @@ pub use source_scheduler::run_source_entry;
 #[path = "execution_tests.rs"]
 mod tests;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "runtime-abi"))]
 #[path = "started_tasks.rs"]
 mod started_tasks;
 pub use started_tasks::{StartedTask, TaskJoin};
@@ -1676,7 +1676,7 @@ mod interference_tests;
 #[path = "borrower_coverage_tests.rs"]
 mod borrower_coverage_tests;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "runtime-abi"))]
 #[path = "borrower_coverage.rs"]
 mod borrower_coverage;
 pub use borrower_coverage::BorrowerInterference;

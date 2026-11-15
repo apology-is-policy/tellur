@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-darwin-arm64-0.278.0.vsix` using **Extensions:
+1. Install the supplied `tellur-language-darwin-arm64-0.279.0.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -12,8 +12,9 @@ Experimental editor support for the Tellur compiler.
    Try `playground/structured_helpers.tellur`, `playground/structured_tasks.tellur`, `playground/sequential_initializers.tellur`, `playground/projected_construction.tellur`, `playground/composed_construction.tellur`, `playground/borrowed_construction.tellur`, `playground/construction.tellur`, `playground/named_outcomes.tellur`, `stored_adapters.tellur`, `adapters.tellur`, `outcomes.tellur`, `collections.tellur`, `references.tellur`, and `count.tellur` next.
 4. Read `docs/language-reference.md` for the detailed language reference.
 
-The package uses the same executable for `tellur lsp`, `tellur build` and `tellur exec`. Native builds require the Rust/Cargo
-toolchain and pinned dependencies; no npm installation is needed. Executables are
+The package uses the same executable for `tellur lsp`, `tellur build` and `tellur exec`. It includes the Apple Silicon runtime and linker inputs for ordinary Tellur
+programs. Rust source adapters require Rust/Cargo, their locked dependencies
+and the macOS SDK. Executables are
 standalone. Build/run saves the active file and sends output to **Tellur Build**.
 Use **Tellur: Build Native Program** (`⌘⌥B`) to build without running. Windows/Linux
 keybindings use Ctrl instead of Cmd; the supplied binary package is macOS arm64.

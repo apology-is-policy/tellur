@@ -4275,6 +4275,8 @@ unsafe fn launch_program(
 }
 // The packaged runtime supplies the factory for its target. In-process ABI
 // tests install their own Host backend when exercising descriptor readiness.
+#[cfg(all(not(test), feature = "runtime-abi"))]
+use crate::rust_readiness;
 #[cfg(test)]
 fn rust_readiness() -> R<Option<Box<dyn ReadinessBackend>>> {
     Ok(None)

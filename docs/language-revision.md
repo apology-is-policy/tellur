@@ -2045,3 +2045,17 @@ The Apple Silicon VSIX ships one executable. It runs compiler commands directly
 and starts the language server with `tellur lsp`. Existing compiler and standalone
 server aliases retain their calling conventions. Next come runtime and target link
 packs for builds on machines without a development toolchain.
+
+## Apple Silicon runtime and system link pack (0.279)
+
+The compiler build prepares the two runtime profiles from the checked-in Rust
+runtime crate and embeds them with the macOS link pack. An ordinary Tellur
+program compiles and links from an empty cache with no system development tools:
+
+```sh
+tellur exec playground/hello.tellur
+```
+
+The plain profile avoids allocating a readiness poller. Manifests with polled
+Rust operations select the Mio profile, preserving cancellation, deadlines and
+resource ownership. Rust source adapters still use their locked toolchain build.

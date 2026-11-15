@@ -1962,15 +1962,6 @@ impl CheckedProgram {
                 .map_err(error)?;
         let object = directory.join("program.o");
         fs::write(&object, bytes).map_err(|e| error(e.to_string()))?;
-        let sdk = Command::new("xcrun")
-            .arg("--show-sdk-path")
-            .output()
-            .map_err(|e| error(e.to_string()))?;
-        if !sdk.status.success() {
-            return Err(error(
-                "cannot find the macOS SDK; bundled link packs follow at station single",
-            ));
-        }
         let mut arguments = vec![
             "ld64.lld".into(),
             "-arch".into(),
@@ -1979,16 +1970,33 @@ impl CheckedProgram {
             "macos".into(),
             crate::llvm::MACOS_MINIMUM.into(),
             crate::llvm::MACOS_MINIMUM.into(),
-            "-syslibroot".into(),
-            String::from_utf8_lossy(&sdk.stdout).trim().into(),
-            "-lSystem".into(),
             "-o".into(),
             output.display().to_string(),
             object.display().to_string(),
             runtime.display().to_string(),
         ];
         if let Some(adapter) = adapter {
-            arguments.push(adapter.display().to_string());
+            // Source adapters can import system symbols beyond the Tellur runtime.
+            let sdk = Command::new("xcrun")
+                .arg("--show-sdk-path")
+                .output()
+                .map_err(|e| error(format!("cannot locate macOS SDK for Rust adapter: {e}")))?;
+            if !sdk.status.success() {
+                return Err(error("cannot locate macOS SDK for Rust adapter"));
+            }
+            arguments.extend([
+                adapter.display().to_string(),
+                "-syslibroot".into(),
+                String::from_utf8_lossy(&sdk.stdout).trim().into(),
+                "-lSystem".into(),
+            ]);
+        } else {
+            let stub = directory.join("libSystem.tbd");
+            unpack(
+                &stub,
+                include_bytes!("targets/aarch64-apple-darwin/libSystem.tbd"),
+            )?;
+            arguments.extend(["-Z".into(), stub.display().to_string()]);
         }
         crate::llvm::link(&arguments).map_err(error)?;
         Ok(NativeBuild {
@@ -2160,91 +2168,59 @@ impl CheckedProgram {
     }
 }
 
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 fn abi_library(target: &Path, polled: bool) -> Result<PathBuf> {
+    let (id, bytes): (&str, &[u8]) = if polled {
+        (
+            env!("TELLUR_RUNTIME_POLLED_ID"),
+            include_bytes!(concat!(env!("OUT_DIR"), "/runtime-polled.a")),
+        )
+    } else {
+        (
+            env!("TELLUR_RUNTIME_PLAIN_ID"),
+            include_bytes!(concat!(env!("OUT_DIR"), "/runtime-plain.a")),
+        )
+    };
+    let archive = target
+        .join("tellur-runtime-pack")
+        .join(format!("libtellur_runtime_{id}.a"));
+    unpack(&archive, bytes)?;
+    Ok(archive)
+}
+
+/// Publish a complete link input even when compilers share a cold cache.
+fn unpack(path: &Path, bytes: &[u8]) -> Result<()> {
+    use std::io::{ErrorKind, Write};
     use std::sync::atomic::{AtomicU64, Ordering};
     static NEXT: AtomicU64 = AtomicU64::new(0);
-    let mut cargo = RUNTIME_CARGO
-        .replace("name = \"tellur_runtime\"", "name = \"tellur_runtime_abi\"")
-        .replace(
-            "path = \"lib.rs\"",
-            "path = \"lib.rs\"\ncrate-type = [\"staticlib\"]",
-        );
-    let lock = if polled {
-        cargo.push_str(crate::rust_host::MIO_DEPENDENCY);
-        include_str!("abi-readiness.lock").to_owned()
-    } else {
-        LOCK.replace("path_generated", "tellur_runtime_abi")
-    };
-    let readiness = crate::rust_host::readiness_source(polled);
-    let lib = format!(
-        "#![allow(unused, unreachable_code, dead_code)]\n{}\npub mod abi {{\n{}\n{readiness}\n}}",
-        runtime_modules(),
-        include_str!("abi.rs")
-            .replace(
-                "#[path = \"abi_adapter.rs\"]\npub mod adapter;",
-                &format!(
-                    "pub mod adapter {{\n{}\n}}",
-                    include_str!("abi_adapter.rs")
-                        .replace(
-                            "#[path = \"abi_adapter_polled.rs\"]\npub mod polled;",
-                            &format!(
-                                "pub mod polled {{\n{}\n}}",
-                                include_str!("abi_adapter_polled.rs")
-                            )
-                        )
-                        .lines()
-                        .filter(|l| !l.starts_with("//!"))
-                        .collect::<Vec<_>>()
-                        .join("\n")
-                )
-            )
-            .lines()
-            .filter(|l| !l.starts_with("//!"))
-            .collect::<Vec<_>>()
-            .join("\n")
-    );
-    let mut hasher = std::hash::DefaultHasher::new();
-    (&cargo, &lock, &lib).hash(&mut hasher);
-    let hash = format!("{:016x}", hasher.finish());
-    // Cargo serializes builds, but releases its target lock before LLD reads the
-    // archive. Different runtime versions must therefore have distinct outputs.
-    let library = format!("tellur_runtime_abi_{hash}");
-    let cargo = cargo.replace("[lib]", &format!("[lib]\nname = \"{library}\""));
-    let directory = target.join(format!("tellur-abi/{hash}"));
-    fs::create_dir_all(&directory).map_err(|e| error(e.to_string()))?;
-    for (name, contents) in [("Cargo.toml", cargo), ("Cargo.lock", lock), ("lib.rs", lib)] {
-        let file = directory.join(name);
-        if fs::read_to_string(&file).ok().as_deref() != Some(contents.as_str()) {
-            let temp = directory.join(format!(
-                "{name}.{}-{}.partial",
-                std::process::id(),
-                NEXT.fetch_add(1, Ordering::Relaxed)
-            ));
-            fs::write(&temp, contents).map_err(|e| error(e.to_string()))?;
-            fs::rename(temp, file).map_err(|e| error(e.to_string()))?;
+    if fs::metadata(path).is_ok_and(|m| m.len() == bytes.len() as u64)
+        && fs::read(path).is_ok_and(|file| file == bytes)
+    {
+        return Ok(());
+    }
+    let directory = path.parent().unwrap();
+    fs::create_dir_all(directory).map_err(|e| error(e.to_string()))?;
+    let (temporary, mut file) = loop {
+        let seq = NEXT.fetch_add(1, Ordering::Relaxed);
+        let temp = directory.join(format!(".tellur-pack-{}-{seq}.partial", std::process::id()));
+        match fs::File::create_new(&temp) {
+            Ok(file) => break (temp, file),
+            Err(e) if e.kind() == ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(error(format!("cannot prepare {}: {e}", path.display()))),
         }
+    };
+    let write = file.write_all(bytes);
+    drop(file);
+    if let Err(e) = write.and_then(|()| fs::rename(&temporary, path)) {
+        let _ = fs::remove_file(temporary);
+        return Err(error(format!("cannot unpack {}: {e}", path.display())));
     }
-    let build = target.join("abi-build");
-    let result = cargo_command()
-        .env("CARGO_INCREMENTAL", "0")
-        .env("CARGO_PROFILE_DEV_DEBUG", "0")
-        .env("CARGO_PROFILE_DEV_OPT_LEVEL", "2")
-        .arg("build")
-        .arg("--features=runtime-abi")
-        .arg("--locked")
-        .arg("--manifest-path")
-        .arg(directory.join("Cargo.toml"))
-        .arg("--target-dir")
-        .arg(&build)
-        .output()
-        .map_err(|e| error(format!("could not build ABI runtime: {e}")))?;
-    if !result.status.success() {
-        return Err(error(format!(
-            "ABI runtime build failed: {}",
-            String::from_utf8_lossy(&result.stderr)
-        )));
-    }
-    Ok(build.join(format!("debug/lib{library}.a")))
+    Ok(())
+}
+
+#[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
+fn abi_library(_: &Path, _: bool) -> Result<PathBuf> {
+    Err(error("embedded Tellur runtime unavailable for this target"))
 }
 
 #[cfg(test)]

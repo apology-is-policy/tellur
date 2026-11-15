@@ -3,7 +3,7 @@ type Result<T> = super::R<T>;
 fn error(message: impl Into<String>) -> String {
     format!("E_NATIVE: {}", message.into())
 }
-#[cfg(test)]
+#[cfg(any(test, feature = "runtime-abi"))]
 #[path = "../task_support.rs"]
 mod protocol;
 pub(super) use protocol::{OwnerId, Readiness, Registry, TaskId, WaitId};

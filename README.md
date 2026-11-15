@@ -6,7 +6,7 @@ provides the compiler and the stdio language server (`tellur lsp`). Existing
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.278.0** implements the v0.1 checked core and the current language
+Compiler release **0.279.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -932,8 +932,9 @@ From this directory, use the supplied binaries:
 
 `build` writes a standalone executable and its LLVM IR (`name.ll`). The direct
 backend emits `name.tellur-build/program.ll` and links the program with embedded
-LLVM/LLD 22.1.8. It uses Cargo to prepare the cached runtime and to compile
-declared Rust adapters, and the macOS SDK supplies system libraries for linking.
+LLVM/LLD 22.1.8. On Apple Silicon the compiler carries the precompiled runtime
+and a libSystem link stub. An ordinary build needs only the `tellur` executable.
+Manifests with Rust source adapters also use Cargo, rustc and the macOS SDK.
 Set `TELLUR_NATIVE_TARGET_DIR` to share the native cache between builds.
 Explicit `--backend rust` builds produce `name.tellur-build/src/main.rs` and use
 Rust/Cargo to compile the executable.

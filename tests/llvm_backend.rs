@@ -131,6 +131,50 @@ mod enabled {
     use std::{path::Path, process::Output};
     use tellur::{compile_file, manifest::Manifest, runtime::Scenario};
     #[test]
+    fn toolchain_free_builds_share_and_repair_the_embedded_runtime() {
+        let f = Fixture::new(include_str!("../playground/hello.tellur"));
+        let cache = f.root.join("cache");
+        let missing = f.root.join("absent-toolchain");
+        let build = |name: &str| {
+            let out = f.root.join(name);
+            Command::new(env!("CARGO_BIN_EXE_tellur"))
+                .env_clear()
+                .env("PATH", &missing)
+                .env("HOME", &f.root)
+                .env("CARGO", &missing)
+                .env("TELLUR_NATIVE_TARGET_DIR", &cache)
+                .arg("exec")
+                .arg(&f.source)
+                .arg("--out")
+                .arg(out)
+                .args(["--", "--json"])
+                .output()
+                .unwrap()
+        };
+        let outputs = std::thread::scope(|s| {
+            let a = s.spawn(|| build("first"));
+            let b = build("second");
+            [a.join().unwrap(), b]
+        });
+        for run in &outputs {
+            assert!(run.status.success(), "{run:?}");
+            let report: Json = serde_json::from_slice(&run.stdout).unwrap();
+            assert_eq!(report["outcome"], "done");
+        }
+        let archives = fs::read_dir(cache.join("tellur-runtime-pack"))
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .collect::<Vec<_>>();
+        assert_eq!(archives.len(), 1);
+        let size = archives[0].metadata().unwrap().len();
+        fs::write(&archives[0], b"truncated").unwrap();
+        let repaired = build("repaired");
+        assert!(repaired.status.success(), "{repaired:?}");
+        assert_eq!(repaired.stdout, outputs[0].stdout);
+        assert_eq!(archives[0].metadata().unwrap().len(), size);
+    }
+
+    #[test]
     fn maintained_executable_sources_lower_with_both_backends() {
         fn visit(directory: &Path, count: &mut usize) {
             for entry in fs::read_dir(directory).unwrap() {

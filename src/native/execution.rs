@@ -5,13 +5,13 @@ use super::{
 };
 use domains::{DomainKey, DomainScope, Domains, Membership};
 
-#[cfg(test)]
+#[cfg(any(test, feature = "runtime-abi"))]
 #[path = "access_resolution.rs"]
 pub mod access_resolution;
-#[cfg(test)]
+#[cfg(any(test, feature = "runtime-abi"))]
 #[path = "dependencies.rs"]
 pub mod dependencies;
-#[cfg(test)]
+#[cfg(any(test, feature = "runtime-abi"))]
 #[path = "reference_evidence.rs"]
 pub mod reference_evidence;
 use dependencies::Dependencies;
@@ -1653,10 +1653,10 @@ impl Machine {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "runtime-abi"))]
 #[path = "contexts.rs"]
 mod contexts;
-#[cfg(test)]
+#[cfg(any(test, feature = "runtime-abi"))]
 #[path = "domains.rs"]
 mod domains;
 #[cfg(any(test, feature = "runtime-abi"))]
@@ -1674,7 +1674,7 @@ pub use contexts::{
 #[path = "invocation_tests.rs"]
 mod invocation_tests;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "runtime-abi"))]
 #[path = "task_payload.rs"]
 mod task_payload;
 pub use task_payload::{QueuedTask, TaskBinding};
