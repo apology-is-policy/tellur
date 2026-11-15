@@ -2111,3 +2111,9 @@ embedded LLVM and LLD to build and run optimized Hello. The scalar example
 received its arguments and returned its authored exit status of 7 through
 `tellur exec`. Rust remains the default on Thylacine during qualification.
 [Pack preparation and guest checks](reference/llvm-backend.md#thylacine-runtime-qualification)
+
+The settings application's Rust adapter can now be packed with the Thylacine
+SDK’s JSON target specification. The compiler linked the complete application
+from that pack with an empty tool path. The guest passed persistent set, get,
+remove and missing-key checks. Starting the HTTP service on a valid port still
+returns the patched standard library’s listener error.

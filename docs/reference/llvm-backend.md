@@ -1568,3 +1568,23 @@ tellur build playground/hello.tellur --target aarch64-unknown-thylacine --out he
 Transfer `hello` to the guest and run `./hello --json`. The target compiler
 accepts `--backend llvm` for a native build. Rust remains its default while
 platform qualification continues.
+
+For a source adapter, select the same nightly and patched Rust sysroot used to
+prepare the runtime pack. Set `TELLUR_THYLACINE_TARGET_SPEC` to that SDK's
+`aarch64-unknown-thylacine.json`. Cargo passes the JSON specification to rustc
+so the target identity matches the one recorded in the patched standard library.
+
+```sh
+export TELLUR_THYLACINE_TARGET_SPEC="$THYLACINE/usr/ports/rust/aarch64-unknown-thylacine.json"
+RUSTFLAGS="--sysroot=$THYLACINE_RUST_SYSROOT" tellur pack-adapter \
+  applications/settings/main.tellur applications/settings/manifest.json \
+  --target aarch64-unknown-thylacine --release --out settings.adapter
+tellur build applications/settings/main.tellur applications/settings/manifest.json \
+  --target aarch64-unknown-thylacine --release --adapter-pack settings.adapter --out settings
+```
+
+Only the first command requires the Rust SDK. The second command works with an
+empty tool path. In a Thylacine guest the resulting application saved, retrieved
+and removed a setting across separate invocations. Looking up the removed key
+returned status 3. The HTTP entry rejected an invalid connection budget with
+status 2 and reported the listener's `ENOTTY` error on a valid fixed port.

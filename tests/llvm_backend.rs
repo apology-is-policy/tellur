@@ -5324,6 +5324,37 @@ fn cli_links_thylacine_from_a_cold_cache_without_build_tools() {
     check_static_elf(&fixture, "aarch64-unknown-thylacine", 183);
 }
 
+#[cfg(feature = "thylacine-pack")]
+#[test]
+fn thylacine_adapter_rejects_a_misnamed_rust_target_before_cargo() {
+    let fixture = Fixture::new(include_str!("../playground/hello.tellur"));
+    let output = Command::new(env!("CARGO_BIN_EXE_tellur"))
+        .env("TELLUR_NATIVE_TARGET_DIR", &fixture.root)
+        .env(
+            "TELLUR_THYLACINE_TARGET_SPEC",
+            fixture.root.join("wrong.json"),
+        )
+        .env("CARGO", fixture.root.join("missing-cargo"))
+        .env("RUSTC", "rustc")
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .args([
+            "pack-adapter",
+            "applications/settings/main.tellur",
+            "applications/settings/manifest.json",
+            "--target",
+            "aarch64-unknown-thylacine",
+            "--out",
+        ])
+        .arg(fixture.root.join("settings.adapter"))
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("expected aarch64-unknown-thylacine.json"),
+        "{output:?}"
+    );
+}
+
 #[cfg(any(feature = "thylacine-pack", feature = "linux-musl-packs"))]
 fn check_static_elf(fixture: &Fixture, triple: &str, machine: u16) {
     let path = fixture.root.join(triple);

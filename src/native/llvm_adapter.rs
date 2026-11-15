@@ -88,7 +88,26 @@ pub(super) fn library(
             String::from_utf8_lossy(&identity.stderr)
         )));
     }
+    // The custom Rust sysroot identifies its crates by the JSON target spec.
+    // Keep the Tellur triple for the pack identity and Cargo output directory.
+    let mut cargo_build = cargo_command();
+    cargo_build.arg("build");
     let mut hasher = std::hash::DefaultHasher::new();
+    let mut rust_target = PathBuf::from(triple);
+    if triple == "aarch64-unknown-thylacine"
+        && let Some(spec) = std::env::var_os("TELLUR_THYLACINE_TARGET_SPEC")
+    {
+        rust_target = std::path::absolute(spec).map_err(|e| error(e.to_string()))?;
+        if rust_target.file_name() != Some(std::ffi::OsStr::new("aarch64-unknown-thylacine.json")) {
+            return Err(error(
+                "expected aarch64-unknown-thylacine.json for the Thylacine Rust target",
+            ));
+        }
+        fs::read(&rust_target)
+            .map_err(|e| error(format!("cannot read {}: {e}", rust_target.display())))?
+            .hash(&mut hasher);
+        cargo_build.arg("-Zjson-target-spec");
+    }
     (
         "tellur-source-adapter-c-abi-v1",
         &source,
@@ -144,19 +163,14 @@ pub(super) fn library(
         }
     }
     let build = target.join("adapter-build");
-    let result = cargo_command()
+    let result = cargo_build
         .env("RUSTC", rustc)
         .env("CARGO_INCREMENTAL", "0")
         .env("CARGO_PROFILE_DEV_DEBUG", "0")
         .env("CARGO_PROFILE_DEV_OPT_LEVEL", opt.to_string())
-        .args([
-            "build",
-            "--lib",
-            "--locked",
-            "--target",
-            triple,
-            "--manifest-path",
-        ])
+        .args(["--lib", "--locked", "--target"])
+        .arg(rust_target)
+        .arg("--manifest-path")
         .arg(directory.join("Cargo.toml"))
         .arg("--target-dir")
         .arg(&build)
