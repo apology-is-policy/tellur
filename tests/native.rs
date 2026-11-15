@@ -71,19 +71,37 @@ fn rebuilding_native_outputs_preserves_existing_executable_images() {
     fs::create_dir_all(&root).unwrap();
     let output = root.join("program");
     let retained = root.join("retained");
-    let manifest = Manifest::from_json(include_str!("../playground/manifest.json")).unwrap();
+    let source_file = root.join("main.tellur");
     let report = |path: &Path| {
         let result = Command::new(path).arg("--json").output().unwrap();
         assert!(result.status.success(), "{result:?}");
         serde_json::from_slice::<Json>(&result.stdout).unwrap()
     };
     let mut original_inode = None;
-    for (index, opt) in [0, 2, 0, 2].into_iter().enumerate() {
+    for (index, release) in [false, true, false, true].into_iter().enumerate() {
         let source = format!(
             "control main() exits result {{exit done {{{index}}};}} outcome result {{@exit 0 done {{u32 value}}}}"
         );
-        let program = compile(&source, manifest.clone()).unwrap();
-        program.build_for_test("main", &output, opt).unwrap();
+        fs::write(&source_file, source).unwrap();
+        // Build in a separate process so children of parallel tests cannot
+        // inherit a writable staging descriptor and hold the image busy.
+        let mut build = Command::new(env!("CARGO_BIN_EXE_tellur"));
+        build
+            .arg("build")
+            .arg(&source_file)
+            .arg("playground/manifest.json");
+        build
+            .args(["--backend", support::test_backend(), "--out"])
+            .arg(&output);
+        if release {
+            build.arg("--release");
+        }
+        let result = build.output().unwrap();
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
         let inode = fs::metadata(&output).unwrap().ino();
         if let Some(original) = original_inode {
             assert_ne!(inode, original);
