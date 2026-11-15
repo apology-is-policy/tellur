@@ -1,4 +1,5 @@
 mod support;
+use support::BuildTestExecutable;
 use tellur::{
     compile,
     ir::{Action, Value},
@@ -189,7 +190,7 @@ fn native_forwarding_preserves_effects_at_o0_o2_and_after_expansion() {
         for opt in [0, 2] {
             let binary = root.join(format!("forward-{index}-{opt}"));
             support::scenario_executable(program)
-                .build_native("main", &binary, opt)
+                .build_for_test("main", &binary, opt)
                 .unwrap();
             let actual = std::process::Command::new(&binary)
                 .arg("--json")

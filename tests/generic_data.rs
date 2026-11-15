@@ -1,4 +1,5 @@
 mod support;
+use support::BuildTestExecutable;
 use tellur::{compile, ir::Value, manifest::Manifest, runtime::Scenario};
 fn m() -> Manifest {
     Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
@@ -134,7 +135,7 @@ fn native_generic_layouts_match_reference_at_o0_o2() {
         for opt in [0, 2] {
             let bin = root.join(format!("{name}-{opt}"));
             support::scenario_executable(&program)
-                .build_native("main", &bin, opt)
+                .build_for_test("main", &bin, opt)
                 .unwrap();
             let out = Command::new(bin)
                 .arg("--scenario")

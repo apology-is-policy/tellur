@@ -1,4 +1,5 @@
 mod support;
+use support::BuildTestExecutable;
 use tellur::{
     compile,
     manifest::Manifest,
@@ -200,7 +201,7 @@ fn native_and_expanded_recovery_match_reference() {
         let expected = p.run(&scenario()).unwrap();
         let binary = root.join(format!("recovery-{opt}"));
         support::scenario_executable(&p)
-            .build_native("main", &binary, opt)
+            .build_for_test("main", &binary, opt)
             .unwrap();
         let output = Command::new(binary)
             .args(["--scenario", case.to_str().unwrap()])
@@ -276,7 +277,7 @@ fn process_status_and_structured_report_match_native_and_expansion() {
         let expected = p.run_completion(&scenario(), 10000).unwrap();
         let binary = root.join(format!("process-{opt}"));
         support::scenario_executable(&p)
-            .build_native("main", &binary, opt)
+            .build_for_test("main", &binary, opt)
             .unwrap();
         let output = Command::new(binary)
             .args(["--scenario", case.to_str().unwrap()])

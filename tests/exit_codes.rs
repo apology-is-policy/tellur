@@ -1,5 +1,7 @@
+mod support;
 use serde_json::{Value as Json, json};
 use std::{collections::BTreeMap, fs, process::Command};
+use support::BuildTestExecutable;
 use tellur::{compile, compile_file, manifest::Manifest};
 
 fn manifest() -> Manifest {
@@ -267,7 +269,7 @@ fn native_statuses_preserve_payloads_adapters_and_expansion_at_o0_o2() {
         };
         for opt in [0, 2] {
             let binary = root.join(format!("program-{expanded}-{opt}"));
-            p.build_native("main", &binary, opt).unwrap();
+            p.build_for_test("main", &binary, opt).unwrap();
             for (arg, status, name, payload) in [
                 ("true", 0, "done", "present"),
                 ("false", 23, "missing", "absent"),
@@ -316,15 +318,13 @@ fn native_statuses_preserve_payloads_adapters_and_expansion_at_o0_o2() {
         serde_json::to_string(&manifest()).unwrap(),
     )
     .unwrap();
-    let output = Command::new(env!("CARGO_BIN_EXE_tellurc"))
-        .args([
-            "exec",
-            root.join("main.tellur").to_str().unwrap(),
-            "--",
-            "--json",
-            "--",
-            "false",
-        ])
+    let mut command = Command::new(env!("CARGO_BIN_EXE_tellurc"));
+    command.arg("exec").arg(root.join("main.tellur"));
+    if std::env::var_os("TELLUR_TEST_BACKEND").is_some() {
+        command.args(["--backend", support::test_backend()]);
+    }
+    let output = command
+        .args(["--", "--json", "--", "false"])
         .output()
         .unwrap();
     assert_eq!(

@@ -1,4 +1,5 @@
 mod support;
+use support::BuildTestExecutable;
 use tellur::{
     compile,
     ir::Value,
@@ -242,7 +243,7 @@ fn native_direct_exits_agree_before_and_after_expansion() {
             for opt in [0, 2] {
                 let binary = root.join(format!("{case}-{mode}-{opt}"));
                 support::scenario_executable(p)
-                    .build_native("main", &binary, opt)
+                    .build_for_test("main", &binary, opt)
                     .unwrap();
                 for flag in [false, true] {
                     let mut args = vec![Value::Bool(flag)];

@@ -1,4 +1,5 @@
 mod support;
+use support::BuildTestExecutable;
 use tellur::{compile, ir::Value, manifest::Manifest, runtime::Scenario};
 fn manifest() -> Manifest {
     Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
@@ -228,7 +229,7 @@ fn native_borrow_mutation_and_return_match_interpreter_at_o0_o2() {
         for opt in [0, 2] {
             let binary = root.join(format!("refs-{expanded}-{opt}"));
             support::scenario_executable(&program)
-                .build_native("main", &binary, opt)
+                .build_for_test("main", &binary, opt)
                 .unwrap();
             for flag in [true, false] {
                 let expected = p

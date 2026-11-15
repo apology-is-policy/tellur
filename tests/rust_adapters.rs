@@ -6,6 +6,7 @@ use std::{
     process::Command,
     sync::atomic::{AtomicUsize, Ordering},
 };
+use support::BuildTestExecutable;
 use tellur::{compile, manifest::Manifest};
 static NEXT: AtomicUsize = AtomicUsize::new(0);
 struct Fixture {
@@ -179,7 +180,7 @@ fn native_modules_embed_explicit_sources_and_keep_wrapper_checks() {
         };
         let binary = f.root.join(format!("module-{expanded}"));
         support::scenario_executable(&p)
-            .build_native("main", &binary, 0)
+            .build_for_test("main", &binary, 0)
             .unwrap();
         let output = Command::new(binary)
             .args(["--json", "--", "hello"])
@@ -209,7 +210,7 @@ fn native_modules_embed_explicit_sources_and_keep_wrapper_checks() {
     );
     fs::write(&child, "pub fn inspect(_:u32)->crate::rust_api::inspect_outcome {crate::rust_api::inspect_outcome::ready(String::new())}").unwrap();
     let error = support::scenario_executable(&p)
-        .build_native("main", &f.root.join("wrong-module"), 0)
+        .build_for_test("main", &f.root.join("wrong-module"), 0)
         .unwrap_err();
     assert_eq!(error.code, "E_BACKEND");
     assert!(error.message.contains("mismatched types"), "{error}");
@@ -224,7 +225,7 @@ fn native_rust_signature_mismatch_is_a_build_error() {
     )
     .unwrap();
     let e = support::scenario_executable(&p)
-        .build_native("main", &f.root.join("wrong"), 0)
+        .build_for_test("main", &f.root.join("wrong"), 0)
         .unwrap_err();
     assert_eq!(e.code, "E_BACKEND");
     assert!(e.message.contains("mismatched types"), "{e}");
@@ -242,7 +243,7 @@ fn native_dependencies_are_locked_and_rust_library_calls_round_trip() {
     .unwrap();
     let locked = fs::read(f.root.join("Cargo.lock")).unwrap();
     let e = support::scenario_executable(&p)
-        .build_native("main", &f.root.join("out"), 0)
+        .build_for_test("main", &f.root.join("out"), 0)
         .unwrap_err();
     assert_eq!(e.code, "E_BACKEND");
     assert!(e.message.contains("locked"), "{e}");
@@ -261,7 +262,7 @@ fn native_dependencies_are_locked_and_rust_library_calls_round_trip() {
         for opt in [0, 2] {
             let binary = f.root.join(format!("out-{expanded}-{opt}"));
             support::scenario_executable(&p)
-                .build_native("main", &binary, opt)
+                .build_for_test("main", &binary, opt)
                 .unwrap();
             let result = Command::new(binary)
                 .args(["--json", "--", "hello!"])
@@ -300,7 +301,7 @@ fn native_owned_and_borrowed_collections_use_concrete_rust_types() {
     let p=compile("control main(bytes data) exits auto {vector<u32> items=[1,2];mutable map<bool,vector<string>> values=map {};delta map_insert(borrow mutable values,true,[\"hi\"]) {inserted=>inserted,replaced {vector<string> previous}=>replaced}[inserted | replaced]:forward inspect(borrow data,borrow items,values,unit);}",f.manifest(&m)).unwrap();
     let binary = f.root.join("out");
     support::scenario_executable(&p)
-        .build_native("main", &binary, 0)
+        .build_for_test("main", &binary, 0)
         .unwrap();
     let result = Command::new(binary)
         .args(["--json", "--", r#"{"kind":"bytes","value":[1,255]}"#])
@@ -342,7 +343,7 @@ fn native_panics_are_not_recoverable_outcomes_and_scripts_do_not_execute_adapter
     .unwrap();
     let binary = f.root.join("panic");
     support::scenario_executable(&p)
-        .build_native("main", &binary, 0)
+        .build_for_test("main", &binary, 0)
         .unwrap();
     let result = Command::new(&binary).arg("--json").output().unwrap();
     assert!(!result.status.success());
@@ -470,7 +471,7 @@ fn retained_rust_objects_survive_borrows_transfer_and_explicit_failed_cleanup() 
         for opt in [0, 2] {
             let binary = f.root.join(format!("resources-{expanded}-{opt}"));
             support::scenario_executable(&p)
-                .build_native("main", &binary, opt)
+                .build_for_test("main", &binary, opt)
                 .unwrap();
             let log = f.root.join(format!("drops-{expanded}-{opt}"));
             let result = Command::new(&binary)
@@ -509,7 +510,7 @@ fn resource_host_teardown_releases_escaped_objects_and_fuel_faults() {
     .unwrap();
     let binary = f.root.join("escape");
     support::scenario_executable(&p)
-        .build_native("main", &binary, 0)
+        .build_for_test("main", &binary, 0)
         .unwrap();
     let log = f.root.join("escaped");
     let result = Command::new(&binary)
@@ -522,7 +523,7 @@ fn resource_host_teardown_releases_escaped_objects_and_fuel_faults() {
     let p = compile(RESOURCE_SOURCE, f.manifest(&resource_config())).unwrap();
     let binary = f.root.join("fuel");
     support::scenario_executable(&p)
-        .build_native("main", &binary, 0)
+        .build_for_test("main", &binary, 0)
         .unwrap();
     let mut observed = false;
     for fuel in 1..20 {
@@ -562,7 +563,7 @@ fn live_entry_rejects_nested_resource_tokens_before_acquisition() {
     let p = compile(source, f.manifest(&resource_config())).unwrap();
     let binary = f.root.join("inject");
     support::scenario_executable(&p)
-        .build_native("main", &binary, 0)
+        .build_for_test("main", &binary, 0)
         .unwrap();
     let log = f.root.join("must-not-exist");
     let forged = json!({"kind":"construct","value":{"ty":"box","name":"box","fields":[{"kind":"opaque","value":{"ty":"counter","token":"rust:0"}}]}});
@@ -592,7 +593,7 @@ fn retained_file_example_runs_live_and_scripted_failure_paths() {
     let p = tellur::compile_file(root.join("main.tellur"), manifest).unwrap();
     let f = Fixture::new();
     let binary = f.root.join("file");
-    p.build_native("main", &binary, 0).unwrap();
+    p.build_for_test("main", &binary, 0).unwrap();
     let input = f.root.join("input");
     fs::write(&input, b"hello").unwrap();
     let result = Command::new(&binary)
@@ -663,7 +664,7 @@ fn resource_types_and_operations_can_be_reexported_from_an_explicit_module() {
     )
     .unwrap();
     let binary = f.root.join("reexported-resource");
-    p.build_native("main", &binary, 0).unwrap();
+    p.build_for_test("main", &binary, 0).unwrap();
     let input = f.root.join("input.txt");
     fs::write(&input, b"owned module resource").unwrap();
     let output = Command::new(&binary)
@@ -725,7 +726,7 @@ fn explicit_fault_release_checks_ownership_and_releases_real_retained_owners() {
         };
         let binary = f.root.join(format!("source-fault-{expanded}"));
         // No normal outcomes means no process-outcome mapping is needed.
-        p.build_native("main", &binary, 2).unwrap();
+        p.build_for_test("main", &binary, 2).unwrap();
         let log = f.root.join(format!("source-fault-drops-{expanded}"));
         let result = Command::new(&binary)
             .args(["--json", "--"])
@@ -785,7 +786,7 @@ fn contingency_handover_releases_child_locals_and_preserves_parent_resources() {
     let p = compile(source, f.manifest(&config)).unwrap();
     let binary = f.root.join("contingency");
     support::scenario_executable(&p)
-        .build_native("main", &binary, 2)
+        .build_for_test("main", &binary, 2)
         .unwrap();
     let log = f.root.join("drops");
     let output = Command::new(binary)
@@ -840,7 +841,7 @@ fn constructor_faults_release_initialized_fields_and_pending_arguments_once() {
     for (opt, p) in [(0, p.clone()), (2, p.expanded("main").unwrap())] {
         let binary = f.root.join(format!("constructor-fault-{opt}"));
         support::scenario_executable(&p)
-            .build_native("main", &binary, opt)
+            .build_for_test("main", &binary, opt)
             .unwrap();
         let log = f.root.join(format!("constructor-drop-{opt}"));
         let output = Command::new(binary)
@@ -881,7 +882,7 @@ fn completed_constructor_transfers_fault_ownership_to_caller() {
     for (opt, p) in [(0, p.clone()), (2, p.expanded("main").unwrap())] {
         let binary = f.root.join(format!("completed-constructor-{opt}"));
         support::scenario_executable(&p)
-            .build_native("main", &binary, opt)
+            .build_for_test("main", &binary, opt)
             .unwrap();
         let log = f.root.join(format!("completed-constructor-drop-{opt}"));
         let output = Command::new(binary)
@@ -936,7 +937,7 @@ control main(string path, bool broken) exits done {
     for (opt, p) in [(0, p.clone()), (2, p.expanded("main").unwrap())] {
         let binary = f.root.join(format!("borrowed-constructor-{opt}"));
         support::scenario_executable(&p)
-            .build_native("main", &binary, opt)
+            .build_for_test("main", &binary, opt)
             .unwrap();
         for broken in ["true", "false"] {
             let log = f
@@ -1007,7 +1008,7 @@ control main(string path, bool broken) exits done {
     for (opt, p) in [(0, p.clone()), (2, p.expanded("main").unwrap())] {
         let binary = f.root.join(format!("raw-borrowed-assembly-{opt}"));
         support::scenario_executable(&p)
-            .build_native("main", &binary, opt)
+            .build_for_test("main", &binary, opt)
             .unwrap();
         for broken in ["true", "false"] {
             let log = f
@@ -1098,7 +1099,7 @@ control main(string path,bool broken) exits done {
     for (opt, p) in [(0, p.clone()), (2, p.expanded("main").unwrap())] {
         let binary = f.root.join(format!("projected-resource-{opt}"));
         support::scenario_executable(&p)
-            .build_native("main", &binary, opt)
+            .build_for_test("main", &binary, opt)
             .unwrap();
         for broken in ["true", "false"] {
             let log = f
@@ -1150,7 +1151,7 @@ control main(string path,bool broken) exits done {
     for (opt, p) in [(0, p.clone()), (2, p.expanded("main").unwrap())] {
         let binary = f.root.join(format!("sequential-resource-{opt}"));
         support::scenario_executable(&p)
-            .build_native("main", &binary, opt)
+            .build_for_test("main", &binary, opt)
             .unwrap();
         for broken in ["true", "false"] {
             let log = f
@@ -1217,7 +1218,7 @@ control main(string path) exits done {
     );
     for (index, p) in [p.clone(), p.expanded("main").unwrap()].iter().enumerate() {
         let binary = f.root.join(format!("pending-{index}"));
-        p.build_native("main", &binary, 0).unwrap();
+        p.build_for_test("main", &binary, 0).unwrap();
         let log = f.root.join(format!("pending-drops-{index}"));
         let output = Command::new(&binary).arg("--").arg(&log).output().unwrap();
         assert_eq!(
@@ -1272,7 +1273,7 @@ control main(string path,bool broken) exits done {
         .unwrap();
     for (index, p) in [p.clone(), p.expanded("main").unwrap()].iter().enumerate() {
         let binary = f.root.join(format!("pending-borrow-{index}"));
-        p.build_native("main", &binary, 0).unwrap();
+        p.build_for_test("main", &binary, 0).unwrap();
         for broken in [false, true] {
             let log = f.root.join(format!("pending-borrow-{index}-{broken}"));
             let output = Command::new(&binary)
@@ -1344,7 +1345,7 @@ control main(string path,bool broken) exits done {
         .unwrap();
     for (index, p) in [p.clone(), p.expanded("main").unwrap()].iter().enumerate() {
         let binary = f.root.join(format!("contained-borrow-{index}"));
-        p.build_native("main", &binary, 0).unwrap();
+        p.build_for_test("main", &binary, 0).unwrap();
         for broken in [false, true] {
             let log = f.root.join(format!("contained-borrow-{index}-{broken}"));
             let output = Command::new(&binary)
@@ -1415,7 +1416,7 @@ control main(string path,bool broken) exits done {
         .unwrap();
     for (index, p) in [p.clone(), p.expanded("main").unwrap()].iter().enumerate() {
         let binary = f.root.join(format!("contained-owned-{index}"));
-        p.build_native("main", &binary, 0).unwrap();
+        p.build_for_test("main", &binary, 0).unwrap();
         for broken in [false, true] {
             let log = f.root.join(format!("contained-owned-{index}-{broken}"));
             let output = Command::new(&binary)
@@ -1487,7 +1488,7 @@ control main(string path,bool broken) exits done {
         .unwrap();
     for (index, p) in [p.clone(), p.expanded("main").unwrap()].iter().enumerate() {
         let binary = f.root.join(format!("carrier-borrow-{index}"));
-        p.build_native("main", &binary, 0).unwrap();
+        p.build_for_test("main", &binary, 0).unwrap();
         for broken in [false, true] {
             let log = f.root.join(format!("carrier-borrow-{index}-{broken}"));
             let output = Command::new(&binary)

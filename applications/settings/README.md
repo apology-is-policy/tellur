@@ -352,12 +352,12 @@ See [the contingency reference](../../docs/reference/contingency.md).
 
 ## Running the settings server with LLVM
 
-On macOS arm64 with the LLVM-enabled 0.276 compiler and Rust toolchain, build the
+On macOS arm64 with the LLVM-enabled 0.277 compiler and Rust toolchain, build the
 service from the repository root. The manifest selects the checked-in Rust
 adapters and their dependency lock.
 
 ```sh
-./bin/tellurc build applications/settings/main.tellur --backend llvm --release --out /tmp/tellur-settings-llvm
+./bin/tellurc build applications/settings/main.tellur --release --out /tmp/tellur-settings-llvm
 /tmp/tellur-settings-llvm --entry serve -- /tmp/tellur-settings.json 0 2 60000
 ```
 

@@ -1,4 +1,5 @@
 mod support;
+use support::BuildTestExecutable;
 use tellur::{compile, ir::Value, manifest::Manifest, runtime::Scenario};
 fn manifest() -> Manifest {
     Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
@@ -154,7 +155,7 @@ fn bounded_controls_match_native_and_expanded_execution() {
         for opt in [0, 2] {
             let bin = root.join(format!("{name}-{opt}"));
             support::scenario_executable(&program)
-                .build_native("main", &bin, opt)
+                .build_for_test("main", &bin, opt)
                 .unwrap();
             let out = Command::new(bin)
                 .arg("--scenario")

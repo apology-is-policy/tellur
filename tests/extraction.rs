@@ -1,4 +1,5 @@
 mod support;
+use support::BuildTestExecutable;
 use tellur::{
     compile,
     extract::{Extraction, extract_tail},
@@ -326,7 +327,7 @@ fn runnable_example_preserves_native_behavior_at_o0_o2_before_and_after_expansio
         for opt in [0, 2] {
             let binary = root.join(format!("{name}-{opt}"));
             support::scenario_executable(&program)
-                .build_native("main", &binary, opt)
+                .build_for_test("main", &binary, opt)
                 .unwrap();
             for (scenario, expected) in scenarios.iter().zip(&expected) {
                 assert_eq!(

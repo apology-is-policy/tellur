@@ -1,3 +1,5 @@
+mod support;
+use support::BuildTestExecutable;
 use tellur::{compile, manifest::Manifest, runtime::Scenario};
 fn manifest() -> Manifest {
     Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
@@ -305,7 +307,7 @@ fn native_expansion_and_step_partitions_preserve_carrier_task_observations() {
         assert!(complete);
         for (index, p) in [p.clone(), p.expanded("start").unwrap()].iter().enumerate() {
             let binary = root.join(format!("{name}-{index}"));
-            p.build_native("main", &binary, 0).unwrap();
+            p.build_for_test("main", &binary, 0).unwrap();
             let output = Command::new(binary)
                 .arg("--scenario")
                 .arg(&input)

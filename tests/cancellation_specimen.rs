@@ -4,7 +4,9 @@
 //! completion, join every child, keep both loans until the join, and agree across
 //! the reference executor, its certified expansion, small host quotas and a native
 //! executable.
+mod support;
 use std::{path::PathBuf, process::Command, sync::OnceLock};
+use support::BuildTestExecutable;
 use tellur::{
     CheckedProgram, compile, compile_file,
     ir::Value,
@@ -81,7 +83,7 @@ fn native() -> &'static PathBuf {
         let dir = std::env::temp_dir().join(format!("tellur-specimen-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let binary = dir.join("specimen");
-        program().build_native("main", &binary, 0).unwrap();
+        program().build_for_test("main", &binary, 0).unwrap();
         binary
     })
 }

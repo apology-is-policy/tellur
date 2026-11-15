@@ -1,4 +1,5 @@
 mod support;
+use support::BuildTestExecutable;
 use tellur::{
     compile,
     ir::Value,
@@ -146,7 +147,7 @@ fn native_boundary_matches_reference_and_storage_survives_repeated_calls() {
     fs::write(&input, serde_json::to_vec(&scenario()).unwrap()).unwrap();
     let binary = root.join("run");
     support::scenario_executable(&p)
-        .build_native("main", &binary, 0)
+        .build_for_test("main", &binary, 0)
         .unwrap();
     let output = Command::new(binary)
         .args(["--scenario", input.to_str().unwrap()])

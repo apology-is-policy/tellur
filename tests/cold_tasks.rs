@@ -1,3 +1,5 @@
+mod support;
+use support::BuildTestExecutable;
 use tellur::{compile, manifest::Manifest, runtime::Scenario};
 fn manifest() -> Manifest {
     Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
@@ -178,7 +180,7 @@ fn native_cold_tasks_match_reference_and_expansion() {
         .enumerate()
     {
         let binary = root.join(format!("program-{index}"));
-        p.build_native("main", &binary, 0).unwrap();
+        p.build_for_test("main", &binary, 0).unwrap();
         let output = Command::new(&binary)
             .arg("--scenario")
             .arg(&input)
@@ -381,7 +383,7 @@ control main() faults { run start(); }
             ["main", "start", "relay", "leaf"]
         );
         let binary = root.join(format!("fault-{index}"));
-        p.build_native("main", &binary, 0).unwrap();
+        p.build_for_test("main", &binary, 0).unwrap();
         let output = Command::new(binary)
             .args(["--scenario", input.to_str().unwrap()])
             .output()

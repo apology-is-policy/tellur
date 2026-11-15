@@ -1,3 +1,4 @@
+mod support;
 use serde_json::{Value as Json, json};
 use std::{
     fs,
@@ -11,6 +12,7 @@ use std::{
     },
     time::{Duration, Instant},
 };
+use support::BuildTestExecutable;
 use tellur::{
     CheckedProgram,
     ir::Value,
@@ -303,7 +305,7 @@ fn independent_native_service_reuses_transport_with_its_own_routes() {
     let p = program(|_| {}).unwrap();
     let f = Fixture::new();
     let binary = f.0.join("hello");
-    p.build_native("main", &binary, 0).unwrap();
+    p.build_for_test("main", &binary, 0).unwrap();
     let server = Service::start(&binary, 5);
     assert_eq!(
         server.exchange("GET", "/hello", "", 200),
@@ -360,7 +362,7 @@ fn imported_contingency_handles_fault_then_restarts_without_a_second_response() 
     .unwrap();
     let f = Fixture::new();
     let binary = f.0.join("isolated");
-    p.build_native("main", &binary, 2).unwrap();
+    p.build_for_test("main", &binary, 2).unwrap();
     let server = Service::start(&binary, 3);
     assert_eq!(
         server.exchange("GET", "/injected", "", 500),
@@ -396,7 +398,7 @@ fn transport_rejects_a_second_receive_without_consuming_or_replacing_the_first()
     }).unwrap();
     let f = Fixture::new();
     let binary = f.0.join("receive-once");
-    p.build_native("main", &binary, 0).unwrap();
+    p.build_for_test("main", &binary, 0).unwrap();
     let server = Service::start(&binary, 1);
     assert_eq!(
         server.exchange("GET", "/hello", "", 200),

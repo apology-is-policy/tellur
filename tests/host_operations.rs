@@ -1,11 +1,13 @@
 //! Manifest async host operations, admitted by direct `await` only. E1g.1 runs them
 //! in the reference interpreter with scripted readiness; E1g.2a runs the same
 //! scripts in native executables.
+mod support;
 use std::{
     fs,
     path::{Path, PathBuf},
     process::Command,
 };
+use support::BuildTestExecutable;
 use tellur::{
     CheckedProgram, compile,
     fault::Report,
@@ -507,7 +509,7 @@ fn native(p: &CheckedProgram, root: &Path, name: &str) -> PathBuf {
     p.clone()
         .with_entry_exit_codes("main", codes)
         .unwrap()
-        .build_native("main", &binary, 0)
+        .build_for_test("main", &binary, 0)
         .unwrap();
     binary
 }

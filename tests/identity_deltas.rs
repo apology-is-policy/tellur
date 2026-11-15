@@ -1,4 +1,5 @@
 mod support;
+use support::BuildTestExecutable;
 use tellur::{
     compile,
     manifest::Manifest,
@@ -282,7 +283,7 @@ fn native_and_expanded_grouped_identity_decisions_match_reference() {
     fs::create_dir_all(&root).unwrap();
     let binary = root.join("run");
     support::scenario_executable(&p)
-        .build_native("main", &binary, 0)
+        .build_for_test("main", &binary, 0)
         .unwrap();
     for flag in [true, false] {
         let scenario = Scenario {

@@ -4,7 +4,7 @@ Experimental editor support for the Tellur compiler.
 
 ## Start reading code
 
-1. Install the supplied `tellur-language-darwin-arm64-0.276.0.vsix` using **Extensions:
+1. Install the supplied `tellur-language-darwin-arm64-0.277.0.vsix` using **Extensions:
    Install from VSIX…** in VS Code's Command Palette. This package includes `tellur-lsp`
    for Apple Silicon macOS. No Rust or npm installation is needed to use that package.
 2. Open `tellur.code-workspace` from the compiler checkout.
@@ -22,7 +22,8 @@ keybindings use Ctrl instead of Cmd; the supplied binary package is macOS arm64.
 an array of strings. Each item is passed as one argument, without a shell.
 `tellurLanguage.releaseBuild` enables LLVM optimization level 2. Override
 `tellurLanguage.compilerPath` to use a development compiler. Build outputs live in
-`build/` beside the source; they include executable, LLVM IR and generated Rust.
+`build/` beside the source; they include the executable and LLVM IR. The bundled compiler uses direct LLVM
+emission. Explicit Rust-backend builds also write the generated Rust source.
 
 Build and Run executes your program, including any declared live file operations.
 It runs only in a trusted workspace. The language server itself only analyzes source.
@@ -1884,3 +1885,9 @@ an isolated editor profile without reloading existing windows.
 ## 0.276 typed polled Rust adapters
 
 The bundled compiler and language server report 0.276.0. The LLVM backend on macOS arm64 supports typed polled operations, timers and real socket readiness. The settings server exercises concurrent requests and graceful shutdown. Rust remains the default backend.
+
+## 0.277 backend parity
+
+Build and Run uses direct LLVM emission in the macOS arm64 extension. The bundled
+compiler and language server report 0.277.0. The compiler CLI accepts
+`--backend rust` for the generated Rust backend.

@@ -1,4 +1,5 @@
 mod support;
+use support::BuildTestExecutable;
 use tellur::{
     compile,
     manifest::Manifest,
@@ -274,7 +275,7 @@ fn native_construction_agrees_with_reference_at_both_optimization_levels() {
     for (opt, p) in [(0, p.clone()), (2, p.expanded("main").unwrap())] {
         let binary = root.join(format!("construction-{opt}"));
         support::scenario_executable(&p)
-            .build_native("main", &binary, opt)
+            .build_for_test("main", &binary, opt)
             .unwrap();
         let output = Command::new(binary)
             .args(["--scenario", case.to_str().unwrap()])

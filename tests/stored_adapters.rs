@@ -1,4 +1,5 @@
 mod support;
+use support::BuildTestExecutable;
 use tellur::{compile, ir::Value, manifest::Manifest, runtime::Scenario};
 fn manifest() -> Manifest {
     Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
@@ -178,7 +179,7 @@ fn native_and_expanded_storage_match_at_both_optimization_levels() {
         for opt in [0, 2] {
             let binary = root.join(format!("adapter-{index}-{opt}"));
             support::scenario_executable(program)
-                .build_native("main", &binary, opt)
+                .build_for_test("main", &binary, opt)
                 .unwrap();
             for flag in [true, false] {
                 let expected = run(NESTED, flag);

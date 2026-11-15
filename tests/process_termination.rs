@@ -1,4 +1,6 @@
+mod support;
 use std::{collections::BTreeMap, fs, process::Command};
+use support::BuildTestExecutable;
 use tellur::{
     compile,
     manifest::Manifest,
@@ -77,7 +79,7 @@ fn process_status_stays_entry_only_after_nested_fault_retirement() {
         }
         for opt in [0, 2] {
             let binary = root.join(format!("program-{index}-{opt}"));
-            p.build_native("main", &binary, opt).unwrap();
+            p.build_for_test("main", &binary, opt).unwrap();
             let output = Command::new(&binary)
                 .arg("--scenario")
                 .arg(&input)

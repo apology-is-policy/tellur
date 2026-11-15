@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.276.0** implements the v0.1 checked core and the current language
+Compiler release **0.277.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -17,11 +17,12 @@ VS Code build/run commands. The [revision plan](docs/language-revision.md) separ
 delivered features from the remaining reference, slice, outcome-expression and async work. The language is still
 fluid; this is an experimental implementation, not a production compiler.
 
-Release 0.276 supports typed polled Rust adapters on the opt-in LLVM backend for
-macOS arm64. A compiled settings server can serve a fast client while another
-connection waits for input, then cancel pending requests on shutdown. See the
-[settings service](applications/settings/README.md#running-the-settings-server-with-llvm).
-Rust remains the default during application and full-suite parity work.
+Release 0.277 makes direct LLVM emission the default for `build` and `exec` in the
+Apple Silicon macOS distribution. Use `--backend rust` to select generated Rust.
+Compilers built without the LLVM feature continue to use Rust. Both backends
+passed the application suite, including concurrent settings requests, graceful
+shutdown, and typed polled Rust adapters. See the
+[settings service example](applications/settings/README.md#running-the-settings-server-with-llvm).
 
 Release 0.222 added dynamic task sets. `tasks<producer>` holds any number of
 spawned children of one async control. `spawn producer(..) into set;` adds a member,
@@ -928,26 +929,18 @@ From this directory, use the supplied binaries:
 ./bin/tellurc run examples/load.tellur examples/manifest.json examples/double-failure.json
 ```
 
-`build` emits an executable, LLVM IR (`name.ll`), and the generated intermediate
-source (`name.tellur-build/src/main.rs`). Since 0.233 the runtime is a separate crate,
-`tellur_runtime`. It is compiled once per optimization level in the native target
-directory (`TELLUR_NATIVE_TARGET_DIR`, default `.tellur-cache` beside the output) and
-shared by every program built there. The generated source and `name.ll` therefore
-contain only the program. `--expanded` expands the chosen entry before
-lowering; `--release` optimizes at LLVM level 2. Native executables accept `--json`,
-`--entry`, `--scenario FILE`, and an optional `--fuel N` host limit. All declared
-outcomes are normal completions; host errors return nonzero process status.
+`build` writes a standalone executable and its LLVM IR (`name.ll`). The direct
+backend emits `name.tellur-build/program.ll` and links the program with embedded
+LLVM/LLD 22.1.8. It uses Cargo to prepare the cached runtime and to compile
+declared Rust adapters, and the macOS SDK supplies system libraries for linking.
+Set `TELLUR_NATIVE_TARGET_DIR` to share the native cache between builds.
+Explicit `--backend rust` builds produce `name.tellur-build/src/main.rs` and use
+Rust/Cargo to compile the executable.
 
-The default native pipeline is checked graph → explicit Rust control flow → LLVM → native
-binary. Controls become functions and loops remain loops. Executables do not contain
-the graph interpreter. Rust is the implementation bridge to LLVM and supplies value
-storage. LLVM verification runs on every build. Generated code retains all declared
-outcomes rather than replacing inconvenient paths with undefined behavior.
-
-The tested toolchain is Rust 1.97.1 with LLVM 22.1.6 on Apple Silicon macOS. Generated
-program dependencies are pinned in an embedded Cargo.lock. Other platforms are not
-yet validated. Foreign adapters are finite: a new manifest primitive can be scripted,
-but requires an implementation before it can run live.
+`--expanded` expands the selected entry before lowering. `--release` selects
+optimization level 2. Native executables accept `--json`, `--entry`,
+`--scenario FILE` and `--fuel N`. Process status follows the selected entry's
+outcome mapping. See the [LLVM backend reference](docs/reference/llvm-backend.md).
 
 ## Develop and verify
 
@@ -970,6 +963,18 @@ LLVM_SYS_221_PREFIX=/path/to/llvm-22.1.8 cargo test --features llvm --test corou
 LLVM_SYS_221_PREFIX=/path/to/llvm-22.1.8 cargo test --features llvm --test llvm_backend
 LLVM_SYS_221_PREFIX=/path/to/llvm-22.1.8 cargo build --release --features llvm --bins
 ```
+
+To compare compiled-program integration tests on macOS arm64, select a backend
+with `TELLUR_TEST_BACKEND`. For example, run the settings application suite with
+each backend against the same expected outcomes and exit statuses.
+
+```sh
+TELLUR_TEST_BACKEND=rust cargo test --locked --features llvm --test settings_application
+TELLUR_TEST_BACKEND=llvm cargo test --locked --features llvm --test settings_application
+```
+
+The selector applies to test executables. The compiler CLI uses its existing
+`--backend` option. Explicit Rust/LLVM differential tests still exercise both implementations.
 
 The [conformance inventory](docs/conformance.md) maps the draft's requirements and
 C01–C24 cases to implementation and evidence. Tests cover ownership, loops,

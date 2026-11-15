@@ -1,5 +1,4 @@
-//! The new backend is opt-in. Production source is compared with both existing
-//! executors, and unsupported checked programs must fail before output creation.
+//! Compare direct LLVM emission against the generated Rust and reference executors.
 use std::{
     fs,
     path::PathBuf,
@@ -79,12 +78,104 @@ fn backend_selection_is_explicit_and_unknown_names_are_rejected() {
     }
 }
 
+#[test]
+fn default_and_explicit_backends_preserve_the_process_contract() {
+    let fixture = Fixture::new(
+        "control main() exits result {exit done {42};} outcome result {@exit 7 done {u32 value}}",
+    );
+    let direct_default = cfg!(all(
+        feature = "llvm",
+        target_os = "macos",
+        target_arch = "aarch64"
+    ));
+    let mut cases = vec![
+        ("default", None, direct_default),
+        ("rust", Some("rust"), false),
+    ];
+    if direct_default {
+        cases.push(("llvm", Some("llvm"), true));
+    }
+    let mut reports = Vec::new();
+    for (name, backend, direct) in cases {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_tellurc"));
+        command
+            .arg("exec")
+            .arg(&fixture.source)
+            .arg("--out")
+            .arg(fixture.root.join(name));
+        if let Some(backend) = backend {
+            command.args(["--backend", backend]);
+        }
+        let output = command.args(["--", "--json"]).output().unwrap();
+        assert_eq!(output.status.code(), Some(7), "{name}: {output:?}");
+        assert!(output.stderr.is_empty(), "{name}: {output:?}");
+        let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(report["outcome"], "done");
+        assert_eq!(report["fields"][0]["value"], 42);
+        reports.push(report);
+        let generated = fixture.root.join(format!("{name}.tellur-build"));
+        assert_eq!(generated.join("program.ll").is_file(), direct, "{name}");
+        assert_eq!(generated.join("src/main.rs").is_file(), !direct, "{name}");
+    }
+    assert!(reports.windows(2).all(|pair| pair[0] == pair[1]));
+}
+
+#[cfg(all(feature = "llvm", target_os = "macos", target_arch = "aarch64"))]
+#[path = "support/corpus.rs"]
+mod corpus;
+
 #[cfg(all(feature = "llvm", target_os = "macos", target_arch = "aarch64"))]
 mod enabled {
     use super::*;
     use serde_json::{Value as Json, json};
     use std::{path::Path, process::Output};
     use tellur::{compile_file, manifest::Manifest, runtime::Scenario};
+    #[test]
+    fn maintained_executable_sources_lower_with_both_backends() {
+        fn visit(directory: &Path, count: &mut usize) {
+            for entry in fs::read_dir(directory).unwrap() {
+                let entry = entry.unwrap();
+                let path = entry.path();
+                if entry.file_type().unwrap().is_dir() {
+                    let name = entry.file_name();
+                    let name = name.to_string_lossy();
+                    if name != "build" && name != "target" && !name.ends_with(".tellur-build") {
+                        visit(&path, count);
+                    }
+                } else if path.extension().is_some_and(|ext| ext == "tellur") {
+                    let manifest = corpus::manifest_path(&path);
+                    let program = compile_file(
+                        &path,
+                        Manifest::from_json_at(&fs::read_to_string(&manifest).unwrap(), &manifest)
+                            .unwrap(),
+                    )
+                    .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+                    // Both emitters lower every region once an executable entry is selected.
+                    if let Some(entry) = program
+                        .regions()
+                        .find(|r| program.entry_exit_codes(&r.name).is_ok())
+                    {
+                        program
+                            .native_source(&entry.name)
+                            .unwrap_or_else(|e| panic!("Rust {}: {e}", path.display()));
+                        program
+                            .llvm_source(&entry.name)
+                            .unwrap_or_else(|e| panic!("LLVM {}: {e}", path.display()));
+                        *count += 1;
+                    }
+                }
+            }
+        }
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let mut count = 0;
+        // Shared library modules are checked through their importing applications.
+        for folder in ["playground", "examples", "applications"] {
+            visit(&root.join(folder), &mut count);
+        }
+        assert!(count > 0);
+        println!("Both backends lowered {count} maintained executable sources.");
+    }
+
     fn execute(binary: &Path, scenario: &Path, fuel: Option<usize>) -> Output {
         let mut c = Command::new(binary);
         c.arg("--scenario").arg(scenario);
@@ -150,7 +241,7 @@ outcome logic_result {@exit 0 done {bool value}}
             assert!(!ir.contains("switch i64"));
             assert!(
                 !f.root
-                    .join(format!("llvm-{opt}.tellur-build/main.rs"))
+                    .join(format!("llvm-{opt}.tellur-build/src/main.rs"))
                     .exists()
             );
             for scenario in &scenarios {
@@ -5091,8 +5182,7 @@ outcome result {
     }
 
     #[test]
-    fn unsupported_checked_operations_create_no_build_outputs() {
-        // Rust adapter host leaves remain gated through every supported task form.
+    fn polled_rust_adapters_run_through_await_defer_and_spawn() {
         for body in [
             "await tick();",
             "auto task=defer tick();await task;",
@@ -5111,19 +5201,47 @@ outcome result {
             manifest["rust"] = json!({"source":"host.rs","lockfile":"Cargo.lock"});
             fs::write(
                 f.root.join("host.rs"),
-                "// Adapter remains outside this backend checkpoint.\n",
+                r#"use crate::rust_api::{Poll, tick_operation, tick_outcome};
+struct Tick;
+impl tick_operation for Tick {
+    fn poll(&mut self) -> Poll<tick_outcome> { Poll::Ready(tick_outcome::ticked) }
+}
+pub fn tick() -> Box<dyn tick_operation> { Box::new(Tick) }
+"#,
             )
             .unwrap();
             fs::write(f.root.join("Cargo.lock"), "version = 4\n").unwrap();
             fs::write(&f.manifest, manifest.to_string()).unwrap();
-            let out = f.command("llvm", 0).output().unwrap();
-            assert!(!out.status.success());
+            let invalid = f.command("llvm", 0).output().unwrap();
+            assert!(!invalid.status.success());
             assert!(
-                String::from_utf8_lossy(&out.stderr).contains("E_BACKEND"),
-                "{out:?}"
+                String::from_utf8_lossy(&invalid.stderr).contains("lock-native"),
+                "{invalid:?}"
             );
-            assert!(!f.root.join("llvm-0.tellur-build").exists());
-            assert!(!f.root.join("llvm-0.ll").exists());
+            assert!(!f.root.join("llvm-0").exists());
+
+            let lock = Command::new(env!("CARGO_BIN_EXE_tellurc"))
+                .arg("lock-native")
+                .arg(&f.source)
+                .arg(&f.manifest)
+                .output()
+                .unwrap();
+            assert!(lock.status.success(), "{lock:?}");
+            let out = Command::new(f.build("llvm", 0))
+                .arg("--json")
+                .output()
+                .unwrap();
+            assert!(out.status.success(), "{out:?}");
+            let result = report(&out);
+            assert_eq!(result["outcome"], "done");
+            let calls = result["events"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|event| event["operation"] == "tick")
+                .collect::<Vec<_>>();
+            assert_eq!(calls.len(), 1, "{result}");
+            assert_eq!(calls[0]["outcome"], "ticked");
         }
     }
 }

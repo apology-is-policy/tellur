@@ -1,3 +1,5 @@
+#[path = "support/corpus.rs"]
+mod corpus;
 use std::{fs, path::Path, process::Command};
 use tellur::{
     compile,
@@ -177,13 +179,7 @@ fn every_maintained_source_is_parseable_and_idempotent_after_formatting() {
                     "{}",
                     path.display()
                 );
-                let manifest_path = path
-                    .parent()
-                    .unwrap()
-                    .ancestors()
-                    .map(|p| p.join("manifest.json"))
-                    .find(|p| p.is_file())
-                    .unwrap();
+                let manifest_path = corpus::manifest_path(&path);
                 let manifest = Manifest::from_json_at(
                     &fs::read_to_string(&manifest_path).unwrap(),
                     &manifest_path,

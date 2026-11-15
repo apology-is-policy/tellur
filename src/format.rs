@@ -207,19 +207,19 @@ fn groups(
                 parent[i] == Some(open)
             }
         };
+        // In a list, the delimiter owns the argument breaks. An individual
+        // argument's logical expression chooses its own continuation indent.
+        // A sole condition uses the delimiter for those operator breaks.
         let mut breaks: BTreeSet<usize> = (open + 1..end)
-            .filter(|&i| direct(i) && (raw[i] == "&&" || raw[i] == "||"))
+            .filter(|&i| direct(i) && raw[i] == ",")
+            .map(|i| i + 1)
             .collect();
-        // Conditions keep the first operand beside their opener and put logical
-        // operators at the start of continuation lines. Lists put each item on
-        // its own line, including a single long/nested argument.
-        if breaks.is_empty() && !contract {
-            breaks.insert(open + 1);
+        let list = !breaks.is_empty();
+        if !list {
+            breaks.extend((open + 1..end).filter(|&i| direct(i) && ["&&", "||"].contains(&raw[i])));
         }
-        for (i, token) in raw.iter().enumerate().take(end).skip(open + 1) {
-            if direct(i) && *token == "," {
-                breaks.insert(i + 1);
-            }
+        if !contract && (list || breaks.is_empty()) {
+            breaks.insert(open + 1);
         }
         if !contract || raw[end] != ";" {
             breaks.insert(end);

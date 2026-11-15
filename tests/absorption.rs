@@ -1,3 +1,5 @@
+#[path = "support/corpus.rs"]
+mod corpus;
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -437,13 +439,7 @@ fn all_maintained_sources_export_and_roundtrip_bounded_evidence() {
                     walk(&path, count);
                 }
             } else if path.extension().is_some_and(|e| e == "tellur") {
-                let m = path
-                    .parent()
-                    .unwrap()
-                    .ancestors()
-                    .map(|p| p.join("manifest.json"))
-                    .find(|p| p.is_file())
-                    .unwrap();
+                let m = corpus::manifest_path(&path);
                 let snapshot = modules::absorption_snapshot(
                     &path,
                     Manifest::from_json_at(&fs::read_to_string(&m).unwrap(), &m).unwrap(),

@@ -1916,9 +1916,12 @@ impl Emitter {
 }
 
 impl CheckedProgram {
-    /// Builds only the admitted synchronous/retained subset. The cached Rust staticlib is
-    /// transitional tooling. Only source adapters require per-program Rust.
+    /// Emit LLVM IR directly and link it with the cached runtime for macOS arm64.
+    /// Manifests with Rust source adapters also link a compiled adapter archive.
     pub fn build_llvm(&self, entry: &str, output: &Path, opt: u8) -> Result<NativeBuild> {
+        if opt > 3 {
+            return Err(error("optimization level must be 0..3"));
+        }
         let source = self.llvm_source(entry)?;
         self.build_llvm_source(source, output, opt)
     }
@@ -1937,6 +1940,8 @@ impl CheckedProgram {
         };
         let directory = PathBuf::from(format!("{}.tellur-build", output.display()));
         fs::create_dir_all(&directory).map_err(|e| error(e.to_string()))?;
+        let triple = format!("arm64-apple-macosx{}.0", crate::llvm::MACOS_MINIMUM);
+        let source = format!("target triple = \"{triple}\"\n{source}");
         let generated = directory.join("program.ll");
         fs::write(&generated, &source).map_err(|e| error(e.to_string()))?;
         let llvm = PathBuf::from(format!("{}.ll", output.display()));
@@ -1952,7 +1957,6 @@ impl CheckedProgram {
             &target,
             crate::rust_host::has_polled_adapters(self.manifest()),
         )?;
-        let triple = format!("arm64-apple-macosx{}.0", crate::llvm::MACOS_MINIMUM);
         let bytes =
             crate::llvm::compile(&[(generated.display().to_string(), source)], &triple, opt)
                 .map_err(error)?;

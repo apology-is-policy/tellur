@@ -1,19 +1,21 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.276.0 -->
+<!-- tellur-reference-version: 0.277.0 -->
 
-This manual describes **compiler 0.276.0**, including the current ownership model,
+This manual describes **compiler 0.277.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
 says they are implemented. The [archived v0.1 reference](language-reference-v0.1.md)
 describes the original profile.
 
-Native compilation defaults to the Rust backend. The opt-in [direct LLVM backend](reference/llvm-backend.md)
-currently supports synchronous scalar/owned-aggregate controls, nested calls, tagged value decisions
-and owned synchronous primitive calls on macOS arm64. Its locals now use stable
-activation storage shared across synchronous calls. Direct shared/exclusive references
-to reference-free values, borrowed calls/results and borrowed decisions are supported.
+The Apple Silicon macOS compiler emits LLVM IR directly by default. Both
+`build` and `exec` accept `--backend rust` to use generated Rust. Source builds
+without the LLVM feature default to Rust. The [direct LLVM backend](reference/llvm-backend.md)
+supports synchronous scalar and aggregate controls, nested calls, tagged values,
+borrowed decisions and typed primitive calls. Synchronous children share stable
+activation storage for borrowed parameters and results.
+
 Compiler 0.253 also emits typed frontend frames for a bounded `run`, direct `await`
 and `yield` profile, preserving caller origins, fault reports and source fuel.
 Compiler 0.254 adds cold control tasks: `defer`, local moves/option wrappers and
@@ -31,12 +33,9 @@ selection, loop-carried remainders and set cancellation. Compiler 0.263 adds
 [retained named supervision](reference/llvm-backend.md#generated-retained-named-supervision-0263)
 using the private 0.262 bridge. Named work may yield, use supported host tasks and
 settle through its contingency without returning an outcome to the supervisor.
-Retained lexical scopes/recovery, suspending constructors, launch signals and Rust
-adapters remain later LLVM slices. Compiler 0.264 adds private lexical
-scope coordination and lifecycle proof; it does not widen that source profile. Compiler 0.265
-proves private retained loop/recovery transfers through original scope cleanup;
-version 3 runtime registration follows in0.266. Emitted retained lexical recovery
-remains pending.
+Retained lexical recovery, suspending constructors and launch signals joined the
+LLVM profile in 0.267, 0.269 and 0.270. Typed Rust adapters support synchronous
+data and resources, polled operations, timers and live socket readiness.
 
 Tellur is still experimental. When this manual and the compiler disagree, treat that
 as a bug to investigate, not a promise that either must remain unchanged. The
@@ -2980,7 +2979,7 @@ General expression-type hover remains unsupported.
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and broader spawn payloads (anonymous contracts and reference-bearing collections) remain planned; they are not executable features of 0.276.0.
+and broader spawn payloads (anonymous contracts and reference-bearing collections) remain planned; they are not executable features of 0.277.0.
 ## Contingency and supervised boundaries
 
 The [contingency reference](reference/contingency.md) specifies `@contingent`,

@@ -1,4 +1,5 @@
 mod support;
+use support::BuildTestExecutable;
 use tellur::{
     compile,
     ir::Value,
@@ -207,7 +208,7 @@ control borrowed() exits auto {
         for opt in [0, 2] {
             let bin = root.join(format!("{name}-{opt}"));
             support::scenario_executable(&program)
-                .build_native("main", &bin, opt)
+                .build_for_test("main", &bin, opt)
                 .unwrap();
             for (s, expected) in scenarios.iter().zip(&expected) {
                 let file = root.join("scenario.json");

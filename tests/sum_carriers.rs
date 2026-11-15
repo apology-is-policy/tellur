@@ -1,4 +1,5 @@
 mod support;
+use support::BuildTestExecutable;
 use tellur::{compile, manifest::Manifest, runtime::Scenario};
 fn manifest() -> Manifest {
     Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
@@ -239,7 +240,7 @@ fn native_borrowed_sum_carriers_match_before_and_after_expansion() {
             for opt in [0, 2] {
                 let binary = root.join(format!("{case}-{expanded}-{opt}"));
                 support::scenario_executable(&program)
-                    .build_native("main", &binary, opt)
+                    .build_for_test("main", &binary, opt)
                     .unwrap();
                 let output = std::process::Command::new(binary)
                     .arg("--json")

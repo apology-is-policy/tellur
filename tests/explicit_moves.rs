@@ -1,4 +1,5 @@
 mod support;
+use support::BuildTestExecutable;
 use tellur::{compile, ir::Value, manifest::Manifest, runtime::Scenario};
 
 fn manifest() -> Manifest {
@@ -228,7 +229,7 @@ fn native_moves_and_temporary_borrows_match_reference_before_and_after_expansion
         for (opt, program) in [(0, p.clone()), (2, p.expanded("main").unwrap())] {
             let binary = root.join(format!("{name}-{opt}"));
             support::scenario_executable(&program)
-                .build_native("main", &binary, opt)
+                .build_for_test("main", &binary, opt)
                 .unwrap();
             let input = root.join("scenario.json");
             fs::write(&input, serde_json::to_vec(&case).unwrap()).unwrap();

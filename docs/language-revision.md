@@ -2028,3 +2028,13 @@ readable and writable descriptors, and descriptor-or-deadline waits use the
 existing host scheduler. Completion and cancellation deregister a pending wait
 before dropping the state. The default backend is Rust while application and
 whole-suite parity work continues.
+
+## B1 parity and the macOS arm64 backend default (0.277)
+
+The LLVM-enabled Apple Silicon compiler now selects direct LLVM emission for
+`build` and `exec`. Both backends passed the application and integration
+matrices. Explicit `--backend rust` keeps the generated Rust pipeline available.
+Source builds without the LLVM feature and builds on other hosts default to Rust.
+
+The next station combines the compiler and language server, packages precompiled
+runtime libraries and target link packs, and builds release artifacts in CI.

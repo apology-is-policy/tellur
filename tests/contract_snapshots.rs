@@ -1,3 +1,5 @@
+#[path = "support/corpus.rs"]
+mod corpus;
 use serde_json::{Value, json};
 use std::{
     fs,
@@ -470,13 +472,7 @@ fn all_maintained_tellur_sources_export_checked_roundtrippable_contracts() {
                     walk(&path, count);
                 }
             } else if path.extension().is_some_and(|e| e == "tellur") {
-                let manifest_path = path
-                    .parent()
-                    .unwrap()
-                    .ancestors()
-                    .map(|p| p.join("manifest.json"))
-                    .find(|p| p.is_file())
-                    .unwrap();
+                let manifest_path = corpus::manifest_path(&path);
                 let manifest = Manifest::from_json_at(
                     &fs::read_to_string(&manifest_path).unwrap(),
                     &manifest_path,

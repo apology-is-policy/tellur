@@ -1,3 +1,5 @@
+mod support;
+use support::BuildTestExecutable;
 use tellur::{
     compile,
     manifest::Manifest,
@@ -70,7 +72,7 @@ fn native_source_handoffs_match_reference() {
         .with_entry_exit_codes("main", BTreeMap::from([("done".into(), 0)]))
         .unwrap();
     let binary = root.join("program");
-    p.build_native("main", &binary, 0).unwrap();
+    p.build_for_test("main", &binary, 0).unwrap();
     let out = Command::new(&binary)
         .arg("--scenario")
         .arg(&input)
@@ -133,7 +135,7 @@ fn native_child_fault_matches_reference() {
         )
         .unwrap();
     let binary = root.join("program");
-    p.build_native("main", &binary, 0).unwrap();
+    p.build_for_test("main", &binary, 0).unwrap();
     let out = Command::new(&binary)
         .arg("--scenario")
         .arg(&input)

@@ -1,4 +1,5 @@
 mod support;
+use support::BuildTestExecutable;
 const EXCLUSIVE: &str = r#"struct editors['a,'b] {ref mutable string left <- 'a;ref mutable string right <- 'b;}
     control make(ref mutable string a,ref mutable string b) exits ready {editors[a,b] value} {exit ready {editors {a,b}};}
     control main() exits done {string a,string b} {
@@ -192,7 +193,7 @@ fn native_record_origins_match_interpreter_and_certified_expansion() {
             for opt in [0, 2] {
                 let binary = root.join(format!("origins-{expanded}-{opt}"));
                 support::scenario_executable(&p)
-                    .build_native("main", &binary, opt)
+                    .build_for_test("main", &binary, opt)
                     .unwrap();
                 let actual = std::process::Command::new(binary)
                     .arg("--json")

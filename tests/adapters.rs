@@ -1,4 +1,5 @@
 mod support;
+use support::BuildTestExecutable;
 use tellur::{
     compile,
     ir::{Action, Value},
@@ -235,7 +236,7 @@ fn native_inline_adapters_preserve_invocation_identity_and_borrows() {
         for opt in [0, 2] {
             let binary = root.join(format!("adapter-{index}-{opt}"));
             support::scenario_executable(program)
-                .build_native("main", &binary, opt)
+                .build_for_test("main", &binary, opt)
                 .unwrap();
             for flag in [true, false] {
                 let expected = p

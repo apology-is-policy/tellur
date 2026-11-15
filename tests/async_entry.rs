@@ -1,4 +1,6 @@
+mod support;
 use std::{collections::BTreeMap, fs, process::Command};
+use support::BuildTestExecutable;
 use tellur::{
     CheckedProgram, compile,
     ir::{Action, Operation, Value},
@@ -256,7 +258,7 @@ fn native_execution_agrees_with_reference_before_and_after_lifting() {
         .unwrap();
     for (index, program) in [p.clone(), p.expanded("main").unwrap()].iter().enumerate() {
         let binary = root.join(format!("program-{index}"));
-        program.build_native("main", &binary, 0).unwrap();
+        program.build_for_test("main", &binary, 0).unwrap();
         let output = Command::new(&binary)
             .arg("--scenario")
             .arg(&input)

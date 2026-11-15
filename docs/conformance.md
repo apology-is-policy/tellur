@@ -6902,3 +6902,17 @@ table versions, a rejected version, and legacy launch at O0 and O2.
 ## 0.276 typed polled Rust adapters (B1.5f)
 
 The LLVM-gated tests in `tests/async_adapters.rs` compare live reports and lifecycle traces with generated Rust for timers, socket reads and writes, cancellation, consumed and returned resources, stopped operations and direct spawn. They run original O0 and expanded O2 graphs. The settings HTTP test runs the optimized LLVM service on loopback, verifies that a fast request finishes while another is pending, and checks graceful SIGTERM handling. The signature test in `tests/llvm_adapters.rs` rejects an unused start that returns a synchronous outcome.
+
+## 0.277 backend parity
+
+The macOS arm64 matrix passed 24 application tests and 798 integration tests on
+each backend. The application tests cover the settings CLI and HTTP service, the
+independent greeting service and the JSON file library. Both source emitters also
+lowered all 136 maintained programs that declare a launchable entry. The resource
+and adapter tests exercise live ownership transfer, polled operations and
+cancellation. The nine coroutine experiments passed with LLVM 22 installed.
+
+The CLI selection test checks the generated files, JSON report and process status
+under the default backend and explicit overrides. On featureless builds it also
+checks the error reported for an explicit LLVM request. Instructions for repeating
+the backend matrix are in [Develop and verify](../README.md#develop-and-verify).

@@ -1,9 +1,11 @@
+mod support;
 use serde_json::{Value as Json, json};
 use std::{
     fs,
     path::{Path, PathBuf},
     process::Command,
 };
+use support::BuildTestExecutable;
 use tellur::{
     compile_file,
     ir::Value,
@@ -264,7 +266,7 @@ fn native_settings_persists_reloads_and_matches_scripted_failures() {
                 p.clone()
             };
             let binary = root.join(format!("settings-{expanded}-{opt}"));
-            program.build_native("main", &binary, opt).unwrap();
+            program.build_for_test("main", &binary, opt).unwrap();
             let data = root.join(format!("data-{expanded}-{opt}.json"));
             let path = data.to_str().unwrap();
             assert_eq!(
@@ -410,7 +412,7 @@ fn native_file_replacement_reports_size_preparation_and_uncertain_commit_failure
         )
         .unwrap();
     let binary = root.join("write");
-    p.build_native("main", &binary, 0).unwrap();
+    p.build_for_test("main", &binary, 0).unwrap();
     let data = root.join("data.json");
     fs::write(&data, "old").unwrap();
     assert_eq!(

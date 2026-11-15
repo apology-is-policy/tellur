@@ -1,4 +1,5 @@
 mod support;
+use support::BuildTestExecutable;
 use tellur::{
     compile,
     ir::Value,
@@ -174,7 +175,7 @@ fn native_capture_and_delayed_handling_preserve_effect_order_after_expansion() {
         for opt in [0, 2] {
             let binary = root.join(format!("outcome-{i}-{opt}"));
             support::scenario_executable(program)
-                .build_native("main", &binary, opt)
+                .build_for_test("main", &binary, opt)
                 .unwrap();
             for flag in [true, false] {
                 let expected = run(&source, flag);

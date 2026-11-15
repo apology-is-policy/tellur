@@ -27,8 +27,9 @@ Compiler 0.269 adds retained constructors whose children suspend.
 Compiler 0.270 adds opt-in launch signal policies.
 Compiler 0.273 adds synchronous scalar/collection Rust source adapters.
 Compiler 0.274 adds directly bound synchronous retained Rust resources.
-The default remains `--backend rust`. Both start from the same checked program;
-backend selection does not relax ownership, origins, outcomes or path rules.
+Since 0.277 the LLVM-enabled macOS arm64 compiler selects direct LLVM emission
+when `build` or `exec` omits `--backend`. Use `--backend rust` to generate Rust
+instead. Other builds default to Rust. Both backends use the same checked program.
 
 ```sh
 ./bin/tellurc build playground/llvm_scalars.tellur playground/manifest.json --backend llvm --out /tmp/tellur-scalars
@@ -62,7 +63,8 @@ since 0.260; task sets since 0.261; named supervision since 0.263; lexical scope
 and supervised recovery since 0.267; constructors whose children suspend since
 0.269; opt-in launch signal policies since 0.270. Synchronous scalar/collection
 Rust adapters are admitted since 0.273; directly bound synchronous Rust resources
-since 0.274. Polled Rust adapters remain outside that profile. Admission checks all checked
+since 0.274. Since 0.276 polled Rust adapters use the same host scheduler for timers
+and descriptor readiness. Admission checks all checked
 regions, including unused helpers. Unsupported programs receive `E_BACKEND`
 before the backend creates its output directory or files; ordinary checking may
 still succeed, and the Rust backend remains available.
@@ -484,9 +486,8 @@ handles and shares the existing runtime's launch, fuel, fault and result logic.
 The resulting executable is standalone. Shipping a precompiled runtime and target
 link packs belongs to the later single-binary checkpoint.
 
-Async lowering follows using frontend state machines, measured against the
-existing coroutine experiments. The whole-language parity gate must pass before
-changing the default backend.
+Async lowering uses frontend state machines. The coroutine experiments and the
+application and full-suite comparisons provide independent conformance evidence.
 
 
 ## Frontend async-frame experiment

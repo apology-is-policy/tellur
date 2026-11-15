@@ -1,3 +1,4 @@
+mod support;
 use serde_json::{Value as Json, json};
 use std::{
     fs,
@@ -11,6 +12,7 @@ use std::{
     },
     time::{Duration, Instant},
 };
+use support::BuildTestExecutable;
 use tellur::{
     CheckedProgram, compile_file,
     ir::Value,
@@ -650,7 +652,7 @@ fn native_http_serves_persistent_settings_and_rejects_invalid_requests() {
     let p = program();
     let f = Fixture::new();
     let binary = f.0.join("server");
-    p.build_native("serve", &binary, 0).unwrap();
+    p.build_for_test("serve", &binary, 0).unwrap();
     let data = f.0.join("settings.json");
     let cases = [
         ("GET", "/settings", "", "", 200),
@@ -850,7 +852,7 @@ fn native_http_removes_keys_without_rewriting_missing_or_rejected_requests() {
             p.clone()
         };
         let binary = f.0.join(format!("remove-{opt}"));
-        checked.build_native("serve", &binary, opt).unwrap();
+        checked.build_for_test("serve", &binary, opt).unwrap();
         let data = f.0.join(format!("settings-{opt}.json"));
         let server = Server::start(&binary, &data, rejected.len() + 8, 3000);
         let send = |method: &str, target: &str, body: &str, media: &str, status| {
@@ -911,7 +913,7 @@ fn native_http_bounds_framing_deadlines_and_disconnects() {
     let p = program();
     let f = Fixture::new();
     let binary = f.0.join("server");
-    p.build_native("serve", &binary, 0).unwrap();
+    p.build_for_test("serve", &binary, 0).unwrap();
     let data = f.0.join("settings.json");
     let server = Server::start(&binary, &data, 17, 3000);
     let a = &server.authority;
@@ -1019,7 +1021,7 @@ fn native_http_scripted_failures_match_expansion_at_both_optimization_levels() {
         };
         for opt in [0, 2] {
             let binary = f.0.join(format!("script-{expanded}-{opt}"));
-            program.build_native("serve", &binary, opt).unwrap();
+            program.build_for_test("serve", &binary, opt).unwrap();
             for (i, (scenario, expected, _)) in failures().into_iter().enumerate() {
                 let path = f.0.join(format!("case-{i}.json"));
                 fs::write(&path, serde_json::to_vec(&scenario).unwrap()).unwrap();
@@ -1077,7 +1079,7 @@ fn native_http_source_fault_sends_500_then_serves_next_request() {
     }).unwrap();
     let f = Fixture::new();
     let binary = f.0.join("isolated");
-    p.build_native("serve", &binary, 0).unwrap();
+    p.build_for_test("serve", &binary, 0).unwrap();
     let server = Server::start(&binary, &f.0.join("settings.json"), 3, 3000);
     let first = response(
         &exchange(
@@ -1115,7 +1117,7 @@ fn native_http_slow_client_does_not_delay_a_fast_client() {
     let p = program();
     let f = Fixture::new();
     let binary = f.0.join("concurrent");
-    p.build_native("serve", &binary, 0).unwrap();
+    p.build_for_test("serve", &binary, 0).unwrap();
     check_concurrent_clients(&binary, &f);
 }
 
@@ -1159,7 +1161,7 @@ fn native_http_launch_signal_replies_503_to_waiting_members_and_stops() {
     let p = program();
     let f = Fixture::new();
     let binary = f.0.join("stopping");
-    p.build_native("serve", &binary, 0).unwrap();
+    p.build_for_test("serve", &binary, 0).unwrap();
     check_graceful_shutdown(&binary, &f);
 }
 
@@ -1191,7 +1193,7 @@ fn native_http_second_launch_signal_terminates_immediately() {
     let p = program();
     let f = Fixture::new();
     let binary = f.0.join("terminating");
-    p.build_native("serve", &binary, 0).unwrap();
+    p.build_for_test("serve", &binary, 0).unwrap();
     let server = Server::start(&binary, &f.0.join("settings.json"), 8, 30000);
     // Both signals are pending when the process resumes, so the second arrives
     // before the cancelled service can stop and the process exits with 128 + signal.
@@ -1248,7 +1250,7 @@ fn scripted_launch_signal_stops_the_service_and_replies_503() {
     // The generated executable delivers the scripted signal at the same point.
     let f = Fixture::new();
     let binary = f.0.join("scripted-signal");
-    p.build_native("serve", &binary, 0).unwrap();
+    p.build_for_test("serve", &binary, 0).unwrap();
     let path = f.0.join("signal.json");
     fs::write(&path, serde_json::to_vec(&s).unwrap()).unwrap();
     let output = Command::new(&binary)

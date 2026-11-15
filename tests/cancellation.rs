@@ -1,6 +1,7 @@
 //! E1e.1 cancellation: `cancel child;` and `cancel set;` request cancellation of
 //! started work. A host operation entered by await or run observes it only where
 //! its decision lists the `cancelled` alternative; joins never interrupt.
+mod support;
 use std::{
     collections::BTreeMap,
     hash::{DefaultHasher, Hash, Hasher},
@@ -8,6 +9,7 @@ use std::{
     process::Command,
     sync::Mutex,
 };
+use support::BuildTestExecutable;
 use tellur::{
     CheckedProgram, compile,
     ir::Value,
@@ -92,7 +94,7 @@ fn native(p: &CheckedProgram) -> PathBuf {
             let root = std::env::temp_dir().join(format!("tellur-cancel-{}", std::process::id()));
             std::fs::create_dir_all(&root).unwrap();
             let binary = root.join(format!("program-{key:x}"));
-            p.build_native("main", &binary, 0).unwrap();
+            p.build_for_test("main", &binary, 0).unwrap();
             binary
         })
         .clone()

@@ -1,4 +1,5 @@
 mod support;
+use support::BuildTestExecutable;
 
 use serde_json::{Value as Json, json};
 use std::{
@@ -153,7 +154,7 @@ fn shared_library_builds_without_http_and_enforces_exact_byte_limits() {
     let f = Fixture::new();
     let p = support::scenario_executable(&library_program(&f));
     let binary = f.0.join("json-file");
-    p.build_native("read", &binary, 0).unwrap();
+    p.build_for_test("read", &binary, 0).unwrap();
     let data = f.0.join("data.json");
     let path = data.to_str().unwrap();
     let run = |entry: &str, args: &[&str]| -> Json {

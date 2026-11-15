@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.276.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.277.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -22,12 +22,14 @@ See [owned spawned children](async-execution.md#owned-spawned-children).
 
 ## Native backends
 
-The default Rust backend implements the language profile below. Since 0.235 the
-opt-in direct LLVM backend admits a [bounded synchronous scalar/aggregate profile](llvm-backend.md)
-on macOS arm64, extended in 0.236 to nested calls and in 0.237 to owned records, field-sensitive
-moves, assignment and temporary projections, then in 0.238 to options/variants/named
-outcome values, captures and selected payload decisions, then in 0.239 to returning
-synchronous primitives with owned arguments and supported result signatures.
+The macOS arm64 distribution uses [direct LLVM emission](llvm-backend.md) by
+default. Select generated Rust with `--backend rust`. Source builds without LLVM
+and builds on other hosts use Rust by default. The two backends share the checker
+and runtime semantics. See the [conformance evidence](../conformance.md).
+
+The direct backend began in 0.235 with scalar controls. Releases 0.236 through
+0.239 added nested calls, owned records, tagged values and synchronous primitives.
+
 Compiler 0.240 gives admitted locals stable activation storage, shared by synchronous
 children and retired on completion/failure; 0.241 adds direct shared/exclusive references to reference-free values, borrowed
 control arguments/results and borrowed decisions with existing origin evidence.
@@ -35,7 +37,7 @@ Compiler 0.242 adds reference-bearing aggregates, whole borrowed carriers and gu
 leaf evidence. Compiler 0.243 adds opaque/resource values and returning synchronous
 borrowed host signatures. Compiler 0.244 adds arrays/vectors/maps, collection
 literals/lengths/operations, element borrows, local shared-reference elements and
-resource transfers. Rust adapters remain gated.
+resource transfers.
 Compiler 0.245 reclaims consumed temporary cells without reusing IDs and places
 fixed-size LLVM scratch at function entry. Compiler 0.246 adds synchronous loops,
 iteration resets, simultaneous owner transfers and expanded loop completion targets.
@@ -58,14 +60,10 @@ repeated task calls and expanded helper completion. Compiler 0.261 adds source t
 sets, completion-order selection and cancellation using the private 0.259 bridge.
 Set captures/results stay owned and reference-free. Compiler 0.263 admits retained
 named supervision through the 0.262 work/handler bridge, including declaration-ordered
-retention and administrative settlement. Retained lexical scopes/recovery, suspending
-constructors, Rust adapters and launch signals remain gated. The private 0.264
-lexical bridge preserves same-frame handlers across suspension. The private
-0.265 bridge proves loop/recovery coordination, and0.266 adds C-safe runtime
-registration. Emitting lexical states and descriptors is required before source
-admission.
-Unsupported checked programs fail with `E_BACKEND` before build
-outputs are created. Backend selection does not change language checking.
+retention and administrative settlement. Releases 0.264 through 0.267 added
+retained lexical recovery. Suspending constructors followed in 0.269 and launch
+signals in 0.270. Typed Rust adapters support synchronous data, retained resources
+and, since 0.276, polled operations.
 
 ## Language and data
 

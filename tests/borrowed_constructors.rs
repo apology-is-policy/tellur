@@ -1,4 +1,5 @@
 mod support;
+use support::BuildTestExecutable;
 use tellur::{
     compile,
     manifest::Manifest,
@@ -484,7 +485,7 @@ fn borrowed_constructors_match_native_and_expanded_execution() {
             for opt in [0, 2] {
                 let binary = root.join(format!("{name}-{expanded}-{opt}"));
                 support::scenario_executable(&p)
-                    .build_native("main", &binary, opt)
+                    .build_for_test("main", &binary, opt)
                     .unwrap();
                 let output = Command::new(binary)
                     .arg("--scenario")

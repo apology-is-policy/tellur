@@ -9,6 +9,17 @@ use std::{
     path::{Path, PathBuf},
     process::Command,
 };
+/// Backend selected by the compiler CLI when the caller omits `--backend`.
+pub const DEFAULT_BACKEND: &str = if cfg!(all(
+    feature = "llvm",
+    target_os = "macos",
+    target_arch = "aarch64"
+)) {
+    "llvm"
+} else {
+    "rust"
+};
+
 const SUPPORT: &str = include_str!("native/runtime.rs");
 const EXECUTION: &str = include_str!("native/execution.rs");
 const CONTEXTS: &str = include_str!("native/contexts.rs");
@@ -999,6 +1010,7 @@ impl CheckedProgram {
             .map_err(|e| error(format!("cannot save {}: {e}", config.lockfile.display())))?;
         Ok(config.lockfile.clone())
     }
+    /// Build with the generated Rust backend, independently of the CLI default.
     pub fn build_native(&self, entry: &str, output: &Path, opt: u8) -> Result<NativeBuild> {
         if opt > 3 {
             return Err(error("optimization level must be 0..3"));

@@ -1,6 +1,7 @@
 mod support;
 use serde_json::{Value as Json, json};
 use std::{fs, path::Path, process::Command};
+use support::BuildTestExecutable;
 use tellur::{
     compile,
     ir::Value,
@@ -42,6 +43,26 @@ fn run(binary: &Path, scenario: &Scenario, file: &Path) -> Json {
     );
     serde_json::from_slice(&output.stdout).unwrap()
 }
+#[test]
+fn invalid_optimization_level_is_rejected_before_creating_build_outputs() {
+    let manifest = Manifest::from_json(include_str!("../playground/manifest.json")).unwrap();
+    let program = compile(
+        "region main() exits Done { [Entry]: exit Done(); }",
+        manifest,
+    )
+    .unwrap();
+    let directory = std::env::temp_dir().join(format!("tellur-invalid-opt-{}", std::process::id()));
+    let output = directory.join("program");
+    for level in [4, u8::MAX] {
+        let error = program
+            .build_for_test("main", &output, level)
+            .err()
+            .unwrap();
+        assert_eq!(error.message, "optimization level must be 0..3");
+        assert!(!directory.exists());
+    }
+}
+
 #[cfg(unix)]
 #[test]
 fn rebuilding_native_outputs_preserves_existing_executable_images() {
@@ -62,7 +83,7 @@ fn rebuilding_native_outputs_preserves_existing_executable_images() {
             "control main() exits result {{exit done {{{index}}};}} outcome result {{@exit 0 done {{u32 value}}}}"
         );
         let program = compile(&source, manifest.clone()).unwrap();
-        program.build_native("main", &output, opt).unwrap();
+        program.build_for_test("main", &output, opt).unwrap();
         let inode = fs::metadata(&output).unwrap().ino();
         if let Some(original) = original_inode {
             assert_ne!(inode, original);
@@ -274,7 +295,7 @@ fn native_and_llvm_match_reference_before_and_after_expansion_and_optimization()
         for opt in [0, 2] {
             let binary = root.join(format!("program-{expanded_flag}-{opt}"));
             let build = support::scenario_executable(p)
-                .build_native("refresh", &binary, opt)
+                .build_for_test("refresh", &binary, opt)
                 .unwrap();
             let llvm = fs::read_to_string(build.llvm).unwrap();
             assert!(llvm.contains("target triple") && llvm.contains("define"));
@@ -324,7 +345,7 @@ fn live_adapters_execute_real_inputs_and_enforce_contracts() {
     let p = compile(&source, manifest).unwrap();
     let executable = root.join("live");
     support::scenario_executable(&p)
-        .build_native("count_main", &executable, 2)
+        .build_for_test("count_main", &executable, 2)
         .unwrap();
     let run = |entry: &str, args: &[&str]| {
         let output = Command::new(&executable)

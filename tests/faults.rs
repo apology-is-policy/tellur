@@ -6,6 +6,7 @@ use std::{
     process::Command,
     sync::atomic::{AtomicUsize, Ordering},
 };
+use support::BuildTestExecutable;
 use tellur::{
     fault::{Phase, Report, Site, Tracker},
     ir::Value,
@@ -218,7 +219,7 @@ fn native_reports_match_observed_reference_context_at_both_optimization_levels_a
         for opt in [0, 2] {
             let binary = f.root.join(format!("program-{expanded}-{opt}"));
             support::scenario_executable(&p)
-                .build_native("main", &binary, opt)
+                .build_for_test("main", &binary, opt)
                 .unwrap();
             let output = Command::new(&binary)
                 .arg("--scenario")
@@ -322,7 +323,7 @@ fn imported_entry_failures_use_the_same_source_name_in_both_executors() {
     fs::write(&input, serde_json::to_vec(&s).unwrap()).unwrap();
     let binary = f.root.join("imported");
     support::scenario_executable(&p)
-        .build_native(&entry, &binary, 0)
+        .build_for_test(&entry, &binary, 0)
         .unwrap();
     let result = Command::new(&binary)
         .arg("--scenario")

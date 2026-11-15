@@ -1,5 +1,7 @@
 //! Dynamic task sets: `tasks<producer>`, `spawn producer(..) into set;`,
 //! `await next set` with its `empty` alternative, and `count(borrow set)`.
+mod support;
+use support::BuildTestExecutable;
 use tellur::{
     compile,
     ir::Value,
@@ -368,7 +370,7 @@ fn native_task_sets_match_reference() {
             .with_entry_exit_codes("main", BTreeMap::from([("done".into(), 0)]))
             .unwrap();
         let binary = root.join(label);
-        p.build_native("main", &binary, 0).unwrap();
+        p.build_for_test("main", &binary, 0).unwrap();
         let out = Command::new(&binary)
             .arg("--scenario")
             .arg(&input)

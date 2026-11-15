@@ -1,4 +1,5 @@
 mod support;
+use support::BuildTestExecutable;
 use tellur::{
     compile,
     ir::Value,
@@ -280,7 +281,7 @@ control format(bool flag) exits auto {
         for opt in [0, 2] {
             let binary = root.join(format!("program-{expanded}-{opt}"));
             support::scenario_executable(&program)
-                .build_native("main", &binary, opt)
+                .build_for_test("main", &binary, opt)
                 .unwrap();
             for flag in [false, true] {
                 let expected = p

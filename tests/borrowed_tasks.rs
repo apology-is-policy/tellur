@@ -1,3 +1,5 @@
+mod support;
+use support::BuildTestExecutable;
 use tellur::{compile, manifest::Manifest, runtime::Scenario};
 fn manifest() -> Manifest {
     Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
@@ -162,7 +164,7 @@ fn field_borrows_generic_captures_and_native_execution_preserve_backing_storage(
     fs::write(&input, serde_json::to_vec(&scenario()).unwrap()).unwrap();
     for (index, p) in [p.clone(), p.expanded("start").unwrap()].iter().enumerate() {
         let binary = root.join(format!("program-{index}"));
-        p.build_native("main", &binary, 0).unwrap();
+        p.build_for_test("main", &binary, 0).unwrap();
         let output = Command::new(binary)
             .arg("--scenario")
             .arg(&input)

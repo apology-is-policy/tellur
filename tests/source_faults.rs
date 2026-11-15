@@ -1,5 +1,6 @@
 mod support;
 use std::{fs, process::Command};
+use support::BuildTestExecutable;
 use tellur::{compile, fault::Kind, ir::Value, manifest::Manifest, runtime::Scenario};
 
 fn manifest() -> Manifest {
@@ -191,7 +192,7 @@ fn native_faults_match_reference_and_expansion_at_both_optimization_levels() {
             let expected = p.run_detailed(&s, 100).unwrap_err();
             let binary = root.join(format!("fault-{expanded}-{optimization}"));
             support::scenario_executable(&p)
-                .build_native("main", &binary, optimization)
+                .build_for_test("main", &binary, optimization)
                 .unwrap();
             let output = Command::new(&binary)
                 .args(["--scenario", scenario_path.to_str().unwrap()])

@@ -1,5 +1,6 @@
 mod support;
 use std::{fs, process::Command};
+use support::BuildTestExecutable;
 use tellur::{CheckedProgram, compile, fault::Report, manifest::Manifest, runtime::Scenario};
 
 const SOURCE: &str = r#"
@@ -98,7 +99,7 @@ fn dense_frames_preserve_cross_call_borrows_and_every_fuel_boundary() {
         for opt in [0, 2] {
             let binary = root.join(format!("frames-{expanded}-{opt}"));
             support::scenario_executable(&p)
-                .build_native("main", &binary, opt)
+                .build_for_test("main", &binary, opt)
                 .unwrap();
             let mut completed = false;
             for fuel in 0..128 {

@@ -1,4 +1,5 @@
 mod support;
+use support::BuildTestExecutable;
 use tellur::{compile, ir::Value, manifest::Manifest, runtime::Scenario};
 fn m() -> Manifest {
     Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
@@ -194,7 +195,7 @@ fn native_borrowed_outcomes_match_interpreter_and_expansion() {
         for opt in [0, 2] {
             let binary = root.join(format!("sums-{expanded}-{opt}"));
             support::scenario_executable(&p)
-                .build_native("main", &binary, opt)
+                .build_for_test("main", &binary, opt)
                 .unwrap();
             let output = std::process::Command::new(binary)
                 .arg("--json")
@@ -527,7 +528,7 @@ fn native_nested_borrows_match_interpreter_and_expansion() {
             for opt in [0, 2] {
                 let binary = root.join(format!("nested-{case}-{expanded}-{opt}"));
                 support::scenario_executable(&p)
-                    .build_native("main", &binary, opt)
+                    .build_for_test("main", &binary, opt)
                     .unwrap();
                 let output = std::process::Command::new(binary)
                     .arg("--json")

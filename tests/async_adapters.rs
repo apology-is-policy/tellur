@@ -1,8 +1,10 @@
 //! Rust adapters for async host operations. Native executables start a bound
 //! operation once and poll it until completion (E1g.2b), re-polling only at idle
 //! points after its delay or when its descriptor becomes readable (E1g.3).
+mod support;
 use serde_json::{Value as Json, json};
 use std::{fs, path::PathBuf, process::Command};
+use support::BuildTestExecutable;
 use tellur::{CheckedProgram, compile, manifest::Manifest};
 
 struct Fixture {
@@ -27,6 +29,20 @@ impl Fixture {
         Manifest::from_json_at(&value.to_string(), &self.root.join("manifest.json")).unwrap()
     }
     fn build(&self, p: &CheckedProgram, name: &str) -> PathBuf {
+        self.build_with(p, name, CheckedProgram::build_for_test)
+    }
+
+    fn build_with(
+        &self,
+        p: &CheckedProgram,
+        name: &str,
+        build: fn(
+            &CheckedProgram,
+            &str,
+            &std::path::Path,
+            u8,
+        ) -> tellur::Result<tellur::native::NativeBuild>,
+    ) -> PathBuf {
         let binary = self.root.join(name);
         let codes = p
             .region("main")
@@ -39,7 +55,7 @@ impl Fixture {
         // Polled adapters add the internal readiness dependency; resolve it offline.
         p.lock_native("main", &self.root.join(format!("{name}-lock")))
             .unwrap();
-        p.build_native("main", &binary, 0).unwrap();
+        build(&p, "main", &binary, 0).unwrap();
         // macOS checks a newly linked executable on its first launch, one binary at a
         // time: about 0.4 s here, and several seconds while other tests launch fresh
         // binaries. Launch once untimed so the timing bounds below measure the program.
@@ -344,7 +360,10 @@ fn adapter_bindings_match_the_async_contract() {
     let p = p.with_entry_exit_codes("main", codes).unwrap();
     p.lock_native("main", &f.root.join("mismatch-lock"))
         .unwrap();
-    assert!(p.build_native("main", &f.root.join("mismatch"), 0).is_err());
+    assert!(
+        p.build_for_test("main", &f.root.join("mismatch"), 0)
+            .is_err()
+    );
 }
 
 fn channel_config() -> Json {
@@ -1171,7 +1190,7 @@ fn compare_llvm_adapter(name: &str, host: &str, source: &str, manifest: Json, su
         .map(|o| (o.name.clone(), 0))
         .collect();
     let p = p.with_entry_exit_codes("main", codes).unwrap();
-    let reference = fixture.build(&p, "reference");
+    let reference = fixture.build_with(&p, "reference", CheckedProgram::build_native);
     let log_name = "operations.log";
     let (ok, expected, drops) = fixture.run(&reference, log_name);
     assert_eq!(ok, success, "{name}: {expected}");
