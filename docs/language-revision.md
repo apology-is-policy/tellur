@@ -2067,3 +2067,12 @@ The compiler can emit and link Linux ELF executables for x86_64 and arm64.
 target-specific Rust entry makes process arguments available to both the Tellur
 launcher and Rust adapters. Scalar argument parsing, exit codes, settings file
 operations and loopback HTTP exercise both architectures.
+
+## Portable Rust adapter packs (0.281)
+
+`tellur pack-adapter` builds an application's locked Rust adapter for one target.
+A subsequent LLVM `build` or `exec` can consume that pack with an empty tool
+search path. The settings application exercises relocation, file operations,
+and live HTTP with the bundled Apple Silicon and Linux musl runtime packs.
+Native CI qualification of the compiler and VS Code packages is in progress.
+Linux still uses Rust by default pending native parity.

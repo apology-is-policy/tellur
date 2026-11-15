@@ -42,7 +42,16 @@ impl Fixture {
         }
         c
     }
-    #[cfg(all(feature = "llvm", target_os = "macos", target_arch = "aarch64"))]
+    #[cfg(all(
+        feature = "llvm",
+        any(
+            all(target_os = "macos", target_arch = "aarch64"),
+            all(
+                target_os = "linux",
+                any(target_arch = "aarch64", target_arch = "x86_64")
+            )
+        )
+    ))]
     fn build(&self, backend: &str, opt: u8) -> PathBuf {
         let output = self.command(backend, opt).output().unwrap();
         assert!(
@@ -92,7 +101,16 @@ fn default_and_explicit_backends_preserve_the_process_contract() {
         ("default", None, direct_default),
         ("rust", Some("rust"), false),
     ];
-    if direct_default {
+    if cfg!(all(
+        feature = "llvm",
+        any(
+            all(target_os = "macos", target_arch = "aarch64"),
+            all(
+                target_os = "linux",
+                any(target_arch = "aarch64", target_arch = "x86_64")
+            )
+        )
+    )) {
         cases.push(("llvm", Some("llvm"), true));
     }
     let mut reports = Vec::new();
@@ -120,11 +138,29 @@ fn default_and_explicit_backends_preserve_the_process_contract() {
     assert!(reports.windows(2).all(|pair| pair[0] == pair[1]));
 }
 
-#[cfg(all(feature = "llvm", target_os = "macos", target_arch = "aarch64"))]
+#[cfg(all(
+    feature = "llvm",
+    any(
+        all(target_os = "macos", target_arch = "aarch64"),
+        all(
+            target_os = "linux",
+            any(target_arch = "aarch64", target_arch = "x86_64")
+        )
+    )
+))]
 #[path = "support/corpus.rs"]
 mod corpus;
 
-#[cfg(all(feature = "llvm", target_os = "macos", target_arch = "aarch64"))]
+#[cfg(all(
+    feature = "llvm",
+    any(
+        all(target_os = "macos", target_arch = "aarch64"),
+        all(
+            target_os = "linux",
+            any(target_arch = "aarch64", target_arch = "x86_64")
+        )
+    )
+))]
 mod enabled {
     use super::*;
     use serde_json::{Value as Json, json};
@@ -145,7 +181,7 @@ mod enabled {
                 .env("TELLUR_NATIVE_TARGET_DIR", &cache)
                 .arg("exec")
                 .arg(&f.source)
-                .arg("--out")
+                .args(["--backend", "llvm", "--out"])
                 .arg(out)
                 .args(["--", "--json"])
                 .output()
@@ -164,6 +200,12 @@ mod enabled {
         let archives = fs::read_dir(cache.join("tellur-runtime-pack"))
             .unwrap()
             .map(|entry| entry.unwrap().path())
+            .filter(|path| {
+                path.file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .starts_with("libtellur_runtime_")
+            })
             .collect::<Vec<_>>();
         assert_eq!(archives.len(), 1);
         let size = archives[0].metadata().unwrap().len();

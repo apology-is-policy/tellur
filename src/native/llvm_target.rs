@@ -72,6 +72,7 @@ impl TargetPack {
         object: &Path,
         output: &Path,
         adapter: Option<PathBuf>,
+        prebuilt_adapter: bool,
         polled: bool,
     ) -> Result<()> {
         let cache = cache.join("tellur-runtime-pack");
@@ -93,7 +94,10 @@ impl TargetPack {
                     obj,
                     runtime,
                 ];
-                if let Some(adapter) = adapter {
+                if let Some(adapter) = &adapter {
+                    args.push(adapter.display().to_string());
+                }
+                if adapter.is_some() && !prebuilt_adapter {
                     // A Rust source adapter may import additional system symbols.
                     let sdk = Command::new("xcrun")
                         .arg("--show-sdk-path")
@@ -105,7 +109,6 @@ impl TargetPack {
                         return Err(error("cannot locate macOS SDK for Rust adapter"));
                     }
                     args.extend([
-                        adapter.display().to_string(),
                         "-syslibroot".into(),
                         String::from_utf8_lossy(&sdk.stdout).trim().into(),
                         "-lSystem".into(),

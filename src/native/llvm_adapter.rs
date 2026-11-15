@@ -26,12 +26,14 @@ pub(super) fn table(manifest: &Manifest, emitter: &mut Emitter) {
     writeln!(emitter.globals, "@adapter_operations = private constant [{count} x %adapter_operation] [{}]\n@adapter_table = private constant %adapter_table {{ i32 {version}, i32 0, ptr @adapter_operations, i64 {count} }}", operations.join(", ")).unwrap();
 }
 
-pub(super) fn library(
-    manifest: &Manifest,
-    target: &Path,
-    opt: u8,
-    triple: &str,
-) -> Result<PathBuf> {
+/// A single snapshot feeds both the locked Cargo build and the portable pack identity.
+pub(super) struct Inputs {
+    source: String,
+    cargo: String,
+    lock: String,
+}
+
+pub(super) fn inputs(manifest: &Manifest) -> Result<Inputs> {
     let source = static_adapter::source(manifest)?;
     let config = manifest.rust.as_ref().unwrap();
     let lock = fs::read_to_string(&config.lockfile).map_err(|e| {
@@ -46,6 +48,25 @@ pub(super) fn library(
         ));
     }
     let cargo = crate::rust_host::cargo(manifest, CARGO);
+    Ok(Inputs {
+        source,
+        cargo,
+        lock,
+    })
+}
+
+pub(super) fn library(
+    manifest: &Manifest,
+    inputs: Inputs,
+    target: &Path,
+    opt: u8,
+    triple: &str,
+) -> Result<PathBuf> {
+    let Inputs {
+        source,
+        cargo,
+        lock,
+    } = inputs;
     // Ask the same toolchain selected for Cargo, retaining rustup's current-directory
     // selection and explicit RUSTC. Cargo still checks freshness and --locked on
     // every invocation; an existing archive is not sufficient evidence of validity.
@@ -148,4 +169,92 @@ pub(super) fn library(
         )));
     }
     Ok(build.join(triple).join(format!("debug/lib{package}.a")))
+}
+
+// Fixed-width digests followed by archive bytes. The magic versions the envelope.
+const PACK_MAGIC: &[u8] = b"TellurAdapterPack/v1\n";
+
+impl Inputs {
+    fn identity(&self, manifest: &Manifest, triple: &str) -> Result<[u8; 32]> {
+        // Source-module type names embed absolute paths. Only manifest resources
+        // and bound primitives cross the adapter ABI.
+        let resources = &manifest.rust.as_ref().unwrap().resources;
+        let types: Vec<_> = manifest
+            .types
+            .iter()
+            .filter(|t| resources.contains_key(t.name()))
+            .collect();
+        let primitives: Vec<_> = manifest
+            .primitives
+            .iter()
+            .filter(|p| p.rust.is_some())
+            .collect();
+        let contract = serde_json::to_vec(&(
+            env!("CARGO_PKG_VERSION"),
+            triple,
+            types,
+            primitives,
+            crate::llvm::sha256(self.source.as_bytes()),
+            crate::llvm::sha256(self.cargo.as_bytes()),
+            crate::llvm::sha256(self.lock.as_bytes()),
+        ))
+        .map_err(|e| error(e.to_string()))?;
+        Ok(crate::llvm::sha256(&contract))
+    }
+}
+
+pub(super) fn pack(
+    manifest: &Manifest,
+    output: &Path,
+    target: &Path,
+    opt: u8,
+    triple: &str,
+) -> Result<()> {
+    let inputs = inputs(manifest)?;
+    let identity = inputs.identity(manifest, triple)?;
+    let archive = library(manifest, inputs, target, opt, triple)?;
+    let payload =
+        fs::read(&archive).map_err(|e| error(format!("cannot read {}: {e}", archive.display())))?;
+    let mut packed = Vec::with_capacity(PACK_MAGIC.len() + 64 + payload.len());
+    packed.extend_from_slice(PACK_MAGIC);
+    packed.extend_from_slice(&identity);
+    packed.extend_from_slice(&crate::llvm::sha256(&payload));
+    packed.extend_from_slice(&payload);
+    unpack(output, &packed)
+}
+
+pub(super) fn open_pack(
+    manifest: &Manifest,
+    file: &Path,
+    target: &Path,
+    triple: &str,
+) -> Result<PathBuf> {
+    let identity = inputs(manifest)?.identity(manifest, triple)?;
+    let bytes = fs::read(file)
+        .map_err(|e| error(format!("cannot read adapter pack {}: {e}", file.display())))?;
+    let body = bytes
+        .strip_prefix(PACK_MAGIC)
+        .ok_or_else(|| error("unknown adapter pack format"))?;
+    let (header, payload) = body
+        .split_at_checked(64)
+        .ok_or_else(|| error("truncated adapter pack"))?;
+    if header[..32] != identity {
+        return Err(error(
+            "adapter pack does not match compiler version, target, adapter sources, contract or lockfile",
+        ));
+    }
+    let digest = crate::llvm::sha256(payload);
+    if header[32..] != digest || !payload.starts_with(b"!<arch>\n") {
+        return Err(error("damaged adapter archive in pack"));
+    }
+    use std::fmt::Write;
+    let name = digest.iter().fold(String::new(), |mut name, byte| {
+        write!(name, "{byte:02x}").unwrap();
+        name
+    });
+    let archive = target
+        .join("tellur-adapter-packs")
+        .join(format!("{name}.a"));
+    unpack(&archive, payload)?;
+    Ok(archive)
 }

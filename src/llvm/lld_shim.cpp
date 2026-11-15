@@ -3,6 +3,9 @@
 #include "lld/Common/Driver.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include "llvm/Support/SHA256.h"
+
+#include <algorithm>
 #include <vector>
 
 LLD_HAS_DRIVER(macho)
@@ -19,4 +22,9 @@ extern "C" int tellur_lld_link(int argc, const char **argv, int *can_run_again) 
     llvm::errs().flush();
     *can_run_again = result.canRunAgain ? 1 : 0;
     return result.retCode;
+}
+
+extern "C" void tellur_sha256(const uint8_t *data, size_t length, uint8_t *out) {
+    auto digest = llvm::SHA256::hash({data, length});
+    std::copy(digest.begin(), digest.end(), out);
 }

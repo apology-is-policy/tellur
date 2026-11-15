@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.280.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.281.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -29,6 +29,11 @@ The macOS arm64 distribution uses [direct LLVM emission](llvm-backend.md) by
 default. Select generated Rust with `--backend rust`. Source builds without LLVM
 and builds on other hosts use Rust by default. The two backends share the checker
 and runtime semantics. See the [conformance evidence](../conformance.md).
+
+For a project with Rust adapters, `pack-adapter` prepares the native archive
+once. Pass `--adapter-pack FILE` to build or run that project on a machine
+without Rust. Both commands must select the same target and compiler version.
+See [the settings example](llvm-backend.md#reusing-a-compiled-rust-adapter).
 
 The direct backend began in 0.235 with scalar controls. Releases 0.236 through
 0.239 added nested calls, owned records, tagged values and synchronous primitives.

@@ -21,8 +21,15 @@ use std::{
 };
 
 unsafe extern "C" {
+    fn tellur_sha256(data: *const u8, length: usize, out: *mut u8);
     fn tellur_lld_link(argc: c_int, argv: *const *const c_char, can_run_again: *mut c_int)
     -> c_int;
+}
+
+pub(crate) fn sha256(bytes: &[u8]) -> [u8; 32] {
+    let mut digest = [0; 32];
+    unsafe { tellur_sha256(bytes.as_ptr(), bytes.len(), digest.as_mut_ptr()) };
+    digest
 }
 
 /// The LLVM version built into this compiler.

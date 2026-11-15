@@ -1931,17 +1931,44 @@ impl CheckedProgram {
         opt: u8,
         triple: Option<&str>,
     ) -> Result<NativeBuild> {
+        self.build_llvm_with_adapter(entry, output, opt, triple, None)
+    }
+
+    pub fn pack_llvm_adapter(&self, output: &Path, opt: u8, triple: Option<&str>) -> Result<()> {
+        if opt > 3 {
+            return Err(error("optimization level must be 0..3"));
+        }
+        self.verify()?;
+        let pack = targets::select(triple)?;
+        let output = std::path::absolute(output).map_err(|e| error(e.to_string()))?;
+        adapters::pack(
+            self.manifest(),
+            &output,
+            &native_target_dir(&output),
+            opt,
+            pack.triple,
+        )
+    }
+
+    pub fn build_llvm_with_adapter(
+        &self,
+        entry: &str,
+        output: &Path,
+        opt: u8,
+        triple: Option<&str>,
+        adapter_pack: Option<&Path>,
+    ) -> Result<NativeBuild> {
         if opt > 3 {
             return Err(error("optimization level must be 0..3"));
         }
         let pack = targets::select(triple)?;
         let source = self.llvm_source_with_main(entry, main_symbol(Some(pack.triple)))?;
-        self.link_llvm_source(source, output, opt, pack)
+        self.link_llvm_source(source, output, opt, pack, adapter_pack)
     }
 
     #[cfg(all(test, target_os = "macos", target_arch = "aarch64"))]
     fn build_llvm_source(&self, source: String, output: &Path, opt: u8) -> Result<NativeBuild> {
-        self.link_llvm_source(source, output, opt, targets::select(None)?)
+        self.link_llvm_source(source, output, opt, targets::select(None)?, None)
     }
 
     fn link_llvm_source(
@@ -1950,6 +1977,7 @@ impl CheckedProgram {
         output: &Path,
         opt: u8,
         pack: &targets::TargetPack,
+        adapter_pack: Option<&Path>,
     ) -> Result<NativeBuild> {
         let output = if output.is_absolute() {
             output.to_owned()
@@ -1957,6 +1985,22 @@ impl CheckedProgram {
             std::env::current_dir()
                 .map_err(|e| error(e.to_string()))?
                 .join(output)
+        };
+        let target = native_target_dir(&output);
+        let manifest = self.manifest();
+        let adapter = match (adapter_pack, &manifest.rust) {
+            (Some(_), None) => return Err(error("adapter pack requires a Rust adapter manifest")),
+            (Some(file), Some(_)) => {
+                Some(adapters::open_pack(manifest, file, &target, pack.triple)?)
+            }
+            (None, Some(_)) => Some(adapters::library(
+                manifest,
+                adapters::inputs(manifest)?,
+                &target,
+                opt,
+                pack.triple,
+            )?),
+            (None, None) => None,
         };
         let directory = PathBuf::from(format!("{}.tellur-build", output.display()));
         fs::create_dir_all(&directory).map_err(|e| error(e.to_string()))?;
@@ -1966,13 +2010,6 @@ impl CheckedProgram {
         fs::write(&generated, &source).map_err(|e| error(e.to_string()))?;
         let llvm = PathBuf::from(format!("{}.ll", output.display()));
         fs::write(&llvm, &source).map_err(|e| error(e.to_string()))?;
-        let target = native_target_dir(&output);
-        let adapter = self
-            .manifest()
-            .rust
-            .as_ref()
-            .map(|_| adapters::library(self.manifest(), &target, opt, pack.triple))
-            .transpose()?;
         let bytes =
             crate::llvm::compile(&[(generated.display().to_string(), source)], &triple, opt)
                 .map_err(error)?;
@@ -1983,6 +2020,7 @@ impl CheckedProgram {
             &object,
             &output,
             adapter,
+            adapter_pack.is_some(),
             crate::rust_host::has_polled_adapters(self.manifest()),
         )?;
         Ok(NativeBuild {

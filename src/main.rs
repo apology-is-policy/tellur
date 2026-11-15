@@ -4,7 +4,7 @@ use std::{
     process::{Command, ExitCode},
 };
 use tellur::{compile_file, manifest::Manifest, runtime::Scenario};
-const USAGE: &str = "Tellur compiler\n  tellur lsp  (language server over stdio)\n  tellurc explain SOURCE [MANIFEST] (--at LINE:COLUMN | --control NAME --outcome NAME) [--json]\n  tellurc absorption-snapshot SOURCE [MANIFEST]  (bounded outcome contributor JSON)\n  tellurc absorption-diff BEFORE_JSON AFTER_JSON [--check]\n  tellurc contract-snapshot SOURCE [MANIFEST]  (checked public interface JSON)\n  tellurc contract-diff BEFORE_JSON AFTER_JSON [--check]  (exact contract differences)\n  tellurc format SOURCE [--check | --write] [--width N]  (stdout by default; no manifest needed)\n  tellurc check SOURCE [MANIFEST] [--json]\n  tellurc lock-native SOURCE [MANIFEST]  (explicitly resolve Rust adapter dependencies)\n  tellurc run SOURCE MANIFEST SCENARIO [--expanded] [--json]  (reference interpreter)\n  tellurc compare SOURCE MANIFEST OTHER_SOURCE SCENARIOS  (finite scenario evidence)\n  tellurc expand SOURCE MANIFEST ENTRY\n  tellurc extract-tail SOURCE MANIFEST CONTROL LINE HELPER [--report]\n  tellurc protocol SOURCE MANIFEST ENTRY [PREFIX_JSON]  (structural abstraction)\n  tellurc protocol-compare SOURCE MANIFEST OTHER_SOURCE ENTRY\n  tellurc certify-expansion SOURCE MANIFEST ENTRY  (JSON graph and correspondence)\n  tellurc verify-expansion SOURCE MANIFEST ARTIFACT\n  tellurc inspect SOURCE MANIFEST ENTRY [--expanded]\n  tellurc build SOURCE [MANIFEST] [--entry main] [--out FILE] [--release] [--expanded] [--backend rust|llvm] [--target TRIPLE]\n  tellurc exec SOURCE [MANIFEST] [build options] [-- PROGRAM_ARGUMENTS]\nBuild writes a native executable, LLVM IR (.ll), and generated source (.tellur-build/).\nA Linux target triple selects a bundled static musl pack (x86_64 or aarch64).\nNative programs accept --help, --json, --scenario FILE, and --fuel N.\nThe Apple Silicon LLVM runtime and system link pack are embedded. Rust/Cargo is required for Rust source adapters and --backend rust.\nLLVM-enabled macOS arm64 compilers default to LLVM. Other builds default to Rust. Pass --backend rust to use generated Rust on any build. See docs/reference/llvm-backend.md for supported operations. Executables are standalone.";
+const USAGE: &str = "Tellur compiler\n  tellur lsp  (language server over stdio)\n  tellurc explain SOURCE [MANIFEST] (--at LINE:COLUMN | --control NAME --outcome NAME) [--json]\n  tellurc absorption-snapshot SOURCE [MANIFEST]  (bounded outcome contributor JSON)\n  tellurc absorption-diff BEFORE_JSON AFTER_JSON [--check]\n  tellurc contract-snapshot SOURCE [MANIFEST]  (checked public interface JSON)\n  tellurc contract-diff BEFORE_JSON AFTER_JSON [--check]  (exact contract differences)\n  tellurc format SOURCE [--check | --write] [--width N]  (stdout by default; no manifest needed)\n  tellurc check SOURCE [MANIFEST] [--json]\n  tellurc pack-adapter SOURCE [MANIFEST] --out FILE [--target TRIPLE] [--release]\n  tellurc lock-native SOURCE [MANIFEST]  (explicitly resolve Rust adapter dependencies)\n  tellurc run SOURCE MANIFEST SCENARIO [--expanded] [--json]  (reference interpreter)\n  tellurc compare SOURCE MANIFEST OTHER_SOURCE SCENARIOS  (finite scenario evidence)\n  tellurc expand SOURCE MANIFEST ENTRY\n  tellurc extract-tail SOURCE MANIFEST CONTROL LINE HELPER [--report]\n  tellurc protocol SOURCE MANIFEST ENTRY [PREFIX_JSON]  (structural abstraction)\n  tellurc protocol-compare SOURCE MANIFEST OTHER_SOURCE ENTRY\n  tellurc certify-expansion SOURCE MANIFEST ENTRY  (JSON graph and correspondence)\n  tellurc verify-expansion SOURCE MANIFEST ARTIFACT\n  tellurc inspect SOURCE MANIFEST ENTRY [--expanded]\n  tellurc build SOURCE [MANIFEST] [--entry main] [--out FILE] [--release] [--expanded] [--backend rust|llvm] [--target TRIPLE] [--adapter-pack FILE]\n  tellurc exec SOURCE [MANIFEST] [build options] [-- PROGRAM_ARGUMENTS]\nBuild writes a native executable, LLVM IR (.ll), and generated source (.tellur-build/).\nA Linux target triple selects a bundled static musl pack (x86_64 or aarch64).\nNative programs accept --help, --json, --scenario FILE, and --fuel N.\nThe Apple Silicon LLVM runtime and system link pack are embedded. Cargo is required to compile source adapters or use --backend rust. An LLVM build can reuse a matching --adapter-pack without Cargo.\nLLVM-enabled macOS arm64 compilers default to LLVM. Other builds default to Rust. Pass --backend rust to use generated Rust on any build. See docs/reference/llvm-backend.md for supported operations. Executables are standalone.";
 fn discover(source: &Path) -> Option<PathBuf> {
     let source = if source.is_absolute() {
         source.to_owned()
@@ -193,6 +193,38 @@ fn run(
     };
     let rest = &args[index..];
     match args[0].as_str() {
+        "pack-adapter" => {
+            #[cfg(feature = "llvm")]
+            {
+                let mut options = rest.iter();
+                let mut output = None;
+                let mut target = None;
+                let mut opt = 0;
+                while let Some(option) = options.next() {
+                    match option.as_str() {
+                        "--out" => {
+                            output =
+                                Some(Path::new(options.next().ok_or("--out needs a filename")?))
+                        }
+                        "--target" => {
+                            target = Some(
+                                options
+                                    .next()
+                                    .ok_or("--target needs a target triple")?
+                                    .as_str(),
+                            )
+                        }
+                        "--release" => opt = 2,
+                        other => return Err(format!("unknown pack-adapter option {other}").into()),
+                    }
+                }
+                let output = output.ok_or("pack-adapter requires --out FILE")?;
+                program.pack_llvm_adapter(output, opt, target)?;
+                println!("Packed Rust adapter at {}", output.display());
+            }
+            #[cfg(not(feature = "llvm"))]
+            return Err("pack-adapter requires a compiler built with the llvm feature".into());
+        }
         "lock-native" if rest.is_empty() => {
             let output = source
                 .parent()
@@ -346,6 +378,7 @@ fn run(
             let mut expanded = false;
             let mut backend = None;
             let mut target = None;
+            let mut adapter_pack = None;
             let mut runtime_args = &[][..];
             let mut i = 0;
             while i < rest.len() {
@@ -372,6 +405,12 @@ fn run(
                                 .as_str(),
                         );
                     }
+                    "--adapter-pack" => {
+                        i += 1;
+                        adapter_pack = Some(Path::new(
+                            rest.get(i).ok_or("--adapter-pack needs a filename")?,
+                        ));
+                    }
                     "--backend" => {
                         i += 1;
                         let selected = rest.get(i).ok_or("--backend needs rust or llvm")?.as_str();
@@ -389,7 +428,7 @@ fn run(
             } else {
                 program
             };
-            let backend = backend.unwrap_or(if target.is_some() {
+            let backend = backend.unwrap_or(if target.is_some() || adapter_pack.is_some() {
                 "llvm"
             } else {
                 tellur::native::DEFAULT_BACKEND
@@ -397,10 +436,13 @@ fn run(
             if target.is_some() && backend == "rust" {
                 return Err("--target requires the LLVM backend".into());
             }
+            if adapter_pack.is_some() && backend == "rust" {
+                return Err("--adapter-pack requires the LLVM backend".into());
+            }
             let build = if backend == "llvm" {
                 #[cfg(feature = "llvm")]
                 {
-                    p.build_llvm_for(&entry, &output, opt, target)?
+                    p.build_llvm_with_adapter(&entry, &output, opt, target, adapter_pack)?
                 }
                 #[cfg(not(feature = "llvm"))]
                 {

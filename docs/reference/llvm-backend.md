@@ -1423,3 +1423,28 @@ before dropping the state. The default backend is Rust while application and
 whole-suite parity work continues.
 
 Run the [settings server](../../applications/settings/README.md#running-the-settings-server-with-llvm) to exercise shared listeners, concurrent connections and graceful shutdown.
+
+## Reusing a compiled Rust adapter
+
+On a machine with Cargo and the target's Rust standard library, package the
+application's locked adapter once. Use the same Tellur version for both commands.
+
+```sh
+tellur pack-adapter applications/settings/main.tellur --out settings.adapter
+tellur build applications/settings/main.tellur --adapter-pack settings.adapter --out settings
+./settings --entry set -- settings.json theme dark
+./settings --entry get -- settings.json theme
+```
+
+The second command works with the project, its adapter sources and lockfile,
+the pack, and the compiler. You can move these inputs to a different directory.
+Tellur checks the compiled archive's SHA-256 and matches the pack against the
+target triple, compiler version, generated Rust bindings, source contents,
+bound resource types and primitives, dependencies, and lockfile. Changing those
+inputs requires rebuilding the pack. Supply trusted packs, as you would other
+native code. Ordinary source-adapter builds still run Cargo with its lockfile.
+
+For cross-compilation, pass the same `--target` to both commands.
+`pack-adapter --release` optimizes the adapter independently of its consuming
+program. The macOS bundled system link stub covers the settings application.
+Adapters requiring additional SDK symbols can use the regular source build.
