@@ -868,6 +868,18 @@ with explicit Cargo dependencies and locked builds.
 This starts library reuse while keeping first-class Tellur async and direct LLVM
 coroutine lowering open.
 
+## Native release builds
+
+The [Native release workflow](.github/workflows/release.yml) builds Tellur and its
+VS Code extension on Apple Silicon macOS and on Ubuntu 24.04 x86_64 and arm64.
+Each job caches its pinned static LLVM/LLD 22.1.8 installation. The qualification
+step compares the compiler inside the VSIX with the standalone archive, starts
+the language server and exercises a cold Hello build and the settings HTTP server.
+
+Run the workflow manually to produce qualification artifacts. Publishing a
+GitHub Release with a tag matching the compiler version (such as `v0.280.0`)
+attaches all three CLI archives and VSIX packages after the matrix passes.
+
 ## Build from a fresh clone
 
 Install Rust/Cargo, then run:

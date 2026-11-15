@@ -1,0 +1,127 @@
+name: Native release
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/release.yml
+      - ci/build-llvm.sh
+      - ci/check-release.py
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+env:
+  RUSTUP_TOOLCHAIN: 1.97.1
+  CARGO_INCREMENTAL: '0'
+
+jobs:
+  build:
+    name: Build and qualify ${{ matrix.platform }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            platform: darwin-arm64
+          - runner: ubuntu-24.04
+            platform: linux-x64
+          - runner: ubuntu-24.04-arm
+            platform: linux-arm64
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set build paths
+        shell: bash
+        run: |
+          echo "LLVM_SYS_221_PREFIX=$RUNNER_TEMP/tellur-llvm-22.1.8" >> "$GITHUB_ENV"
+          echo "TELLUR_NATIVE_TARGET_DIR=$RUNNER_TEMP/native-target" >> "$GITHUB_ENV"
+          if [[ "$RUNNER_OS" == macOS ]]; then
+            echo "MACOSX_DEPLOYMENT_TARGET=13.0" >> "$GITHUB_ENV"
+          fi
+
+      - uses: actions/cache/restore@v4
+        id: llvm
+        with:
+          path: ${{ runner.temp }}/tellur-llvm-22.1.8
+          key: llvm-22.1.8-${{ matrix.runner }}-${{ hashFiles('ci/build-llvm.sh') }}
+
+      - name: Build pinned LLVM and LLD
+        if: steps.llvm.outputs.cache-hit != 'true'
+        run: bash ci/build-llvm.sh "$LLVM_SYS_221_PREFIX"
+
+      - uses: actions/cache/save@v4
+        if: steps.llvm.outputs.cache-hit != 'true'
+        with:
+          path: ${{ runner.temp }}/tellur-llvm-22.1.8
+          key: ${{ steps.llvm.outputs.cache-primary-key }}
+
+      - name: Build compiler and target packs
+        run: |
+          rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
+          rustup target add aarch64-unknown-linux-musl x86_64-unknown-linux-musl
+          cargo build --release --locked --features linux-musl-packs --bin tellur
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Package native CLI and VS Code extension
+        shell: bash
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          version=$(target/release/tellur --version | awk '{print $2}')
+          if [[ -n "$RELEASE_TAG" ]]; then test "${RELEASE_TAG#v}" = "$version"; fi
+          dist="$GITHUB_WORKSPACE/dist"
+          mkdir -p "$dist" editors/vscode/server
+          cp target/release/tellur editors/vscode/server/tellur
+          tar -czf "$dist/tellur-$version-$PLATFORM.tar.gz" -C target/release tellur -C "$GITHUB_WORKSPACE" LICENSE
+          cd editors/vscode
+          npm ci
+          npm test
+          ./node_modules/.bin/vsce package --no-dependencies --target "$PLATFORM" --out "$dist/tellur-$version-$PLATFORM.vsix"
+
+      - name: Exercise packaged compiler, server and live settings
+        run: python3 ci/check-release.py dist "$RUNNER_TEMP/qualified"
+
+      - name: Build and run Hello in a clean Linux container
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          docker run --rm --network none \
+            -v "$RUNNER_TEMP/qualified:/input:ro" ubuntu:24.04 \
+            /usr/bin/env -i HOME=/tmp PATH=/absent TELLUR_NATIVE_TARGET_DIR=/tmp/cache \
+            /input/tellur exec /input/hello.tellur --backend llvm --out /tmp/hello -- --json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tellur-${{ matrix.platform }}
+          path: dist/*
+          if-no-files-found: error
+          compression-level: 0
+
+  publish:
+    if: github.event_name == 'release'
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: tellur-*
+          path: dist
+          merge-multiple: true
+      - name: Attach qualified native archives and VSIX packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: gh release upload "$RELEASE_TAG" dist/*.tar.gz dist/*.vsix --repo "$GITHUB_REPOSITORY" --clobber
