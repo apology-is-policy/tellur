@@ -489,23 +489,37 @@ pub(crate) const MIO_DEPENDENCY: &str =
 /// Readiness vocabulary shared by every polled async host operation.
 const POLL_API: &str = r#"/// One poll of a started async host operation.
 pub enum Poll<T> { Ready(T), Pending(Wait) }
+#[cfg(unix)]
+pub(crate) type RawDescriptor = std::os::fd::RawFd;
+#[cfg(windows)]
+pub(crate) type RawDescriptor = std::os::windows::io::RawSocket;
 /// When the runtime may poll a pending operation again: after a delay, when a
 /// descriptor becomes readable or writable, or whichever comes first. It never
 /// polls earlier. Readiness is edge-triggered: report it only after a nonblocking
 /// read or write returned `WouldBlock`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Wait { pub(crate) retry_after: Option<std::time::Duration>, pub(crate) readable: Option<std::os::fd::RawFd>, pub(crate) writable: Option<std::os::fd::RawFd> }
+pub struct Wait { pub(crate) retry_after: Option<std::time::Duration>, pub(crate) readable: Option<RawDescriptor>, pub(crate) writable: Option<RawDescriptor> }
 impl Wait {
     pub fn after(delay: std::time::Duration) -> Self { Self { retry_after: Some(delay), readable: None, writable: None } }
+    #[cfg(unix)]
     pub fn readable(source: &impl std::os::fd::AsRawFd) -> Self { Self { retry_after: None, readable: Some(source.as_raw_fd()), writable: None } }
+    #[cfg(unix)]
     pub fn writable(source: &impl std::os::fd::AsRawFd) -> Self { Self { retry_after: None, readable: None, writable: Some(source.as_raw_fd()) } }
+    #[cfg(windows)]
+    pub fn readable(source: &impl std::os::windows::io::AsRawSocket) -> Self { Self { retry_after: None, readable: Some(source.as_raw_socket()), writable: None } }
+    #[cfg(windows)]
+    pub fn writable(source: &impl std::os::windows::io::AsRawSocket) -> Self { Self { retry_after: None, readable: None, writable: Some(source.as_raw_socket()) } }
     pub fn or_after(self, delay: std::time::Duration) -> Self { Self { retry_after: Some(delay), ..self } }
 }
 "#;
 const NO_READINESS: &str =
     "fn rust_readiness() -> R<Option<Box<dyn ReadinessBackend>>> { Ok(None) }\n";
 /// The internal readiness backend for polled adapters; Mio stays out of the adapter API.
-const MIO_READINESS: &str = include_str!("native/mio_readiness.rs");
+const MIO_READINESS: &str = concat!(
+    include_str!("native/mio_readiness.rs"),
+    "\n",
+    include_str!("native/windows_readiness.rs")
+);
 /// Start async host operations and adapt their typed polls to the runtime.
 fn start_source(
     manifest: &Manifest,

@@ -1456,5 +1456,8 @@ the embedded LLVM and LLD drivers used for the upcoming Windows target. On macOS
 it emits an x64 COFF object, builds a KERNEL32 import library from a module
 definition, and links a console executable with the external tool search path
 empty. A Windows x64 runner downloads that executable and checks that it exits
-with status 42. Building Tellur source for Windows also requires the Windows
-runtime and target link pack.
+with status 42. The workflow also emits `playground/hello.tellur` as a Windows
+object. On Windows, it links Hello against each Rust runtime profile using the
+installed Visual C++ startup libraries, then checks the process status and JSON
+output. Separate native tests exercise socket readiness and signal cancellation.
+The distributed compiler still needs its own Windows startup and link pack.

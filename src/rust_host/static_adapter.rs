@@ -80,7 +80,7 @@ struct OperationDescriptor {
 }
 #[repr(C)]
 struct WaitDescriptor {
-    version: u32, flags: u32, seconds: u64, nanoseconds: u32, descriptor: i32,
+    version: u32, flags: u32, seconds: u64, nanoseconds: u32, descriptor: rust_api::RawDescriptor,
 }
 unsafe extern "C" {
     fn tellur_adapter_v1_operation_publish(c: *mut c_void, operation: *mut OperationDescriptor);

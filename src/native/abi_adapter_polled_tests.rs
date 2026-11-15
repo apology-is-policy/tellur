@@ -423,7 +423,7 @@ fn pending_waits_validate_flags_units_interests_and_callback_phase() {
         WaitDescriptor {
             flags: 2,
             nanoseconds: 0,
-            descriptor: -1,
+            descriptor: !0,
             ..valid
         },
     ] {
@@ -472,6 +472,27 @@ fn polled_contract_keeps_existing_data_resource_and_cancellation_restrictions() 
     assert!(AdapterBinding::new(&m, "step", descriptor).is_err());
 }
 
+#[cfg(all(windows, target_pointer_width = "64"))]
+#[test]
+fn windows_pending_socket_preserves_bits_above_u32() {
+    let mut c = context();
+    c.progress = Progress::Polling(None);
+    let socket = 0x1234_5678_0000_0007;
+    let wait = WaitDescriptor {
+        version: 1,
+        flags: 2,
+        seconds: 0,
+        nanoseconds: 0,
+        descriptor: socket,
+    };
+    unsafe { tellur_adapter_v1_pending(&mut c, &wait) };
+    assert!(c.error.is_none());
+    let Progress::Polling(Some(stored)) = &c.progress else {
+        panic!("missing socket wait")
+    };
+    assert_eq!(stored.descriptor, socket);
+}
+
 /// Drive the same Host operation and retained machine as generated controls. Only
 /// descriptor readiness is simulated; the registry, cancellation, event and drop
 /// paths here are the runtime's own.
@@ -486,7 +507,7 @@ fn retained_host_deregisters_foreign_wait_before_ready_or_cancelled_destruction(
             self.0.borrow_mut().push("register".into());
             Ok(())
         }
-        fn deregister(&mut self, fd: i32) -> R<()> {
+        fn deregister(&mut self, fd: RawDescriptor) -> R<()> {
             assert_eq!(fd, 42);
             self.0.borrow_mut().push("deregister".into());
             Ok(())

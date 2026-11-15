@@ -28,7 +28,7 @@ pub struct WaitDescriptor {
     pub flags: u32,
     pub seconds: u64,
     pub nanoseconds: u32,
-    pub descriptor: i32,
+    pub descriptor: RawDescriptor,
 }
 
 pub(super) struct ForeignState {
@@ -250,6 +250,10 @@ pub unsafe extern "C" fn tellur_adapter_v1_pending(
 ) {
     unsafe { &mut *c }.perform(|c| {
         let wait = unsafe { adapter_span(descriptor, 1)? }[0];
+        #[cfg(unix)]
+        let invalid_descriptor = wait.descriptor < 0;
+        #[cfg(windows)]
+        let invalid_descriptor = wait.descriptor == RawDescriptor::MAX;
         if wait.version != 1
             || wait.flags == 0
             || wait.flags & !7 != 0
@@ -257,7 +261,7 @@ pub unsafe extern "C" fn tellur_adapter_v1_pending(
             || wait.nanoseconds >= 1_000_000_000
             || (wait.flags & 1 == 0 && (wait.seconds != 0 || wait.nanoseconds != 0))
             || (wait.flags & 6 == 0 && wait.descriptor != 0)
-            || (wait.flags & 6 != 0 && wait.descriptor < 0)
+            || (wait.flags & 6 != 0 && invalid_descriptor)
         {
             return Err(adapter_error("invalid pending wait descriptor"));
         }

@@ -1962,7 +1962,7 @@ impl CheckedProgram {
             return Err(error("optimization level must be 0..3"));
         }
         let pack = targets::select(triple)?;
-        let source = self.llvm_source_with_main(entry, main_symbol(Some(pack.triple)))?;
+        let source = self.llvm_source_for_target(entry, pack.triple)?;
         self.link_llvm_source(source, output, opt, pack, adapter_pack)
     }
 
@@ -2032,6 +2032,11 @@ impl CheckedProgram {
 
     pub fn llvm_source(&self, entry: &str) -> Result<String> {
         self.llvm_source_with_main(entry, main_symbol(targets::native_triple()))
+    }
+
+    /// Emit the checked program with the entry symbol required by the target's startup code.
+    pub fn llvm_source_for_target(&self, entry: &str, triple: &str) -> Result<String> {
+        self.llvm_source_with_main(entry, main_symbol(Some(triple)))
     }
 
     fn llvm_source_with_main(&self, entry: &str, main: &str) -> Result<String> {

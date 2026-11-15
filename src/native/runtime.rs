@@ -515,6 +515,7 @@ unsafe extern "C" {
 /// Opt-in launch signals (`launch.<entry>.signals = "cancel"`). The first SIGINT
 /// or SIGTERM is recorded and wakes the readiness backend through a self-pipe; the
 /// executor then cancels the entry. A second terminates at once with 128 + signal.
+#[cfg(unix)]
 mod launch_signals {
     use std::sync::atomic::{AtomicI32, AtomicUsize, Ordering};
     static RECEIVED: AtomicUsize = AtomicUsize::new(0);
@@ -538,7 +539,7 @@ mod launch_signals {
         }
     }
     /// Install handlers for SIGINT and SIGTERM; returns the self-pipe read end.
-    pub fn install() -> Option<i32> {
+    pub fn install() -> super::R<Option<i32>> {
         let mut fds = [-1i32; 2];
         let read = if unsafe { pipe(fds.as_mut_ptr()) } == 0 {
             WAKE.store(fds[1], Ordering::SeqCst);
@@ -550,13 +551,112 @@ mod launch_signals {
             signal(2, handle);
             signal(15, handle);
         }
-        read
+        Ok(read)
     }
     pub fn received() -> bool {
         RECEIVED.load(Ordering::SeqCst) > 0
     }
 }
-/// Readiness token of the launch-signal self-pipe; never a host-operation token.
+#[cfg(windows)]
+mod launch_signals {
+    use std::{
+        net::UdpSocket,
+        os::windows::io::{AsRawSocket, RawSocket},
+        sync::{
+            OnceLock,
+            atomic::{AtomicBool, Ordering},
+        },
+    };
+    static RECEIVED: AtomicBool = AtomicBool::new(false);
+    static DRAINED: AtomicBool = AtomicBool::new(false);
+    static SOCKETS: OnceLock<(UdpSocket, UdpSocket)> = OnceLock::new();
+    unsafe extern "C" {
+        fn signal(signum: i32, handler: extern "C" fn(i32)) -> usize;
+        fn _exit(status: i32) -> !;
+    }
+    #[link(name = "ws2_32")]
+    unsafe extern "system" {
+        fn send(socket: RawSocket, buffer: *const u8, size: i32, flags: i32) -> i32;
+    }
+    extern "C" fn handle(signum: i32) {
+        if RECEIVED.swap(true, Ordering::SeqCst) {
+            unsafe { _exit(128 + signum) }
+        }
+        // The Windows CRT resets the disposition when it invokes the handler.
+        unsafe { signal(signum, handle) };
+        if let Some((_, writer)) = SOCKETS.get() {
+            unsafe { send(writer.as_raw_socket(), [1u8].as_ptr(), 1, 0) };
+        }
+    }
+    pub fn install() -> super::R<Option<RawSocket>> {
+        fn pair() -> std::io::Result<(UdpSocket, UdpSocket)> {
+            let reader = UdpSocket::bind(("127.0.0.1", 0))?;
+            let writer = UdpSocket::bind(("127.0.0.1", 0))?;
+            reader.connect(writer.local_addr()?)?;
+            writer.connect(reader.local_addr()?)?;
+            reader.set_nonblocking(true)?;
+            writer.set_nonblocking(true)?;
+            Ok((reader, writer))
+        }
+        if SOCKETS.get().is_none() {
+            let sockets =
+                pair().map_err(|e| format!("E_HOST: cannot create signal wake sockets: {e}"))?;
+            let _ = SOCKETS.set(sockets);
+        }
+        for signum in [2, 15] {
+            if unsafe { signal(signum, handle) } == usize::MAX {
+                return Err(format!(
+                    "E_HOST: cannot install signal handler for {signum}"
+                ));
+            }
+        }
+        Ok(Some(SOCKETS.get().unwrap().0.as_raw_socket()))
+    }
+    pub fn received() -> bool {
+        let received = RECEIVED.load(Ordering::SeqCst);
+        if received
+            && !DRAINED.load(Ordering::Relaxed)
+            && let Some((reader, _)) = SOCKETS.get()
+            && reader.recv(&mut [0]).is_ok()
+        {
+            DRAINED.store(true, Ordering::Relaxed);
+        }
+        received
+    }
+
+    #[cfg(test)]
+    #[test]
+    fn windows_signal_wakes_then_terminates_on_repeat() {
+        const CHILD: &str = "TELLUR_TEST_WINDOWS_SIGNAL_CHILD";
+        if std::env::var_os(CHILD).is_none() {
+            let status = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "windows_signal_wakes_then_terminates_on_repeat",
+                    "--test-threads=1",
+                ])
+                .env(CHILD, "1")
+                .status()
+                .unwrap();
+            assert_eq!(status.code(), Some(143));
+            return;
+        }
+        unsafe extern "C" {
+            fn raise(signum: i32) -> i32;
+        }
+        install().unwrap().unwrap();
+        assert_eq!(unsafe { raise(15) }, 0);
+        let (reader, _) = SOCKETS.get().unwrap();
+        assert_eq!(reader.peek(&mut [0]).unwrap(), 1);
+        assert!(received());
+        assert_eq!(
+            reader.peek(&mut [0]).unwrap_err().kind(),
+            std::io::ErrorKind::WouldBlock
+        );
+        unsafe { raise(15) };
+        panic!("second signal returned");
+    }
+}
+/// Readiness token of the launch-signal wake source; never a host-operation token.
 pub const SIGNAL_TOKEN: u64 = u64::MAX;
 /// A live resource scope, unrelated to invocation or diagnostic identities.
 #[derive(Clone, Debug)]
@@ -862,16 +962,21 @@ pub enum HostProgress {
         descriptor: Option<Descriptor>,
     },
 }
+#[cfg(unix)]
+pub type RawDescriptor = std::os::fd::RawFd;
+#[cfg(windows)]
+pub type RawDescriptor = std::os::windows::io::RawSocket;
+
 /// One descriptor a pending operation waits on, for reading or for writing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Descriptor {
-    pub fd: std::os::fd::RawFd,
+    pub fd: RawDescriptor,
     pub writable: bool,
 }
 /// Internal descriptor readiness for live host operations (Mio in generated crates).
 pub trait ReadinessBackend {
     fn register(&mut self, token: u64, descriptor: Descriptor) -> R<()>;
-    fn deregister(&mut self, fd: std::os::fd::RawFd) -> R<()>;
+    fn deregister(&mut self, fd: RawDescriptor) -> R<()>;
     /// Tokens that became readable, after at most `timeout` (None waits indefinitely).
     fn wait(&mut self, timeout: Option<std::time::Duration>) -> R<Vec<u64>>;
 }
@@ -2122,7 +2227,7 @@ pub fn launch_with(
     host.readiness = rust_readiness()?;
     if cancels_on_signal && host.script.is_none() {
         host.live_signals = true;
-        if let Some(fd) = launch_signals::install()
+        if let Some(fd) = launch_signals::install()?
             && let Some(readiness) = host.readiness.as_mut()
         {
             readiness.register(

@@ -2,12 +2,22 @@
 use std::{error::Error, fs, path::PathBuf};
 
 fn main() -> Result<(), Box<dyn Error>> {
+    const TARGET: &str = "x86_64-pc-windows-msvc";
     let directory = PathBuf::from(
         std::env::args_os()
             .nth(1)
             .ok_or("expected output directory")?,
     );
     fs::create_dir_all(&directory)?;
+    let source = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("playground/hello.tellur");
+    let manifest_path = source.with_file_name("manifest.json");
+    let manifest = tellur::manifest::Manifest::from_json_at(
+        &fs::read_to_string(&manifest_path)?,
+        &manifest_path,
+    )?;
+    let hello = tellur::compile_file(&source, manifest)?.llvm_source_for_target("main", TARGET)?;
+    let hello_object = tellur::llvm::compile(&[("hello.tellur".into(), hello)], TARGET, 2)?;
+    fs::write(directory.join("hello.obj"), hello_object)?;
     std::env::set_current_dir(directory)?;
 
     let ir = r#"
@@ -17,11 +27,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             unreachable
         }
     "#;
-    let object = tellur::llvm::compile(
-        &[("exit.ll".into(), ir.into())],
-        "x86_64-pc-windows-msvc",
-        2,
-    )?;
+    let object = tellur::llvm::compile(&[("exit.ll".into(), ir.into())], TARGET, 2)?;
     fs::write("exit.obj", object)?;
     fs::write(
         "kernel32.def",

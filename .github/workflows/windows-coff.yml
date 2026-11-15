@@ -6,8 +6,15 @@ on:
     paths:
       - .github/workflows/windows-coff.yml
       - ci/windows-coff-smoke.rs
+      - runtime/**
+      - src/native/runtime.rs
+      - src/native/windows_readiness.rs
       - src/llvm.rs
       - src/llvm/lld_shim.cpp
+
+env:
+  CARGO_INCREMENTAL: '0'
+  RUSTUP_TOOLCHAIN: 1.97.1
 
 permissions:
   contents: read
@@ -16,8 +23,6 @@ jobs:
   link:
     runs-on: macos-15
     env:
-      CARGO_INCREMENTAL: '0'
-      RUSTUP_TOOLCHAIN: 1.97.1
       MACOSX_DEPLOYMENT_TARGET: '13.0'
     steps:
       - uses: actions/checkout@v4
@@ -41,12 +46,17 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: windows-coff-smoke
-          path: ${{ runner.temp }}/coff/exit.exe
+          path: |
+            ${{ runner.temp }}/coff/exit.exe
+            ${{ runner.temp }}/coff/hello.obj
           if-no-files-found: error
   execute:
     needs: link
     runs-on: windows-2025
     steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/download-artifact@v4
         with:
           name: windows-coff-smoke
@@ -56,3 +66,25 @@ jobs:
         run: |
           $process = Start-Process -FilePath ./probe/exit.exe -Wait -PassThru
           if ($process.ExitCode -ne 42) { throw "Expected exit code 42, got $($process.ExitCode)" }
+      - name: Build the runtime and check the compiled Tellur Hello program
+        shell: pwsh
+        run: |
+          rustup toolchain install $env:RUSTUP_TOOLCHAIN --profile minimal
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $installation = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $installation) { throw "Cannot locate Visual C++ tools" }
+          Import-Module "$installation\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
+          Enter-VsDevShell -VsInstallPath $installation -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64'
+          cargo test --locked --release --manifest-path runtime/Cargo.toml --features polled --lib --target-dir "$env:RUNNER_TEMP/runtime" windows_
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          foreach ($profile in 'plain', 'polled') {
+            $features = @()
+            if ($profile -eq 'polled') { $features = @('--features', 'polled') }
+            cargo build --locked --release --manifest-path runtime/Cargo.toml --target-dir "$env:RUNNER_TEMP/runtime" @features
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            $exe = "$env:RUNNER_TEMP/hello-$profile.exe"
+            link.exe /nologo /subsystem:console "/out:$exe" probe/hello.obj "$env:RUNNER_TEMP/runtime/release/tellur_runtime_abi.lib" kernel32.lib ntdll.lib userenv.lib ws2_32.lib dbghelp.lib msvcrt.lib
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            $report = & $exe --json | ConvertFrom-Json
+            if ($LASTEXITCODE -ne 0 -or $report.outcome -ne 'done' -or $report.events[0].message -ne 'Hello from Tellur!') { throw "Unexpected $profile Hello result" }
+          }

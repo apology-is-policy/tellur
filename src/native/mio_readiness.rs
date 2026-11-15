@@ -1,7 +1,9 @@
+#[cfg(unix)]
 struct MioReadiness {
     poll: tellur_mio::Poll,
     events: tellur_mio::Events,
 }
+#[cfg(unix)]
 impl ReadinessBackend for MioReadiness {
     fn register(&mut self, token: u64, descriptor: Descriptor) -> R<()> {
         let interest = if descriptor.writable {
@@ -34,6 +36,7 @@ impl ReadinessBackend for MioReadiness {
         }
     }
 }
+#[cfg(unix)]
 fn rust_readiness() -> R<Option<Box<dyn ReadinessBackend>>> {
     let poll =
         tellur_mio::Poll::new().map_err(|e| format!("E_HOST: readiness backend failed: {e}"))?;
