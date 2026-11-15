@@ -546,7 +546,10 @@ struct Server {
 }
 impl Server {
     fn start(binary: &Path, data: &Path, budget: usize, idle_ms: u32) -> Self {
-        let child = Command::new(binary)
+        Self::start_process(Command::new(binary), data, budget, idle_ms)
+    }
+    fn start_process(mut command: Command, data: &Path, budget: usize, idle_ms: u32) -> Self {
+        let child = command
             .args(["--entry", "serve", "--"])
             .arg(data)
             .args(["0", &budget.to_string(), &idle_ms.to_string()])
@@ -1147,6 +1150,7 @@ fn check_concurrent_clients(binary: &Path, f: &Fixture) {
     server.finish(0, "completed");
 }
 
+#[cfg(unix)]
 fn signal(server: &Server, name: &str) {
     let pid = server.child.as_ref().unwrap().id().to_string();
     let status = Command::new("kill")
@@ -1154,6 +1158,30 @@ fn signal(server: &Server, name: &str) {
         .status()
         .unwrap();
     assert!(status.success(), "kill -{name} {pid}");
+}
+
+#[cfg(windows)]
+#[test]
+fn windows_send_console_interrupt() {
+    // The helper starts detached and joins only the server's private console.
+    // A CTRL_C_EVENT is broadcast to every process attached to that console.
+    let Ok(pid) = std::env::var("TELLUR_TEST_INTERRUPT_SERVER") else {
+        return;
+    };
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn AttachConsole(pid: u32) -> i32;
+        fn SetConsoleCtrlHandler(
+            handler: Option<unsafe extern "system" fn(u32) -> i32>,
+            add: i32,
+        ) -> i32;
+        fn GenerateConsoleCtrlEvent(event: u32, group: u32) -> i32;
+    }
+    unsafe {
+        assert_ne!(AttachConsole(pid.parse().unwrap()), 0);
+        assert_ne!(SetConsoleCtrlHandler(None, 1), 0);
+        assert_ne!(GenerateConsoleCtrlEvent(0, 0), 0);
+    }
 }
 
 #[test]
@@ -1166,7 +1194,15 @@ fn native_http_launch_signal_replies_503_to_waiting_members_and_stops() {
 }
 
 fn check_graceful_shutdown(binary: &Path, f: &Fixture) {
+    #[cfg(unix)]
     let server = Server::start(binary, &f.0.join("settings.json"), 8, 30000);
+    #[cfg(windows)]
+    let server = {
+        use std::os::windows::process::CommandExt;
+        let mut command = Command::new(binary);
+        command.creation_flags(0x10); // CREATE_NEW_CONSOLE
+        Server::start_process(command, &f.0.join("settings.json"), 8, 30000)
+    };
     // A served request first, then a member that waits for a request that never comes.
     let full = request(&server.authority, "GET", "/settings", "", "");
     assert_eq!(
@@ -1179,7 +1215,22 @@ fn check_graceful_shutdown(binary: &Path, f: &Fixture) {
         .unwrap();
     std::thread::sleep(Duration::from_millis(300));
     let started = Instant::now();
+    #[cfg(unix)]
     signal(&server, "TERM");
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        let result = Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "windows_send_console_interrupt"])
+            .env(
+                "TELLUR_TEST_INTERRUPT_SERVER",
+                server.child.as_ref().unwrap().id().to_string(),
+            )
+            .creation_flags(0x08) // DETACHED_PROCESS
+            .output()
+            .unwrap();
+        assert!(result.status.success(), "{result:?}");
+    }
     let mut reply = vec![];
     waiting.read_to_end(&mut reply).unwrap();
     assert_eq!(response(&reply, 503, false), "Service is shutting down");
@@ -1188,6 +1239,7 @@ fn check_graceful_shutdown(binary: &Path, f: &Fixture) {
     server.finish(0, "stopped");
 }
 
+#[cfg(unix)] // Delivers two pending POSIX signals while the process is suspended.
 #[test]
 fn native_http_second_launch_signal_terminates_immediately() {
     let p = program();

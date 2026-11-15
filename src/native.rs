@@ -10,7 +10,7 @@ use std::{
     process::Command,
 };
 /// Backend selected by the compiler CLI when the caller omits `--backend`.
-pub const DEFAULT_BACKEND: &str = if cfg!(tellur_native_llvm) {
+pub const DEFAULT_BACKEND: &str = if cfg!(all(tellur_native_llvm, not(windows))) {
     "llvm"
 } else {
     "rust"
@@ -693,6 +693,7 @@ fn concurrent_cold_runtime_preparation_publishes_complete_files() {
 /// `--locked` builds accept it (including adapter lockfiles).
 fn lock_runtime(lock: &str, package: &str) -> Result<String> {
     const ENTRY: &str = "[[package]]\nname = \"tellur_runtime\"\nversion = \"0.1.0\"\ndependencies = [\n \"serde\",\n \"serde_json\",\n]\n";
+    let lock = lock.replace("\r\n", "\n");
     let mut blocks: Vec<String> = lock.split("\n[[package]]\n").map(String::from).collect();
     let header = blocks.remove(0);
     // A lockfile resolved by `lock-native` already names the runtime; start clean.
@@ -710,7 +711,10 @@ fn lock_runtime(lock: &str, package: &str) -> Result<String> {
         .map(|i| i + "dependencies = [\n".len());
     match start {
         Some(start) => {
-            let end = start + own[start..].find(']').unwrap();
+            let end = start
+                + own[start..]
+                    .find(']')
+                    .ok_or_else(|| error("unterminated lockfile dependencies"))?;
             let mut deps: Vec<String> = own[start..end].lines().map(String::from).collect();
             deps.push(" \"tellur_runtime\",".into());
             deps.sort();
@@ -736,6 +740,25 @@ fn lock_runtime(lock: &str, package: &str) -> Result<String> {
             .map(|b| format!("\n{b}"))
             .collect::<String>()
     ))
+}
+#[test]
+fn generated_cargo_inputs_accept_crlf() {
+    let manifest = serde_json::from_str(r#"{"version":"1","types":[],"primitives":[]}"#).unwrap();
+    let template = CARGO.replace("\r\n", "\n");
+    let lf = crate::rust_host::cargo(&manifest, &template);
+    let crlf = crate::rust_host::cargo(&manifest, &template.replace('\n', "\r\n"));
+    assert_eq!(crlf, lf);
+    assert!(crlf.contains("[dependencies]\n"));
+
+    let lock = LOCK.replace("\r\n", "\n");
+    let lf = lock_runtime(&lock, "path_generated").unwrap();
+    let crlf = lock_runtime(&lock.replace('\n', "\r\n"), "path_generated").unwrap();
+    assert_eq!(crlf, lf);
+    assert!(crlf.contains(" \"tellur_runtime\",\n"));
+    assert_eq!(
+        lock_runtime(&crlf.replace('\n', "\r\n"), "path_generated").unwrap(),
+        lf
+    );
 }
 /// How a generated program reaches the runtime library.
 #[derive(Clone, Copy)]
@@ -991,7 +1014,7 @@ impl CheckedProgram {
         }
         let lock =
             fs::read_to_string(directory.join("Cargo.lock")).map_err(|e| error(e.to_string()))?;
-        let lock = lock.replace(
+        let lock = lock.replace("\r\n", "\n").replace(
             &format!("name = {package:?}"),
             "name = \"tellur_adapter_lock\"",
         );

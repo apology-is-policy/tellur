@@ -55,6 +55,9 @@ pub fn build() {
         }
     }
     if cfg!(feature = "windows-gnu-pack") {
+        if env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") && host_cpu == "x86_64" {
+            println!("cargo:rustc-cfg=tellur_native_llvm");
+        }
         println!("cargo:rerun-if-env-changed=TELLUR_WINDOWS_SYSROOT");
         println!("cargo:rerun-if-env-changed=TELLUR_WINDOWS_DLLTOOL");
         let root = PathBuf::from(

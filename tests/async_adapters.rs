@@ -385,17 +385,19 @@ fn channel_config() -> Json {
     ]})
 }
 
-const CHANNEL_HOST: &str = r#"
+const CHANNEL_HOST: &str = concat!(
+    include_str!("fixtures/readiness_stream.rs"),
+    r#"
 use crate::rust_api;
-use std::{io::{Read, Write}, os::unix::net::UnixStream, time::Duration};
+use std::{io::{Read, Write}, time::Duration};
 fn log(path: &str, line: String) {
     let mut file = std::fs::OpenOptions::new().create(true).append(true).open(path).unwrap();
     writeln!(file, "{line}").unwrap();
 }
-pub struct Channel { reader: UnixStream, path: String, name: String }
+pub struct Channel { reader: Stream, path: String, name: String }
 impl Drop for Channel { fn drop(&mut self) { log(&self.path, format!("channel drop {}", self.name)); } }
 pub fn open_channel(path: &str, name: &str, delay: u32) -> rust_api::open_channel_outcome {
-    let (reader, mut writer) = UnixStream::pair().unwrap();
+    let (reader, mut writer) = stream_pair().unwrap();
     reader.set_nonblocking(true).unwrap();
     let message = name.to_string();
     std::thread::spawn(move || {
@@ -432,7 +434,8 @@ impl rust_api::receive_operation for Receiving {
         }
     }
 }
-"#;
+"#
+);
 
 const CHANNELS: &str = r#"
 async control listen(ref channel c) exits done {
@@ -877,15 +880,17 @@ fn pipe_config() -> Json {
          "effects":["close"],"returns":true,"rust":{"execution":"immediate"}}
     ]})
 }
-const PIPE_HOST: &str = r#"
+const PIPE_HOST: &str = concat!(
+    include_str!("fixtures/readiness_stream.rs"),
+    r#"
 use crate::rust_api;
-use std::{io::{Read, Write}, os::unix::net::UnixStream, time::Duration};
+use std::{io::{Read, Write}, time::Duration};
 fn log(path: &str, line: String) {
     let mut file = std::fs::OpenOptions::new().create(true).append(true).open(path).unwrap();
     writeln!(file, "{line}").unwrap();
 }
 const SIZE: usize = 4 << 20;
-pub struct Pipe { writer: UnixStream, path: String, reader: Option<std::thread::JoinHandle<usize>> }
+pub struct Pipe { writer: Stream, path: String, reader: Option<std::thread::JoinHandle<usize>> }
 impl Drop for Pipe {
     fn drop(&mut self) {
         let _ = self.writer.shutdown(std::net::Shutdown::Both);
@@ -893,7 +898,7 @@ impl Drop for Pipe {
     }
 }
 pub fn open_pipe(path: &str) -> rust_api::open_pipe_outcome {
-    let (mut reader, writer) = UnixStream::pair().unwrap();
+    let (mut reader, writer) = stream_pair().unwrap();
     writer.set_nonblocking(true).unwrap();
     let reader = std::thread::spawn(move || {
         std::thread::sleep(Duration::from_millis(200));
@@ -932,7 +937,8 @@ impl rust_api::push_operation for Pushing {
         rust_api::Poll::Ready(rust_api::push_outcome::pushed)
     }
 }
-"#;
+"#
+);
 const PUSHES: &str = r#"
 async control send_all(ref pipe p) exits done {
     delta await push(p) {

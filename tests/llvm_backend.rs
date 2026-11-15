@@ -83,12 +83,12 @@ fn default_and_explicit_backends_preserve_the_process_contract() {
     let fixture = Fixture::new(
         "control main() exits result {exit done {42};} outcome result {@exit 7 done {u32 value}}",
     );
-    let direct_default = cfg!(tellur_native_llvm);
+    let direct_default = tellur::native::DEFAULT_BACKEND == "llvm";
     let mut cases = vec![
         ("default", None, direct_default),
         ("rust", Some("rust"), false),
     ];
-    if cfg!(tellur_native_llvm) || cfg!(all(windows, feature = "windows-gnu-pack")) {
+    if cfg!(tellur_native_llvm) {
         cases.push(("llvm", Some("llvm"), true));
     }
     let mut reports = Vec::new();
@@ -1770,6 +1770,36 @@ control main() exits done {{
         );
     }
 
+    // Give each generated process a 512 KiB main-thread stack.
+    fn small_stack_command(binary: &Path) -> Command {
+        #[cfg(unix)]
+        {
+            let mut command = Command::new("/bin/sh");
+            command
+                .args([
+                    "-c",
+                    "ulimit -s 512 || exit 99; exec \"$@\"",
+                    "tellur-stack",
+                ])
+                .arg(binary);
+            command
+        }
+        #[cfg(windows)]
+        {
+            // PE32+ records SizeOfStackReserve in its optional header. Edit a
+            // private copy since the generated Rust binary may be hard-linked.
+            let mut image = fs::read(binary).unwrap();
+            let pe = u32::from_le_bytes(image[0x3c..0x40].try_into().unwrap()) as usize;
+            assert_eq!(&image[pe..pe + 4], b"PE\0\0");
+            let optional = pe + 24;
+            assert_eq!(&image[optional..optional + 2], &0x20bu16.to_le_bytes());
+            image[optional + 72..optional + 80].copy_from_slice(&(512u64 * 1024).to_le_bytes());
+            let constrained = binary.with_extension("small-stack.exe");
+            fs::write(&constrained, image).unwrap();
+            Command::new(constrained)
+        }
+    }
+
     #[test]
     fn loops_keep_native_stack_bounded_through_many_backedges() {
         let f = Fixture::new(
@@ -1791,13 +1821,7 @@ control main() exits done {{
             let llvm = f.build("llvm", opt);
             let rust = f.build("rust", opt);
             let run = |binary: &Path| {
-                Command::new("/bin/sh")
-                    .args([
-                        "-c",
-                        "ulimit -s 512 || exit 99; exec \"$@\"",
-                        "tellur-loop-stack",
-                    ])
-                    .arg(binary)
+                small_stack_command(binary)
                     .arg("--scenario")
                     .arg(&scenario)
                     .args(["--fuel", "200000"])
@@ -3166,13 +3190,7 @@ outcome result {@exit 0 done}
             for opt in [0, 2] {
                 build_pair(&f, expanded, opt);
                 let run = |backend| {
-                    Command::new("/bin/sh")
-                        .args([
-                            "-c",
-                            "ulimit -s 512 || exit 99; exec \"$@\"",
-                            "tellur-retained-set-stack",
-                        ])
-                        .arg(f.root.join(format!("{backend}-{opt}")))
+                    small_stack_command(&f.root.join(format!("{backend}-{opt}")))
                         .arg("--scenario")
                         .arg(&scenario)
                         .args(["--fuel", "100000"])
@@ -3444,13 +3462,7 @@ outcome result {@exit 0 done}
             for opt in [0, 2] {
                 build_pair(&f, expanded, opt);
                 let run = |backend| {
-                    Command::new("/bin/sh")
-                        .args([
-                            "-c",
-                            "ulimit -s 512 || exit 99; exec \"$@\"",
-                            "tellur-retained-loop-stack",
-                        ])
-                        .arg(f.root.join(format!("{backend}-{opt}")))
+                    small_stack_command(&f.root.join(format!("{backend}-{opt}")))
                         .arg("--scenario")
                         .arg(&scenario)
                         .args(["--fuel", "100000"])
@@ -5059,6 +5071,7 @@ control main() exits done {forward run work();}
         }
     }
 
+    #[cfg(unix)]
     #[test]
     fn frontend_launch_signals_preserve_live_first_default_and_second_signal_dispositions() {
         use std::io::{BufRead, Read};

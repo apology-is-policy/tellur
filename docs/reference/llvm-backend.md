@@ -1463,8 +1463,9 @@ output. Separate native tests exercise socket readiness and signal cancellation.
 The opt-in `windows-gnu-pack` Cargo feature embeds the x64 MinGW startup,
 CRT and unwind libraries, two Rust runtime archives, and import libraries
 generated from the four module definitions in `src/native/targets/x86_64-pc-windows-gnu`.
-It adds a cross target to the compiler. The Windows-hosted distribution and
-default-backend qualification are later steps.
+The pack works both on a cross-compiling host and in the Windows x64 development
+CLI and VS Code extension. Rust is the Windows default while native parity
+testing continues. Pass `--backend llvm` to compile directly on Windows.
 
 With this pack, compile Hello on the build host and run the resulting file
 on Windows x64:

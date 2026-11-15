@@ -719,7 +719,7 @@ pub(crate) fn cargo(manifest: &Manifest, template: &str) -> String {
             .unwrap();
         }
     }
-    template.replace(
+    template.replace("\r\n", "\n").replace(
         "\n# Each output",
         &format!("\n{dependencies}\n# Each output"),
     )
