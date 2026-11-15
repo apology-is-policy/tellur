@@ -349,3 +349,18 @@ The former `completed_with_failures` / `idle_with_failures` alternatives were
 removed: supervision does not expose a child success/fault outcome. Source faults
 are isolated; foreign panics, driver failures and exhausted host fuel remain fatal.
 See [the contingency reference](../../docs/reference/contingency.md).
+
+## Running the settings server with LLVM
+
+On macOS arm64 with the LLVM-enabled 0.276 compiler and Rust toolchain, build the
+service from the repository root. The manifest selects the checked-in Rust
+adapters and their dependency lock.
+
+```sh
+./bin/tellurc build applications/settings/main.tellur --backend llvm --release --out /tmp/tellur-settings-llvm
+/tmp/tellur-settings-llvm --entry serve -- /tmp/tellur-settings.json 0 2 60000
+```
+
+The server prints its loopback URL. From a second terminal, send two requests to
+that URL with `curl "$url/settings"`. Each completed request uses one of the two
+connections in the budget. SIGTERM initiates graceful shutdown while a request is pending.

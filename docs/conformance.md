@@ -6898,3 +6898,7 @@ A retained control follows a registered wait through both normal completion
 and cooperative cancellation. Its readiness backend records deregistration and
 foreign destructors record their own calls. Linked LLVM probes exercise both
 table versions, a rejected version, and legacy launch at O0 and O2.
+
+## 0.276 typed polled Rust adapters (B1.5f)
+
+The LLVM-gated tests in `tests/async_adapters.rs` compare live reports and lifecycle traces with generated Rust for timers, socket reads and writes, cancellation, consumed and returned resources, stopped operations and direct spawn. They run original O0 and expanded O2 graphs. The settings HTTP test runs the optimized LLVM service on loopback, verifies that a fast request finishes while another is pending, and checks graceful SIGTERM handling. The signature test in `tests/llvm_adapters.rs` rejects an unused start that returns a synchronous outcome.

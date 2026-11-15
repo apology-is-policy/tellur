@@ -1376,3 +1376,20 @@ To exercise completion and cancellation through the retained runtime, run
 The test supplies readiness tokens while the real Host manages registrations,
 operation state and ownership. Compiling polled Rust source on LLVM follows in
 the next checkpoint.
+
+## Typed polled Rust adapters (0.276)
+
+The opt-in LLVM backend on macOS arm64 builds manifest Rust operations with
+`"execution": "poll"` into the adapter archive. Both backends generate the same
+typed operation trait. The adapter owns the boxed operation, and the runtime
+receives its opaque state pointer and two callbacks to poll and destroy it.
+Every poll gets fresh shared handles in parameter order. The synchronous result
+codec also transfers owned results from a ready poll.
+
+The compiler selects the locked Mio-enabled runtime for polled manifests. Timers,
+readable and writable descriptors, and descriptor-or-deadline waits use the
+existing host scheduler. Completion and cancellation deregister a pending wait
+before dropping the state. The default backend is Rust while application and
+whole-suite parity work continues.
+
+Run the [settings server](../../applications/settings/README.md#running-the-settings-server-with-llvm) to exercise shared listeners, concurrent connections and graceful shutdown.

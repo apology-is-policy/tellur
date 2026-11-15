@@ -748,6 +748,20 @@ control main(string path) exits done {
 }
 "#;
 
+fn stopped_retire() -> String {
+    RETIRES
+        .replace(
+            "    auto second = spawn finish(clone(path), \"fast\");\n",
+            "    auto second = spawn failing();\n",
+        )
+        .replace("\"slow\"", "\"hold\"")
+        .replace(
+            "async control startup(ref string path) exits done {",
+            "async control failing() exits done faults {\n    yield;\n    fault \"sibling failed\";\n}\nasync control startup(ref string path) exits done faults {",
+        )
+        .replace("control main(string path) exits done {", "control main(string path) exits done faults {")
+}
+
 #[test]
 fn polled_operations_consume_resources_and_drop_them_when_stopped() {
     let f = Fixture::new("retire");
@@ -795,17 +809,7 @@ fn polled_operations_consume_resources_and_drop_them_when_stopped() {
         serde_json::to_value(p.run(&s).unwrap()).unwrap()
     );
     // A sibling fault stops the pending operation, which owns the consumed counter.
-    let faulting = RETIRES
-        .replace(
-            "    auto second = spawn finish(clone(path), \"fast\");\n",
-            "    auto second = spawn failing();\n",
-        )
-        .replace("\"slow\"", "\"hold\"")
-        .replace(
-            "async control startup(ref string path) exits done {",
-            "async control failing() exits done faults {\n    yield;\n    fault \"sibling failed\";\n}\nasync control startup(ref string path) exits done faults {",
-        )
-        .replace("control main(string path) exits done {", "control main(string path) exits done faults {");
+    let faulting = stopped_retire();
     let p = compile(&faulting, f.manifest(&retire_config())).unwrap();
     let binary = f.build(&p, "retire-fault");
     let (ok, report, log) = f.run(&binary, "retire-fault.log");
@@ -1122,4 +1126,78 @@ fn cancellation_stops_a_pending_polled_operation_and_drops_its_state() {
     assert!(!log.iter().any(|l| l == "poll hold 0"), "{log:?}");
     assert_eq!(log.last().map(String::as_str), Some("counter drop"));
     assert!(stop < log.len() - 1);
+}
+
+#[cfg(all(feature = "llvm", target_os = "macos", target_arch = "aarch64"))]
+#[test]
+fn llvm_polled_adapters_match_live_timer_socket_and_cancellation_behavior() {
+    for (name, host, source, manifest) in [
+        ("timer", HOST, CONCURRENT, config()),
+        ("readable", CHANNEL_HOST, CHANNELS, channel_config()),
+        ("writable", PIPE_HOST, PUSHES, pipe_config()),
+        ("cancel", HOST, CANCELLED, config()),
+    ] {
+        compare_llvm_adapter(name, host, source, manifest, true);
+    }
+}
+
+#[cfg(all(feature = "llvm", target_os = "macos", target_arch = "aarch64"))]
+#[test]
+fn llvm_polled_adapters_match_owned_handoff_stop_and_direct_spawn() {
+    let split = format!("{HOST}{SPLIT_HOST}");
+    let retire = format!("{HOST}{RETIRE_HOST}");
+    compare_llvm_adapter("returned", &split, SPLITS, split_config(), true);
+    compare_llvm_adapter("consumed", &retire, RETIRES, retire_config(), true);
+    compare_llvm_adapter(
+        "stopped",
+        &retire,
+        &stopped_retire(),
+        retire_config(),
+        false,
+    );
+    compare_llvm_adapter("spawned", SPAWN_HOST, SPAWNED, spawn_config(), true);
+}
+
+#[cfg(all(feature = "llvm", target_os = "macos", target_arch = "aarch64"))]
+fn compare_llvm_adapter(name: &str, host: &str, source: &str, manifest: Json, success: bool) {
+    let fixture = Fixture::new(&format!("llvm-{name}"));
+    fs::write(fixture.root.join("host.rs"), host).unwrap();
+    let p = compile(source, fixture.manifest(&manifest)).unwrap();
+    let codes = p
+        .region("main")
+        .unwrap()
+        .exits
+        .iter()
+        .map(|o| (o.name.clone(), 0))
+        .collect();
+    let p = p.with_entry_exit_codes("main", codes).unwrap();
+    let reference = fixture.build(&p, "reference");
+    let log_name = "operations.log";
+    let (ok, expected, drops) = fixture.run(&reference, log_name);
+    assert_eq!(ok, success, "{name}: {expected}");
+    for (expanded, opt) in [(false, 0), (true, 2)] {
+        let graph = if expanded {
+            p.expanded("main").unwrap()
+        } else {
+            p.clone()
+        };
+        let binary = fixture.root.join(format!("llvm-{opt}"));
+        graph.build_llvm("main", &binary, opt).unwrap();
+        if fixture.root.join(log_name).exists() {
+            fs::remove_file(fixture.root.join(log_name)).unwrap();
+        }
+        let (ok, result, log) = fixture.run(&binary, log_name);
+        assert_eq!(ok, success, "{name}/{opt}: {result}");
+        assert_eq!(result, expected, "{name}/{opt}");
+        // Relative poll counts on independent timers depend on the OS clock.
+        // Starts, drops and descriptor-driven re-polls are observable here.
+        let stable = |lines: &[String]| {
+            lines
+                .iter()
+                .filter(|line| !line.starts_with("poll "))
+                .cloned()
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(stable(&log), stable(&drops), "{name}/{opt}");
+    }
 }

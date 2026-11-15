@@ -237,7 +237,6 @@ fn primitive_supported(
         .find(|p| p.name == name)
         .is_some_and(|p| {
             p.asynchronous == asynchronous
-                && (!asynchronous || p.rust.is_none())
                 && p.returns
                 && p.parameters
                     .iter()
@@ -1949,7 +1948,10 @@ impl CheckedProgram {
             .as_ref()
             .map(|_| adapters::library(self.manifest(), &target, opt))
             .transpose()?;
-        let runtime = abi_library(&target)?;
+        let runtime = abi_library(
+            &target,
+            crate::rust_host::has_polled_adapters(self.manifest()),
+        )?;
         let triple = format!("arm64-apple-macosx{}.0", crate::llvm::MACOS_MINIMUM);
         let bytes =
             crate::llvm::compile(&[(generated.display().to_string(), source)], &triple, opt)
@@ -2154,17 +2156,24 @@ impl CheckedProgram {
     }
 }
 
-fn abi_library(target: &Path) -> Result<PathBuf> {
+fn abi_library(target: &Path, polled: bool) -> Result<PathBuf> {
     use std::sync::atomic::{AtomicU64, Ordering};
     static NEXT: AtomicU64 = AtomicU64::new(0);
-    let cargo = RUNTIME_CARGO
+    let mut cargo = RUNTIME_CARGO
         .replace("name = \"tellur_runtime\"", "name = \"tellur_runtime_abi\"")
         .replace(
             "path = \"lib.rs\"",
             "path = \"lib.rs\"\ncrate-type = [\"staticlib\"]",
         );
+    let lock = if polled {
+        cargo.push_str(crate::rust_host::MIO_DEPENDENCY);
+        include_str!("abi-readiness.lock").to_owned()
+    } else {
+        LOCK.replace("path_generated", "tellur_runtime_abi")
+    };
+    let readiness = crate::rust_host::readiness_source(polled);
     let lib = format!(
-        "#![allow(unused, unreachable_code, dead_code)]\n{}\npub mod abi {{\n{}\n}}",
+        "#![allow(unused, unreachable_code, dead_code)]\n{}\npub mod abi {{\n{}\n{readiness}\n}}",
         runtime_modules(),
         include_str!("abi.rs")
             .replace(
@@ -2191,7 +2200,7 @@ fn abi_library(target: &Path) -> Result<PathBuf> {
             .join("\n")
     );
     let mut hasher = std::hash::DefaultHasher::new();
-    (&cargo, &lib).hash(&mut hasher);
+    (&cargo, &lock, &lib).hash(&mut hasher);
     let hash = format!("{:016x}", hasher.finish());
     // Cargo serializes builds, but releases its target lock before LLD reads the
     // archive. Different runtime versions must therefore have distinct outputs.
@@ -2199,14 +2208,7 @@ fn abi_library(target: &Path) -> Result<PathBuf> {
     let cargo = cargo.replace("[lib]", &format!("[lib]\nname = \"{library}\""));
     let directory = target.join(format!("tellur-abi/{hash}"));
     fs::create_dir_all(&directory).map_err(|e| error(e.to_string()))?;
-    for (name, contents) in [
-        ("Cargo.toml", cargo),
-        (
-            "Cargo.lock",
-            LOCK.replace("path_generated", "tellur_runtime_abi"),
-        ),
-        ("lib.rs", lib),
-    ] {
+    for (name, contents) in [("Cargo.toml", cargo), ("Cargo.lock", lock), ("lib.rs", lib)] {
         let file = directory.join(name);
         if fs::read_to_string(&file).ok().as_deref() != Some(contents.as_str()) {
             let temp = directory.join(format!(

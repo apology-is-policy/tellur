@@ -1,4 +1,4 @@
-//! Packaging and C table emission for the admitted synchronous source adapters.
+//! Packaging and C table emission for typed source adapters.
 use super::*;
 use crate::{manifest::Manifest, rust_host::static_adapter};
 
@@ -14,10 +14,16 @@ pub(super) fn table(manifest: &Manifest, emitter: &mut Emitter) {
         let symbol = static_adapter::symbol(index);
         writeln!(emitter.frame_types, "declare void @{symbol}(ptr, ptr, i64)").unwrap();
         let (name, len) = emitter.text(&primitive.name);
-        operations.push(format!("%adapter_operation {{ ptr {name}, i64 {len}, %adapter_descriptor {{ i32 1, i32 0, ptr @{symbol} }} }}"));
+        let flags = u32::from(primitive.asynchronous);
+        operations.push(format!("%adapter_operation {{ ptr {name}, i64 {len}, %adapter_descriptor {{ i32 1, i32 {flags}, ptr @{symbol} }} }}"));
     }
     let count = operations.len();
-    writeln!(emitter.globals, "@adapter_operations = private constant [{count} x %adapter_operation] [{}]\n@adapter_table = private constant %adapter_table {{ i32 1, i32 0, ptr @adapter_operations, i64 {count} }}", operations.join(", ")).unwrap();
+    let version = if crate::rust_host::has_polled_adapters(manifest) {
+        2
+    } else {
+        1
+    };
+    writeln!(emitter.globals, "@adapter_operations = private constant [{count} x %adapter_operation] [{}]\n@adapter_table = private constant %adapter_table {{ i32 {version}, i32 0, ptr @adapter_operations, i64 {count} }}", operations.join(", ")).unwrap();
 }
 
 pub(super) fn library(manifest: &Manifest, target: &Path, opt: u8) -> Result<PathBuf> {

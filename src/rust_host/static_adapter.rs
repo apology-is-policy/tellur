@@ -16,13 +16,9 @@ pub(crate) fn validate_profile(manifest: &Manifest) -> Result<()> {
         .iter()
         .filter(|p| p.rust.is_some())
         .any(|p| {
-            p.asynchronous
-                || p.pure
+            p.pure
                 || !p.returns
-                || !matches!(
-                    p.rust.as_ref().unwrap().execution,
-                    Execution::Immediate | Execution::Blocking
-                )
+                || p.asynchronous != matches!(p.rust.as_ref().unwrap().execution, Execution::Poll)
                 || p.parameters.iter().any(|p| !supported(&p.ty))
                 || p.outcomes
                     .iter()
@@ -31,7 +27,7 @@ pub(crate) fn validate_profile(manifest: &Manifest) -> Result<()> {
         })
     {
         return Err(error(
-            "LLVM Rust adapters currently require synchronous data/resource bindings; polled operations are not yet supported",
+            "LLVM Rust adapters require returning data/resource bindings with matching execution modes",
         ));
     }
     Ok(())
@@ -75,6 +71,50 @@ unsafe fn fail(c:*mut c_void,message:&str) {
 }
 "#;
 
+const POLLED_ABI: &str = r#"
+type OperationPoll = unsafe extern "C" fn(*mut c_void, *mut c_void, *const u64, usize);
+#[repr(C)]
+struct OperationDescriptor {
+    version: u32, flags: u32, state: *mut c_void,
+    poll: Option<OperationPoll>, drop: Option<unsafe extern "C" fn(*mut c_void)>,
+}
+#[repr(C)]
+struct WaitDescriptor {
+    version: u32, flags: u32, seconds: u64, nanoseconds: u32, descriptor: i32,
+}
+unsafe extern "C" {
+    fn tellur_adapter_v1_operation_publish(c: *mut c_void, operation: *mut OperationDescriptor);
+    fn tellur_adapter_v1_pending(c: *mut c_void, wait: *const WaitDescriptor);
+}
+unsafe fn publish_operation<T: 'static>(c: *mut c_void, operation: T, poll: OperationPoll) -> AdapterResult<()> {
+    // T holds the boxed trait object. Only the thin outer allocation crosses the ABI.
+    let mut descriptor = OperationDescriptor {
+        version: 1, flags: 0, state: Box::into_raw(Box::new(operation)).cast(),
+        poll: Some(poll), drop: Some(drop_resource::<T>),
+    };
+    unsafe {
+        tellur_adapter_v1_operation_publish(c, &mut descriptor);
+        if !descriptor.state.is_null() { drop_resource::<T>(descriptor.state); }
+        check(c, ())
+    }
+}
+unsafe fn pending(c: *mut c_void, wait: rust_api::Wait) -> AdapterResult<()> {
+    let delay = wait.retry_after.unwrap_or_default();
+    let descriptor = WaitDescriptor {
+        version: 1,
+        flags: u32::from(wait.retry_after.is_some()) | (u32::from(wait.readable.is_some()) << 1)
+            | (u32::from(wait.writable.is_some()) << 2),
+        seconds: delay.as_secs(), nanoseconds: delay.subsec_nanos(),
+        descriptor: wait.readable.or(wait.writable).unwrap_or(0),
+    };
+    unsafe { tellur_adapter_v1_pending(c, &descriptor); check(c, ()) }
+}
+"#;
+
+fn shared_resource(code: &mut String, name: &str, ty: &str, parameter: usize, handle: usize) {
+    writeln!(code,"let ty={name:?};let ptr=tellur_adapter_v1_resource_borrow(c,args[{handle}],ty.as_ptr(),ty.len());check(c,())?;let p{parameter}=&*ptr.cast::<{ty}>();").unwrap();
+}
+
 pub(crate) fn source(manifest: &Manifest) -> Result<String> {
     validate_profile(manifest)?;
     let config = manifest
@@ -100,35 +140,11 @@ pub(crate) fn source(manifest: &Manifest) -> Result<String> {
     let host = read(&config.source, "")?;
     let mut code = String::from("#![allow(unused, non_camel_case_types)]\n");
     code.push_str(ABI);
-    code.push_str("pub mod rust_api {\n");
-    let mut all = BTreeSet::new();
-    for p in manifest.primitives.iter().filter(|p| p.rust.is_some()) {
-        writeln!(code, "pub enum {}_outcome {{", p.name).unwrap();
-        for o in &p.outcomes {
-            if o.fields.is_empty() {
-                writeln!(code, "r#{},", o.name).unwrap();
-            } else {
-                writeln!(
-                    code,
-                    "r#{}({}),",
-                    o.name,
-                    o.fields
-                        .iter()
-                        .map(|f| rust_type(&f.ty, &config.resources))
-                        .collect::<Vec<_>>()
-                        .join(",")
-                )
-                .unwrap();
-            }
-            for f in &o.fields {
-                collect_type(&f.ty, &mut all);
-            }
-        }
-        code.push_str("}\n");
-        for f in &p.parameters {
-            collect_type(&f.ty, &mut all);
-        }
+    if has_polled_adapters(manifest) {
+        code.push_str(POLLED_ABI);
     }
+    code.push_str("pub mod rust_api {\n");
+    let all = adapter_api(manifest, &config.resources, &mut code);
     code.push_str("}\nmod rust_host {\n");
     code.push_str(&host);
     for (name, path) in &config.modules {
@@ -239,7 +255,7 @@ pub(crate) fn source(manifest: &Manifest) -> Result<String> {
         for (i, f) in p.parameters.iter().enumerate() {
             if config.resources.contains_key(&f.ty) && f.mode == Mode::Borrow {
                 let ty = rust_type(&f.ty, &config.resources);
-                writeln!(code,"let ty={:?};let ptr=tellur_adapter_v1_resource_borrow(c,args[{i}],ty.as_ptr(),ty.len());check(c,())?;let p{i}=&*ptr.cast::<{ty}>();",f.ty).unwrap();
+                shared_resource(&mut code, &f.ty, &ty, i, i);
             }
         }
         let types = p
@@ -278,7 +294,35 @@ pub(crate) fn source(manifest: &Manifest) -> Result<String> {
             })
             .collect::<Vec<_>>()
             .join(",");
-        writeln!(code,"check(c,())?;let call:fn({types})->rust_api::{}_outcome=rust_host::r#{};match call({args}){{",p.name,p.name).unwrap();
+        if p.asynchronous {
+            let operation = format!("Box<dyn rust_api::{}_operation>", p.name);
+            writeln!(code, "let start:fn({types})->{operation}=rust_host::r#{};publish_operation(c,start({args}),poll_{index})}}}}", p.name).unwrap();
+            writeln!(code, "unsafe extern \"C\" fn poll_{index}(state:*mut c_void,c:*mut c_void,args:*const u64,count:usize){{let _=unsafe{{progress_{index}(state,c,args,count)}};}}").unwrap();
+            let shared = p
+                .parameters
+                .iter()
+                .enumerate()
+                .filter(|(_, f)| f.mode == Mode::Borrow)
+                .collect::<Vec<_>>();
+            writeln!(code, "unsafe fn progress_{index}(state:*mut c_void,c:*mut c_void,args:*const u64,count:usize)->AdapterResult<()>{{unsafe{{if count!={} {{fail(c,\"poll argument arity mismatch\");return Err(());}}let args=if count==0{{&[]}}else{{std::slice::from_raw_parts(args,count)}};",shared.len()).unwrap();
+            for (handle, (i, f)) in shared.iter().enumerate() {
+                shared_resource(
+                    &mut code,
+                    &f.ty,
+                    &rust_type(&f.ty, &config.resources),
+                    *i,
+                    handle,
+                );
+            }
+            let args = shared
+                .iter()
+                .map(|(i, _)| format!("p{i}"))
+                .collect::<Vec<_>>()
+                .join(",");
+            writeln!(code,"let operation=&mut *state.cast::<{operation}>();let outcome=match operation.poll({args}){{rust_api::Poll::Pending(wait)=>return pending(c,wait),rust_api::Poll::Ready(outcome)=>outcome}};match outcome{{").unwrap();
+        } else {
+            writeln!(code,"check(c,())?;let call:fn({types})->rust_api::{}_outcome=rust_host::r#{};match call({args}){{",p.name,p.name).unwrap();
+        }
         for o in &p.outcomes {
             let pattern = if o.fields.is_empty() {
                 String::new()

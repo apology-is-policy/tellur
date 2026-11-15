@@ -4273,6 +4273,12 @@ unsafe fn launch_program(
 ) -> R<u8> {
     unsafe { launch_program_with_adapters(data, len, callbacks, count, None) }
 }
+// The packaged runtime supplies the factory for its target. In-process ABI
+// tests install their own Host backend when exercising descriptor readiness.
+#[cfg(test)]
+fn rust_readiness() -> R<Option<Box<dyn ReadinessBackend>>> {
+    Ok(None)
+}
 unsafe fn launch_program_with_adapters(
     data: *const u8,
     len: usize,
@@ -4316,7 +4322,7 @@ unsafe fn launch_program_with_adapters(
         &entries,
         None,
         None,
-        || Ok(None),
+        rust_readiness,
         &info.sites,
         |entry, host, args| {
             if let Some(adapters) = &adapters {

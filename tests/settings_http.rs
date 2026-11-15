@@ -1116,7 +1116,11 @@ fn native_http_slow_client_does_not_delay_a_fast_client() {
     let f = Fixture::new();
     let binary = f.0.join("concurrent");
     p.build_native("serve", &binary, 0).unwrap();
-    let server = Server::start(&binary, &f.0.join("settings.json"), 2, 3000);
+    check_concurrent_clients(&binary, &f);
+}
+
+fn check_concurrent_clients(binary: &Path, f: &Fixture) {
+    let server = Server::start(binary, &f.0.join("settings.json"), 2, 3000);
     let full = request(&server.authority, "GET", "/settings", "", "");
     // The slow client is accepted first and stalls in the middle of its headers.
     let mut slow = TcpStream::connect(&server.authority).unwrap();
@@ -1156,7 +1160,11 @@ fn native_http_launch_signal_replies_503_to_waiting_members_and_stops() {
     let f = Fixture::new();
     let binary = f.0.join("stopping");
     p.build_native("serve", &binary, 0).unwrap();
-    let server = Server::start(&binary, &f.0.join("settings.json"), 8, 30000);
+    check_graceful_shutdown(&binary, &f);
+}
+
+fn check_graceful_shutdown(binary: &Path, f: &Fixture) {
+    let server = Server::start(binary, &f.0.join("settings.json"), 8, 30000);
     // A served request first, then a member that waits for a request that never comes.
     let full = request(&server.authority, "GET", "/settings", "", "");
     assert_eq!(
@@ -1252,4 +1260,15 @@ fn scripted_launch_signal_stops_the_service_and_replies_503() {
         .unwrap_or_else(|_| panic!("{}", String::from_utf8_lossy(&output.stderr)));
     assert_eq!(actual, result);
     assert_eq!(output.status.code(), Some(0));
+}
+
+#[cfg(all(feature = "llvm", target_os = "macos", target_arch = "aarch64"))]
+#[test]
+fn llvm_http_serves_a_second_client_and_shuts_down_pending_members() {
+    let p = program();
+    let f = Fixture::new();
+    let binary = f.0.join("llvm-serve");
+    p.build_llvm("serve", &binary, 2).unwrap();
+    check_concurrent_clients(&binary, &f);
+    check_graceful_shutdown(&binary, &f);
 }

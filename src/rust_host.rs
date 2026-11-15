@@ -207,28 +207,11 @@ fn collect_type(t: &str, all: &mut BTreeSet<String>) {
         }
     }
 }
-/// Generate Rust enums and exact function-pointer checks from the same manifest
-/// that checks Tellur callers. No arbitrary dynamic wire-value API reaches wrappers.
-pub(crate) fn source(manifest: &Manifest) -> Result<String> {
-    let Some(config) = &manifest.rust else {
-        return Ok("fn rust_dispatch(_: &mut Resources, _: &str, _: Vec<V>) -> R<Outcome> { Err(\"E_HOST: no Rust adapter\".into()) }\nfn rust_start(_: &mut Resources, _: &str, _: Vec<V>) -> R<Box<dyn HostPoll>> { Err(\"E_HOST: no Rust adapter\".into()) }\n".to_string() + NO_READINESS);
-    };
-    if !config.source.is_absolute()
-        || !config.lockfile.is_absolute()
-        || config.modules.values().any(|path| !path.is_absolute())
-    {
-        return Err(error(
-            "native adapter paths are unresolved; load the manifest with Manifest::from_json_at",
-        ));
-    }
-    let source = std::fs::read_to_string(&config.source).map_err(|e| {
-        error(format!(
-            "cannot read Rust adapter {}: {e}",
-            config.source.display()
-        ))
-    })?;
-    let mut code = String::from("#[allow(non_camel_case_types)]\npub mod rust_api {\n");
-    let resources = &config.resources;
+fn adapter_api(
+    manifest: &Manifest,
+    resources: &BTreeMap<String, String>,
+    code: &mut String,
+) -> BTreeSet<String> {
     let mut all = BTreeSet::new();
     for p in manifest.primitives.iter().filter(|p| p.rust.is_some()) {
         writeln!(code, "pub enum {}_outcome {{", p.name).unwrap();
@@ -272,13 +255,34 @@ pub(crate) fn source(manifest: &Manifest) -> Result<String> {
             .unwrap();
         }
     }
-    if manifest
-        .primitives
-        .iter()
-        .any(|p| p.asynchronous && p.rust.is_some())
-    {
+    if has_polled_adapters(manifest) {
         code.push_str(POLL_API);
     }
+    all
+}
+/// Generate Rust enums and exact function-pointer checks from the same manifest
+/// that checks Tellur callers. No arbitrary dynamic wire-value API reaches wrappers.
+pub(crate) fn source(manifest: &Manifest) -> Result<String> {
+    let Some(config) = &manifest.rust else {
+        return Ok("fn rust_dispatch(_: &mut Resources, _: &str, _: Vec<V>) -> R<Outcome> { Err(\"E_HOST: no Rust adapter\".into()) }\nfn rust_start(_: &mut Resources, _: &str, _: Vec<V>) -> R<Box<dyn HostPoll>> { Err(\"E_HOST: no Rust adapter\".into()) }\n".to_string() + NO_READINESS);
+    };
+    if !config.source.is_absolute()
+        || !config.lockfile.is_absolute()
+        || config.modules.values().any(|path| !path.is_absolute())
+    {
+        return Err(error(
+            "native adapter paths are unresolved; load the manifest with Manifest::from_json_at",
+        ));
+    }
+    let source = std::fs::read_to_string(&config.source).map_err(|e| {
+        error(format!(
+            "cannot read Rust adapter {}: {e}",
+            config.source.display()
+        ))
+    })?;
+    let mut code = String::from("#[allow(non_camel_case_types)]\npub mod rust_api {\n");
+    let resources = &config.resources;
+    let mut all = adapter_api(manifest, resources, &mut code);
     code.push_str("}\nmod rust_host {\n");
     code.push_str(&source);
     for (name, path) in &config.modules {
@@ -468,17 +472,20 @@ pub(crate) fn source(manifest: &Manifest) -> Result<String> {
     }
     code.push_str("_=>Err(format!(\"E_HOST: unbound Rust operation {name}\")),}}\n");
     start_source(manifest, resources, &ids, &mut code);
-    if manifest
+    code.push_str(readiness_source(has_polled_adapters(manifest)));
+    Ok(code)
+}
+pub(crate) fn has_polled_adapters(manifest: &Manifest) -> bool {
+    manifest
         .primitives
         .iter()
         .any(|p| p.asynchronous && p.rust.is_some())
-    {
-        code.push_str(MIO_READINESS);
-    } else {
-        code.push_str(NO_READINESS);
-    }
-    Ok(code)
 }
+pub(crate) fn readiness_source(polled: bool) -> &'static str {
+    if polled { MIO_READINESS } else { NO_READINESS }
+}
+pub(crate) const MIO_DEPENDENCY: &str =
+    "tellur_mio = { package = \"mio\", version = \"1\", features = [\"os-poll\", \"os-ext\"] }\n";
 /// Readiness vocabulary shared by every polled async host operation.
 const POLL_API: &str = r#"/// One poll of a started async host operation.
 pub enum Poll<T> { Ready(T), Pending(Wait) }
@@ -707,14 +714,8 @@ fn start_source(
 }
 pub(crate) fn cargo(manifest: &Manifest, template: &str) -> String {
     let mut dependencies = String::new();
-    if manifest
-        .primitives
-        .iter()
-        .any(|p| p.asynchronous && p.rust.is_some())
-    {
-        dependencies.push_str(
-            "tellur_mio = { package = \"mio\", version = \"1\", features = [\"os-poll\", \"os-ext\"] }\n",
-        );
+    if has_polled_adapters(manifest) {
+        dependencies.push_str(MIO_DEPENDENCY);
     }
     if let Some(config) = &manifest.rust {
         for (name, d) in &config.dependencies {

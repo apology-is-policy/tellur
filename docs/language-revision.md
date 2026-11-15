@@ -2013,3 +2013,18 @@ the descriptor before destroying the operation. Cancellation publishes no host e
 
 Typed Rust source generation for polled adapters and live OS readiness are next.
 The public LLVM adapter profile still ends at synchronous retained resources.
+
+## B1.5f — typed polled Rust adapters and live readiness (0.276)
+
+The opt-in LLVM backend on macOS arm64 builds manifest Rust operations with
+`"execution": "poll"` into the adapter archive. Both backends generate the same
+typed operation trait. The adapter owns the boxed operation, and the runtime
+receives its opaque state pointer and two callbacks to poll and destroy it.
+Every poll gets fresh shared handles in parameter order. The synchronous result
+codec also transfers owned results from a ready poll.
+
+The compiler selects the locked Mio-enabled runtime for polled manifests. Timers,
+readable and writable descriptors, and descriptor-or-deadline waits use the
+existing host scheduler. Completion and cancellation deregister a pending wait
+before dropping the state. The default backend is Rust while application and
+whole-suite parity work continues.

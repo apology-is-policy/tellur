@@ -5,7 +5,7 @@ uses `.tellur` sources, `tellurc`, `tellur-lsp`, and `tellur.code-workspace`. Ex
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.275.0** implements the v0.1 checked core and the current language
+Compiler release **0.276.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -17,6 +17,12 @@ VS Code build/run commands. The [revision plan](docs/language-revision.md) separ
 delivered features from the remaining reference, slice, outcome-expression and async work. The language is still
 fluid; this is an experimental implementation, not a production compiler.
 
+Release 0.276 supports typed polled Rust adapters on the opt-in LLVM backend for
+macOS arm64. A compiled settings server can serve a fast client while another
+connection waits for input, then cancel pending requests on shutdown. See the
+[settings service](applications/settings/README.md#running-the-settings-server-with-llvm).
+Rust remains the default during application and full-suite parity work.
+
 Release 0.222 added dynamic task sets. `tasks<producer>` holds any number of
 spawned children of one async control. `spawn producer(..) into set;` adds a member,
 `delta await next set { ..., empty => ... }` joins members in completion order, and
@@ -26,14 +32,14 @@ Release 0.274 adds retained Rust resources to the opt-in LLVM backend. Synchrono
 adapters preserve stable shared borrows, consuming transfers, selected resource
 results and cleanup through the original host scopes. The
 [retained file example](examples/retained_file/README.md) runs on both backends.
-Polled Rust adapters still require the default Rust backend.
+Polled Rust adapters joined the LLVM profile in 0.276.
 
 Release 0.273 admits synchronous Rust source adapters on the opt-in LLVM backend.
 Typed adapter archives communicate with the precompiled runtime through the private
 C value protocol. Explicit modules, dependency locks, borrowed data and nested
 collections retain their existing contracts. Try the
 [text summary example](examples/text_summary/README.md). Synchronous resources
-join this profile in 0.274; polled adapters still require the default Rust backend.
+joined this profile in 0.274, followed by polled adapters in 0.276.
 
 Release 0.272 adds private per-launch registration for synchronous foreign
 adapters. Complete immutable callback tables attach to the original host, with

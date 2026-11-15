@@ -353,26 +353,20 @@ fn dependencies_keep_explicit_locking_across_repeated_builds() {
 }
 
 #[test]
-fn polled_profiles_remain_rejected_before_any_output() {
+fn polled_start_requires_the_typed_operation_even_for_unused_bindings() {
     let f = Fixture::new();
-    for mode in [0, 1] {
-        let mut m = config();
-        if mode == 0 {
-            m["types"] = json!([{"name":"resource","kind":"opaque","linear":true}]);
-            m["rust"]["resources"] = json!({"resource":"Resource"});
-        }
-        m["primitives"][0]["async"] = json!(true);
-        m["primitives"][0]["parameters"][0]["mode"] = json!("consume");
-        m["primitives"][0]["rust"]["execution"] = json!("poll");
-        let p = f.program("control main() exits done {exit done;}", &m);
-        let path = f.root.join(format!("gated-{mode}"));
-        let error = p.build_llvm("main", &path, 0).unwrap_err();
-        assert_eq!(error.code, "E_BACKEND");
-        assert!(error.message.contains("polled operations"));
-        assert!(!path.exists());
-        assert!(!PathBuf::from(format!("{}.tellur-build", path.display())).exists());
-        assert!(!PathBuf::from(format!("{}.ll", path.display())).exists());
-    }
+    let mut m = config();
+    m["primitives"][0]["async"] = json!(true);
+    m["primitives"][0]["parameters"][0]["mode"] = json!("consume");
+    m["primitives"][0]["rust"]["execution"] = json!("poll");
+    fs::write(f.root.join("host.rs"), "pub fn inspect(value:String)->crate::rust_api::inspect_outcome {crate::rust_api::inspect_outcome::ready(value)}").unwrap();
+    let p = f.program("control main() exits done {exit done;}", &m);
+    p.lock_native("main", &f.root.join("locked")).unwrap();
+    let binary = f.root.join("wrong-start");
+    let error = p.build_llvm("main", &binary, 0).unwrap_err();
+    assert_eq!(error.code, "E_BACKEND");
+    assert!(error.message.contains("mismatched types"), "{error}");
+    assert!(!binary.exists());
 }
 
 #[test]

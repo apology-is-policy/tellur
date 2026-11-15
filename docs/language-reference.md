@@ -1,8 +1,8 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.275.0 -->
+<!-- tellur-reference-version: 0.276.0 -->
 
-This manual describes **compiler 0.275.0**, including the current ownership model,
+This manual describes **compiler 0.276.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -2980,7 +2980,7 @@ General expression-type hover remains unsupported.
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and broader spawn payloads (anonymous contracts and reference-bearing collections) remain planned; they are not executable features of 0.275.0.
+and broader spawn payloads (anonymous contracts and reference-bearing collections) remain planned; they are not executable features of 0.276.0.
 ## Contingency and supervised boundaries
 
 The [contingency reference](reference/contingency.md) specifies `@contingent`,
@@ -3093,9 +3093,14 @@ Compiler 0.273 admits [typed synchronous Rust adapters](reference/llvm-backend.m
 on the opt-in LLVM backend. Scalar/string/bytes/vector/map values cross a private
 C protocol; explicit modules, exact signatures and locked dependencies are preserved.
 Synchronous retained resources join this profile in 0.274; polled operations
-still require the default Rust backend.
+joined the LLVM profile in 0.276.
 
 Compiler 0.274 admits [synchronous Rust resource adapters](reference/llvm-backend.md#synchronous-resource-adapters-0274)
 on the opt-in LLVM backend. Stable shared views, owned transfer, selected resource
 results and existing Host scope/teardown rules are preserved. Polled operations
-remain gated and Rust remains the default.
+joined the LLVM profile in 0.276. Rust remains the default.
+
+Compiler 0.276 supports [typed polled Rust adapters](reference/llvm-backend.md#typed-polled-rust-adapters-0276)
+with timer and descriptor readiness on macOS arm64. Starts can own consumed
+resources. Each poll reborrows shared resources and can return an owned resource.
+Application and full-suite parity precede a default backend switch.

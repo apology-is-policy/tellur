@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.275.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.276.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -426,9 +426,14 @@ Compiler 0.273 admits [typed synchronous Rust adapters](llvm-backend.md#typed-sy
 on the opt-in LLVM backend. Scalar/string/bytes/vector/map values cross a private
 C protocol; explicit modules, exact signatures and locked dependencies are preserved.
 Synchronous retained resources join this profile in 0.274; polled operations
-still require the default Rust backend.
+joined the LLVM profile in 0.276.
 
 Compiler 0.274 admits [synchronous Rust resource adapters](llvm-backend.md#synchronous-resource-adapters-0274)
 on the opt-in LLVM backend. Stable shared views, owned transfer, selected resource
 results and existing Host scope/teardown rules are preserved. Polled operations
-remain gated and Rust remains the default.
+joined the LLVM profile in 0.276. Rust remains the default.
+
+Compiler 0.276 supports [typed polled Rust adapters](llvm-backend.md#typed-polled-rust-adapters-0276)
+with timer and descriptor readiness on macOS arm64. Starts can own consumed
+resources. Each poll reborrows shared resources and can return an owned resource.
+Application and full-suite parity precede a default backend switch.
