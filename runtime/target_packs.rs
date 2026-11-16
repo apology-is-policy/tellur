@@ -34,9 +34,9 @@ pub fn build() {
         prepare(&out, DARWIN, None, &mut descriptors);
     }
     let host_cpu = env::var("CARGO_CFG_TARGET_ARCH").unwrap();
+    let host_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
     for triple in LINUX {
-        let native = env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("linux")
-            && triple.split('-').next() == Some(host_cpu.as_str());
+        let native = host_os == "linux" && triple.split('-').next() == Some(host_cpu.as_str());
         if native {
             println!("cargo:rustc-cfg=tellur_native_llvm");
         }
@@ -54,8 +54,9 @@ pub fn build() {
             prepare(&out, triple, Some(&sysroot), &mut descriptors);
         }
     }
-    if cfg!(feature = "windows-gnu-pack") {
-        if env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") && host_cpu == "x86_64" {
+    let native_windows = host_os == "windows" && host_cpu == "x86_64";
+    if native_windows || cfg!(feature = "windows-gnu-pack") {
+        if native_windows {
             println!("cargo:rustc-cfg=tellur_native_llvm");
         }
         println!("cargo:rerun-if-env-changed=TELLUR_WINDOWS_SYSROOT");
@@ -66,7 +67,11 @@ pub fn build() {
         );
         prepare(&out, WINDOWS, Some(&root), &mut descriptors);
     }
-    if cfg!(feature = "thylacine-pack") {
+    let native_thylacine = host_os == "thylacine" && host_cpu == "aarch64";
+    if native_thylacine || cfg!(feature = "thylacine-pack") {
+        if native_thylacine {
+            println!("cargo:rustc-cfg=tellur_native_llvm");
+        }
         println!("cargo:rerun-if-env-changed=TELLUR_THYLACINE_PACK");
         let pack = PathBuf::from(env::var_os("TELLUR_THYLACINE_PACK").expect(
             "set TELLUR_THYLACINE_PACK to the prepared Thylacine runtime and pouch link inputs",

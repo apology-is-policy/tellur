@@ -25,9 +25,9 @@ See [owned spawned children](async-execution.md#owned-spawned-children).
 The distributed compiler embeds static musl packs for Linux x86_64 and arm64.
 Select either Rust target triple with `tellur build --target`.
 
-The macOS arm64, Linux x86_64 and Linux arm64 distributions use
-[direct LLVM emission](llvm-backend.md) by default. Select generated Rust with `--backend rust`. Source builds without LLVM
-and builds on other hosts use Rust by default. The two backends share the checker
+The macOS arm64, Linux x86_64, Linux arm64 and Windows x64 distributions use
+[direct LLVM emission](llvm-backend.md) by default. Select generated Rust with `--backend rust`. Source builds enable LLVM by default and select it when they embed a pack for the compiler host.
+Use `cargo build --no-default-features` for a Rust-only bootstrap. The two backends share the checker
 and runtime semantics. See the [conformance evidence](../conformance.md).
 
 For a project with Rust adapters, `pack-adapter` prepares the native archive

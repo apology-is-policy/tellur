@@ -1,5 +1,43 @@
 # Tellur language revision: controls, values, outcomes, and tasks
 
+## Active checkpoint queue
+
+### Language roadmap review, 16 November 2026
+
+The [original vision and success criteria](path-language-vision.md#18-prototype-plan-and-success-criteria)
+ask whether adding an outcome exposes the callers that need a decision, and whether
+expanding a control preserves the origin of each alternative. The reference interpreter,
+structural checker, graph expander and native compiler are all available. LLVM is
+the default for native builds on the four released hosts. The Thylacine port remains
+in development. Scheduled backend checks are paused.
+
+| Original milestone | Available today | Open work |
+| --- | --- | --- |
+| 1. Executable syntax | Named paths, selectors, explicit exits and reusable controls. The [file loader](../examples/load.tellur), [port parser](../examples/port.tellur) and [retry example](../examples/fetch_retry.tellur) exercise the original cases. | Measure how readily a reader can identify the source of a new outcome and its consequence in a caller. |
+| 2. Values and references | Moves, shared and exclusive borrows, checked resource completion and declared result origins across calls. | Abstract origin-shape bounds for generic and associated types. |
+| 3. Collections | Arrays, vectors, maps, borrowed lookup and explicit missing-key and bounds outcomes. | Borrowed slices, iterators and public origins for reference-bearing collection elements. |
+| 4. Outcomes and transformations | Capture and forward named outcomes, route alternatives, certify graph expansion and extract checked control tails. | General expression-position adapters, extraction across arbitrary graph cuts and a checked correspondence between original and extracted paths. |
+| 5. Async semantics | Scoped tasks, cooperative handoff, cancellation, completion-order joins and polled host I/O. The settings server exercises these together. | Task-set members currently require reference-free captures and results. |
+| 6. Native async lowering | The coroutine experiment informed the production choice of frontend state machines. A direct await embeds its child frame by value. A spawned task uses arena storage. | Thylacine live HTTP and distributable toolchain qualification remain platform work. |
+
+**A check against the original goal.** In temporary copies of the JSON library and
+two clients, we gave `json_file.load` a distinct `empty_file` outcome for empty
+input. The settings service reported a missing adapter arm at its call. The
+standalone JSON client reported an uncovered path at its call. Both diagnostics
+named `empty_file` and pointed back to the branch that produced it. One new arm
+in each caller restored checking across all 43 settings controls and all four
+example controls. This was a review experiment. The published storage contract is unchanged.
+
+**Proposed next checkpoint.** Use that same API change to test the other half of
+the original promise. Run empty, missing and malformed files through each caller
+before and after expansion. Compare the selected exits, observable effects and
+the source of each failure. This gives us a concrete basis for deciding whether
+the next language investment should be outcome routing, diagnostics or extraction.
+
+[Current support and limits](reference/support-status.md) · [Checked expansion](expansion-certificates.md) · [Tail extraction](extraction.md)
+
+## Revision history
+
 The accepted [control-flow and ownership revision](control-flow-revision.md) is
 delivered through constructor destination delivery and compact native frames.
 CF5c now adds reference-bearing constructors with explicit result-origin contracts,
@@ -433,7 +471,7 @@ bindings, including reference modes, captures, stored adapters and generic bodie
 `exits auto` also exposes its checked signature on hover. This is an editor usability
 checkpoint; the remaining language-feature queue is unchanged.
 
-## Active checkpoint queue
+## Checkpoint history and inventory
 
 Updated after the 28 October design review and the user's clarification that
 `[path]:` is a first-class label, not a braced construct. The P checkpoints below
@@ -1202,7 +1240,9 @@ Do not infer correctness from a happy-path timer demo alone.
 
 ## Milestone 6 — LLVM coroutine lowering
 
-The current backend remains explicit Rust -> LLVM; it does not emit LLVM coroutine
+The original milestone proposed the following experiment. The production choice is recorded in the November review above.
+
+At the time, the backend used Rust -> LLVM and did not emit LLVM coroutine
 intrinsics directly. Build a focused native coroutine experiment against a pinned
 LLVM release, then lower the checked async representation while retaining the
 reference executor for differential testing.
@@ -2111,7 +2151,7 @@ with this pack can cross-compile a static executable for
 `aarch64-unknown-thylacine`. Inside the guest, the development compiler used
 embedded LLVM and LLD to build and run optimized Hello. The scalar example
 received its arguments and returned its authored exit status of 7 through
-`tellur exec`. Rust remains the default on Thylacine during qualification.
+`tellur exec`. That development build selected LLVM explicitly. Current source builds default to the native LLVM pack on Thylacine.
 [Pack preparation and guest checks](reference/llvm-backend.md#thylacine-runtime-qualification)
 
 The settings application's Rust adapter can now be packed with the Thylacine

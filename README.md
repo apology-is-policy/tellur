@@ -1,5 +1,7 @@
 # Tellur compiler and playground
 
+[Current language roadmap and next proposed checkpoint](docs/language-revision.md#active-checkpoint-queue)
+
 The language is now named **Tellur** (formerly the Path placeholder). Release 0.36
 introduced `.tellur` sources and `tellur.code-workspace`. The `tellur` executable
 provides the compiler and the stdio language server (`tellur lsp`). Existing
@@ -891,7 +893,14 @@ Hello with embedded LLVM. Pass `--backend rust` to use generated Rust.
 
 ## Build from a fresh clone
 
-Install Rust/Cargo, then run:
+For the same native backend as the release packages, install Rust/Cargo and the
+pinned static LLVM/LLD 22.1.8 toolchain. Set `LLVM_SYS_221_PREFIX` to its install
+directory. Apple Silicon builds use the macOS SDK. Linux builds need the matching
+musl Rust target. Windows x64 builds need the prepared GNU sysroot and import
+tools used by the [Windows build](.github/workflows/windows-host.yml).
+
+For a Rust-only bootstrap, add `--no-default-features` to the Cargo build below.
+To use a prebuilt compiler, download the release package for your host.
 
 ```sh
 git clone https://github.com/apology-is-policy/tellur.git
@@ -982,7 +991,7 @@ Tests include native compilation, so Cargo/Rust must be available. Set
 it lives in `.tellur-cache` beside output binaries. `--offline` can be used for Cargo
 commands once dependencies are cached. Compilation artifacts are ignored by Git.
 
-The optional `llvm` feature embeds LLVM and LLD. It needs a static LLVM 22.1.8 install
+The default `llvm` feature embeds LLVM and LLD. It needs a static LLVM 22.1.8 install
 that includes LLD (built with `-DLLVM_ENABLE_PROJECTS=lld`, static libraries):
 
 ```sh

@@ -30,7 +30,9 @@ Compiler 0.274 adds directly bound synchronous retained Rust resources.
 On Apple Silicon macOS (since 0.277), Linux x86_64 and arm64 (since 0.282),
 and Windows x64 with the embedded GNU pack (since 0.283),
 LLVM-enabled compilers select direct emission when `build` or `exec` omits `--backend`. Use `--backend rust` to generate Rust
-instead. Other builds default to Rust. Both backends use the same checked program.
+instead. Cargo enables LLVM by default and embeds the native pack on these hosts
+and on the Thylacine development target. A compiler without a native pack selects Rust.
+Use `--no-default-features` when building a Rust-only compiler. Both backends use the same checked program.
 
 ```sh
 ./bin/tellurc build playground/llvm_scalars.tellur playground/manifest.json --backend llvm --out /tmp/tellur-scalars
@@ -1571,8 +1573,8 @@ tellur build playground/hello.tellur --target aarch64-unknown-thylacine --out he
 ```
 
 Transfer `hello` to the guest and run `./hello --json`. The target compiler
-accepts `--backend llvm` for a native build. Rust remains its default while
-platform qualification continues.
+built from current source selects its native LLVM pack by default. The Thylacine
+SDK, distribution and live HTTP qualification are still open.
 
 For a source adapter, select the same nightly and patched Rust sysroot used to
 prepare the runtime pack. Set `TELLUR_THYLACINE_TARGET_SPEC` to that SDK's

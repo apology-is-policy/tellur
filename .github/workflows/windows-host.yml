@@ -17,6 +17,7 @@ on:
       - tests/settings_http.rs
       - src/native.rs
       - src/rust_host.rs
+      - Cargo.toml
       - build.rs
       - runtime/target_packs.rs
       - src/native/llvm_target.rs
@@ -77,7 +78,7 @@ jobs:
           python ci/prepare-windows-crt.py $env:TELLUR_WINDOWS_SYSROOT
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $env:CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS = "-Ctarget-feature=+crt-static"
-          cargo build --target x86_64-pc-windows-msvc --release --locked --features windows-gnu-pack --bin tellur
+          cargo build --target x86_64-pc-windows-msvc --release --locked --bin tellur
       - uses: actions/setup-node@v4
         with:
           node-version: '22'

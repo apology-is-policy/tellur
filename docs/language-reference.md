@@ -11,7 +11,7 @@ describes the original profile.
 
 The Apple Silicon macOS, Linux x86_64, Linux arm64 and Windows x64 distributions emit LLVM IR directly by default. Both
 `build` and `exec` accept `--backend rust` to use generated Rust. Source builds
-without the LLVM feature default to Rust. The [direct LLVM backend](reference/llvm-backend.md)
+enable LLVM by default. A Rust-only bootstrap uses `cargo build --no-default-features`. The [direct LLVM backend](reference/llvm-backend.md)
 supports synchronous scalar and aggregate controls, nested calls, tagged values,
 borrowed decisions and typed primitive calls. Synchronous children share stable
 activation storage for borrowed parameters and results.
@@ -235,7 +235,7 @@ working directory (the workspace root when launched by the extension).
 ```
 
 The compiler discovers the nearest ancestor `manifest.json`, or accepts its path
-as the next argument. Entry defaults to `main`. The three native distributions build standalone executables with their embedded
+as the next argument. Entry defaults to `main`. The native distributions build standalone executables with their embedded
 toolchain. Compiling a Rust source adapter or using the explicit Rust backend
 requires Rust/Cargo. Pass a matching precompiled adapter with `--adapter-pack`
 to build the application without Rust/Cargo. Select `--target x86_64-unknown-linux-musl` or
