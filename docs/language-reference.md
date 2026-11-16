@@ -1,15 +1,15 @@
 # Tellur language reference
 
-<!-- tellur-reference-version: 0.282.0 -->
+<!-- tellur-reference-version: 0.283.0 -->
 
-This manual describes **compiler 0.282.0**, including the current ownership model,
+This manual describes **compiler 0.283.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Tellur
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
 says they are implemented. The [archived v0.1 reference](language-reference-v0.1.md)
 describes the original profile.
 
-The Apple Silicon macOS, Linux x86_64 and Linux arm64 distributions emit LLVM IR directly by default. Both
+The Apple Silicon macOS, Linux x86_64, Linux arm64 and Windows x64 distributions emit LLVM IR directly by default. Both
 `build` and `exec` accept `--backend rust` to use generated Rust. Source builds
 without the LLVM feature default to Rust. The [direct LLVM backend](reference/llvm-backend.md)
 supports synchronous scalar and aggregate controls, nested calls, tagged values,
@@ -2982,7 +2982,7 @@ General expression-type hover remains unsupported.
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and broader spawn payloads (anonymous contracts and reference-bearing collections) remain planned; they are not executable features of 0.282.0.
+and broader spawn payloads (anonymous contracts and reference-bearing collections) remain planned; they are not executable features of 0.283.0.
 ## Contingency and supervised boundaries
 
 The [contingency reference](reference/contingency.md) specifies `@contingent`,

@@ -27,7 +27,8 @@ Compiler 0.269 adds retained constructors whose children suspend.
 Compiler 0.270 adds opt-in launch signal policies.
 Compiler 0.273 adds synchronous scalar/collection Rust source adapters.
 Compiler 0.274 adds directly bound synchronous retained Rust resources.
-On Apple Silicon macOS (since 0.277) and Linux x86_64 and arm64 (since 0.282),
+On Apple Silicon macOS (since 0.277), Linux x86_64 and arm64 (since 0.282),
+and Windows x64 with the embedded GNU pack (since 0.283),
 LLVM-enabled compilers select direct emission when `build` or `exec` omits `--backend`. Use `--backend rust` to generate Rust
 instead. Other builds default to Rust. Both backends use the same checked program.
 
@@ -1456,7 +1457,7 @@ Adapters requiring additional SDK symbols can use the regular source build.
 ### Windows x64 linker qualification
 
 The [Windows COFF smoke workflow](../../.github/workflows/windows-coff.yml) checks
-the embedded LLVM and LLD drivers used for the upcoming Windows target. On macOS
+the embedded LLVM and LLD drivers used for the Windows x64 target. On macOS
 it emits an x64 COFF object, builds a KERNEL32 import library from a module
 definition, and links a console executable with the external tool search path
 empty. A Windows x64 runner downloads that executable and checks that it exits
@@ -1467,9 +1468,9 @@ output. Separate native tests exercise socket readiness and signal cancellation.
 The opt-in `windows-gnu-pack` Cargo feature embeds the x64 MinGW startup,
 CRT and unwind libraries, two Rust runtime archives, and import libraries
 generated from the four module definitions in `src/native/targets/x86_64-pc-windows-gnu`.
-The pack works both on a cross-compiling host and in the Windows x64 development
-CLI and VS Code extension. Rust is the Windows default while native parity
-testing continues. Pass `--backend llvm` to compile directly on Windows.
+The pack works both on a cross-compiling host and in the Windows x64 release
+CLI and VS Code extension. Both compile directly with LLVM by default. Pass
+`--backend rust` to select the generated-Rust backend.
 
 With this pack, compile Hello on the build host and run the resulting file
 on Windows x64:

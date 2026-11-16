@@ -46,11 +46,11 @@ def qualify(dist, directory):
     assert subprocess.check_output([compiler, "--version"], text=True).split()[1] == version
     checks["check_lsp"](compiler, version)
     hello = directory / "hello.exe"
-    subprocess.run([compiler, "build", "playground/hello.tellur", "--backend", "llvm", "--out", hello], check=True)
+    subprocess.run([compiler, "build", "playground/hello.tellur", "--out", hello], check=True)
     report = json.loads(subprocess.check_output([hello, "--json"], timeout=15))
     assert report["outcome"] == "done" and report["events"][0]["message"] == "Hello from Tellur!"
     service = directory / "settings.exe"
-    subprocess.run([compiler, "build", consumer, "--backend", "llvm", "--adapter-pack", adapter, "--out", service],
+    subprocess.run([compiler, "build", consumer, "--adapter-pack", adapter, "--out", service],
                    check=True)
     checks["check_settings"](service, directory, os.environ)
 

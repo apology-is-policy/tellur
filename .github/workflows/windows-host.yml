@@ -1,5 +1,6 @@
 name: Windows compiler and language server
 on:
+  workflow_call:
   workflow_dispatch:
   push:
     branches: [main]
@@ -82,8 +83,11 @@ jobs:
           node-version: '22'
       - name: Package the Windows CLI and VS Code extension
         shell: pwsh
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
           $version = (Get-Content editors/vscode/package.json -Raw | ConvertFrom-Json).version
+          if ($env:RELEASE_TAG -and $env:RELEASE_TAG -cne "v$version") { throw "Release tag does not match Windows package version $version" }
           $dist = "$env:GITHUB_WORKSPACE/dist"
           New-Item -ItemType Directory -Force $dist, editors/vscode/server | Out-Null
           Copy-Item target/x86_64-pc-windows-msvc/release/tellur.exe editors/vscode/server/tellur.exe

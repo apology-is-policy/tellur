@@ -2096,9 +2096,11 @@ The opt-in Windows GNU pack adds x64 COFF output to LLVM-enabled compiler
 builds. It links through embedded LLD with MinGW startup, OS import libraries
 and the plain or polled Tellur runtime. Native CI exercises Hello and the
 packed settings HTTP service with an empty tool search path. The Windows x64
-development CLI and VS Code extension use the same executable for compilation
-and stdio LSP. Rust remains the Windows default during native parity testing.
-[Windows package qualification](https://github.com/apology-is-policy/tellur/actions/runs/43756449235) ·
+CLI and VS Code extension use the same executable for compilation and stdio LSP.
+All 113 native integration targets passed, along with library, binary and documentation
+tests. Compiler 0.283 makes LLVM the default on packaged Windows x64. The
+release workflow qualifies all four platforms before publishing their eight assets.
+[Windows parity qualification](https://github.com/apology-is-policy/tellur/actions/runs/43791913439) ·
 [Windows target instructions](reference/llvm-backend.md#windows-x64-linker-qualification)
 
 ## Thylacine development pack

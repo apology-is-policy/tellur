@@ -6,7 +6,7 @@ provides the compiler and the stdio language server (`tellur lsp`). Existing
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.282.0** implements the v0.1 checked core and the current language
+Compiler release **0.283.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -23,7 +23,7 @@ The Apple Silicon distribution also builds static Linux executables. For example
 produces a program you can copy to x86_64 Linux. Use `aarch64-unknown-linux-musl`
 for arm64 Linux.
 
-The Apple Silicon macOS, Linux x86_64 and Linux arm64 distributions use direct
+The Apple Silicon macOS, Linux x86_64, Linux arm64 and Windows x64 distributions use direct
 LLVM emission by default. Run `tellur exec playground/hello.tellur` on any of
 these hosts to compile and run Hello with the embedded toolchain. Use `--backend rust` to select generated Rust.
 Compilers built without the LLVM feature continue to use Rust. Both backends
@@ -872,19 +872,22 @@ coroutine lowering open.
 ## Native release builds
 
 The [Native release workflow](.github/workflows/release.yml) builds Tellur and its
-VS Code extension on Apple Silicon macOS and on Ubuntu 24.04 x86_64 and arm64.
+VS Code extension on Apple Silicon macOS, Ubuntu 24.04 x86_64 and arm64, and Windows x64.
 Each job caches its pinned static LLVM/LLD 22.1.8 installation. The qualification
 step compares the compiler inside the VSIX with the standalone archive, starts
 the language server, then builds Hello and the settings HTTP server with an empty
 tool search path. Settings uses a locked, target-specific adapter pack. Both
 Linux runners also build and run the applications in an isolated Ubuntu container
-and run the compiler test suite. Integration targets that select a backend run
+before running the compiler test suite. The Windows job runs the suite natively. Integration targets that select a backend run
 once with LLVM and once with generated Rust. Each target uses the same test
 executable for both passes.
 
-Run the workflow manually to produce qualification artifacts. Publishing a
-GitHub Release with a tag matching the compiler version (such as `v0.282.0`)
-attaches all three CLI archives and VSIX packages after the matrix passes.
+Version 0.283 adds Windows x64 to the release. Each platform has a CLI archive
+and a VSIX containing the same compiler and language server. From a Windows
+checkout, run `tellur.exe exec playground/hello.tellur` to compile and run
+Hello with embedded LLVM. Pass `--backend rust` to use generated Rust.
+[Release packages](https://github.com/apology-is-policy/tellur/releases/tag/v0.283.0) ·
+[Windows parity results](https://github.com/apology-is-policy/tellur/actions/runs/43791913439)
 
 ## Build from a fresh clone
 
@@ -920,11 +923,10 @@ companion chapters cover [grammar](docs/reference/grammar.md),
 [diagnostics](docs/reference/diagnostics-and-limits.md),
 [terminology](docs/reference/glossary.md) and [feature status](docs/reference/support-status.md).
 Complete manual examples are checked with `cargo test --offline --test reference_manual`.
-The local `tellur-language-0.48.0-darwin-arm64.vsix` contains the compiler and language
-server for Apple Silicon macOS. It is installed on this machine; elsewhere use
-**Extensions: Install from VSIX…**. Native builds need Rust/Cargo; the current
-machine's toolchain and dependencies have been prepared. The resulting binaries
-run independently of the compiler and Rust installation.
+Choose the VSIX for your platform and install it with **Extensions: Install from
+VSIX…**. The bundled compiler also serves the editor over stdio. See the
+[editor instructions](editors/vscode/README.md) for package selection and native
+build commands.
 
 The playground uses **real** parsing, arithmetic, text and read-only file operations.
 The broader `examples/` directory also includes scripted network/retry cases and
