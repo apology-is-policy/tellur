@@ -3,6 +3,11 @@
 examples/**/*.tellur text eol=lf
 playground/**/*.tellur text eol=lf
 tests/fixtures/**/*.tellur text eol=lf
+applications/settings/server.tellur text eol=lf
+
+# Native model tests splice embedded Rust templates and fixture drivers.
+src/native/*.rs text eol=lf
+tests/fixtures/**/*.rs text eol=lf
 
 # A precompiled settings adapter identifies these inputs by their contents.
 applications/settings/host.rs text eol=lf

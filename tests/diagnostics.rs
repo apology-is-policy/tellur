@@ -818,9 +818,11 @@ fn manifest_io_and_usage_failures_also_produce_one_json_envelope() {
     f.write("manifest.json", "{");
     let e = f.report(&["check", "main.tellur", "--json"], false);
     assert_eq!(e["diagnostics"][0]["code"], "E_MANIFEST");
+    let reported = PathBuf::from(e["diagnostics"][0]["path"].as_str().unwrap());
+    assert!(reported.is_absolute());
     assert_eq!(
-        e["diagnostics"][0]["path"],
-        f.root.join("manifest.json").to_str().unwrap()
+        reported.canonicalize().unwrap(),
+        f.root.join("manifest.json")
     );
     fs::remove_file(f.root.join("manifest.json")).unwrap();
     assert_eq!(
