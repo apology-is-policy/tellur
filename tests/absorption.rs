@@ -409,8 +409,9 @@ fn settings_new_internal_failure_is_visible_without_changing_its_public_baseline
             "invalid => exit invalid_key",
             "invalid => exit invalid_key, blank => exit invalid_key",
         );
+    let source_path = fs::canonicalize(&path).unwrap();
     let after = modules::absorption_snapshot_with_loader(&path, manifest, |p| {
-        if p == path {
+        if p == source_path {
             Ok(changed.clone())
         } else {
             fs::read_to_string(p)
