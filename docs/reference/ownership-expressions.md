@@ -10,6 +10,8 @@ the keyword does not introduce a second kind of reference. Copy values, includin
 shared references, retain their Copy behavior. Exclusive references transfer their
 permission and make the old reference unavailable.
 
+An owning accumulator can carry a must-complete resource through multiple controls. The experimental vector fold passes its state to each reducer step by value. Its stop and failure exits transfer the returned state to the caller, who inherits any outstanding obligation. [Fold ownership contract](../collections-and-algorithms.md#fold-a-borrowed-vector-with-an-owned-accumulator)
+
 <!-- villanelle:check -->
 ```villanelle
 struct image {

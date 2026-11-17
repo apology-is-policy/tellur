@@ -1,0 +1,45 @@
+{
+  "entry": "main",
+  "arguments": [
+    {
+      "kind": "u32",
+      "value": 10
+    },
+    {
+      "kind": "u32",
+      "value": 0
+    }
+  ],
+  "calls": [
+    {
+      "operation": "checked_add",
+      "outcome": "sum",
+      "fields": [
+        {
+          "kind": "u32",
+          "value": 4
+        }
+      ]
+    },
+    {
+      "operation": "checked_add",
+      "outcome": "sum",
+      "fields": [
+        {
+          "kind": "u32",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "operation": "checked_add",
+      "outcome": "sum",
+      "fields": [
+        {
+          "kind": "u32",
+          "value": 11
+        }
+      ]
+    }
+  ]
+}

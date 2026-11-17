@@ -1,0 +1,55 @@
+import "reduction.vn" as reduction;
+struct log_rule {
+    u32 stop;
+}
+struct ledger {
+    handle token;
+    u32 last;
+}
+implement reduction.reducer for log_rule {
+    type item = u32;
+    type state = ledger;
+    type error = string;
+    control step(ref log_rule rule, ledger current, ref u32 value) exits
+            advanced { ledger updated },
+        stopped { ledger result },
+        failed { ledger partial, string reason }
+    {
+        delta (deref value == 0) {
+            true => exit failed { current, "offline" },
+            false => record
+        }
+        [record]: ledger next = ledger { token: current.token, last: deref value };
+            delta (deref value == rule.stop) {
+                true => exit stopped { next },
+                false => exit advanced { next }
+            }
+    }
+}
+control main(handle token, vector<u32> source) exits
+        finished { ledger result },
+    stopped { ledger result },
+    failed { ledger partial, string reason }
+{
+    log_rule rule = log_rule { stop: 10 };
+    ledger initial = ledger { token: token, last: 99 };
+    forward reduction.fold<log_rule>(borrow source, borrow rule, initial);
+}
+
+control settle(handle token, vector<u32> source) exits done, close_failed {
+    delta main(token, source) {
+        finished { ledger result } => finish,
+        stopped { ledger final_state } => stop,
+        failed { ledger partial, string reason } => fail
+    }
+    [finish]: forward settle_ledger(result);
+    [stop]: forward settle_ledger(final_state);
+    [fail]: forward settle_ledger(partial);
+}
+
+control settle_ledger(ledger owned) exits done, close_failed {
+    delta close(owned.token) {
+        closed => exit done,
+        failed { auto problem } => exit close_failed
+    }
+}

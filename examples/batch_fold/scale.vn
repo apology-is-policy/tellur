@@ -1,0 +1,29 @@
+import "../../library/reduction.vn" as reduction;
+
+pub struct batch_limit {
+    pub u32 target;
+}
+
+// A zero reading means the scale is offline. Keep the total of valid readings.
+implement reduction.reducer for batch_limit {
+    type item = u32;
+    type state = u32;
+    type error = string;
+    control step(ref batch_limit rule, u32 current, ref u32 reading) exits advanced { u32 updated },
+        stopped { u32 result },
+        failed { u32 partial, string reason }
+    {
+        delta (deref reading == 0) {
+            true => exit failed { current, "scale offline" },
+            false => weigh
+        }
+        [weigh]: delta checked_add(current, deref reading) {
+            sum { u32 total } => weighed,
+            overflow => exit failed { current, "weight overflow" }
+        }
+        [weighed]: delta (total >= rule.target) {
+            true => exit stopped { total },
+            false => exit advanced { total }
+        }
+    }
+}

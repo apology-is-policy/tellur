@@ -1,0 +1,69 @@
+{
+  "version": "0.1",
+  "types": [],
+  "primitives": [
+    {
+      "name": "u32_text",
+      "parameters": [
+        {
+          "name": "number",
+          "type": "u32",
+          "mode": "value"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "text",
+          "fields": [
+            {
+              "name": "value0",
+              "type": "string"
+            }
+          ]
+        }
+      ],
+      "effects": [],
+      "returns": true,
+      "pure": true
+    },
+    {
+      "name": "checked_add",
+      "parameters": [
+        {
+          "name": "a",
+          "type": "u32",
+          "mode": "value"
+        },
+        {
+          "name": "b",
+          "type": "u32",
+          "mode": "value"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "sum",
+          "fields": [
+            {
+              "name": "value0",
+              "type": "u32"
+            }
+          ]
+        },
+        {
+          "name": "overflow",
+          "fields": []
+        }
+      ],
+      "effects": [],
+      "returns": true
+    }
+  ],
+  "launch": {
+    "main": {
+      "exit_codes": {
+        "done": 0
+      }
+    }
+  }
+}

@@ -49,7 +49,20 @@ A `search.fallible_predicate` also declares an `error` type. Its `failed { error
 
 Optimized LLVM builds can skip a consecutive run of u32 values below a rule's threshold when the checked graph proves the rejection path has no effects. A predicate can also stop at a particular u32 constant, for example to report an offline sensor. The first candidate executes the authored control and retains its declared origin and failure behavior. Tracing, scripted increments, fuel limits and effects on the rejection path preserve step-by-step evaluation. On Apple M2, repeated last-match searches over 256 readings took 7.75 µs in 0.289 versus 2.09 ms in 0.288 and 0.166 µs in Rust. [Search benchmarks](../experiments/first_match/README.md)
 
-Villanelle 0.291 also proves the successful branch of simple u32 threshold predicates. LLVM compares the candidate with the rule field directly. The successful exit forms its loan into the vector, including when the vector itself is a field of a borrowed owner. User effects on the matched path and predicate failures execute as authored. On M2 a first hit took 1.69 µs with 13 allocations, a last hit 2.58 µs with 19 allocations. Fold with an owned accumulator is the next algorithm. [Paired comparison with Rust](../experiments/first_match/README.md#scalar-predicate-and-borrowed-hit-in-0291)
+Villanelle 0.291 also proves the successful branch of simple u32 threshold predicates. LLVM compares the candidate with the rule field directly. The successful exit forms its loan into the vector, including when the vector itself is a field of a borrowed owner. User effects on the matched path and predicate failures execute as authored. On M2 a first hit took 1.69 µs with 13 allocations, a last hit 2.58 µs with 19 allocations. [Paired comparison with Rust](../experiments/first_match/README.md#scalar-predicate-and-borrowed-hit-in-0291)
+
+## Fold a borrowed vector with an owned accumulator
+
+`reduction.fold` borrows the vector and the rule. It takes the initial state by value. The reducer declares its item, state and error types. Each call to `step` owns the current state and borrows one item. The state can contain a must-complete resource.
+
+| Step or input condition | Who owns the state next |
+| --- | --- |
+| Empty vector | The caller gets the initial state in `finished`. |
+| `advanced { updated }` | The fold moves the updated state into the next step, or returns it in `finished` at exhaustion. |
+| `stopped { result }` | The caller gets this state in `stopped`. The fold visits no further items. |
+| `failed { partial, reason }` | The caller gets the state and the reducer's error together. The reducer determines what work the partial state includes. |
+
+The scale example commits a successful reading before testing the target. A zero reading or an overflowing addition therefore returns the total of the preceding readings. Its live native invocation is `./bin/vnc exec examples/batch_fold/main.vn -- 20 0`. The resource fixture transfers a handle through the loop and closes it once on every route. Scripted index increments use the manifest's `checked_add` operation, as in first-match search. [Library](../library/reduction.vn) · [Example](../examples/batch_fold/main.vn) · [Resource fixture](../tests/fixtures/owned_fold.vn) · [M2 comparison](../experiments/owned_fold/README.md)
 
 ## Proposed algorithm contracts
 
@@ -57,7 +70,7 @@ Villanelle 0.291 also proves the successful branch of simple u32 threshold predi
 | --- | --- | --- |
 | Membership and search | Key membership by shared borrow. A sequence search returns a borrowed first match or an explicit miss. | Search visits elements in sequence order and stops at the first match. The match borrows the collection. A miss releases the loan. |
 | Borrowed traversal | Start with shared array/vector slices over a half-open range and ordered key/value traversal for maps. | An empty range at either end is valid. A reversed or out-of-bounds range takes an explicit failure exit. Reads can coexist. Structural mutation waits until the last conflicting view or returned reference is released. |
-| Reduction and early exit | Fold a borrowed sequence with an owned accumulator. An outcome from the step control can stop the fold. | Visit in order. Specify who owns the accumulator on each exit and preserve the step's declared outcomes and origin through expansion. A fallible step that consumes an accumulator must return, transfer or settle it on that path. |
+| Reduction and early exit | Fold a borrowed sequence with an owned accumulator. An outcome from the step control can stop the fold. | Visit in order. Continuation transfers the updated state to the fold. Stop and failure return the state to the caller. Failure also returns the step's reason. |
 | Consuming partition | Move each input to one of two outputs while preserving relative order in each. | A classifier borrows the current element. If it stops early, return both completed partitions, the current element and the untouched remainder. Every owner has a destination, including must-complete resources. |
 | Ordering | Stable sort with an infallible ordering for the first version. Add ordered bounds/search once the caller can supply evidence for the ordering. | Equal keys keep input order. Moving records during sorting preserves their resource obligations. A later fallible comparator needs an explicit contract for collection state on early exit. |
 

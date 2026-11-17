@@ -1,0 +1,21 @@
+import "../../library/reduction.vn" as reduction;
+import "scale.vn" as scale;
+
+control main(u32 target, u32 last_reading) exits done {
+    vector<u32> weights = [4, 7, last_reading];
+    scale.batch_limit rule = scale.batch_limit { target };
+    delta reduction.fold<scale.batch_limit>(borrow weights, borrow rule, 0) {
+        finished { u32 total } => finished,
+        stopped { u32 packed } => packed,
+        failed { u32 partial, string reason } => failed
+    }
+    [finished]: emit("batch exhausted");
+        emit(u32_text(total));
+        exit done;
+    [packed]: emit("target reached");
+        emit(u32_text(packed));
+        exit done;
+    [failed]: emit(reason);
+        emit(u32_text(partial));
+        exit done;
+}

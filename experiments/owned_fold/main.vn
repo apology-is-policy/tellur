@@ -1,0 +1,37 @@
+import "../../library/reduction.vn" as reduction;
+import "../../examples/batch_fold/scale.vn" as scale;
+
+control main(vector<u32> weights, u32 target, u32 rounds) exits done {
+    scale.batch_limit rule = scale.batch_limit { target };
+    loop repeat(u32 round = 1) {
+        delta query(borrow weights, borrow rule) {
+            done => observed
+        }
+        [observed]: delta (round >= rounds) {
+            true => exit done,
+            false => advance
+        }
+        [advance]: delta checked_add(round, 1) {
+            sum { u32 next } => advanced,
+            overflow => exit done
+        }
+        [advanced]: again repeat(next);
+    }
+}
+
+control query(ref vector<u32> weights, ref scale.batch_limit rule) exits done {
+    delta reduction.fold<scale.batch_limit>(weights, rule, 0) {
+        finished { u32 total } => finished,
+        stopped { u32 packed } => packed,
+        failed { u32 partial, string reason } => failed
+    }
+    [finished]: emit("batch exhausted");
+        emit(u32_text(total));
+        exit done;
+    [packed]: emit("target reached");
+        emit(u32_text(packed));
+        exit done;
+    [failed]: emit(reason);
+        emit(u32_text(partial));
+        exit done;
+}

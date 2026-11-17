@@ -20,6 +20,10 @@ The [traversal module](traversal.vn) exports `range` and `get`. The [example](..
 
 Run `./bin/vnc exec examples/borrowed_traversal/headers.vn -- --json` to print two HTTP headers in key order, then remove one. The example calls `traversal.entry_at<string>` and passes the returned position into the next iteration. The runner reports one header remaining. [Header example](../examples/borrowed_traversal/headers.vn)
 
+## Fold with an owned accumulator
+
+The reduction module borrows a vector and takes ownership of its accumulator. In the batch example, `./bin/vnc exec examples/batch_fold/main.vn -- 10 0` stops at 11 before visiting the zero. With arguments `20 0` it reports the offline scale and returns the partial total of 11. [Source module](reduction.vn) · [Batch example](../examples/batch_fold/main.vn) · [Outcome contract](../docs/collections-and-algorithms.md#fold-a-borrowed-vector-with-an-owned-accumulator)
+
 ## JSON string-map files
 
 Import [json_file.vn](json_file.vn) with a relative path and a local namespace.

@@ -1,0 +1,35 @@
+// Each step owns the current accumulator. Every outcome gives one back.
+pub trait reducer {
+    type item;
+    type state;
+    type error;
+    control step(ref self rule, state current, ref item value) exits advanced { state updated },
+        stopped { state result },
+        failed { state partial, error reason };
+}
+
+pub control fold<rule_type: reducer>(
+    ref vector<reducer<rule_type>.item> source,
+    ref rule_type rule,
+    reducer<rule_type>.state initial
+) exits finished { reducer<rule_type>.state result },
+    stopped { reducer<rule_type>.state result },
+    failed { reducer<rule_type>.state partial, reducer<rule_type>.error reason }
+{
+    loop scan(u32 index = 0, reducer<rule_type>.state current = initial) {
+        delta vector_get(source, index) {
+            found { auto value } => visit,
+            out_of_bounds => exit finished { current }
+        }
+        [visit]: delta reducer<rule_type>.step(rule, current, value) {
+            advanced { auto updated } => advance,
+            stopped { auto result } => exit stopped { result },
+            failed { auto partial, auto reason } => exit failed { partial, reason }
+        }
+        [advance]: delta checked_add(index, 1) {
+            sum { u32 next } => advanced,
+            overflow => exit finished { updated }
+        }
+        [advanced]: again scan(next, updated);
+    }
+}

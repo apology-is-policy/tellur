@@ -2,6 +2,10 @@
 
 ## Active checkpoint queue
 
+### Owned accumulator fold, 17 November 2026
+
+The experimental source library now folds a borrowed vector with an owned accumulator on compiler 0.291.0. Continue transfers the state to the next iteration. Stop and failure return it immediately, including an outstanding resource. M2 full-scan time for 256 readings is 1.69 ms versus 169 ns for optimized Rust. The two checked additions per item account for 2.40 MB of the 3.25 MB requested inside the fold. Next, isolate the cost of repeated primitive declaration cloning and contract validation. The next collection representation experiment compares consuming split and join on flat vectors and relaxed radix balanced trees. [Ownership contract](collections-and-algorithms.md#fold-a-borrowed-vector-with-an-owned-accumulator) · [Benchmark and allocation breakdown](../experiments/owned_fold/README.md)
+
 ### Scalar candidate lowering, 17 November 2026
 
 Villanelle 0.291 emits a native unsigned comparison for proven successful u32 vector predicates and projects the loan once into the original owner. A first hit takes 1.69 µs and 13 allocations on M2, compared with 4.77 µs and 39 allocations for 0.290 in the same run. Live effects, failure outcomes, traced execution and fuel-limited calls retain checked behavior. Next in the collections roadmap is a borrowed-sequence fold that accounts for the owned accumulator on continuation, early stop and failure. The split/join sequence experiment follows. Escaping-loan evidence remains an open performance target. [Measurements and checked cases](../experiments/first_match/README.md#scalar-predicate-and-borrowed-hit-in-0291)

@@ -1251,3 +1251,117 @@ control main(vector<u32> input, u32 limit) exits auto {
     );
     f.reject("E_LOAN");
 }
+
+#[test]
+fn fold_returns_the_owned_resource_on_exhaustion_stop_and_failure() {
+    use tellur::runtime::ScriptCall;
+    let f = Fixture::new();
+    let source = include_str!("fixtures/owned_fold.vn");
+    f.write("reduction.vn", include_str!("../library/reduction.vn"));
+    f.write("main.vn", source);
+    let checked = f.check().unwrap();
+    let expanded = checked.expanded("main").unwrap();
+    let settled = checked.expanded("settle").unwrap();
+    let mut binaries = Vec::new();
+    for (name, program) in [("original", &checked), ("expanded", &settled)] {
+        let binary = f.root.join(name);
+        support::scenario_executable(program)
+            .build_for_test("settle", &binary, 3)
+            .unwrap();
+        binaries.push(binary);
+    }
+    let token = Value::Opaque {
+        ty: "handle".into(),
+        token: "scale-7".into(),
+    };
+    for (items, advances, outcome, last) in [
+        (vec![], 0, "finished", 99),
+        (vec![2, 3], 2, "finished", 3),
+        (vec![10, 0], 0, "stopped", 10),
+        (vec![2, 10, 0], 1, "stopped", 10),
+        (vec![0, 10], 0, "failed", 99),
+        (vec![2, 0, 10], 1, "failed", 2),
+    ] {
+        let scenario = Scenario {
+            entry: "main".into(),
+            arguments: vec![
+                token.clone(),
+                Value::Construct {
+                    ty: "vector<U32>".into(),
+                    name: "vector".into(),
+                    fields: items.into_iter().map(Value::U32).collect(),
+                },
+            ],
+            calls: (1..=advances)
+                .map(|n| ScriptCall {
+                    operation: "checked_add".into(),
+                    outcome: "sum".into(),
+                    fields: vec![Value::U32(n)],
+                    waits: 0,
+                })
+                .collect(),
+        };
+        let result = checked.run(&scenario).unwrap();
+        assert_eq!(result, expanded.run(&scenario).unwrap());
+        assert_eq!(result.outcome, outcome);
+        assert_eq!(result.events.len(), advances as usize);
+        let mut expected = vec![Value::Construct {
+            ty: "ledger".into(),
+            name: "ledger".into(),
+            fields: vec![token.clone(), Value::U32(last)],
+        }];
+        if outcome == "failed" {
+            expected.push(Value::String("offline".into()));
+        }
+        assert_eq!(result.fields, expected);
+
+        let mut settle = scenario;
+        settle.entry = "settle".into();
+        settle.calls.push(ScriptCall {
+            operation: "close".into(),
+            outcome: "closed".into(),
+            fields: vec![],
+            waits: 0,
+        });
+        let execution = checked.run(&settle).unwrap();
+        assert_eq!(execution, settled.run(&settle).unwrap());
+        assert_eq!(execution.outcome, "done");
+        assert_eq!(execution.events.len(), advances as usize + 1);
+        assert!(matches!(execution.events.last(),
+            Some(tellur::runtime::Event::Primitive { operation, arguments, .. })
+            if operation == "close" && arguments == std::slice::from_ref(&token)));
+        let scenario_file = f.root.join("settle.json");
+        fs::write(&scenario_file, serde_json::to_vec(&settle).unwrap()).unwrap();
+        let expected = serde_json::to_value(execution).unwrap();
+        for binary in &binaries {
+            let run = std::process::Command::new(binary)
+                .arg("--scenario")
+                .arg(&scenario_file)
+                .output()
+                .unwrap();
+            assert!(
+                run.status.success(),
+                "{}",
+                String::from_utf8_lossy(&run.stderr)
+            );
+            assert_eq!(
+                serde_json::from_slice::<serde_json::Value>(&run.stdout).unwrap(),
+                expected
+            );
+        }
+    }
+    // The caller cannot discard the resource on just one of the three exits.
+    let (rule, _) = source.split_once("control main(").unwrap();
+    let caller = r#"
+control main(handle token, vector<u32> source) exits ready { handle token }, rejected {
+    log_rule rule = log_rule { stop: 10 };
+    ledger initial = ledger { token: token, last: 99 };
+    delta reduction.fold<log_rule>(borrow source, borrow rule, initial) {
+        finished { ledger result } => exit ready { result.token },
+        stopped { ledger final_state } => exit ready { final_state.token },
+        failed { ledger partial, string reason } => exit rejected
+    }
+}"#;
+    f.write("main.vn", &format!("{rule}{caller}"));
+    f.reject("E_RESOURCE");
+}
