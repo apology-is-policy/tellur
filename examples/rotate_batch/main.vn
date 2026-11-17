@@ -1,0 +1,14 @@
+import "../../library/sequence_batches.vn" as batches;
+
+// Move the first group of pending requests to the back of the queue.
+control main(vector<u32> pending, u32 count) exits ready { vector<u32> pending },
+    invalid { vector<u32> original }
+{
+    delta batches.split_at<u32>(pending, count) {
+        split { auto first, auto remaining } => rotate,
+        out_of_bounds { auto original } => exit invalid { original }
+    }
+    [rotate]: exit delta batches.join<u32>(remaining, first) {
+        joined { auto rotated } => ready { rotated }
+    };
+}

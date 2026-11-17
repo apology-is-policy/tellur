@@ -24,6 +24,10 @@ Run `./bin/vnc exec examples/borrowed_traversal/headers.vn -- --json` to print t
 
 The reduction module borrows a vector and takes ownership of its accumulator. In the batch example, `./bin/vnc exec examples/batch_fold/main.vn -- 10 0` stops at 11 before visiting the zero. With arguments `20 0` it reports the offline scale and returns the partial total of 11. [Source module](reduction.vn) · [Batch example](../examples/batch_fold/main.vn) · [Outcome contract](../docs/collections-and-algorithms.md#fold-a-borrowed-vector-with-an-owned-accumulator)
 
+## Consuming split and join
+
+`sequence_batches.split_at` divides an owned vector at an index and returns the whole original on an invalid position. `sequence_batches.join` concatenates two owned inputs. Run `./bin/vnc exec examples/rotate_batch/main.vn -- --scenario examples/rotate_batch/main.scenario.json` to rotate a batch of request IDs. [Source](sequence_batches.vn) · [Contract and performance](../docs/collections-and-algorithms.md#consuming-sequence-batches)
+
 ## JSON string-map files
 
 Import [json_file.vn](json_file.vn) with a relative path and a local namespace.

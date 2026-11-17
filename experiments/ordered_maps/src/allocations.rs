@@ -3,6 +3,7 @@ use std::alloc::{GlobalAlloc, Layout, System};
 use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
 
 struct Counting;
+static REQUESTED: AtomicUsize = AtomicUsize::new(0);
 static LIVE: AtomicUsize = AtomicUsize::new(0);
 static PEAK: AtomicUsize = AtomicUsize::new(0);
 static CALLS: AtomicUsize = AtomicUsize::new(0);
@@ -12,6 +13,7 @@ static ALLOCATOR: Counting = Counting;
 
 fn allocated(bytes: usize) {
     CALLS.fetch_add(1, Relaxed);
+    REQUESTED.fetch_add(bytes, Relaxed);
     let live = LIVE.fetch_add(bytes, Relaxed) + bytes;
     PEAK.fetch_max(live, Relaxed);
 }
@@ -40,6 +42,12 @@ unsafe impl GlobalAlloc for Counting {
 }
 
 pub fn measure<T>(f: impl FnOnce() -> T) -> (T, usize, usize) {
+    let (result, allocations, peak, _) = measure_requests(f);
+    (result, allocations, peak)
+}
+
+pub fn measure_requests<T>(f: impl FnOnce() -> T) -> (T, usize, usize, usize) {
+    let requested = REQUESTED.load(Relaxed);
     let baseline = LIVE.load(Relaxed);
     PEAK.store(baseline, Relaxed);
     let before = CALLS.load(Relaxed);
@@ -48,5 +56,6 @@ pub fn measure<T>(f: impl FnOnce() -> T) -> (T, usize, usize) {
         result,
         CALLS.load(Relaxed) - before,
         PEAK.load(Relaxed) - baseline,
+        REQUESTED.load(Relaxed) - requested,
     )
 }

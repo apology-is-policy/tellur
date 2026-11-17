@@ -1,0 +1,35 @@
+{
+  "entry": "main",
+  "arguments": [
+    {
+      "kind": "construct",
+      "value": {
+        "ty": "vector<U32>",
+        "name": "vector",
+        "fields": [
+          {
+            "kind": "u32",
+            "value": 101
+          },
+          {
+            "kind": "u32",
+            "value": 102
+          },
+          {
+            "kind": "u32",
+            "value": 103
+          },
+          {
+            "kind": "u32",
+            "value": 104
+          }
+        ]
+      }
+    },
+    {
+      "kind": "u32",
+      "value": 2
+    }
+  ],
+  "calls": []
+}

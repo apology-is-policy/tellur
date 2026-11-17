@@ -2,6 +2,8 @@
 
 [Language reference](../language-reference.md) · [References](../language-reference.md#references-borrowed-calls-and-lifetimes)
 
+The experimental batch controls transfer every vector element to one output owner. Invalid split positions return the original input. An outstanding loan blocks consuming its source. [Consuming split and join](../collections-and-algorithms.md#consuming-sequence-batches)
+
 ## Explicit moves
 
 `move value` makes the existing ownership transfer explicit. Owning parameters,

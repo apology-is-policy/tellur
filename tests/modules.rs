@@ -1365,3 +1365,129 @@ control main(handle token, vector<u32> source) exits ready { handle token }, rej
     f.write("main.vn", &format!("{rule}{caller}"));
     f.reject("E_RESOURCE");
 }
+
+#[test]
+fn consuming_batch_split_and_join_preserve_owned_elements_and_invalid_input() {
+    let f = Fixture::new();
+    f.write("batches.vn", include_str!("../library/sequence_batches.vn"));
+    f.write(
+        "main.vn",
+        r#"
+import "batches.vn" as batches;
+control main(vector<handle> original, u32 at) exits
+    split { vector<handle> prefix, vector<handle> suffix },
+    out_of_bounds { vector<handle> original }
+{
+    forward batches.split_at<handle>(original, at);
+}
+control combine(vector<handle> left, vector<handle> right)
+    exits joined { vector<handle> values }
+{
+    forward batches.join<handle>(left, right);
+}
+"#,
+    );
+    let checked = f.check().unwrap();
+    let expanded = checked.expanded("main").unwrap();
+    let combined = checked.expanded("combine").unwrap();
+    let vector = |fields| Value::Construct {
+        ty: "vector<handle>".into(),
+        name: "vector".into(),
+        fields,
+    };
+    let handles: Vec<_> = (0..4)
+        .map(|i| Value::Opaque {
+            ty: "handle".into(),
+            token: format!("request-{i}"),
+        })
+        .collect();
+    let mut scenarios = Vec::new();
+    for n in [0, 1, 4] {
+        for at in [0, 1, 2, 4, 5, u32::MAX] {
+            let source = handles[..n].to_vec();
+            let scenario = Scenario {
+                entry: "main".into(),
+                arguments: vec![vector(source.clone()), Value::U32(at)],
+                calls: vec![],
+            };
+            let result = checked.run(&scenario).unwrap();
+            assert_eq!(result, expanded.run(&scenario).unwrap());
+            if at as usize > n {
+                assert_eq!(result.outcome, "out_of_bounds");
+                assert_eq!(result.fields, vec![vector(source)]);
+            } else {
+                let at = at as usize;
+                assert_eq!(result.outcome, "split");
+                assert_eq!(
+                    result.fields,
+                    vec![vector(source[..at].to_vec()), vector(source[at..].to_vec())]
+                );
+                let join = Scenario {
+                    entry: "combine".into(),
+                    arguments: result.fields.clone(),
+                    calls: vec![],
+                };
+                let joined = checked.run(&join).unwrap();
+                assert_eq!(joined, combined.run(&join).unwrap());
+                assert_eq!(joined.fields, vec![vector(source)]);
+                scenarios.push((join, joined));
+            }
+            scenarios.push((scenario, result));
+        }
+    }
+    for (name, program, entry) in [
+        ("original", &checked, "main"),
+        ("expanded-split", &expanded, "main"),
+        ("original-join", &checked, "combine"),
+        ("expanded-join", &combined, "combine"),
+    ] {
+        let binary = f.root.join(name);
+        support::scenario_executable(program)
+            .build_for_test(entry, &binary, 3)
+            .unwrap();
+        for (scenario, expected) in scenarios.iter().filter(|(s, _)| s.entry == entry) {
+            let path = f.root.join("case.json");
+            fs::write(&path, serde_json::to_vec(scenario).unwrap()).unwrap();
+            let result = std::process::Command::new(&binary)
+                .arg("--scenario")
+                .arg(path)
+                .output()
+                .unwrap();
+            assert!(
+                result.status.success(),
+                "{}",
+                String::from_utf8_lossy(&result.stderr)
+            );
+            assert_eq!(
+                serde_json::from_slice::<serde_json::Value>(&result.stdout).unwrap(),
+                serde_json::to_value(expected).unwrap()
+            );
+        }
+    }
+    // Every outstanding resource must be returned or explicitly settled.
+    f.write(
+        "main.vn",
+        r#"
+import "batches.vn" as batches;
+control main(vector<handle> source) exits done {
+    delta batches.split_at<handle>(source, 1) {
+        split { auto prefix, auto suffix } => exit done,
+        out_of_bounds { auto original } => exit done
+    }
+}"#,
+    );
+    f.reject("E_RESOURCE");
+    f.write("main.vn", r#"
+import "batches.vn" as batches;
+control main(vector<u32> source) exits done { u32 first, vector<u32> left, vector<u32> right }, empty {
+    delta vector_get(borrow source, 0) {
+        found { auto first } => found,
+        out_of_bounds => exit empty
+    }
+    [found]: delta batches.split_at<u32>(source, 1) {
+        split { auto left, auto right } => exit done { deref first, left, right },
+        out_of_bounds { auto original } => exit empty
+    }
+}"#);
+    f.reject("E_LOAN");
+}

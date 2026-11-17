@@ -1,0 +1,6 @@
+{
+  "version": "0.1",
+  "types": [],
+  "primitives": [],
+  "launch": { "main": { "exit_codes": { "ready": 0, "invalid": 1 } } }
+}

@@ -90,6 +90,14 @@ Record time per operation, allocations, peak live bytes, and bytes or elements m
 
 The first ordered string-map comparison is complete on Apple M2. Linear lookup was fastest for eight headers. At 4,096 shared-prefix settings keys ART led on lookup, the B-tree led on insertion and draining, and flat storage led on borrowed scans. The 0.286 source prototype scans the existing flat map by borrowing each pair. In the native settings workload, scanning 4,096 entries through the library took 22.1 ms and draining took 92.4 ms, including process startup and decoding. [Measurements and reproduction](../experiments/ordered_maps/README.md)
 
+## Consuming sequence batches
+
+The experimental `sequence_batches` module provides `split_at<item>` and `join<item>`. A split consumes its input and returns an ordered prefix and suffix. Positions zero and length are valid. An out-of-bounds position returns the original vector. Join consumes both vectors and preserves the order of the left input followed by the right. Resource obligations follow each element into its destination. A surviving element loan prevents consuming its source. [Source module](../library/sequence_batches.vn) · [Batch rotation example](../examples/rotate_batch/main.vn)
+
+The M2 storage prototype uses a uniquely owned 32-way relaxed radix tree with size tables. For 128 splits and rotations at 65,536 elements, eight-byte records take 296 µs in the tree versus 1,906 µs in a flat vector. With 64-byte records, the pair takes 323 µs and 17,500 µs. Flat storage leads on append, scans and random access. Its consuming moving-start iterator drains the eight-byte workload in 32 µs. The tree remains a candidate for rearranging large batches.
+
+The complete checked source rotation at 4,096 u32 values takes 18.24 ms in LLVM and 4.92 µs in the Rust flat baseline. Its front-taking source loop exposes the current collection movement and ABI costs. Next, lower consuming split/join in native code while preserving invalid-input ownership, outstanding loans and exact outcomes, then compare representations through that path. [Workloads, memory and measurements](../experiments/sequence_storage/README.md)
+
 ## Path to a supported library
 
 1. Exercise the existing public-outcome change on both JSON callers and use it to document failure routing and provenance. The results are in the [language roadmap](language-revision.md#active-checkpoint-queue).

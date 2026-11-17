@@ -2,6 +2,10 @@
 
 ## Active checkpoint queue
 
+### Consuming sequence storage experiment, 17 November 2026
+
+The source batch prototype on compiler 0.292 supports consuming split and join, returning the original input on an invalid position. A uniquely owned relaxed radix tree reduced 128 large split/rotate operations from 1,906 to 296 µs on M2 for eight-byte records, and from 17,500 to 323 µs for 64-byte records. Flat storage leads on append, scan and index. A moving-start flat buffer leads on front drain. The checked Villanelle source path still takes 18.24 ms for one 4,096-item rotation versus 4.92 µs for Rust flat storage. Next, native consuming split/join with the same ownership and outcome contract. [Experiment and runnable caller](../experiments/sequence_storage/README.md)
+
 ### Checked primitive dispatch, 17 November 2026
 
 Compiler 0.292 borrows primitive declarations and validates live calls against static built-in signatures. On Apple M2, folding 256 weights fell from 1.646 ms to 1.004 ms with the same LLVM object. Optimized Rust took 166 ns. The 512 checked additions now allocate 2,048 times in aggregate, down from 24,576. The next collection experiment compares consuming split and join on a flat vector and a relaxed radix balanced tree, including front drains and element movement. Direct lowering of live checked arithmetic remains a measured compiler target. [Fold timings and allocation breakdown](../experiments/owned_fold/README.md#checked-primitive-dispatch-in-0292)

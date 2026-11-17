@@ -1,0 +1,50 @@
+// Split before index. An invalid index returns the whole input to its owner.
+pub control split_at<item>(vector<item> source, u32 index)
+    exits split { vector<item> prefix, vector<item> suffix },
+    out_of_bounds { vector<item> original }
+{
+    u32 length = vector_length(borrow source);
+    delta (index <= length) {
+        true => within,
+        false => exit out_of_bounds { source }
+    }
+    [within]: delta (index == length) {
+        true => exit split { source, [] },
+        false => interior
+    }
+    [interior]: forward split_prefix<item>(source, index);
+}
+
+control split_prefix<item>(vector<item> source, u32 index)
+    exits split { vector<item> prefix, vector<item> suffix }
+{
+    loop carve(vector<item> rest = source, mutable vector<item> taken = []) {
+        delta (vector_length(borrow taken) == index) {
+            true => exit split { taken, rest },
+            false => take
+        }
+        [take]: delta vector_take(rest) {
+            item { item next, vector<item> tail } => got,
+            empty => exit split { taken, [] }
+        }
+        [got]: delta vector_push(borrow mutable taken, next) {
+            pushed => appended
+        }
+        [appended]: again carve(tail, taken);
+    }
+}
+
+pub control join<item>(vector<item> left, vector<item> right)
+    exits joined { vector<item> values }
+{
+    loop append(mutable vector<item> result = left, vector<item> rest = right) {
+        delta vector_take(rest) {
+            item { item next, vector<item> tail } => got,
+            empty => exit joined { result }
+        }
+        [got]: delta vector_push(borrow mutable result, next) {
+            pushed => appended
+        }
+        [appended]: again append(result, tail);
+    }
+}
