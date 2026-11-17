@@ -1,6 +1,7 @@
 # Native conformance tests derive programs by editing these versioned specimens.
 # Keep their byte offsets and multiline edit anchors stable across checkouts.
 examples/**/*.vn text eol=lf
+experiments/first_match/main.vn text eol=lf
 playground/**/*.vn text eol=lf
 tests/fixtures/**/*.vn text eol=lf
 applications/settings/server.vn text eol=lf
