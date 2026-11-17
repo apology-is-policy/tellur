@@ -1,0 +1,28 @@
+import "../../library/membership.tellur" as membership;
+import "sequences.tellur" as sequences;
+
+control main() exits done { vector<u32> lower, vector<u32> upper }, unexpected {
+    vector<u32> values = [2, 1, 3];
+    map<string, string> headers = map {};
+    delta membership.contains_key<string>(borrow headers, borrow "origin") {
+        present => seen,
+        absent => missing
+    }
+    [seen]: emit("Origin present");
+    [missing]: emit("Origin absent");
+    [seen | missing]:
+        delta sequences.at<u32>(borrow values, 0) {
+            found { ref u32 first } => emit_first,
+            finished => empty
+        }
+    [emit_first]: delta (deref first == 2) {
+        true => expected,
+        false => exit unexpected
+    }
+    [empty]: exit unexpected;
+    [expected]:
+        delta sequences.partition(values, 2) {
+            split { vector<u32> low, vector<u32> high } => partitioned
+        }
+    [partitioned]: exit done { low, high };
+}

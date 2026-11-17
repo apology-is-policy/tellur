@@ -2,13 +2,15 @@
 
 [Current language roadmap and next proposed checkpoint](docs/language-revision.md#active-checkpoint-queue)
 
+Try the [collection discovery example](examples/collection_discovery/main.tellur) in the 0.284 editor. Type `headers.` to discover membership or `values.` to see which controls borrow or consume the vector. [Walkthrough](docs/collections-and-algorithms.md#try-collection-discovery-in-the-editor)
+
 The language is now named **Tellur** (formerly the Path placeholder). Release 0.36
 introduced `.tellur` sources and `tellur.code-workspace`. The `tellur` executable
 provides the compiler and the stdio language server (`tellur lsp`). Existing
 `.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
 [migration notes](docs/language-reference.md#tellur-name-and-migration).
 
-Compiler release **0.283.0** implements the v0.1 checked core and the current language
+Compiler **0.284.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default

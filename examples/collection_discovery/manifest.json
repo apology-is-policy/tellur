@@ -1,0 +1,13 @@
+{
+  "version": "0.1",
+  "types": [],
+  "primitives": [],
+  "launch": {
+    "main": {
+      "exit_codes": {
+        "done": 0,
+        "unexpected": 1
+      }
+    }
+  }
+}

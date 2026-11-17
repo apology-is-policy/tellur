@@ -13,6 +13,8 @@ Experimental editor support for the Tellur compiler.
    Try `playground/structured_helpers.tellur`, `playground/structured_tasks.tellur`, `playground/sequential_initializers.tellur`, `playground/projected_construction.tellur`, `playground/composed_construction.tellur`, `playground/borrowed_construction.tellur`, `playground/construction.tellur`, `playground/named_outcomes.tellur`, `stored_adapters.tellur`, `adapters.tellur`, `outcomes.tellur`, `collections.tellur`, `references.tellur`, and `count.tellur` next.
 4. Read `docs/language-reference.md` for the detailed language reference.
 
+In the 0.284 editor, type a collection name followed by a dot to discover controls from its imports. The suggestion shows whether it borrows or moves the collection. Accept it to insert the qualified Tellur call and select the next argument. [Try all three calls](../../docs/collections-and-algorithms.md#try-collection-discovery-in-the-editor)
+
 The package uses the same executable for `tellur lsp`, `tellur build` and `tellur exec`. It includes the runtime and linker inputs for ordinary Tellur programs on its host. The macOS and Linux packages also accept `--target x86_64-unknown-linux-musl`
 and `--target aarch64-unknown-linux-musl` for static Linux builds. Source adapters
 require Rust/Cargo, their locked dependencies and the target standard library.

@@ -8931,3 +8931,185 @@ fn cancellation_hovers_describe_requests_and_the_observing_alternative() {
         "{alternative}"
     );
 }
+
+fn complete_at(f: &Fixture, source: &str, typed: &str) -> Vec<Value> {
+    let end = source.find(typed).unwrap() + typed.len();
+    let before = &source[..end];
+    f.server
+        .completions(
+            &f.uri,
+            before.matches('\n').count() as u64,
+            before.rsplit('\n').next().unwrap().encode_utf16().count() as u64,
+        )
+        .as_array()
+        .unwrap()
+        .clone()
+}
+
+#[test]
+fn collection_discovery_edits_three_real_calls_and_preserves_their_contracts() {
+    let mut f = Fixture::new();
+    let example = include_str!("../examples/collection_discovery/main.tellur")
+        .replace("../../library/membership.tellur", "membership.tellur");
+    fs::write(
+        f.root.join("membership.tellur"),
+        include_str!("../library/membership.tellur"),
+    )
+    .unwrap();
+    fs::write(
+        f.root.join("sequences.tellur"),
+        include_str!("../examples/collection_discovery/sequences.tellur"),
+    )
+    .unwrap();
+    for (call, typed, label, inserted, effect, argument, fill) in [
+        (
+            "membership.contains_key<string>(borrow headers, borrow \"origin\")",
+            "headers.",
+            "contains_key",
+            "membership.contains_key<string>(borrow headers, borrow key)",
+            "borrows headers",
+            "borrow key",
+            "borrow \"origin\"",
+        ),
+        (
+            "sequences.at<u32>(borrow values, 0)",
+            "values.at",
+            "at",
+            "sequences.at<u32>(borrow values, index)",
+            "borrows values",
+            "index",
+            "0",
+        ),
+        (
+            "sequences.partition(values, 2)",
+            "values.pa",
+            "partition",
+            "sequences.partition(values, pivot)",
+            "moves values",
+            "pivot",
+            "2",
+        ),
+    ] {
+        let source = example.replace(call, typed);
+        f.open(&source);
+        let items = complete_at(&f, &source, typed);
+        let item = items
+            .iter()
+            .find(|i| i["label"] == label)
+            .unwrap_or_else(|| panic!("{items:?}"));
+        assert_eq!(item["textEdit"]["newText"], inserted);
+        assert!(item["detail"].as_str().unwrap().starts_with(effect));
+        let fixed = source.replace(typed, &inserted.replace(argument, fill));
+        assert_eq!(fixed, example);
+        f.change(&fixed, 2);
+        assert_eq!(f.diagnostics(), json!([]));
+    }
+}
+
+#[test]
+fn dot_discovery_uses_open_imports_receiver_permissions_and_utf16_ranges() {
+    let mut f = Fixture::new();
+    f.server.initialize(&json!({"capabilities":{"textDocument":{"completion":{"completionItem":{"snippetSupport":true}}}}}));
+    let module = f.root.join("api.tellur");
+    fs::write(
+        &module,
+        "pub control stale(ref vector<u32> v) exits done {exit done;}",
+    )
+    .unwrap();
+    let api = "pub control read<t>(ref vector<t> v,u32 i) exits done {exit done;} pub control edit(ref mutable vector<u32> v) exits done {exit done;} pub control take(vector<u32> v) exits done {exit done;} control hidden(ref vector<u32> v) exits done {exit done;}";
+    f.server.notification("textDocument/didOpen",&json!({"textDocument":{"uri":url::Url::from_file_path(module).unwrap().to_string(),"text":api,"version":1}}));
+    let source = "import \"api.tellur\" as tools;\r\ncontrol run(ref vector<u32> values) exits done {emit(\"😀\"); delta values.read {done=>exit done} }";
+    f.open(source);
+    let items = complete_at(&f, source, "values.re");
+    assert_eq!(items.len(), 1);
+    let i = &items[0];
+    assert_eq!(i["textEdit"]["newText"], "tools.read<u32>(values, ${1:i})");
+    assert_eq!(
+        i["textEdit"]["range"]["start"]["character"],
+        source
+            .lines()
+            .nth(1)
+            .unwrap()
+            .split("values.read")
+            .next()
+            .unwrap()
+            .encode_utf16()
+            .count()
+    );
+    assert_eq!(
+        i["textEdit"]["range"]["end"]["character"].as_u64().unwrap()
+            - i["textEdit"]["range"]["start"]["character"]
+                .as_u64()
+                .unwrap(),
+        11
+    );
+    let incomplete = source.replace("values.read {done=>exit done}", "values.");
+    f.change(&incomplete, 2);
+    assert_eq!(
+        complete_at(&f, &incomplete, "values.")
+            .iter()
+            .map(|i| &i["label"])
+            .collect::<Vec<_>>(),
+        vec![&json!("read")]
+    );
+    for (version, (ty, expected)) in [
+        ("ref mutable vector<u32>", vec!["read", "edit"]),
+        ("vector<u32>", vec!["read", "take"]),
+        ("ref vector<string>", vec!["read"]),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let source = incomplete.replace("ref vector<u32>", ty);
+        f.change(&source, 3 + version as i64);
+        let items = complete_at(&f, &source, "values.");
+        assert_eq!(
+            items
+                .iter()
+                .map(|i| i["label"].as_str().unwrap())
+                .collect::<Vec<_>>(),
+            expected
+        );
+    }
+    for (version, suffix) in ["// values.", "emit(\"values.\");", "some.values."]
+        .into_iter()
+        .enumerate()
+    {
+        let source = incomplete.replace("delta values.", suffix);
+        f.change(&source, 10 + version as i64);
+        assert!(complete_at(&f, &source, "values.").is_empty());
+    }
+}
+
+#[test]
+fn discovery_preserves_record_fields_and_imported_type_identity() {
+    let mut f = Fixture::new();
+    let module = "pub struct row { pub string title; u32 internal; } pub control inspect(ref vector<row> rows) exits done {exit done;}";
+    fs::write(f.root.join("data.tellur"), module).unwrap();
+    let source = "import \"data.tellur\" as lib; struct row { u32 count; } control main(ref row local, ref lib.row other,ref vector<row> rows,ref vector<lib.row> matches) exits done {delta rows. {done=>exit done}}";
+    for (iteration, (name, labels)) in [
+        ("rows", vec![]),
+        ("matches", vec!["inspect"]),
+        ("local", vec!["count"]),
+        ("other", vec!["title"]),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let typed = format!("{name}.");
+        let source = source.replace("delta rows.", &format!("delta {typed}"));
+        if iteration == 0 {
+            f.open(&source);
+        } else {
+            f.change(&source, iteration as i64 + 1);
+        }
+        let items = complete_at(&f, &source, &typed);
+        assert_eq!(
+            items
+                .iter()
+                .map(|i| i["label"].as_str().unwrap())
+                .collect::<Vec<_>>(),
+            labels
+        );
+    }
+}

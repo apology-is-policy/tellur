@@ -1,0 +1,38 @@
+// Borrow one element at a time. The caller decides when to stop traversing.
+pub control at<item>(ref vector<item> values, u32 index)
+    exits found { ref item value from values },
+    finished
+{
+    exit delta vector_get(values, index) {
+        found { ref item value } => found { value },
+        out_of_bounds => finished {}
+    };
+}
+
+// Stable partition. Both output vectors receive their elements by transfer.
+pub control partition(vector<u32> values, u32 pivot)
+    exits split { vector<u32> lower, vector<u32> upper }
+{
+    loop classify(
+        vector<u32> remaining = values,
+        mutable vector<u32> low = [],
+        mutable vector<u32> high = []
+    ) {
+        delta vector_take(remaining) {
+            item { u32 next, vector<u32> rest } => item,
+            empty => complete
+        }
+        [item]: delta (next < pivot) {
+            true => lower,
+            false => upper
+        }
+        [lower]: delta vector_push(borrow mutable low, next) {
+            pushed => appended_low
+        }
+        [upper]: delta vector_push(borrow mutable high, next) {
+            pushed => appended_high
+        }
+        [appended_low | appended_high]: again classify(rest, low, high);
+        [complete]: exit split { low, high };
+    }
+}

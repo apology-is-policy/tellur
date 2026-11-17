@@ -16,6 +16,7 @@ use std::{
 use url::Url;
 
 mod call_hover;
+mod collection_completion;
 
 #[derive(serde::Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
@@ -41,6 +42,7 @@ pub struct Server {
     roots: Vec<PathBuf>,
     manifest_path: String,
     dirty: bool,
+    snippets: bool,
 }
 fn file_path(uri: &str) -> Option<PathBuf> {
     Url::parse(uri).ok()?.to_file_path().ok()
@@ -116,6 +118,10 @@ fn diagnostic(text: &str, error: Diagnostic, severity: u8) -> Value {
 }
 impl Server {
     pub fn initialize(&mut self, params: &Value) {
+        self.snippets = params
+            .pointer("/capabilities/textDocument/completion/completionItem/snippetSupport")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
         if let Some(folders) = params["workspaceFolders"].as_array() {
             self.roots = folders
                 .iter()
@@ -1282,13 +1288,18 @@ fn request(server: &Server, request: Request) -> Response {
             Some(uri) => Response::new_ok(request.id, server.symbols(uri)),
             None => Response::new_err(request.id, -32602, "missing document URI".into()),
         },
-        "textDocument/hover" => match (
+        "textDocument/hover" | "textDocument/completion" => match (
             request.params["textDocument"]["uri"].as_str(),
             request.params["position"]["line"].as_u64(),
             request.params["position"]["character"].as_u64(),
         ) {
             (Some(uri), Some(line), Some(character)) => {
-                Response::new_ok(request.id, server.hover(uri, line, character))
+                let result = if request.method == "textDocument/completion" {
+                    server.completions(uri, line, character)
+                } else {
+                    server.hover(uri, line, character)
+                };
+                Response::new_ok(request.id, result)
             }
             _ => Response::new_err(
                 request.id,
@@ -1322,7 +1333,7 @@ pub fn serve(connection: Connection) -> std::result::Result<(), Box<dyn std::err
     server.initialize(&params);
     connection.initialize_finish(id,json!({"capabilities":{
         "positionEncoding":"utf-16", "textDocumentSync":{"openClose":true,"change":1,"save":{"includeText":false}},
-        "documentSymbolProvider":true, "hoverProvider":true, "documentFormattingProvider":true,
+        "completionProvider":{"triggerCharacters":["."]}, "documentSymbolProvider":true, "hoverProvider":true, "documentFormattingProvider":true,
         "experimental":{"tellurContractSnapshot":1,"tellurAbsorptionSnapshot":1,"tellurExplain":1}
     },"serverInfo":{"name":"tellur-lsp","version":env!("CARGO_PKG_VERSION")}}))?;
     let mut last_publication = Instant::now();

@@ -1,0 +1,6 @@
+pub control contains_key<item>(ref map<string, item> values, ref string key) exits present, absent {
+    exit delta map_get(values, key) {
+        found { ref item value } => present {},
+        missing => absent {}
+    };
+}

@@ -8,7 +8,13 @@ Use small capability traits for the operations a collection supplies. Put reusab
 
 Keep ownership visible in the generated and handwritten source. A call on an owned collection spells out `borrow values` for a shared loan, `borrow mutable values` for exclusive access, or `values` for a consuming parameter. An existing reference can be passed directly where its type and permissions match. The caller routes the control's named outcomes in the usual way.
 
-**Editor experiment.** When a programmer types `headers.`, offer applicable collection controls beside field completions. Selecting membership would replace that input with a qualified call carrying the shared borrow. A consuming partition completion should show that it moves the collection before the programmer accepts it. Try membership, traversal and partition to see whether people can discover each operation and predict its ownership effect from the inserted source. Dot after a value is an editor gesture in this proposal. Executable calls use the qualified spelling above.
+### Try collection discovery in the editor
+
+Open the [runnable example](../examples/collection_discovery/main.tellur) with the 0.284 language server. In its first `delta`, replace the whole call before the opening brace with `headers.`. Choose `contains_key`. The suggestion says **borrows headers** and inserts `membership.contains_key<string>(borrow headers, borrow key)`, with the key argument selected. Enter `borrow "origin"` to restore the example.
+
+The two calls on `values` show why the preview matters. Choosing `at` borrows the vector and lets the caller use its returned element before partitioning. Choosing `partition` says **moves values** and inserts `sequences.partition(values, pivot)`. The caller receives both output vectors through the `split` outcome.
+
+Discovery works for a named collection parameter or an identifiable local in the current control. It looks through direct imports for public synchronous controls with a matching array, vector or map as their first parameter. Generic arguments must be inferable from that parameter and free of trait bounds. Existing references retain their permissions, and record receivers offer visible fields. The checker validates the completed call, including loans and path availability.
 
 ## A first operation with two callers
 
