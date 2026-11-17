@@ -1468,6 +1468,81 @@ outcome result {@exit 0 done}
     }
 
     #[test]
+    fn consuming_map_drain_preserves_the_owned_suffix_and_fuel() {
+        let full = r#"outcome result { @exit 0 done, @exit 0 stopped { string key, map<string,u32> rest } }
+control main(map<string,u32> input) exits result {
+    loop visit(map<string,u32> remaining = input) {
+        delta map_take(remaining) { item { string key, u32 value, auto rest } => more, empty => exit done }
+        [more]: emit(u32_text(value)); emit(key); again visit(rest);
+    }
+}"#;
+        let partial = full.replace(
+            "[more]: emit",
+            r#"[more]: delta (value == 2) {
+            true => exit stopped { key, rest }, false => advance }
+            [advance]: emit"#,
+        );
+        let manifest =
+            Manifest::from_json(include_str!("../experiments/ordered_maps/manifest.json")).unwrap();
+        for (source, fused) in [(full, true), (partial.as_str(), false)] {
+            let f = Fixture::new(source);
+            let program = compile_file(&f.source, manifest.clone()).unwrap();
+            for expanded in [false, true] {
+                let checked = if expanded {
+                    program.expanded("main").unwrap()
+                } else {
+                    program.clone()
+                };
+                let slow = checked.build_llvm("main", &f.root.join("slow"), 0).unwrap();
+                let fast = checked.build_llvm("main", &f.root.join("fast"), 3).unwrap();
+                assert_eq!(
+                    fs::read_to_string(fast.llvm)
+                        .unwrap()
+                        .contains("call void @tellur_rt_v1_map_drain"),
+                    fused
+                );
+                for keys in [&[][..], &["a", "b", "z"][..]] {
+                    let fields: Vec<_> = keys
+                        .iter()
+                        .enumerate()
+                        .flat_map(|(i, k)| {
+                            [
+                                json!({"kind":"string","value":k}),
+                                json!({"kind":"u32","value":i+1}),
+                            ]
+                        })
+                        .collect();
+                    let scenario = json!({"entry":"main","arguments":[{"kind":"construct","value":{
+                        "name":"map","ty":"map<String,U32>","fields":fields}}],"calls":[]});
+                    let path = f.root.join("scenario.json");
+                    fs::write(&path, scenario.to_string()).unwrap();
+                    let expected = checked
+                        .run(&serde_json::from_value(scenario).unwrap())
+                        .unwrap();
+                    let observed = report(&execute(&fast.executable, &path, None));
+                    assert_eq!(observed, serde_json::to_value(expected).unwrap());
+                    if !fused && !keys.is_empty() {
+                        assert_eq!(observed["fields"][0]["value"], "b");
+                        assert_eq!(
+                            observed["fields"][1]["value"]["fields"],
+                            json!(&fields[4..])
+                        );
+                    }
+                    for fuel in 0..30 {
+                        let a = execute(&fast.executable, &path, Some(fuel));
+                        let b = execute(&slow.executable, &path, Some(fuel));
+                        assert_eq!(
+                            (a.status.code(), a.stdout, a.stderr),
+                            (b.status.code(), b.stdout, b.stderr),
+                            "expanded={expanded} fused={fused} keys={keys:?} fuel={fuel}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn ordered_map_scan_keeps_each_fuel_cut_and_observable_visit() {
         let source = r#"import "traversal.vn" as traversal;
 outcome scan_result { @exit 0 done { u32 position } }

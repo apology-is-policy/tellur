@@ -1164,3 +1164,90 @@ control main() exits auto {
     };
     assert_eq!(empty.run(&zero).unwrap().outcome, "finished");
 }
+
+#[test]
+fn first_match_borrows_the_source_and_routes_predicate_failures() {
+    let f = Fixture::new();
+    f.write("search.vn", include_str!("../library/search.vn"));
+    let example = include_str!("../examples/first_match/main.vn");
+    let rules = example
+        .split("control main()")
+        .next()
+        .unwrap()
+        .replace("../../library/search.vn", "search.vn");
+    let caller = r#"
+control main(vector<u32> input, u32 limit) exits auto {
+    mutable vector<u32> readings = input;
+    valid_reading rule = valid_reading { limit };
+    delta search.try_first<valid_reading>(borrow readings, borrow rule) {
+        found { ref u32 reading } => hit,
+        missing => miss,
+        failed { string reason } => exit invalid { reason }
+    }
+    [hit]: u32 saved = deref reading;
+        delta vector_push(borrow mutable readings, 100) { pushed => changed }
+    [changed]: exit ok { saved };
+    [miss]: exit absent;
+}"#;
+    f.write("main.vn", &(rules.clone() + caller));
+    let program = f.check().unwrap();
+    let expanded = program.expanded("main").unwrap();
+    for (input, skipped, outcome, fields) in [
+        (vec![11, 0], 0, "ok", vec![Value::U32(11)]),
+        (vec![2, 19, 17, 0], 1, "ok", vec![Value::U32(19)]),
+        (
+            vec![2, 0, 19],
+            1,
+            "invalid",
+            vec![Value::String("sensor offline".into())],
+        ),
+        (vec![1, 2], 2, "absent", vec![]),
+        (vec![], 0, "absent", vec![]),
+    ] {
+        let scenario = Scenario {
+            entry: "main".into(),
+            arguments: vec![
+                Value::Construct {
+                    ty: "vector<U32>".into(),
+                    name: "vector".into(),
+                    fields: input.into_iter().map(Value::U32).collect(),
+                },
+                Value::U32(10),
+            ],
+            calls: (1..=skipped)
+                .map(|next| tellur::runtime::ScriptCall {
+                    operation: "checked_add".into(),
+                    outcome: "sum".into(),
+                    fields: vec![Value::U32(next)],
+                    waits: 0,
+                })
+                .collect(),
+        };
+        let observed = program.run(&scenario).unwrap();
+        assert_eq!(expanded.run(&scenario).unwrap(), observed);
+        assert_eq!(observed.outcome, outcome);
+        assert_eq!(observed.fields, fields);
+    }
+    let uncovered = caller.replace(
+        "missing => miss,\n        failed { string reason } => exit invalid { reason }",
+        "missing => miss",
+    );
+    f.write("main.vn", &(rules.clone() + &uncovered));
+    let error = f.reject("E_UNCOVERED");
+    assert!(
+        error
+            .diagnostic
+            .notes
+            .iter()
+            .any(|n| n.path.as_ref() == Some(&f.root.join("main.vn"))
+                && n.message.contains("failed"))
+    );
+    assert!(error.diagnostic.notes.iter().any(|n| n.path.as_ref()
+        == Some(&f.root.join("search.vn"))
+        && n.message.contains("failed")));
+    f.write(
+        "main.vn",
+        &(rules + &caller.replace("exit ok { saved }", "exit ok { deref reading }")),
+    );
+    f.reject("E_LOAN");
+}

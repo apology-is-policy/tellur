@@ -78,6 +78,7 @@ declare void @tellur_rt_v1_escalate(ptr)
 declare void @tellur_rt_v1_supervise(ptr, ptr, ptr, ptr, i64, ptr, i64, ptr, i64, ptr, i64)
 declare i64 @tellur_rt_v1_primitive(ptr, ptr, i64, ptr, i64)
 declare i64 @tellur_rt_v1_collection(ptr, ptr, i64, ptr, i64)
+declare void @tellur_rt_v1_map_drain(ptr, i64, i64, ptr, i64)
 declare void @tellur_rt_v1_map_scan(ptr, i64, i32, i64, i64, i32, ptr, i64)
 declare i64 @tellur_rt_v1_length(ptr, i64)
 declare i32 @tellur_rt_v1_route(ptr, i64, ptr, i64, ptr, i64)
@@ -1876,8 +1877,13 @@ impl Emitter {
                         && let Some(scan) = map_scan::analyze(i, &self.map_wrappers)
                     {
                         let (emits, count) = self.bytes(&scan.emits);
-                        self.effect(format!("call void @tellur_rt_v1_map_scan(ptr %ctx, i64 {}, i32 {}, i64 {}, i64 {}, i32 {}, ptr {emits}, i64 {count})",
-                            self.layout.slots[&scan.map],u32::from(scan.indirect),values[0],scan.ticks,u32::from(scan.wrapped)));
+                        match scan.kind {
+                            map_scan::Traversal::Borrowed { map, indirect, wrapped } =>
+                                self.effect(format!("call void @tellur_rt_v1_map_scan(ptr %ctx, i64 {}, i32 {}, i64 {}, i64 {}, i32 {}, ptr {emits}, i64 {count})",
+                                    self.layout.slots[&map], u32::from(indirect), values[0], scan.ticks, u32::from(wrapped))),
+                            map_scan::Traversal::Consuming =>
+                                self.effect(format!("call void @tellur_rt_v1_map_drain(ptr %ctx, i64 {}, i64 {}, ptr {emits}, i64 {count})", values[0], scan.ticks)),
+                        }
                     }
                     let arguments = self.handles(&values);
                     let restart = self.id();

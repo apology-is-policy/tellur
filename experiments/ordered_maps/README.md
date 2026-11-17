@@ -55,6 +55,21 @@ The observed 4,096-entry process dropped from 430,837 allocation calls at 0.286 
 
 Apple M2 arm64, rustc 1.97.1 (LLVM 22.1.6), Villanelle LLVM 22.1.8. The in-memory table reports medians of 25 interleaved measured trials. The process table uses 13. Every complete JSON result was checked after timing. RSS is the median of five additional processes. Small differences within a few percent vary between runs. [Harness and reproduction](comparison/README.md) · [Hot samples](results/0.287-trace.csv) · [Process samples](results/0.287-process.csv) · [Memory samples](results/0.287-memory.csv)
 
+### Consuming traversal in Villanelle 0.288
+
+The observed drain reads each sorted key, formats its u32 value, retains both messages and releases each owned entry. Hot timings cover this work on a freshly decoded map. The process timings also cover launch, decoding, validation and JSON output.
+
+| Median on Apple M2 | Villanelle expanded O3 | Rust BTreeMap pop_first, pooled trace | Rust BTreeMap into_iter, pooled trace |
+| --- | ---: | ---: | ---: |
+| Hot, 4,096 entries | 168.83 µs | 228.42 µs | 154.67 µs |
+| Hot, 16,384 entries | 1,030.58 µs | 972.33 µs | 634.88 µs |
+| Process, 4,096 entries | 5.46 ms | 4.80 ms | 4.69 ms |
+| Process, 16,384 entries | 11.69 ms | 11.01 ms | 10.63 ms |
+
+The previous 0.287 release build took 50.58 ms end to end on the same 4,096-entry observed fixture. Consuming the entire flat map now requires zero suffix shifts. Repeated single-pair removals shifted 8,386,560 pairs. The optimized runtime emits the selected fields in one pass and drops the owned storage. A fuel cutoff commits only completed iterations and resumes checked execution with the remaining owner. A loop with its own early exit or per-entry resource disposition still takes the general path, where repeated front removal can be quadratic.
+
+At 4,096 entries, whole-process allocation calls fell from 107,122 to 4,725. Rust's pooled consuming iterator made 4,911. Villanelle requested 4.54 MB cumulatively and peaked at 5.03 MiB resident, versus 2.82 MB and 3.73 MiB for Rust. At 16,384 entries Villanelle requested 17.80 MB versus 11.27 MB. The next map experiment should separate trace construction from destruction of the wider tagged values and owned keys at that size. Apple M2 arm64, Villanelle LLVM 22.1.8, Rust 1.97.1. The hot table uses 25 interleaved trials and the process table uses 13. Both validate every ordered message. [Hot samples](results/0.288-drain-trace.csv) · [Process samples](results/0.288-drain-process.csv) · [Previous release](results/0.288-drain-previous.csv) · [Memory samples](results/0.288-drain-memory.csv)
+
 ## Reproducing the experiment
 
 Run from the repository root with Rust, Python 3 and a native Villanelle 0.286 compiler.

@@ -93,11 +93,17 @@ fn selected(g: &Guard, enclosing: &Guard, locals: &[Id], facts: &BTreeSet<Id>) -
     }
 }
 
+pub(super) enum Traversal {
+    Borrowed {
+        map: Id,
+        indirect: bool,
+        wrapped: bool,
+    },
+    Consuming,
+}
 pub(super) struct Scan {
-    pub map: Id,
-    pub indirect: bool,
+    pub kind: Traversal,
     pub ticks: usize,
-    pub wrapped: bool,
     pub emits: Vec<u8>,
 }
 
@@ -151,23 +157,35 @@ pub(super) fn analyze(inst: &Instruction, wrappers: &BTreeMap<String, Wrapper>) 
                 args,
                 arms,
             } if scan.is_none() => {
-                let wrapped = match operation {
-                    Operation::Collection(name) if name == "map_entry_at" => false,
-                    Operation::Region(name) => {
-                        ticks += wrappers.get(name)?.ticks;
-                        true
+                let kind = match (operation, args.as_slice()) {
+                    (Operation::Collection(name), [Expr::Move(p)])
+                        if name == "map_take"
+                            && p.root == *counter
+                            && !p.indirect
+                            && p.fields.is_empty() =>
+                    {
+                        Traversal::Consuming
+                    }
+                    (op, [map, pos]) if source(pos)? == Position => {
+                        let wrapped = match op {
+                            Operation::Collection(name) if name == "map_entry_at" => false,
+                            Operation::Region(name) => {
+                                ticks += wrappers.get(name)?.ticks;
+                                true
+                            }
+                            _ => return None,
+                        };
+                        let Map(map, indirect) = source(map)? else {
+                            return None;
+                        };
+                        Traversal::Borrowed {
+                            map,
+                            indirect,
+                            wrapped,
+                        }
                     }
                     _ => return None,
                 };
-                let [map, pos] = args.as_slice() else {
-                    return None;
-                };
-                let Map(root, indirect) = source(map)? else {
-                    return None;
-                };
-                if source(pos)? != Position {
-                    return None;
-                }
                 let item = arms.iter().find(|a| a.outcome == "item")?;
                 let [key, value, next] = item.slots.as_slice() else {
                     return None;
@@ -179,7 +197,7 @@ pub(super) fn analyze(inst: &Instruction, wrappers: &BTreeMap<String, Wrapper>) 
                 }
                 sources.extend([(*key, Key), (*value, Element), (*next, Next)]);
                 atoms.insert(item.atom);
-                scan = Some((root, indirect, wrapped));
+                scan = Some(kind);
             }
             Action::Complete {
                 atom,
@@ -211,8 +229,12 @@ pub(super) fn analyze(inst: &Instruction, wrappers: &BTreeMap<String, Wrapper>) 
                     }
                     _ => (e, 0),
                 };
-                let Expr::Place(p) = read else { return None };
-                if !p.indirect || !p.fields.is_empty() {
+                let p = match (read, scan.as_ref()?) {
+                    (Expr::Place(p), Traversal::Borrowed { .. }) if p.indirect => p,
+                    (Expr::Place(p) | Expr::Move(p), Traversal::Consuming) if !p.indirect => p,
+                    _ => return None,
+                };
+                if !p.fields.is_empty() {
                     return None;
                 }
                 emits.push(
@@ -224,17 +246,19 @@ pub(super) fn analyze(inst: &Instruction, wrappers: &BTreeMap<String, Wrapper>) 
                         },
                 );
             }
-            Action::Again { target, args }
-                if target == id && args.len() == 1 && source(&args[0]) == Some(Next) =>
-            {
-                let (map, indirect, wrapped) = scan?;
-                return Some(Scan {
-                    map,
-                    indirect,
-                    wrapped,
-                    ticks,
-                    emits,
-                });
+            Action::Again { target, args } if target == id && args.len() == 1 => {
+                let kind = scan?;
+                let next = match (&kind, &args[0]) {
+                    (Traversal::Consuming, Expr::Move(p)) if !p.indirect && p.fields.is_empty() => {
+                        sources.get(&p.root).copied()
+                    }
+                    (Traversal::Borrowed { .. }, e) => source(e),
+                    _ => None,
+                };
+                if next != Some(Next) {
+                    return None;
+                }
+                return Some(Scan { kind, ticks, emits });
             }
             _ => return None,
         }

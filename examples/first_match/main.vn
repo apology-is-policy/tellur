@@ -1,0 +1,57 @@
+import "../../library/search.vn" as search;
+
+struct minimum {
+    u32 limit;
+}
+
+implement search.predicate for minimum {
+    type item = u32;
+    control test(ref minimum rule, ref u32 value) exits matched,
+    skipped {
+        delta (deref value >= rule.limit) {
+            true => exit matched,
+            false => exit skipped
+        }
+    }
+}
+
+struct valid_reading {
+    u32 limit;
+}
+
+implement search.fallible_predicate for valid_reading {
+    type item = u32;
+    type error = string;
+    control test(ref valid_reading rule, ref u32 value) exits matched,
+    skipped,
+    failed { string reason } {
+        delta (deref value == 0) {
+            true => exit failed { "sensor offline" },
+            false => online
+        }
+        [online]: delta (deref value >= rule.limit) {
+            true => exit matched,
+            false => exit skipped
+        }
+    }
+}
+
+control main() exits done, unexpected {
+    vector<u32> readings = [3, 17, 29, 0];
+    minimum rule = minimum { limit: 10 };
+    valid_reading checked = valid_reading { limit: 25 };
+    delta search.first<minimum>(borrow readings, borrow rule) {
+        found { ref u32 value } => first,
+        missing => exit unexpected
+    }
+    [first]: emit(u32_text(deref value));
+        delta search.try_first<valid_reading>(borrow readings, borrow checked) {
+            found { ref u32 reading } => usable,
+            missing => exit unexpected,
+            failed { string reason } => unavailable
+        }
+    [usable]: emit(u32_text(deref reading));
+        exit done;
+    [unavailable]: emit(reason);
+        exit unexpected;
+}

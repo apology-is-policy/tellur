@@ -17,7 +17,10 @@ from tellur_baseline import scenario
 parser = argparse.ArgumentParser()
 for argument in ("program", "rust_map", "archive", "llvm_bin", "results"):
     parser.add_argument(argument, type=Path)
+parser.add_argument("--drain", action="store_true", help="time consuming traversal and removal")
 args = parser.parse_args()
+operation = "map_drain" if args.drain else "map_scan"
+entry = "observe_drain" if args.drain else "observe_scan"
 rows = []
 rng = random.Random(287)
 with tempfile.TemporaryDirectory() as temp:
@@ -37,15 +40,15 @@ with tempfile.TemporaryDirectory() as temp:
     if (scratch / "original").read_bytes() != (scratch / "rebuilt").read_bytes():
         raise ValueError("Runtime archive differs from the optimized executable")
     timed_object = scratch / "timed.o"
-    subprocess.run([objcopy, "--redefine-sym", "_tellur_rt_v1_map_scan=_bench_map_scan",
+    subprocess.run([objcopy, "--redefine-sym", f"_tellur_rt_v1_{operation}=_bench_{operation}",
                     original, timed_object], check=True)
     timed = scratch / "timed"
     subprocess.run(["cc", "-arch", "arm64", "-O3", "-mmacosx-version-min=13.0",
-                    timed_object, here / "time_scan.c", args.archive, "-o", timed], check=True)
+                    *(["-DBENCH_DRAIN"] if args.drain else []), timed_object, here / "time_scan.c", args.archive, "-o", timed], check=True)
     for size in [4096, 16384]:
         keys = {f"settings/tenant/{i % 32:02}/property/{i:05}": i for i in range(size)}
         path = scratch / "scenario.json"
-        path.write_text(json.dumps(scenario("observe_scan", keys)))
+        path.write_text(json.dumps(scenario(entry, keys)))
         expected = {"outcome": "done", "fields": [], "events": [
             {"kind": "emit", "message": message}
             for key in sorted(keys) for message in (key, str(keys[key]))
@@ -53,6 +56,8 @@ with tempfile.TemporaryDirectory() as temp:
         cases = [("Rust", [args.rust_map.resolve(), path]),
                  ("Rust-pooled", [args.rust_map.resolve(), path, "--pooled"]),
                  ("Villanelle", [timed, "--scenario", path, "--json", "--fuel", "10000000"])]
+        if args.drain:
+            cases.append(("Rust-into-iter-pooled", [args.rust_map.resolve(), path, "--into-iter"]))
         for trial in range(26):
             rng.shuffle(cases)
             for language, command in cases:

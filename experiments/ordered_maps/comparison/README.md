@@ -27,4 +27,6 @@ python3 -B "$d/time_trace.py" "$out/observe_scan-expanded" \
   "$LLVM_SYS_221_PREFIX/bin" "$out/hot.csv"
 ```
 
+For consuming traversal, add `--drain-only` to `measure.py`. Pass `--drain` and `"$out/observe_drain-expanded"` to `time_trace.py`. The timer includes release of the owned keys and map storage. The Rust controls compare repeated `pop_first` with an owned trace, repeated `pop_first` with a pooled trace (`--pooled`) and an owning iterator with the pooled trace (`--into-iter`). The unobserved drain is a separate process case.
+
 For allocator counts, build `profile.c` as a dynamic library with `cc -arch arm64 -O2 -dynamiclib` and set `DYLD_INSERT_LIBRARIES` to its absolute path for the benchmark child only. The four counters report malloc/calloc calls, realloc calls, non-null frees and cumulative requested bytes. For single-threaded CPU sampling, compile with `-DVN_CPU_ONLY` and run with `VN_SAMPLE=1`. The signal handler captures program counters and frame pointers. Symbolization runs after the workload. Both probes run separately from timed trials.

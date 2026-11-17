@@ -2,6 +2,12 @@
 
 ## Active checkpoint queue
 
+### Consuming traversal and first-match search, 17 November 2026
+
+Villanelle 0.288 recognizes complete ordered map drains in optimized LLVM builds. Draining 4,096 settings entries and recording both fields took 169 µs on Apple M2. Rust's pooled B-tree took 228 µs with repeated removal and 155 µs with consuming iteration. At 16,384 entries consuming iteration still leads by 396 µs. A loop that returns a suffix on early exit retains its checked lowering. [Timing and allocation results](../experiments/ordered_maps/README.md#consuming-traversal-in-villanelle-0288)
+
+The first borrowed search prototype now supports a statically named predicate, an explicit miss and a predicate-specific failure. Next, reduce the cost of the per-element checked primitive and predicate calls, measuring last match, early match, miss and failure against Rust. Then exercise fold with an owned accumulator on every exit, followed by the split/join sequence experiment. [Search example and profile](collections-and-algorithms.md#find-the-first-matching-vector-element)
+
 ### Native collection performance, 17 November 2026
 
 Villanelle 0.287 lowers proven synchronous ordered map scans in optimized LLVM builds. The native runtime can visit projected keys and values directly. Early exits and general predicates use the checked loop. Rust parity is the ongoing target for each operation, data structure, algorithm and memory-management path. Measure equivalent observable work, allocations and data movement. The next performance target is ordered consumption, where removing the first pair still shifts the flat map. The next library design item is first-match search with early exit and fallible predicates. [Measurements and reproduction](../experiments/ordered_maps/README.md)

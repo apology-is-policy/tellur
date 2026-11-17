@@ -41,6 +41,14 @@ Call `traversal.get<item>(borrow view, offset)` to read relative to the start. I
 
 For a string-keyed map, call `traversal.entry_at<item>(borrow values, position)` starting at zero. Route `item { ref string key, ref item value, u32 next }` to the loop body and pass `next` on the back edge. Route `finished` to the end of the scan. The header example prints both fields, then removes a header after the scan. The builtin also accepts the existing `bool` and `u32` key types. Positions are ranks in the current map. Restart at zero to scan the whole map after editing it. [Runnable example](../examples/borrowed_traversal/headers.vn) · [Reference](language-reference.md#arrays-vectors-and-maps)
 
+## Find the first matching vector element
+
+Import `library/search.vn` and implement `search.predicate` for a rule type with an associated `item`. Call `search.first<rule_type>(borrow source, borrow rule)`. The predicate inspects each element by shared borrow in vector order. Its first `matched` ends the search with `found { ref item value }` borrowed from `source`. An empty vector or a sequence of `skipped` results returns `missing`. The caller can mutate the vector after the last use of the returned reference.
+
+A `search.fallible_predicate` also declares an `error` type. Its `failed { error reason }` immediately becomes the failure of `search.try_first`. The caller must route that outcome. Omitting it produces a diagnostic tracing the failure through the library to the concrete predicate. Both experimental controls use the manifest's `checked_add` operation to advance the index. The example searches sensor readings twice and prints 17 and 29 before reaching the offline reading. Run `vnc exec examples/first_match/main.vn`. [Source module](../library/search.vn) · [Runnable example](../examples/first_match/main.vn)
+
+A first M2 profile searched 256 consecutive u32 values for the final value. Timing only the search call in fresh processes yielded a median of 2.28 ms in optimized Villanelle and 125 ns in optimized Rust with `values.iter().find(...)` and black-boxed inputs. Each program returned 255. The Rust median is only a few timer ticks. The Villanelle process made 51,552 allocation calls, and 65 of 121 CPU samples included primitive dispatch. Advancing the index currently clones and validates manifest data for each `checked_add`. Specializing that path must still honor scripted calls, checked failures and fuel. Early match, miss and predicate failure need separate measurements. [Search benchmark](../experiments/first_match/measure.py) · [Raw samples](../experiments/first_match/hot.csv)
+
 ## Proposed algorithm contracts
 
 | Family | First useful contract | Observable behavior |

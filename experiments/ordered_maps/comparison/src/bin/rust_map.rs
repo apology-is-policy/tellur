@@ -40,6 +40,15 @@ struct PooledTrace {
     text: String,
     ends: Vec<usize>,
 }
+impl PooledTrace {
+    fn emit_pair(&mut self, key: &str, value: u32) {
+        use std::fmt::Write;
+        self.text.push_str(key);
+        self.ends.push(self.text.len());
+        write!(self.text, "{value}").unwrap();
+        self.ends.push(self.text.len());
+    }
+}
 impl Serialize for PooledTrace {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let mut start = 0;
@@ -96,19 +105,27 @@ fn main() {
             }
             assert_eq!(visit(&map), map.len());
         }
-        "observe_scan" => {
-            if args.next().as_deref() == Some("--pooled") {
-                use std::fmt::Write;
+        "observe_scan" | "observe_drain" => {
+            let drain = scenario.entry == "observe_drain";
+            let layout = args.next();
+            if matches!(layout.as_deref(), Some("--pooled" | "--into-iter")) {
                 let timer = env::var_os("VN_MAP_TIMER").map(|_| Instant::now());
                 let mut trace = PooledTrace {
                     text: String::new(),
                     ends: Vec::with_capacity(2 * map.len()),
                 };
-                for (key, value) in &map {
-                    trace.text.push_str(key);
-                    trace.ends.push(trace.text.len());
-                    write!(trace.text, "{value}").unwrap();
-                    trace.ends.push(trace.text.len());
+                if drain && layout.as_deref() == Some("--into-iter") {
+                    for (key, value) in map {
+                        trace.emit_pair(&key, value);
+                    }
+                } else if drain {
+                    while let Some((key, value)) = map.pop_first() {
+                        trace.emit_pair(&key, value);
+                    }
+                } else {
+                    for (key, value) in &map {
+                        trace.emit_pair(key, *value);
+                    }
                 }
                 if let Some(start) = timer {
                     eprintln!("{}", start.elapsed().as_nanos());
@@ -125,15 +142,24 @@ fn main() {
                 return;
             }
             let timer = env::var_os("VN_MAP_TIMER").map(|_| Instant::now());
-            for (key, val) in &map {
+            let mut emit = |key: String, value: u32| {
                 events.push(Event {
                     kind: "emit",
-                    message: key.clone(),
+                    message: key,
                 });
                 events.push(Event {
                     kind: "emit",
-                    message: val.to_string(),
+                    message: value.to_string(),
                 });
+            };
+            if drain {
+                while let Some((key, value)) = map.pop_first() {
+                    emit(key, value);
+                }
+            } else {
+                for (key, value) in &map {
+                    emit(key.clone(), *value);
+                }
             }
             if let Some(start) = timer {
                 eprintln!("{}", start.elapsed().as_nanos());

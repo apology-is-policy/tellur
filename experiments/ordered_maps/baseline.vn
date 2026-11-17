@@ -16,6 +16,20 @@ control drain(map<string, u32> input) exits result {
     }
 }
 
+// Consume each pair and preserve both fields in the observable trace.
+control observe_drain(map<string, u32> input) exits result {
+    loop consume(map<string, u32> remaining = input) {
+        delta map_take(remaining) {
+            item { string key, u32 value, auto rest } => more,
+            empty => exit done
+        }
+        [more]:
+            emit(key);
+            emit(u32_text(value));
+            again consume(rest);
+    }
+}
+
 // Exercise equal-key replacement, lookup and ordered removal on the same fixture.
 control observe(map<string, u32> source) exits result {
     mutable map<string, u32> input = source;

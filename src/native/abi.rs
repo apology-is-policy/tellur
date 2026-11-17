@@ -3891,19 +3891,8 @@ pub unsafe extern "C" fn tellur_rt_v1_map_scan(
         if name != "map" {
             return Err("E_NATIVE: expected map".into());
         }
-        if !projections.is_empty() {
-            let Some(collection_support::Collection::Map(key, value)) =
-                collection_support::Collection::parse(ty)
-            else {
-                return Err("E_NATIVE: invalid map type".into());
-            };
-            // Stored references need the ordinary indirect read.
-            for &p in projections {
-                let field = if p & 1 == 0 { &key } else { &value };
-                if p > 3 || field != if p < 2 { "String" } else { "U32" } {
-                    return Ok(());
-                }
-            }
+        if !projections.is_empty() && !map_projections_match(ty, projections, false)? {
+            return Ok(());
         }
         let len = fields.len() / 2;
         let mut steps = len.saturating_sub(start as usize);
@@ -3931,25 +3920,87 @@ pub unsafe extern "C" fn tellur_rt_v1_map_scan(
             else {
                 unreachable!()
             };
-            if c.host.trace
-                && let Some(n) = steps.checked_mul(projections.len())
-            {
-                let _ = c.host.events.ends.try_reserve(n);
-            }
-            for pair in fields[start as usize * 2..end * 2].chunks_exact(2) {
-                for &p in projections {
-                    match &pair[(p & 1) as usize] {
-                        V::String(s) if p < 2 => c.host.emit_text(s),
-                        V::U32(n) if p >= 2 => c.host.emit_decimal(*n),
-                        _ => return Err("E_NATIVE: map storage disagrees with its type".into()),
-                    }
-                }
-            }
+            emit_map_pairs(c.host, &fields[start as usize * 2..end * 2], projections)?;
         }
         c.values[start_slot] = Some(V::U32(end as u32));
         Ok(())
     })
 }
+
+fn map_projections_match(ty: &str, projections: &[u8], consuming: bool) -> R<bool> {
+    let Some(collection_support::Collection::Map(key, value)) =
+        collection_support::Collection::parse(ty)
+    else {
+        return Err("E_NATIVE: invalid map type".into());
+    };
+    // Consuming a resource-bearing element requires its checked disposition.
+    if consuming && !matches!(value.as_str(), "U32" | "String" | "Bool" | "Unit" | "Bytes") {
+        return Ok(false);
+    }
+    Ok(projections.iter().all(|&p| {
+        let field = if p & 1 == 0 { &key } else { &value };
+        p <= 3 && field == if p < 2 { "String" } else { "U32" }
+    }))
+}
+
+fn emit_map_pairs(host: &mut Host, fields: &[V], projections: &[u8]) -> R<()> {
+    if projections.is_empty() {
+        return Ok(());
+    }
+    if host.trace
+        && let Some(n) = (fields.len() / 2).checked_mul(projections.len())
+    {
+        let _ = host.events.ends.try_reserve(n);
+    }
+    for pair in fields.chunks_exact(2) {
+        for &p in projections {
+            match &pair[(p & 1) as usize] {
+                V::String(s) if p < 2 => host.emit_text(s),
+                V::U32(n) if p >= 2 => host.emit_decimal(*n),
+                _ => return Err("E_NATIVE: map storage disagrees with its type".into()),
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Consume a proven prefix. A partial iteration receives the ordinary owned
+/// suffix and the original checked graph performs every remaining instruction.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_map_drain(
+    ctx: *mut Context<'_>,
+    owner: u64,
+    ticks: usize,
+    projections: *const u8,
+    count: usize,
+) {
+    unsafe { &mut *ctx }.perform(|c| {
+        if ticks == 0 {
+            return Err("E_NATIVE: invalid map drain cost".into());
+        }
+        let projections = unsafe { slice(projections, count) };
+        let slot = c.value_index(owner)?;
+        let Some(V::Construct { ty, name, fields }) = &mut c.values[slot] else {
+            return Err("E_NATIVE: expected owned map".into());
+        };
+        if name != "map" || !map_projections_match(ty, projections, true)? {
+            return Ok(());
+        }
+        let pairs = fields.len() / 2;
+        let steps = c.host.fuel.map_or(pairs, |fuel| pairs.min(fuel / ticks));
+        emit_map_pairs(c.host, &fields[..2 * steps], projections)?;
+        if steps == pairs {
+            *fields = Vec::new();
+        } else {
+            drop(fields.drain(..2 * steps));
+        }
+        if let Some(fuel) = &mut c.host.fuel {
+            *fuel -= steps * ticks;
+        }
+        Ok(())
+    })
+}
+
 /// Collection operations use the same stable arena and element-reference
 /// evidence as generated Rust. Check the entire handle batch before mutation.
 #[unsafe(no_mangle)]
