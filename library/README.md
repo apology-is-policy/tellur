@@ -6,6 +6,8 @@ library follow-up on compiler 0.76. They use explicit file imports and
 manifest-selected Rust mechanisms. It is experimental source code, with no package
 resolver, implicit prelude or stable binary ABI.
 
+For the planned collection APIs, algorithm contracts and storage experiments, see the [collections and algorithms design](../docs/collections-and-algorithms.md).
+
 ## JSON string-map files
 
 Import [json_file.tellur](json_file.tellur) with a relative path and a local namespace.

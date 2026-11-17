@@ -1,0 +1,47 @@
+# Collections and algorithms for the Tellur standard library
+
+Design draft, 17 November 2026. The standard library will include collections and algorithms. The API and representation choices below are proposals. The existing operations and ownership rules are specified in the [language reference](language-reference.md#arrays-vectors-and-maps).
+
+## A first operation with two callers
+
+The settings HTTP service and the standalone greeting server both inspect two headers. They need the value of `Host` to check the authority. For `Origin`, presence alone determines a response. A library can express that distinction today.
+
+```tellur
+pub control contains_key<item>(ref map<string, item> values, ref string key) exits present, absent {
+    exit delta map_get(values, key) {
+        found { ref item value } => present {},
+        missing => absent {}
+    };
+}
+```
+
+In temporary copies of both services, routing `contains_key<string>(borrow headers, borrow "origin")` to their existing response paths passed the 0.283 checker. The operation consumes neither input, returns no loan and imposes no cloning requirement on the value. Each caller still chooses its status and message. This is a source prototype with string keys. Today's other supported map keys are `u32` and `bool`. A generic key constraint is a separate design decision. [Settings caller](../applications/settings/http.tellur) · [Greeting caller](../examples/http_hello/main.tellur)
+
+## Proposed algorithm contracts
+
+| Family | First useful contract | Observable behavior |
+| --- | --- | --- |
+| Membership and search | Key membership by shared borrow. A sequence search returns a borrowed first match or an explicit miss. | Search visits elements in sequence order and stops at the first match. The match borrows the collection. A miss releases the loan. |
+| Borrowed traversal | Start with shared array/vector slices over a half-open range and ordered key/value traversal for maps. | An empty range at either end is valid. A reversed or out-of-bounds range takes an explicit failure exit. Reads can coexist. Structural mutation waits until the last conflicting view or returned reference is released. |
+| Reduction and early exit | Fold a borrowed sequence with an owned accumulator. An outcome from the step control can stop the fold. | Visit in order. Specify who owns the accumulator on each exit and preserve the step's declared outcomes and origin through expansion. A fallible step that consumes an accumulator must return, transfer or settle it on that path. |
+| Consuming partition | Move each input to one of two outputs while preserving relative order in each. | A classifier borrows the current element. If it stops early, return both completed partitions, the current element and the untouched remainder. Every owner has a destination, including must-complete resources. |
+| Ordering | Stable sort with an infallible ordering for the first version. Add ordered bounds/search once the caller can supply evidence for the ordering. | Equal keys keep input order. Moving records during sorting preserves their resource obligations. A later fallible comparator needs an explicit contract for collection state on early exit. |
+
+For the first search and fold prototypes, use a statically named predicate or step control with a closed outcome contract. Try Tellur's existing trait dispatch for reuse across element types. The design question is how callers route a step's additional outcomes without losing where they arose. A two-outcome predicate, a fallible predicate and a step with an owned resource are three distinct tests. Closure syntax and a universal iterator trait can be considered after those examples.
+
+Keep read-only traversal and consuming traversal independently useful. In particular, a vector containing file handles can be inspected through shared borrows and later drained into explicit close operations. Existing whole-collection borrow checks apply even if a particular storage layout happens to keep addresses stable.
+
+## Two representation experiments
+
+**Ordered string maps.** Prototype an adaptive radix tree (ART) behind the current map contract. Its nodes adapt to branching density and its key traversal follows byte order. This fits Tellur's lexicographic UTF-8 string order and makes a bounded prefix scan a plausible later operation. Compare against today's sorted flat map and an ordered B-tree. Start with the tiny HTTP-header maps as well as larger settings maps with common prefixes. A compact flat form for small maps with promotion to a tree is a candidate. Measure the crossover and the cost of promotion before selecting it. Empty strings, embedded zero bytes, a key that prefixes another, multibyte keys, and equal-key replacement must all preserve Tellur's behavior. [ART paper](https://db.in.tum.de/~leis/papers/ART.pdf) · [Ordered B-tree baseline](https://doc.rust-lang.org/std/collections/struct.BTreeMap.html)
+
+**Vectors with cheap split and concatenation.** Prototype a relaxed radix balanced tree (RRB) for a workload that repeatedly joins batches and splits them again. RRB trees support logarithmic concatenation and splitting through a tree of chunks. Compare with a flat vector for append, random access, scanning, split and join. Include a flat vector with a moving start index as a baseline for front drains. First try consuming split and join, where both the old owners and the destination of each element are clear. Any persistent snapshot API would need its own eligibility rules for element identity, mutation, explicit cloning and resources. Tree sharing alone cannot grant those permissions. [Bagwell and Rompf's RRB paper](https://infoscience.epfl.ch/record/169879/files/RMTrees.pdf)
+
+Record time per operation, allocations, peak live bytes, and bytes or elements moved. Report key lengths, collection sizes, hit/miss ratios and scan order with the results. Compare complete Tellur operations as well as the isolated data structure. Today front-draining a flat vector or map can take quadratic time across a full drain. A linear full ordered traversal with no element clones is a useful first target. The existing collection conformance cases cover key order, value replacement, invalidation and resource completion. Run them against each candidate and compare original and expanded behavior in the interpreter and LLVM executables. [Collection conformance cases](../tests/collections.rs)
+
+## Path to a supported library
+
+1. Exercise the existing public-outcome change on both JSON callers and use it to document failure routing and provenance. The results are in the [language roadmap](language-revision.md#active-checkpoint-queue).
+2. Specify the ownership and outcome contracts above using caller examples. Start with membership and one borrowed traversal. Prototype the ordered string map alongside them.
+3. Evaluate higher-order algorithms and the sequence representation with real callers. Introduce slices, generic bounds or additional origin contracts as the examples require them.
+4. Try adopting a module in a fresh project, including its import and any host adapter. Publish the first supported modules with documented semantics, compatibility expectations and runnable examples. The existing JSON-file module and the collection algorithms can mature independently.

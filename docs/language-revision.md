@@ -2,6 +2,10 @@
 
 ## Active checkpoint queue
 
+### Standard library direction, 17 November 2026
+
+The agreed route is to exercise public outcomes across expansion, establish library ownership and failure conventions, try a small API in two callers, and test adoption in a fresh project before shipping a supported slice. Collections and algorithms are an explicit design priority alongside the file and JSON modules. The first draft covers membership, borrowed traversal, folds, partitioning and sorting. It proposes experiments with adaptive radix trees for string maps and chunked RRB trees for sequences. The next prototype is borrowed traversal and an ordered string-map comparison. [Collections and algorithms design](collections-and-algorithms.md)
+
 ### Language roadmap review, 16 November 2026
 
 The [original vision and success criteria](path-language-vision.md#18-prototype-plan-and-success-criteria)
@@ -28,11 +32,7 @@ named `empty_file` and pointed back to the branch that produced it. One new arm
 in each caller restored checking across all 43 settings controls and all four
 example controls. This was a review experiment. The published storage contract is unchanged.
 
-**Proposed next checkpoint.** Use that same API change to test the other half of
-the original promise. Run empty, missing and malformed files through each caller
-before and after expansion. Compare the selected exits, observable effects and
-the source of each failure. This gives us a concrete basis for deciding whether
-the next language investment should be outcome routing, diagnostics or extraction.
+**Expansion comparison completed on 17 November.** In the temporary API revision above, all six scripted client/input combinations produced identical exit payloads, host-call arguments and effects, and emitted messages before and after expansion. Empty input yielded a settings diagnostic and a silent failure in the standalone client. Missing input printed an empty JSON object in settings and selected the standalone client's `missing` exit. Malformed input reached `json_decode.invalid` and both callers printed its message. Both expansion certificates passed the separate structural validator, including its provenance checks. These results cover the six scripted paths.
 
 [Current support and limits](reference/support-status.md) · [Checked expansion](expansion-certificates.md) · [Tail extraction](extraction.md)
 
