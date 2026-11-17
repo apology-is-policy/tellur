@@ -1,0 +1,33 @@
+import "../../library/traversal.vn" as traversal;
+
+control print_headers(ref map<string, string> headers) exits done {
+    loop visit(u32 position = 0) {
+        delta traversal.entry_at<string>(headers, position) {
+            item { ref string name, ref string value, u32 next } => header,
+            finished => exit done
+        }
+        [header]:
+            emit(name);
+            emit(value);
+            again visit(next);
+    }
+}
+
+control main() exits done { u32 count }, unexpected {
+    mutable map<string, string> headers = map {};
+    delta map_insert(borrow mutable headers, "origin", "example.org") {
+        inserted => origin,
+        replaced { auto previous } => exit unexpected
+    }
+    [origin]: delta map_insert(borrow mutable headers, "accept", "text/plain") {
+        inserted => ready,
+        replaced { auto previous_accept } => exit unexpected
+    }
+    [ready]:
+        print_headers(borrow headers);
+        delta map_remove(borrow mutable headers, borrow "origin") {
+            removed { auto removed } => counted,
+            missing => exit unexpected
+        }
+    [counted]: exit done { map_length(borrow headers) };
+}

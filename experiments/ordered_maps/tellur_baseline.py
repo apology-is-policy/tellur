@@ -33,19 +33,25 @@ def report(command):
 def run(compiler, folder):
     data = folder / "scenario.json"
     keys = {k: i for i, k in enumerate(["é", "e\u0301", "a\0b", "a", "🍏", "", "aa", "\0", "a\0", "éx", "\0\0"])}
-    data.write_text(json.dumps(scenario("observe", keys)))
     expected = {"outcome": "done", "fields": [],
                 "events": [{"kind": "emit", "message": key} for key in sorted(keys)]}
-    for flags in [[], ["--expanded"]]:
-        binary = build(compiler, folder, "observe", flags)
-        assert report([compiler, "run", SOURCE, HERE / "manifest.json", data, "--json", *flags]) == expected
-        assert report([binary, "--scenario", data, "--json"]) == expected
+    scan_events = [{"kind": "emit", "message": message}
+                   for key in sorted(keys) for message in (key, str(keys[key]))]
+    for entry, events in [("observe", expected["events"]), ("observe_scan", scan_events)]:
+        data.write_text(json.dumps(scenario(entry, keys)))
+        observation = {**expected, "events": events}
+        for flags in [[], ["--expanded"]]:
+            binary = build(compiler, folder, entry, flags)
+            assert report([compiler, "run", SOURCE, HERE / "manifest.json", data, "--json", *flags]) == observation
+            assert report([binary, "--scenario", data, "--json"]) == observation
 
-    binaries = {entry: build(compiler, folder, entry) for entry in ["accept", "drain"]}
+    binaries = {entry: build(compiler, folder, entry) for entry in ["accept", "scan", "drain"]}
     print("size,entry,median_process_ms")
-    for size in [8, 64, 512, 4096]:
+    for size in [8, 64, 512, 4096, 16384]:
         keys = {f"settings/tenant/{i % 32:02}/property/{i:05}": i for i in range(size)}
         for entry, binary in binaries.items():
+            if size > 4096 and entry == "drain":
+                continue  # The destructive baseline shifts every remaining entry.
             data.write_text(json.dumps(scenario(entry, keys)))
             command = [binary, "--scenario", data, "--json", "--fuel", "1000000"]
             expected = {"outcome": "done", "fields": [], "events": []}

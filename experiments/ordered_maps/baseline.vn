@@ -1,3 +1,5 @@
+import "../../library/traversal.vn" as traversal;
+
 // Measure the same input decoding and process launch for each entry.
 control accept(map<string, u32> input) exits result {
     drop(input);
@@ -50,4 +52,32 @@ control list(map<string, u32> input) exits result {
 outcome result {
     @exit 0 done,
     @exit 1 unexpected
+}
+
+// Visit both storage slots without shifting the remaining entries.
+control scan(map<string, u32> input) exits result {
+    loop visit(u32 position = 0) {
+        delta traversal.entry_at<u32>(borrow input, position) {
+            item { ref string key, ref u32 value, u32 next } => more,
+            finished => end
+        }
+        [more]: again visit(next);
+        [end]: delta (map_length(borrow input) == position) {
+            true => exit done,
+            false => exit unexpected
+        }
+    }
+}
+
+control observe_scan(map<string, u32> input) exits result {
+    loop visit(u32 position = 0) {
+        delta traversal.entry_at<u32>(borrow input, position) {
+            item { ref string key, ref u32 value, u32 next } => more,
+            finished => exit done
+        }
+        [more]:
+            emit(key);
+            emit(u32_text(deref value));
+            again visit(next);
+    }
 }

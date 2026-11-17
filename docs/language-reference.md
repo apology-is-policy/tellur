@@ -1,8 +1,8 @@
 # Villanelle language reference
 
-<!-- villanelle-reference-version: 0.285.0 -->
+<!-- villanelle-reference-version: 0.286.0 -->
 
-This manual describes **compiler 0.285.0**, including the current ownership model,
+This manual describes **compiler 0.286.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Villanelle
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -2287,12 +2287,20 @@ use `delta` and require every listed outcome to be handled:
 | `vector_push` | `t value` | `pushed` |
 | `vector_pop` | — | `item { t value }`, `empty` |
 | `vector_remove` | `u32 index` | `item { t value }`, `out_of_bounds` |
+| `map_entry_at` | `u32 position` | `item { ref k key, ref v value, u32 next }`, `finished` |
 | `map_get`, `map_get_mut` | shared `borrow key` | `found { ref v value }` / `found { ref mutable v value }`, `missing` |
 | `map_insert` | `k key, v value` | `inserted`, `replaced { v previous }` |
 | `map_remove` | shared `borrow key` | `removed { v value }`, `missing` |
 | `vector_take` | —; consumes vector | `item { t value, vector<t> rest }`, `empty` |
 | `map_take` | —; consumes map | `item { k key, v value, map<k, v> rest }`, `empty` |
 | `array_into_vector` | —; consumes array | `converted { vector<t> values }` |
+
+A borrowed ordered scan starts at position zero. Each successful `map_entry_at`
+returns the key and value in ascending key order and the position of the next entry.
+Any position at or beyond the current length returns `finished`. Readers can overlap.
+For owned entries, either live reference prevents structural mutation. After their
+last use the caller may modify the map. A saved numeric position then refers to
+the entry at that rank in the **updated** map.
 
 For direct shared-reference elements (`t = ref u`), both `_get` and `_get_mut`
 return `ref u`, rather than adding another reference layer. See the local borrowed
@@ -2371,6 +2379,10 @@ removal, growth or dropping the collection, provided its external owner remains 
 `_get_mut` still requires exclusive collection access but returns the same shared
 reference: it grants no permission to change the referent or rebind the stored
 reference. Use `_replace` or `map_insert` to replace an entry explicitly.
+
+On a local `map<k, ref u>`, `map_entry_at` borrows the key from the map and
+copies the stored shared reference as its value payload. After the final use
+of the key, the value may outlive the map under the same external-owner rules as lookup.
 
 Insertion retains the supplied source on successful outcomes. Replacement returns
 the old reference; an out-of-bounds replacement returns the supplied reference.
@@ -2952,7 +2964,7 @@ General expression-type hover remains unsupported.
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and broader spawn payloads (anonymous contracts and reference-bearing collections) remain planned; they are not executable features of 0.285.0.
+and broader spawn payloads (anonymous contracts and reference-bearing collections) remain planned; they are not executable features of 0.286.0.
 ## Contingency and supervised boundaries
 
 The [contingency reference](reference/contingency.md) specifies `@contingent`,

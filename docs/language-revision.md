@@ -2,13 +2,17 @@
 
 ## Active checkpoint queue
 
+### Borrowed ordered traversal, 17 November 2026
+
+Villanelle 0.286 adds `traversal.entry_at` for string-keyed maps. Callers can read both fields in order and reuse the map after the scan. On Apple M2 the full native scan took 22.1 ms for 4,096 settings keys, compared with 92.4 ms for a consuming drain. The next algorithm prototype is first-match search with a statically named predicate. Exercise an ordinary miss, an early match and a fallible predicate whose outcome the caller must route. Fold and the split/join sequence experiment follow. [Example](../examples/borrowed_traversal/headers.vn) · [Measurements](../experiments/ordered_maps/README.md)
+
 ### Language name, 17 November 2026
 
-The language is now Villanelle. Sources use `.vn` and the compiler is `vnc`. Borrowed ordered map traversal remains the next language-library experiment. [Migration guide](language-reference.md#villanelle-name-and-migration)
+The language is now Villanelle. Sources use `.vn` and the compiler is `vnc`. [Migration guide](language-reference.md#villanelle-name-and-migration)
 
 ### Standard library direction, 17 November 2026
 
-The agreed route is to exercise public outcomes across expansion, establish library ownership and failure conventions, try a small API in two callers, and test adoption in a fresh project before shipping a supported slice. Collections and algorithms are an explicit design priority alongside the file and JSON modules. The first draft covers membership, borrowed traversal, folds, partitioning and sorting. It proposes experiments with adaptive radix trees for string maps and chunked RRB trees for sequences. Collection controls use small capability traits and module-qualified algorithms with explicit ownership at the call site. The 0.284 editor experiment offers dot-triggered discovery for membership, borrowed element access and consuming partition. Each suggestion previews ownership and inserts a qualified call. The shared vector window and first ordered string-map comparison now run on 0.284. Next is borrowed ordered key/value traversal on the current representation. Measure its cost before changing storage. [Collections and algorithms design](collections-and-algorithms.md)
+The agreed route is to exercise public outcomes across expansion, establish library ownership and failure conventions, try a small API in two callers, and test adoption in a fresh project before shipping a supported slice. Collections and algorithms are an explicit design priority alongside the file and JSON modules. The first draft covers membership, borrowed traversal, folds, partitioning and sorting. It proposes experiments with adaptive radix trees for string maps and chunked RRB trees for sequences. Collection controls use small capability traits and module-qualified algorithms with explicit ownership at the call site. The 0.284 editor experiment offers dot-triggered discovery for membership, borrowed element access and consuming partition. Each suggestion previews ownership and inserts a qualified call. The shared vector window and first ordered string-map comparison now run on 0.284. [Collections and algorithms design](collections-and-algorithms.md)
 
 ### Language roadmap review, 16 November 2026
 

@@ -495,3 +495,94 @@ fn array_lengths_are_canonical_and_zero_length_arrays_work() {
     assert_eq!(r.fields[2], vector("String", vec![]));
     assert_eq!(r.fields[0].ty(), "array<U32,2>");
 }
+
+#[test]
+fn map_entry_at_uses_ordered_positions_and_allows_overlapping_readers() {
+    let source = r#"control main(map<u32,string> values,u32 position) exits auto {
+        delta map_entry_at(borrow values, position) {item {auto key,auto value,auto next}=>first,finished=>end}
+        [first]: delta map_entry_at(borrow values,next) {item {auto key2,auto value2,auto next2}=>pair,finished=>last}
+        [pair]: exit pair {deref key,clone(value),deref key2,clone(value2),next2};
+        [last]: exit last {deref key,clone(value),next};
+        [end]: exit end {values};
+    }"#;
+    let map = Value::Construct {
+        ty: "map<U32,String>".into(),
+        name: "map".into(),
+        fields: vec![
+            Value::U32(3),
+            Value::String("a".into()),
+            Value::U32(7),
+            Value::String("b".into()),
+        ],
+    };
+    let call = |idx| run(source, vec![map.clone(), Value::U32(idx)]);
+    assert_eq!(
+        call(0).fields,
+        vec![
+            Value::U32(3),
+            Value::String("a".into()),
+            Value::U32(7),
+            Value::String("b".into()),
+            Value::U32(2)
+        ]
+    );
+    assert_eq!(
+        call(1).fields,
+        vec![Value::U32(7), Value::String("b".into()), Value::U32(2)]
+    );
+    for idx in [2, u32::MAX] {
+        assert_eq!(call(idx).fields, vec![map.clone()]);
+    }
+}
+
+#[test]
+fn either_entry_reference_freezes_the_map_across_a_public_call() {
+    let source = r#"control at(ref map<bool,string> values) exits item {ref bool key from values,ref string value from values},finished {
+        exit delta map_entry_at(values,0) {item {auto key,auto value,auto next}=>item {key,value},finished=>finished {}};
+    }
+    control main() exits done {
+        mutable map<bool,string> values=map {};
+        delta at(borrow values) {item {auto key,auto value}=>found,finished=>end}
+        [found]: drop(values); USE
+        [end]: drop(values);exit done;
+    }"#;
+    rejects(&source.replace("USE", "emit(value);exit done;"), "E_LOAN");
+    rejects(
+        &source.replace(
+            "USE",
+            "delta deref key {true=>yes,false=>no} [yes|no]: exit done;",
+        ),
+        "E_LOAN",
+    );
+    assert_eq!(
+        run(
+            &source.replace("drop(values); USE", "emit(value);drop(values);exit done;"),
+            vec![]
+        )
+        .outcome,
+        "done"
+    );
+}
+
+#[test]
+fn map_entry_with_stored_reference_tracks_key_and_pointee_independently() {
+    let source = r#"control main() exits done {
+        mutable string owner="text";mutable map<string,ref string> values=map {};
+        delta map_insert(borrow mutable values,"key",borrow owner) {inserted=>added,replaced {auto old}=>replaced}
+        [added|replaced]: delta map_entry_at(borrow values,0) {item {auto key,auto value,auto next}=>item,finished=>end}
+        [item]: emit(key);drop(values);emit(value);owner="released";exit done;
+        [end]: exit done;
+    }"#;
+    assert_eq!(run(source, vec![]).events.len(), 2);
+    rejects(
+        &source.replace("emit(key);drop(values);", "drop(values);emit(key);"),
+        "E_LOAN",
+    );
+    rejects(
+        &source.replace(
+            "drop(values);emit(value);",
+            "drop(values);owner=\"early\";emit(value);",
+        ),
+        "E_LOAN",
+    );
+}

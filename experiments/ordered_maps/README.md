@@ -21,11 +21,23 @@ The eight real header names span 4–15 bytes. The larger workloads use 33-byte 
 
 The current Villanelle 0.284 LLVM executable also ran a complete ordered drain. At 4,096 entries the median was 95.5 ms. A control that accepted and dropped the same input took 4.7 ms. At 64 entries the corresponding times were 3.6 and 3.5 ms. These wall times include launch and scenario decoding. The Rust layout timings above cover in-process operations. The trees have yet to be integrated into the Villanelle runtime. [Villanelle baseline](baseline.vn) · [Process timings](results/native-timings.csv)
 
-A borrowed ordered scan is worth prototyping on the current flat layout. It could visit every entry once while leaving the map available to the caller. Keep the B-tree as a baseline for large mixed workloads and ART as a candidate for lookup-heavy workloads with shared prefixes. Choosing a representation or promotion threshold needs measurements inside the runtime on application traces.
+### Borrowed traversal in Villanelle 0.286
+
+The public `traversal.entry_at<u32>` control projects two slots in the sorted flat map and returns the next position. A full scan visits each pair once, with no key comparisons, entry clones or shifts. The timed loop obtains both references and advances. A separate conformance run reads each key and value and checks the emitted sequence before timing.
+
+| Settings entries | Accept and drop | Borrowed scan | Consuming drain |
+| ---: | ---: | ---: | ---: |
+| 512 | 3.4 ms | 5.7 ms | 5.0 ms |
+| 4,096 | 4.4 ms | 22.1 ms | 92.4 ms |
+| 16,384 | 8.3 ms | 79.1 ms | — |
+
+At four times the input size, scan time above the accept-and-drop baseline grew from 17.7 to 70.8 ms. For tiny maps, process startup dominates these measurements. Each figure is the median of nine fresh native processes on Apple M2, including scenario decoding. The earlier 0.284 drain measurement is retained above. [0.286 process timings](results/borrowed-traversal.csv)
+
+Keep the B-tree as a baseline for large mixed workloads and ART as a candidate for lookup-heavy workloads with shared prefixes. Choosing a representation or promotion threshold needs measurements inside the runtime on application traces.
 
 ## Reproducing the experiment
 
-Run from the repository root with Rust, Python 3 and a native Villanelle 0.284 compiler.
+Run from the repository root with Rust, Python 3 and a native Villanelle 0.286 compiler.
 
 ```sh
 export CARGO_INCREMENTAL=0
@@ -38,4 +50,4 @@ The first two commands validate insertion, replacement, hits, misses, borrowed i
 
 Input generation and shuffling use a fixed seed. The timing run takes the median of seven batches. Each batch visits at least 16,384 entries across repetitions. Setup and final map destruction are outside the timed region. The scan consumes each key reference and value through a black box and does no text processing. A separate single-threaded run counts allocation and reallocation calls and peak live requested bytes above the start of each phase. Allocator metadata and any internal overlap during reallocation are outside this accounting. Tiny-map results include timer overhead.
 
-The Python command checks ordered removal, replacement and lookup on edge-case keys against the same expected Villanelle events in the authored and expanded interpreter and LLVM executable. It then measures nine fresh native processes per entry and size. Its inputs use settings-shaped keys at all four sizes.
+The Python command checks ordered removal, replacement and lookup on edge-case keys against the same expected Villanelle events in the authored and expanded interpreter and LLVM executable. It then measures nine fresh native processes per entry and size. It also checks both fields of every borrowed entry. Its inputs use settings-shaped keys at five sizes, with the destructive baseline measured through 4,096 entries.

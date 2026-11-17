@@ -16,6 +16,10 @@ The experimental [membership module](membership.vn) exports `contains_key<item>`
 
 The [traversal module](traversal.vn) exports `range` and `get`. The [example](../examples/borrowed_traversal/main.vn) reads two words from a half-open range, then appends to the original vector. From the checkout run `./bin/vnc exec examples/borrowed_traversal/main.vn -- --json`. For the reference interpreter, use the example's [manifest](../examples/borrowed_traversal/manifest.json) and [scenario](../examples/borrowed_traversal/main.scenario.json).
 
+## Borrowed ordered map entries
+
+Run `./bin/vnc exec examples/borrowed_traversal/headers.vn -- --json` to print two HTTP headers in key order, then remove one. The example calls `traversal.entry_at<string>` and passes the returned position into the next iteration. The runner reports one header remaining. [Header example](../examples/borrowed_traversal/headers.vn)
+
 ## JSON string-map files
 
 Import [json_file.vn](json_file.vn) with a relative path and a local namespace.

@@ -435,6 +435,9 @@ impl crate::collection_support::CollectionValue for Value {
     fn construct(ty: String, name: String, fields: Vec<Self>) -> Self {
         Self::Construct { ty, name, fields }
     }
+    fn from_number(value: u32) -> Self {
+        Self::U32(value)
+    }
     fn number(&self) -> Option<u32> {
         if let Self::U32(n) = self {
             Some(*n)

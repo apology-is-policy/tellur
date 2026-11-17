@@ -550,6 +550,14 @@ impl Manifest {
     }
     /// Static return-borrow projections; collection elements are conservative wildcards.
     pub fn borrow_field(&self, ty: &str, index: usize) -> Option<(String, String)> {
+        if index == crate::collections::MAP_KEY {
+            let crate::collection_support::Collection::Map(key, _) =
+                crate::collection_support::Collection::parse(ty)?
+            else {
+                return None;
+            };
+            return Some(("[key]".into(), key));
+        }
         if index == crate::collections::ELEMENT {
             let c = crate::collection_support::Collection::parse(ty)?;
             return Some(("[*]".into(), c.element().into()));

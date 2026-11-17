@@ -5,6 +5,7 @@ use crate::{
 };
 use std::collections::BTreeMap;
 pub const ELEMENT: usize = usize::MAX;
+pub const MAP_KEY: usize = usize::MAX - 1;
 pub fn is_operation(name: &str) -> bool {
     [
         "array_get",
@@ -18,6 +19,7 @@ pub fn is_operation(name: &str) -> bool {
         "vector_remove",
         "vector_replace",
         "vector_take",
+        "map_entry_at",
         "map_get",
         "map_get_mut",
         "map_insert",
@@ -42,7 +44,7 @@ pub fn contract(name: &str, ty: &str) -> Option<Contract> {
     let op = name.strip_prefix(&format!("{}_", c.name()))?;
     let t = c.element();
     let consuming = matches!(op, "take" | "into_vector");
-    let mutable = !consuming && op != "get";
+    let mutable = !consuming && !matches!(op, "get" | "entry_at");
     let p = |name: &str, ty: String, mode| Parameter {
         name: name.into(),
         ty,
@@ -78,6 +80,33 @@ pub fn contract(name: &str, ty: &str) -> Option<Contract> {
     };
     let mut borrow_returns = BTreeMap::new();
     let outcomes = match op {
+        "entry_at" => {
+            let Collection::Map(key, _) = &c else {
+                return None;
+            };
+            parameters.push(p("position", "U32".into(), Mode::Value));
+            for (index, projection) in [MAP_KEY, ELEMENT].into_iter().enumerate() {
+                borrow_returns.insert(
+                    ("item".into(), index),
+                    vec![BorrowSource {
+                        parameter: 0,
+                        fields: vec![projection],
+                        guard: false,
+                        contained: None,
+                        opaque: false,
+                    }],
+                );
+            }
+            let value = if c.shared_reference_element() {
+                t.into()
+            } else {
+                format!("&{t}")
+            };
+            vec![
+                o("item", vec![format!("&{key}"), value, "U32".into()]),
+                o("finished", vec![]),
+            ]
+        }
         "get" | "get_mut" => {
             parameters.push(match &c {
                 Collection::Map(k, _) => p("key", k.clone(), Mode::Borrow),
@@ -171,7 +200,7 @@ pub fn contract(name: &str, ty: &str) -> Option<Contract> {
     };
     if c.shared_reference_element() {
         // Local element dependencies are instantiated from the holder's loans.
-        borrow_returns.clear();
+        borrow_returns.retain(|(_, index), _| op == "entry_at" && *index == 0);
     }
     Some(Contract {
         parameters,

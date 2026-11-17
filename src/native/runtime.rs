@@ -2306,6 +2306,9 @@ impl collection_support::CollectionValue for V {
     fn construct(ty: String, name: String, fields: Vec<Self>) -> Self {
         Self::Construct { ty, name, fields }
     }
+    fn from_number(value: u32) -> Self {
+        Self::U32(value)
+    }
     fn number(&self) -> Option<u32> {
         if let Self::U32(n) = self {
             Some(*n)

@@ -35,7 +35,11 @@ In temporary copies of both services, routing `contains_key<string>(borrow heade
 
 The experimental `traversal.range<item>(borrow values, start, end)` returns a shared window over `[start, end)`. An empty range at either end is valid, including on an empty vector. Reversed bounds or an end past the vector return `invalid`. The window stores one shared reference and two indices. Its fields are private.
 
-Call `traversal.get<item>(borrow view, offset)` to read relative to the start. It returns `found` with an element borrowed from the original vector, or `finished` if the offset falls outside the window, including arithmetic overflow. Two windows can overlap. Structural mutation becomes available after the last use of the windows and their returned elements. The source module uses the manifest's existing `checked_add` primitive. Array windows and borrowed ordered map traversal remain open. [Source module](../library/traversal.vn) · [Runnable example](../examples/borrowed_traversal/main.vn)
+Call `traversal.get<item>(borrow view, offset)` to read relative to the start. It returns `found` with an element borrowed from the original vector, or `finished` if the offset falls outside the window, including arithmetic overflow. Two windows can overlap. Structural mutation becomes available after the last use of the windows and their returned elements. The source module uses the manifest's existing `checked_add` primitive. Array windows remain open. [Source module](../library/traversal.vn) · [Runnable example](../examples/borrowed_traversal/main.vn)
+
+## Scan an ordered map
+
+For a string-keyed map, call `traversal.entry_at<item>(borrow values, position)` starting at zero. Route `item { ref string key, ref item value, u32 next }` to the loop body and pass `next` on the back edge. Route `finished` to the end of the scan. The header example prints both fields, then removes a header after the scan. The builtin also accepts the existing `bool` and `u32` key types. Positions are ranks in the current map. Restart at zero to scan the whole map after editing it. [Runnable example](../examples/borrowed_traversal/headers.vn) · [Reference](language-reference.md#arrays-vectors-and-maps)
 
 ## Proposed algorithm contracts
 
@@ -59,7 +63,7 @@ Keep read-only traversal and consuming traversal independently useful. In partic
 
 Record time per operation, allocations, peak live bytes, and bytes or elements moved. Report key lengths, collection sizes, hit/miss ratios and scan order with the results. Compare complete Villanelle operations as well as the isolated data structure. Today front-draining a flat vector or map can take quadratic time across a full drain. A linear full ordered traversal with no element clones is a useful first target. The existing collection conformance cases cover key order, value replacement, invalidation and resource completion. Run them against each candidate and compare original and expanded behavior in the interpreter and LLVM executables. [Collection conformance cases](../tests/collections.rs)
 
-The first ordered string-map comparison is complete on Apple M2. Linear lookup was fastest for eight headers. At 4,096 shared-prefix settings keys ART led on lookup, the B-tree led on insertion and draining, and flat storage led on borrowed scans. The next library experiment is an ordered key/value scan that borrows the map. [Measurements and reproduction](../experiments/ordered_maps/README.md)
+The first ordered string-map comparison is complete on Apple M2. Linear lookup was fastest for eight headers. At 4,096 shared-prefix settings keys ART led on lookup, the B-tree led on insertion and draining, and flat storage led on borrowed scans. The 0.286 source prototype scans the existing flat map by borrowing each pair. In the native settings workload, scanning 4,096 entries through the library took 22.1 ms and draining took 92.4 ms, including process startup and decoding. [Measurements and reproduction](../experiments/ordered_maps/README.md)
 
 ## Path to a supported library
 

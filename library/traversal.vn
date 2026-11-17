@@ -38,3 +38,14 @@ pub control get<item>(ref window<item> view, u32 offset)
         out_of_bounds => finished {}
     };
 }
+
+// Positions count entries in the current ordered map. Start a scan at zero.
+pub control entry_at<item>(ref map<string, item> values, u32 position)
+    exits item { ref string key from values, ref item value from values, u32 next },
+    finished
+{
+    exit delta map_entry_at(values, position) {
+        item { ref string key, ref item value, u32 next } => item { key, value, next },
+        finished => finished {}
+    };
+}

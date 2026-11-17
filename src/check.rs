@@ -4038,7 +4038,9 @@ impl Checker<'_> {
         if let Some(plan) = &collection {
             for outcome in &plan.outcomes {
                 for (index, field) in outcome.fields.iter().enumerate() {
-                    if manifest::reference_inner(&field.ty).is_some() {
+                    if plan.stored_reference_payload(index)
+                        && manifest::reference_inner(&field.ty).is_some()
+                    {
                         let loans = plan.result_loans(&outcome.name);
                         let mut origins = vec![];
                         let mut parents = vec![];

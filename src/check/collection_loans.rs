@@ -9,6 +9,9 @@ pub(super) struct CollectionLoans {
     pub(super) outcomes: Vec<manifest::Outcome>,
 }
 impl CollectionLoans {
+    pub(super) fn stored_reference_payload(&self, index: usize) -> bool {
+        self.operation != "map_entry_at" || index == 1
+    }
     pub(super) fn result_loans(&self, outcome: &str) -> &[Loan] {
         if self.operation.ends_with("_replace") && outcome == "out_of_bounds" {
             &self.inserted
@@ -76,6 +79,7 @@ impl Checker<'_> {
         }
         if !name.ends_with("_get")
             && !name.ends_with("_get_mut")
+            && name != "map_entry_at"
             && self
                 .loop_context
                 .as_ref()

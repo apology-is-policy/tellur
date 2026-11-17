@@ -107,6 +107,7 @@ pub trait CollectionValue: Sized + Clone {
     fn parts(&self) -> Option<(&str, &str, &[Self])>;
     fn parts_mut(&mut self) -> Option<&mut Vec<Self>>;
     fn construct(ty: String, name: String, fields: Vec<Self>) -> Self;
+    fn from_number(value: u32) -> Self;
     fn number(&self) -> Option<u32>;
     fn key_cmp(&self, other: &Self) -> Option<Ordering>;
 }
@@ -154,6 +155,30 @@ pub fn operate<V: CollectionValue>(
             .ok_or_else(|| "missing collection argument".to_owned())
     };
     let result = match op {
+        "entry_at" => {
+            let Collection::Map(key, value) = &c else {
+                return Err("expected map".into());
+            };
+            let position = next()?.number().ok_or("expected map position")?;
+            if (position as usize) < fields.len() / 2 {
+                let i = position as usize * 2;
+                let element = if c.shared_reference_element() {
+                    Owned(fields[i + 1].clone())
+                } else {
+                    Borrow(i + 1, format!("&{value}"))
+                };
+                (
+                    "item",
+                    vec![
+                        Borrow(i, format!("&{key}")),
+                        element,
+                        Owned(V::from_number(position + 1)),
+                    ],
+                )
+            } else {
+                ("finished", vec![])
+            }
+        }
         "get" | "get_mut" => {
             let index = if matches!(c, Collection::Map(..)) {
                 let key = next()?;
