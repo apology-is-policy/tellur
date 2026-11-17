@@ -1,0 +1,9 @@
+size,entry,median_process_ms
+8,accept,3.437
+8,drain,3.444
+64,accept,3.456
+64,drain,3.626
+512,accept,3.967
+512,drain,4.987
+4096,accept,4.661
+4096,drain,95.546

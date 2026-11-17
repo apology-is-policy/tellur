@@ -1061,3 +1061,120 @@ fn imported_generic_constructor_calls_release_only_nonescaping_inputs() {
     );
     f.reject("E_PRIVATE");
 }
+
+#[test]
+fn shared_vector_window_checks_range_and_keeps_the_element_origin() {
+    let f = Fixture::new();
+    f.write(
+        "traversal.tellur",
+        include_str!("../library/traversal.tellur"),
+    );
+    let caller = r#"
+import "traversal.tellur" as t;
+control main(u32 start, u32 end, u32 index) exits auto {
+    mutable vector<string> words = ["one", "two"];
+    delta t.range<string>(borrow words, start, end) {
+        ready { auto view } => ready, invalid => exit invalid
+    }
+    [ready]: delta t.get<string>(borrow view, index) {
+        found { ref string word } => found, finished => exit finished
+    }
+    [found]: emit(word);
+        delta vector_push(borrow mutable words, "three") {pushed => appended}
+    [appended]: exit read {vector_length(borrow words)};
+}"#;
+    f.write("main.tellur", caller);
+    let program = f.check().unwrap();
+    let expanded = program.expanded("main").unwrap();
+    for (start, end, index, outcome) in [
+        (0, 0, 0, "finished"),
+        (2, 2, 0, "finished"),
+        (1, 0, 0, "invalid"),
+        (0, 3, 0, "invalid"),
+        (3, 3, 0, "invalid"),
+        (1, 2, 0, "read"),
+        (1, 2, 1, "finished"),
+        (1, 2, u32::MAX, "finished"),
+    ] {
+        let calls = if outcome == "invalid" {
+            vec![]
+        } else {
+            let sum = u32::checked_add(start, index);
+            vec![tellur::runtime::ScriptCall {
+                operation: "checked_add".into(),
+                outcome: if sum.is_some() { "sum" } else { "overflow" }.into(),
+                fields: sum.into_iter().map(Value::U32).collect(),
+                waits: 0,
+            }]
+        };
+        let scenario = Scenario {
+            entry: "main".into(),
+            arguments: vec![Value::U32(start), Value::U32(end), Value::U32(index)],
+            calls,
+        };
+        let result = program.run(&scenario).unwrap();
+        assert_eq!(result, expanded.run(&scenario).unwrap());
+        assert_eq!(result.outcome, outcome);
+        if outcome == "read" {
+            assert_eq!(result.fields, vec![Value::U32(3)]);
+        }
+    }
+    f.write(
+        "main.tellur",
+        &caller
+            .replace("[found]: emit(word);", "[found]:")
+            .replace("[appended]: exit read", "[appended]: emit(word); exit read"),
+    );
+    f.reject("E_LOAN");
+
+    // A later use of the view itself must also prevent structural mutation.
+    f.write("main.tellur", &caller.replace("[ready]: delta t.get", "[ready]: delta vector_push(borrow mutable words, \"early\") { pushed => changed } [changed]: delta t.get"));
+    f.reject("E_LOAN");
+
+    // Two overlapping readers may survive independently of the other window.
+    let overlapping = r#"
+import "traversal.tellur" as t;
+control main() exits auto {
+    mutable vector<string> words = ["first", "second"];
+    delta t.range<string>(borrow words, 0, 2) { ready {auto a} => first, invalid => exit bad }
+    [first]: delta t.range<string>(borrow words, 1, 2) {ready {auto b} => second, invalid => exit bad}
+    [second]: delta t.get<string>(borrow a, 1) {found {ref string x} => left, finished => exit bad}
+    [left]: delta t.get<string>(borrow b, 0) {found {ref string y} => right, finished => exit bad}
+    [right]: emit(x); emit(y); exit done;
+}"#;
+    f.write("main.tellur", overlapping);
+    let program = f.check().unwrap();
+    let scenario = Scenario {
+        entry: "main".into(),
+        arguments: vec![],
+        calls: vec![
+            tellur::runtime::ScriptCall {
+                operation: "checked_add".into(),
+                outcome: "sum".into(),
+                fields: vec![Value::U32(1)],
+                waits: 0
+            };
+            2
+        ],
+    };
+    let result = program.run(&scenario).unwrap();
+    assert_eq!(result.outcome, "done");
+    assert_eq!(
+        result,
+        program.expanded("main").unwrap().run(&scenario).unwrap()
+    );
+
+    f.write("main.tellur", &caller.replace("[\"one\", \"two\"]", "[]"));
+    let empty = f.check().unwrap();
+    let zero = Scenario {
+        entry: "main".into(),
+        arguments: vec![Value::U32(0); 3],
+        calls: vec![tellur::runtime::ScriptCall {
+            operation: "checked_add".into(),
+            outcome: "sum".into(),
+            fields: vec![Value::U32(0)],
+            waits: 0,
+        }],
+    };
+    assert_eq!(empty.run(&zero).unwrap().outcome, "finished");
+}

@@ -31,6 +31,12 @@ pub control contains_key<item>(ref map<string, item> values, ref string key) exi
 
 In temporary copies of both services, routing `contains_key<string>(borrow headers, borrow "origin")` to their existing response paths passed the 0.283 checker. The operation consumes neither input, returns no loan and imposes no cloning requirement on the value. Each caller still chooses its status and message. This is a source prototype with string keys. Today's other supported map keys are `u32` and `bool`. A generic key constraint is a separate design decision. [Settings caller](../applications/settings/http.tellur) · [Greeting caller](../examples/http_hello/main.tellur)
 
+## Borrow a range of a vector
+
+The experimental `traversal.range<item>(borrow values, start, end)` returns a shared window over `[start, end)`. An empty range at either end is valid, including on an empty vector. Reversed bounds or an end past the vector return `invalid`. The window stores one shared reference and two indices. Its fields are private.
+
+Call `traversal.get<item>(borrow view, offset)` to read relative to the start. It returns `found` with an element borrowed from the original vector, or `finished` if the offset falls outside the window, including arithmetic overflow. Two windows can overlap. Structural mutation becomes available after the last use of the windows and their returned elements. The source module uses the manifest's existing `checked_add` primitive. Array windows and borrowed ordered map traversal remain open. [Source module](../library/traversal.tellur) · [Runnable example](../examples/borrowed_traversal/main.tellur)
+
 ## Proposed algorithm contracts
 
 | Family | First useful contract | Observable behavior |
@@ -52,6 +58,8 @@ Keep read-only traversal and consuming traversal independently useful. In partic
 **Vectors with cheap split and concatenation.** Prototype a relaxed radix balanced tree (RRB) for a workload that repeatedly joins batches and splits them again. RRB trees support logarithmic concatenation and splitting through a tree of chunks. Compare with a flat vector for append, random access, scanning, split and join. Include a flat vector with a moving start index as a baseline for front drains. First try consuming split and join, where both the old owners and the destination of each element are clear. Any persistent snapshot API would need its own eligibility rules for element identity, mutation, explicit cloning and resources. Tree sharing alone cannot grant those permissions. [Bagwell and Rompf's RRB paper](https://infoscience.epfl.ch/record/169879/files/RMTrees.pdf)
 
 Record time per operation, allocations, peak live bytes, and bytes or elements moved. Report key lengths, collection sizes, hit/miss ratios and scan order with the results. Compare complete Tellur operations as well as the isolated data structure. Today front-draining a flat vector or map can take quadratic time across a full drain. A linear full ordered traversal with no element clones is a useful first target. The existing collection conformance cases cover key order, value replacement, invalidation and resource completion. Run them against each candidate and compare original and expanded behavior in the interpreter and LLVM executables. [Collection conformance cases](../tests/collections.rs)
+
+The first ordered string-map comparison is complete on Apple M2. Linear lookup was fastest for eight headers. At 4,096 shared-prefix settings keys ART led on lookup, the B-tree led on insertion and draining, and flat storage led on borrowed scans. The next library experiment is an ordered key/value scan that borrows the map. [Measurements and reproduction](../experiments/ordered_maps/README.md)
 
 ## Path to a supported library
 

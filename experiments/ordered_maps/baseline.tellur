@@ -1,0 +1,53 @@
+// Measure the same input decoding and process launch for each entry.
+control accept(map<string, u32> input) exits result {
+    drop(input);
+    exit done;
+}
+
+control drain(map<string, u32> input) exits result {
+    loop consume(map<string, u32> remaining = input) {
+        delta map_take(remaining) {
+            item { string key, u32 value, auto rest } => more,
+            empty => exit done
+        }
+        [more]: again consume(rest);
+    }
+}
+
+// Exercise equal-key replacement, lookup and ordered removal on the same fixture.
+control observe(map<string, u32> source) exits result {
+    mutable map<string, u32> input = source;
+    delta map_insert(borrow mutable input, "a", 99) {
+        replaced { u32 previous } => replaced,
+        inserted => exit unexpected
+    }
+    [replaced]: delta (previous == 3) {
+        true => lookup,
+        false => exit unexpected
+    }
+    [lookup]: delta map_get(borrow input, borrow "a") {
+        found { ref u32 value } => found,
+        missing => exit unexpected
+    }
+    [found]: delta (deref value == 99) {
+        true => checked,
+        false => exit unexpected
+    }
+    [checked]: forward list(input);
+}
+
+control list(map<string, u32> input) exits result {
+    loop consume(map<string, u32> remaining = input) {
+        delta map_take(remaining) {
+            item { string key, u32 value, auto rest } => more,
+            empty => exit done
+        }
+        [more]: emit(key);
+            again consume(rest);
+    }
+}
+
+outcome result {
+    @exit 0 done,
+    @exit 1 unexpected
+}

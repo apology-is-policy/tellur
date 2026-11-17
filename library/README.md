@@ -12,6 +12,10 @@ For the planned collection APIs, algorithm contracts and storage experiments, se
 
 The experimental [membership module](membership.tellur) exports `contains_key<item>`. It borrows a string-keyed map and a key and exits `present` or `absent`. The [collection discovery example](../examples/collection_discovery/main.tellur) routes both outcomes.
 
+## Shared vector windows
+
+The [traversal module](traversal.tellur) exports `range` and `get`. The [example](../examples/borrowed_traversal/main.tellur) reads two words from a half-open range, then appends to the original vector. From the checkout run `./bin/tellur exec examples/borrowed_traversal/main.tellur -- --json`. For the reference interpreter, use the example's [manifest](../examples/borrowed_traversal/manifest.json) and [scenario](../examples/borrowed_traversal/main.scenario.json).
+
 ## JSON string-map files
 
 Import [json_file.tellur](json_file.tellur) with a relative path and a local namespace.

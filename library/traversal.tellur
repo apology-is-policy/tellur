@@ -1,0 +1,40 @@
+// A checked half-open range. Its shared loan belongs to the source vector.
+pub struct window<item>['source] {
+    ref vector<item> values <- 'source;
+    u32 start;
+    u32 end;
+}
+
+pub control range<item>(ref vector<item> values, u32 start, u32 end)
+    exits ready { window<item>[values] view },
+    invalid
+{
+    delta (start <= end) {
+        true => ordered,
+        false => exit invalid
+    }
+    [ordered]: delta (end <= vector_length(values)) {
+        true => inside,
+        false => exit invalid
+    }
+    [inside]: exit ready { window<item> { values, start, end } };
+}
+
+// A successful read borrows the original vector through the view's source.
+pub control get<item>(ref window<item> view, u32 offset)
+    exits found { ref item value from view['source] },
+    finished
+{
+    delta checked_add(view.start, offset) {
+        sum { u32 index } => indexed,
+        overflow => exit finished
+    }
+    [indexed]: delta (index < view.end) {
+        true => inside,
+        false => exit finished
+    }
+    [inside]: exit delta vector_get(view.values, index) {
+        found { ref item value } => found { value },
+        out_of_bounds => finished {}
+    };
+}

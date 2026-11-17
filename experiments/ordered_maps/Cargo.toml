@@ -1,0 +1,11 @@
+[package]
+name = "tellur-ordered-map-experiment"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+blart = "=0.6.0"
+
+[features]
+allocation-counts = []

@@ -1,0 +1,31 @@
+import "../../library/traversal.tellur" as traversal;
+
+control print_words(ref traversal.window<string> view) exits done {
+    loop visit(u32 offset = 0) {
+        delta traversal.get<string>(view, offset) {
+            found { ref string word } => item,
+            finished => complete
+        }
+        [item]: emit(word);
+            delta checked_add(offset, 1) {
+                sum { u32 next } => advanced,
+                overflow => exit done
+            }
+        [advanced]: again visit(next);
+        [complete]: exit done;
+    }
+}
+
+control main() exits done { u32 length }, unexpected {
+    mutable vector<string> words = ["before", "green", "blue", "after"];
+    delta traversal.range<string>(borrow words, 1, 3) {
+        ready { auto view } => walk,
+        invalid => exit unexpected
+    }
+    [walk]:
+        print_words(borrow view);
+        delta vector_push(borrow mutable words, "later") {
+            pushed => appended
+        }
+    [appended]: exit done { vector_length(borrow words) };
+}
