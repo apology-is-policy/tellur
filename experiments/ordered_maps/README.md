@@ -35,6 +35,26 @@ At four times the input size, scan time above the accept-and-drop baseline grew 
 
 Keep the B-tree as a baseline for large mixed workloads and ART as a candidate for lookup-heavy workloads with shared prefixes. Choosing a representation or promotion threshold needs measurements inside the runtime on application traces.
 
+### Optimized traversal and memory in Villanelle 0.287
+
+On the same Apple M2, Villanelle 0.287 builds the complete ordered event trace in about the same time as optimized Rust with a pooled trace. Each program reads every UTF-8 key, formats every decimal value and retains both messages. The runtime stores UTF-8 bytes in one buffer with an end offset per message. The pooled Rust control applies that layout to the standard-library B-tree. The original Rust control keeps one owned string per event.
+
+| Median time | Villanelle LLVM O3, expanded | Rust B-tree, owned strings | Rust B-tree, pooled |
+| --- | ---: | ---: | ---: |
+| 4,096 entries, build trace in memory | 95.54 µs | 176.04 µs | 95.50 µs |
+| 16,384 entries, build trace in memory | 334.79 µs | 656.00 µs | 345.58 µs |
+| 4,096 entries, complete process and JSON output | 5.03 ms | 4.46 ms | 4.35 ms |
+| 16,384 entries, complete process and JSON output | 10.06 ms | 10.33 ms | 9.52 ms |
+| 4,096 entries, consume by repeated front removal | 46.28 ms | 3.74 ms | — |
+
+The previous expanded O3 build took 28.75 ms for the 4,096-entry process with output. On the old release build, 480 of 1,470 CPU samples landed inside reference-origin evidence creation or its callees. Slot storage accounted for another 324 samples. Comparing one and nine expanded traversals on the same input gave about 74 allocations and four reallocations per additional entry visited. LLVM saw calls across a precompiled runtime boundary for each of those operations.
+
+The optimized compiler recognizes a synchronous `map_entry_at` loop or a transparent forwarding control. It fuses complete successful iterations when references stay local and the observable actions consist of supported key/value emissions. A partially funded iteration, exhaustion, and loops with arbitrary predicates or escaping references run through the checked graph. An unobserved walk can advance straight to the end. Only the observed timing rows above compare actual visits in both languages.
+
+The observed 4,096-entry process dropped from 430,837 allocation calls at 0.286 release to 4,725 at 0.287 O3. Pooled Rust used 4,911. Villanelle still requested 4.54 MB in total and reached 5.08 MiB peak RSS, compared with 2.82 MB requested and 3.75 MiB peak RSS for pooled Rust. Counts cover the entire process. Requested bytes include reallocations. The validation pass now borrows schema types and compares adjacent keys in place. The remaining front-drain cost includes 8,386,560 pair shifts for 4,096 entries even after removing each pair in one move.
+
+Apple M2 arm64, rustc 1.97.1 (LLVM 22.1.6), Villanelle LLVM 22.1.8. The in-memory table reports medians of 25 interleaved measured trials. The process table uses 13. Every complete JSON result was checked after timing. RSS is the median of five additional processes. Small differences within a few percent vary between runs. [Harness and reproduction](comparison/README.md) · [Hot samples](results/0.287-trace.csv) · [Process samples](results/0.287-process.csv) · [Memory samples](results/0.287-memory.csv)
+
 ## Reproducing the experiment
 
 Run from the repository root with Rust, Python 3 and a native Villanelle 0.286 compiler.

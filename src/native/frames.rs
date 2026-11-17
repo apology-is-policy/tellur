@@ -70,16 +70,31 @@ impl DerefMut for Frames {
     }
 }
 impl Frames {
+    /// Reserve identities for completed synchronous wrapper activations.
+    pub(super) fn skip_completed(&mut self, count: u64, tracker: &super::fault::Tracker) -> bool {
+        let Some(next) = self.next.checked_add(count) else {
+            return false;
+        };
+        if !tracker.skip_completed(count) {
+            return false;
+        }
+        self.next = next;
+        true
+    }
     /// Resolve an activation-relative slot, including an uninitialized destination.
-    pub fn local_storage(&self, frame: &Frame, slot: usize) -> R<Storage> {
+    pub(super) fn local_index(&self, frame: &Frame, slot: usize) -> R<usize> {
         self.require(frame)?;
         if slot >= frame.len {
             return Err("E_NATIVE: access slot is outside its activation".into());
         }
+        Ok(frame.base + slot)
+    }
+    pub fn local_storage(&self, frame: &Frame, slot: usize) -> R<Storage> {
+        let root = self.local_index(frame, slot)?;
         Ok(Storage {
             arena: self.identity.clone(),
             frame: frame.id,
-            root: frame.base + slot,
+            root,
         })
     }
     /// Bind a currently live absolute address to its allocation identity. Existing

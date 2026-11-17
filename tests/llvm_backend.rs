@@ -1468,6 +1468,125 @@ outcome result {@exit 0 done}
     }
 
     #[test]
+    fn ordered_map_scan_keeps_each_fuel_cut_and_observable_visit() {
+        let source = r#"import "traversal.vn" as traversal;
+outcome scan_result { @exit 0 done { u32 position } }
+control main(map<string, u32> input, u32 start) exits scan_result {
+    loop visit(u32 position = start) {
+        delta traversal.entry_at<u32>(borrow input, position) {
+            item { ref string key, ref u32 value, u32 next } => more,
+            finished => exit done { position }
+        }
+        [more]: emit(key);
+            emit(u32_text(deref value));
+            again visit(next);
+    }
+}"#;
+        let fixture = Fixture::new(source);
+        fs::write(
+            fixture.root.join("traversal.vn"),
+            include_str!("../library/traversal.vn"),
+        )
+        .unwrap();
+        let manifest =
+            Manifest::from_json(include_str!("../experiments/ordered_maps/manifest.json")).unwrap();
+        let program = compile_file(&fixture.source, manifest).unwrap();
+        for expanded in [false, true] {
+            let program = if expanded {
+                program.expanded("main").unwrap()
+            } else {
+                program.clone()
+            };
+            let reference = fixture.root.join("reference");
+            let optimized = fixture.root.join("optimized");
+            program.build_llvm("main", &reference, 0).unwrap();
+            program.build_llvm("main", &optimized, 3).unwrap();
+            let ir =
+                fs::read_to_string(fixture.root.join("optimized.tellur-build/program.ll")).unwrap();
+            assert!(ir.contains("call void @tellur_rt_v1_map_scan"));
+            for start in [0, 1, 3, u32::MAX] {
+                let scenario = fixture.root.join("scan.json");
+                fs::write(
+                    &scenario,
+                    json!({"entry":"main","arguments":[{"kind":"construct","value":{"name":"map","ty":"map<String,U32>","fields":[{"kind":"string","value":"a"},{"kind":"u32","value":17},{"kind":"string","value":"b"},{"kind":"u32","value":29},{"kind":"string","value":"z"},{"kind":"u32","value":41}]}},{"kind":"u32","value":start}],"calls":[]})
+                        .to_string(),
+                )
+                .unwrap();
+                for fuel in (0..40).map(Some).chain([None]) {
+                    let expected = execute(&reference, &scenario, fuel);
+                    let actual = execute(&optimized, &scenario, fuel);
+                    assert_eq!(
+                        (actual.status.code(), actual.stdout, actual.stderr),
+                        (
+                            expected.status.code(),
+                            expected.stdout.clone(),
+                            expected.stderr
+                        ),
+                        "expanded={expanded}, start={start}, fuel={fuel:?}"
+                    );
+                    if fuel.is_none() {
+                        let report: Json = serde_json::from_slice(&expected.stdout).unwrap();
+                        assert_eq!(report["fields"][0]["value"], start.max(3));
+                        let messages: Vec<_> = report["events"]
+                            .as_array()
+                            .unwrap()
+                            .iter()
+                            .map(|e| e["message"].as_str().unwrap())
+                            .collect();
+                        let all = ["a", "17", "b", "29", "z", "41"];
+                        assert_eq!(messages, all[(start.min(3) * 2) as usize..]);
+                    }
+                }
+            }
+        }
+    }
+    #[test]
+    fn ordered_map_scan_leaves_early_exit_in_the_checked_graph() {
+        let fixture = Fixture::new(
+            r#"
+outcome result { @exit 0 done { u32 position } }
+control main(map<string, u32> input) exits result {
+    loop visit(u32 position = 0) {
+        delta map_entry_at(borrow input, position) {
+            item { ref string key, ref u32 value, u32 next } => more,
+            finished => exit done { position }
+        }
+        [more]: delta (deref value == 29) { true => exit done { position }, false => skip }
+        [skip]: emit(key);
+            again visit(next);
+    }
+}"#,
+        );
+        let manifest =
+            Manifest::from_json(include_str!("../experiments/ordered_maps/manifest.json")).unwrap();
+        let program = compile_file(&fixture.source, manifest).unwrap();
+        let build = program
+            .build_llvm("main", &fixture.root.join("main"), 3)
+            .unwrap();
+        assert!(
+            !fs::read_to_string(build.llvm)
+                .unwrap()
+                .contains("call void @tellur_rt_v1_map_scan")
+        );
+        let path = fixture.root.join("scenario.json");
+        let fields = json!([{"kind":"string","value":"a"},{"kind":"u32","value":7},
+                            {"kind":"string","value":"b"},{"kind":"u32","value":29}]);
+        fs::write(
+            &path,
+            json!({"entry":"main","arguments":[{"kind":"construct","value":{
+            "ty":"map<String,U32>","name":"map","fields":fields}}],"calls":[]})
+            .to_string(),
+        )
+        .unwrap();
+        let out = execute(&build.executable, &path, None);
+        assert_eq!(
+            report(&out),
+            json!({"outcome":"done","fields":[{"kind":"u32","value":1}],
+                                        "events":[{"kind":"emit","message":"a"}]})
+        );
+    }
+
+    #[test]
     fn collections_preserve_mutation_element_borrows_faults_and_fuel() {
         let scenarios=[0,1,99].into_iter().flat_map(|index| [false,true].map(move |fail|json!({"entry":"main","arguments":[{"kind":"u32","value":index},{"kind":"bool","value":fail}],"calls":[]}))).collect::<Vec<_>>();
         carrier_matrix(

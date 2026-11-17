@@ -1,0 +1,15 @@
+[package]
+name = "villanelle-map-comparison"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+tellur = { package = "villanelle", path = "../../..", optional = true }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[[bin]]
+name = "build_o3"
+path = "src/bin/build_o3.rs"
+required-features = ["tellur"]

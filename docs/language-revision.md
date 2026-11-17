@@ -2,6 +2,10 @@
 
 ## Active checkpoint queue
 
+### Native collection performance, 17 November 2026
+
+Villanelle 0.287 lowers proven synchronous ordered map scans in optimized LLVM builds. The native runtime can visit projected keys and values directly. Early exits and general predicates use the checked loop. Rust parity is the ongoing target for each operation, data structure, algorithm and memory-management path. Measure equivalent observable work, allocations and data movement. The next performance target is ordered consumption, where removing the first pair still shifts the flat map. The next library design item is first-match search with early exit and fallible predicates. [Measurements and reproduction](../experiments/ordered_maps/README.md)
+
 ### Borrowed ordered traversal, 17 November 2026
 
 Villanelle 0.286 adds `traversal.entry_at` for string-keyed maps. Callers can read both fields in order and reuse the map after the scan. On Apple M2 the full native scan took 22.1 ms for 4,096 settings keys, compared with 92.4 ms for a consuming drain. The next algorithm prototype is first-match search with a statically named predicate. Exercise an ordinary miss, an early match and a fallible predicate whose outcome the caller must route. Fold and the split/join sequence experiment follow. [Example](../examples/borrowed_traversal/headers.vn) · [Measurements](../experiments/ordered_maps/README.md)

@@ -114,7 +114,7 @@ impl Context<'_> {
     fn local(&self, slot: usize) -> R<usize> {
         let frame = self.frame_ref()?;
         let values = self.storage.values();
-        values.require_storage(&values.local_storage(frame, slot)?)
+        values.local_index(frame, slot)
     }
     fn finish(&mut self) -> R<Completion> {
         if !self.lexical.is_empty() {
@@ -3858,6 +3858,98 @@ pub unsafe extern "C" fn tellur_rt_v1_invalid_resume(ctx: *mut Context<'_>) {
 
 pub type Callback = unsafe extern "C" fn(*mut Context<'_>, *const u64, usize);
 
+/// Execute only complete, statically proved item iterations. Leave the first
+/// partial or exhausted iteration to the checked graph for exact fuel and sites.
+/// The induction variable remains in its original temporary handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_map_scan(
+    ctx: *mut Context<'_>,
+    slot: usize,
+    indirect: u32,
+    position: u64,
+    ticks: usize,
+    wrapped: u32,
+    projections: *const u8,
+    count: usize,
+) {
+    unsafe { &mut *ctx }.perform(|c| {
+        if ticks == 0 || wrapped > 1 || indirect > 1 {
+            return Err("E_NATIVE: invalid map scan descriptor".into());
+        }
+        let projections = unsafe { slice(projections, count) };
+        let start_slot = c.value_index(position)?;
+        let Some(V::U32(start)) = c.values[start_slot] else {
+            return Err("E_NATIVE: invalid map scan position".into());
+        };
+        let root = c.local(slot)?;
+        let (root, path) = address(c.storage.values(), root, &[], indirect != 0)?;
+        let V::Construct { ty, name, fields } =
+            super::project_ref(super::slot(c.storage.values(), root)?, &path)?
+        else {
+            return Err("E_NATIVE: invalid map scan".into());
+        };
+        if name != "map" {
+            return Err("E_NATIVE: expected map".into());
+        }
+        if !projections.is_empty() {
+            let Some(collection_support::Collection::Map(key, value)) =
+                collection_support::Collection::parse(ty)
+            else {
+                return Err("E_NATIVE: invalid map type".into());
+            };
+            // Stored references need the ordinary indirect read.
+            for &p in projections {
+                let field = if p & 1 == 0 { &key } else { &value };
+                if p > 3 || field != if p < 2 { "String" } else { "U32" } {
+                    return Ok(());
+                }
+            }
+        }
+        let len = fields.len() / 2;
+        let mut steps = len.saturating_sub(start as usize);
+        if let Some(fuel) = c.host.fuel {
+            steps = steps.min(fuel / ticks);
+        }
+        if steps == 0 {
+            return Ok(());
+        }
+        if wrapped == 1
+            && !c
+                .storage
+                .values_mut()
+                .skip_completed(steps as u64, &c.host.activations)
+        {
+            return Ok(());
+        }
+        if let Some(fuel) = &mut c.host.fuel {
+            *fuel -= ticks * steps;
+        }
+        let end = start as usize + steps;
+        if !projections.is_empty() {
+            let V::Construct { fields, .. } =
+                super::project_ref(super::slot(c.storage.values(), root)?, &path)?
+            else {
+                unreachable!()
+            };
+            if c.host.trace
+                && let Some(n) = steps.checked_mul(projections.len())
+            {
+                let _ = c.host.events.ends.try_reserve(n);
+            }
+            for pair in fields[start as usize * 2..end * 2].chunks_exact(2) {
+                for &p in projections {
+                    match &pair[(p & 1) as usize] {
+                        V::String(s) if p < 2 => c.host.emit_text(s),
+                        V::U32(n) if p >= 2 => c.host.emit_decimal(*n),
+                        _ => return Err("E_NATIVE: map storage disagrees with its type".into()),
+                    }
+                }
+            }
+        }
+        c.values[start_slot] = Some(V::U32(end as u32));
+        Ok(())
+    })
+}
 /// Collection operations use the same stable arena and element-reference
 /// evidence as generated Rust. Check the entire handle batch before mutation.
 #[unsafe(no_mangle)]

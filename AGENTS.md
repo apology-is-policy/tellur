@@ -15,3 +15,13 @@ Run `./bin/vnc format FILE --write` on new or substantially edited Villanelle fi
 using the current compiler. Preview the result when preserving a user's manual
 layout matters. Avoid unrelated repository-wide reformatting. Rust source uses
 `cargo fmt`. Formatting never adds or removes path-grouping braces.
+
+## Native performance
+
+Aim to match or beat equivalent optimized Rust for every operation, data structure,
+algorithm, and memory-management path. Use the same observable work and verify the
+results. Measure the hot operation separately from launch, decoding and output.
+For a gap, inspect generated code and measure allocation count, requested bytes
+and data movement as well as time. Record the workload, compiler settings, hardware,
+remaining gap and next experiment. Preserve checked ownership, origins, outcomes,
+resource completion, cancellation and fault diagnostics when optimizing.

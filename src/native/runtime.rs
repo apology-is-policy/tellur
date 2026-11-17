@@ -220,14 +220,16 @@ pub fn boolean(v: V) -> R<bool> {
     }
 }
 pub fn project(v: &V, fields: &[usize]) -> R<V> {
-    let mut v = v;
+    project_ref(v, fields).cloned()
+}
+fn project_ref<'a>(mut v: &'a V, fields: &[usize]) -> R<&'a V> {
     for index in fields {
         let V::Construct { fields, .. } = v else {
             return Err("E_NATIVE: invalid field projection".into());
         };
         v = fields.get(*index).ok_or("E_NATIVE: invalid field index")?;
     }
-    Ok(v.clone())
+    Ok(v)
 }
 /// The expression evaluator already owns its temporary; transfer the selected
 /// field without cloning its allocation. Static checking excludes obligations
@@ -480,9 +482,11 @@ pub fn validate(v: &V, expected: &str, m: &Json) -> R<()> {
                     return Err("E_DRIVER: invalid collection constructor".into());
                 }
                 let types = c
-                    .fields(values.len())
+                    .field_types(values.len())
                     .ok_or("E_DRIVER: invalid collection length")?;
-                validate_args(values, &types, m)?;
+                for (value, ty) in values.iter().zip(types) {
+                    validate(value, ty, m)?;
+                }
                 if matches!(c, collection_support::Collection::Map(..))
                     && !collection_support::sorted_map(values)
                 {
@@ -1016,6 +1020,79 @@ pub struct ContextRoot {
     scope: ResourceScope,
     retired: bool,
 }
+// A trace owns one UTF-8 buffer and one end offset per emitted message. Less
+// frequent structured events carry their insertion index to preserve wire order.
+#[derive(Debug, Default)]
+struct TraceLog {
+    text: String,
+    ends: Vec<usize>,
+    other: Vec<(usize, Json)>,
+    decoded: std::cell::OnceCell<Vec<Json>>,
+}
+#[derive(Serialize)]
+#[serde(untagged)]
+enum TraceRecord<'a> {
+    Emit {
+        kind: &'static str,
+        message: &'a str,
+    },
+    Other(&'a Json),
+}
+impl TraceLog {
+    fn emit(&mut self, append: impl FnOnce(&mut String)) {
+        self.decoded.take();
+        append(&mut self.text);
+        self.ends.push(self.text.len());
+    }
+    fn push(&mut self, value: Json) {
+        self.decoded.take();
+        self.other.push((self.len(), value));
+    }
+    fn len(&self) -> usize {
+        self.ends.len() + self.other.len()
+    }
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+    fn records(&self) -> impl Iterator<Item = TraceRecord<'_>> {
+        let mut ends = self.ends.iter();
+        let mut other = self.other.iter().peekable();
+        let mut start = 0;
+        (0..self.len()).map(move |index| {
+            if let Some((_, value)) = other.next_if(|(position, _)| *position == index) {
+                return TraceRecord::Other(value);
+            }
+            let end = *ends.next().expect("emit record has an end offset");
+            let message = &self.text[start..end];
+            start = end;
+            TraceRecord::Emit {
+                kind: "emit",
+                message,
+            }
+        })
+    }
+}
+impl Serialize for TraceLog {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_seq(self.records())
+    }
+}
+// Diagnostic consumers can inspect the same JSON records as the wire format.
+impl std::ops::Deref for TraceLog {
+    type Target = Vec<Json>;
+    fn deref(&self) -> &Self::Target {
+        self.decoded.get_or_init(|| {
+            self.records()
+                .map(|event| serde_json::to_value(event).expect("trace event is serializable"))
+                .collect()
+        })
+    }
+}
+impl PartialEq<Vec<Json>> for TraceLog {
+    fn eq(&self, rhs: &Vec<Json>) -> bool {
+        **self == *rhs
+    }
+}
 pub struct Host {
     contingencies: Vec<String>,
     pub rust_adapter: Option<RustAdapter>,
@@ -1025,7 +1102,7 @@ pub struct Host {
     pub manifest: Json,
     script: Option<Vec<ScriptCall>>,
     cursor: usize,
-    events: Vec<Json>,
+    events: TraceLog,
     pub trace: bool,
     pub fuel: Option<usize>,
     files: BTreeMap<String, *mut c_void>,
@@ -1066,7 +1143,7 @@ impl Host {
             manifest,
             script,
             cursor: 0,
-            events: vec![],
+            events: TraceLog::default(),
             trace,
             fuel,
             files: BTreeMap::new(),
@@ -1556,12 +1633,24 @@ impl Host {
         let V::String(message) = v else {
             return Err("E_NATIVE: emit requires String".into());
         };
+        self.emit_text(&message);
+        Ok(())
+    }
+    fn emit_text(&mut self, message: &str) {
         if self.trace {
-            self.events.push(json!({"kind":"emit","message":message}));
+            self.events.emit(|text| text.push_str(message));
         } else {
             println!("{message}");
         }
-        Ok(())
+    }
+    fn emit_decimal(&mut self, value: u32) {
+        if self.trace {
+            use std::fmt::Write;
+            self.events
+                .emit(|text| write!(text, "{value}").expect("writing to String"));
+        } else {
+            println!("{value}");
+        }
     }
     fn declared_primitive(&self, name: &str) -> R<Json> {
         self.manifest["primitives"]
@@ -1979,9 +2068,20 @@ impl Host {
             return Err("E_DRIVER: unconsumed script calls".into());
         }
         if json_output {
+            #[derive(Serialize)]
+            struct Report<'a> {
+                events: &'a TraceLog,
+                fields: &'a [V],
+                outcome: &'a str,
+            }
+            let report = Report {
+                events: &self.events,
+                fields: &result.1,
+                outcome: &result.0,
+            };
             println!(
                 "{}",
-                json!({"outcome":result.0,"fields":result.1,"events":self.events})
+                serde_json::to_string(&report).map_err(|e| e.to_string())?
             );
         } else if result.1.is_empty() {
             println!("{}", result.0);

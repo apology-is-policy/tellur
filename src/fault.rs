@@ -221,6 +221,16 @@ impl Tracker {
             ..Self::default()
         }
     }
+    /// Account for proven, completed synchronous calls that leave no active frame.
+    pub fn skip_completed(&self, count: u64) -> bool {
+        !self.failed
+            && self
+                .identities
+                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |last| {
+                    last.checked_add(count)
+                })
+                .is_ok()
+    }
     pub fn enter(&mut self, control: &str) -> Result<(), String> {
         if self.failed {
             return Err("execution boundary has already failed".into());

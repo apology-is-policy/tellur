@@ -87,20 +87,26 @@ impl Collection {
             _ => vec![self.element()],
         }
     }
-    pub fn fields(&self, len: usize) -> Option<Vec<String>> {
+    pub fn field_types(&self, len: usize) -> Option<impl Iterator<Item = &str>> {
         if len > u32::MAX as usize {
             return None;
         }
-        match self {
-            Self::Array(t, n) if *n == len => Some(vec![t.clone(); len]),
-            Self::Vector(t) => Some(vec![t.clone(); len]),
-            Self::Map(k, v) if len.is_multiple_of(2) => Some(
-                (0..len)
-                    .map(|i| if i % 2 == 0 { k.clone() } else { v.clone() })
-                    .collect(),
-            ),
-            _ => None,
-        }
+        let (even, odd) = match self {
+            Self::Array(t, n) if *n == len => (t, t),
+            Self::Vector(t) => (t, t),
+            Self::Map(k, v) if len.is_multiple_of(2) => (k, v),
+            _ => return None,
+        };
+        Some((0..len).map(move |i| {
+            if i % 2 == 0 {
+                even.as_str()
+            } else {
+                odd.as_str()
+            }
+        }))
+    }
+    pub fn fields(&self, len: usize) -> Option<Vec<String>> {
+        Some(self.field_types(len)?.map(str::to_owned).collect())
     }
 }
 pub trait CollectionValue: Sized + Clone {
@@ -118,11 +124,9 @@ pub enum Payload<V> {
 pub fn sorted_map<V: CollectionValue>(fields: &[V]) -> bool {
     fields.len().is_multiple_of(2)
         && fields
-            .chunks_exact(2)
-            .map(|p| &p[0])
-            .collect::<Vec<_>>()
-            .windows(2)
-            .all(|w| w[0].key_cmp(w[1]) == Some(Ordering::Less))
+            .windows(3)
+            .step_by(2)
+            .all(|w| w[0].key_cmp(&w[2]) == Some(Ordering::Less))
 }
 pub fn length<V: CollectionValue>(value: &V) -> Result<u32, String> {
     let (ty, _, fields) = value.parts().ok_or("invalid collection")?;
@@ -284,10 +288,13 @@ pub fn operate<V: CollectionValue>(
             if fields.is_empty() {
                 ("empty", vec![])
             } else {
-                let mut payload = vec![Owned(fields.remove(0))];
-                if matches!(c, Collection::Map(..)) {
-                    payload.push(Owned(fields.remove(0)));
-                }
+                let width = if matches!(c, Collection::Map(..)) {
+                    2
+                } else {
+                    1
+                };
+                let mut payload = Vec::with_capacity(width + 1);
+                payload.extend(fields.drain(..width).map(Owned));
                 payload.push(Owned(V::construct(
                     ty,
                     c.name().into(),

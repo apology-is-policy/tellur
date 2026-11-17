@@ -5,6 +5,8 @@ use super::*;
 
 #[path = "llvm_adapter.rs"]
 mod adapters;
+#[path = "llvm_map_scan.rs"]
+mod map_scan;
 #[path = "llvm_target.rs"]
 mod targets;
 
@@ -76,6 +78,7 @@ declare void @tellur_rt_v1_escalate(ptr)
 declare void @tellur_rt_v1_supervise(ptr, ptr, ptr, ptr, i64, ptr, i64, ptr, i64, ptr, i64)
 declare i64 @tellur_rt_v1_primitive(ptr, ptr, i64, ptr, i64)
 declare i64 @tellur_rt_v1_collection(ptr, ptr, i64, ptr, i64)
+declare void @tellur_rt_v1_map_scan(ptr, i64, i32, i64, i64, i32, ptr, i64)
 declare i64 @tellur_rt_v1_length(ptr, i64)
 declare i32 @tellur_rt_v1_route(ptr, i64, ptr, i64, ptr, i64)
 declare void @tellur_rt_v1_unmatched(ptr, i64)
@@ -581,6 +584,8 @@ struct ScopeTarget {
     outer_error: String,
 }
 struct Emitter {
+    optimize_loops: bool,
+    map_wrappers: BTreeMap<String, map_scan::Wrapper>,
     frame_types: String,
     retained: bool,
     current_descriptor: usize,
@@ -1866,6 +1871,14 @@ impl Emitter {
                         .iter()
                         .map(|(_, e)| self.expr(e))
                         .collect::<Vec<_>>();
+                    if self.optimize_loops
+                        && !self.retained
+                        && let Some(scan) = map_scan::analyze(i, &self.map_wrappers)
+                    {
+                        let (emits, count) = self.bytes(&scan.emits);
+                        self.effect(format!("call void @tellur_rt_v1_map_scan(ptr %ctx, i64 {}, i32 {}, i64 {}, i64 {}, i32 {}, ptr {emits}, i64 {count})",
+                            self.layout.slots[&scan.map],u32::from(scan.indirect),values[0],scan.ticks,u32::from(scan.wrapped)));
+                    }
                     let arguments = self.handles(&values);
                     let restart = self.id();
                     self.loops.insert(
@@ -1962,7 +1975,10 @@ impl CheckedProgram {
             return Err(error("optimization level must be 0..3"));
         }
         let pack = targets::select(triple)?;
-        let source = self.llvm_source_for_target(entry, pack.triple)?;
+        // The external Thylacine pack can predate the map-scan ABI.
+        let optimize_loops = opt >= 2 && !pack.triple.ends_with("thylacine");
+        let source =
+            self.llvm_source_with_main(entry, main_symbol(Some(pack.triple)), optimize_loops)?;
         self.link_llvm_source(source, output, opt, pack, adapter_pack)
     }
 
@@ -2031,15 +2047,20 @@ impl CheckedProgram {
     }
 
     pub fn llvm_source(&self, entry: &str) -> Result<String> {
-        self.llvm_source_with_main(entry, main_symbol(targets::native_triple()))
+        self.llvm_source_with_main(entry, main_symbol(targets::native_triple()), false)
     }
 
     /// Emit the checked program with the entry symbol required by the target's startup code.
     pub fn llvm_source_for_target(&self, entry: &str, triple: &str) -> Result<String> {
-        self.llvm_source_with_main(entry, main_symbol(Some(triple)))
+        self.llvm_source_with_main(entry, main_symbol(Some(triple)), false)
     }
 
-    fn llvm_source_with_main(&self, entry: &str, main: &str) -> Result<String> {
+    fn llvm_source_with_main(
+        &self,
+        entry: &str,
+        main: &str,
+        optimize_loops: bool,
+    ) -> Result<String> {
         self.verify()?;
         if self.region(entry).is_none() {
             return Err(error(format!("unknown entry region {entry}")));
@@ -2072,6 +2093,11 @@ impl CheckedProgram {
             .collect();
         let resumables = resumable_controls(self, &boundaries)?;
         let mut emitter = Emitter {
+            optimize_loops,
+            map_wrappers: self
+                .regions()
+                .filter_map(|r| Some((r.name.clone(), map_scan::wrapper(r)?)))
+                .collect(),
             frame_types: String::new(),
             retained: false,
             current_descriptor: 0,
